@@ -265,7 +265,7 @@ def make_e2e_task(
 ) -> Task:
     """Create a ``Task`` assigned to the given identity."""
     return Task(
-        id=f"task-e2e-{uuid4().hex[:8]}",
+        id=uuid4(),
         title=title,
         description=description,
         type=TaskType.DEVELOPMENT,

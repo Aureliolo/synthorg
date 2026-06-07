@@ -96,7 +96,7 @@ class DeliverableReceiptService:
         await self._receipts.save(receipt)
         logger.info(
             RECEIPT_BUILT,
-            task_id=task.id,
+            task_id=str(task.id),
             execution_id=execution_id,
             deliverable_doc_slug=slug,
             source_count=len(receipt.sources),
@@ -189,7 +189,7 @@ class DeliverableReceiptService:
             when no frame was ever recorded for it.
         """
         aggregate = await self._flight_recorder.get_aggregate(
-            FlightRecorderFrameFilterSpec(task_id=task.id),
+            FlightRecorderFrameFilterSpec(task_id=str(task.id)),
         )
         return aggregate.latest_execution_id
 
@@ -216,6 +216,6 @@ class DeliverableReceiptService:
                 )
             except DocNotFoundError:
                 continue
-            if task.id in doc.related_task_ids:
+            if str(task.id) in doc.related_task_ids:
                 return meta.slug
         return None

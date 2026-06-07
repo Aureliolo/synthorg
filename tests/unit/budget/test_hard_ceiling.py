@@ -31,6 +31,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
@@ -52,7 +53,7 @@ def _task(
     budget_limit: float = 0.0,
 ) -> Task:
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="Plan a thing",
         description="Plan the thing carefully.",
         type=TaskType.DEVELOPMENT,
@@ -92,7 +93,7 @@ async def test_per_task_hard_ceiling_triggers_raise_at_threshold() -> None:
     assert info.value.ceiling_amount == pytest.approx(1.50)
     assert info.value.accumulated_cost == pytest.approx(1.50)
     assert info.value.currency == "USD"
-    assert info.value.task_id == "task-1"
+    assert info.value.task_id == sid("task-1")
 
 
 @pytest.mark.asyncio

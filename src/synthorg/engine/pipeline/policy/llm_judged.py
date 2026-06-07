@@ -109,7 +109,7 @@ class LlmJudgedRoutingPolicy:
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
             agent_id=NotBlankStr("system"),
-            task_id=task.id,
+            task_id=str(task.id),
             call_category=LLMCallCategory.SYSTEM,
         ):
             response = await self._provider.complete(
@@ -122,7 +122,7 @@ class LlmJudgedRoutingPolicy:
         if verdict is not None:
             logger.info(
                 PIPELINE_ROUTING_DECIDED,
-                task_id=task.id,
+                task_id=str(task.id),
                 policy="llm-judged",
                 verdict=verdict.value,
             )
@@ -130,7 +130,7 @@ class LlmJudgedRoutingPolicy:
 
         logger.info(
             PIPELINE_ROUTING_DECIDED,
-            task_id=task.id,
+            task_id=str(task.id),
             policy="llm-judged",
             verdict="unparseable",
             note="falling back to deterministic policy",

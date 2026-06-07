@@ -35,7 +35,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, as_uuid
 from tests._shared import build_test_app as create_app
 from tests.unit.api.conftest import (
     FakeMessageBus,
@@ -193,7 +193,7 @@ class TestBuildCoordinatorFactory:
         )
 
         task = Task(
-            id="test-task-001",
+            id=as_uuid("test-task-001"),
             title="test",
             description="test task",
             type=TaskType.DEVELOPMENT,
@@ -231,7 +231,7 @@ class TestCoordinationWiring:
         async def _mock_coordinate(context):  # type: ignore[no-untyped-def]
             """Return a realistic result keyed to the actual task."""
             result = CoordinationResult(
-                parent_task_id=context.task.id,
+                parent_task_id=str(context.task.id),
                 topology=CoordinationTopology.SAS,
                 phases=(
                     CoordinationPhaseResult(
@@ -316,8 +316,8 @@ class TestCoordinationWiring:
                 project="test-project",
                 created_by="api",
             )
-            engine_persistence.tasks._tasks[seeded.id] = seeded
-            task_id = seeded.id
+            task_id = str(seeded.id)
+            engine_persistence.tasks._tasks[task_id] = seeded
 
             # Coordinate
             resp = await client.post(

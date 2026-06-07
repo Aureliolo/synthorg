@@ -71,13 +71,13 @@ class TaskAssignmentService:
 
         if task.status not in _ASSIGNABLE_STATUSES:
             msg = (
-                f"Task {task.id!r} has status {task.status.value!r}, "
+                f"Task {str(task.id)!r} has status {task.status.value!r}, "
                 f"expected one of "
                 f"{sorted(s.value for s in _ASSIGNABLE_STATUSES)}"
             )
             logger.warning(
                 TASK_ASSIGNMENT_FAILED,
-                task_id=task.id,
+                task_id=str(task.id),
                 status=task.status.value,
                 error=msg,
             )
@@ -96,18 +96,18 @@ class TaskAssignmentService:
             if not filtered:
                 logger.warning(
                     TASK_ASSIGNMENT_PROJECT_NO_ELIGIBLE,
-                    task_id=task.id,
+                    task_id=str(task.id),
                     available_agents=len(request.available_agents),
                     project_team_size=len(request.project_team),
                 )
                 return AssignmentResult(
-                    task_id=task.id,
+                    task_id=str(task.id),
                     strategy_used=self._strategy.name,
                     reason=("No available agents are members of the project team"),
                 )
             logger.info(
                 TASK_ASSIGNMENT_PROJECT_FILTERED,
-                task_id=task.id,
+                task_id=str(task.id),
                 total_agents=len(request.available_agents),
                 eligible_agents=len(filtered),
             )
@@ -117,7 +117,7 @@ class TaskAssignmentService:
 
         logger.info(
             TASK_ASSIGNMENT_STARTED,
-            task_id=task.id,
+            task_id=str(task.id),
             strategy=self._strategy.name,
             agent_count=len(request.available_agents),
         )
@@ -131,7 +131,7 @@ class TaskAssignmentService:
                 logger,
                 TASK_ASSIGNMENT_FAILED,
                 exc,
-                task_id=task.id,
+                task_id=str(task.id),
                 strategy=self._strategy.name,
             )
             raise
@@ -139,7 +139,7 @@ class TaskAssignmentService:
         if result.selected is not None:
             logger.info(
                 TASK_ASSIGNMENT_AGENT_SELECTED,
-                task_id=task.id,
+                task_id=str(task.id),
                 agent_name=result.selected.agent_identity.name,
                 score=result.selected.score,
                 strategy=result.strategy_used,
@@ -147,14 +147,14 @@ class TaskAssignmentService:
         else:
             logger.warning(
                 TASK_ASSIGNMENT_NO_ELIGIBLE,
-                task_id=task.id,
+                task_id=str(task.id),
                 strategy=self._strategy.name,
                 reason=result.reason,
             )
 
         logger.info(
             TASK_ASSIGNMENT_COMPLETE,
-            task_id=task.id,
+            task_id=str(task.id),
             strategy=result.strategy_used,
             selected=result.selected is not None,
             alternatives=len(result.alternatives),

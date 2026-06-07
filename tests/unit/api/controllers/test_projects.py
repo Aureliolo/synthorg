@@ -1,6 +1,7 @@
 """Tests for project controller."""
 
 from typing import Any
+from uuid import UUID
 
 import pytest
 import structlog.testing
@@ -44,7 +45,7 @@ class TestProjectController:
         created = create_resp.json()
         assert created["success"] is True
         project_id = created["data"]["id"]
-        assert project_id.startswith("proj-")
+        assert str(UUID(project_id)) == project_id
         assert created["data"]["name"] == "Auth System"
         assert created["data"]["budget"] == 500.0
 

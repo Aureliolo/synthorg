@@ -98,7 +98,7 @@ class AgentAssignment(BaseModel):
     @property
     def task_id(self) -> str:
         """Task identifier."""
-        return self.task.id
+        return str(self.task.id)
 
 
 class ParallelExecutionGroup(BaseModel):

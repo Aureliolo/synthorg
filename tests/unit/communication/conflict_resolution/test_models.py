@@ -12,6 +12,7 @@ from synthorg.communication.enums import (
     ConflictType,
 )
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import as_uuid
 
 from .conftest import make_conflict, make_position, make_resolution
 
@@ -41,7 +42,7 @@ class TestConflictPosition:
 class TestConflict:
     def test_valid_conflict(self) -> None:
         conflict = make_conflict()
-        assert conflict.id == "conflict-test12345"
+        assert conflict.id == as_uuid("conflict-test12345")
         assert conflict.type == ConflictType.ARCHITECTURE
         assert len(conflict.positions) == 2
 
@@ -159,7 +160,7 @@ class TestDissentRecord:
         conflict = make_conflict()
         resolution = make_resolution()
         record = DissentRecord(
-            id="dissent-test12345",
+            id=as_uuid("dissent-test12345"),
             conflict=conflict,
             resolution=resolution,
             dissenting_agent_id="agent-b",
@@ -174,7 +175,7 @@ class TestDissentRecord:
         conflict = make_conflict()
         resolution = make_resolution()
         record = DissentRecord(
-            id="dissent-test12345",
+            id=as_uuid("dissent-test12345"),
             conflict=conflict,
             resolution=resolution,
             dissenting_agent_id="agent-b",
@@ -189,7 +190,7 @@ class TestDissentRecord:
         conflict = make_conflict()
         resolution = make_resolution()
         record = DissentRecord(
-            id="dissent-test12345",
+            id=as_uuid("dissent-test12345"),
             conflict=conflict,
             resolution=resolution,
             dissenting_agent_id="agent-b",
@@ -198,7 +199,7 @@ class TestDissentRecord:
             timestamp=conflict.detected_at,
         )
         with pytest.raises(ValidationError):
-            record.id = "changed"  # type: ignore[misc]
+            record.id = as_uuid("changed")  # type: ignore[misc]
 
 
 @pytest.mark.unit
@@ -208,7 +209,7 @@ class TestDissentRecordValidation:
         resolution = make_resolution()
         with pytest.raises(ValidationError, match="not found in conflict positions"):
             DissentRecord(
-                id="dissent-test12345",
+                id=as_uuid("dissent-test12345"),
                 conflict=conflict,
                 resolution=resolution,
                 dissenting_agent_id="nonexistent-agent",
@@ -222,7 +223,7 @@ class TestDissentRecordValidation:
         resolution = make_resolution(conflict_id="conflict-different")
         with pytest.raises(ValidationError, match=r"does not match conflict\.id"):
             DissentRecord(
-                id="dissent-test12345",
+                id=as_uuid("dissent-test12345"),
                 conflict=conflict,
                 resolution=resolution,
                 dissenting_agent_id="agent-b",
@@ -239,7 +240,7 @@ class TestDissentRecordValidation:
             match="dissenting_agent_id must differ from winning_agent_id",
         ):
             DissentRecord(
-                id="dissent-test12345",
+                id=as_uuid("dissent-test12345"),
                 conflict=conflict,
                 resolution=resolution,
                 dissenting_agent_id="agent-a",
@@ -257,7 +258,7 @@ class TestDissentRecordValidation:
             decided_by="human",
         )
         record = DissentRecord(
-            id="dissent-test12345",
+            id=as_uuid("dissent-test12345"),
             conflict=conflict,
             resolution=resolution,
             dissenting_agent_id="agent-a",

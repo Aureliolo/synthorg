@@ -26,6 +26,7 @@ from synthorg.persistence.postgres.approval_repo import (
     PostgresApprovalRepository,
 )
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
+from tests._shared import as_uuid
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
@@ -53,7 +54,7 @@ def _make_item(  # noqa: PLR0913 -- test factory with explicit knobs
         if status == ApprovalStatus.REJECTED:
             decision_reason = "Not authorised"
     return ApprovalItem(
-        id=approval_id,
+        id=as_uuid(approval_id),
         action_type=action_type,
         title="Approve prod deploy",
         description="Rolls service v2 to prod.",
@@ -154,7 +155,7 @@ async def test_save_duplicate_primary_key_raises_constraint(
                 "(%s, %s, %s, %s, %s, %s, %s, %s, %s, "
                 " %s, %s, %s, %s, %s, %s)",
                 (
-                    item.id,
+                    str(item.id),
                     item.action_type,
                     item.title,
                     item.description,
@@ -177,7 +178,7 @@ async def test_save_duplicate_primary_key_raises_constraint(
     # semantics for callers that were previously unsure.
     updated = item.model_copy(update={"description": "Updated"})
     await repo.save(updated)
-    fetched = await repo.get(item.id)
+    fetched = await repo.get(str(item.id))
     assert fetched is not None
     assert fetched.description == "Updated"
 
@@ -195,7 +196,7 @@ async def test_constraint_violation_surfaces_from_save(
     # CHECK to surface the violation.
     now = _FIXED_NOW
     bad_item = ApprovalItem.model_construct(
-        id="approval-ck-001",
+        id=as_uuid("approval-ck-001"),
         action_type="deploy:production",
         title="Rejected w/o reason",
         description="Should not be storable.",

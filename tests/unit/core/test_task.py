@@ -14,11 +14,12 @@ from synthorg.core.enums import (
 )
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.observability.events.task import TASK_STATUS_CHANGED
+from tests._shared import as_uuid, sid
 
 # ── Helpers ──────────────────────────────────────────────────────
 
 _TASK_KWARGS: dict[str, object] = {
-    "id": "task-123",
+    "id": sid("task-123"),
     "title": "Implement user authentication",
     "description": "Create REST endpoints for login, register, logout",
     "type": TaskType.DEVELOPMENT,
@@ -81,14 +82,14 @@ class TestAcceptanceCriterion:
 class TestTaskConstruction:
     def test_minimal_valid_task(self) -> None:
         task = _make_task()
-        assert task.id == "task-123"
+        assert task.id == as_uuid("task-123")
         assert task.title == "Implement user authentication"
         assert task.type is TaskType.DEVELOPMENT
         assert task.status is TaskStatus.CREATED
 
     def test_all_fields_set(self) -> None:
         task = Task(
-            id="task-999",
+            id=as_uuid("task-999"),
             title="Full task",
             description="A complete task",
             type=TaskType.RESEARCH,
@@ -142,14 +143,13 @@ class TestTaskStringValidation:
     @pytest.mark.parametrize(
         ("field", "extra_kwargs"),
         [
-            ("id", {}),
             ("title", {}),
             ("description", {}),
             ("project", {}),
             ("created_by", {}),
             ("assigned_to", {"status": TaskStatus.ASSIGNED}),
         ],
-        ids=["id", "title", "description", "project", "created_by", "assigned_to"],
+        ids=["title", "description", "project", "created_by", "assigned_to"],
     )
     def test_whitespace_field_rejected(
         self, field: str, extra_kwargs: dict[str, object]
@@ -197,7 +197,7 @@ class TestTaskStringValidation:
 class TestTaskDependencies:
     def test_self_dependency_rejected(self) -> None:
         with pytest.raises(ValidationError, match="cannot depend on itself"):
-            _make_task(dependencies=("task-123",))
+            _make_task(dependencies=(sid("task-123"),))
 
     def test_duplicate_dependencies_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Duplicate entries in dependencies"):
@@ -288,7 +288,7 @@ class TestTaskDelegationFields:
 
     def test_parent_task_id_equals_id_rejected(self) -> None:
         with pytest.raises(ValidationError, match="cannot be its own parent"):
-            _make_task(parent_task_id="task-123")
+            _make_task(parent_task_id=sid("task-123"))
 
     def test_delegation_chain_set(self) -> None:
         task = _make_task(delegation_chain=("a", "b", "c"))
@@ -416,7 +416,7 @@ class TestTaskFactory:
 class TestTaskSerialization:
     def test_json_roundtrip(self) -> None:
         task = Task(
-            id="task-rt",
+            id=as_uuid("task-rt"),
             title="Roundtrip test",
             description="Test JSON roundtrip",
             type=TaskType.DEVELOPMENT,
@@ -448,7 +448,7 @@ class TestTaskSerialization:
     def test_model_dump(self) -> None:
         task = _make_task()
         dumped = task.model_dump()
-        assert dumped["id"] == "task-123"
+        assert dumped["id"] == as_uuid("task-123")
         assert dumped["status"] == "created"
         assert dumped["type"] == "development"
         assert dumped["priority"] == "medium"
@@ -460,7 +460,7 @@ class TestTaskSerialization:
 @pytest.mark.unit
 class TestTaskFixtures:
     def test_sample_task_fixture(self, sample_task: Task) -> None:
-        assert sample_task.id == "task-123"
+        assert sample_task.id == as_uuid("task-123")
         assert sample_task.status is TaskStatus.CREATED
         assert sample_task.assigned_to is None
 
@@ -551,6 +551,6 @@ class TestTaskLogging:
             task.with_transition(TaskStatus.ASSIGNED, assigned_to="agent-1")
         events = [e for e in cap if e.get("event") == TASK_STATUS_CHANGED]
         assert len(events) == 1
-        assert events[0]["task_id"] == "task-123"
+        assert events[0]["task_id"] == as_uuid("task-123")
         assert events[0]["from_status"] == "created"
         assert events[0]["to_status"] == "assigned"

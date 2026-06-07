@@ -32,6 +32,7 @@ from synthorg.research.models import (
     SubQuery,
     WebSourceLocator,
 )
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -40,13 +41,13 @@ _HASH = "a" * 64
 
 
 def _project(project_id: str = "proj-1") -> Project:
-    return Project(id=NotBlankStr(project_id), name=NotBlankStr("Demo"))
+    return Project(id=as_uuid(project_id), name=NotBlankStr("Demo"))
 
 
 def _brief(*, brief_id: str = "b1", project_id: str | None = "proj-1") -> ResearchBrief:
     return ResearchBrief(
         brief_id=NotBlankStr(brief_id),
-        project_id=NotBlankStr(project_id) if project_id is not None else None,
+        project_id=NotBlankStr(sid(project_id)) if project_id is not None else None,
         title="Widget research",
         question="what is the state of widgets?",
         created_at=_NOW,
@@ -64,7 +65,7 @@ def _run(
     return ResearchRun(
         run_id=NotBlankStr(run_id),
         brief_id=NotBlankStr(brief_id),
-        project_id=NotBlankStr(project_id) if project_id is not None else None,
+        project_id=NotBlankStr(sid(project_id)) if project_id is not None else None,
         status=status,
         brief=_brief(brief_id=brief_id, project_id=project_id),
         created_by=NotBlankStr("agent-1"),
@@ -208,7 +209,7 @@ class TestResearchRunRepository:
         by_brief = await backend.research_runs.query(ResearchRunFilter(brief_id="b1"))
         assert {r.run_id for r in by_brief} == {"r-a"}
         by_project = await backend.research_runs.query(
-            ResearchRunFilter(project_id="proj-2")
+            ResearchRunFilter(project_id=sid("proj-2"))
         )
         assert {r.run_id for r in by_project} == {"r-b"}
         by_status = await backend.research_runs.query(
@@ -230,6 +231,6 @@ class TestResearchRunRepository:
         await backend.research_runs.save(
             _run(run_id="glob", brief_id="bg", project_id=None)
         )
-        await backend.projects.delete(NotBlankStr("proj-1"))
+        await backend.projects.delete(NotBlankStr(sid("proj-1")))
         assert await backend.research_runs.get(NotBlankStr("scoped")) is None
         assert await backend.research_runs.get(NotBlankStr("glob")) is not None

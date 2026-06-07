@@ -12,6 +12,7 @@ from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -24,7 +25,7 @@ def _project(
     lead: str | None = None,
 ) -> Project:
     return Project(
-        id=NotBlankStr(project_id),
+        id=as_uuid(project_id),
         name=NotBlankStr(name),
         description="A test project",
         lead=NotBlankStr(lead) if lead else None,
@@ -36,9 +37,9 @@ class TestProjectRepository:
     async def test_save_and_get(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project())
 
-        fetched = await backend.projects.get(NotBlankStr("proj-001"))
+        fetched = await backend.projects.get(NotBlankStr(sid("proj-001")))
         assert fetched is not None
-        assert fetched.id == "proj-001"
+        assert fetched.id == as_uuid("proj-001")
         assert fetched.name == "Test Project"
         assert fetched.status is ProjectStatus.PLANNING
 
@@ -52,7 +53,7 @@ class TestProjectRepository:
         updated = p.model_copy(update={"name": NotBlankStr("Renamed")})
         await backend.projects.save(updated)
 
-        fetched = await backend.projects.get(NotBlankStr("proj-001"))
+        fetched = await backend.projects.get(NotBlankStr(sid("proj-001")))
         assert fetched is not None
         assert fetched.name == "Renamed"
 
@@ -61,8 +62,9 @@ class TestProjectRepository:
         await backend.projects.save(_project(project_id="p2"))
 
         rows = await backend.projects.list_items()
-        ids = [r.id for r in rows if r.id in ("p1", "p2")]
-        assert ids == ["p1", "p2"]
+        expected = sorted([as_uuid("p1"), as_uuid("p2")])
+        ids = [r.id for r in rows if r.id in expected]
+        assert ids == expected
 
     async def test_query_filter_by_status(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(
@@ -76,8 +78,8 @@ class TestProjectRepository:
             ProjectFilterSpec(status=ProjectStatus.ACTIVE),
         )
         ids = {r.id for r in rows}
-        assert "active" in ids
-        assert "planning" not in ids
+        assert as_uuid("active") in ids
+        assert as_uuid("planning") not in ids
 
     async def test_query_filter_by_lead(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project(project_id="alpha", lead="alice"))
@@ -86,7 +88,7 @@ class TestProjectRepository:
         rows = await backend.projects.query(
             ProjectFilterSpec(lead=NotBlankStr("alice")),
         )
-        assert [r.id for r in rows] == ["alpha"]
+        assert [r.id for r in rows] == [as_uuid("alpha")]
 
     async def test_query_respects_limit(self, backend: PersistenceBackend) -> None:
         for i in range(5):
@@ -101,9 +103,9 @@ class TestProjectRepository:
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project())
 
-        deleted = await backend.projects.delete(NotBlankStr("proj-001"))
+        deleted = await backend.projects.delete(NotBlankStr(sid("proj-001")))
         assert deleted is True
-        assert await backend.projects.get(NotBlankStr("proj-001")) is None
+        assert await backend.projects.get(NotBlankStr(sid("proj-001"))) is None
 
     async def test_delete_missing(self, backend: PersistenceBackend) -> None:
         assert await backend.projects.delete(NotBlankStr("ghost")) is False
@@ -111,9 +113,9 @@ class TestProjectRepository:
     async def test_create_inserts_new_row(self, backend: PersistenceBackend) -> None:
         await backend.projects.create(_project(project_id="p-create"))
 
-        fetched = await backend.projects.get(NotBlankStr("p-create"))
+        fetched = await backend.projects.get(NotBlankStr(sid("p-create")))
         assert fetched is not None
-        assert fetched.id == "p-create"
+        assert fetched.id == as_uuid("p-create")
 
     async def test_create_rejects_duplicate(self, backend: PersistenceBackend) -> None:
         await backend.projects.create(_project(project_id="p-dup"))
@@ -130,7 +132,7 @@ class TestProjectRepository:
         renamed = original.model_copy(update={"name": NotBlankStr("Renamed")})
         await backend.projects.update(renamed)
 
-        fetched = await backend.projects.get(NotBlankStr("p-up"))
+        fetched = await backend.projects.get(NotBlankStr(sid("p-up")))
         assert fetched is not None
         assert fetched.name == "Renamed"
 

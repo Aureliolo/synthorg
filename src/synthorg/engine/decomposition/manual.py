@@ -55,7 +55,7 @@ class ManualDecompositionStrategy:
             DecompositionDepthError: If current depth meets or exceeds max depth.
             DecompositionError: If subtask count exceeds max_subtasks.
         """
-        if self._plan.parent_task_id != task.id:
+        if self._plan.parent_task_id != str(task.id):
             msg = (
                 f"Plan parent_task_id {self._plan.parent_task_id!r} "
                 f"does not match task id {task.id!r}"

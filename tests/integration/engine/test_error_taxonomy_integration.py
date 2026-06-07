@@ -41,6 +41,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolResult,
 )
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.integration
 
@@ -399,7 +400,7 @@ def _child_task(
     description: str = "Sub-task",
 ) -> Task:
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title=f"Child {task_id}",
         description=description,
         type=TaskType.DEVELOPMENT,
@@ -561,7 +562,7 @@ class TestDelegationProtocolViolationIntegration:
         delegation case from being constructed via the loader.
         """
         legal_child = Task(
-            id="child-legal",
+            id=as_uuid("child-legal"),
             title="Legal delegation",
             description="Normal child task",
             type=TaskType.DEVELOPMENT,
@@ -634,7 +635,7 @@ class TestDelegationProtocolViolationIntegration:
         )
 
         orphan = Task(
-            id="child-orphan",
+            id=as_uuid("child-orphan"),
             title="Orphan delegation",
             description="Delegated without parent linkage",
             type=TaskType.DEVELOPMENT,

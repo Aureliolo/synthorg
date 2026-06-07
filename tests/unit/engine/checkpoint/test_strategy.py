@@ -20,7 +20,7 @@ from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
 )
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -393,7 +393,7 @@ class TestCheckpointRecoveryCounter:
     ) -> None:
         """Different execution IDs have independent counters."""
         task_a = Task(
-            id="task-a",
+            id=as_uuid("task-a"),
             title="Task A",
             description="First task",
             type=TaskType.DEVELOPMENT,
@@ -403,7 +403,7 @@ class TestCheckpointRecoveryCounter:
             status=TaskStatus.ASSIGNED,
         )
         task_b = Task(
-            id="task-b",
+            id=as_uuid("task-b"),
             title="Task B",
             description="Second task",
             type=TaskType.DEVELOPMENT,

@@ -21,6 +21,7 @@ from synthorg.project_brain.models import (
     DecisionPayload,
     OpenQuestionPayload,
 )
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -30,7 +31,7 @@ def _ts(minute: int = 0) -> datetime:
 
 
 def _project(project_id: str = "proj-1") -> Project:
-    return Project(id=NotBlankStr(project_id), name=NotBlankStr("Demo"))
+    return Project(id=as_uuid(project_id), name=NotBlankStr("Demo"))
 
 
 def _decision(
@@ -42,7 +43,7 @@ def _decision(
     title: str = "Use append-only storage",
 ) -> BrainEntry:
     fields: dict[str, object] = {
-        "project_id": NotBlankStr(project_id),
+        "project_id": NotBlankStr(sid(project_id)),
         "revision": 1,
         "entry_kind": BrainEntryKind.DECISION,
         "title": title,
@@ -116,7 +117,7 @@ class TestProjectBrainRepository:
         await repo.append_with_next_revision(
             _decision(title="Second decision", minute=2)
         )
-        spec = BrainFilterSpec(project_id=NotBlankStr("proj-1"))
+        spec = BrainFilterSpec(project_id=NotBlankStr(sid("proj-1")))
         current = await repo.list_current(spec)
         assert len(current) == 2
         by_id = {e.entry_id: e for e in current}
@@ -132,7 +133,7 @@ class TestProjectBrainRepository:
         )
         await repo.append_with_next_revision(
             BrainEntry(
-                project_id=NotBlankStr("proj-1"),
+                project_id=NotBlankStr(sid("proj-1")),
                 revision=1,
                 entry_kind=BrainEntryKind.OPEN_QUESTION,
                 title="Which queue?",
@@ -144,7 +145,7 @@ class TestProjectBrainRepository:
             )
         )
         spec = BrainFilterSpec(
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
             status=BrainEntryStatus.OPEN,
         )
         only_open = await repo.list_current(spec)
@@ -183,7 +184,7 @@ class TestProjectBrainRepository:
                 update={"status": BrainEntryStatus.SUPERSEDED, "recorded_at": _ts(5)}
             )
         )
-        spec = BrainFilterSpec(project_id=NotBlankStr("proj-1"))
+        spec = BrainFilterSpec(project_id=NotBlankStr(sid("proj-1")))
         assert await repo.count(spec) == 1
 
     async def test_purge_retains_latest_revision(
@@ -224,7 +225,7 @@ class TestProjectBrainRepository:
                 update={"status": BrainEntryStatus.SUPERSEDED, "recorded_at": _ts(5)}
             )
         )
-        spec = BrainFilterSpec(project_id=NotBlankStr("proj-1"))
+        spec = BrainFilterSpec(project_id=NotBlankStr(sid("proj-1")))
         rows = await repo.query(spec)
         assert len(rows) == 2
         assert [e.revision for e in rows] == [2, 1]
@@ -232,7 +233,7 @@ class TestProjectBrainRepository:
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project())
         repo = backend.project_brain
-        missing = await repo.get((NotBlankStr("proj-1"), NotBlankStr("nope"), 1))
+        missing = await repo.get((NotBlankStr(sid("proj-1")), NotBlankStr("nope"), 1))
         assert missing is None
 
     async def test_mark_indexed_upserts_and_reads_back(
@@ -240,11 +241,11 @@ class TestProjectBrainRepository:
     ) -> None:
         await backend.projects.save(_project())
         repo = backend.project_brain
-        await repo.mark_indexed(NotBlankStr("proj-1"), NotBlankStr("e1"), 1)
-        await repo.mark_indexed(NotBlankStr("proj-1"), NotBlankStr("e2"), 1)
+        await repo.mark_indexed(NotBlankStr(sid("proj-1")), NotBlankStr("e1"), 1)
+        await repo.mark_indexed(NotBlankStr(sid("proj-1")), NotBlankStr("e2"), 1)
         # Upsert: a later revision of the same entry overwrites, not duplicates.
-        await repo.mark_indexed(NotBlankStr("proj-1"), NotBlankStr("e1"), 3)
-        indexed = await repo.indexed_revisions(NotBlankStr("proj-1"))
+        await repo.mark_indexed(NotBlankStr(sid("proj-1")), NotBlankStr("e1"), 3)
+        indexed = await repo.indexed_revisions(NotBlankStr(sid("proj-1")))
         assert indexed == {NotBlankStr("e1"): 3, NotBlankStr("e2"): 1}
 
     async def test_indexed_revisions_empty_for_unknown_project(
@@ -252,13 +253,13 @@ class TestProjectBrainRepository:
     ) -> None:
         await backend.projects.save(_project())
         repo = backend.project_brain
-        assert await repo.indexed_revisions(NotBlankStr("proj-1")) == {}
+        assert await repo.indexed_revisions(NotBlankStr(sid("proj-1"))) == {}
 
     async def test_index_state_cascades_on_project_delete(
         self, backend: PersistenceBackend
     ) -> None:
         await backend.projects.save(_project())
         repo = backend.project_brain
-        await repo.mark_indexed(NotBlankStr("proj-1"), NotBlankStr("e1"), 1)
-        await backend.projects.delete(NotBlankStr("proj-1"))
-        assert await repo.indexed_revisions(NotBlankStr("proj-1")) == {}
+        await repo.mark_indexed(NotBlankStr(sid("proj-1")), NotBlankStr("e1"), 1)
+        await backend.projects.delete(NotBlankStr(sid("proj-1")))
+        assert await repo.indexed_revisions(NotBlankStr(sid("proj-1"))) == {}

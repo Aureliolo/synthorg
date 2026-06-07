@@ -81,7 +81,7 @@ def validate_routing_against_decomposition(
     Raises:
         CoordinationError: If a routed subtask has no created task.
     """
-    created_ids = {t.id for t in decomposition_result.created_tasks}
+    created_ids = {str(t.id) for t in decomposition_result.created_tasks}
     for decision in routing_result.decisions:
         if decision.subtask_id not in created_ids:
             msg = (
@@ -313,7 +313,7 @@ async def execute_waves(
     for wave_idx, group in enumerate(groups):
         start = clock.monotonic()
         phase_name = f"execute_wave_{wave_idx}"
-        subtask_ids = tuple(a.task.id for a in group.assignments)
+        subtask_ids = tuple(str(a.task.id) for a in group.assignments)
 
         logger.info(
             COORDINATION_WAVE_STARTED,
@@ -411,8 +411,8 @@ def rebuild_group_with_workspaces(
     """
     ws_lookup = {ws.task_id: ws.worktree_path for ws in wave_workspaces}
     new_assignments = tuple(
-        a.model_copy(update={"resource_claims": (ws_lookup[a.task.id],)})
-        if a.task.id in ws_lookup
+        a.model_copy(update={"resource_claims": (ws_lookup[str(a.task.id)],)})
+        if str(a.task.id) in ws_lookup
         else a
         for a in group.assignments
     )

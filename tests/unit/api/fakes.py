@@ -80,7 +80,7 @@ class FakeTaskRepository:
         self._tasks: dict[str, Task] = {}
 
     async def save(self, entity: Task) -> None:
-        self._tasks[entity.id] = entity
+        self._tasks[str(entity.id)] = entity
 
     async def get(self, entity_id: str) -> Task | None:
         return self._tasks.get(entity_id)
@@ -1172,19 +1172,19 @@ class FakeProjectRepository:
         self._projects: dict[str, Project] = {}
 
     async def create(self, project: Project) -> None:
-        if project.id in self._projects:
+        if str(project.id) in self._projects:
             msg = f"Project with id {project.id!r} already exists"
             raise DuplicateRecordError(msg)
-        self._projects[project.id] = project
+        self._projects[str(project.id)] = project
 
     async def update(self, project: Project) -> None:
-        if project.id not in self._projects:
+        if str(project.id) not in self._projects:
             msg = f"No project with id {project.id!r}"
             raise RecordNotFoundError(msg)
-        self._projects[project.id] = project
+        self._projects[str(project.id)] = project
 
     async def save(self, entity: Project) -> None:
-        self._projects[entity.id] = entity
+        self._projects[str(entity.id)] = entity
 
     async def get(self, entity_id: NotBlankStr) -> Project | None:
         return self._projects.get(entity_id)

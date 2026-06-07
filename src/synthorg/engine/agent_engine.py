@@ -438,7 +438,7 @@ class AgentEngine(
                 the agent is not a member of the project's team.
         """
         agent_id = str(identity.id)
-        task_id = task.id
+        task_id = str(task.id)
 
         validate_run_inputs(
             agent_id=agent_id,

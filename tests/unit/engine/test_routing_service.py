@@ -18,6 +18,7 @@ from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import as_uuid, sid
 
 
 def _make_agent(  # noqa: PLR0913
@@ -49,7 +50,7 @@ def _make_agent(  # noqa: PLR0913
 def _make_task(task_id: str = "task-route-1") -> Task:
     """Helper to create a minimal task."""
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title="Routing Test",
         description="Testing routing",
         type=TaskType.DEVELOPMENT,
@@ -62,7 +63,7 @@ def _make_task(task_id: str = "task-route-1") -> Task:
 def _make_child_task(task_id: str, parent_task_id: str = "task-route-1") -> Task:
     """Helper to create a child task for decomposition results."""
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title=f"Subtask {task_id}",
         description=f"Description for {task_id}",
         type=TaskType.DEVELOPMENT,
@@ -74,14 +75,14 @@ def _make_child_task(task_id: str, parent_task_id: str = "task-route-1") -> Task
 
 
 def _make_decomposition_result(
-    parent_task_id: str = "task-route-1",
+    parent_task_id: str = sid("task-route-1"),
 ) -> DecompositionResult:
     """Helper to create a decomposition result."""
     plan = DecompositionPlan(
         parent_task_id=parent_task_id,
         subtasks=(
             SubtaskDefinition(
-                id="sub-1",
+                id=sid("sub-1"),
                 title="Backend Work",
                 description="Backend development",
                 required_skills=("python", "sql"),
@@ -89,13 +90,13 @@ def _make_decomposition_result(
                 estimated_complexity=Complexity.MEDIUM,
             ),
             SubtaskDefinition(
-                id="sub-2",
+                id=sid("sub-2"),
                 title="Frontend Work",
                 description="Frontend development",
                 required_skills=("javascript", "react"),
                 required_role="frontend-developer",
                 estimated_complexity=Complexity.MEDIUM,
-                dependencies=("sub-1",),
+                dependencies=(sid("sub-1"),),
             ),
         ),
     )
@@ -105,7 +106,7 @@ def _make_decomposition_result(
             _make_child_task("sub-1", parent_task_id),
             _make_child_task("sub-2", parent_task_id),
         ),
-        dependency_edges=(("sub-1", "sub-2"),),
+        dependency_edges=((sid("sub-1"), sid("sub-2")),),
     )
 
 
@@ -145,11 +146,15 @@ class TestTaskRoutingService:
         assert len(result.unroutable) == 0
 
         # sub-1 should go to backend dev
-        sub1_decision = next(d for d in result.decisions if d.subtask_id == "sub-1")
+        sub1_decision = next(
+            d for d in result.decisions if d.subtask_id == sid("sub-1")
+        )
         assert sub1_decision.selected_candidate.agent_identity.name == "Backend Dev"
 
         # sub-2 should go to frontend dev
-        sub2_decision = next(d for d in result.decisions if d.subtask_id == "sub-2")
+        sub2_decision = next(
+            d for d in result.decisions if d.subtask_id == sid("sub-2")
+        )
         assert sub2_decision.selected_candidate.agent_identity.name == "Frontend Dev"
 
     @pytest.mark.unit
@@ -173,8 +178,8 @@ class TestTaskRoutingService:
         result = service.route(decomp, (agent,), task)
 
         assert len(result.unroutable) == 2
-        assert "sub-1" in result.unroutable
-        assert "sub-2" in result.unroutable
+        assert sid("sub-1") in result.unroutable
+        assert sid("sub-2") in result.unroutable
 
     @pytest.mark.unit
     def test_alternatives_populated(self) -> None:
@@ -198,10 +203,10 @@ class TestTaskRoutingService:
         )
 
         plan = DecompositionPlan(
-            parent_task_id="task-route-1",
+            parent_task_id=sid("task-route-1"),
             subtasks=(
                 SubtaskDefinition(
-                    id="sub-1",
+                    id=sid("sub-1"),
                     title="Python Work",
                     description="Python development",
                     required_skills=("python",),
@@ -290,7 +295,7 @@ class TestTaskRoutingService:
         decomp = _make_decomposition_result()
 
         result = service.route(decomp, (), task)
-        assert result.parent_task_id == "task-route-1"
+        assert result.parent_task_id == sid("task-route-1")
 
     @pytest.mark.unit
     def test_parent_task_id_mismatch_raises(self) -> None:

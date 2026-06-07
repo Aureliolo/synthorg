@@ -3,6 +3,7 @@
 
 from datetime import UTC, datetime
 from typing import cast, override
+from uuid import uuid5
 
 import pytest
 
@@ -15,7 +16,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.errors import WorkProjectNotFoundError
 from synthorg.engine.pipeline.models import WorkItem
 from synthorg.engine.pipeline.protocol import WorkPipeline
-from synthorg.meta.charter.dispatch import CharterDispatcher
+from synthorg.meta.charter.dispatch import _PROJECT_NAMESPACE, CharterDispatcher
 from synthorg.meta.charter.models import (
     BudgetEnvelope,
     ProjectCharter,
@@ -27,12 +28,16 @@ from synthorg.persistence.charter_protocol import CharterRepository
 from synthorg.persistence.conversation_protocol import ConversationRepository
 from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
 from synthorg.persistence.project_protocol import ProjectRepository
-from tests._shared import FakeClock
+from tests._shared import FakeClock, as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
 _START = datetime(2026, 5, 22, 9, 0, 0, tzinfo=UTC)
 _CURRENCY = "USD"
+# The dispatcher derives a new project's id deterministically as
+# ``uuid5(_PROJECT_NAMESPACE, f"charter-{charter.id}")`` so a retried
+# approval upserts the same project row.
+_EXPECTED_NEW_PROJECT_ID = str(uuid5(_PROJECT_NAMESPACE, "charter-charter-1"))
 
 
 def _charter(**overrides: object) -> ProjectCharter:
@@ -112,7 +117,7 @@ class _FakeProjectRepo:
         return self.items.get(entity_id)
 
     async def create(self, project: Project) -> None:
-        self.items[project.id] = project
+        self.items[str(project.id)] = project
         self.created.append(project)
 
 
@@ -169,7 +174,7 @@ class TestApprove:
         result = await dispatcher.approve(
             NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
         )
-        assert result.project_id == "charter-charter-1"
+        assert result.project_id == _EXPECTED_NEW_PROJECT_ID
         assert result.task_id == "task-1"
         assert result.is_success is True
         assert proj_repo.created[0].budget == pytest.approx(5000.0)
@@ -184,7 +189,7 @@ class TestApprove:
         assert work_item.forecast_id == forecast.forecast_id
         assert work_item.hard_ceiling == pytest.approx(5000.0)
         assert work_item.acceptance_criteria == ("recall +10%",)
-        assert work_item.project == "charter-charter-1"
+        assert work_item.project == _EXPECTED_NEW_PROJECT_ID
 
     async def test_charter_stamped_approved(self) -> None:
         dispatcher, _, _, _ = _dispatcher(_charter())
@@ -197,17 +202,17 @@ class TestApprove:
         assert result.charter.forecast_id is not None
 
     async def test_existing_project_path(self) -> None:
-        existing = Project(id=NotBlankStr("proj-x"), name=NotBlankStr("X"))
-        charter = _charter(project_id="proj-x", proposed_project_name=None)
+        existing = Project(id=as_uuid("proj-x"), name=NotBlankStr("X"))
+        charter = _charter(project_id=sid("proj-x"), proposed_project_name=None)
         dispatcher, _, pipeline, proj_repo = _dispatcher(
-            charter, project_repo=_FakeProjectRepo({"proj-x": existing})
+            charter, project_repo=_FakeProjectRepo({sid("proj-x"): existing})
         )
         result = await dispatcher.approve(
             NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
         )
-        assert result.project_id == "proj-x"
+        assert result.project_id == sid("proj-x")
         assert proj_repo.created == []
-        assert pipeline.ran[0].project == "proj-x"
+        assert pipeline.ran[0].project == sid("proj-x")
 
     async def test_existing_project_missing_raises(self) -> None:
         charter = _charter(project_id="ghost", proposed_project_name=None)
@@ -366,7 +371,7 @@ class TestApprove:
         result = await dispatcher.approve(
             NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
         )
-        assert result.project_id == "charter-charter-1"
+        assert result.project_id == _EXPECTED_NEW_PROJECT_ID
         assert result.is_success is True
 
     async def test_approve_idempotent_when_conversation_already_closed(self) -> None:

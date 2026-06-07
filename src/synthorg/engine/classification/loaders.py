@@ -217,7 +217,7 @@ def _build_delegation_requests(
                         refinement=refinement,
                     ),
                 )
-                next_queue.append(task.id)
+                next_queue.append(str(task.id))
         queue = next_queue
         depth += 1
 

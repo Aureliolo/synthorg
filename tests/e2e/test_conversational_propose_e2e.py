@@ -81,7 +81,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, make_app_state, mock_of
+from tests._shared import FakeClock, as_uuid, make_app_state, mock_of, sid
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -98,7 +98,7 @@ _PROPOSE_JSON = (
     '{"needs_clarification": false, "clarifying_question": null, '
     '"proposals": [{"title": "Build launch landing page", '
     '"raw_intent": "First scaffold the route, then a JSON status body.", '
-    '"project": "proj-conv", "priority": "medium", '
+    f'"project": "{sid("proj-conv")}", "priority": "medium", '
     '"task_type": "development", "estimated_complexity": "medium", '
     '"acceptance_criteria": ["renders"]}]}'
 )
@@ -145,7 +145,7 @@ class _TaskCreatingIntakeStrategy:
         )
         return IntakeResult.accepted_result(
             request_id=request.request_id,
-            task_id=created.id,
+            task_id=str(created.id),
         )
 
 
@@ -279,7 +279,7 @@ def _project(project_id: str) -> Any:
     from synthorg.core.project import Project
 
     return Project(
-        id=project_id,
+        id=as_uuid(project_id),
         name=project_id,
         description="acceptance project",
         status=ProjectStatus.ACTIVE,
@@ -411,7 +411,7 @@ async def test_vague_request_clarifies_then_executes_on_approval(
     approval_id = second.proposals[0].approval_id
 
     pending = await approval_store.list_items(status=ApprovalStatus.PENDING)
-    assert [a.id for a in pending] == [approval_id]
+    assert [str(a.id) for a in pending] == [approval_id]
     parked = await approval_store.get(NotBlankStr(approval_id))
     assert parked is not None
 
@@ -448,7 +448,7 @@ async def test_vague_request_clarifies_then_executes_on_approval(
     tasks = await persistence.tasks.list_items()
     assert len(tasks) == 1
     executed = tasks[0]
-    assert executed.project == "proj-conv"
+    assert executed.project == sid("proj-conv")
     assert executed.status is not TaskStatus.CREATED
     assert executed.assigned_to == str(agent.id)
 

@@ -36,7 +36,7 @@ from synthorg.security.visionverify.models import (
     VisualExpectationKind,
 )
 from synthorg.security.visionverify.verifiers import HeuristicVisionVerifier
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, as_uuid, mock_of
 
 pytestmark = pytest.mark.integration
 
@@ -51,7 +51,7 @@ _SHA = "e" * 64
 
 def _task() -> Task:
     return Task(
-        id="task-gui-1",
+        id=as_uuid("task-gui-1"),
         title="Counter GUI app",
         description="Build a counter app with a blue window background.",
         type=TaskType.DEVELOPMENT,

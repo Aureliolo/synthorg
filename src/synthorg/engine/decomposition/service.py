@@ -5,6 +5,7 @@ to decompose a parent task into executable subtasks.
 """
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus
@@ -138,14 +139,14 @@ class DecompositionService:
         created_tasks: list[Task] = []
         for subtask_def in plan.subtasks:
             child_task = Task(
-                id=subtask_def.id,
+                id=UUID(subtask_def.id),
                 title=subtask_def.title,
                 description=subtask_def.description,
                 type=task.type,
                 priority=task.priority,
                 project=task.project,
                 created_by=task.created_by,
-                parent_task_id=task.id,
+                parent_task_id=str(task.id),
                 delegation_chain=task.delegation_chain,
                 dependencies=subtask_def.dependencies,
                 status=TaskStatus.CREATED,
@@ -155,7 +156,7 @@ class DecompositionService:
             created_tasks.append(child_task)
             logger.debug(
                 DECOMPOSITION_SUBTASK_CREATED,
-                parent_task_id=task.id,
+                parent_task_id=str(task.id),
                 subtask_id=subtask_def.id,
                 title=subtask_def.title,
             )

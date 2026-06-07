@@ -153,7 +153,7 @@ async def test_runtime_executes_task_through_seam_with_safety_spine(
         requested_by="operator",
     )
     await task_engine.transition_task(
-        created.id,
+        str(created.id),
         TaskStatus.ASSIGNED,
         requested_by="operator",
         assigned_to=str(identity.id),
@@ -161,7 +161,7 @@ async def test_runtime_executes_task_through_seam_with_safety_spine(
 
     with capture_logs() as logs:
         post = await service.execute_once(
-            task_id=created.id,
+            task_id=str(created.id),
             previous_status="created",
             new_status="assigned",
             idempotency_key="idem-1",

@@ -47,14 +47,14 @@ from synthorg.security.redteam.models import (
 )
 from synthorg.security.redteam.protocol import AgentRunner
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, as_uuid, mock_of
 
 pytestmark = pytest.mark.integration
 
 
 def _task() -> Task:
     return Task(
-        id="task-rt-1",
+        id=as_uuid("task-rt-1"),
         title="Backend service",
         description="Task description for review-gate integration.",
         type=TaskType.DEVELOPMENT,

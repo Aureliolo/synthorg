@@ -95,7 +95,7 @@ def _publish_approval_event(
         channel=CHANNEL_APPROVALS,
         timestamp=datetime.now(UTC),
         payload={
-            "approval_id": item.id,
+            "approval_id": str(item.id),
             "status": item.status.value,
             "action_type": item.action_type,
             "risk_level": item.risk_level.value,

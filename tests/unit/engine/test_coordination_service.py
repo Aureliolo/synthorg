@@ -43,7 +43,7 @@ from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
 )
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, mock_of, sid
 from tests.unit.engine.conftest import (
     build_run_result,
     make_assignment_agent,
@@ -276,7 +276,7 @@ class TestMultiAgentCoordinator:
         sub_a = make_subtask("sub-a")
         decomp = make_decomposition((sub_a,))
         routing = RoutingResult(
-            parent_task_id="parent-1",
+            parent_task_id=sid("parent-1"),
             unroutable=("sub-a",),
         )
 
@@ -443,12 +443,12 @@ class TestMultiAgentCoordinator:
         # sub-a succeeds, sub-b fails
         outcomes = (
             AgentOutcome(
-                task_id="sub-a",
+                task_id=sid("sub-a"),
                 agent_id=agent_id_a,
                 result=build_run_result("sub-a", agent_id_a),
             ),
             AgentOutcome(
-                task_id="sub-b",
+                task_id=sid("sub-b"),
                 agent_id=agent_id_b,
                 error="Test failure",
             ),
@@ -500,7 +500,7 @@ class TestMultiAgentCoordinator:
 
         ws_a = Workspace(
             workspace_id="ws-a",
-            task_id="sub-a",
+            task_id=sid("sub-a"),
             agent_id=agent_id_a,
             branch_name="workspace/sub-a",
             worktree_path="fake/ws-a",
@@ -509,7 +509,7 @@ class TestMultiAgentCoordinator:
         )
         ws_b = Workspace(
             workspace_id="ws-b",
-            task_id="sub-b",
+            task_id=sid("sub-b"),
             agent_id=agent_id_b,
             branch_name="workspace/sub-b",
             worktree_path="fake/ws-b",
@@ -782,7 +782,7 @@ class TestMultiAgentCoordinator:
             group_id="wave-0",
             outcomes=(
                 AgentOutcome(
-                    task_id="sub-a",
+                    task_id=sid("sub-a"),
                     agent_id=agent_id,
                     result=run_a,
                 ),
@@ -793,7 +793,7 @@ class TestMultiAgentCoordinator:
             group_id="wave-1",
             outcomes=(
                 AgentOutcome(
-                    task_id="sub-b",
+                    task_id=sid("sub-b"),
                     agent_id=agent_id,
                     result=run_b,
                 ),
@@ -902,7 +902,7 @@ class TestMultiAgentCoordinator:
 
         sub_a = make_subtask("sub-a")
         plan = DecompositionPlan(
-            parent_task_id="parent-1",
+            parent_task_id=sid("parent-1"),
             subtasks=(sub_a,),
             task_structure=TaskStructure.PARALLEL,
             coordination_topology=CoordinationTopology.CENTRALIZED,
@@ -915,7 +915,7 @@ class TestMultiAgentCoordinator:
                     id="sub-x",
                     title="Wrong task",
                     description="Wrong task desc",
-                    parent_task_id="parent-1",
+                    parent_task_id=sid("parent-1"),
                 ),
             ),
             dependency_edges=(),
@@ -992,7 +992,7 @@ class TestCoordinationMetricsCollection:
         inputs = collector.collect.await_args.args[0]
         assert isinstance(inputs, CollectionInputs)
         assert inputs.is_multi_agent is True
-        assert inputs.task_id == "parent-1"
+        assert inputs.task_id == sid("parent-1")
         assert inputs.team_size == 2
         assert inputs.agent_durations is not None
         assert len(inputs.agent_durations) == 2

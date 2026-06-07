@@ -33,6 +33,7 @@ from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.strategies import DirectIntake
+from synthorg.engine.pipeline.entry.boot import _project_uuid
 from synthorg.engine.pipeline.entry.objective_adapter import (
     ObjectiveEntryAdapter,
     ObjectiveSubmission,
@@ -62,6 +63,11 @@ from tests.unit.api.fakes import FakePersistenceBackend
 pytestmark = pytest.mark.e2e
 
 _PROJECT = "objectives"
+# Canonical project id the production boot derives from the slug; the
+# entry adapter, intake strategy, and seed all key off this so the
+# pipeline's ``projects.get(work_item.project)`` resolves exactly as it
+# does in production.
+_PROJECT_ID = str(_project_uuid(_PROJECT))
 _RESEARCH_SKILL = "research"
 _DECOMPOSITION_TOOL = "submit_decomposition_plan"
 
@@ -167,7 +173,7 @@ async def _build_objective_adapter(
     """Wire the production runtime and return the real objective adapter."""
     await persistence.projects.create(
         Project(
-            id=_PROJECT,
+            id=_project_uuid(_PROJECT),
             name=_PROJECT,
             description="real objective e2e",
             status=ProjectStatus.ACTIVE,
@@ -192,14 +198,14 @@ async def _build_objective_adapter(
 
     sim_state = ClientSimulationState(
         intake_engine=IntakeEngine(
-            strategy=DirectIntake(task_engine=task_engine, project=_PROJECT),
+            strategy=DirectIntake(task_engine=task_engine, project=_PROJECT_ID),
         ),
         # An empty ReviewPipeline (no stages) keeps ``has_simulation_runtime``
         # truthy without exercising review logic the objective-entry path
         # does not touch; without this, the work-pipeline build short-
         # circuits to ``None`` and every objective-entry assertion fails.
         review_pipeline=ReviewPipeline(stages=()),
-        intake_default_project=_PROJECT,
+        intake_default_project=_PROJECT_ID,
     )
     harness_state = make_app_state(
         provider_registry=registry,
@@ -218,7 +224,7 @@ async def _build_objective_adapter(
     assert runtime.work_pipeline is not None
     return ObjectiveEntryAdapter(
         work_pipeline=runtime.work_pipeline,
-        default_project=_PROJECT,
+        default_project=_PROJECT_ID,
     )
 
 
@@ -254,7 +260,7 @@ async def test_objective_executes_through_pipeline_under_default_policy(
     persisted = await task_engine.get_task(result.task_id)
     assert persisted is not None
     assert persisted.status is not TaskStatus.CREATED
-    assert persisted.project == _PROJECT
+    assert persisted.project == _PROJECT_ID
 
 
 async def test_objective_decomposes_under_always_team_policy(
@@ -290,4 +296,4 @@ async def test_objective_decomposes_under_always_team_policy(
     persisted = await task_engine.get_task(result.task_id)
     assert persisted is not None
     assert persisted.status is not TaskStatus.CREATED
-    assert persisted.project == _PROJECT
+    assert persisted.project == _PROJECT_ID

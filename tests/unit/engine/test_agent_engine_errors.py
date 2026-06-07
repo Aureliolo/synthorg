@@ -271,7 +271,7 @@ class TestAgentEngineFatalErrorResult:
         assert result.is_success is False
         assert "LLM is down" in (result.execution_result.error_message or "")
         assert result.agent_id == str(sample_agent_with_personality.id)
-        assert result.task_id == sample_task_with_criteria.id
+        assert result.task_id == str(sample_task_with_criteria.id)
         assert result.system_prompt.template_version == "error"
         assert result.duration_seconds > 0
 

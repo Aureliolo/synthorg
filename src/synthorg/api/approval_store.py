@@ -190,36 +190,36 @@ class ApprovalStore(ApprovalExpirationMixin):
             ConflictError: If an item with the same ID already exists.
         """
         async with self._lock:
-            if item.id in self._items:
-                msg = f"Approval {item.id!r} already exists"
+            if str(item.id) in self._items:
+                msg = f"Approval {str(item.id)!r} already exists"
                 logger.warning(
                     API_APPROVAL_CONFLICT,
                     error="duplicate",
-                    approval_id=item.id,
+                    approval_id=str(item.id),
                 )
                 raise ConflictError(msg)
             if self._repo is not None:
-                existing = await self._repo.get(item.id)
+                existing = await self._repo.get(str(item.id))
                 if existing is not None:
-                    self._items[existing.id] = existing
-                    msg = f"Approval {item.id!r} already exists"
+                    self._items[str(existing.id)] = existing
+                    msg = f"Approval {str(item.id)!r} already exists"
                     logger.warning(
                         API_APPROVAL_CONFLICT,
                         error="duplicate_in_repo",
-                        approval_id=item.id,
+                        approval_id=str(item.id),
                     )
                     raise ConflictError(msg)
                 try:
                     await self._repo.save(item)
                 except ConstraintViolationError:
-                    msg = f"Approval {item.id!r} already exists"
+                    msg = f"Approval {str(item.id)!r} already exists"
                     logger.warning(
                         API_APPROVAL_CONFLICT,
                         error="constraint_violation",
-                        approval_id=item.id,
+                        approval_id=str(item.id),
                     )
                     raise ConflictError(msg) from None
-            self._items[item.id] = item
+            self._items[str(item.id)] = item
 
     async def delete(self, approval_id: NotBlankStr) -> bool:
         """Remove a single approval item by id (cache + persistent repo).
@@ -273,7 +273,7 @@ class ApprovalStore(ApprovalExpirationMixin):
             if item is None and self._repo is not None:
                 item = await self._repo.get(approval_id)
                 if item is not None:
-                    self._items[item.id] = item
+                    self._items[str(item.id)] = item
             if item is None:
                 return None
             return await self._check_expiration_locked(item)
@@ -437,7 +437,7 @@ class ApprovalStore(ApprovalExpirationMixin):
                 try:
                     actually_expired_ids = set(
                         await self._repo.expire_if_pending(
-                            tuple(item.id for item in to_persist),
+                            tuple(str(item.id) for item in to_persist),
                         ),
                     )
                 except Exception as exc:
@@ -450,7 +450,7 @@ class ApprovalStore(ApprovalExpirationMixin):
                     logger.warning(
                         API_APPROVAL_EXPIRE_BATCH_FAILED,
                         batch_size=len(to_persist),
-                        approval_ids=tuple(item.id for item in to_persist),
+                        approval_ids=tuple(str(item.id) for item in to_persist),
                         error_type=type(exc).__name__,
                         error=safe_error_description(exc),
                     )
@@ -464,7 +464,7 @@ class ApprovalStore(ApprovalExpirationMixin):
             # expire pass). Apply the caller's filters to each
             # refetched row; rows where the repo returns ``None``
             # (deleted between page read and refetch) drop out.
-            attempted_ids = {item.id for item in to_persist}
+            attempted_ids = {str(item.id) for item in to_persist}
             lost_race_ids = attempted_ids - actually_expired_ids
             # Single batch fetch instead of one ``get`` per id; under
             # heavy contention the lost-race set can be large, and a
@@ -501,9 +501,9 @@ class ApprovalStore(ApprovalExpirationMixin):
                         else:
                             self._items[item_id] = cached
                     for refetched in refetched_rows:
-                        self._items[refetched.id] = refetched
+                        self._items[str(refetched.id)] = refetched
             for expired in to_persist:
-                if expired.id not in actually_expired_ids:
+                if str(expired.id) not in actually_expired_ids:
                     continue
                 logger.info(
                     APPROVAL_STATUS_TRANSITIONED,
@@ -514,7 +514,7 @@ class ApprovalStore(ApprovalExpirationMixin):
                 logger.info(API_APPROVAL_EXPIRED, approval_id=expired.id)
                 record_approval_decision(outcome="expired")
                 self._fire_expire_callback(expired)
-            result.extend(item for item in page_result if item.id not in lost_race_ids)
+            result.extend(i for i in page_result if str(i.id) not in lost_race_ids)
             result.extend(refetched_rows)
             if len(page) < page_size:
                 break
@@ -543,25 +543,25 @@ class ApprovalStore(ApprovalExpirationMixin):
                 caller cancels the lock acquisition.
         """
         async with self._lock:
-            if item.id not in self._items and self._repo is not None:
-                existing = await self._repo.get(item.id)
+            if str(item.id) not in self._items and self._repo is not None:
+                existing = await self._repo.get(str(item.id))
                 if existing is not None:
-                    self._items[existing.id] = existing
-            if item.id not in self._items:
+                    self._items[str(existing.id)] = existing
+            if str(item.id) not in self._items:
                 logger.warning(
                     API_RESOURCE_NOT_FOUND,
                     resource="approval",
-                    approval_id=item.id,
+                    approval_id=str(item.id),
                 )
                 return None
-            if item.id in self._saves_in_flight:
+            if str(item.id) in self._saves_in_flight:
                 logger.warning(
                     API_APPROVAL_CONFLICT,
                     error="concurrent_save",
-                    approval_id=item.id,
+                    approval_id=str(item.id),
                 )
                 return None
-            self._saves_in_flight.add(item.id)
+            self._saves_in_flight.add(str(item.id))
             # Capture the generation under the lock so a ``clear``
             # that lands during ``repo.save`` can be detected when
             # we re-acquire the lock to repopulate the cache.
@@ -579,7 +579,7 @@ class ApprovalStore(ApprovalExpirationMixin):
                     # ``shield`` protects the eviction from a second
                     # cancellation arriving while we acquire the
                     # lock.
-                    await asyncio.shield(self._invalidate_cache(item.id))
+                    await asyncio.shield(self._invalidate_cache(str(item.id)))
                     raise
             async with self._lock:
                 if self._generation != captured_generation:
@@ -602,18 +602,18 @@ class ApprovalStore(ApprovalExpirationMixin):
                     # / ``list_items`` falls through to the repo and
                     # observes the post-clear truth instead of a
                     # stale cached copy this save did not write.
-                    self._items.pop(item.id, None)
+                    self._items.pop(str(item.id), None)
                     logger.info(
                         API_APPROVAL_STORE_CLEARED,
                         note="save_aborted_by_concurrent_clear",
-                        approval_id=item.id,
+                        approval_id=str(item.id),
                     )
                     return item
-                self._items[item.id] = item
+                self._items[str(item.id)] = item
             return item
         finally:
             async with self._lock:
-                self._saves_in_flight.discard(item.id)
+                self._saves_in_flight.discard(str(item.id))
 
     async def save_if_pending(
         self,
@@ -649,18 +649,18 @@ class ApprovalStore(ApprovalExpirationMixin):
             # second decision, reopening the lost-update race.
             # Abort early so the caller can retry once the in-flight
             # save finishes.
-            if item.id in self._saves_in_flight:
+            if str(item.id) in self._saves_in_flight:
                 logger.warning(
                     API_APPROVAL_CONFLICT,
                     error="concurrent_save",
-                    approval_id=item.id,
+                    approval_id=str(item.id),
                 )
                 return None
-            current = self._items.get(item.id)
+            current = self._items.get(str(item.id))
             if current is None and self._repo is not None:
-                current = await self._repo.get(item.id)
+                current = await self._repo.get(str(item.id))
                 if current is not None:
-                    self._items[current.id] = current
+                    self._items[str(current.id)] = current
             if current is None:
                 return None
             # Apply lazy expiration check before comparing status.
@@ -676,9 +676,9 @@ class ApprovalStore(ApprovalExpirationMixin):
                     # so the next reader reloads the committed state
                     # from the repo instead of the stale ``PENDING``
                     # cached copy.
-                    self._items.pop(item.id, None)
+                    self._items.pop(str(item.id), None)
                     raise
-            self._items[item.id] = item
+            self._items[str(item.id)] = item
             return item
 
     async def consume_if_approved(
@@ -706,7 +706,7 @@ class ApprovalStore(ApprovalExpirationMixin):
             if current is None and self._repo is not None:
                 current = await self._repo.get(approval_id)
                 if current is not None:
-                    self._items[current.id] = current
+                    self._items[str(current.id)] = current
             if current is None:
                 return None
             current = await self._check_expiration_locked(current)

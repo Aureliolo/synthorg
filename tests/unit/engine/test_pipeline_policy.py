@@ -15,6 +15,7 @@ from synthorg.engine.pipeline.policy import (
     LlmJudgedRoutingPolicy,
     build_work_routing_policy,
 )
+from tests._shared import as_uuid
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 
 pytestmark = pytest.mark.unit
@@ -24,7 +25,7 @@ _THRESHOLD = 1
 
 def _task(*, title: str, description: str) -> Task:
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title=title,
         description=description,
         type=TaskType.DEVELOPMENT,

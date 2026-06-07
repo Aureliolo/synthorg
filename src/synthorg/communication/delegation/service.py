@@ -109,7 +109,7 @@ class DelegationService:
             DELEGATION_REQUESTED,
             delegator=request.delegator_id,
             delegatee=request.delegatee_id,
-            task_id=request.task.id,
+            task_id=str(request.task.id),
         )
 
         # 1. Authority check
@@ -126,7 +126,7 @@ class DelegationService:
             delegation_chain=request.task.delegation_chain,
             delegator_id=request.delegator_id,
             delegatee_id=request.delegatee_id,
-            task_id=request.task.id,
+            task_id=str(request.task.id),
         )
         if not guard_outcome.passed:
             self._escalate_loop_detection(request, guard_outcome.mechanism)
@@ -222,14 +222,14 @@ class DelegationService:
         self._guard.record_delegation(
             request.delegator_id,
             request.delegatee_id,
-            request.task.id,
+            str(request.task.id),
         )
         record = DelegationRecord(
             delegation_id=str(uuid4()),
             delegator_id=request.delegator_id,
             delegatee_id=request.delegatee_id,
-            original_task_id=request.task.id,
-            delegated_task_id=sub_task.id,
+            original_task_id=str(request.task.id),
+            delegated_task_id=str(sub_task.id),
             timestamp=datetime.now(UTC),
             refinement=request.refinement,
             entity_versions=entity_versions,
@@ -250,8 +250,8 @@ class DelegationService:
             DELEGATION_CREATED,
             delegator=request.delegator_id,
             delegatee=request.delegatee_id,
-            original_task_id=request.task.id,
-            delegated_task_id=sub_task.id,
+            original_task_id=str(request.task.id),
+            delegated_task_id=str(sub_task.id),
         )
         logger.debug(
             DELEGATION_RESULT_SENT,
@@ -288,14 +288,14 @@ class DelegationService:
 
         try:
             return Task(
-                id=f"del-{uuid4().hex[:12]}",
+                id=uuid4(),
                 title=original.title,
                 description=description,
                 type=original.type,
                 priority=original.priority,
                 project=original.project,
                 created_by=request.delegator_id,
-                parent_task_id=original.id,
+                parent_task_id=str(original.id),
                 delegation_chain=new_chain,
                 estimated_complexity=original.estimated_complexity,
                 budget_limit=original.budget_limit,
@@ -349,7 +349,7 @@ class DelegationService:
             DELEGATION_LOOP_ESCALATED,
             delegator=request.delegator_id,
             delegatee=request.delegatee_id,
-            task_id=request.task.id,
+            task_id=str(request.task.id),
             mechanism=mechanism,
             supervisor=supervisor,
         )

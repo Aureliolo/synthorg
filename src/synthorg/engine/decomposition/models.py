@@ -194,7 +194,7 @@ class DecompositionResult(BaseModel):
             )
             raise ValueError(msg)
 
-        task_ids = {t.id for t in self.created_tasks}
+        task_ids = {str(t.id) for t in self.created_tasks}
         plan_ids = {s.id for s in self.plan.subtasks}
         if task_ids != plan_ids:
             missing = sorted(plan_ids - task_ids)

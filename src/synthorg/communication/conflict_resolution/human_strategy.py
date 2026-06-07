@@ -167,7 +167,7 @@ class HumanEscalationResolver:
             logger.warning(
                 CONFLICT_ESCALATION_QUEUED,
                 escalation_id=escalation.id,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 subject=conflict.subject,
                 note="store_create_failed",
                 error_type=type(exc).__name__,
@@ -178,13 +178,13 @@ class HumanEscalationResolver:
         logger.info(
             CONFLICT_ESCALATION_QUEUED,
             escalation_id=escalation.id,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             subject=conflict.subject,
             timeout_seconds=self._timeout_seconds,
         )
         logger.info(
             CONFLICT_ESCALATED,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             agent_count=len(conflict.positions),
         )
         if self._notifier is not None:
@@ -206,7 +206,7 @@ class HumanEscalationResolver:
                     logger,
                     CONFLICT_ESCALATION_NOTIFY_FAILED,
                     escalation_id=escalation.id,
-                    conflict_id=conflict.id,
+                    conflict_id=str(conflict.id),
                 ),
             )
 
@@ -245,7 +245,7 @@ class HumanEscalationResolver:
         logger.info(
             CONFLICT_ESCALATION_RESOLVED,
             escalation_id=escalation.id,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             outcome=resolution.outcome.value,
         )
         return resolution
@@ -282,7 +282,7 @@ class HumanEscalationResolver:
             logger.warning(
                 CONFLICT_ESCALATION_NOTIFY_FAILED,
                 escalation_id=escalation.id,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 timeout_seconds=_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS,
                 note="notification_dispatch_timeout",
             )
@@ -292,7 +292,7 @@ class HumanEscalationResolver:
             logger.warning(
                 CONFLICT_ESCALATION_NOTIFY_FAILED,
                 escalation_id=escalation.id,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 note="notification_dispatch_failed",
@@ -319,7 +319,7 @@ class HumanEscalationResolver:
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
                 escalation_id=escalation.id,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 note="registry_cancel_failed",
@@ -333,7 +333,7 @@ class HumanEscalationResolver:
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
                 escalation_id=escalation.id,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 note="mark_expired_failed",
@@ -341,7 +341,7 @@ class HumanEscalationResolver:
         logger.warning(
             CONFLICT_ESCALATION_TIMEOUT,
             escalation_id=escalation.id,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             timeout_seconds=self._timeout_seconds,
         )
 
@@ -362,7 +362,7 @@ class HumanEscalationResolver:
             logger.warning(
                 CONFLICT_ESCALATION_CANCELLED,
                 escalation_id=escalation.id,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 note="registry_cancel_failed",
@@ -379,7 +379,7 @@ class HumanEscalationResolver:
             logger.warning(
                 CONFLICT_ESCALATION_CANCELLED,
                 escalation_id=escalation.id,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 note="store_cancel_failed",
@@ -387,7 +387,7 @@ class HumanEscalationResolver:
         logger.warning(
             CONFLICT_ESCALATION_CANCELLED,
             escalation_id=escalation.id,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
         )
 
     async def _read_late_decision(
@@ -416,7 +416,7 @@ class HumanEscalationResolver:
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
                 escalation_id=escalation.id,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 note="late_decision_lookup_failed",
@@ -435,7 +435,7 @@ class HumanEscalationResolver:
             logger.warning(
                 CONFLICT_ESCALATION_RESOLVED,
                 escalation_id=escalation.id,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 note="late_decision_registry_cancel_failed",
@@ -449,7 +449,7 @@ class HumanEscalationResolver:
         logger.info(
             CONFLICT_ESCALATION_RESOLVED,
             escalation_id=escalation.id,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             outcome=resolution.outcome.value,
             note="late_decision_observed_after_timeout",
         )
@@ -566,7 +566,7 @@ class HumanEscalationResolver:
         )
         record_escalation_outcome(outcome="escalated_to_human")
         return ConflictResolution(
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             outcome=ConflictResolutionOutcome.ESCALATED_TO_HUMAN,
             winning_agent_id=None,
             winning_position=None,
@@ -588,7 +588,7 @@ class HumanEscalationResolver:
         )
         record_escalation_outcome(outcome="escalated_to_human")
         return ConflictResolution(
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             outcome=ConflictResolutionOutcome.ESCALATED_TO_HUMAN,
             winning_agent_id=None,
             winning_position=None,

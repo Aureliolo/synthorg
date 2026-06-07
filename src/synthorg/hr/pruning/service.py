@@ -25,7 +25,7 @@ Note:
 import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
@@ -532,7 +532,7 @@ class PruningService:
             Result of type ``ApprovalItem``.
         """
         return ApprovalItem(
-            id=approval_id,
+            id=UUID(approval_id),
             action_type=NotBlankStr(_ACTION_TYPE),
             title=NotBlankStr(f"Prune agent {agent.name}"),
             description=NotBlankStr(
@@ -740,7 +740,7 @@ class PruningService:
             reason=NotBlankStr(
                 item.metadata.get("reason_summary", "performance-based"),
             ),
-            approval_id=item.id,
+            approval_id=str(item.id),
             initiated_by=NotBlankStr("system"),
             created_at=offboarding_result.started_at,
             completed_at=offboarding_result.completed_at,

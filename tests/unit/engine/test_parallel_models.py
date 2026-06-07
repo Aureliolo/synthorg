@@ -25,6 +25,7 @@ from synthorg.engine.run_result import AgentRunResult
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
+from tests._shared import coerce_id
 
 
 def _make_identity(
@@ -62,6 +63,7 @@ def _make_task(
         "estimated_complexity": Complexity.SIMPLE,
     }
     defaults.update(kwargs)
+    defaults["id"] = coerce_id(defaults["id"])
     return Task(title=title, **defaults)  # type: ignore[arg-type]
 
 
@@ -103,7 +105,7 @@ def _make_run_result(
         ),
         duration_seconds=1.0,
         agent_id=str(identity.id),
-        task_id=task.id,
+        task_id=str(task.id),
         currency="USD",
     )
 
@@ -180,7 +182,7 @@ class TestAgentAssignment:
 
     def test_task_id_property(self) -> None:
         assignment = _make_assignment()
-        assert assignment.task_id == assignment.task.id
+        assert assignment.task_id == str(assignment.task.id)
 
 
 @pytest.mark.unit
@@ -287,7 +289,7 @@ class TestAgentOutcome:
         task = _make_task()
         result = _make_run_result(identity, task)
         outcome = AgentOutcome(
-            task_id=task.id,
+            task_id=str(task.id),
             agent_id=str(identity.id),
             result=result,
         )
@@ -312,7 +314,7 @@ class TestAgentOutcome:
         task = _make_task()
         result = _make_run_result(identity, task, reason=TerminationReason.ERROR)
         outcome = AgentOutcome(
-            task_id=task.id,
+            task_id=str(task.id),
             agent_id=str(identity.id),
             result=result,
         )
@@ -342,7 +344,7 @@ class TestAgentOutcome:
             match=r"result\.agent_id.*must match agent_id",
         ):
             AgentOutcome(
-                task_id=task.id,
+                task_id=str(task.id),
                 agent_id="wrong-agent-id",
                 result=result,
             )
@@ -363,7 +365,7 @@ class TestAgentOutcome:
             match="Exactly one of result or error",
         ):
             AgentOutcome(
-                task_id=task.id,
+                task_id=str(task.id),
                 agent_id=str(identity.id),
                 result=result,
                 error="also has error",
@@ -389,12 +391,12 @@ class TestParallelExecutionResult:
         r1 = _make_run_result(i1, t1)
         r2 = _make_run_result(i2, t2)
         o1 = AgentOutcome(
-            task_id=t1.id,
+            task_id=str(t1.id),
             agent_id=str(i1.id),
             result=r1,
         )
         o2 = AgentOutcome(
-            task_id=t2.id,
+            task_id=str(t2.id),
             agent_id=str(i2.id),
             result=r2,
         )
@@ -412,7 +414,7 @@ class TestParallelExecutionResult:
         i1, t1 = _make_identity("a1"), _make_task("t1")
         r1 = _make_run_result(i1, t1)
         o1 = AgentOutcome(
-            task_id=t1.id,
+            task_id=str(t1.id),
             agent_id=str(i1.id),
             result=r1,
         )
@@ -435,7 +437,7 @@ class TestParallelExecutionResult:
         i1, t1 = _make_identity("a1"), _make_task("t1")
         r1 = _make_run_result(i1, t1)
         o1 = AgentOutcome(
-            task_id=t1.id,
+            task_id=str(t1.id),
             agent_id=str(i1.id),
             result=r1,
         )

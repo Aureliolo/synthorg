@@ -31,13 +31,14 @@ from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 from synthorg.meta.learning_curve import ScorecardSummary, append_summary
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.task_protocol import TaskFilterSpec
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
 _AGENT: Final[str] = "agent-001"
 _DELIVERABLE: Final[str] = "A resilient checkout flow with retry and recovery."
 _TRAJECTORY: Final[str] = (
-    "Task ID: task-done\nOutcome: success\n"
+    f"Task ID: {sid('task-done')}\nOutcome: success\n"
     "Trajectory: recovered from the first failure\nMemory tool invocations: none"
 )
 _LESSON: Final[str] = (
@@ -51,10 +52,10 @@ class _FakeTaskRepository:
     """In-memory task repo exposing the full TaskRepository surface."""
 
     def __init__(self, tasks: tuple[Task, ...]) -> None:
-        self._tasks = {task.id: task for task in tasks}
+        self._tasks = {str(task.id): task for task in tasks}
 
     async def save(self, entity: Task) -> None:
-        self._tasks[entity.id] = entity
+        self._tasks[str(entity.id)] = entity
 
     async def get(self, entity_id: str) -> Task | None:
         return self._tasks.get(entity_id)
@@ -124,7 +125,7 @@ class _FakeArtifactRepository:
 
 def _task(task_id: str, title: str, status: TaskStatus) -> Task:
     return Task(
-        id=NotBlankStr(task_id),
+        id=as_uuid(task_id),
         title=NotBlankStr(title),
         description=NotBlankStr(f"Description for {title}"),
         type=TaskType.DEVELOPMENT,
@@ -167,7 +168,9 @@ async def _seeded_backend() -> InMemoryBackend:
         MemoryStoreRequest(
             category=MemoryCategory.PROCEDURAL,
             content=NotBlankStr(_LESSON),
-            metadata=MemoryMetadata(source=NotBlankStr("failure:task-failed")),
+            metadata=MemoryMetadata(
+                source=NotBlankStr(f"failure:{sid('task-failed')}")
+            ),
         ),
     )
     return backend
@@ -186,7 +189,7 @@ def _source(
         memory_backend=backend,
         task_repo=_FakeTaskRepository(tasks),
         artifact_repo=_FakeArtifactRepository(
-            (_artifact("artifact-001", "task-done", _DELIVERABLE),),
+            (_artifact("artifact-001", sid("task-done"), _DELIVERABLE),),
         ),
         scorecard_history_dir=history_dir,
     )
@@ -300,7 +303,7 @@ async def test_blank_artifact_description_is_skipped() -> None:
             (_task("task-done", "Known task", TaskStatus.COMPLETED),),
         ),
         artifact_repo=_FakeArtifactRepository(
-            (_artifact("artifact-001", "task-done", "   "),),
+            (_artifact("artifact-001", sid("task-done"), "   "),),
         ),
     )
     pairs = await source.collect()

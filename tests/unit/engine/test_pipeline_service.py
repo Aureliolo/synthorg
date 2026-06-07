@@ -32,7 +32,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.workers.execution_service import WorkerExecutionService
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, as_uuid, mock_of, sid
 from tests._shared.scripted_provider import make_e2e_identity
 
 pytestmark = pytest.mark.unit
@@ -60,7 +60,7 @@ def _task(
     assigned_to: str | None = None,
 ) -> Task:
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="Add health endpoint",
         description="Return 200.",
         type=TaskType.DEVELOPMENT,
@@ -281,7 +281,7 @@ class TestNarratorTrigger:
         pipeline.attach_narrator(narrator)
         await pipeline.run(_work_item())
         narrator.generate.assert_awaited_once_with(
-            task_id="task-1", project_id="proj-1"
+            task_id=sid("task-1"), project_id="proj-1"
         )
 
     async def test_narrator_failure_does_not_fail_run(self) -> None:

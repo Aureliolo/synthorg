@@ -9,12 +9,13 @@ from synthorg.core.project import Project
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
 
 def _project(project_id: str = "proj-1") -> Project:
-    return Project(id=NotBlankStr(project_id), name=NotBlankStr("Demo"))
+    return Project(id=as_uuid(project_id), name=NotBlankStr("Demo"))
 
 
 def _workspace(
@@ -27,7 +28,7 @@ def _workspace(
 ) -> ProjectWorkspace:
     ts = datetime(2026, 5, 19, tzinfo=UTC)
     return ProjectWorkspace(
-        project_id=NotBlankStr(project_id),
+        project_id=NotBlankStr(sid(project_id)),
         workspace_path=NotBlankStr(workspace_path),
         git_backend_kind=kind,
         remote_ref=NotBlankStr(remote_ref) if remote_ref else None,
@@ -42,9 +43,9 @@ class TestProjectWorkspaceRepository:
         await backend.projects.save(_project())
         await backend.project_workspaces.save(_workspace())
 
-        fetched = await backend.project_workspaces.get(NotBlankStr("proj-1"))
+        fetched = await backend.project_workspaces.get(NotBlankStr(sid("proj-1")))
         assert fetched is not None
-        assert fetched.project_id == "proj-1"
+        assert fetched.project_id == sid("proj-1")
         assert fetched.workspace_path == "/data/projects/proj-1"
         assert fetched.git_backend_kind is GitBackendType.EMBEDDED
         assert fetched.default_branch == "main"
@@ -63,7 +64,7 @@ class TestProjectWorkspaceRepository:
         )
         await backend.project_workspaces.save(moved)
 
-        fetched = await backend.project_workspaces.get(NotBlankStr("proj-1"))
+        fetched = await backend.project_workspaces.get(NotBlankStr(sid("proj-1")))
         assert fetched is not None
         assert fetched.git_backend_kind is GitBackendType.LOCAL_PATH
 
@@ -76,7 +77,7 @@ class TestProjectWorkspaceRepository:
             ),
         )
 
-        fetched = await backend.project_workspaces.get(NotBlankStr("proj-1"))
+        fetched = await backend.project_workspaces.get(NotBlankStr(sid("proj-1")))
         assert fetched is not None
         assert fetched.remote_ref == "github-main"
 
@@ -86,7 +87,7 @@ class TestProjectWorkspaceRepository:
         await backend.projects.save(_project())
         await backend.project_workspaces.save(_workspace())
 
-        fetched = await backend.project_workspaces.get(NotBlankStr("proj-1"))
+        fetched = await backend.project_workspaces.get(NotBlankStr(sid("proj-1")))
         assert fetched is not None
         assert fetched.remote_ref is None
 
@@ -105,15 +106,15 @@ class TestProjectWorkspaceRepository:
         rows = await backend.project_workspaces.list_items()
         ids = [r.project_id for r in rows]
         assert ids == sorted(ids)
-        assert {"proj-a", "proj-b"} <= set(ids)
+        assert {sid("proj-a"), sid("proj-b")} <= set(ids)
 
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project())
         await backend.project_workspaces.save(_workspace())
 
-        deleted = await backend.project_workspaces.delete(NotBlankStr("proj-1"))
+        deleted = await backend.project_workspaces.delete(NotBlankStr(sid("proj-1")))
         assert deleted is True
-        assert await backend.project_workspaces.get(NotBlankStr("proj-1")) is None
+        assert await backend.project_workspaces.get(NotBlankStr(sid("proj-1"))) is None
 
     async def test_delete_missing(self, backend: PersistenceBackend) -> None:
         assert (await backend.project_workspaces.delete(NotBlankStr("ghost"))) is False
@@ -125,6 +126,6 @@ class TestProjectWorkspaceRepository:
         await backend.projects.save(_project())
         await backend.project_workspaces.save(_workspace())
 
-        await backend.projects.delete(NotBlankStr("proj-1"))
+        await backend.projects.delete(NotBlankStr(sid("proj-1")))
 
-        assert await backend.project_workspaces.get(NotBlankStr("proj-1")) is None
+        assert await backend.project_workspaces.get(NotBlankStr(sid("proj-1"))) is None

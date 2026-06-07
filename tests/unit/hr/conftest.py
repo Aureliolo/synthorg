@@ -18,6 +18,7 @@ from synthorg.hr.models import CandidateCard, FiringRequest, HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import as_uuid
 
 # ── Model Config Helper ────────────────────────────────────────
 
@@ -171,7 +172,7 @@ def make_task(  # noqa: PLR0913
     }:
         assigned_to = "agent-001"
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title=title,
         description=description,
         type=TaskType.DEVELOPMENT,

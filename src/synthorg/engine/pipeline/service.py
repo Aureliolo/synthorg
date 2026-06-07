@@ -201,7 +201,7 @@ class DefaultWorkPipeline:
             work_item=work_item,
             verdict=verdict,
             execution_path=path,
-            task_id=task.id,
+            task_id=str(task.id),
             final_task_status=final_status,
             phases=tuple(phases),
             total_duration_seconds=total,
@@ -209,7 +209,7 @@ class DefaultWorkPipeline:
         logger.info(
             PIPELINE_RUN_COMPLETED,
             correlation_id=work_item.correlation_id,
-            task_id=task.id,
+            task_id=str(task.id),
             verdict=verdict.value,
             execution_path=path.value,
             final_task_status=final_status.value,
@@ -232,18 +232,18 @@ class DefaultWorkPipeline:
             logger.debug(
                 COS_NARRATIVE_SKIPPED,
                 correlation_id=work_item.correlation_id,
-                task_id=task.id,
+                task_id=str(task.id),
                 reason="no_narrator_attached",
             )
             return
         try:
-            await narrator.generate(task_id=task.id, project_id=work_item.project)
+            await narrator.generate(task_id=str(task.id), project_id=work_item.project)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
                 COS_NARRATIVE_GENERATION_FAILED,
                 correlation_id=work_item.correlation_id,
-                task_id=task.id,
+                task_id=str(task.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -348,13 +348,13 @@ class DefaultWorkPipeline:
         if stakes is task.stakes:
             return task
         updated = await self._task_engine.update_task(
-            task.id,
+            str(task.id),
             {"stakes": stakes},
             requested_by=work_item.requested_by,
         )
         logger.info(
             STAKES_ASSESSED,
-            task_id=task.id,
+            task_id=str(task.id),
             from_stakes=task.stakes.value,
             to_stakes=stakes.value,
             path="leaf",
@@ -384,7 +384,7 @@ class DefaultWorkPipeline:
         if not updates:
             return task
         return await self._task_engine.update_task(
-            task.id,
+            str(task.id),
             updates,
             requested_by=work_item.requested_by,
         )
@@ -435,14 +435,14 @@ class DefaultWorkPipeline:
         if not task.assigned_to:
             assigned_id = self._select_solo_agent(task, agents)
             await self._task_engine.transition_task(
-                task.id,
+                str(task.id),
                 TaskStatus.ASSIGNED,
                 requested_by=work_item.requested_by,
                 reason="work pipeline solo routing",
                 assigned_to=assigned_id,
             )
         post = await self._worker_execution_service.execute_once(
-            task_id=task.id,
+            task_id=str(task.id),
             previous_status=TaskStatus.ASSIGNED.value,
             new_status=TaskStatus.IN_PROGRESS.value,
             idempotency_key=work_item.correlation_id,
@@ -470,7 +470,7 @@ class DefaultWorkPipeline:
             msg = "no active agents available for solo execution"
             raise WorkRoutingUndecidableError(msg)
         proxy = SubtaskDefinition(
-            id=task.id,
+            id=str(task.id),
             title=task.title,
             description=task.description,
             estimated_complexity=task.estimated_complexity,
@@ -490,7 +490,7 @@ class DefaultWorkPipeline:
         assigned_id = str(best.agent_identity.id)
         logger.info(
             PIPELINE_SOLO_AGENT_SELECTED,
-            task_id=task.id,
+            task_id=str(task.id),
             agent_id=assigned_id,
             score=best.score,
         )
@@ -524,9 +524,9 @@ class DefaultWorkPipeline:
         await self._coordinator.coordinate(
             CoordinationContext(task=task, available_agents=agents)
         )
-        post = await self._task_engine.get_task(task.id)
+        post = await self._task_engine.get_task(str(task.id))
         if post is None:
-            msg = f"task {task.id!r} missing after coordination"
+            msg = f"task {str(task.id)!r} missing after coordination"
             raise WorkPipelineError(msg)
         return post.status
 

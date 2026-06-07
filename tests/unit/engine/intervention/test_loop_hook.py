@@ -88,8 +88,9 @@ class TestResolveScope:
         scope = resolve_steering_scope(sample_agent_context)
         assert scope is not None
         project_id, task_id, _agent_id = scope
+        assert sample_agent_context.task_execution is not None
         assert project_id == "proj-001"
-        assert task_id == "task-prompt-001"
+        assert task_id == str(sample_agent_context.task_execution.task.id)
 
 
 @pytest.mark.unit

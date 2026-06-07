@@ -11,6 +11,7 @@ from synthorg.core.enums import (
 )
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
+from tests._shared import as_uuid
 
 
 def _make_task(
@@ -23,7 +24,7 @@ def _make_task(
 ) -> Task:
     """Helper to create a task with custom description/criteria."""
     return Task(
-        id="task-cls-1",
+        id=as_uuid("task-cls-1"),
         title="Test Task",
         description=description,
         type=TaskType.DEVELOPMENT,

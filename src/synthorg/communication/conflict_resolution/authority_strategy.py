@@ -69,7 +69,7 @@ class AuthorityResolver:
         if conflict.is_cross_department:
             logger.info(
                 CONFLICT_CROSS_DEPARTMENT,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
             )
 
         winner = self._pick_winner(conflict)
@@ -77,14 +77,14 @@ class AuthorityResolver:
 
         logger.info(
             CONFLICT_AUTHORITY_DECIDED,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             winner=winner.agent_id,
             losers=[p.agent_id for p in non_winners],
         )
 
         losers_desc = ", ".join(f"{p.agent_id} ({p.agent_level})" for p in non_winners)
         return ConflictResolution(
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             outcome=ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY,
             winning_agent_id=winner.agent_id,
             winning_position=winner.position,
@@ -113,7 +113,7 @@ class AuthorityResolver:
         losers = find_losers(conflict, resolution)
         return tuple(
             DissentRecord(
-                id=f"dissent-{uuid4().hex[:12]}",
+                id=uuid4(),
                 conflict=conflict,
                 resolution=resolution,
                 dissenting_agent_id=loser.agent_id,
@@ -183,7 +183,7 @@ class AuthorityResolver:
         )
         logger.debug(
             CONFLICT_LCM_LOOKUP,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             agent_a=pos_a.agent_id,
             agent_b=pos_b.agent_id,
             lcm=lcm,
@@ -193,7 +193,7 @@ class AuthorityResolver:
             msg = f"No common manager for {pos_a.agent_id!r} and {pos_b.agent_id!r}"
             logger.warning(
                 CONFLICT_HIERARCHY_ERROR,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 agent_a=pos_a.agent_id,
                 agent_b=pos_b.agent_id,
                 error=msg,
@@ -246,7 +246,7 @@ class AuthorityResolver:
         msg = f"Agent {pos.agent_id!r} unreachable from LCM {lcm!r}"
         logger.warning(
             CONFLICT_HIERARCHY_ERROR,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             agent=pos.agent_id,
             lcm=lcm,
             error=msg,

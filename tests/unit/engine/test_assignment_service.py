@@ -19,6 +19,7 @@ from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.errors import TaskAssignmentError
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import sid
 
 pytestmark = pytest.mark.unit
 
@@ -48,7 +49,7 @@ def _make_agent(
 
 def _make_task(**overrides: object) -> Task:
     defaults: dict[str, object] = {
-        "id": "task-001",
+        "id": sid("task-001"),
         "title": "Test task",
         "description": "A test task",
         "type": TaskType.DEVELOPMENT,

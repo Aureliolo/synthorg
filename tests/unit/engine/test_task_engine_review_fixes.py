@@ -308,7 +308,7 @@ class TestSnapshotPublishingTaskId:
         assert len(message_bus.published) >= 1
         msg: Any = message_bus.published[0]
         event = TaskStateChanged.model_validate_json(msg.text)
-        assert event.task_id == task.id
+        assert event.task_id == str(task.id)
 
     async def test_delete_snapshot_includes_task_id(
         self,
@@ -327,7 +327,7 @@ class TestSnapshotPublishingTaskId:
             make_create_data(),
             requested_by="alice",
         )
-        await eng.delete_task(task.id, requested_by="alice")
+        await eng.delete_task(str(task.id), requested_by="alice")
         await eng.stop(timeout=2.0)
         await message_bus.stop()
 
@@ -335,7 +335,7 @@ class TestSnapshotPublishingTaskId:
         assert len(message_bus.published) >= 2
         msg: Any = message_bus.published[1]
         event = TaskStateChanged.model_validate_json(msg.text)
-        assert event.task_id == task.id
+        assert event.task_id == str(task.id)
         assert event.task is None
 
 
@@ -383,8 +383,8 @@ class TestFakeTaskRepositoryIsolation:
             make_create_data(),
             requested_by="alice",
         )
-        read1 = await engine.get_task(task.id)
-        read2 = await engine.get_task(task.id)
+        read1 = await engine.get_task(str(task.id))
+        read2 = await engine.get_task(str(task.id))
         assert read1 is not None
         assert read2 is not None
         assert read1 == read2
@@ -667,7 +667,7 @@ class TestSnapshotNewStatusNone:
         await eng.start()
         # Create then delete -- delete snapshot has task=None and new_status=None
         task = await eng.create_task(make_create_data(), requested_by="alice")
-        await eng.delete_task(task.id, requested_by="alice")
+        await eng.delete_task(str(task.id), requested_by="alice")
         await eng.stop(timeout=2.0)
         await message_bus.stop()
 
@@ -694,14 +694,14 @@ class TestCancelTaskLifecycle:
         task = await engine.create_task(make_create_data(), requested_by="alice")
         # Must transition to ASSIGNED first (CREATED -> CANCELLED is invalid)
         assigned, _ = await engine.transition_task(
-            task.id,
+            str(task.id),
             TaskStatus.ASSIGNED,
             requested_by="alice",
             reason="Assigning",
             assigned_to="bob",
         )
         cancelled, prior = await engine.cancel_task(
-            assigned.id, requested_by="alice", reason="No longer needed"
+            str(assigned.id), requested_by="alice", reason="No longer needed"
         )
         assert cancelled.status == TaskStatus.CANCELLED
         assert prior == TaskStatus.ASSIGNED
@@ -736,7 +736,7 @@ class TestTransitionTaskValidation:
         task = await engine.create_task(make_create_data(), requested_by="alice")
         with pytest.raises(TaskMutationError):
             await engine.transition_task(
-                task.id,
+                str(task.id),
                 TaskStatus.ASSIGNED,
                 requested_by="alice",
                 reason="   ",

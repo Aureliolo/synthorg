@@ -21,14 +21,14 @@ from synthorg.observability.events.approval_gate import (
 )
 from synthorg.security.redteam.models import RedTeamVerdict
 from synthorg.security.redteam.protocol import RedTeamGate
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of
 
 pytestmark = pytest.mark.unit
 
 
 def _task(*, stakes: Stakes = Stakes.NORMAL) -> Task:
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="Service",
         description="A development task.",
         type=TaskType.DEVELOPMENT,

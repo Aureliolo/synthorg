@@ -50,7 +50,7 @@ def build_state_changed_event(
     task_id: str | None = getattr(mutation, "task_id", None)
     # For create mutations, task_id comes from the result
     if task_id is None and result.task is not None:
-        task_id = result.task.id
+        task_id = str(result.task.id)
     effective_task_id = task_id or "unknown"
 
     return TaskStateChanged(

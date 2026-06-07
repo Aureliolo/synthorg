@@ -46,7 +46,7 @@ def build_subtask_definition(request: AssignmentRequest) -> SubtaskDefinition:
         A SubtaskDefinition for scoring purposes.
     """
     return SubtaskDefinition(
-        id=request.task.id,
+        id=str(request.task.id),
         title=request.task.title,
         description=request.task.description,
         estimated_complexity=request.task.estimated_complexity,
@@ -92,14 +92,14 @@ def score_and_filter_candidates(
             if agent_id_str not in workload_map:
                 logger.debug(
                     TASK_ASSIGNMENT_WORKLOAD_MISSING,
-                    task_id=request.task.id,
+                    task_id=str(request.task.id),
                     agent_name=agent.name,
                 )
             active = workload_map.get(agent_id_str, 0)
             if active >= request.max_concurrent_tasks:
                 logger.debug(
                     TASK_ASSIGNMENT_AGENT_SCORED,
-                    task_id=request.task.id,
+                    task_id=str(request.task.id),
                     agent_name=agent.name,
                     score=0.0,
                     reason="at_capacity",
@@ -112,7 +112,7 @@ def score_and_filter_candidates(
 
         logger.debug(
             TASK_ASSIGNMENT_AGENT_SCORED,
-            task_id=request.task.id,
+            task_id=str(request.task.id),
             agent_name=agent.name,
             score=routing_candidate.score,
         )

@@ -13,13 +13,14 @@ from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.enums import Priority, TaskType
 from synthorg.core.task import Task
+from tests._shared import as_uuid
 
 from .conftest import make_cost_record
 
 
 def _make_task() -> Task:
     return Task(
-        id="t-1",
+        id=as_uuid("t-1"),
         title="Test task",
         description="A test task",
         type=TaskType.DEVELOPMENT,

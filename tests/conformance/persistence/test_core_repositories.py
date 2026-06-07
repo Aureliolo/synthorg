@@ -11,6 +11,7 @@ from synthorg.core.enums import TaskStatus
 from synthorg.core.persistence_errors import QueryError
 from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid, sid
 from tests.unit.persistence.conftest import make_message, make_task
 
 
@@ -19,9 +20,9 @@ class TestTaskRepository:
     async def test_save_and_get(self, backend: PersistenceBackend) -> None:
         task = make_task(task_id="t1", title="First task")
         await backend.tasks.save(task)
-        fetched = await backend.tasks.get("t1")
+        fetched = await backend.tasks.get(sid("t1"))
         assert fetched is not None
-        assert fetched.id == "t1"
+        assert fetched.id == as_uuid("t1")
         assert fetched.title == "First task"
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
@@ -32,7 +33,7 @@ class TestTaskRepository:
         await backend.tasks.save(task)
         updated = task.model_copy(update={"title": "Updated"})
         await backend.tasks.save(updated)
-        fetched = await backend.tasks.get("t2")
+        fetched = await backend.tasks.get(sid("t2"))
         assert fetched is not None
         assert fetched.title == "Updated"
 
@@ -50,7 +51,9 @@ class TestTaskRepository:
         await backend.tasks.save(make_task(task_id="t2"))
         tasks = await backend.tasks.list_items()
         assert len(tasks) == 3
-        assert [t.id for t in tasks] == ["t1", "t2", "t3"]
+        assert [t.id for t in tasks] == sorted(
+            [as_uuid("t1"), as_uuid("t2"), as_uuid("t3")], key=str
+        )
 
     async def test_list_filter_by_project(self, backend: PersistenceBackend) -> None:
         from synthorg.persistence.task_protocol import TaskFilterSpec
@@ -59,7 +62,7 @@ class TestTaskRepository:
         await backend.tasks.save(make_task(task_id="t2", project="proj_b"))
         tasks = await backend.tasks.query(TaskFilterSpec(project="proj_a"))
         assert len(tasks) == 1
-        assert tasks[0].id == "t1"
+        assert tasks[0].id == as_uuid("t1")
 
     async def test_list_filter_by_status(self, backend: PersistenceBackend) -> None:
         from synthorg.persistence.task_protocol import TaskFilterSpec
@@ -68,12 +71,12 @@ class TestTaskRepository:
         await backend.tasks.save(make_task(task_id="t2", status=TaskStatus.IN_PROGRESS))
         tasks = await backend.tasks.query(TaskFilterSpec(status=TaskStatus.CREATED))
         assert len(tasks) == 1
-        assert tasks[0].id == "t1"
+        assert tasks[0].id == as_uuid("t1")
 
     async def test_delete_returns_true(self, backend: PersistenceBackend) -> None:
         await backend.tasks.save(make_task(task_id="t1"))
-        assert await backend.tasks.delete("t1") is True
-        assert await backend.tasks.get("t1") is None
+        assert await backend.tasks.delete(sid("t1")) is True
+        assert await backend.tasks.get(sid("t1")) is None
 
     async def test_delete_returns_false_when_missing(
         self, backend: PersistenceBackend
@@ -92,7 +95,7 @@ class TestCostRecordRepository:
 
         record = CostRecord(
             agent_id="agent_1",
-            task_id="t1",
+            task_id=sid("t1"),
             provider="test-provider",
             model="test-small-001",
             input_tokens=100,
@@ -122,7 +125,7 @@ class TestCostRecordRepository:
             await backend.cost_records.append(
                 CostRecord(
                     agent_id="agent_pg",
-                    task_id="t_query_pag",
+                    task_id=sid("t_query_pag"),
                     provider="test-provider",
                     model="test-small-001",
                     input_tokens=10,
@@ -155,7 +158,7 @@ class TestCostRecordRepository:
             await backend.cost_records.append(
                 CostRecord(
                     agent_id="agent_1",
-                    task_id="t1",
+                    task_id=sid("t1"),
                     provider="test-provider",
                     model="test-small-001",
                     input_tokens=10,
@@ -188,7 +191,7 @@ class TestCostRecordRepository:
             await backend.cost_records.append(
                 CostRecord(
                     agent_id="agent_mix",
-                    task_id="t-mixed",
+                    task_id=sid("t-mixed"),
                     provider="test-provider",
                     model="test-small-001",
                     input_tokens=10,
@@ -434,7 +437,7 @@ class TestCostRecordPurge:
             await backend.cost_records.append(
                 CostRecord(
                     agent_id=agent,
-                    task_id="cprg",
+                    task_id=sid("cprg"),
                     provider="test-provider",
                     model="test-small-001",
                     input_tokens=10,

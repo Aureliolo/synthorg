@@ -9,12 +9,13 @@ from synthorg.core.project import Project
 from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
 
 def _project(project_id: str = "proj-1") -> Project:
-    return Project(id=NotBlankStr(project_id), name=NotBlankStr("Demo"))
+    return Project(id=as_uuid(project_id), name=NotBlankStr("Demo"))
 
 
 def _environment(
@@ -28,7 +29,7 @@ def _environment(
     if image_ref is None and env_type is EnvironmentType.DEVCONTAINER:
         image_ref = f"synthorg-project-{project_id.lower()}:abc123"
     return ProjectEnvironment(
-        project_id=NotBlankStr(project_id),
+        project_id=NotBlankStr(sid(project_id)),
         environment_type=env_type,
         declaration_hash=NotBlankStr(declaration_hash),
         image_ref=NotBlankStr(image_ref) if image_ref else None,
@@ -42,9 +43,9 @@ class TestProjectEnvironmentRepository:
         await backend.projects.save(_project())
         await backend.project_environments.save(_environment())
 
-        fetched = await backend.project_environments.get(NotBlankStr("proj-1"))
+        fetched = await backend.project_environments.get(NotBlankStr(sid("proj-1")))
         assert fetched is not None
-        assert fetched.project_id == "proj-1"
+        assert fetched.project_id == sid("proj-1")
         assert fetched.environment_type is EnvironmentType.MANIFEST
         assert fetched.declaration_hash == "a" * 64
         assert fetched.image_ref is None
@@ -63,7 +64,7 @@ class TestProjectEnvironmentRepository:
         )
         await backend.project_environments.save(rebuilt)
 
-        fetched = await backend.project_environments.get(NotBlankStr("proj-1"))
+        fetched = await backend.project_environments.get(NotBlankStr(sid("proj-1")))
         assert fetched is not None
         assert fetched.environment_type is EnvironmentType.NIX
         assert fetched.declaration_hash == "b" * 64
@@ -77,7 +78,7 @@ class TestProjectEnvironmentRepository:
             ),
         )
 
-        fetched = await backend.project_environments.get(NotBlankStr("proj-1"))
+        fetched = await backend.project_environments.get(NotBlankStr(sid("proj-1")))
         assert fetched is not None
         assert fetched.image_ref == "synthorg-project-proj-1:abc123def456"
 
@@ -87,7 +88,7 @@ class TestProjectEnvironmentRepository:
         await backend.projects.save(_project())
         await backend.project_environments.save(_environment())
 
-        fetched = await backend.project_environments.get(NotBlankStr("proj-1"))
+        fetched = await backend.project_environments.get(NotBlankStr(sid("proj-1")))
         assert fetched is not None
         assert fetched.image_ref is None
 
@@ -102,15 +103,17 @@ class TestProjectEnvironmentRepository:
         rows = await backend.project_environments.list_items()
         ids = [r.project_id for r in rows]
         assert ids == sorted(ids)
-        assert {"proj-a", "proj-b"} <= set(ids)
+        assert {sid("proj-a"), sid("proj-b")} <= set(ids)
 
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project())
         await backend.project_environments.save(_environment())
 
-        deleted = await backend.project_environments.delete(NotBlankStr("proj-1"))
+        deleted = await backend.project_environments.delete(NotBlankStr(sid("proj-1")))
         assert deleted is True
-        assert await backend.project_environments.get(NotBlankStr("proj-1")) is None
+        assert (
+            await backend.project_environments.get(NotBlankStr(sid("proj-1"))) is None
+        )
 
     async def test_delete_missing(self, backend: PersistenceBackend) -> None:
         assert (
@@ -124,6 +127,8 @@ class TestProjectEnvironmentRepository:
         await backend.projects.save(_project())
         await backend.project_environments.save(_environment())
 
-        await backend.projects.delete(NotBlankStr("proj-1"))
+        await backend.projects.delete(NotBlankStr(sid("proj-1")))
 
-        assert await backend.project_environments.get(NotBlankStr("proj-1")) is None
+        assert (
+            await backend.project_environments.get(NotBlankStr(sid("proj-1"))) is None
+        )

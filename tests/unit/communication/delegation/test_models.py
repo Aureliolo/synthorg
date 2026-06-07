@@ -12,6 +12,7 @@ from synthorg.communication.delegation.models import (
 )
 from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
+from tests._shared import coerce_id
 
 
 def _make_task(**overrides: object) -> Task:
@@ -24,6 +25,7 @@ def _make_task(**overrides: object) -> Task:
         "created_by": "pm-1",
     }
     defaults.update(overrides)
+    defaults["id"] = coerce_id(defaults["id"])
     return Task(**defaults)  # type: ignore[arg-type]
 
 

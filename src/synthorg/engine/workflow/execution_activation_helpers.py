@@ -407,12 +407,12 @@ async def process_task_node(  # noqa: PLR0913
         requested_by="workflow-engine",
     )
 
-    node_task_ids[nid] = task.id
+    node_task_ids[nid] = str(task.id)
     logger.info(
         WORKFLOW_EXEC_TASK_CREATED,
         execution_id=execution_id,
         node_id=nid,
-        task_id=task.id,
+        task_id=str(task.id),
         title=title,
     )
 
@@ -420,7 +420,7 @@ async def process_task_node(  # noqa: PLR0913
         node_id=nid,
         node_type=node.type,
         status=WorkflowNodeExecutionStatus.TASK_CREATED,
-        task_id=task.id,
+        task_id=str(task.id),
     )
 
 

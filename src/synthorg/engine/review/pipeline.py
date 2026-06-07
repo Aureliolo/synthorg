@@ -65,7 +65,7 @@ class ReviewPipeline:
         """
         logger.info(
             REVIEW_PIPELINE_STARTED,
-            task_id=task.id,
+            task_id=str(task.id),
             stage_count=len(self._stages),
             stages=list(self.stage_names),
         )
@@ -80,7 +80,7 @@ class ReviewPipeline:
                     logger,
                     REVIEW_PIPELINE_STAGE_COMPLETED,
                     exc,
-                    task_id=task.id,
+                    task_id=str(task.id),
                     stage_name=getattr(stage, "name", type(stage).__name__),
                     verdict="error",
                 )
@@ -88,7 +88,7 @@ class ReviewPipeline:
             stage_results.append(result)
             logger.info(
                 REVIEW_PIPELINE_STAGE_COMPLETED,
-                task_id=task.id,
+                task_id=str(task.id),
                 stage_name=result.stage_name,
                 verdict=result.verdict.value,
                 duration_ms=result.duration_ms,
@@ -99,7 +99,7 @@ class ReviewPipeline:
 
         total_ms = max(0, (time.perf_counter_ns() - start_ns) // 1_000_000)
         pipeline_result = PipelineResult(
-            task_id=task.id,
+            task_id=str(task.id),
             final_verdict=final_verdict,
             stage_results=tuple(stage_results),
             total_duration_ms=total_ms,
@@ -107,7 +107,7 @@ class ReviewPipeline:
         )
         logger.info(
             REVIEW_PIPELINE_COMPLETED,
-            task_id=task.id,
+            task_id=str(task.id),
             final_verdict=final_verdict.value,
             total_duration_ms=total_ms,
             stages_run=len(stage_results),

@@ -14,6 +14,7 @@ from synthorg.security.timeout.policies import (
     WaitForeverPolicy,
 )
 from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
+from tests._shared import as_uuid
 
 
 def _make_item(
@@ -22,7 +23,7 @@ def _make_item(
 ) -> ApprovalItem:
     """Create a minimal pending approval item."""
     return ApprovalItem(
-        id="test-approval-1",
+        id=as_uuid("test-approval-1"),
         action_type=action_type,
         title="Test approval",
         description="Test description",

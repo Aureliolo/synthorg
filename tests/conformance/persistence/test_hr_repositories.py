@@ -18,6 +18,7 @@ from synthorg.hr.performance.models import (
     TaskMetricRecord,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import sid
 from tests.unit.persistence.conftest import make_task
 
 
@@ -168,7 +169,7 @@ class TestTaskMetricRepository:
         metric = TaskMetricRecord(
             id="tm-001",
             agent_id="agent-001",
-            task_id="task-001",
+            task_id=sid("task-001"),
             task_type=TaskType.RESEARCH,
             started_at=started,
             completed_at=now,
@@ -215,7 +216,7 @@ class TestTaskMetricRepository:
         metric = TaskMetricRecord(
             id="tm-agent",
             agent_id="agent-x",
-            task_id="task-001",
+            task_id=sid("task-001"),
             task_type=TaskType.RESEARCH,
             started_at=started,
             completed_at=now,
@@ -254,7 +255,7 @@ class TestTaskMetricRepository:
         metric = TaskMetricRecord(
             id="tm-time",
             agent_id="agent-001",
-            task_id="task-001",
+            task_id=sid("task-001"),
             task_type=TaskType.RESEARCH,
             started_at=started,
             completed_at=now,

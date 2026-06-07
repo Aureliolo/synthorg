@@ -24,7 +24,7 @@ from synthorg.engine.flight_recording import (
 from synthorg.engine.intervention import NoOpSupersessionProposer, SteeringService
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, as_uuid, mock_of, sid
 from tests._shared.steering import FakeBrainService
 from tests.unit.api.fakes import (
     FakeFlightRecorderFrameRepository,
@@ -42,7 +42,7 @@ def _frame(turn: int, *, response: str, ts: datetime) -> FlightRecorderFrame:
     return FlightRecorderFrame(
         id=NotBlankStr(f"{_EXEC}-{turn}"),
         execution_id=NotBlankStr(_EXEC),
-        task_id=NotBlankStr(_TASK),
+        task_id=NotBlankStr(sid(_TASK)),
         agent_id=NotBlankStr("agent-1"),
         turn_index=turn,
         timestamp=ts,
@@ -73,7 +73,7 @@ async def test_detect_stuck_intervene_then_replay() -> None:
     # Pydantic v2 field descriptors are not exposed as ``dir()``
     # attributes that ``create_autospec`` can introspect.
     stuck_task = Task(
-        id=NotBlankStr(_TASK),
+        id=as_uuid(_TASK),
         title=NotBlankStr("Stuck investigation"),
         description=NotBlankStr("Reproduce the runaway agent scenario."),
         type=TaskType.DEVELOPMENT,

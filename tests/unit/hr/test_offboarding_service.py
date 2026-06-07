@@ -37,7 +37,7 @@ class FakeTaskRepository:
         self._tasks: dict[str, Task] = {}
 
     async def save(self, entity: Task) -> None:
-        self._tasks[entity.id] = entity
+        self._tasks[str(entity.id)] = entity
 
     async def get(self, entity_id: str) -> Task | None:
         return self._tasks.get(entity_id)

@@ -43,6 +43,7 @@ from synthorg.persistence.sqlite.conversation_repo import (
 from synthorg.persistence.sqlite.conversational_proposal_repo import (
     SQLiteConversationalProposalRepository,
 )
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.integration
 
@@ -350,7 +351,7 @@ class TestConversationalProposalRepository:
         # must REJECT the row. Mirrors the invite-source asymmetry test.
         repo = _approval_repo(backend)
         item = ApprovalItem(
-            id=NotBlankStr("appr-intake"),
+            id=as_uuid("appr-intake"),
             action_type=NotBlankStr("conversational:create_work"),
             title=NotBlankStr("Build the landing page"),
             description=NotBlankStr("from a conversational request"),
@@ -362,7 +363,7 @@ class TestConversationalProposalRepository:
         )
         if backend.backend_name == "postgres":
             await repo.save(item)
-            fetched = await repo.get(item.id)
+            fetched = await repo.get(str(item.id))
             assert fetched is not None
             assert fetched.source is ApprovalSource.CONVERSATIONAL_INTAKE
         else:

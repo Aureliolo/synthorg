@@ -162,7 +162,7 @@ class ContextDependentDispatcher:
 
         wave_requests = tuple(
             WorkspaceRequest(
-                task_id=a.task.id,
+                task_id=str(a.task.id),
                 agent_id=a.agent_id,
                 base_branch=config.base_branch,
                 project_id=project_id,
@@ -238,7 +238,7 @@ class ContextDependentDispatcher:
             ``False`` when every agent in the wave succeeded.
         """
         start = self._clock.monotonic()
-        subtask_ids = tuple(a.task.id for a in group.assignments)
+        subtask_ids = tuple(str(a.task.id) for a in group.assignments)
         wave_failed = False
 
         logger.info(

@@ -14,6 +14,7 @@ from synthorg.communication.enums import MessageType
 from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.task_engine import TaskEngine
+from tests._shared import coerce_id, sid
 
 
 def _make_task(**overrides: object) -> Task:
@@ -33,6 +34,7 @@ def _make_task(**overrides: object) -> Task:
     status = defaults.get("status")
     if status == TaskStatus.CREATED and "assigned_to" not in overrides:
         defaults["assigned_to"] = None
+    defaults["id"] = coerce_id(defaults["id"])
     return Task(**defaults)  # type: ignore[arg-type]
 
 
@@ -63,7 +65,7 @@ class TestAsyncTaskServiceStart:
             supervisor_id="supervisor-1",
             task_spec=spec,
         )
-        assert task_id == "new-1"
+        assert task_id == sid("new-1")
         engine.create_task.assert_called_once()
         engine.transition_task.assert_called_once()
 
@@ -83,7 +85,7 @@ class TestAsyncTaskServiceStart:
             supervisor_id="sup-1",
             task_spec=spec,
         )
-        assert result == "task-42"
+        assert result == sid("task-42")
 
 
 @pytest.mark.unit

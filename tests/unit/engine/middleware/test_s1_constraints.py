@@ -33,6 +33,7 @@ from synthorg.engine.middleware.s1_constraints import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
+from tests._shared import as_uuid
 
 # ── Test helpers ──────────────────────────────────────────────────
 
@@ -58,7 +59,7 @@ def _task(
     delegation_chain: tuple[str, ...] = (),
 ) -> Task:
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="Test task",
         description="A test task for S1 constraints",
         type=TaskType.DEVELOPMENT,
@@ -88,7 +89,7 @@ def _mw_context(
         identity=identity,
         task=t,
         agent_id=str(identity.id),
-        task_id=t.id,
+        task_id=str(t.id),
         execution_id="exec-1",
     )
     if metadata:
@@ -349,7 +350,7 @@ class TestDelegationChainHashMiddleware:
         ctx1 = _mw_context()
         ctx2 = _mw_context(
             task=Task(
-                id="task-2",
+                id=as_uuid("task-2"),
                 title="Different task",
                 description="Different description",
                 type=TaskType.DEVELOPMENT,

@@ -10,7 +10,7 @@ bypassing review.
 
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
@@ -136,7 +136,7 @@ class ApprovalGateGuard:
             uuid5(NAMESPACE_URL, f"proposal:{proposal_id_str}"),
         )
         item = ApprovalItem(
-            id=approval_id,
+            id=UUID(approval_id),
             action_type=f"proposal:{proposal.altitude.value}",
             title=proposal.title,
             description=proposal.description,
@@ -164,7 +164,7 @@ class ApprovalGateGuard:
                 META_PROPOSAL_GUARD_PASSED,
                 guard=self.name,
                 proposal_id=proposal_id_str,
-                approval_id=approval_id,
+                approval_id=UUID(approval_id),
                 risk_level=risk.value,
                 altitude=proposal.altitude.value,
                 persisted=True,
@@ -183,7 +183,7 @@ class ApprovalGateGuard:
                 META_PROPOSAL_GUARD_REJECTED,
                 guard=self.name,
                 proposal_id=proposal_id_str,
-                approval_id=approval_id,
+                approval_id=UUID(approval_id),
                 risk_level=risk.value,
                 altitude=proposal.altitude.value,
                 reason="approval_store_write_failed",
@@ -200,7 +200,7 @@ class ApprovalGateGuard:
             META_PROPOSAL_GUARD_PASSED,
             guard=self.name,
             proposal_id=proposal_id_str,
-            approval_id=approval_id,
+            approval_id=UUID(approval_id),
             risk_level=risk.value,
             altitude=proposal.altitude.value,
             persisted=True,

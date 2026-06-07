@@ -71,22 +71,22 @@ class DeliverableReviewInputBuilder:
             criteria, or no recorded deliverable content.
         """
         if task.assigned_to is None:
-            self._log_missing("no_assignee", task.id)
+            self._log_missing("no_assignee", str(task.id))
             return None
         criteria = tuple(
             c.description for c in task.acceptance_criteria if c.description.strip()
         )
         if not criteria:
-            self._log_missing("no_acceptance_criteria", task.id)
+            self._log_missing("no_acceptance_criteria", str(task.id))
             return None
-        deliverable = await self._latest_deliverable(task.id)
+        deliverable = await self._latest_deliverable(str(task.id))
         if deliverable is None:
-            self._log_missing("no_recorded_deliverable", task.id)
+            self._log_missing("no_recorded_deliverable", str(task.id))
             return None
         execution_id, content = deliverable
         autonomy = await self._autonomy_provider()
         return RedTeamReviewInput(
-            task_id=task.id,
+            task_id=str(task.id),
             execution_id=execution_id,
             deliverable_content=content,
             acceptance_criteria=criteria,

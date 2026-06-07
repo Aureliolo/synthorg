@@ -18,6 +18,7 @@ from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
 )
+from tests._shared import as_uuid
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -41,7 +42,7 @@ def _make_agent() -> AgentIdentity:
 def _make_task(agent: AgentIdentity) -> Task:
     """Build a test task."""
     return Task(
-        id="task-cb-001",
+        id=as_uuid("task-cb-001"),
         title="Callback test",
         description="Test task for callback factory.",
         type=TaskType.DEVELOPMENT,
@@ -96,7 +97,7 @@ class TestCheckpointCallbackBoundaryTurns:
             heartbeat_repo=hb_repo,
             config=config,
             agent_id=str(agent.id),
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         ctx1 = _make_ctx_at_turn(agent, task, 1)
@@ -106,14 +107,14 @@ class TestCheckpointCallbackBoundaryTurns:
         # Verify checkpoint model content
         saved_cp = cp_repo.append.call_args_list[0][0][0]
         assert saved_cp.agent_id == str(agent.id)
-        assert saved_cp.task_id == task.id
+        assert saved_cp.task_id == str(task.id)
         assert saved_cp.turn_number == 1
         assert saved_cp.execution_id == ctx1.execution_id
 
         # Verify heartbeat model content
         saved_hb = hb_repo.save.call_args_list[0][0][0]
         assert saved_hb.agent_id == str(agent.id)
-        assert saved_hb.task_id == task.id
+        assert saved_hb.task_id == str(task.id)
         assert saved_hb.execution_id == ctx1.execution_id
 
         ctx2 = _make_ctx_at_turn(agent, task, 2)
@@ -132,7 +133,7 @@ class TestCheckpointCallbackBoundaryTurns:
             heartbeat_repo=hb_repo,
             config=config,
             agent_id=str(agent.id),
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         # Turn 1: 1 % 2 != 0 → skip
@@ -185,7 +186,7 @@ class TestCheckpointCallbackBoundaryTurns:
             heartbeat_repo=hb_repo,
             config=config,
             agent_id=str(agent.id),
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         ctx = _make_ctx_at_turn(agent, task, turn)
@@ -211,7 +212,7 @@ class TestCheckpointCallbackHeartbeat:
             heartbeat_repo=hb_repo,
             config=config,
             agent_id=str(agent.id),
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         ctx = _make_ctx_at_turn(agent, task, 1)
@@ -231,7 +232,7 @@ class TestCheckpointCallbackHeartbeat:
             heartbeat_repo=hb_repo,
             config=config,
             agent_id=str(agent.id),
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         # Turn 1 is skipped with persist_every_n_turns=2
@@ -258,7 +259,7 @@ class TestCheckpointCallbackErrorHandling:
             heartbeat_repo=hb_repo,
             config=config,
             agent_id=str(agent.id),
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         ctx = _make_ctx_at_turn(agent, task, 1)
@@ -278,7 +279,7 @@ class TestCheckpointCallbackErrorHandling:
             heartbeat_repo=hb_repo,
             config=config,
             agent_id=str(agent.id),
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         ctx = _make_ctx_at_turn(agent, task, 1)
@@ -298,7 +299,7 @@ class TestCheckpointCallbackErrorHandling:
             heartbeat_repo=hb_repo,
             config=config,
             agent_id=str(agent.id),
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         ctx = _make_ctx_at_turn(agent, task, 1)
@@ -318,7 +319,7 @@ class TestCheckpointCallbackErrorHandling:
             heartbeat_repo=hb_repo,
             config=config,
             agent_id=str(agent.id),
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         ctx = _make_ctx_at_turn(agent, task, 1)
@@ -338,7 +339,7 @@ class TestCheckpointCallbackErrorHandling:
             heartbeat_repo=hb_repo,
             config=config,
             agent_id=str(agent.id),
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         ctx = _make_ctx_at_turn(agent, task, 1)
@@ -358,7 +359,7 @@ class TestCheckpointCallbackErrorHandling:
             heartbeat_repo=hb_repo,
             config=config,
             agent_id=str(agent.id),
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         ctx = _make_ctx_at_turn(agent, task, 1)
@@ -378,7 +379,7 @@ class TestCheckpointCallbackErrorHandling:
             heartbeat_repo=hb_repo,
             config=config,
             agent_id=str(agent.id),
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
         ctx = _make_ctx_at_turn(agent, task, 1)

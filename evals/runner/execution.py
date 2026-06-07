@@ -10,6 +10,8 @@ learning curve proves the live ``capture -> store -> retrieve -> inject``
 pipeline. Only the LLM is a deterministic stand-in.
 """
 
+from uuid import NAMESPACE_URL, uuid5
+
 from pydantic import BaseModel, ConfigDict
 from structlog.testing import capture_logs
 
@@ -53,7 +55,7 @@ def _brief_task(brief: Brief, *, agent_id: str) -> Task:
         The :class:`~synthorg.core.task.Task` for the brief.
     """
     return Task(
-        id=NotBlankStr(f"eval-{brief.brief_id}"),
+        id=uuid5(NAMESPACE_URL, f"eval-{brief.brief_id}"),
         title=brief.title,
         description=brief.description,
         type=TaskType.DEVELOPMENT,

@@ -19,6 +19,7 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.persistence_errors import ConstraintViolationError
+from tests._shared import as_uuid, sid
 
 
 def _now() -> datetime:
@@ -34,7 +35,7 @@ def _make_item(
     decided_by: str | None = None,
 ) -> ApprovalItem:
     return ApprovalItem(
-        id=approval_id,
+        id=as_uuid(approval_id),
         action_type="code:merge",
         title="Test approval",
         description="A test approval item",
@@ -71,7 +72,7 @@ class GatedRepo:
         if self.gate_enabled and self.save_calls == 1:
             self.first_entered.set()
             await self.gate.wait()
-        self.items[item.id] = item
+        self.items[str(item.id)] = item
 
     async def list_items(
         self,
@@ -118,12 +119,12 @@ class TestSaveConcurrency:
         """
         repo = GatedRepo()
         initial = _make_item()
-        repo.items[initial.id] = initial
+        repo.items[str(initial.id)] = initial
         store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
         if warm_cache:
             # Pre-warm the cache; without this, both saves fall through
             # to ``repo.get`` under the lock.
-            await store.get(initial.id)
+            await store.get(str(initial.id))
 
         updated_a = initial.model_copy(update={"decision_reason": "reason_a"})
         updated_b = initial.model_copy(update={"decision_reason": "reason_b"})
@@ -153,7 +154,7 @@ class TestSaveConcurrency:
             assert result_b is None
 
             # Stored payload matches the winner.
-            stored = await store.get(initial.id)
+            stored = await store.get(str(initial.id))
             assert stored is not None
             assert stored.decision_reason == winners[0].decision_reason
 
@@ -167,16 +168,16 @@ class TestSaveConcurrency:
                 if call.kwargs.get("error") == "concurrent_save"
             ]
             assert len(conflict_calls) == 1
-            assert conflict_calls[0].kwargs["approval_id"] == initial.id
+            assert conflict_calls[0].kwargs["approval_id"] == str(initial.id)
 
     async def test_sequential_saves_both_succeed(self) -> None:
         """Sequential saves both persist; in-flight only rejects overlap."""
         repo = GatedRepo()
         repo.gate_enabled = False  # no gating
         initial = _make_item()
-        repo.items[initial.id] = initial
+        repo.items[str(initial.id)] = initial
         store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
-        await store.get(initial.id)
+        await store.get(str(initial.id))
 
         updated_a = initial.model_copy(update={"decision_reason": "first"})
         result_a = await store.save(updated_a)
@@ -188,7 +189,7 @@ class TestSaveConcurrency:
         assert result_b is not None
         assert result_b.decision_reason == "second"
 
-        stored = await store.get(initial.id)
+        stored = await store.get(str(initial.id))
         assert stored is not None
         assert stored.decision_reason == "second"
 
@@ -202,13 +203,13 @@ class TestSaveConcurrency:
                 if self.save_calls == 1:
                     msg = "boom"
                     raise ConstraintViolationError(msg, constraint="test")
-                self.items[item.id] = item
+                self.items[str(item.id)] = item
 
         repo = FailingRepo()
         initial = _make_item()
-        repo.items[initial.id] = initial
+        repo.items[str(initial.id)] = initial
         store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
-        await store.get(initial.id)
+        await store.get(str(initial.id))
 
         updated = initial.model_copy(update={"decision_reason": "first"})
         with pytest.raises(ConstraintViolationError):
@@ -242,15 +243,15 @@ class TestSaveConcurrency:
             @override
             async def save(self, item: ApprovalItem) -> None:
                 self.save_calls += 1
-                self.items[item.id] = item
+                self.items[str(item.id)] = item
                 self.committed.set()
                 await self.gate.wait()
 
         repo = CommittingThenCancellingRepo()
         initial = _make_item()
-        repo.items[initial.id] = initial
+        repo.items[str(initial.id)] = initial
         store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
-        await store.get(initial.id)  # warm the cache
+        await store.get(str(initial.id))  # warm the cache
 
         updated = initial.model_copy(update={"decision_reason": "cancelled"})
         task = asyncio.create_task(store.save(updated))
@@ -261,10 +262,10 @@ class TestSaveConcurrency:
 
         # Repo has the new value; cache entry must have been evicted
         # so the next ``get`` reloads from the repository.
-        assert repo.items[initial.id].decision_reason == "cancelled"
+        assert repo.items[str(initial.id)].decision_reason == "cancelled"
         assert initial.id not in store._items
 
-        refreshed = await store.get(initial.id)
+        refreshed = await store.get(str(initial.id))
         assert refreshed is not None
         assert refreshed.decision_reason == "cancelled"
 
@@ -305,7 +306,7 @@ class TestSaveIfPendingConcurrency:
         assert len(winners) == 1
         assert len(losers) == 1
 
-        stored = await store.get(item.id)
+        stored = await store.get(str(item.id))
         assert stored is not None
         assert stored.status == winners[0].status
 
@@ -321,9 +322,9 @@ class TestSaveIfPendingConcurrency:
         """
         repo = GatedRepo()
         initial = _make_item()
-        repo.items[initial.id] = initial
+        repo.items[str(initial.id)] = initial
         store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
-        await store.get(initial.id)  # warm cache
+        await store.get(str(initial.id))  # warm cache
 
         updated_a = initial.model_copy(
             update={
@@ -359,9 +360,9 @@ class TestSaveIfPendingConcurrency:
             if call.kwargs.get("error") == "concurrent_save"
         ]
         assert len(conflict_calls) == 1
-        assert conflict_calls[0].kwargs["approval_id"] == initial.id
+        assert conflict_calls[0].kwargs["approval_id"] == str(initial.id)
 
-        stored = await store.get(initial.id)
+        stored = await store.get(str(initial.id))
         assert stored is not None
         assert stored.status == ApprovalStatus.APPROVED
         assert stored.decision_reason == "ok"
@@ -397,7 +398,7 @@ class TestAddConcurrency:
         assert len(successes) == 1
         assert len(conflicts) == 1
 
-        stored = await store.get(item_a.id)
+        stored = await store.get(str(item_a.id))
         assert stored is not None
 
 
@@ -428,7 +429,7 @@ class TestExpirationConcurrency:
         store = ApprovalStore()
         now = _now()
         item = ApprovalItem(
-            id="exp-concurrent",
+            id=as_uuid("exp-concurrent"),
             action_type="code:merge",
             title="Test",
             description="desc",
@@ -438,11 +439,11 @@ class TestExpirationConcurrency:
             created_at=now - timedelta(hours=2),
             expires_at=now - timedelta(hours=1),
         )
-        store._items[item.id] = item
+        store._items[str(item.id)] = item
 
         # get() triggers expiration; save_if_pending sees non-PENDING stored state.
         async with asyncio.TaskGroup() as tg:
-            get_task = tg.create_task(store.get(item.id))
+            get_task = tg.create_task(store.get(str(item.id)))
             save_task = tg.create_task(
                 store.save_if_pending(
                     item.model_copy(update={"status": ApprovalStatus.APPROVED}),
@@ -540,8 +541,8 @@ class TestLostRaceBatchFetch:
         # because the repo claims the rows already moved to terminal
         # statuses (we returned ``()`` from ``expire_if_pending``).
         items = {
-            f"approval-{i}": ApprovalItem(
-                id=f"approval-{i}",
+            sid(f"approval-{i}"): ApprovalItem(
+                id=as_uuid(f"approval-{i}"),
                 action_type="code:merge",
                 title=f"Test {i}",
                 description="desc",
@@ -587,7 +588,7 @@ class TestLostRaceBatchFetch:
         # All three rows survive -- they were "approved" already so
         # they appear in the response with their authoritative state.
         assert len(result) == 3
-        assert {item.id for item in result} == set(items.keys())
+        assert {str(item.id) for item in result} == set(items.keys())
         assert all(item.status == ApprovalStatus.APPROVED for item in result)
 
         # The N+1 invariant: zero per-id ``get`` calls; one
@@ -600,8 +601,8 @@ class TestLostRaceBatchFetch:
         """Empty lost-race set must not issue any ``get_many`` query."""
         now = _now()
         items = {
-            "approval-0": ApprovalItem(
-                id="approval-0",
+            sid("approval-0"): ApprovalItem(
+                id=as_uuid("approval-0"),
                 action_type="code:merge",
                 title="Test 0",
                 description="desc",

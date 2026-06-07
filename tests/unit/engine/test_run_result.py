@@ -22,6 +22,7 @@ from synthorg.execution.turn import TurnRecord
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage, TokenUsage, ToolCall
+from tests._shared import as_uuid
 
 
 def _test_identity() -> AgentIdentity:
@@ -251,7 +252,7 @@ class TestFormatTaskInstruction:
 
     def test_no_criteria_no_budget(self) -> None:
         task = Task(
-            id="task-simple",
+            id=as_uuid("task-simple"),
             title="Simple task",
             description="Do the thing.",
             type=TaskType.DEVELOPMENT,
@@ -276,7 +277,7 @@ class TestFormatTaskInstruction:
     def test_deadline_only_no_budget(self) -> None:
         """Deadline-only task still gets blank-line separator."""
         task = Task(
-            id="task-deadline",
+            id=as_uuid("task-deadline"),
             title="Deadline task",
             description="Has deadline only.",
             type=TaskType.DEVELOPMENT,
@@ -299,7 +300,7 @@ class TestFormatTaskInstruction:
 
     def test_budget_only_no_deadline(self) -> None:
         task = Task(
-            id="task-budget",
+            id=as_uuid("task-budget"),
             title="Budget task",
             description="Has budget only.",
             type=TaskType.DEVELOPMENT,
@@ -317,7 +318,7 @@ class TestFormatTaskInstruction:
 
     def test_budget_with_eur_currency(self) -> None:
         task = Task(
-            id="task-eur",
+            id=as_uuid("task-eur"),
             title="EUR budget task",
             description="Budget in EUR.",
             type=TaskType.DEVELOPMENT,
@@ -334,7 +335,7 @@ class TestFormatTaskInstruction:
 
     def test_budget_with_jpy_zero_decimal(self) -> None:
         task = Task(
-            id="task-jpy",
+            id=as_uuid("task-jpy"),
             title="JPY budget task",
             description="Budget in JPY.",
             type=TaskType.DEVELOPMENT,
@@ -357,7 +358,7 @@ class TestMakeBudgetChecker:
 
     def test_returns_none_for_zero_budget(self) -> None:
         task = Task(
-            id="task-free",
+            id=as_uuid("task-free"),
             title="Free",
             description="No budget.",
             type=TaskType.DEVELOPMENT,
@@ -372,7 +373,7 @@ class TestMakeBudgetChecker:
     def test_returns_none_for_default_budget(self) -> None:
         """Default budget_limit (0.0) returns None."""
         task = Task(
-            id="task-default",
+            id=as_uuid("task-default"),
             title="Default",
             description="Default budget.",
             type=TaskType.DEVELOPMENT,
@@ -385,7 +386,7 @@ class TestMakeBudgetChecker:
 
     def test_returns_callable_for_positive_budget(self) -> None:
         task = Task(
-            id="task-b",
+            id=as_uuid("task-b"),
             title="Budgeted",
             description="Has budget.",
             type=TaskType.DEVELOPMENT,
@@ -401,7 +402,7 @@ class TestMakeBudgetChecker:
 
     def test_checker_returns_false_under_budget(self) -> None:
         task = Task(
-            id="task-b",
+            id=as_uuid("task-b"),
             title="Budgeted",
             description="Has budget.",
             type=TaskType.DEVELOPMENT,
@@ -430,7 +431,7 @@ class TestMakeBudgetChecker:
     def test_checker_returns_true_at_exact_budget(self) -> None:
         """Boundary: cost == limit returns True (>= comparison)."""
         task = Task(
-            id="task-b",
+            id=as_uuid("task-b"),
             title="Budgeted",
             description="Has budget.",
             type=TaskType.DEVELOPMENT,
@@ -458,7 +459,7 @@ class TestMakeBudgetChecker:
 
     def test_checker_returns_true_over_budget(self) -> None:
         task = Task(
-            id="task-b",
+            id=as_uuid("task-b"),
             title="Budgeted",
             description="Has budget.",
             type=TaskType.DEVELOPMENT,

@@ -19,6 +19,7 @@ from synthorg.communication.enums import (
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import as_uuid, sid
 
 
 @pytest.mark.unit
@@ -55,14 +56,14 @@ class TestDissentEventPublication:
             ),
         )
         conflict = Conflict(
-            id="conflict-abc123",
+            id=as_uuid("conflict-abc123"),
             type=ConflictType.ARCHITECTURE,
             subject="Service architecture choice",
             positions=positions,
             detected_at=ts,
         )
         resolution = ConflictResolution(
-            conflict_id="conflict-abc123",
+            conflict_id=sid("conflict-abc123"),
             outcome=ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY,
             winning_agent_id="agent-001",
             winning_position="Use microservices",
@@ -71,7 +72,7 @@ class TestDissentEventPublication:
             resolved_at=ts,
         )
         return DissentRecord(
-            id="dissent-001",
+            id=as_uuid("dissent-001"),
             conflict=conflict,
             resolution=resolution,
             dissenting_agent_id="agent-002",
@@ -91,13 +92,13 @@ class TestDissentEventPublication:
             event_type=AgUiEventType.DISSENT,
             agent_id=record.dissenting_agent_id,
             payload={
-                "dissent_id": record.id,
-                "conflict_id": record.conflict.id,
+                "dissent_id": str(record.id),
+                "conflict_id": str(record.conflict.id),
                 "dissenting_agent_id": record.dissenting_agent_id,
             },
         )
 
         event = queue.get_nowait()
         assert event.type == AgUiEventType.DISSENT
-        assert event.payload["dissent_id"] == "dissent-001"
-        assert event.payload["conflict_id"] == "conflict-abc123"
+        assert event.payload["dissent_id"] == sid("dissent-001")
+        assert event.payload["conflict_id"] == sid("conflict-abc123")

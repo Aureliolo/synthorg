@@ -27,7 +27,7 @@ from synthorg.meta.signal_models import (
     OrgTelemetrySummary,
 )
 from synthorg.meta.state import MetaStateSlice
-from tests._shared import make_app_state
+from tests._shared import as_uuid, make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -86,7 +86,7 @@ def fake_signals_service() -> AsyncMock:
     service.list_proposals = AsyncMock(return_value=((), 0))
     service.submit_proposal = AsyncMock(
         return_value=ApprovalItem(
-            id="proposal-1",
+            id=as_uuid("proposal-1"),
             action_type="signals.proposal",
             title="Test",
             description="desc",
@@ -202,7 +202,7 @@ class TestProposalsList:
             return_value=(
                 (
                     ApprovalItem(
-                        id="p-1",
+                        id=as_uuid("p-1"),
                         action_type="signals.proposal",
                         title="t",
                         description="d",

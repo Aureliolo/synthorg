@@ -11,6 +11,7 @@ import json
 import sqlite3
 from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import aiosqlite
 from aiosqlite import Row
@@ -126,7 +127,7 @@ def _row_to_item(row: Row) -> ApprovalItem:
     try:
         metadata_raw: dict[str, str] = json.loads(str(row["metadata"]))
         return ApprovalItem(
-            id=str(row["id"]),
+            id=UUID(str(row["id"])),
             action_type=str(row["action_type"]),
             title=str(row["title"]),
             description=str(row["description"]),
@@ -229,7 +230,7 @@ class SQLiteApprovalRepository:
             else None
         )
         params = (
-            item.id,
+            str(item.id),
             item.action_type,
             item.title,
             item.description,
@@ -252,11 +253,13 @@ class SQLiteApprovalRepository:
                 await self._db.execute(_APPROVALS_UPSERT_SQL, params)
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
-                await _safe_rollback(self._db, operation="save", approval_id=item.id)
+                await _safe_rollback(
+                    self._db, operation="save", approval_id=str(item.id)
+                )
                 msg = f"Constraint violation saving approval {item.id!r}"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
-                    approval_id=item.id,
+                    approval_id=str(item.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -265,11 +268,13 @@ class SQLiteApprovalRepository:
                     constraint=str(exc),
                 ) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(self._db, operation="save", approval_id=item.id)
+                await _safe_rollback(
+                    self._db, operation="save", approval_id=str(item.id)
+                )
                 msg = f"Failed to save approval {item.id!r}"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
-                    approval_id=item.id,
+                    approval_id=str(item.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -300,7 +305,7 @@ class SQLiteApprovalRepository:
             )
             param_rows.append(
                 (
-                    item.id,
+                    str(item.id),
                     item.action_type,
                     item.title,
                     item.description,

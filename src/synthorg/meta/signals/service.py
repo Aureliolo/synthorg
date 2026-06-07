@@ -301,7 +301,7 @@ class SignalsService:
             raise ValueError(msg)
 
         item = ApprovalItem(
-            id=NotBlankStr(str(uuid4())),
+            id=uuid4(),
             action_type=NotBlankStr(_PROPOSAL_ACTION_TYPE),
             title=proposal.title,
             description=proposal.description,

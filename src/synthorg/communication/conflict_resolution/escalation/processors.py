@@ -11,7 +11,7 @@ Two concrete strategies satisfy :class:`DecisionProcessor`:
   callers can fall back to a different strategy.
 """
 
-from typing import Final, assert_never
+from typing import assert_never
 from uuid import uuid4
 
 from synthorg.communication.conflict_resolution.escalation.models import (
@@ -47,12 +47,6 @@ logger = get_logger(__name__)
 
 _SYSTEM_CLOCK: Clock = SystemClock()
 
-# Dissent ids are ``f"dissent-{uuid4().hex[:N]}"``; N=12 keeps the id
-# short enough for human-readable audit lines while preserving ~48 bits
-# of entropy per row -- enough to avoid collisions within a single
-# escalation's position set without inflating the audit payload.
-_DISSENT_ID_HEX_LEN: Final[int] = 12
-
 _NO_WINNER_OUTCOMES = frozenset(
     {
         ConflictResolutionOutcome.ESCALATED_TO_HUMAN,
@@ -85,7 +79,7 @@ def _build_dissent_records_from_resolution(
     timestamp = effective_clock.now()
     return tuple(
         DissentRecord(
-            id=f"dissent-{uuid4().hex[:_DISSENT_ID_HEX_LEN]}",
+            id=uuid4(),
             conflict=conflict,
             resolution=resolution,
             dissenting_agent_id=pos.agent_id,
@@ -134,7 +128,7 @@ def _build_winner_resolution(
         )
         logger.warning(
             CONFLICT_ESCALATION_DECISION_FAILED,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             decided_by=decided_by,
             winning_agent_id=decision.winning_agent_id,
             strategy=ConflictResolutionStrategy.HUMAN.value,
@@ -142,7 +136,7 @@ def _build_winner_resolution(
         )
         raise EscalationDecisionAgentError(msg)
     return ConflictResolution(
-        conflict_id=conflict.id,
+        conflict_id=str(conflict.id),
         outcome=ConflictResolutionOutcome.RESOLVED_BY_HUMAN,
         winning_agent_id=decision.winning_agent_id,
         winning_position=winning_position,
@@ -170,7 +164,7 @@ def _build_reject_resolution(
     """
     effective_clock = clock or _SYSTEM_CLOCK
     return ConflictResolution(
-        conflict_id=conflict.id,
+        conflict_id=str(conflict.id),
         outcome=ConflictResolutionOutcome.REJECTED_BY_HUMAN,
         winning_agent_id=None,
         winning_position=None,
@@ -230,7 +224,7 @@ class WinnerOnlyDecisionProcessor:
             )
             logger.warning(
                 CONFLICT_ESCALATION_DECISION_FAILED,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 decided_by=decided_by,
                 decision_type=getattr(decision, "type", type(decision).__name__),
                 strategy=ConflictResolutionStrategy.HUMAN.value,

@@ -108,7 +108,7 @@ class AgentEngineResumeMixin:
             raise ExecutionStateError(msg)
         task = ctx.task_execution.task
         agent_id = str(identity.id)
-        task_id = task.id
+        task_id = str(task.id)
 
         with correlation_scope(
             agent_id=agent_id,

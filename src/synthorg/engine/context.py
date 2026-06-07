@@ -472,7 +472,7 @@ class AgentContext(BaseModel):
         snapshot = AgentContextSnapshot(
             execution_id=self.execution_id,
             agent_id=str(self.identity.id),
-            task_id=task_execution.task.id if task_execution is not None else None,
+            task_id=str(task_execution.task.id) if task_execution is not None else None,
             turn_count=self.turn_count,
             accumulated_cost=self.accumulated_cost,
             task_status=task_execution.status if task_execution is not None else None,

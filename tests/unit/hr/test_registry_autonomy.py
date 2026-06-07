@@ -153,7 +153,7 @@ class TestUpdateAutonomy:
         assert item.requested_by == "alice"
         assert item.risk_level == ApprovalRiskLevel.HIGH
         assert item.status == ApprovalStatus.PENDING
-        assert item.id == result.approval_id
+        assert str(item.id) == result.approval_id
 
     @pytest.mark.unit
     async def test_strategy_grant_auto_decides_and_applies(self) -> None:

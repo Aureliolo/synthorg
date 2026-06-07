@@ -6,6 +6,7 @@ following the patterns established in ``delegation/models.py``.
 
 from enum import StrEnum
 from typing import Final, Self
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -87,7 +88,7 @@ class Conflict(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    id: NotBlankStr = Field(description="Unique conflict identifier")
+    id: UUID = Field(default_factory=uuid4, description="Unique conflict identifier")
     type: ConflictType = Field(description="Conflict category")
     task_id: NotBlankStr | None = Field(
         default=None,
@@ -209,7 +210,7 @@ class DissentRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(description="Unique dissent record ID")
+    id: UUID = Field(default_factory=uuid4, description="Unique dissent record ID")
     conflict: Conflict = Field(description="Original conflict")
     resolution: ConflictResolution = Field(description="Resolution decision")
     dissenting_agent_id: NotBlankStr = Field(
@@ -250,10 +251,10 @@ class DissentRecord(BaseModel):
                 f"not found in conflict positions"
             )
             raise ValueError(msg)
-        if self.resolution.conflict_id != self.conflict.id:
+        if self.resolution.conflict_id != str(self.conflict.id):
             msg = (
                 f"resolution.conflict_id {self.resolution.conflict_id!r} "
-                f"does not match conflict.id {self.conflict.id!r}"
+                f"does not match conflict.id {str(self.conflict.id)!r}"
             )
             raise ValueError(msg)
         no_winner_outcomes = {
@@ -310,8 +311,8 @@ class DissentPayload(BaseModel):
             A typed dissent payload.
         """
         return cls(
-            dissent_id=record.id,
-            conflict_id=record.conflict.id,
+            dissent_id=str(record.id),
+            conflict_id=str(record.conflict.id),
             dissenting_agent_id=record.dissenting_agent_id,
             conflict_type=record.conflict.type,
             strategy_used=record.strategy_used,

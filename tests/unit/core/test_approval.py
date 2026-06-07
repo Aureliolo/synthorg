@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from tests._shared import as_uuid
 
 
 def _now() -> datetime:
@@ -16,7 +17,7 @@ def _now() -> datetime:
 class TestApprovalItem:
     def test_valid_pending_item(self) -> None:
         item = ApprovalItem(
-            id="approval-abc",
+            id=as_uuid("approval-abc"),
             action_type="code_merge",
             title="Merge PR #42",
             description="Merging feature branch",
@@ -31,7 +32,7 @@ class TestApprovalItem:
     def test_pending_must_not_have_decided_fields(self) -> None:
         with pytest.raises(ValueError, match="decided_at and decided_by must be None"):
             ApprovalItem(
-                id="approval-abc",
+                id=as_uuid("approval-abc"),
                 action_type="code_merge",
                 title="Merge PR",
                 description="desc",
@@ -46,7 +47,7 @@ class TestApprovalItem:
     def test_approved_requires_decided_fields(self) -> None:
         now = _now()
         item = ApprovalItem(
-            id="approval-abc",
+            id=as_uuid("approval-abc"),
             action_type="deployment",
             title="Deploy v2",
             description="Production deploy",
@@ -63,7 +64,7 @@ class TestApprovalItem:
     def test_approved_missing_decided_fields_raises(self) -> None:
         with pytest.raises(ValueError, match="decided_at and decided_by are required"):
             ApprovalItem(
-                id="approval-abc",
+                id=as_uuid("approval-abc"),
                 action_type="deployment",
                 title="Deploy v2",
                 description="desc",
@@ -77,7 +78,7 @@ class TestApprovalItem:
         now = _now()
         with pytest.raises(ValueError, match="at least 1 character"):
             ApprovalItem(
-                id="approval-abc",
+                id=as_uuid("approval-abc"),
                 action_type="budget_spend",
                 title="Big purchase",
                 description="desc",
@@ -93,7 +94,7 @@ class TestApprovalItem:
     def test_rejected_with_reason_is_valid(self) -> None:
         now = _now()
         item = ApprovalItem(
-            id="approval-abc",
+            id=as_uuid("approval-abc"),
             action_type="budget_spend",
             title="Big purchase",
             description="desc",
@@ -110,7 +111,7 @@ class TestApprovalItem:
     def test_expired_must_not_have_decided_fields(self) -> None:
         now = _now()
         item = ApprovalItem(
-            id="approval-abc",
+            id=as_uuid("approval-abc"),
             action_type="code_merge",
             title="Merge",
             description="desc",
@@ -126,7 +127,7 @@ class TestApprovalItem:
         now = _now()
         with pytest.raises(ValueError, match="expires_at must be after created_at"):
             ApprovalItem(
-                id="approval-abc",
+                id=as_uuid("approval-abc"),
                 action_type="code_merge",
                 title="Merge",
                 description="desc",
@@ -139,7 +140,7 @@ class TestApprovalItem:
     def test_consumed_at_allowed_on_approved(self) -> None:
         now = _now()
         item = ApprovalItem(
-            id="approval-abc",
+            id=as_uuid("approval-abc"),
             action_type="external_data:request",
             title="External call",
             description="desc",
@@ -157,7 +158,7 @@ class TestApprovalItem:
         now = _now()
         with pytest.raises(ValueError, match="consumed_at may only be set"):
             ApprovalItem(
-                id="approval-abc",
+                id=as_uuid("approval-abc"),
                 action_type="external_data:request",
                 title="External call",
                 description="desc",
@@ -170,7 +171,7 @@ class TestApprovalItem:
 
     def test_metadata_defaults_to_empty(self) -> None:
         item = ApprovalItem(
-            id="approval-abc",
+            id=as_uuid("approval-abc"),
             action_type="code_merge",
             title="Merge",
             description="desc",
@@ -182,7 +183,7 @@ class TestApprovalItem:
 
     def test_with_task_id_and_metadata(self) -> None:
         item = ApprovalItem(
-            id="approval-abc",
+            id=as_uuid("approval-abc"),
             action_type="code_merge",
             title="Merge",
             description="desc",

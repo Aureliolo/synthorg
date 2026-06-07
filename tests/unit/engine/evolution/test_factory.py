@@ -14,6 +14,7 @@ from synthorg.engine.evolution.service import EvolutionService
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.versioning.service import VersioningService
+from tests._shared import as_uuid
 
 
 def _build_service(
@@ -94,7 +95,7 @@ class TestBuildShadowGuard:
         if task_provider == "configured":
             probe_tasks = (
                 Task(
-                    id="probe-1",
+                    id=as_uuid("probe-1"),
                     title="probe",
                     description="probe",
                     type=TaskType.DEVELOPMENT,

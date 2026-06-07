@@ -2,6 +2,7 @@
 
 import json
 from typing import Any, cast
+from uuid import UUID
 
 import pytest
 
@@ -32,6 +33,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
+from tests._shared import as_uuid
 
 
 def _make_task(
@@ -43,7 +45,7 @@ def _make_task(
 ) -> Task:
     """Create a minimal task for prompt tests."""
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title=title,
         description=description,
         type=TaskType.DEVELOPMENT,
@@ -313,9 +315,11 @@ class TestParseToolCallResponse:
         assert isinstance(plan, DecompositionPlan)
         assert plan.parent_task_id == "task-llm-1"
         assert len(plan.subtasks) == 2
-        assert plan.subtasks[0].id == "sub-0"
-        assert plan.subtasks[1].id == "sub-1"
-        assert plan.subtasks[1].dependencies == ("sub-0",)
+        # The parser remaps the model-assigned subtask ids ("sub-0"/"sub-1")
+        # to fresh UUIDs, preserving the sibling dependency edge between them.
+        assert str(UUID(plan.subtasks[0].id)) == plan.subtasks[0].id
+        assert str(UUID(plan.subtasks[1].id)) == plan.subtasks[1].id
+        assert plan.subtasks[1].dependencies == (plan.subtasks[0].id,)
         assert plan.task_structure is TaskStructure.SEQUENTIAL
         assert plan.coordination_topology is CoordinationTopology.AUTO
 

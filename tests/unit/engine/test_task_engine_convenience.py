@@ -109,7 +109,7 @@ class TestTransitionOverridesViaEngine:
             requested_by="alice",
         )
         transitioned, prev = await engine.transition_task(
-            task.id,
+            str(task.id),
             TaskStatus.ASSIGNED,
             requested_by="alice",
             reason="Assigning",
@@ -128,7 +128,7 @@ class TestTransitionOverridesViaEngine:
         )
         # CREATED -> ASSIGNED
         assigned, prev1 = await engine.transition_task(
-            task.id,
+            str(task.id),
             TaskStatus.ASSIGNED,
             requested_by="alice",
             reason="Assigning",
@@ -138,7 +138,7 @@ class TestTransitionOverridesViaEngine:
 
         # ASSIGNED -> IN_PROGRESS
         in_progress, prev2 = await engine.transition_task(
-            assigned.id,
+            str(assigned.id),
             TaskStatus.IN_PROGRESS,
             requested_by="bob",
             reason="Starting work",
@@ -166,7 +166,7 @@ class TestConvenienceMethodValidationWrapping:
         # 'id' is an immutable field rejected by model_validator
         with pytest.raises(TaskMutationError):
             await engine.update_task(
-                task.id,
+                str(task.id),
                 {"id": "hacked"},
                 requested_by="alice",
             )
@@ -183,7 +183,7 @@ class TestConvenienceMethodValidationWrapping:
         # Blank requested_by should trigger NotBlankStr validation
         with pytest.raises(TaskMutationError):
             await engine.transition_task(
-                task.id,
+                str(task.id),
                 TaskStatus.ASSIGNED,
                 requested_by="   ",
                 reason="Assigning",
@@ -208,7 +208,7 @@ class TestVersionConflictViaConvenienceMethods:
         )
         with pytest.raises(TaskVersionConflictError):
             await engine.update_task(
-                task.id,
+                str(task.id),
                 {"title": "New title"},
                 requested_by="alice",
                 expected_version=99,
@@ -224,7 +224,7 @@ class TestVersionConflictViaConvenienceMethods:
         )
         with pytest.raises(TaskVersionConflictError):
             await engine.transition_task(
-                task.id,
+                str(task.id),
                 TaskStatus.ASSIGNED,
                 requested_by="alice",
                 reason="Assigning",

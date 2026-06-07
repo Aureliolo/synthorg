@@ -53,7 +53,7 @@ from synthorg.meta.state import MetaStateSlice
 from synthorg.persistence.conversation_participant_protocol import (
     ConversationParticipantFilterSpec,
 )
-from tests._shared import FakeClock, make_app_state
+from tests._shared import FakeClock, as_uuid, make_app_state, sid
 from tests.unit.meta.chief_of_staff.group_chat_fakes import (
     FakeInviteRepo,
     FakeParticipantRepo,
@@ -431,7 +431,7 @@ class TestInviteResume:
         store = ApprovalStore()
         await store.add(
             ApprovalItem(
-                id=NotBlankStr("a-other"),
+                id=as_uuid("a-other"),
                 action_type=NotBlankStr("review:gate"),
                 title=NotBlankStr("t"),
                 description=NotBlankStr("d"),
@@ -570,7 +570,7 @@ class TestInviteResume:
         store = ApprovalStore()
         await store.add(
             ApprovalItem(
-                id=NotBlankStr("a-inv"),
+                id=as_uuid("a-inv"),
                 action_type=NotBlankStr("conversational:invite_agent"),
                 title=NotBlankStr("t"),
                 description=NotBlankStr("d"),
@@ -584,7 +584,7 @@ class TestInviteResume:
         app_state = make_app_state(approval_store=store, clock=FakeClock(start=START))
         with pytest.raises(ServiceUnavailableError):
             await try_conversational_invite_resume(
-                app_state, "a-inv", approved=True, decided_by=_DECIDED_BY
+                app_state, sid("a-inv"), approved=True, decided_by=_DECIDED_BY
             )
 
 

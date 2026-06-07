@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
+from uuid import UUID
 
 import pytest
 from typeguard import suppress_type_checks
@@ -106,7 +107,7 @@ class TestApplyCreate:
         assert result.success is True
         assert result.task is not None
         assert result.task.title == "New Task"
-        assert result.task.id.startswith("task-")
+        assert isinstance(result.task.id, UUID)
         assert result.version == 1
 
     async def test_create_validation_error(
@@ -143,7 +144,7 @@ class TestApplyCreate:
         )
         result = await apply_create(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.task is not None
-        stored = await persistence.tasks.get(result.task.id)
+        stored = await persistence.tasks.get(str(result.task.id))
         assert stored is not None
 
 
@@ -181,7 +182,7 @@ class TestApplyUpdate:
         mutation = UpdateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=created.task.id,
+            task_id=str(created.task.id),
             updates={"title": "Updated"},
         )
         result = await apply_update(mutation, persistence, versions)  # type: ignore[arg-type]
@@ -215,7 +216,7 @@ class TestApplyUpdate:
         mutation = UpdateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=created.task.id,
+            task_id=str(created.task.id),
             updates={"title": "X"},
             expected_version=99,
         )
@@ -233,7 +234,7 @@ class TestApplyUpdate:
         mutation = UpdateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=created.task.id,
+            task_id=str(created.task.id),
             updates={},
         )
         result = await apply_update(mutation, persistence, versions)  # type: ignore[arg-type]
@@ -252,7 +253,7 @@ class TestApplyUpdate:
         mutation = UpdateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=created.task.id,
+            task_id=str(created.task.id),
             updates={"priority": "bogus_priority"},
         )
         result = await apply_update(mutation, persistence, versions)  # type: ignore[arg-type]
@@ -269,7 +270,7 @@ class TestApplyUpdate:
         mutation = UpdateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=created.task.id,
+            task_id=str(created.task.id),
             updates={"title": "New"},
         )
         result = await apply_update(mutation, persistence, versions)  # type: ignore[arg-type]
@@ -307,7 +308,7 @@ class TestApplyTransition:
         mutation = TransitionTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=created.task.id,
+            task_id=str(created.task.id),
             target_status=TaskStatus.ASSIGNED,
             reason="Assigning",
             overrides={"assigned_to": "bob"},
@@ -346,7 +347,7 @@ class TestApplyTransition:
         mutation = TransitionTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=created.task.id,
+            task_id=str(created.task.id),
             target_status=TaskStatus.ASSIGNED,
             reason="Assigning",
             overrides={"assigned_to": "bob"},
@@ -368,7 +369,7 @@ class TestApplyTransition:
         mutation = TransitionTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=created.task.id,
+            task_id=str(created.task.id),
             target_status=TaskStatus.COMPLETED,
             reason="skip",
             overrides={"assigned_to": "bob"},
@@ -405,13 +406,13 @@ class TestApplyDelete:
         mutation = DeleteTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=create_result.task.id,
+            task_id=str(create_result.task.id),
         )
         result = await apply_delete(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is True
         assert result.version == 0
 
-        stored = await persistence.tasks.get(create_result.task.id)
+        stored = await persistence.tasks.get(str(create_result.task.id))
         assert stored is None
 
     async def test_delete_not_found(
@@ -446,7 +447,7 @@ class TestApplyDelete:
             timings,
         )
         assert create_result.task is not None
-        task_id = create_result.task.id
+        task_id = str(create_result.task.id)
         assert versions.get(task_id) == 1
 
         await apply_delete(
@@ -487,7 +488,7 @@ class TestApplyCancel:
             timings,
         )
         assert create_result.task is not None
-        task_id = create_result.task.id
+        task_id = str(create_result.task.id)
         await apply_transition(
             TransitionTaskMutation(
                 request_id="req-t",
@@ -559,7 +560,7 @@ class TestApplyCancel:
         mutation = CancelTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=create_result.task.id,
+            task_id=str(create_result.task.id),
             reason="Oops",
         )
         result = await apply_cancel(mutation, persistence, versions, timings)  # type: ignore[arg-type]
@@ -591,7 +592,7 @@ class TestRecordTaskRunWiring:
             timings,
         )
         assert create_result.task is not None
-        task_id = create_result.task.id
+        task_id = str(create_result.task.id)
         await apply_transition(
             TransitionTaskMutation(
                 request_id="req-a",
@@ -687,7 +688,7 @@ class TestRecordTaskRunWiring:
                 TransitionTaskMutation(
                     request_id="req-a",
                     requested_by="alice",
-                    task_id=create_result.task.id,
+                    task_id=str(create_result.task.id),
                     target_status=TaskStatus.ASSIGNED,
                     reason="assign",
                     overrides={"assigned_to": "bob"},

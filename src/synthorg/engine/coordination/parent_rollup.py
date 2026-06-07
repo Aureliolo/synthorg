@@ -262,7 +262,7 @@ def compute_status_rollup(  # noqa: PLR0913
     logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
     try:
         statuses = _collect_subtask_statuses(dispatch_result, decomp_result)
-        rollup = decomposition_service.rollup_status(context.task.id, statuses)
+        rollup = decomposition_service.rollup_status(str(context.task.id), statuses)
     except Exception as exc:
         reraise_critical(exc)
         elapsed = clock.monotonic() - start
@@ -406,18 +406,18 @@ async def run_update_parent_phase(
     start = clock.monotonic()
     logger.info(COORDINATION_PHASE_STARTED, phase="update_parent")
     try:
-        live_task = await task_engine.get_task(context.task.id)
+        live_task = await task_engine.get_task(str(context.task.id))
         if live_task is None:
             _fail_update_parent_phase(
                 phases,
                 clock=clock,
-                error=f"Parent task {context.task.id!r} not found",
+                error=f"Parent task {str(context.task.id)!r} not found",
                 start=start,
             )
             return
         outcome = await advance_parent_to_rollup_status(
             task_engine,
-            task_id=context.task.id,
+            task_id=str(context.task.id),
             current_status=live_task.status,
             rollup=rollup,
         )

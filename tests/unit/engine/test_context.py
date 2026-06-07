@@ -232,7 +232,7 @@ class TestAgentContextSnapshot:
     def test_snapshot_with_task(self, sample_agent_context: AgentContext) -> None:
         assert sample_agent_context.task_execution is not None
         snapshot = sample_agent_context.to_snapshot()
-        assert snapshot.task_id == sample_agent_context.task_execution.task.id
+        assert snapshot.task_id == str(sample_agent_context.task_execution.task.id)
         assert snapshot.task_status == sample_agent_context.task_execution.status
 
     def test_snapshot_without_task(

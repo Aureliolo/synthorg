@@ -8,7 +8,7 @@ and trust integration.
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
@@ -603,7 +603,7 @@ class PromotionService:
         now = datetime.now(UTC)
 
         approval = ApprovalItem(
-            id=approval_id,
+            id=UUID(approval_id),
             action_type="org:promote",
             title=(
                 f"{evaluation.direction.value.title()}: "

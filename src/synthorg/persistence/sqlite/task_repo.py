@@ -133,7 +133,7 @@ ON CONFLICT(id) DO UPDATE SET
                 msg = f"Failed to save task {task.id!r}"
                 logger.warning(
                     PERSISTENCE_TASK_SAVE_FAILED,
-                    task_id=task.id,
+                    task_id=str(task.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

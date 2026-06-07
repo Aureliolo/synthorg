@@ -36,6 +36,7 @@ from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.role import Authority
 from synthorg.core.task import Task
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import coerce_id, sid
 
 
 def _model_config() -> ModelConfig:
@@ -73,6 +74,7 @@ def _make_task(**overrides: object) -> Task:
         "created_by": "ceo",
     }
     defaults.update(overrides)
+    defaults["id"] = coerce_id(defaults["id"])
     return Task(**defaults)  # type: ignore[arg-type]
 
 
@@ -152,7 +154,7 @@ class TestFullDelegationFlow:
         assert r1.success is True
         sub1 = r1.delegated_task
         assert sub1 is not None
-        assert sub1.parent_task_id == "task-root"
+        assert sub1.parent_task_id == sid("task-root")
         assert sub1.delegation_chain == ("ceo",)
         assert sub1.status is TaskStatus.CREATED
         assert "Focus on backend API" in sub1.description
@@ -178,7 +180,7 @@ class TestFullDelegationFlow:
         sub2 = r2.delegated_task
         assert sub2 is not None
         assert sub2.delegation_chain == ("ceo", "cto")
-        assert sub2.parent_task_id == sub1.id
+        assert sub2.parent_task_id == str(sub1.id)
 
         # Verify audit trail
         trail = service.get_audit_trail()
@@ -368,5 +370,5 @@ class TestDelegationChainValidation:
         assert sub2.delegation_chain == ("ceo", "cto")
 
         # Verify parent chain
-        assert sub2.parent_task_id == sub1.id
-        assert sub1.parent_task_id == "task-root"
+        assert sub2.parent_task_id == str(sub1.id)
+        assert sub1.parent_task_id == sid("task-root")

@@ -43,6 +43,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -112,7 +113,7 @@ def _make_identity() -> AgentIdentity:
 
 def _make_task() -> Task:
     return Task(
-        id="task-inject-001",
+        id=as_uuid("task-inject-001"),
         title=_TASK_TITLE,
         description="Build the checkout flow end to end.",
         type=TaskType.DEVELOPMENT,

@@ -16,6 +16,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.models import KnowledgeSource
 from synthorg.persistence.knowledge_protocol import KnowledgeSourceFilter
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -23,7 +24,7 @@ _HASH = "a" * 64
 
 
 def _project(project_id: str = "proj-1") -> Project:
-    return Project(id=NotBlankStr(project_id), name=NotBlankStr("Demo"))
+    return Project(id=as_uuid(project_id), name=NotBlankStr("Demo"))
 
 
 def _source(  # noqa: PLR0913 -- test helper takes one kwarg per field
@@ -41,7 +42,7 @@ def _source(  # noqa: PLR0913 -- test helper takes one kwarg per field
     return KnowledgeSource(
         source_id=NotBlankStr(source_id),
         source_type=source_type,
-        project_id=NotBlankStr(project_id) if project_id is not None else None,
+        project_id=NotBlankStr(sid(project_id)) if project_id is not None else None,
         uri=NotBlankStr(uri),
         title=title,
         content_hash=_HASH,
@@ -105,7 +106,9 @@ class TestKnowledgeSourceRepository:
             _source(source_id="other", project_id="proj-2")
         )
         rows = await backend.knowledge_sources.query(
-            KnowledgeSourceFilter(project_id=NotBlankStr("proj-1"), include_global=True)
+            KnowledgeSourceFilter(
+                project_id=NotBlankStr(sid("proj-1")), include_global=True
+            )
         )
         assert {r.source_id for r in rows} == {"scoped", "glob"}
 
@@ -128,7 +131,7 @@ class TestKnowledgeSourceRepository:
         )
         rows = await backend.knowledge_sources.query(
             KnowledgeSourceFilter(
-                project_id=NotBlankStr("proj-1"), source_type=SourceType.WEB
+                project_id=NotBlankStr(sid("proj-1")), source_type=SourceType.WEB
             )
         )
         assert {r.source_id for r in rows} == {"web"}
@@ -142,7 +145,9 @@ class TestKnowledgeSourceRepository:
             _source(source_id="stale", status=SourceStatus.STALE)
         )
         rows = await backend.knowledge_sources.query(
-            KnowledgeSourceFilter(project_id=NotBlankStr("proj-1"), stale_only=True)
+            KnowledgeSourceFilter(
+                project_id=NotBlankStr(sid("proj-1")), stale_only=True
+            )
         )
         assert {r.source_id for r in rows} == {"stale"}
 
@@ -155,7 +160,7 @@ class TestKnowledgeSourceRepository:
                     ts=datetime(2026, 5, 21, tzinfo=UTC) + timedelta(seconds=i),
                 )
             )
-        spec = KnowledgeSourceFilter(project_id=NotBlankStr("proj-1"))
+        spec = KnowledgeSourceFilter(project_id=NotBlankStr(sid("proj-1")))
         assert await backend.knowledge_sources.count(spec) == 3
         assert len(await backend.knowledge_sources.query(spec)) == 3
 
@@ -175,6 +180,6 @@ class TestKnowledgeSourceRepository:
         await backend.projects.save(_project())
         await backend.knowledge_sources.save(_source(source_id="scoped"))
         await backend.knowledge_sources.save(_source(source_id="glob", project_id=None))
-        await backend.projects.delete(NotBlankStr("proj-1"))
+        await backend.projects.delete(NotBlankStr(sid("proj-1")))
         assert await backend.knowledge_sources.get(NotBlankStr("scoped")) is None
         assert await backend.knowledge_sources.get(NotBlankStr("glob")) is not None

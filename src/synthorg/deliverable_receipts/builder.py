@@ -108,10 +108,10 @@ class ReceiptBuilder:
         Returns:
             The fully populated (best-effort) :class:`DeliverableReceipt`.
         """
-        total_cost, currency = await self._cost(task.id)
+        total_cost, currency = await self._cost(str(task.id))
         return DeliverableReceipt(
             receipt_id=str(uuid4()),
-            task_id=task.id,
+            task_id=str(task.id),
             project_id=task.project,
             execution_id=execution_id,
             deliverable_doc_slug=deliverable_doc_slug,
@@ -179,7 +179,7 @@ class ReceiptBuilder:
         summaries = await self._brain_service.list_current(
             project_id=task.project,
             entry_kind=BrainEntryKind.DECISION,
-            related_task_id=task.id,
+            related_task_id=str(task.id),
             limit=_SIGNAL_QUERY_LIMIT,
         )
         entries: list[ReceiptDecisionEntry] = []

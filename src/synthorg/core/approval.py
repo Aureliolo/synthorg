@@ -6,6 +6,7 @@ Used by the approval queue API and referenced by engine and security subsystems.
 
 import copy
 from typing import Self
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -60,7 +61,7 @@ class ApprovalItem(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr
+    id: UUID = Field(default_factory=uuid4)
     action_type: NotBlankStr
     title: NotBlankStr
     description: NotBlankStr

@@ -57,6 +57,7 @@ from synthorg.settings.service import SettingsService
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
 from tests._shared import (
     LoopAsyncClient,
+    as_uuid,
     mock_of,
 )
 from tests._shared import (
@@ -1018,7 +1019,7 @@ def make_task(  # noqa: PLR0913
     }:
         assigned_to = "alice"
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title=title,
         description=description,
         type=TaskType.DEVELOPMENT,
@@ -1047,7 +1048,7 @@ def make_approval(  # noqa: PLR0913
     if ttl_seconds is not None:
         expires_at = now + timedelta(seconds=ttl_seconds)
     return ApprovalItem(
-        id=approval_id,
+        id=as_uuid(approval_id),
         action_type=action_type,
         title=title,
         description=description,

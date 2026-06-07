@@ -85,7 +85,7 @@ def _make_task(
     budget_limit: float = 0.0,
 ) -> Task:
     return Task(
-        id="task-001",
+        id=uuid4(),
         title="Test task",
         description="A test task",
         type=TaskType.DEVELOPMENT,

@@ -260,7 +260,7 @@ async def _create_approval(
 
     now = datetime.now(UTC)
     item = ApprovalItem(
-        id=f"approval-{uuid4().hex}",
+        id=uuid4(),
         action_type=action_type,
         title=title,
         description=description,

@@ -90,7 +90,7 @@ def build_execution_waves(
     parallel_groups = dag.parallel_groups()
     routing_lookup = _build_routing_lookup(routing_result)
     workspace_lookup = _build_workspace_lookup(workspaces)
-    task_lookup = {t.id: t for t in decomposition_result.created_tasks}
+    task_lookup = {str(t.id): t for t in decomposition_result.created_tasks}
     dep_map = {s.id: s.dependencies for s in plan.subtasks}
 
     groups: list[ParallelExecutionGroup] = []

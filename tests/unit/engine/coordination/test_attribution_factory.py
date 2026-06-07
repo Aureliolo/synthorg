@@ -30,6 +30,7 @@ from synthorg.engine.routing.models import (
 )
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import coerce_id
 
 
 def _make_identity(name: str = "test-agent", **kwargs: object) -> AgentIdentity:
@@ -65,6 +66,7 @@ def _make_task(
         "estimated_complexity": Complexity.SIMPLE,
     }
     defaults.update(kwargs)
+    defaults["id"] = coerce_id(defaults["id"])
     return Task(title=title, **defaults)  # type: ignore[arg-type]
 
 

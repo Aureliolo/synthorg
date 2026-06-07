@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
+from uuid import UUID
 
 import pytest
 
@@ -73,7 +74,7 @@ class TestCreateConflict:
                 ),
             ],
         )
-        assert conflict.id.startswith("conflict-")
+        assert isinstance(conflict.id, UUID)
         assert conflict.type == ConflictType.ARCHITECTURE
 
     def test_cross_department_detection(

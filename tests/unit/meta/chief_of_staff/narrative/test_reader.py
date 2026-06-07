@@ -34,7 +34,7 @@ from synthorg.project_brain.models import (
     DecisionPayload,
 )
 from synthorg.project_brain.service import ProjectBrainService
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -43,7 +43,7 @@ _NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
 def _task(task_id: str = "task-1", status: TaskStatus = TaskStatus.COMPLETED) -> Task:
     return Task(
-        id=NotBlankStr(task_id),
+        id=as_uuid(task_id),
         title=NotBlankStr("Ship checkout"),
         description=NotBlankStr("Build the checkout flow end to end."),
         type=TaskType.DEVELOPMENT,

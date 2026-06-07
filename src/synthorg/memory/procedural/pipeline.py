@@ -68,7 +68,7 @@ def _build_payload(
         tool_calls.extend(turn.tool_calls_made)
 
     return FailureAnalysisPayload(
-        task_id=task.id,
+        task_id=str(task.id),
         task_title=task.title,
         task_description=task.description,
         task_type=task.type,

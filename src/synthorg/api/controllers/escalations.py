@@ -102,7 +102,7 @@ def _to_response(escalation: Escalation) -> EscalationResponse:
     """
     return EscalationResponse(
         escalation=escalation,
-        conflict_id=escalation.conflict.id,
+        conflict_id=str(escalation.conflict.id),
         status=escalation.status,
     )
 

@@ -87,7 +87,7 @@ class SQLiteProjectRepository:
             Tuple of scalar SQL parameter values for INSERT/UPDATE.
         """
         return (
-            project.id,
+            str(project.id),
             project.name,
             project.description,
             json.dumps(list(project.team)),
@@ -122,7 +122,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 await self._safe_rollback()
                 logger.warning(
                     PERSISTENCE_PROJECT_SAVE_FAILED,
-                    project_id=project.id,
+                    project_id=str(project.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                     sqlite_errorname=getattr(exc, "sqlite_errorname", None),
@@ -139,7 +139,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 msg = f"Failed to create project {project.id!r}"
                 logger.warning(
                     PERSISTENCE_PROJECT_SAVE_FAILED,
-                    project_id=project.id,
+                    project_id=str(project.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -206,7 +206,7 @@ WHERE id=?""",
                         project.deadline,
                         project.budget,
                         project.status.value,
-                        project.id,
+                        str(project.id),
                     ),
                 )
                 await self._db.commit()
@@ -215,7 +215,7 @@ WHERE id=?""",
                 msg = f"Failed to update project {project.id!r}"
                 logger.warning(
                     PERSISTENCE_PROJECT_SAVE_FAILED,
-                    project_id=project.id,
+                    project_id=str(project.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -223,7 +223,7 @@ WHERE id=?""",
             if cursor.rowcount == 0:
                 logger.warning(
                     PERSISTENCE_PROJECT_SAVE_FAILED,
-                    project_id=project.id,
+                    project_id=str(project.id),
                     error_type="RecordNotFoundError",
                     error="No project with matching id",
                 )
@@ -263,7 +263,7 @@ ON CONFLICT(id) DO UPDATE SET
                 msg = f"Failed to save project {project.id!r}"
                 logger.warning(
                     PERSISTENCE_PROJECT_SAVE_FAILED,
-                    project_id=project.id,
+                    project_id=str(project.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

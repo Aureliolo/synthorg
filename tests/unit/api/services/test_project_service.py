@@ -22,6 +22,7 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.project_protocol import (
     ProjectFilterSpec,
 )
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -33,19 +34,19 @@ class _FakeProjectRepo:
         self._rows: dict[str, Project] = {}
 
     async def create(self, project: Project) -> None:
-        if project.id in self._rows:
+        if str(project.id) in self._rows:
             msg = f"Project with id {project.id!r} already exists"
             raise DuplicateRecordError(msg)
-        self._rows[project.id] = project
+        self._rows[str(project.id)] = project
 
     async def update(self, project: Project) -> None:
-        if project.id not in self._rows:
+        if str(project.id) not in self._rows:
             msg = f"No project with id {project.id!r}"
             raise RecordNotFoundError(msg)
-        self._rows[project.id] = project
+        self._rows[str(project.id)] = project
 
     async def save(self, project: Project) -> None:
-        self._rows[project.id] = project
+        self._rows[str(project.id)] = project
 
     async def get(self, project_id: NotBlankStr) -> Project | None:
         return self._rows.get(project_id)
@@ -91,7 +92,7 @@ def _make_project(
     lead: str = "agent-lead",
 ) -> Project:
     return Project(
-        id=NotBlankStr(project_id),
+        id=as_uuid(project_id),
         name=NotBlankStr(name),
         description="",
         team=(),
@@ -116,14 +117,14 @@ async def test_create_persists_and_emits_api_project_created() -> None:
         result = await service.create(project)
 
     assert result == project
-    fetched = await repo.get(project.id)
+    fetched = await repo.get(str(project.id))
     assert fetched == project
     created_events = [log for log in logs if log["event"] == API_PROJECT_CREATED]
     assert len(created_events) == 1, (
         f"expected exactly one {API_PROJECT_CREATED} event in {logs}"
     )
     event = created_events[0]
-    assert event["project_id"] == project.id
+    assert event["project_id"] == str(project.id)
     assert event["status"] == project.status.value
     assert event["lead"] == project.lead
 
@@ -143,13 +144,13 @@ async def test_update_persists_and_emits_api_project_updated() -> None:
     with structlog.testing.capture_logs() as logs:
         await service.update(updated)
 
-    fetched = await repo.get(project.id)
+    fetched = await repo.get(str(project.id))
     assert fetched is not None
     assert fetched.name == "Renamed"
     updated_events = [log for log in logs if log["event"] == API_PROJECT_UPDATED]
     assert len(updated_events) == 1
     event = updated_events[0]
-    assert event["project_id"] == updated.id
+    assert event["project_id"] == str(updated.id)
     assert event["status"] == updated.status.value
 
 
@@ -212,7 +213,7 @@ async def test_mutation_failures_emit_single_warning_audit(
         f"expected one WARNING audit on {mode} -- got {warning_audits}"
     )
     assert warning_audits[0]["error_type"] == expected_error_type
-    assert warning_audits[0]["project_id"] == project.id
+    assert warning_audits[0]["project_id"] == str(project.id)
 
 
 async def test_delete_returns_true_and_emits_api_project_deleted() -> None:
@@ -226,13 +227,13 @@ async def test_delete_returns_true_and_emits_api_project_deleted() -> None:
     await repo.save(project)
 
     with structlog.testing.capture_logs() as logs:
-        deleted = await service.delete(project.id)
+        deleted = await service.delete(str(project.id))
 
     assert deleted is True
-    assert await repo.get(project.id) is None
+    assert await repo.get(str(project.id)) is None
     deleted_events = [log for log in logs if log["event"] == API_PROJECT_DELETED]
     assert len(deleted_events) == 1
-    assert deleted_events[0]["project_id"] == project.id
+    assert deleted_events[0]["project_id"] == str(project.id)
 
 
 async def test_delete_returns_false_for_missing_and_does_not_emit_event() -> None:
@@ -254,7 +255,7 @@ async def test_get_passes_through_to_repo() -> None:
     project = _make_project()
     await repo.save(project)
 
-    fetched = await service.get(project.id)
+    fetched = await service.get(str(project.id))
     assert fetched == project
     assert await service.get(NotBlankStr("proj-missing")) is None
 
@@ -288,7 +289,7 @@ async def test_list_projects_filters_by_status_and_lead() -> None:
     # The PLANNING filter must exclude the ACTIVE row.  Asserting the
     # exact tuple also pins the ordering contract documented on
     # ``ProjectRepository.list_projects`` (ascending id).
-    assert all_planning == (p1, p2)
+    assert all_planning == tuple(sorted((p1, p2), key=lambda p: str(p.id)))
 
     only_active = await service.list_projects(
         status=ProjectStatus.ACTIVE,

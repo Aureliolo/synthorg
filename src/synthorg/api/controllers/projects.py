@@ -226,7 +226,7 @@ class ProjectController(Controller):
             The created project with generated ID.
         """
         project = Project(
-            id=f"proj-{uuid.uuid4().hex[:12]}",
+            id=uuid.uuid4(),
             name=data.name,
             description=data.description,
             team=data.team,
@@ -240,7 +240,7 @@ class ProjectController(Controller):
             WsEventType.PROJECT_CREATED,
             CHANNEL_PROJECTS,
             {
-                "project_id": created.id,
+                "project_id": str(created.id),
                 "name": created.name,
                 "status": created.status.value,
                 "lead": created.lead,

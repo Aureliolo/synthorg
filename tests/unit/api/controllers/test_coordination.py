@@ -60,8 +60,8 @@ def _insert_task(task_engine: TaskEngine, *, task_id: str = _TEST_TASK_ID) -> st
     # internal ``_tasks`` dict is the in-memory store coordinator's
     # ``get_task`` reads through.
     repo = persistence.tasks
-    repo._tasks[task.id] = task  # type: ignore[attr-defined]  # fake repo
-    return task.id
+    repo._tasks[str(task.id)] = task  # type: ignore[attr-defined]  # fake repo
+    return str(task.id)
 
 
 def _make_agent(name: str = "test-agent") -> AgentIdentity:
@@ -346,7 +346,7 @@ class TestCoordinationControllerNoCoordinator:
         from tests.unit.api.conftest import make_task
 
         task = make_task()
-        fake_persistence.tasks._tasks[task.id] = task
+        fake_persistence.tasks._tasks[str(task.id)] = task
 
         resp = await async_test_client.post(
             f"/api/v1/tasks/{task.id}/coordinate",

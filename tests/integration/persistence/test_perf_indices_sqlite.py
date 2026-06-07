@@ -24,6 +24,7 @@ from synthorg.core.enums import DecisionOutcome, TaskType
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -38,7 +39,7 @@ async def _seed_tasks(backend: SQLitePersistenceBackend) -> None:
     for task_id in _TASKS:
         await backend.tasks.save(
             Task(
-                id=NotBlankStr(task_id),
+                id=as_uuid(task_id),
                 title=NotBlankStr(task_id),
                 description=NotBlankStr("perf-index fixture"),
                 type=TaskType.DEVELOPMENT,
@@ -53,7 +54,7 @@ async def _seed_cost_records(backend: SQLitePersistenceBackend, n: int) -> None:
         await backend.cost_records.append(
             CostRecord(
                 agent_id=NotBlankStr(_AGENTS[i % len(_AGENTS)]),
-                task_id=NotBlankStr(_TASKS[i % len(_TASKS)]),
+                task_id=NotBlankStr(sid(_TASKS[i % len(_TASKS)])),
                 provider=NotBlankStr("test-provider"),
                 model=NotBlankStr("test-small-001"),
                 input_tokens=10,
@@ -140,7 +141,7 @@ class TestCostRecordsCompositeIndexes:
             on_disk_backend,
             "SELECT * FROM cost_records WHERE task_id = ? "
             "ORDER BY timestamp DESC LIMIT 50",
-            _TASKS[0],
+            sid(_TASKS[0]),
             analyze="cost_records",
         )
         assert "idx_cost_records_task_timestamp" in plan, (
@@ -162,7 +163,7 @@ class TestDecisionRecordsCompositeIndex:
         for i in range(200):
             await on_disk_backend.decision_records.append_with_next_version(
                 record_id=NotBlankStr(f"dec-{i:03d}"),
-                task_id=NotBlankStr(target_task),
+                task_id=NotBlankStr(sid(target_task)),
                 approval_id=None,
                 executing_agent_id=NotBlankStr(_AGENTS[0]),
                 reviewer_agent_id=NotBlankStr(_AGENTS[1]),
@@ -175,7 +176,7 @@ class TestDecisionRecordsCompositeIndex:
             on_disk_backend,
             "SELECT * FROM decision_records WHERE task_id = ? "
             "ORDER BY recorded_at ASC, id ASC LIMIT 50",
-            target_task,
+            sid(target_task),
             analyze="decision_records",
         )
         assert "idx_dr_task_recorded_id" in plan, (

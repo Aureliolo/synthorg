@@ -39,6 +39,7 @@ from synthorg.engine.routing_policy import (
 from synthorg.engine.routing_policy.config import QualityFloors
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
+from tests._shared import as_uuid, sid
 from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER: Final[str] = "example-provider"
@@ -87,7 +88,7 @@ def _agent(tier: ModelTier) -> AgentIdentity:
 
 def _parent() -> Task:
     return Task(
-        id="brief-1",
+        id=as_uuid("brief-1"),
         title="Mixed brief",
         description="Several subtasks of varying stakes",
         type=TaskType.DEVELOPMENT,
@@ -106,37 +107,37 @@ def _mixed_plan() -> DecompositionPlan:
     # change, or the per-subtask tier assertions below will drift.
     subtasks = (
         SubtaskDefinition(
-            id="st-doc",
+            id=sid("st-doc"),
             title="Update the changelog",
             description="Tidy wording in the docs",
             estimated_complexity=Complexity.SIMPLE,
         ),
         SubtaskDefinition(
-            id="st-format",
+            id=sid("st-format"),
             title="Reformat helper module",
             description="Run the formatter over a utility file",
             estimated_complexity=Complexity.SIMPLE,
         ),
         SubtaskDefinition(
-            id="st-feature",
+            id=sid("st-feature"),
             title="Add a list endpoint",
             description="Implement a straightforward read endpoint",
             estimated_complexity=Complexity.MEDIUM,
         ),
         SubtaskDefinition(
-            id="st-arch",
+            id=sid("st-arch"),
             title="Design the sharding architecture",
             description="Make the core architecture decision for sharding",
             estimated_complexity=Complexity.COMPLEX,
         ),
         SubtaskDefinition(
-            id="st-migrate",
+            id=sid("st-migrate"),
             title="Production data migration",
             description="Run an irreversible production migration",
             estimated_complexity=Complexity.MEDIUM,
         ),
     )
-    return DecompositionPlan(parent_task_id="brief-1", subtasks=subtasks)
+    return DecompositionPlan(parent_task_id=sid("brief-1"), subtasks=subtasks)
 
 
 class _StaticStrategy:
@@ -228,17 +229,19 @@ class TestStakesAwareBeatsFlatOnMixedBrief:
         )
         agent = _agent("large")
 
-        doc = await stakes_aware.route(task=tasks["st-doc"], identity=agent)
-        assert tasks["st-doc"].stakes is Stakes.LOW
+        doc = await stakes_aware.route(task=tasks[as_uuid("st-doc")], identity=agent)
+        assert tasks[as_uuid("st-doc")].stakes is Stakes.LOW
         assert doc.selected_model.model_tier == "small"
         assert doc.red_team_required is False
 
-        arch = await stakes_aware.route(task=tasks["st-arch"], identity=agent)
-        assert tasks["st-arch"].stakes is Stakes.HIGH
+        arch = await stakes_aware.route(task=tasks[as_uuid("st-arch")], identity=agent)
+        assert tasks[as_uuid("st-arch")].stakes is Stakes.HIGH
         assert arch.selected_model.model_tier == "large"
         assert arch.red_team_required is True
 
-        migrate = await stakes_aware.route(task=tasks["st-migrate"], identity=agent)
-        assert tasks["st-migrate"].stakes is Stakes.CRITICAL
+        migrate = await stakes_aware.route(
+            task=tasks[as_uuid("st-migrate")], identity=agent
+        )
+        assert tasks[as_uuid("st-migrate")].stakes is Stakes.CRITICAL
         assert migrate.selected_model.model_tier == "large"
         assert migrate.red_team_required is True

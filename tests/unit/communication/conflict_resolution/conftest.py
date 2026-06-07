@@ -19,6 +19,7 @@ from synthorg.communication.enums import (
 )
 from synthorg.core.company import Company, CompanyConfig, Department, Team
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import as_uuid, sid
 
 _NOW = datetime(2026, 3, 8, 12, 0, tzinfo=UTC)
 
@@ -64,7 +65,7 @@ def make_conflict(  # noqa: PLR0913
             ),
         )
     return Conflict(
-        id=conflict_id,
+        id=as_uuid(conflict_id),
         type=conflict_type,
         task_id=task_id,
         subject=subject,
@@ -88,7 +89,7 @@ def make_resolution(  # noqa: PLR0913
 ) -> ConflictResolution:
     """Create a resolution with defaults."""
     return ConflictResolution(
-        conflict_id=conflict_id,
+        conflict_id=sid(conflict_id),
         outcome=outcome,
         winning_agent_id=winning_agent_id,
         winning_position=winning_position,

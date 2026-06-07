@@ -48,6 +48,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -146,7 +147,7 @@ def _make_identity() -> AgentIdentity:
 
 def _make_task() -> Task:
     return Task(
-        id="task-learn-001",
+        id=as_uuid("task-learn-001"),
         title=f"Implement the {_DOMAIN_TOKEN} flow",
         description=f"Build the {_DOMAIN_TOKEN} flow end to end.",
         type=TaskType.DEVELOPMENT,

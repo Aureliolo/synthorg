@@ -11,7 +11,7 @@ pluggable :class:`ExternalAccessProvider`.
 from datetime import UTC
 from typing import TYPE_CHECKING, ClassVar, override
 from urllib.parse import unquote, urlsplit
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
@@ -534,10 +534,10 @@ class ExternalApiTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        approval_id = f"approval-{uuid4().hex}"
+        approval_id = str(uuid4())
         risk_level = self._classify_risk()
         item = ApprovalItem(
-            id=approval_id,
+            id=UUID(approval_id),
             action_type=_ACTION_TYPE,
             title=f"External API call to {args.connection!r}",
             description=(
@@ -555,7 +555,7 @@ class ExternalApiTool(BaseTool):
         logger.info(
             EXTERNAL_API_APPROVAL_REQUIRED,
             connection=args.connection,
-            approval_id=approval_id,
+            approval_id=UUID(approval_id),
             risk_level=risk_level.value,
         )
         return ToolExecutionResult(

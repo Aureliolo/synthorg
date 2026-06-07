@@ -16,6 +16,7 @@ from synthorg.persistence.config import (
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from tests._shared import sid
 
 
 def _minimal_postgres_config() -> PostgresConfig:
@@ -154,8 +155,8 @@ class TestCreateBackend:
         from tests.unit.persistence.conftest import make_task
 
         await backend_a.tasks.save(make_task(task_id="company-a-task"))
-        assert await backend_a.tasks.get("company-a-task") is not None
-        assert await backend_b.tasks.get("company-a-task") is None
+        assert await backend_a.tasks.get(sid("company-a-task")) is not None
+        assert await backend_b.tasks.get(sid("company-a-task")) is None
 
         await backend_a.disconnect()
         await backend_b.disconnect()

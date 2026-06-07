@@ -24,6 +24,7 @@ from synthorg.engine.middleware.models import (
 )
 from synthorg.engine.middleware.protocol import AgentMiddleware
 from synthorg.providers.models import TokenUsage
+from tests._shared import as_uuid
 
 # ── Test helpers ──────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ def _mw_context() -> AgentMiddlewareContext:
     identity = _identity()
     ctx = AgentContext.from_identity(identity)
     task = Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="Test task",
         description="A test task",
         type=TaskType.DEVELOPMENT,

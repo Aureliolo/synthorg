@@ -54,6 +54,7 @@ from synthorg.persistence.sqlite.conversation_invite_repo import (
 from synthorg.persistence.sqlite.conversation_repo import (
     SQLiteConversationRepository,
 )
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.integration
 
@@ -420,7 +421,7 @@ class TestConversationInviteRepository:
         # arms pin that deliberate divergence.
         repo = _approval_repo(backend)
         item = ApprovalItem(
-            id=NotBlankStr("appr-invite"),
+            id=as_uuid("appr-invite"),
             action_type=NotBlankStr("conversational:invite_agent"),
             title=NotBlankStr("Invite Fiona into the conversation"),
             description=NotBlankStr("budget sign-off needed"),
@@ -432,7 +433,7 @@ class TestConversationInviteRepository:
         )
         if backend.backend_name == "postgres":
             await repo.save(item)
-            fetched = await repo.get(item.id)
+            fetched = await repo.get(str(item.id))
             assert fetched is not None
             assert fetched.source is ApprovalSource.CONVERSATIONAL_INVITE
         else:

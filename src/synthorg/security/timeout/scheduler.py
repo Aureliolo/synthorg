@@ -348,7 +348,7 @@ class ApprovalTimeoutScheduler:
                 reraise_critical(exc)
                 logger.warning(
                     TIMEOUT_SCHEDULER_ERROR,
-                    approval_id=item.id,
+                    approval_id=str(item.id),
                     error="Failed to evaluate item",
                 )
                 return
@@ -364,7 +364,7 @@ class ApprovalTimeoutScheduler:
             elif action.action == TimeoutActionType.ESCALATE:
                 logger.info(
                     TIMEOUT_SCHEDULER_RESOLVED,
-                    approval_id=item.id,
+                    approval_id=str(item.id),
                     action=action.action.value,
                     escalate_to=action.escalate_to,
                     reason=action.reason,
@@ -372,7 +372,7 @@ class ApprovalTimeoutScheduler:
                 _ = self._background_tasks.spawn(
                     self._notify_escalation(item, action),
                     event=NOTIFICATION_ESCALATION_SEND,
-                    approval_id=item.id,
+                    approval_id=str(item.id),
                     escalate_to=action.escalate_to,
                 )
 
@@ -388,7 +388,7 @@ class ApprovalTimeoutScheduler:
             reraise_critical(exc)
             logger.error(
                 TIMEOUT_SCHEDULER_ERROR,
-                approval_id=item.id,
+                approval_id=str(item.id),
                 error="Failed to persist timeout resolution",
             )
             return
@@ -411,7 +411,7 @@ class ApprovalTimeoutScheduler:
                 reraise_critical(exc)
                 logger.error(
                     TIMEOUT_SCHEDULER_ERROR,
-                    approval_id=item.id,
+                    approval_id=str(item.id),
                     error="on_timeout_resolve callback failed",
                 )
 
@@ -446,7 +446,7 @@ class ApprovalTimeoutScheduler:
                 body=action.reason or "",
                 source="security.timeout.scheduler",
                 metadata={
-                    "approval_id": item.id,
+                    "approval_id": str(item.id),
                     "escalate_to": action.escalate_to,
                 },
             ),

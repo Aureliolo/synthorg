@@ -22,6 +22,7 @@ simulation runtime).
 
 import os
 from typing import TYPE_CHECKING
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from synthorg.budget.forecast_roles import CompanyRoleSkeletonProvider
 from synthorg.budget.state import BudgetStateSlice
@@ -60,6 +61,20 @@ if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
+
+
+def _project_uuid(slug: str) -> UUID:
+    """Derive a stable project UUID from a configured project slug.
+
+    Seed/default projects are configured by a human-readable slug; a
+    deterministic ``uuid5`` keeps the project's identity stable across
+    reboots so the tasks that reference it by this id always resolve.
+
+    Returns:
+        The deterministic ``UUID`` derived from *slug*.
+    """
+    return uuid5(NAMESPACE_URL, f"synthorg:project:{slug}")
+
 
 _OBJECTIVES_DEFAULT_PROJECT_KEY = "default_project"
 
@@ -162,7 +177,7 @@ async def wire_real_intake_entry(
     adapter = build_work_entry_adapter(
         WorkSource.INTAKE,
         work_pipeline=work_pipeline_of(app_state),
-        default_project=default_project,
+        default_project=str(_project_uuid(default_project)),
         forecast_gate=_forecast_gate_for(app_state),
     )
     if hot_swap:
@@ -225,7 +240,7 @@ async def wire_real_objective_entry(
     adapter = build_work_entry_adapter(
         WorkSource.OBJECTIVE,
         work_pipeline=work_pipeline_of(app_state),
-        default_project=default_project,
+        default_project=str(_project_uuid(default_project)),
         forecast_gate=_forecast_gate_for(app_state),
     )
     if hot_swap:
@@ -253,12 +268,13 @@ async def _ensure_project(
     so a boot abort is actionable rather than an opaque traceback.
     """
     projects = persistence_of(app_state).projects
-    if await projects.get(project_id) is not None:
+    project_uuid = _project_uuid(project_id)
+    if await projects.get(str(project_uuid)) is not None:
         return
     try:
         await projects.create(
             Project(
-                id=project_id,
+                id=project_uuid,
                 name=project_id,
                 description=description,
                 status=ProjectStatus.ACTIVE,

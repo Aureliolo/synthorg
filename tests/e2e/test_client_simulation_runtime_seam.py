@@ -81,5 +81,5 @@ async def test_builder_wires_intake_engine_to_real_task_engine(
     assert result.task_id is not None
     created = await task_engine.get_task(result.task_id)
     assert created is not None
-    assert created.id == result.task_id
+    assert str(created.id) == result.task_id
     assert created.title == "Seam feature"

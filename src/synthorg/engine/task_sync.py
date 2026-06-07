@@ -317,7 +317,7 @@ async def _create_review_approval(
         return None
 
     now = datetime.now(UTC)
-    approval_id = f"approval-{uuid4().hex}"
+    approval_id = uuid4()
     # Local import breaks the ontology -> persistence -> budget ->
     # security -> engine -> core.approval cycle (see security.service
     # for the same pattern).
@@ -348,11 +348,11 @@ async def _create_review_approval(
 
     logger.info(
         APPROVAL_GATE_REVIEW_CREATED,
-        approval_id=approval_id,
+        approval_id=str(approval_id),
         task_id=task_id,
         agent_id=agent_id,
     )
-    return approval_id
+    return str(approval_id)
 
 
 async def _transition_to_interrupted(

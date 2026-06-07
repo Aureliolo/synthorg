@@ -445,7 +445,7 @@ class GroupInviteCoordinator:
             ``ApprovalItem`` instance.
         """
         return ApprovalItem(
-            id=approval_id,
+            id=uuid.UUID(approval_id),
             action_type=_ACTION_TYPE,
             title=NotBlankStr(f"Invite {target.name} into the conversation"),
             description=reason,

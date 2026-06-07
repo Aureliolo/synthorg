@@ -16,6 +16,7 @@ from synthorg.persistence.sqlite.project_environment_repo import (
     SQLiteProjectEnvironmentRepository,
 )
 from synthorg.persistence.sqlite.project_repo import SQLiteProjectRepository
+from tests._shared import as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 
 pytestmark = pytest.mark.unit
@@ -32,7 +33,7 @@ def _environment(
     if image_ref is None and env_type is EnvironmentType.DEVCONTAINER:
         image_ref = "synthorg-project-proj-1:abc123"
     return ProjectEnvironment(
-        project_id=NotBlankStr(project_id),
+        project_id=NotBlankStr(sid(project_id)),
         environment_type=env_type,
         declaration_hash=NotBlankStr(declaration_hash),
         image_ref=NotBlankStr(image_ref) if image_ref else None,
@@ -43,7 +44,7 @@ def _environment(
 
 async def _seed_project(db: aiosqlite.Connection, project_id: str = "proj-1") -> None:
     repo = SQLiteProjectRepository(db, write_context=make_private_write_context())
-    await repo.save(Project(id=NotBlankStr(project_id), name=NotBlankStr("Demo")))
+    await repo.save(Project(id=as_uuid(project_id), name=NotBlankStr("Demo")))
 
 
 class TestSQLiteProjectEnvironmentRepository:
@@ -60,7 +61,7 @@ class TestSQLiteProjectEnvironmentRepository:
         )
         await repo.save(_environment())
 
-        fetched = await repo.get(NotBlankStr("proj-1"))
+        fetched = await repo.get(NotBlankStr(sid("proj-1")))
         assert fetched is not None
         assert fetched.environment_type is EnvironmentType.MANIFEST
         assert fetched.declaration_hash == "a" * 64
@@ -79,7 +80,7 @@ class TestSQLiteProjectEnvironmentRepository:
             )
         )
 
-        fetched = await repo.get(NotBlankStr("proj-1"))
+        fetched = await repo.get(NotBlankStr(sid("proj-1")))
         assert fetched is not None
         assert fetched.environment_type is EnvironmentType.DEVCONTAINER
         assert fetched.declaration_hash == "b" * 64
@@ -88,7 +89,7 @@ class TestSQLiteProjectEnvironmentRepository:
         repo = SQLiteProjectEnvironmentRepository(
             migrated_db, write_context=make_private_write_context()
         )
-        assert await repo.get(NotBlankStr("ghost")) is None
+        assert await repo.get(NotBlankStr(sid("ghost"))) is None
 
     async def test_delete(self, migrated_db: aiosqlite.Connection) -> None:
         await _seed_project(migrated_db)
@@ -97,8 +98,8 @@ class TestSQLiteProjectEnvironmentRepository:
         )
         await repo.save(_environment())
 
-        assert await repo.delete(NotBlankStr("proj-1")) is True
-        assert await repo.delete(NotBlankStr("proj-1")) is False
+        assert await repo.delete(NotBlankStr(sid("proj-1"))) is True
+        assert await repo.delete(NotBlankStr(sid("proj-1"))) is False
 
     async def test_list_ordered(self, migrated_db: aiosqlite.Connection) -> None:
         await _seed_project(migrated_db, "proj-b")

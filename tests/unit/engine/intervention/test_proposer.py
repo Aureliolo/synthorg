@@ -11,12 +11,13 @@ from synthorg.engine.intervention.proposer import (
     _parse_proposal,
     build_supersession_proposer,
 )
+from tests._shared import as_uuid, sid
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 
 
 def _task(task_id: str) -> Task:
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title=f"Task {task_id}",
         description="A frontend task.",
         type=TaskType.DEVELOPMENT,
@@ -71,7 +72,9 @@ class TestLLMProposer:
     async def test_refines_from_provider(self) -> None:
         provider = ScriptedProvider(
             responses=[
-                make_text_response('{"obsolete_task_ids": ["t1"], "rationale": "fe"}')
+                make_text_response(
+                    f'{{"obsolete_task_ids": ["{sid("t1")}"], "rationale": "fe"}}'
+                )
             ]
         )
         proposer = LLMSupersessionProposer(provider, model="test-model-001")
@@ -81,7 +84,7 @@ class TestLLMProposer:
             candidate_tasks=(_task("t1"), _task("t2")),
             seed_task_ids=(),
         )
-        assert proposal.proposed_task_ids == ("t1",)
+        assert proposal.proposed_task_ids == (sid("t1"),)
         assert proposal.rationale == "fe"
 
     async def test_no_candidates_returns_seed(self) -> None:

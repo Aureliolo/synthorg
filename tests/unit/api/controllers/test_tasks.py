@@ -7,7 +7,7 @@ import pytest
 from synthorg.api.state import AppState
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.engine.state import EngineStateSlice
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, sid
 from tests.unit.api.conftest import FakePersistenceBackend, make_auth_headers, make_task
 
 
@@ -26,11 +26,11 @@ class TestTaskController:
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         task = make_task()
-        fake_persistence.tasks._tasks[task.id] = task
+        fake_persistence.tasks._tasks[str(task.id)] = task
         resp = await async_test_client.get("/api/v1/tasks")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["data"][0]["id"] == "task-001"
+        assert body["data"][0]["id"] == sid("task-001")
 
     async def test_list_tasks_filter_by_status(
         self,
@@ -45,11 +45,11 @@ class TestTaskController:
             status=TaskStatus.ASSIGNED,
             assigned_to="bob",
         )
-        fake_persistence.tasks._tasks["t1"] = t1
-        fake_persistence.tasks._tasks["t2"] = t2
+        fake_persistence.tasks._tasks[str(t1.id)] = t1
+        fake_persistence.tasks._tasks[str(t2.id)] = t2
         resp = await async_test_client.get("/api/v1/tasks?status=created")
         body = resp.json()
-        assert body["data"][0]["id"] == "t1"
+        assert body["data"][0]["id"] == sid("t1")
 
     async def test_get_task_found(
         self,
@@ -57,10 +57,10 @@ class TestTaskController:
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         task = make_task()
-        fake_persistence.tasks._tasks[task.id] = task
-        resp = await async_test_client.get("/api/v1/tasks/task-001")
+        fake_persistence.tasks._tasks[str(task.id)] = task
+        resp = await async_test_client.get(f"/api/v1/tasks/{sid('task-001')}")
         assert resp.status_code == 200
-        assert resp.json()["data"]["id"] == "task-001"
+        assert resp.json()["data"]["id"] == sid("task-001")
 
     async def test_get_task_not_found(self, async_test_client: LoopAsyncClient) -> None:
         resp = await async_test_client.get("/api/v1/tasks/nonexistent")
@@ -134,9 +134,9 @@ class TestTaskController:
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         task = make_task()
-        fake_persistence.tasks._tasks[task.id] = task
+        fake_persistence.tasks._tasks[str(task.id)] = task
         resp = await async_test_client.delete(
-            "/api/v1/tasks/task-001",
+            f"/api/v1/tasks/{sid('task-001')}",
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 204
@@ -170,9 +170,9 @@ class TestUpdateTask:
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         task = make_task()
-        fake_persistence.tasks._tasks[task.id] = task
+        fake_persistence.tasks._tasks[str(task.id)] = task
         resp = await async_test_client.patch(
-            "/api/v1/tasks/task-001",
+            f"/api/v1/tasks/{sid('task-001')}",
             json={"title": "Updated title"},
             headers=make_auth_headers("ceo"),
         )
@@ -191,7 +191,7 @@ class TestUpdateTask:
         self, async_test_client: LoopAsyncClient
     ) -> None:
         resp = await async_test_client.patch(
-            "/api/v1/tasks/task-001",
+            f"/api/v1/tasks/{sid('task-001')}",
             json={"title": "Nope"},
             headers=make_auth_headers("observer"),
         )
@@ -206,9 +206,9 @@ class TestTransitionTask:
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         task = make_task()
-        fake_persistence.tasks._tasks[task.id] = task
+        fake_persistence.tasks._tasks[str(task.id)] = task
         resp = await async_test_client.post(
-            "/api/v1/tasks/task-001/transition",
+            f"/api/v1/tasks/{sid('task-001')}/transition",
             json={
                 "target_status": "assigned",
                 "assigned_to": "bob",
@@ -224,9 +224,9 @@ class TestTransitionTask:
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         task = make_task()
-        fake_persistence.tasks._tasks[task.id] = task
+        fake_persistence.tasks._tasks[str(task.id)] = task
         resp = await async_test_client.post(
-            "/api/v1/tasks/task-001/transition",
+            f"/api/v1/tasks/{sid('task-001')}/transition",
             json={"target_status": "completed"},
             headers=make_auth_headers("ceo"),
         )
@@ -246,7 +246,7 @@ class TestTransitionTask:
         self, async_test_client: LoopAsyncClient
     ) -> None:
         resp = await async_test_client.post(
-            "/api/v1/tasks/task-001/transition",
+            f"/api/v1/tasks/{sid('task-001')}/transition",
             json={"target_status": "assigned"},
             headers=make_auth_headers("observer"),
         )

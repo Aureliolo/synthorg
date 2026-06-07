@@ -15,13 +15,14 @@ from synthorg.engine.review import (
 )
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine_models import TaskMutationResult
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
 
 def _task(*, status: TaskStatus = TaskStatus.IN_REVIEW) -> Task:
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="Test task",
         description=("Task description used for pipeline review tests."),
         type=TaskType.DEVELOPMENT,
@@ -77,7 +78,7 @@ class TestRunPipelinePass:
             stages=(_StaticStage(name="stage-a", verdict=ReviewVerdict.PASS),),
         )
         result = await service.run_pipeline(
-            task_id="task-1",
+            task_id=sid("task-1"),
             pipeline=pipeline,
             decided_by="bob",
             requested_by="bob",
@@ -95,7 +96,7 @@ class TestRunPipelinePass:
             stages=(_StaticStage(name="skippable", verdict=ReviewVerdict.SKIP),),
         )
         result = await service.run_pipeline(
-            task_id="task-1",
+            task_id=sid("task-1"),
             pipeline=pipeline,
             decided_by="bob",
             requested_by="bob",
@@ -120,7 +121,7 @@ class TestRunPipelineFail:
             ),
         )
         result = await service.run_pipeline(
-            task_id="task-1",
+            task_id=sid("task-1"),
             pipeline=pipeline,
             decided_by="bob",
             requested_by="bob",
@@ -142,7 +143,7 @@ class TestRunPipelineGuards:
         )
         with pytest.raises(SelfReviewError):
             await service.run_pipeline(
-                task_id="task-1",
+                task_id=sid("task-1"),
                 pipeline=pipeline,
                 decided_by="alice",  # same as assigned_to
                 requested_by="bob",

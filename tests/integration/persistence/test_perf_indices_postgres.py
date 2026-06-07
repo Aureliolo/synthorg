@@ -21,6 +21,7 @@ from synthorg.core.enums import DecisionOutcome, TaskType
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -34,7 +35,7 @@ async def _seed_tasks(backend: PostgresPersistenceBackend) -> None:
     for task_id in _TASKS:
         await backend.tasks.save(
             Task(
-                id=NotBlankStr(task_id),
+                id=as_uuid(task_id),
                 title=NotBlankStr(task_id),
                 description=NotBlankStr("perf-index fixture"),
                 type=TaskType.DEVELOPMENT,
@@ -49,7 +50,7 @@ async def _seed_cost_records(backend: PostgresPersistenceBackend, n: int) -> Non
         await backend.cost_records.append(
             CostRecord(
                 agent_id=NotBlankStr(_AGENTS[i % len(_AGENTS)]),
-                task_id=NotBlankStr(_TASKS[i % len(_TASKS)]),
+                task_id=NotBlankStr(sid(_TASKS[i % len(_TASKS)])),
                 provider=NotBlankStr("test-provider"),
                 model=NotBlankStr("test-small-001"),
                 input_tokens=10,
@@ -66,12 +67,20 @@ async def _explain_plan(
     query: sql.SQL,
     *params: object,
     table: str,
+    drop_indexes: tuple[str, ...] = (),
 ) -> str:
     pool = backend._pool
     assert pool is not None, "fixture must connect the backend before EXPLAIN"
     analyze_stmt = sql.SQL("ANALYZE {}").format(sql.Identifier(table))
     explain_stmt = sql.SQL("EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) {}").format(query)
-    async with pool.connection() as conn:
+    # ``force_rollback`` runs everything (including any DROP INDEX) inside a
+    # transaction that is always rolled back, so dropping a competitor index
+    # to pin the composite-index plan never mutates the session-scoped schema.
+    async with pool.connection() as conn, conn.transaction(force_rollback=True):
+        for index_name in drop_indexes:
+            await conn.execute(
+                sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(index_name))
+            )
         await conn.execute(analyze_stmt)
         async with conn.cursor() as cur:
             # Force index usage so the plan reflects what the planner would
@@ -114,8 +123,13 @@ class TestCostRecordsCompositeIndexes:
                 "SELECT * FROM cost_records WHERE task_id = %s "
                 "ORDER BY timestamp DESC LIMIT 50",
             ),
-            _TASKS[0],
+            sid(_TASKS[0]),
             table="cost_records",
+            # ``idx_cost_records_task_id`` (single column) lets the planner
+            # satisfy the filter with a small bitmap scan and a tiny sort at
+            # toy row counts; drop it so the planner must show the composite
+            # index serves both the filter and the order.
+            drop_indexes=("idx_cost_records_task_id",),
         )
         assert "idx_cost_records_task_timestamp" in plan, (
             f"Composite (task_id, timestamp DESC) index not used:\n{plan}"
@@ -136,7 +150,7 @@ class TestDecisionRecordsCompositeIndex:
         for i in range(200):
             await postgres_backend.decision_records.append_with_next_version(
                 record_id=NotBlankStr(f"dec-{i:03d}"),
-                task_id=NotBlankStr(target_task),
+                task_id=NotBlankStr(sid(target_task)),
                 approval_id=None,
                 executing_agent_id=NotBlankStr(_AGENTS[0]),
                 reviewer_agent_id=NotBlankStr(_AGENTS[1]),
@@ -151,7 +165,7 @@ class TestDecisionRecordsCompositeIndex:
                 "SELECT * FROM decision_records WHERE task_id = %s "
                 "ORDER BY recorded_at ASC, id ASC LIMIT 50",
             ),
-            target_task,
+            sid(target_task),
             table="decision_records",
         )
         assert "idx_dr_task_recorded_id" in plan, (

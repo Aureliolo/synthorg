@@ -413,7 +413,7 @@ class TestAgentEngineCompletionMetrics:
         assert metrics.cost_per_task > 0
         assert metrics.duration_seconds > 0
         assert metrics.agent_id == str(sample_agent_with_personality.id)
-        assert metrics.task_id == sample_task_with_criteria.id
+        assert metrics.task_id == str(sample_task_with_criteria.id)
         assert 0.0 <= metrics.prompt_token_ratio <= 1.0
 
 

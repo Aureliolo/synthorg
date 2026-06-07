@@ -17,6 +17,7 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
 )
 from synthorg.persistence.task_protocol import TaskRepository
+from tests._shared import as_uuid
 
 
 def _identity() -> AgentIdentity:
@@ -51,7 +52,7 @@ def _task(
     description: str = "Test task",
 ) -> Task:
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title="Test",
         description=description,
         type=TaskType.DEVELOPMENT,

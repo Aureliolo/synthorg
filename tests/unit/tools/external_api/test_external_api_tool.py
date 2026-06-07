@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import AsyncMock
+from uuid import UUID
 
 import pytest
 
@@ -323,7 +324,8 @@ class TestExternalApiToolApprovalGating:
             arguments={"connection": "crm-api", "path": "/data"},
         )
         assert result.metadata.get("requires_parking") is True
-        assert cast("str", result.metadata["approval_id"]).startswith("approval-")
+        approval_id = cast("str", result.metadata["approval_id"])
+        assert str(UUID(approval_id)) == approval_id
         assert result.metadata["action_type"] == _ACTION_TYPE
         assert provider.requests == []
 

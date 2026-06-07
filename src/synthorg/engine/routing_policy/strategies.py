@@ -110,12 +110,12 @@ class StakesAwareStrategy:
         target_tier, floor_cleared = await self._cheapest_tier_meeting_floor(floor)
 
         nudged = False
-        if target_tier is not None and self._coordination_unhealthy(task.id):
+        if target_tier is not None and self._coordination_unhealthy(str(task.id)):
             bumped = bump_one(target_tier)
             if bumped != target_tier:
                 logger.info(
                     STAKES_ROUTING_COORD_NUDGE,
-                    task_id=task.id,
+                    task_id=str(task.id),
                     from_tier=target_tier,
                     to_tier=bumped,
                 )

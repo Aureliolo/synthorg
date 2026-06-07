@@ -39,6 +39,7 @@ from synthorg.observability.events.prompt import (
 )
 from synthorg.providers.models import ChatMessage
 from synthorg.security.autonomy.models import EffectiveAutonomy
+from tests._shared import as_uuid
 
 if TYPE_CHECKING:
     from synthorg.core.company import Company
@@ -784,7 +785,7 @@ class TestDefaultAgentPrompt:
         from synthorg.core.task import Task
 
         task = Task(
-            id="task-zero-001",
+            id=as_uuid("task-zero-001"),
             title="Research task",
             description="Investigate options.",
             type=TaskType.RESEARCH,

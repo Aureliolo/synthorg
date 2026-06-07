@@ -12,7 +12,7 @@ from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, TimeoutAction
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.protocol import TimeoutPolicy
 from synthorg.security.timeout.timeout_checker import TimeoutChecker
-from tests._shared import mock_of
+from tests._shared import coerce_id, mock_of
 
 
 def _make_approval_item(**overrides: Any) -> ApprovalItem:
@@ -28,6 +28,7 @@ def _make_approval_item(**overrides: Any) -> ApprovalItem:
         "created_at": datetime.now(UTC),
     }
     defaults.update(overrides)
+    defaults["id"] = coerce_id(defaults["id"])
     return ApprovalItem(**defaults)
 
 

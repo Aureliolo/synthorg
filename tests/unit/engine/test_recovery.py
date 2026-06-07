@@ -8,6 +8,7 @@ import structlog.testing
 from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
+from tests._shared import as_uuid
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -109,7 +110,7 @@ class TestFailAndReassignStrategy:
     ) -> None:
         """Task with max_retries=0 is never reassignable."""
         task = Task(
-            id="task-no-retries",
+            id=as_uuid("task-no-retries"),
             title="No retries allowed",
             description="This task cannot be retried.",
             type=TaskType.DEVELOPMENT,
@@ -163,7 +164,7 @@ class TestFailAndReassignStrategy:
         )
 
         snapshot = result.context_snapshot
-        assert snapshot.task_id == sample_task_with_criteria.id
+        assert snapshot.task_id == str(sample_task_with_criteria.id)
         assert snapshot.agent_id == str(sample_agent_with_personality.id)
         assert snapshot.turn_count >= 0
         # Snapshot is an AgentContextSnapshot -- has no message contents

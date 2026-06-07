@@ -26,6 +26,7 @@ from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.persistence.postgres.escalation_repo import (
     PostgresEscalationRepository,
 )
+from tests._shared import as_uuid
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
@@ -33,7 +34,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.slow]
 def _make_conflict(conflict_id: str = "conflict-pg-0001") -> Conflict:
     """Two-agent architectural conflict fixture."""
     return Conflict(
-        id=conflict_id,
+        id=as_uuid(conflict_id),
         type=ConflictType.ARCHITECTURE,
         subject="Pick a storage engine",
         positions=(
