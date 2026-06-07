@@ -24,7 +24,7 @@ from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.cost_forecast import (
     PERSISTENCE_COST_FORECAST_FAILED,
     PERSISTENCE_COST_FORECAST_FETCHED,
     PERSISTENCE_COST_FORECAST_LISTED,

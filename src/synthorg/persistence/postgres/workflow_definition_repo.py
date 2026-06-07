@@ -21,7 +21,7 @@ from synthorg.core.persistence_errors import (
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.workflow_def import (
     PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED,
     PERSISTENCE_WORKFLOW_DEF_FETCH_FAILED,
     PERSISTENCE_WORKFLOW_DEF_FETCHED,

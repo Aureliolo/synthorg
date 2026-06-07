@@ -7,7 +7,7 @@ import psycopg
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.principle_override import (
     PERSISTENCE_PRINCIPLE_OVERRIDE_DELETE_FAILED,
     PERSISTENCE_PRINCIPLE_OVERRIDE_GET_FAILED,
     PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED,

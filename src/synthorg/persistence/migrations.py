@@ -44,7 +44,7 @@ from yoyo import get_backend  # type: ignore[import-untyped]
 
 from synthorg.core.persistence_errors import MigrationError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.migration import (
     PERSISTENCE_MIGRATION_COMPLETED,
     PERSISTENCE_MIGRATION_FAILED,
     PERSISTENCE_MIGRATION_STARTED,

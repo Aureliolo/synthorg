@@ -24,7 +24,7 @@ from synthorg.meta.charter.models import (
     ScopeBoundaries,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import PERSISTENCE_CHARTER_FAILED
+from synthorg.observability.events.persistence.charter import PERSISTENCE_CHARTER_FAILED
 from synthorg.persistence._shared.datetime_marshaller import (
     coerce_row_timestamp,
     format_iso_utc,

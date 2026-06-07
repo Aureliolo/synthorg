@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """No-central-junk-drawer gate.
 
-Three modules in ``src/synthorg/`` accumulate everything from unrelated
+Two modules in ``src/synthorg/`` accumulate everything from unrelated
 domains today:
 
 * ``src/synthorg/core/enums.py``: 57 StrEnums across 8 domains.
-* ``src/synthorg/observability/events/persistence.py``: every
-  ``persistence.<entity>.<action>`` constant.
 * ``src/synthorg/api/state.py``: the giant ``AppState`` attribute-bag
   via ``__slots__``.
 
@@ -16,13 +14,11 @@ and fails the build if any count grows. Net-decreases are allowed.
 Counting rules:
 
 * enums.py: top-level ``ClassDef`` nodes.
-* events/persistence.py: top-level assignments excluding dunders
-  (``__all__``, ``__version__``).
 * api/state.py: aggregate length of every class body's ``__slots__``
   tuple/list.
 
-Dissolution of these files is followup #2051; this gate exists so
-no new entries land between now and then.
+These files are being dissolved into their feature directories; this
+gate exists so no new entries accumulate in them until then.
 
 Usage::
 
@@ -41,14 +37,13 @@ _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 _BASELINE_REL = Path("scripts") / "_central_junk_drawer_baseline.json"
 
 _ENUMS_REL: Final[str] = "src/synthorg/core/enums.py"
-_EVENTS_REL: Final[str] = "src/synthorg/observability/events/persistence.py"
 _STATE_REL: Final[str] = "src/synthorg/api/state.py"
 
 _BASELINE_DESCRIPTION = (
     "Frozen counts of central junk-drawer modules. Each entry under "
     "`counts` is `<posix_path>: {metric_name: current_count}`. Modules "
-    "may shrink; growth fails the gate. Dissolution tracked in #2051. "
-    "Regenerate with the gate's write_baseline() Python API."
+    "may shrink; growth fails the gate. Regenerate with "
+    "`check_no_central_junk_drawer.py --update-baseline`."
 )
 
 
@@ -83,38 +78,6 @@ def count_top_level_classes(source: str) -> int:
     if tree is None:
         return 0
     return sum(1 for node in tree.body if isinstance(node, ast.ClassDef))
-
-
-def count_top_level_assignments(source: str) -> int:
-    """Count module-level constant assignments; dunders are excluded.
-
-    Recognises both ``Assign`` (``FOO = 'a'``) and ``AnnAssign``
-    (``FOO: str = 'a'``) at the module level. Targets like ``__all__``
-    and ``__version__`` do not count toward the junk-drawer total.
-    """
-    tree = _parse_or_empty(source)
-    if tree is None:
-        return 0
-    count = 0
-    for node in tree.body:
-        if isinstance(node, ast.AnnAssign):
-            if _is_dunder_target(node.target):
-                continue
-            count += 1
-        elif isinstance(node, ast.Assign):
-            if any(_is_dunder_target(target) for target in node.targets):
-                continue
-            count += 1
-    return count
-
-
-def _is_dunder_target(target: ast.expr) -> bool:
-    """Return True iff *target* is a ``Name`` whose id starts and ends with ``__``."""
-    return (
-        isinstance(target, ast.Name)
-        and target.id.startswith("__")
-        and target.id.endswith("__")
-    )
 
 
 def count_state_slots(source: str) -> int:
@@ -162,11 +125,6 @@ def _current_counts(project_root: Path) -> dict[str, dict[str, int]]:
         _ENUMS_REL: {
             "top_level_classes": count_top_level_classes(
                 _read_source(project_root, _ENUMS_REL)
-            ),
-        },
-        _EVENTS_REL: {
-            "top_level_assignments": count_top_level_assignments(
-                _read_source(project_root, _EVENTS_REL)
             ),
         },
         _STATE_REL: {
@@ -245,6 +203,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             f"<project-root>/{_BASELINE_REL.as_posix()})"
         ),
     )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="Rewrite the baseline from the current tree, then exit 0.",
+    )
     return parser
 
 
@@ -257,6 +220,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.baseline is not None
         else project_root / _BASELINE_REL
     )
+    if args.update_baseline:
+        write_baseline(project_root=project_root, baseline_path=baseline_path)
+        return 0
     violations = check(project_root=project_root, baseline_path=baseline_path)
     if not violations:
         return 0
@@ -265,8 +231,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {violation.render()}", file=sys.stderr)
     print(
         "\nPut new constants / enums / state attributes in their feature "
-        "directory, not in the central junk-drawer files. Dissolution is "
-        "tracked in #2051.",
+        "directory, not in the central junk-drawer files.",
         file=sys.stderr,
     )
     return 1

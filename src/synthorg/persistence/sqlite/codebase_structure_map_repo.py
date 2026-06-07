@@ -11,7 +11,7 @@ from synthorg.core.codebase_structure_map import CodebaseStructureMap
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.codebase_structure_map import (
     PERSISTENCE_CODEBASE_STRUCTURE_MAP_DELETE_FAILED,
     PERSISTENCE_CODEBASE_STRUCTURE_MAP_DESERIALIZE_FAILED,
     PERSISTENCE_CODEBASE_STRUCTURE_MAP_FETCH_FAILED,

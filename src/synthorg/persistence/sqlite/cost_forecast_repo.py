@@ -29,7 +29,7 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.cost_forecast import (
     PERSISTENCE_COST_FORECAST_FAILED,
     PERSISTENCE_COST_FORECAST_FETCHED,
     PERSISTENCE_COST_FORECAST_LISTED,

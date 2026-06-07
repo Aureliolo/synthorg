@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.task import Task
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.task import (
     PERSISTENCE_TASK_COUNT_FAILED,
     PERSISTENCE_TASK_COUNTED,
     PERSISTENCE_TASK_DELETE_FAILED,

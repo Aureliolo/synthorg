@@ -22,7 +22,7 @@ from synthorg.meta.toolsmith.models import (
     ToolValidationResult,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.dynamic_tool import (
     PERSISTENCE_DYNAMIC_TOOL_DELETE_FAILED,
     PERSISTENCE_DYNAMIC_TOOL_DESERIALIZE_FAILED,
     PERSISTENCE_DYNAMIC_TOOL_FETCH_FAILED,

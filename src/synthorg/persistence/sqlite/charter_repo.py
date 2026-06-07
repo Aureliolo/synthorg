@@ -25,7 +25,7 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.charter import (
     PERSISTENCE_CHARTER_FAILED,
     PERSISTENCE_CHARTER_FETCHED,
     PERSISTENCE_CHARTER_LISTED,

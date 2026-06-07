@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.flight_recorder import (
     PERSISTENCE_FLIGHT_RECORDER_DELETE_FAILED,
     PERSISTENCE_FLIGHT_RECORDER_DESERIALIZE_FAILED,
     PERSISTENCE_FLIGHT_RECORDER_QUERY_FAILED,

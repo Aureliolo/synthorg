@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.parked_context import (
     PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
     PERSISTENCE_PARKED_CONTEXT_NOT_FOUND,
     PERSISTENCE_PARKED_CONTEXT_QUERIED,

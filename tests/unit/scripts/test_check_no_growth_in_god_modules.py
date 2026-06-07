@@ -37,16 +37,16 @@ _GATE: Any = cast("Any", _load_gate())  # type: ignore[explicit-any]
 
 
 def test_allowlist_contains_expected_modules() -> None:
-    """Only the two remaining god-modules (core/enums, events/persistence) stay.
+    """Only ``core/enums.py`` remains in the god-module allowlist.
 
-    The five api entries drained when the controller decomposition brought
+    ``events/persistence.py`` dissolved into a per-subdomain package; the five
+    api entries drained when the controller decomposition brought
     ``app.py``/``state.py``/``auto_wire.py``/``lifecycle.py``/
-    ``lifecycle_builder.py`` under their tier caps; they are now governed by
+    ``lifecycle_builder.py`` under their tier caps. All are now governed by
     ``check_module_size_budget.py``.
     """
     expected = {
         "src/synthorg/core/enums.py",
-        "src/synthorg/observability/events/persistence.py",
     }
     assert expected == set(_GATE.GOD_MODULE_ALLOWLIST)
 
@@ -81,7 +81,7 @@ def test_net_grow_fails() -> None:
 
 def test_one_loc_grow_fails() -> None:
     result = _GATE.classify_change(
-        path="src/synthorg/observability/events/persistence.py",
+        path="src/synthorg/core/enums.py",
         head_loc=2313,
         staged_loc=2314,
     )

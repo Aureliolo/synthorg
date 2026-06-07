@@ -16,10 +16,12 @@ from synthorg.core.enums import ConversationStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.conversation import (
     PERSISTENCE_CONVERSATION_FAILED,
     PERSISTENCE_CONVERSATION_FETCHED,
     PERSISTENCE_CONVERSATION_LISTED,
+)
+from synthorg.observability.events.persistence.conversation_turn import (
     PERSISTENCE_CONVERSATION_TURN_APPENDED,
     PERSISTENCE_CONVERSATION_TURN_FAILED,
     PERSISTENCE_CONVERSATION_TURN_QUERIED,

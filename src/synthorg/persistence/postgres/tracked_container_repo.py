@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.tracked_container import (
     PERSISTENCE_TRACKED_CONTAINER_DELETE_FAILED,
     PERSISTENCE_TRACKED_CONTAINER_LOAD_FAILED,
     PERSISTENCE_TRACKED_CONTAINER_LOADED,

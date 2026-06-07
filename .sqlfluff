@@ -5,7 +5,8 @@
 # persistence/postgres/. The default dialect is SQLite; the postgres
 # path is selected per-invocation via --dialect postgres.
 #
-# The FULL default ruleset is active (no `rules =` narrowing). The 38
+# The default ruleset is active save one exclusion, PG01
+# (postgres.excessive_locks), documented at exclude_rules below. The 38
 # historical revision files are frozen (check_no_edit_migration.sh plus
 # yoyo's content-hash check), so their cosmetic violations cannot be
 # remediated; they are exempted in .sqlfluffignore. New revisions are
@@ -18,6 +19,13 @@
 [sqlfluff]
 dialect = sqlite
 templater = raw
+# PG01 (postgres.excessive_locks) demands CREATE INDEX CONCURRENTLY, but
+# every index here is built in the same migration that creates its table,
+# so the table is empty and the build locks nothing. CONCURRENTLY cannot
+# run inside a transaction, so adopting it would only make these
+# migrations non-atomic for no availability gain. Re-enable when a
+# migration indexes an already-populated table under live traffic.
+exclude_rules = PG01
 # schema.sql is ~80 KB, over sqlfluff's default 20000-byte skip limit;
 # 0 disables the skip so the canonical schema is linted, not silently
 # passed.

@@ -20,7 +20,7 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.conversational_proposal import (
     PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED,
     PERSISTENCE_CONVERSATIONAL_PROPOSAL_FETCHED,
     PERSISTENCE_CONVERSATIONAL_PROPOSAL_LISTED,

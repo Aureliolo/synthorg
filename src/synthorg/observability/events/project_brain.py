@@ -29,9 +29,9 @@ BRAIN_REPLAY_START: Final[str] = "project_brain.replay.start"
 BRAIN_REPLAY_COMPLETE: Final[str] = "project_brain.replay.complete"
 BRAIN_REPLAY_FAILED: Final[str] = "project_brain.replay.failed"
 
-# Persistence-layer events. These live in this domain module rather than
-# observability/events/persistence.py because that module is a net-shrink
-# god-module; the persistence boundary still routes through these constants.
+# Persistence-layer events for the project-brain store. They use this
+# feature's own ``project_brain.persist.*`` namespace, so they live in this
+# domain module rather than the cross-cutting ``persistence.*`` namespace.
 BRAIN_PERSIST_SAVED: Final[str] = "project_brain.persist.saved"
 BRAIN_PERSIST_SAVE_FAILED: Final[str] = "project_brain.persist.save_failed"
 BRAIN_PERSIST_FETCHED: Final[str] = "project_brain.persist.fetched"

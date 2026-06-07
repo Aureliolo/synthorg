@@ -17,7 +17,7 @@ from synthorg.core.persistence_errors import (
     RecordNotFoundError,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.artifact_storage import (
     PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
     PERSISTENCE_ARTIFACT_RETRIEVED,
     PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,

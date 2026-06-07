@@ -16,7 +16,7 @@ from synthorg.core.persistence_errors import (
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.project import (
     PERSISTENCE_PROJECT_DELETE_FAILED,
     PERSISTENCE_PROJECT_DESERIALIZE_FAILED,
     PERSISTENCE_PROJECT_FETCH_FAILED,

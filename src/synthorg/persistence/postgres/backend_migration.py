@@ -13,9 +13,11 @@ from psycopg.rows import TupleRow
 
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.backend import (
     PERSISTENCE_BACKEND_DISCONNECT_ERROR,
     PERSISTENCE_BACKEND_NOT_CONNECTED,
+)
+from synthorg.observability.events.persistence.timescaledb import (
     PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED,
     PERSISTENCE_TIMESCALEDB_SETUP_FAILED,
     PERSISTENCE_TIMESCALEDB_UNAVAILABLE,

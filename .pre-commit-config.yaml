@@ -95,6 +95,9 @@ repos:
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
+        # .test_durations.{unit,integration} are machine-generated pytest
+        # timing manifests; the generator omits the trailing newline.
+        exclude: ^\.test_durations\.(integration|unit)$
       - id: check-yaml
         # Two files reach the unsafe-mode hook below:
         #   - mkdocs.yml uses pymdownx's !!python tags
@@ -128,8 +131,13 @@ repos:
         #   ``-----BEGIN / END RSA PRIVATE KEY-----`` marker lines so
         #   operators can recognise a correct copy-paste; the file
         #   obviously contains no real key.
-        exclude: ^(tests/|docs/reference/github-environments\.md$)
+        # - .test_durations.{unit,integration} key timings by pytest IDs,
+        #   which embed credential-detector test labels carrying PEM
+        #   begin/end marker text for SSH/RSA/EC keys.
+        exclude: ^(tests/|docs/reference/github-environments\.md$|\.test_durations\.(integration|unit)$)
       - id: mixed-line-ending
+        # Generated timing manifests (see end-of-file-fixer above).
+        exclude: ^\.test_durations\.(integration|unit)$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.16
@@ -209,6 +217,9 @@ repos:
         args: [run, python, scripts/check_no_em_dashes.py]
         language: system
         types: [text]
+        # .test_durations.{unit,integration} embed pytest parametrize IDs
+        # as JSON keys, including this hook's own HTML-entity test labels.
+        exclude: ^\.test_durations\.(integration|unit)$
 
       - id: no-redundant-timeout
         name: no redundant pytest.mark.timeout(30)
@@ -858,19 +869,19 @@ repos:
 
       # Allowlisted god-modules must net-shrink on every PR.
       - id: no-growth-in-god-modules
-        name: god-modules must net-shrink (core/enums.py, events/persistence.py)
+        name: god-modules must net-shrink (core/enums.py)
         entry: uv run python scripts/check_no_growth_in_god_modules.py
         language: system
-        files: ^(src/synthorg/(core/enums\.py|observability/events/persistence\.py)|scripts/check_no_growth_in_god_modules\.py|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/core/enums\.py|scripts/check_no_growth_in_god_modules\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
-      # No new entries in core/enums.py / events/persistence.py / AppState.
+      # No new entries in core/enums.py / AppState.
       - id: no-central-junk-drawer
         name: no new central-junk-drawer entries (#2051 will dissolve)
         entry: uv run python scripts/check_no_central_junk_drawer.py
         language: system
-        files: ^(src/synthorg/(core/enums\.py|observability/events/persistence\.py|api/state\.py)|scripts/check_no_central_junk_drawer\.py|scripts/_central_junk_drawer_baseline\.json|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/(core/enums\.py|api/state\.py)|scripts/check_no_central_junk_drawer\.py|scripts/_central_junk_drawer_baseline\.json|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 

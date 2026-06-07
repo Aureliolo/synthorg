@@ -8,7 +8,7 @@ import aiosqlite
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.conversation_turn import (
     PERSISTENCE_CONVERSATION_TURN_APPENDED,
     PERSISTENCE_CONVERSATION_TURN_FAILED,
     PERSISTENCE_CONVERSATION_TURN_QUERIED,

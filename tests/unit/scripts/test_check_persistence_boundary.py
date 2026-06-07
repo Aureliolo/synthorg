@@ -423,13 +423,17 @@ def test_mutation_log_marker_suppresses_on_constant_line(tmp_path: Path) -> None
 def test_mutation_log_allowlist_constants_silenced(tmp_path: Path) -> None:
     """Lifecycle/infra constants on the allowlist do not trip the gate.
 
-    Imports the constants from ``synthorg.observability.events.persistence``
-    so a future rename in the events module is caught here -- the gate's
-    in-script allowlist must stay in sync with the canonical names.
+    Imports the constants from the ``events.persistence`` sub-modules so a
+    future rename in the events package is caught here -- the gate's in-script
+    allowlist must stay in sync with the canonical names.
     """
-    from synthorg.observability.events.persistence import (
+    from synthorg.observability.events.persistence.artifact_storage import (
         PERSISTENCE_ARTIFACT_STORAGE_DELETED,
+    )
+    from synthorg.observability.events.persistence.backend import (
         PERSISTENCE_BACKEND_CREATED,
+    )
+    from synthorg.observability.events.persistence.timescaledb import (
         PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED,
     )
 

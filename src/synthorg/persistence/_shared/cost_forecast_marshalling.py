@@ -17,7 +17,9 @@ from uuid import UUID
 from synthorg.budget.forecast_models import Forecast, ForecastDecision, HaltContext
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import PERSISTENCE_COST_FORECAST_FAILED
+from synthorg.observability.events.persistence.cost_forecast import (
+    PERSISTENCE_COST_FORECAST_FAILED,
+)
 from synthorg.persistence._shared.datetime_marshaller import (
     coerce_row_timestamp,
     format_iso_utc,

@@ -29,7 +29,7 @@ from synthorg.observability.events.api import (
     API_SESSION_CLEANUP,
     API_WS_TICKET_CLEANUP,
 )
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.oauth_state import (
     PERSISTENCE_OAUTH_STATE_CLEANUP,
 )
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of

@@ -36,7 +36,7 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.subworkflow import (
     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
     PERSISTENCE_SUBWORKFLOW_DESERIALIZE_FAILED,
     PERSISTENCE_SUBWORKFLOW_FETCH_FAILED,

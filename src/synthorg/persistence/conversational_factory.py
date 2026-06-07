@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, cast
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.conversational import (
     PERSISTENCE_CONVERSATIONAL_HANDLE_UNAVAILABLE,
     PERSISTENCE_CONVERSATIONAL_UNKNOWN_BACKEND,
 )

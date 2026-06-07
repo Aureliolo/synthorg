@@ -27,7 +27,7 @@ from synthorg.core.auth.roles import HumanRole
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.api_key import (
     PERSISTENCE_API_KEY_COUNT_FAILED,
     PERSISTENCE_API_KEY_DELETE_FAILED,
     PERSISTENCE_API_KEY_FETCH_FAILED,
@@ -35,6 +35,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_API_KEY_LIST_FAILED,
     PERSISTENCE_API_KEY_LISTED,
     PERSISTENCE_API_KEY_SAVE_FAILED,
+)
+from synthorg.observability.events.persistence.user import (
     PERSISTENCE_USER_COUNT_BY_ROLE_FAILED,
     PERSISTENCE_USER_COUNT_FAILED,
     PERSISTENCE_USER_COUNTED,

@@ -10,7 +10,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.subworkflow_models import ParentReference
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.subworkflow import (
     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
     PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
 )

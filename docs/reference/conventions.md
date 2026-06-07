@@ -104,8 +104,9 @@ against an empty default and never sees the env override.
 ## 5. Event constant module imports
 
 Every observability event is defined as a `Final[str]` constant under
-`src/synthorg/observability/events/<domain>.py` and imported by name
-(never by string literal) from the consumer.
+`src/synthorg/observability/events/<domain>.py` (or, for the persistence
+domain, the per-entity sub-module `events/persistence/<entity>.py`) and
+imported by name (never by string literal) from the consumer.
 
 ```python
 from synthorg.observability.events.workers import (
@@ -115,6 +116,9 @@ from synthorg.observability.events.workers import (
     WORKERS_DISPATCHER_PUBLISH_RETRYING,
     WORKERS_DISPATCHER_QUEUE_NOT_RUNNING,
 )
+
+# Persistence events import from their entity sub-module, not a re-export bag:
+from synthorg.observability.events.persistence.task import PERSISTENCE_TASK_SAVED
 ```
 
 Reference: `src/synthorg/workers/dispatcher.py:19-25`.
