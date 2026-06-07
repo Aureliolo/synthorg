@@ -174,11 +174,6 @@ class SQLiteConversationParticipantRepository:
         try:
             cursor = await self._db.execute(sql, (entity_id,))
             row = await cursor.fetchone()
-            if row is None:
-                return None
-            participant = row_to_participant(row)
-        except QueryError:
-            raise
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch participant {entity_id!r}"
             logger.warning(
@@ -188,6 +183,9 @@ class SQLiteConversationParticipantRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+        if row is None:
+            return None
+        participant = row_to_participant(row)
         logger.debug(
             COS_GROUP_PARTICIPANT_FETCHED,
             conversation_id=participant.conversation_id,
@@ -326,8 +324,6 @@ class SQLiteConversationParticipantRepository:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()
             items = tuple(row_to_participant(r) for r in rows)
-        except QueryError:
-            raise
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query conversation participants"
             logger.warning(
