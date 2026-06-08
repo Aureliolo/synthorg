@@ -1,8 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for the GroupSignalAggregator protocol and default impl."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import override
 
 import pytest
 
@@ -11,6 +10,7 @@ from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
     WindowMetrics,
 )
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.meta.rollout.group_aggregator import (
     GroupSamples,
     GroupSignalAggregator,
@@ -20,19 +20,20 @@ from synthorg.meta.rollout.group_aggregator import (
 pytestmark = pytest.mark.unit
 
 
-class _FakeTracker:
+class _FakeTracker(PerformanceTracker):
     def __init__(
         self,
         snapshots: dict[str, AgentPerformanceSnapshot],
     ) -> None:
         self._snapshots = snapshots
-        self.calls: list[tuple[str, datetime]] = []
+        self.calls: list[tuple[str, datetime | None]] = []
 
+    @override
     async def get_snapshot(
         self,
-        agent_id: str,
+        agent_id: NotBlankStr,
         *,
-        now: datetime,
+        now: datetime | None = None,
     ) -> AgentPerformanceSnapshot:
         self.calls.append((agent_id, now))
         return self._snapshots[agent_id]
@@ -103,7 +104,7 @@ class TestGroupSamplesModel:
 class TestTrackerGroupAggregator:
     async def test_empty_agent_list_returns_empty_samples(self) -> None:
         tracker = _FakeTracker({})
-        agg: Any = TrackerGroupAggregator(tracker=tracker)  # type: ignore[arg-type]
+        agg = TrackerGroupAggregator(tracker=tracker)
         until = datetime(2026, 4, 17, tzinfo=UTC)
         since = datetime(2026, 4, 10, tzinfo=UTC)
         samples = await agg.aggregate_for_agents(
@@ -134,7 +135,7 @@ class TestTrackerGroupAggregator:
             ),
         }
         tracker = _FakeTracker(snapshots)
-        agg: Any = TrackerGroupAggregator(tracker=tracker)  # type: ignore[arg-type]
+        agg = TrackerGroupAggregator(tracker=tracker)
         until = datetime(2026, 4, 17, tzinfo=UTC)
         since = datetime(2026, 4, 10, tzinfo=UTC)
         samples = await agg.aggregate_for_agents(
@@ -164,7 +165,7 @@ class TestTrackerGroupAggregator:
             ),
         }
         tracker = _FakeTracker(snapshots)
-        agg: Any = TrackerGroupAggregator(tracker=tracker)  # type: ignore[arg-type]
+        agg = TrackerGroupAggregator(tracker=tracker)
         samples = await agg.aggregate_for_agents(
             agent_ids=(NotBlankStr("a1"), NotBlankStr("a2")),
             since=datetime(2026, 4, 10, tzinfo=UTC),
@@ -190,7 +191,7 @@ class TestTrackerGroupAggregator:
             ),
         }
         tracker = _FakeTracker(snapshots)
-        agg: Any = TrackerGroupAggregator(tracker=tracker)  # type: ignore[arg-type]
+        agg = TrackerGroupAggregator(tracker=tracker)
         samples = await agg.aggregate_for_agents(
             agent_ids=(NotBlankStr("a1"), NotBlankStr("a2")),
             since=datetime(2026, 4, 10, tzinfo=UTC),
@@ -215,7 +216,7 @@ class TestTrackerGroupAggregator:
             ),
         }
         tracker = _FakeTracker(snapshots)
-        agg: Any = TrackerGroupAggregator(tracker=tracker)  # type: ignore[arg-type]
+        agg = TrackerGroupAggregator(tracker=tracker)
         samples = await agg.aggregate_for_agents(
             agent_ids=(NotBlankStr("a1"), NotBlankStr("a2")),
             since=datetime(2026, 4, 10, tzinfo=UTC),
@@ -229,5 +230,5 @@ class TestTrackerGroupAggregator:
 
     async def test_satisfies_protocol(self) -> None:
         tracker = _FakeTracker({})
-        agg = TrackerGroupAggregator(tracker=tracker)  # type: ignore[arg-type]
+        agg = TrackerGroupAggregator(tracker=tracker)
         assert isinstance(agg, GroupSignalAggregator)

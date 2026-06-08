@@ -15,6 +15,8 @@ from synthorg.api.lifecycle_helpers.conversational_reconcile import (
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.agent_engine import AgentEngine
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.chief_of_staff.actor import ConversationalActor
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.enums import ConversationInviteStatus
@@ -73,20 +75,13 @@ def _reconcile_repos(
     )
 
 
-class _FakeEngine:
-    """Minimal ``AgentEngine`` surface read by ``build_conversational_actor``."""
-
-    def __init__(self, *, has_mcp: bool, has_governance: bool) -> None:
-        self._has_mcp = has_mcp
-        self._has_governance = has_governance
-
-    @property
-    def has_mcp_self_consumer(self) -> bool:
-        return self._has_mcp
-
-    @property
-    def has_security_governance(self) -> bool:
-        return self._has_governance
+def _engine(*, has_mcp: bool, has_governance: bool) -> AgentEngine:
+    """Build an ``AgentEngine`` double exposing only the read gates."""
+    engine: AgentEngine = mock_of[AgentEngine](
+        has_mcp_self_consumer=has_mcp,
+        has_security_governance=has_governance,
+    )
+    return engine
 
 
 class _FakeRegistry:
@@ -163,7 +158,7 @@ class TestBuildConversationalActor:
     def test_none_when_disabled(self) -> None:
         result = build_conversational_actor(
             ChiefOfStaffConfig(direct_mcp_enabled=False),
-            engine=_FakeEngine(has_mcp=True, has_governance=True),  # type: ignore[arg-type]
+            engine=_engine(has_mcp=True, has_governance=True),
             agent_registry=object(),  # type: ignore[arg-type]
             autonomy_resolver=None,
         )
@@ -172,7 +167,7 @@ class TestBuildConversationalActor:
     def test_none_when_no_mcp_self_consumer(self) -> None:
         result = build_conversational_actor(
             ChiefOfStaffConfig(direct_mcp_enabled=True),
-            engine=_FakeEngine(has_mcp=False, has_governance=True),  # type: ignore[arg-type]
+            engine=_engine(has_mcp=False, has_governance=True),
             agent_registry=object(),  # type: ignore[arg-type]
             autonomy_resolver=None,
         )
@@ -183,7 +178,7 @@ class TestBuildConversationalActor:
         # permitted write/admin actions with no escalate-and-park step.
         result = build_conversational_actor(
             ChiefOfStaffConfig(direct_mcp_enabled=True),
-            engine=_FakeEngine(has_mcp=True, has_governance=False),  # type: ignore[arg-type]
+            engine=_engine(has_mcp=True, has_governance=False),
             agent_registry=object(),  # type: ignore[arg-type]
             autonomy_resolver=None,
         )
@@ -192,8 +187,8 @@ class TestBuildConversationalActor:
     def test_builds_when_governed(self) -> None:
         result = build_conversational_actor(
             ChiefOfStaffConfig(direct_mcp_enabled=True),
-            engine=_FakeEngine(has_mcp=True, has_governance=True),  # type: ignore[arg-type]
-            agent_registry=object(),  # type: ignore[arg-type]
+            engine=_engine(has_mcp=True, has_governance=True),
+            agent_registry=mock_of[AgentRegistryService](),
             autonomy_resolver=None,
         )
         assert isinstance(result, ConversationalActor)

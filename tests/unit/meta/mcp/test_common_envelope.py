@@ -14,6 +14,7 @@ from typing import Any, cast
 
 import pytest
 from pydantic import BaseModel
+from typeguard import suppress_type_checks
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.errors import (
@@ -156,8 +157,15 @@ class _StubActor:
         self.id = None  # id missing -- name fallback exercised
 
 
+@suppress_type_checks
 class TestGuardrails:
-    """Tests for destructive-op guardrail enforcement."""
+    """Tests for destructive-op guardrail enforcement.
+
+    These exercise the runtime defensive path that rejects malformed
+    or unattributable actors, which can only be expressed with doubles
+    that deliberately violate the ``AgentIdentity`` annotation; typeguard
+    is suppressed at the class so it does not pre-empt that path.
+    """
 
     _ACTOR = cast("AgentIdentity", _StubActor())
 

@@ -96,6 +96,22 @@ class _InMemoryRepo:
         self.rows[entity_id] = row.model_copy(update={"state": to_state, **updates})
         return True
 
+    async def delete(self, entity_id: str) -> bool:
+        raise NotImplementedError
+
+    async def list_items(
+        self, *, limit: int = 0, offset: int = 0
+    ) -> tuple[ToolBlueprint, ...]:
+        raise NotImplementedError
+
+    async def query(
+        self, filter_spec: object, *, limit: int = 0, offset: int = 0
+    ) -> tuple[ToolBlueprint, ...]:
+        raise NotImplementedError
+
+    async def count(self, filter_spec: object) -> int:
+        raise NotImplementedError
+
 
 class _Gate:
     def __init__(self, *, result: ToolValidationResult) -> None:

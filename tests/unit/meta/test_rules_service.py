@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for :class:`CustomRulesService`.
 
 Conformance tests cover the end-to-end repository contract against
@@ -9,7 +8,6 @@ so each case runs in milliseconds.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -20,6 +18,7 @@ from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.meta.rules.service import CustomRuleNotFoundError, CustomRulesService
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence.custom_rule_protocol import CustomRuleFilterSpec
 
 pytestmark = pytest.mark.unit
 
@@ -30,11 +29,11 @@ class _FakeCustomRuleRepository:
     def __init__(self) -> None:
         self._rows: dict[str, CustomRuleDefinition] = {}
 
-    async def save(self, rule: CustomRuleDefinition) -> None:
-        self._rows[str(rule.id)] = rule
+    async def save(self, entity: CustomRuleDefinition) -> None:
+        self._rows[str(entity.id)] = entity
 
-    async def get(self, rule_id: NotBlankStr) -> CustomRuleDefinition | None:
-        return self._rows.get(str(rule_id))
+    async def get(self, entity_id: NotBlankStr) -> CustomRuleDefinition | None:
+        return self._rows.get(str(entity_id))
 
     async def get_by_name(self, name: NotBlankStr) -> CustomRuleDefinition | None:
         for row in self._rows.values():
@@ -48,10 +47,6 @@ class _FakeCustomRuleRepository:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[CustomRuleDefinition, ...]:
-        from synthorg.persistence.custom_rule_protocol import (
-            CustomRuleFilterSpec,
-        )
-
         return await self.query(
             CustomRuleFilterSpec(),
             limit=limit,
@@ -60,7 +55,7 @@ class _FakeCustomRuleRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: CustomRuleFilterSpec,
         *,
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
@@ -74,14 +69,14 @@ class _FakeCustomRuleRepository:
         ordered = sorted(rows, key=lambda r: r.name)
         return tuple(ordered[offset : offset + limit])
 
-    async def count(self, filter_spec: Any) -> int:
+    async def count(self, filter_spec: CustomRuleFilterSpec) -> int:
         rows = [
             r for r in self._rows.values() if not filter_spec.enabled_only or r.enabled
         ]
         return len(rows)
 
-    async def delete(self, rule_id: NotBlankStr) -> bool:
-        return self._rows.pop(str(rule_id), None) is not None
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._rows.pop(str(entity_id), None) is not None
 
 
 def _rule(

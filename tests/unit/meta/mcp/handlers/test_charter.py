@@ -16,15 +16,18 @@ and live behind ``app_state.has_charter_service`` /
 
 import json
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, override
 
 import pytest
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.engine.prompt_safety import TAG_TASK_DATA
+from synthorg.meta.charter.dispatch import CharterDispatcher
+from synthorg.meta.charter.service import CharterInterviewService
 from synthorg.meta.errors import CharterNotFoundError
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers.charter import CHARTER_HANDLERS
+from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
 
@@ -35,7 +38,7 @@ _TOOL_CANCEL = "synthorg_charter_cancel"
 _TOOL_APPROVE = "synthorg_charter_approve"
 
 
-class _StubService:
+class _StubService(CharterInterviewService):
     """Captures handler arguments so untrusted-message wrapping can be asserted."""
 
     def __init__(self) -> None:
@@ -54,14 +57,17 @@ class _StubService:
             model_dump=lambda mode="json": {"id": "charter-1", "status": "cancelled"}
         )
 
+    @override
     async def run_turn(self, args: Any) -> Any:
         self.run_turn_args.append(args)
         return self.run_turn_result
 
+    @override
     async def list_charters(self, **kwargs: Any) -> tuple[Any, ...]:
         self.list_calls.append(kwargs)
         return self.list_result
 
+    @override
     async def get(self, charter_id: str, *, requested_by: Any = None) -> Any:
         del requested_by
         self.get_calls.append(charter_id)
@@ -69,6 +75,7 @@ class _StubService:
             raise CharterNotFoundError(charter_id=charter_id)
         return self.get_result
 
+    @override
     async def cancel_charter(
         self,
         charter_id: str,
@@ -86,13 +93,14 @@ class _StubService:
         return self.cancel_result
 
 
-class _StubDispatcher:
+class _StubDispatcher(CharterDispatcher):
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
         self.result: Any = SimpleNamespace(
             model_dump=lambda mode="json": {"task_id": "task-1", "is_success": True}
         )
 
+    @override
     async def approve(self, charter_id: str, *, approved_by: Any) -> Any:
         self.calls.append({"charter_id": charter_id, "approved_by": approved_by})
         return self.result
@@ -114,8 +122,8 @@ def _state(
     return SimpleNamespace(slice=lambda _slice_type: charter_slice)
 
 
-def _actor(actor_id: str = "operator-1") -> AgentIdentity:
-    return cast(AgentIdentity, SimpleNamespace(id=actor_id))
+def _actor(name: str = "operator-1") -> AgentIdentity:
+    return make_test_actor(name=name)
 
 
 class TestCharterMcpHandlersUnwired:
@@ -204,6 +212,7 @@ class TestCharterMcpHandlersWired:
         # =False so the service honours the bypass.
         svc = _StubService()
         handler = CHARTER_HANDLERS[_TOOL_CANCEL]
+        actor = _actor("admin-1")
         await handler(
             app_state=_state(service=svc),
             arguments={
@@ -211,10 +220,10 @@ class TestCharterMcpHandlersWired:
                 "confirm": True,
                 "reason": "operator cancelling stalled charter",
             },
-            actor=_actor("admin-1"),
+            actor=actor,
         )
         assert svc.cancel_calls[0]["enforce_ownership"] is False
-        assert svc.cancel_calls[0]["cancelled_by"] == "admin-1"
+        assert svc.cancel_calls[0]["cancelled_by"] == str(actor.id)
 
     async def test_cancel_requires_admin_guardrail(self) -> None:
         # A cancel request that does not satisfy require_admin_guardrails
