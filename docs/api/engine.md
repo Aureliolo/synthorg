@@ -90,3 +90,7 @@ Agent orchestration, execution loops, task decomposition, routing, and parallel 
 ::: synthorg.engine.workspace.models
 
 ::: synthorg.engine.workspace.service
+
+## Workflow Enums
+
+::: synthorg.engine.workflow.enums

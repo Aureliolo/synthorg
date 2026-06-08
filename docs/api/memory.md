@@ -7,6 +7,10 @@ search:
 
 Persistent agent memory: protocol, retrieval pipeline, shared org memory, consolidation, and archival.
 
+## Enums
+
+::: synthorg.memory.enums
+
 ## Protocol
 
 ::: synthorg.memory.protocol

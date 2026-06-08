@@ -207,6 +207,9 @@ nav:
       - Providers: api/providers.md
       - Communication: api/communication.md
       - Memory: api/memory.md
+      - Knowledge: api/knowledge.md
+      - Research: api/research.md
+      - Docs Engine: api/docs_engine.md
       - Security: api/security.md
       - Budget: api/budget.md
       - HR: api/hr.md

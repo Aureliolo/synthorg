@@ -56,7 +56,7 @@ flowchart LR
 
 ## Doc types (taxonomy)
 
-`DocType` is a `StrEnum` in `synthorg.core.enums`:
+`DocType` is a `StrEnum` in `synthorg.docs_engine.enums`:
 
 | Type | Purpose |
 |---|---|

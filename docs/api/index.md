@@ -26,6 +26,9 @@ This section documents every public class, function, and model in the SynthOrg f
 |--------|-------------|
 | [Communication](communication.md) | Message bus, delegation, conflict resolution, meetings |
 | [Memory](memory.md) | Persistent agent memory, retrieval pipeline, org memory |
+| [Knowledge](knowledge.md) | Knowledge and provenance substrate: source ingestion, chunking, retrieval |
+| [Research](research.md) | Research runs: retrieval, credibility triage, synthesis |
+| [Docs Engine](docs_engine.md) | Living-documentation engine: document types, chunking, indexing |
 | [Security](security.md) | Rule engine, trust, autonomy, output scanning |
 | [Budget](budget.md) | Cost tracking, enforcement, optimisation |
 | [HR](hr.md) | Agent lifecycle, performance tracking, promotions |

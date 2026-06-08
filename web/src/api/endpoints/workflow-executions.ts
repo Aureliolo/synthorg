@@ -12,7 +12,7 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
-/** Mirrors ``synthorg.core.enums.WorkflowExecutionStatus``. */
+/** Mirrors ``synthorg.engine.workflow.enums.WorkflowExecutionStatus``. */
 export type WorkflowExecutionStatus =
   | 'pending'
   | 'running'
