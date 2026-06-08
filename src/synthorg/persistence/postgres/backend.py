@@ -17,18 +17,25 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 
+from synthorg.core.auth.config import AuthConfig
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence.backend import (
     PERSISTENCE_BACKEND_NOT_CONNECTED,
 )
+from synthorg.ontology.models import EntityDefinition
 from synthorg.persistence._shared import format_iso_utc
+from synthorg.persistence.auth_protocol import (
+    LockoutRepository,
+)
 from synthorg.persistence.config import PostgresConfig
+from synthorg.persistence.escalation_protocol import EscalationQueueRepository
 from synthorg.persistence.postgres._repository_wiring import (
     _PostgresRepositoryWiring,
 )
@@ -38,17 +45,7 @@ from synthorg.persistence.postgres.lockout_repo import (
     PostgresLockoutRepository,
 )
 from synthorg.persistence.settings_protocol import SettingRow
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.core.auth.config import AuthConfig
-    from synthorg.ontology.models import EntityDefinition
-    from synthorg.persistence.auth_protocol import (
-        LockoutRepository,
-    )
-    from synthorg.persistence.escalation_protocol import EscalationQueueRepository
-    from synthorg.versioning.service import VersioningService
+from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
 

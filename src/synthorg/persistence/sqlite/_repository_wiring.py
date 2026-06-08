@@ -19,6 +19,7 @@ block.
 """
 
 import json
+from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -207,9 +208,6 @@ from synthorg.persistence.sqlite.workflow_execution_repo import (
     SQLiteWorkflowExecutionRepository,
 )
 from synthorg.persistence.version_protocol import VersionRepository
-
-if TYPE_CHECKING:
-    from contextlib import AbstractAsyncContextManager
 
 
 class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
