@@ -13,9 +13,11 @@ source onto an occupied project is refused.
 import asyncio
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.codebase_structure_map import CodebaseStructureMap
+from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.brownfield.errors import BrownfieldWorkspaceNotEmptyError
 from synthorg.engine.brownfield.models import (
@@ -23,7 +25,13 @@ from synthorg.engine.brownfield.models import (
     CodebaseImportSubmission,
 )
 from synthorg.engine.brownfield.scanner import scan_codebase
+from synthorg.engine.brownfield.scanner.protocol import StructureMapScanner
+from synthorg.engine.brownfield.source_resolver import BrownfieldSourceResolver
+from synthorg.engine.workspace.project_workspace_service import (
+    ProjectWorkspaceService,
+)
 from synthorg.knowledge.enums import SourceType
+from synthorg.knowledge.service import KnowledgeService
 from synthorg.observability import get_logger
 from synthorg.observability.events.brownfield import (
     BROWNFIELD_CODEBASE_INDEXED,
@@ -34,19 +42,9 @@ from synthorg.observability.events.brownfield import (
     BROWNFIELD_STRUCTURE_UNCHANGED,
     BROWNFIELD_WORKSPACE_SEEDED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.codebase_structure_map import CodebaseStructureMap
-    from synthorg.core.project_workspace import ProjectWorkspace
-    from synthorg.engine.brownfield.scanner.protocol import StructureMapScanner
-    from synthorg.engine.brownfield.source_resolver import BrownfieldSourceResolver
-    from synthorg.engine.workspace.project_workspace_service import (
-        ProjectWorkspaceService,
-    )
-    from synthorg.knowledge.service import KnowledgeService
-    from synthorg.persistence.codebase_structure_map_protocol import (
-        CodebaseStructureMapRepository,
-    )
+from synthorg.persistence.codebase_structure_map_protocol import (
+    CodebaseStructureMapRepository,
+)
 
 logger = get_logger(__name__)
 

@@ -1,7 +1,7 @@
 """Tests for coordination middleware protocol, base class, and chain."""
 
 from datetime import date
-from typing import override
+from typing import cast, override
 from uuid import uuid4
 
 import pytest
@@ -316,7 +316,7 @@ class TestCoordinationMiddlewareContext:
 
     def test_metadata_defensive_copy(self) -> None:
         """Modifying the input dict does not affect the frozen context."""
-        input_dict = {"key": "value"}
+        input_dict: dict[str, object] = {"key": "value"}
         ctx = CoordinationMiddlewareContext(
             coordination_context=_coord_context(),
             metadata=input_dict,
@@ -331,7 +331,7 @@ class TestCoordinationMiddlewareContext:
         ctx = _mw_context()
         updated = ctx.with_metadata("a", [1, 2, 3])
         # Mutate the list in the updated context
-        updated.metadata["a"].append(4)
+        cast("list[int]", updated.metadata["a"]).append(4)
         # Original should not have "a" at all
         assert "a" not in ctx.metadata
 

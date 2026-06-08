@@ -10,10 +10,12 @@ obsolete.
 
 import json
 import re
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention.models import SteeringSupersessionProposal
 from synthorg.engine.prompt_safety import (
@@ -26,11 +28,7 @@ from synthorg.observability.events.cockpit import STEERING_PROPOSE_FAILED
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.core.task import Task
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider
 
 _PROPOSE_TASK_ID: NotBlankStr = NotBlankStr("system:steering:propose")
 _SYSTEM_AGENT_ID: NotBlankStr = NotBlankStr("system")

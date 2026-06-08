@@ -70,7 +70,8 @@ class DisclosureMiddleware(BaseAgentMiddleware):
         just_loaded: str | None = None
 
         if result.tool_name == "load_tool":
-            tool_name = result.metadata.get(METADATA_SHOULD_LOAD_TOOL)
+            raw_should_load = result.metadata.get(METADATA_SHOULD_LOAD_TOOL)
+            tool_name = raw_should_load if isinstance(raw_should_load, str) else None
             if not tool_name:
                 tool_name = self._extract_tool_name(result.output)
             if not tool_name:

@@ -15,17 +15,19 @@ the new backend reports).
 import asyncio
 import shutil
 import stat
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import GitBackendConfigError
+from synthorg.engine.workspace.git_backend import (
+    GitBackend,
+    GitBackendConfig,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     PROJECT_WORKSPACE_PROVISIONED,
@@ -34,15 +36,9 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_GIT_DIR_CLEARED,
     WORKSPACE_PATH_TRAVERSAL_REJECTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workspace.git_backend import (
-        GitBackend,
-        GitBackendConfig,
-    )
-    from synthorg.persistence.project_workspace_protocol import (
-        ProjectWorkspaceRepository,
-    )
+from synthorg.persistence.project_workspace_protocol import (
+    ProjectWorkspaceRepository,
+)
 
 logger = get_logger(__name__)
 

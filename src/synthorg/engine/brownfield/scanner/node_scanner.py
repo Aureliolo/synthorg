@@ -7,7 +7,7 @@ and the test framework; classifies the ecosystem as TypeScript when a
 
 import json
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 from synthorg.core.codebase_structure_map import (
     BuildFile,
@@ -68,7 +68,7 @@ class NodeScanner:
             dependencies=self._dependencies(manifest),
         )
 
-    def _load_manifest(self, workspace_path: Path) -> dict[str, Any]:
+    def _load_manifest(self, workspace_path: Path) -> dict[str, object]:
         """Parse ``package.json`` at the tree root.
 
         Args:
@@ -103,7 +103,7 @@ class NodeScanner:
             for name in present
         )
 
-    def _entry_points(self, manifest: dict[str, Any]) -> tuple[EntryPoint, ...]:
+    def _entry_points(self, manifest: dict[str, object]) -> tuple[EntryPoint, ...]:
         """Collect ``main`` and ``bin`` entry points from the manifest.
 
         Args:
@@ -133,7 +133,7 @@ class NodeScanner:
         return tuple(points)
 
     def _test_suites(
-        self, workspace_path: Path, manifest: dict[str, Any]
+        self, workspace_path: Path, manifest: dict[str, object]
     ) -> tuple[TestSuite, ...]:
         """Locate test directories and tag them with the framework.
 
@@ -148,7 +148,7 @@ class NodeScanner:
         present = [d for d in _TEST_DIRS if d in top_level_dirs(workspace_path)]
         return tuple(TestSuite(path=name, framework=framework) for name in present)
 
-    def _test_framework(self, manifest: dict[str, Any]) -> str | None:
+    def _test_framework(self, manifest: dict[str, object]) -> str | None:
         """Detect the test framework from declared dependencies.
 
         Args:
@@ -167,7 +167,7 @@ class NodeScanner:
                 return framework
         return None
 
-    def _dependencies(self, manifest: dict[str, Any]) -> tuple[Dependency, ...]:
+    def _dependencies(self, manifest: dict[str, object]) -> tuple[Dependency, ...]:
         """Collect runtime and dev dependencies from the manifest.
 
         Args:
@@ -188,7 +188,7 @@ class NodeScanner:
         )
         return tuple(deps)
 
-    def _parse_block(self, block: Any, scope: DependencyScope) -> list[Dependency]:
+    def _parse_block(self, block: object, scope: DependencyScope) -> list[Dependency]:
         """Parse one dependency block (name-to-version map).
 
         Args:

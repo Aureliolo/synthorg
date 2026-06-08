@@ -7,14 +7,17 @@ flight-recorder frames; cost comes from the cost tracker when wired.
 """
 
 import asyncio
+from collections.abc import Iterable
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import get_logger
 from synthorg.observability.events.cockpit import (
     COCKPIT_RUNAWAY_DETECTED,
@@ -23,16 +26,8 @@ from synthorg.observability.events.cockpit import (
 )
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameFilterSpec,
+    FlightRecorderFrameRepository,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.core.task import Task
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.persistence.flight_recorder_protocol import (
-        FlightRecorderFrameRepository,
-    )
 
 logger = get_logger(__name__)
 

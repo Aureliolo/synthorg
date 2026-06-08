@@ -9,6 +9,8 @@ re-planning. Stateless free functions only; no instance state.
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.context import AgentContext
+from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_helpers import (
     build_result,
     call_provider,
@@ -39,14 +41,13 @@ from synthorg.observability.events.execution import (
     EXECUTION_PLAN_STEP_TRUNCATED,
 )
 from synthorg.providers.enums import FinishReason, MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ChatMessage, CompletionConfig, CompletionResponse
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
+    # ``checkpoint`` package init eagerly pulls ``resume`` -> ``hybrid_loop``;
+    # a runtime import here would cycle back into the mid-import hybrid loop.
     from synthorg.engine.checkpoint.callback import CheckpointCallback
-    from synthorg.engine.context import AgentContext
-    from synthorg.engine.hybrid_models import HybridLoopConfig
-    from synthorg.providers.models import CompletionConfig, CompletionResponse
-    from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

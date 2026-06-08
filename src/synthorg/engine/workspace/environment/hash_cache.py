@@ -13,10 +13,7 @@ holds a per-project lock around every memo read/write, so the plain dict
 needs no internal locking.
 """
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from synthorg.core.project_environment import ProjectEnvironment
+from synthorg.core.project_environment import ProjectEnvironment
 
 
 class ProvisionedEnvironmentCache:

@@ -458,26 +458,26 @@
     },
     "src/synthorg/engine/evolution/factory.py": {
       "cap": 500,
-      "loc": 412,
-      "ratio": 0.824,
+      "loc": 410,
+      "ratio": 0.82,
       "tier": "code"
     },
     "src/synthorg/engine/evolution/guards/shadow_evaluation.py": {
       "cap": 500,
-      "loc": 444,
-      "ratio": 0.888,
+      "loc": 443,
+      "ratio": 0.886,
       "tier": "code"
     },
     "src/synthorg/engine/evolution/proposers/separate_analyzer.py": {
       "cap": 500,
-      "loc": 407,
-      "ratio": 0.814,
+      "loc": 417,
+      "ratio": 0.834,
       "tier": "code"
     },
     "src/synthorg/engine/evolution/service.py": {
       "cap": 500,
-      "loc": 411,
-      "ratio": 0.822,
+      "loc": 407,
+      "ratio": 0.814,
       "tier": "code"
     },
     "src/synthorg/engine/feature.py": {
@@ -488,8 +488,14 @@
     },
     "src/synthorg/engine/hybrid/replan_helpers.py": {
       "cap": 500,
-      "loc": 419,
-      "ratio": 0.838,
+      "loc": 418,
+      "ratio": 0.836,
+      "tier": "code"
+    },
+    "src/synthorg/engine/middleware/protocol.py": {
+      "cap": 500,
+      "loc": 406,
+      "ratio": 0.812,
       "tier": "code"
     },
     "src/synthorg/engine/parallel.py": {
@@ -506,8 +512,8 @@
     },
     "src/synthorg/engine/quality/decomposers/llm.py": {
       "cap": 700,
-      "loc": 609,
-      "ratio": 0.87,
+      "loc": 625,
+      "ratio": 0.893,
       "tier": "adapter"
     },
     "src/synthorg/engine/quality/graders/llm.py": {
@@ -602,14 +608,14 @@
     },
     "src/synthorg/engine/workspace/environment/devcontainer.py": {
       "cap": 500,
-      "loc": 441,
-      "ratio": 0.882,
+      "loc": 440,
+      "ratio": 0.88,
       "tier": "code"
     },
     "src/synthorg/engine/workspace/git_backend/external_remote.py": {
       "cap": 700,
-      "loc": 604,
-      "ratio": 0.863,
+      "loc": 603,
+      "ratio": 0.861,
       "tier": "adapter"
     },
     "src/synthorg/hr/activity_service.py": {
@@ -1400,7 +1406,7 @@
     "synthorg.engine.workflow.enums": 33,
     "synthorg.execution.turn": 29,
     "synthorg.hr.enums": 33,
-    "synthorg.hr.performance.models": 47,
+    "synthorg.hr.performance.models": 48,
     "synthorg.hr.performance.tracker": 26,
     "synthorg.hr.registry": 40,
     "synthorg.hr.scaling.models": 21,
@@ -1413,7 +1419,7 @@
     "synthorg.integrations.state": 22,
     "synthorg.knowledge.models": 24,
     "synthorg.memory.errors": 20,
-    "synthorg.memory.models": 66,
+    "synthorg.memory.models": 67,
     "synthorg.memory.protocol": 63,
     "synthorg.meta.chief_of_staff.models": 30,
     "synthorg.meta.config": 20,

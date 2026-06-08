@@ -258,9 +258,10 @@ class AssumptionViolationMiddleware(BaseAgentMiddleware):
 
         if violations:
             existing = ctx.metadata.get("assumption_violations", ())
+            existing_items = existing if isinstance(existing, tuple) else ()
             return ctx.with_metadata(
                 "assumption_violations",
-                (*existing, *violations),
+                (*existing_items, *violations),
             )
 
         return ctx

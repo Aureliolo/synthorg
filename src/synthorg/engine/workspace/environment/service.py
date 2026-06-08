@@ -13,33 +13,31 @@ itself as ready.
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from weakref import WeakValueDictionary
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.project_environment import ProjectEnvironment
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.environment.committer import WorkspaceCommitter
+from synthorg.engine.workspace.environment.config import EnvironmentConfig
 from synthorg.engine.workspace.environment.hash_cache import (
     ProvisionedEnvironmentCache,
 )
-from synthorg.engine.workspace.environment.protocol import ProvisionedEnvironment
+from synthorg.engine.workspace.environment.protocol import (
+    EnvironmentCommandRunner,
+    EnvironmentStrategy,
+    ProvisionedEnvironment,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     ENVIRONMENT_KIND_CHANGED,
     ENVIRONMENT_REUSED,
     ENVIRONMENT_ROW_PERSISTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.workspace.environment.committer import WorkspaceCommitter
-    from synthorg.engine.workspace.environment.config import EnvironmentConfig
-    from synthorg.engine.workspace.environment.protocol import (
-        EnvironmentCommandRunner,
-        EnvironmentStrategy,
-    )
-    from synthorg.persistence.project_environment_protocol import (
-        ProjectEnvironmentRepository,
-    )
+from synthorg.persistence.project_environment_protocol import (
+    ProjectEnvironmentRepository,
+)
 
 logger = get_logger(__name__)
 

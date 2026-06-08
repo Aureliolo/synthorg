@@ -7,7 +7,7 @@ binary entry point and ``src/lib.rs`` as a library module.
 
 import tomllib
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 from synthorg.core.codebase_structure_map import (
     BuildFile,
@@ -62,7 +62,7 @@ class RustScanner:
             dependencies=self._dependencies(cargo),
         )
 
-    def _load_cargo(self, workspace_path: Path) -> dict[str, Any]:
+    def _load_cargo(self, workspace_path: Path) -> dict[str, object]:
         """Parse ``Cargo.toml`` at the tree root.
 
         Args:
@@ -81,7 +81,7 @@ class RustScanner:
             return {}
 
     def _modules(
-        self, workspace_path: Path, cargo: dict[str, Any]
+        self, workspace_path: Path, cargo: dict[str, object]
     ) -> tuple[Module, ...]:
         """Map ``src/lib.rs`` to a crate module when present.
 
@@ -106,7 +106,7 @@ class RustScanner:
         )
 
     def _entry_points(
-        self, workspace_path: Path, cargo: dict[str, Any]
+        self, workspace_path: Path, cargo: dict[str, object]
     ) -> tuple[EntryPoint, ...]:
         """Collect binary entry points from ``src/main.rs`` and ``[[bin]]``.
 
@@ -152,7 +152,7 @@ class RustScanner:
             return (TestSuite(path="tests", framework="cargo test"),)
         return ()
 
-    def _dependencies(self, cargo: dict[str, Any]) -> tuple[Dependency, ...]:
+    def _dependencies(self, cargo: dict[str, object]) -> tuple[Dependency, ...]:
         """Collect runtime / dev / build dependencies from ``Cargo.toml``.
 
         Args:
@@ -180,7 +180,7 @@ class RustScanner:
                 )
         return tuple(deps)
 
-    def _version_of(self, spec: Any) -> str | None:
+    def _version_of(self, spec: object) -> str | None:
         """Extract a version string from a Cargo dependency spec.
 
         Args:

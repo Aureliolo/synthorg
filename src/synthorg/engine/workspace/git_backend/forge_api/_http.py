@@ -9,7 +9,9 @@ sanitiser strips token-like patterns from any body snippet.
 """
 
 import re
-from typing import TYPE_CHECKING, Final
+from typing import Final
+
+import httpx
 
 from synthorg.engine.errors import (
     GitBackendForgeApiError,
@@ -21,9 +23,6 @@ from synthorg.observability.events.workspace import (
     FORGE_API_RATE_LIMITED,
     FORGE_API_REQUEST_FAILED,
 )
-
-if TYPE_CHECKING:
-    import httpx
 
 logger = get_logger(__name__)
 

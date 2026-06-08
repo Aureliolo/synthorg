@@ -25,6 +25,18 @@ from synthorg.observability.events.behavior_tagging import (
 logger = get_logger(__name__)
 
 
+def _str_tuple(value: object) -> tuple[str, ...]:
+    """Extract the string items from a heterogeneous metadata value.
+
+    Returns:
+        A tuple of the ``str`` items in ``value`` when it is a tuple or
+        list; an empty tuple otherwise.
+    """
+    if isinstance(value, tuple | list):
+        return tuple(item for item in value if isinstance(item, str))
+    return ()
+
+
 # ── Default tool name -> BehaviorTag mapping ───────────────────────
 
 _DEFAULT_TOOL_TAG_MAP: dict[str, BehaviorTag] = {
@@ -138,22 +150,10 @@ class BehaviorTaggerMiddleware(BaseAgentMiddleware):
         """
         tags: set[BehaviorTag] = set()
 
-        # Check pending tool calls from the model response.
-        pending_tools: tuple[str, ...] = ctx.metadata.get(
-            "pending_tool_calls",
-            (),
-        )
-        for tool_name in pending_tools:
-            tag = self._match_tool(tool_name)
-            if tag is not None:
-                tags.add(tag)
-
-        # Also check tool_calls_made on the context if available.
-        tool_calls_made: tuple[str, ...] = ctx.metadata.get(
-            "tool_calls_made",
-            (),
-        )
-        for tool_name in tool_calls_made:
+        # Collect pending tool calls and already-made tool calls.
+        pending_tools = _str_tuple(ctx.metadata.get("pending_tool_calls"))
+        tool_calls_made = _str_tuple(ctx.metadata.get("tool_calls_made"))
+        for tool_name in (*pending_tools, *tool_calls_made):
             tag = self._match_tool(tool_name)
             if tag is not None:
                 tags.add(tag)

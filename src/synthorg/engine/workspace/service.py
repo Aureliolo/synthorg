@@ -6,7 +6,6 @@ setup, merge, and teardown for groups of agent workspaces.
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.core.clock import Clock, SystemClock
@@ -15,10 +14,19 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     WorkspaceCleanupError,
 )
+from synthorg.engine.workspace.config import (
+    WorkspaceIsolationConfig,
+)
+from synthorg.engine.workspace.git_backend import GitBackend
 from synthorg.engine.workspace.merge import MergeOrchestrator
 from synthorg.engine.workspace.models import (
+    MergeResult,
     Workspace,
     WorkspaceGroupResult,
+    WorkspaceRequest,
+)
+from synthorg.engine.workspace.protocol import (
+    WorkspaceIsolationStrategy,
 )
 from synthorg.engine.workspace.push_queue import PushQueueCoordinator
 from synthorg.observability import get_logger, safe_error_description
@@ -30,16 +38,6 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_GROUP_TEARDOWN_START,
     WORKSPACE_TEARDOWN_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workspace.config import (
-        WorkspaceIsolationConfig,
-    )
-    from synthorg.engine.workspace.git_backend import GitBackend
-    from synthorg.engine.workspace.models import MergeResult, WorkspaceRequest
-    from synthorg.engine.workspace.protocol import (
-        WorkspaceIsolationStrategy,
-    )
 
 logger = get_logger(__name__)
 

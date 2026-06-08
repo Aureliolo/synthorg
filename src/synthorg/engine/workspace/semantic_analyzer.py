@@ -6,9 +6,12 @@ duplicate definitions, and import conflicts.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from collections.abc import Mapping
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.workspace.config import SemanticAnalysisConfig
+from synthorg.engine.workspace.models import MergeConflict, Workspace
 from synthorg.engine.workspace.semantic_checks import (
     check_duplicate_definitions,
     check_import_conflicts,
@@ -24,12 +27,6 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_SEMANTIC_ANALYSIS_START,
     WORKSPACE_SEMANTIC_CONFLICT,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.engine.workspace.config import SemanticAnalysisConfig
-    from synthorg.engine.workspace.models import MergeConflict, Workspace
 
 logger = get_logger(__name__)
 

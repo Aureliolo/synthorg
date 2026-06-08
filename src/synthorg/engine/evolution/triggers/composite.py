@@ -3,20 +3,16 @@
 OR-combines multiple triggers: fires if ANY sub-trigger fires.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.evolution.protocols import (
+    EvolutionContext,
+    EvolutionTrigger,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evolution import (
     EVOLUTION_TRIGGER_FAILED,
     EVOLUTION_TRIGGER_REQUESTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.evolution.protocols import (
-        EvolutionContext,
-        EvolutionTrigger,
-    )
 
 logger = get_logger(__name__)
 

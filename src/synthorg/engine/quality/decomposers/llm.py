@@ -15,7 +15,9 @@ server-side (never taken from the model).
 
 import json
 from collections.abc import Mapping
-from typing import Any, ClassVar, Final, NoReturn
+from typing import ClassVar, Final, NoReturn
+
+from pydantic import JsonValue
 
 from synthorg.budget.call_category import LLMCallCategory
 
@@ -58,7 +60,7 @@ _DECOMPOSER_TOOL_DESCRIPTION: Final[str] = (
     "whether the given acceptance criteria have been satisfied.  Each "
     "probe must target exactly one criterion by zero-based index."
 )
-_DECOMPOSER_TOOL_SCHEMA: Final[dict[str, Any]] = {
+_DECOMPOSER_TOOL_SCHEMA: Final[dict[str, JsonValue]] = {
     "type": "object",
     "properties": {
         "probes": {
@@ -177,17 +179,27 @@ def _proportionally_truncate(
     ]
 
 
-def accepted_index(raw: Any) -> int:
+def accepted_index(raw: object) -> int:
     """Return the validated ``source_criterion_index`` from a raw probe.
 
     Only called after ``_probe_rejection_reason`` returned ``None``,
     so the index is guaranteed to be a valid int in range.
+
+    Raises:
+        LLMDecompositionError: If ``raw`` is not a mapping with an
+            integer ``source_criterion_index`` (unreachable in
+            practice: the caller validates the probe first).
     """
-    return int(raw["source_criterion_index"])
+    if isinstance(raw, Mapping):
+        value = raw.get("source_criterion_index")
+        if isinstance(value, int):
+            return value
+    msg = "accepted_index requires a probe mapping with an integer index"
+    raise LLMDecompositionError(msg)
 
 
 def _probe_rejection_reason(
-    raw: Any,
+    raw: object,
     *,
     criteria: tuple[AcceptanceCriterion, ...],
     per_criterion_counts: dict[int, int],
@@ -343,7 +355,7 @@ class LLMCriteriaDecomposer:
         *,
         agent_id: NotBlankStr,
         task_id: NotBlankStr,
-    ) -> Any:
+    ) -> object:
         """Invoke ``self._provider.complete`` with the decomposer config.
 
         Returns:
@@ -365,11 +377,11 @@ class LLMCriteriaDecomposer:
 
     def _extract_raw_probes(
         self,
-        response: Any,
+        response: object,
         *,
         task_id: NotBlankStr,
         agent_id: NotBlankStr,
-    ) -> list[Any]:
+    ) -> list[object]:
         """Pull the ``probes`` list from the tool-call response or raise.
 
         Enforces the full response shape at the system boundary: exactly
@@ -413,7 +425,7 @@ class LLMCriteriaDecomposer:
                 agent_id=agent_id,
                 reason="arguments not object",
             )
-        arguments: Mapping[str, Any] = raw_args
+        arguments: Mapping[str, object] = raw_args
         extra = set(arguments.keys()) - _DECOMPOSER_TOOL_REQUIRED_KEYS
         if extra:
             self._raise_invalid_response(
@@ -437,7 +449,7 @@ class LLMCriteriaDecomposer:
         task_id: NotBlankStr,
         agent_id: NotBlankStr,
         reason: str,
-        **extra_context: Any,
+        **extra_context: object,
     ) -> NoReturn:
         """Log ``VERIFICATION_DECOMPOSER_RESPONSE_INVALID`` and raise.
 
@@ -576,7 +588,7 @@ class LLMCriteriaDecomposer:
 
     def _materialize_probes(
         self,
-        raw_probes: list[Any],
+        raw_probes: list[object],
         *,
         criteria: tuple[AcceptanceCriterion, ...],
         task_id: NotBlankStr,
@@ -635,7 +647,7 @@ class LLMCriteriaDecomposer:
 
     def _accept_probe(  # noqa: PLR0913
         self,
-        raw: Any,
+        raw: object,
         *,
         criteria: tuple[AcceptanceCriterion, ...],
         per_criterion_counts: dict[int, int],
@@ -668,8 +680,14 @@ class LLMCriteriaDecomposer:
                 else None,
             )
             return None
-        index = int(raw["source_criterion_index"])
-        probe_text = str(raw["probe_text"]).strip()
+        if not isinstance(raw, Mapping):
+            return None
+        index_value = raw.get("source_criterion_index")
+        text_value = raw.get("probe_text")
+        if not isinstance(index_value, int) or not isinstance(text_value, str):
+            return None
+        index = index_value
+        probe_text = text_value.strip()
         return AtomicProbe(
             id=f"{task_id}-probe-{len(kept)}",
             probe_text=probe_text,

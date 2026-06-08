@@ -8,7 +8,7 @@ the test framework; discovers importable packages (dirs with
 import re
 import tomllib
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 from synthorg.core.codebase_structure_map import (
     BuildFile,
@@ -77,7 +77,7 @@ class PythonScanner:
             dependencies=self._dependencies(pyproject),
         )
 
-    def _load_pyproject(self, workspace_path: Path) -> dict[str, Any]:
+    def _load_pyproject(self, workspace_path: Path) -> dict[str, object]:
         """Parse ``pyproject.toml`` at the tree root.
 
         Args:
@@ -139,7 +139,7 @@ class PythonScanner:
         )
 
     def _entry_points(
-        self, rel_paths: list[str], pyproject: dict[str, Any]
+        self, rel_paths: list[str], pyproject: dict[str, object]
     ) -> tuple[EntryPoint, ...]:
         """Collect console-script and ``__main__`` entry points.
 
@@ -176,7 +176,7 @@ class PythonScanner:
         self,
         workspace_path: Path,
         rel_paths: list[str],
-        pyproject: dict[str, Any],
+        pyproject: dict[str, object],
     ) -> tuple[TestSuite, ...]:
         """Locate test roots and tag them with the detected framework.
 
@@ -199,7 +199,7 @@ class PythonScanner:
         return tuple(TestSuite(path=root, framework=framework) for root in roots)
 
     def _test_framework(
-        self, workspace_path: Path, pyproject: dict[str, Any]
+        self, workspace_path: Path, pyproject: dict[str, object]
     ) -> str | None:
         """Detect the test framework from config markers.
 
@@ -220,7 +220,7 @@ class PythonScanner:
             return "pytest"
         return None
 
-    def _dependencies(self, pyproject: dict[str, Any]) -> tuple[Dependency, ...]:
+    def _dependencies(self, pyproject: dict[str, object]) -> tuple[Dependency, ...]:
         """Collect runtime and optional dependencies from ``pyproject``.
 
         Args:
@@ -245,7 +245,7 @@ class PythonScanner:
         return tuple(deps)
 
     def _parse_specs(
-        self, specs: list[Any], scope: DependencyScope
+        self, specs: list[object], scope: DependencyScope
     ) -> list[Dependency]:
         """Parse PEP 508 requirement strings into dependencies.
 

@@ -1,7 +1,6 @@
 """Dispatcher factory: maps ``CoordinationTopology`` to a dispatcher instance."""
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.clock import Clock
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.centralized_dispatcher import CentralizedDispatcher
 from synthorg.engine.coordination.context_dependent_dispatcher import (
@@ -10,16 +9,13 @@ from synthorg.engine.coordination.context_dependent_dispatcher import (
 from synthorg.engine.coordination.decentralized_dispatcher import (
     DecentralizedDispatcher,
 )
+from synthorg.engine.coordination.dispatcher_types import TopologyDispatcher
 from synthorg.engine.coordination.sas_dispatcher import SasDispatcher
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
     COORDINATION_PHASE_FAILED,
     COORDINATION_TOPOLOGY_RESOLVED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
-    from synthorg.engine.coordination.dispatcher_types import TopologyDispatcher
 
 logger = get_logger(__name__)
 

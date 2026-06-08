@@ -6,13 +6,9 @@ persistence backend; the no-op sink discards frames. Recording is
 best-effort: a failing sink logs and never propagates into the engine.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.providers.models import ChatMessage
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -32,6 +28,7 @@ from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameRepository,
 )
 from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.models import ChatMessage
 
 logger = get_logger(__name__)
 

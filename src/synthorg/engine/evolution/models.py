@@ -6,7 +6,7 @@ flow through the trigger-proposer-guard-adapter pipeline.
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Self
+from typing import Self
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -61,7 +61,7 @@ class AdaptationProposal(BaseModel):
     agent_id: NotBlankStr
     axis: AdaptationAxis
     description: NotBlankStr
-    changes: dict[str, Any] = Field(default_factory=dict)
+    changes: dict[str, object] = Field(default_factory=dict)
     confidence: float = Field(ge=0.0, le=1.0)
     source: AdaptationSource
     proposed_at: AwareDatetime = Field(

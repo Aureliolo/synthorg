@@ -6,7 +6,7 @@ the matching per-forge client via a
 :class:`~synthorg.core.registry.StrategyRegistry`.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from urllib.parse import urlsplit
 
 from synthorg.core.registry import StrategyRegistry
@@ -17,10 +17,8 @@ from synthorg.engine.workspace.git_backend.forge_api.gitea import (
 )
 from synthorg.engine.workspace.git_backend.forge_api.github import GitHubForgeClient
 from synthorg.engine.workspace.git_backend.forge_api.gitlab import GitLabForgeClient
+from synthorg.engine.workspace.git_backend.forge_api.protocol import ForgeApiClient
 from synthorg.integrations.connections.models import ConnectionType
-
-if TYPE_CHECKING:
-    from synthorg.engine.workspace.git_backend.forge_api.protocol import ForgeApiClient
 
 _GITHUB_COM_HOST: Final[str] = "github.com"
 _GITHUB_PUBLIC_API: Final[str] = "https://api.github.com"

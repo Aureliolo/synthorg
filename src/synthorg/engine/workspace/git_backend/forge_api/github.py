@@ -1,6 +1,7 @@
 """GitHub REST API forge client (repository existence + creation)."""
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Mapping
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -17,9 +18,6 @@ from synthorg.observability.events.workspace import (
     FORGE_API_REPO_CREATED,
     FORGE_API_REPO_EXISTS_CHECK,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

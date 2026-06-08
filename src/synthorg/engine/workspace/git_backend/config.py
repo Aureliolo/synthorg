@@ -10,18 +10,15 @@ travel in :class:`GitBackendDeps`, mirroring ``AutonomyStrategyDeps``.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, Self
+from pathlib import Path
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.clock import Clock
 from synthorg.core.project_enums import GitBackendType
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-    from synthorg.core.clock import Clock
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
-    from synthorg.persistence.secret_backends.protocol import SecretBackend
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.persistence.secret_backends.protocol import SecretBackend
 
 _DEFAULT_EMBEDDED_SUBDIR: Final[str] = "git-repos"
 _DEFAULT_GIT_CMD_TIMEOUT_SECONDS: Final[float] = 60.0

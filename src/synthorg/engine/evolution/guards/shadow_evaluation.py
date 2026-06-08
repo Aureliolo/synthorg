@@ -26,13 +26,21 @@ import asyncio
 import copy
 import statistics
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
-from synthorg.engine.evolution.guards.shadow_protocol import ShadowTaskOutcome
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
+from synthorg.engine.evolution.config import ShadowEvaluationConfig
+from synthorg.engine.evolution.guards.shadow_protocol import (
+    ShadowAgentRunner,
+    ShadowTaskOutcome,
+    ShadowTaskProvider,
+)
 from synthorg.engine.evolution.models import (
     AdaptationDecision,
     AdaptationProposal,
 )
+from synthorg.engine.identity.store.protocol import IdentityVersionStore
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -49,16 +57,6 @@ from synthorg.observability.events.evolution import (
     EVOLUTION_SHADOW_TASK_FAILED,
 )
 from synthorg.providers.resilience.errors import RetryExhaustedError
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.evolution.config import ShadowEvaluationConfig
-    from synthorg.engine.evolution.guards.shadow_protocol import (
-        ShadowAgentRunner,
-        ShadowTaskProvider,
-    )
-    from synthorg.engine.identity.store.protocol import IdentityVersionStore
 
 logger = get_logger(__name__)
 

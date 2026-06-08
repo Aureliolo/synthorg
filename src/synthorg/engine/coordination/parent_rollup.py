@@ -16,10 +16,19 @@ hop by hop.
 from typing import TYPE_CHECKING, Final, NamedTuple
 from uuid import uuid4
 
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.task_transitions import transition_path
-from synthorg.engine.coordination.models import CoordinationPhaseResult
+from synthorg.engine.coordination.dispatcher_types import DispatchResult
+from synthorg.engine.coordination.models import (
+    CoordinationContext,
+    CoordinationPhaseResult,
+)
+from synthorg.engine.decomposition.models import (
+    DecompositionResult,
+    SubtaskStatusRollup,
+)
 from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
@@ -29,13 +38,8 @@ from synthorg.observability.events.coordination import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
-    from synthorg.engine.coordination.dispatcher_types import DispatchResult
-    from synthorg.engine.coordination.models import CoordinationContext
-    from synthorg.engine.decomposition.models import (
-        DecompositionResult,
-        SubtaskStatusRollup,
-    )
+    # Concrete services faked in tests; a runtime import would make typeguard
+    # enforce a nominal isinstance the fakes cannot satisfy.
     from synthorg.engine.decomposition.service import DecompositionService
     from synthorg.engine.task_engine import TaskEngine
 

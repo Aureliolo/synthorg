@@ -6,14 +6,12 @@ signature. Shares the AST primitives in :mod:`semantic_checks`.
 """
 
 import ast
-from typing import TYPE_CHECKING, Final, NamedTuple
+from collections.abc import Mapping
+from typing import Final, NamedTuple
 
 from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.models import MergeConflict
 from synthorg.engine.workspace.semantic_checks import _safe_parse, _top_level_names
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 _VARIADIC_ARG_SENTINEL: Final[int] = 999
 

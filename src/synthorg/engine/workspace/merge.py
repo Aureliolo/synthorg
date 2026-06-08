@@ -4,12 +4,16 @@ Sequences workspace merges according to the configured merge order
 and handles conflict escalation.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine.errors import WorkspaceCleanupError, WorkspaceMergeError
 from synthorg.engine.workspace.enums import ConflictEscalation, MergeOrder
-from synthorg.engine.workspace.models import MergeResult
+from synthorg.engine.workspace.models import (
+    MergeResult,
+    Workspace,
+)
+from synthorg.engine.workspace.protocol import (
+    WorkspaceIsolationStrategy,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_GROUP_MERGE_COMPLETE,
@@ -18,14 +22,6 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_SORT_WORKSPACES_APPENDED,
     WORKSPACE_TEARDOWN_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workspace.models import (
-        Workspace,
-    )
-    from synthorg.engine.workspace.protocol import (
-        WorkspaceIsolationStrategy,
-    )
 
 logger = get_logger(__name__)
 

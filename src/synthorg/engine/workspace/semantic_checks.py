@@ -7,10 +7,7 @@ Files with syntax errors are silently skipped (logged at DEBUG).
 
 import ast
 from collections import Counter
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from collections.abc import Mapping
 
 from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.models import MergeConflict

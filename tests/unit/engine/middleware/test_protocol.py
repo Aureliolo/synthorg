@@ -461,7 +461,7 @@ class TestAgentMiddlewareContext:
         """Modifying the input dict does not affect the frozen context."""
         identity = _identity()
         ctx_inner = AgentContext.from_identity(identity)
-        input_dict = {"key": "value"}
+        input_dict: dict[str, object] = {"key": "value"}
         ctx = AgentMiddlewareContext(
             agent_context=ctx_inner,
             identity=identity,

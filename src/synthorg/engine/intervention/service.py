@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention.enums import InterventionKind
@@ -36,6 +37,7 @@ from synthorg.engine.intervention.models import (
     steering_kind_tag,
     task_narrow_tag,
 )
+from synthorg.engine.intervention.proposer import SteeringSupersessionProposer
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import (
     STEERING_DIRECTIVE_ISSUED,
@@ -56,8 +58,10 @@ from synthorg.project_brain.models import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.engine.intervention.proposer import SteeringSupersessionProposer
+    # Concrete collaborator classes that tests inject duck-typed via fakes; a
+    # runtime import would make typeguard enforce a nominal isinstance check the
+    # fakes cannot satisfy. Protocol-typing these params is the proper fix but
+    # spans the project_brain and top-level task_engine modules.
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.project_brain.service import ProjectBrainService
 

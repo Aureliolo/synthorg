@@ -358,6 +358,15 @@ class TestHybridLoopProviderErrors:
                 msg = "provider unreachable"
                 raise ConnectionError(msg)
 
+            async def stream(self, *_args: Any, **_kwargs: Any) -> Any:
+                raise NotImplementedError
+
+            async def get_model_capabilities(self, *_args: Any, **_kwargs: Any) -> Any:
+                raise NotImplementedError
+
+            async def batch_get_capabilities(self, *_args: Any, **_kwargs: Any) -> Any:
+                raise NotImplementedError
+
         ctx = _ctx_with_user_msg(sample_agent_context)
         loop = HybridLoop()
 
@@ -381,6 +390,15 @@ class TestHybridLoopProviderErrors:
                     return _single_step_plan()
                 msg = "provider unreachable"
                 raise ConnectionError(msg)
+
+            async def stream(self, *_args: Any, **_kwargs: Any) -> Any:
+                raise NotImplementedError
+
+            async def get_model_capabilities(self, *_args: Any, **_kwargs: Any) -> Any:
+                raise NotImplementedError
+
+            async def batch_get_capabilities(self, *_args: Any, **_kwargs: Any) -> Any:
+                raise NotImplementedError
 
         ctx = _ctx_with_user_msg(sample_agent_context)
         loop = HybridLoop()

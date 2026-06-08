@@ -5,27 +5,28 @@
 checkable Protocol all dispatchers implement.
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.models import (
     CoordinationPhaseResult,
     CoordinationWave,
 )
+from synthorg.engine.decomposition.models import DecompositionResult
+from synthorg.engine.routing.models import RoutingResult
 from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.coordination.config import CoordinationConfig
-    from synthorg.engine.decomposition.models import DecompositionResult
+    # Concrete services faked in dispatcher tests; a runtime import would make
+    # typeguard enforce a nominal isinstance the fakes cannot satisfy.
     from synthorg.engine.parallel import ParallelExecutor
-    from synthorg.engine.routing.models import RoutingResult
     from synthorg.engine.workspace.service import WorkspaceIsolationService
 
 

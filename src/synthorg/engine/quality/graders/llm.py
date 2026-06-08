@@ -17,7 +17,7 @@ never silently passes on a broken model response.
 import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.critical_errors import reraise_critical
@@ -298,7 +298,7 @@ class LLMRubricGrader:
         probes: tuple[AtomicProbe, ...],
         generator_agent_id: NotBlankStr,
         evaluator_agent_id: NotBlankStr,
-    ) -> Any:
+    ) -> object:
         """Invoke the provider with the grader tool; log/re-raise on failure.
 
         Infrastructure errors propagate unchanged:
@@ -379,7 +379,7 @@ class LLMRubricGrader:
             )
             raise
 
-    def _locate_tool_call(self, response: Any) -> Any:
+    def _locate_tool_call(self, response: object) -> object:
         """Return the sole ``emit_rubric_verdict`` tool call or a reason string.
 
         Validates the response shape defensively so a misbehaving
@@ -414,7 +414,7 @@ class LLMRubricGrader:
 
     def _interpret_tool_call(
         self,
-        tool_call: Any,
+        tool_call: object,
         rubric: VerificationRubric,
     ) -> (
         tuple[
@@ -498,7 +498,7 @@ class LLMRubricGrader:
         artifact: HandoffArtifact,
         rubric: VerificationRubric,
         probes: tuple[AtomicProbe, ...],
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Render the prompt envelope (rubric / calibration / probes / artifact).
 
         Returns:
@@ -555,7 +555,7 @@ class LLMRubricGrader:
 
     def _parse_tool_arguments(
         self,
-        arguments: Mapping[str, Any],
+        arguments: Mapping[str, object],
         *,
         rubric: VerificationRubric,
     ) -> tuple[dict[str, float], VerificationVerdict, float, tuple[str, ...]] | str:

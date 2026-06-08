@@ -5,11 +5,14 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.quality.verification import (
+    AtomicProbe,
     VerificationResult,
     VerificationRubric,
     VerificationVerdict,
 )
+from synthorg.engine.workflow.handoff import HandoffArtifact
 from synthorg.observability import get_logger
 from synthorg.observability.events.verification import (
     VERIFICATION_GRADING_COMPLETED,
@@ -17,9 +20,7 @@ from synthorg.observability.events.verification import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.quality.verification import AtomicProbe
-    from synthorg.engine.workflow.handoff import HandoffArtifact
+    # settings.bridge_configs would cycle through the engine namespace.
     from synthorg.settings.bridge_configs import EngineBridgeConfig
 
 logger = get_logger(__name__)

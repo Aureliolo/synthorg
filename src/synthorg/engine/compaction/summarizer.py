@@ -5,8 +5,6 @@ turns into a summary message when the context fill level exceeds a
 configurable threshold.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.task_enums import Complexity
 from synthorg.engine.compaction.epistemic import (
     extract_marker_sentences,
@@ -16,6 +14,8 @@ from synthorg.engine.compaction.models import (
     CompactionConfig,
     CompressionMetadata,
 )
+from synthorg.engine.compaction.protocol import CompactionCallback
+from synthorg.engine.context import AgentContext
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.token_estimation import (
     DefaultTokenEstimator,
@@ -30,10 +30,6 @@ from synthorg.observability.events.context_budget import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
-
-if TYPE_CHECKING:
-    from synthorg.engine.compaction.protocol import CompactionCallback
-    from synthorg.engine.context import AgentContext
 
 logger = get_logger(__name__)
 

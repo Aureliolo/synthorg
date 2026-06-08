@@ -6,16 +6,13 @@ on every task completion.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.evolution.protocols import EvolutionContext
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
     EVOLUTION_TRIGGER_REQUESTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.evolution.protocols import EvolutionContext
 
 logger = get_logger(__name__)
 

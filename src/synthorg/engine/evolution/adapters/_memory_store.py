@@ -1,17 +1,14 @@
 """Shared memory storage helper for adaptation adapters."""
 
 import json
-from typing import TYPE_CHECKING
 
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.evolution.models import AdaptationProposal
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evolution import EVOLUTION_ADAPTATION_FAILED
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.evolution.models import AdaptationProposal
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 

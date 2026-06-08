@@ -1,17 +1,13 @@
 """IdentityAdapter -- applies identity mutations via IdentityVersionStore."""
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationProposal,
 )
+from synthorg.engine.identity.store.protocol import IdentityVersionStore
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evolution import EVOLUTION_ADAPTATION_FAILED
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.identity.store.protocol import IdentityVersionStore
 
 logger = get_logger(__name__)
 

@@ -10,7 +10,7 @@ time (surfaced as an unavailable source).
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from synthorg.core.types import NotBlankStr
@@ -19,6 +19,7 @@ from synthorg.engine.workspace.git_backend.protocol import (
     ResolvedSource,
     SourceKind,
 )
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger
 from synthorg.tools.git_url_validator import (
     DnsValidationOk,
@@ -27,9 +28,6 @@ from synthorg.tools.git_url_validator import (
     is_allowed_clone_scheme,
     validate_clone_url_host,
 )
-
-if TYPE_CHECKING:
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
 
 logger = get_logger(__name__)
 

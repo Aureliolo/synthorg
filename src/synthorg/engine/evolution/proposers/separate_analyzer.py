@@ -5,7 +5,8 @@ and generate adaptation proposals. Follows the EvoSkill principle:
 the agent being evolved does NOT propose its own changes.
 """
 
-from typing import TYPE_CHECKING, Any, Final
+from collections.abc import Mapping
+from typing import Final
 
 from pydantic import ValidationError
 
@@ -21,12 +22,15 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
     AdaptationProposal,
 )
+from synthorg.engine.evolution.protocols import EvolutionContext
 from synthorg.engine.prompt_safety import (
     TAG_TASK_FACT,
     TAG_UNTRUSTED_ARTIFACT,
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.hr.performance.models import TaskMetricRecord
+from synthorg.memory.models import MemoryEntry
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -42,9 +46,6 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
-
-if TYPE_CHECKING:
-    from synthorg.engine.evolution.protocols import EvolutionContext
 
 logger = get_logger(__name__)
 _DEFAULT_TEMPERATURE: Final[float] = 0.3
@@ -76,7 +77,7 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _extract_json(text: str) -> dict[str, Any] | None:
+def _extract_json(text: str) -> dict[str, object] | None:
     """Extract a JSON object from LLM response text via the shared helper.
 
     Returns:
@@ -95,9 +96,9 @@ def _extract_json(text: str) -> dict[str, Any] | None:
 
 
 def _validate_proposals_list(
-    data: dict[str, Any],
+    data: dict[str, object],
     agent_id: NotBlankStr,
-) -> list[Any] | None:
+) -> list[object] | None:
     """Validate that data has a "proposals" key with a list value.
 
     Args:
@@ -128,7 +129,7 @@ def _validate_proposals_list(
 
 
 def _summarise_tasks(
-    tasks: tuple[Any, ...],
+    tasks: tuple[TaskMetricRecord, ...],
     *,
     cap: int,
 ) -> str:
@@ -160,7 +161,7 @@ def _summarise_tasks(
 
 
 def _summarise_memories(
-    memories: tuple[Any, ...],
+    memories: tuple[MemoryEntry, ...],
     *,
     cap: int,
     content_max_chars: int,
@@ -433,7 +434,7 @@ class SeparateAnalyzerProposer:
 
     def _validate_and_build_proposals(
         self,
-        proposals_data: list[Any],
+        proposals_data: list[object],
         agent_id: NotBlankStr,
     ) -> tuple[AdaptationProposal, ...]:
         """Validate and build AdaptationProposal objects from parsed data.
@@ -447,6 +448,14 @@ class SeparateAnalyzerProposer:
         """
         proposals: list[AdaptationProposal] = []
         for idx, item in enumerate(proposals_data):
+            if not isinstance(item, Mapping):
+                logger.warning(
+                    EVOLUTION_PROPOSER_PARSE_ERROR,
+                    agent_id=str(agent_id),
+                    reason="proposal_not_object",
+                    index=idx,
+                )
+                continue
             try:
                 proposal_dict = {
                     "agent_id": str(agent_id),

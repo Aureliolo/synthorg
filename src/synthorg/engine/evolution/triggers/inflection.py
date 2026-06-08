@@ -6,20 +6,17 @@ changes, the trigger fires for the affected agent.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.evolution.protocols import EvolutionContext
+from synthorg.hr.performance.inflection_protocol import (
+    PerformanceInflection,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
     EVOLUTION_TRIGGER_REQUESTED,
     EVOLUTION_TRIGGER_SKIPPED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.evolution.protocols import EvolutionContext
-    from synthorg.hr.performance.inflection_protocol import (
-        PerformanceInflection,
-    )
 
 logger = get_logger(__name__)
 

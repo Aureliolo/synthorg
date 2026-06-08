@@ -1,6 +1,7 @@
 """Tests for #1257 coordination constraint middleware."""
 
 from datetime import UTC, date, datetime
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -395,7 +396,7 @@ class TestPlanReviewGateMiddleware:
         )
         ctx = _mw_context()
         result = await mw.before_dispatch(ctx)
-        meta = result.metadata["plan_review_gate"]
+        meta = cast("dict[str, object]", result.metadata["plan_review_gate"])
         assert meta["gated"] is False
 
     async def test_supervised_gated(self) -> None:
@@ -422,5 +423,5 @@ class TestPlanReviewGateMiddleware:
         )
         ctx = _mw_context()
         result = await mw.before_dispatch(ctx)
-        meta = result.metadata["plan_review_gate"]
+        meta = cast("dict[str, object]", result.metadata["plan_review_gate"])
         assert meta["gated"] is False

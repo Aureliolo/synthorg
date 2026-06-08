@@ -6,8 +6,17 @@ dependency tree from config and runtime services.
 
 from typing import TYPE_CHECKING, override
 
+from synthorg.core.task import Task
+from synthorg.core.task_enums import CoordinationTopology
+from synthorg.engine.coordination.section_config import (
+    CoordinationSectionConfig,
+)
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
+from synthorg.engine.decomposition.models import (
+    DecompositionContext,
+    DecompositionPlan,
+)
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.errors import DecompositionError
@@ -15,6 +24,9 @@ from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
+from synthorg.engine.workspace.config import WorkspaceIsolationConfig
+from synthorg.engine.workspace.git_backend import GitBackend
+from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
     COORDINATION_FACTORY_BUILT,
@@ -22,33 +34,24 @@ from synthorg.observability.events.coordination import (
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_FAILED,
 )
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
+    # config.schema would cycle here (it pulls api -> engine); the concrete
+    # services below are faked in tests, so a runtime import would make
+    # typeguard enforce a nominal isinstance the fakes cannot satisfy.
     from synthorg.budget.coordination_collector import (
         CoordinationMetricsCollector,
     )
     from synthorg.config.schema import TaskAssignmentConfig
-    from synthorg.core.task import Task
-    from synthorg.core.task_enums import CoordinationTopology
     from synthorg.engine.agent_engine import AgentEngine
-    from synthorg.engine.coordination.section_config import (
-        CoordinationSectionConfig,
-    )
-    from synthorg.engine.decomposition.models import (
-        DecompositionContext,
-        DecompositionPlan,
-    )
     from synthorg.engine.shutdown import ShutdownManager
     from synthorg.engine.task_engine import TaskEngine
-    from synthorg.engine.workspace.config import WorkspaceIsolationConfig
-    from synthorg.engine.workspace.git_backend import GitBackend
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,
     )
-    from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
     from synthorg.engine.workspace.service import WorkspaceIsolationService
     from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

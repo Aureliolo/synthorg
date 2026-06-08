@@ -22,7 +22,7 @@ any log line.
 import asyncio
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from synthorg.core.clock import Clock, SystemClock
@@ -57,6 +57,8 @@ from synthorg.engine.workspace.git_backend.protocol import (
     ResolvedSource,
     SeedResult,
 )
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.models import Connection
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     GIT_BACKEND_FETCH_COMPLETE,
@@ -71,10 +73,6 @@ from synthorg.observability.events.workspace import (
     GIT_BACKEND_SEED_COMPLETE,
     GIT_BACKEND_SEED_START,
 )
-
-if TYPE_CHECKING:
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
-    from synthorg.integrations.connections.models import Connection
 
 logger = get_logger(__name__)
 

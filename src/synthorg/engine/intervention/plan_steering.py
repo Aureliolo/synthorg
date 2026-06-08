@@ -9,6 +9,7 @@ and finalize callables, keeping it decoupled from the loop class internals.
 
 from typing import TYPE_CHECKING, Protocol
 
+from synthorg.engine.context import AgentContext
 from synthorg.engine.plan_models import ExecutionPlan, StepStatus
 from synthorg.engine.plan_parsing import _REPLAN_JSON_EXAMPLE
 from synthorg.engine.prompt_safety import (
@@ -16,20 +17,20 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_PLAN_REPLAN_COMPLETE,
     EXECUTION_PLAN_REPLAN_START,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
-    from synthorg.engine.context import AgentContext
+    # A module-level loop_protocol import cycles here; the runtime use is a
+    # deferred function-local import (see ``ExecutionResult`` below).
     from synthorg.engine.loop_protocol import ExecutionResult
-    from synthorg.execution.turn import TurnRecord
-    from synthorg.providers.models import CompletionConfig
-    from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

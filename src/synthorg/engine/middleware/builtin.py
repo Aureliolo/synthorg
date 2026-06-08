@@ -9,26 +9,29 @@ agent middleware chain is wired into the execution loop.
 
 from typing import TYPE_CHECKING, override
 
+from synthorg.budget.coordination_config import ErrorTaxonomyConfig
+from synthorg.engine.middleware.models import (
+    AgentMiddlewareContext,
+    ModelCallResult,
+    ToolCallResult,
+)
 from synthorg.engine.middleware.protocol import (
     BaseAgentMiddleware,
     ModelCallable,
     ToolCallable,
 )
 from synthorg.observability import get_logger
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,
+    HeartbeatRepository,
+)
 
 if TYPE_CHECKING:
-    from synthorg.budget.coordination_config import ErrorTaxonomyConfig
+    # CostTracker / ApprovalGate are concrete services faked in tests; a runtime
+    # import would make typeguard enforce a nominal isinstance the fakes fail.
+    # security.protocol would cycle (security imports engine.prompt_safety).
     from synthorg.budget.tracker import CostTracker
     from synthorg.engine.approval_gate import ApprovalGate
-    from synthorg.engine.middleware.models import (
-        AgentMiddlewareContext,
-        ModelCallResult,
-        ToolCallResult,
-    )
-    from synthorg.persistence.checkpoint_protocol import (
-        CheckpointRepository,
-        HeartbeatRepository,
-    )
     from synthorg.security.protocol import SecurityInterceptionStrategy
 
 logger = get_logger(__name__)

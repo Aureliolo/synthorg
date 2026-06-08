@@ -1,7 +1,6 @@
 """PromptTemplateAdapter -- injects learned memories into prompt slots."""
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.adapters._memory_store import (
     store_proposal_as_memory,
 )
@@ -9,11 +8,8 @@ from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationProposal,
 )
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 

@@ -6,17 +6,20 @@ pure block-rendering helpers that serialise the rubric, probes, and
 artifact into the JSON grader envelope.
 """
 
-from typing import TYPE_CHECKING, Any, Final
+from typing import Final, cast
+
+from pydantic import JsonValue
 
 from synthorg.engine.prompt_safety import (
     TAG_UNTRUSTED_ARTIFACT,
     untrusted_content_directive,
 )
-from synthorg.engine.quality.verification import VerificationVerdict
-
-if TYPE_CHECKING:
-    from synthorg.engine.quality.verification import AtomicProbe, VerificationRubric
-    from synthorg.engine.workflow.handoff import HandoffArtifact
+from synthorg.engine.quality.verification import (
+    AtomicProbe,
+    VerificationRubric,
+    VerificationVerdict,
+)
+from synthorg.engine.workflow.handoff import HandoffArtifact
 
 _GRADER_TOOL_NAME: Final[str] = "emit_rubric_verdict"
 _GRADER_TOOL_DESCRIPTION: Final[str] = (
@@ -24,7 +27,7 @@ _GRADER_TOOL_DESCRIPTION: Final[str] = (
     "Provide a grade in [0, 1] for every criterion by name, an overall "
     "verdict, a confidence in [0, 1], and short human-readable findings."
 )
-_GRADER_TOOL_SCHEMA: Final[dict[str, Any]] = {
+_GRADER_TOOL_SCHEMA: Final[dict[str, JsonValue]] = {
     "type": "object",
     "properties": {
         "per_criterion_grades": {
@@ -59,11 +62,11 @@ _GRADER_SYSTEM_PROMPT: Final[str] = (
 _MAX_PAYLOAD_CHARS: Final[int] = 16_000
 _DEFAULT_MAX_TOKENS: Final[int] = 2048
 _GRADER_TOOL_REQUIRED_KEYS: Final[frozenset[str]] = frozenset(
-    _GRADER_TOOL_SCHEMA["required"],
+    cast("list[str]", _GRADER_TOOL_SCHEMA["required"]),
 )
 
 
-def render_rubric_block(rubric: VerificationRubric) -> dict[str, Any]:
+def render_rubric_block(rubric: VerificationRubric) -> dict[str, object]:
     """Serialize rubric criteria + calibration examples for the prompt.
 
     Returns:
@@ -100,7 +103,7 @@ def render_rubric_block(rubric: VerificationRubric) -> dict[str, Any]:
 
 def render_probes_block(
     probes: tuple[AtomicProbe, ...],
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Serialize probes for the prompt.
 
     Returns:
@@ -121,7 +124,7 @@ def render_artifact_block(
     artifact: HandoffArtifact,
     *,
     payload_text: str,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Serialize the artifact metadata + (possibly truncated) payload.
 
     Returns:

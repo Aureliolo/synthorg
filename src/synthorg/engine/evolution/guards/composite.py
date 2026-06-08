@@ -1,8 +1,7 @@
 """CompositeGuard -- chains multiple guards (ALL must approve)."""
 
-from typing import TYPE_CHECKING
-
 from synthorg.engine.evolution.models import AdaptationDecision, AdaptationProposal
+from synthorg.engine.evolution.protocols import AdaptationGuard
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
     EVOLUTION_GUARD_DECISION,
@@ -11,9 +10,6 @@ from synthorg.observability.events.evolution import (
 )
 
 logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from synthorg.engine.evolution.protocols import AdaptationGuard
 
 
 class CompositeGuard:

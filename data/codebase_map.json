@@ -4461,7 +4461,7 @@
     },
     {
       "kind": "code",
-      "loc": 201,
+      "loc": 199,
       "loc_cap": 500,
       "module": "src/synthorg/engine/artifacts/service.py",
       "owning_feature": "engine"
@@ -4643,14 +4643,14 @@
     },
     {
       "kind": "code",
-      "loc": 265,
+      "loc": 264,
       "loc_cap": 500,
       "module": "src/synthorg/engine/brownfield/service.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 182,
+      "loc": 181,
       "loc_cap": 500,
       "module": "src/synthorg/engine/brownfield/source_resolver.py",
       "owning_feature": "engine"
@@ -4671,7 +4671,7 @@
     },
     {
       "kind": "code",
-      "loc": 10,
+      "loc": 9,
       "loc_cap": 500,
       "module": "src/synthorg/engine/checkpoint/callback.py",
       "owning_feature": "engine"
@@ -4692,7 +4692,7 @@
     },
     {
       "kind": "code",
-      "loc": 206,
+      "loc": 210,
       "loc_cap": 500,
       "module": "src/synthorg/engine/checkpoint/resume.py",
       "owning_feature": "engine"
@@ -4818,7 +4818,7 @@
     },
     {
       "kind": "code",
-      "loc": 186,
+      "loc": 183,
       "loc_cap": 500,
       "module": "src/synthorg/engine/cockpit/service.py",
       "owning_feature": "cockpit"
@@ -4860,7 +4860,7 @@
     },
     {
       "kind": "code",
-      "loc": 299,
+      "loc": 297,
       "loc_cap": 500,
       "module": "src/synthorg/engine/compaction/summarizer.py",
       "owning_feature": "engine"
@@ -4937,7 +4937,7 @@
     },
     {
       "kind": "code",
-      "loc": 60,
+      "loc": 58,
       "loc_cap": 500,
       "module": "src/synthorg/engine/coordination/dispatcher_factory.py",
       "owning_feature": "engine"
@@ -4958,7 +4958,7 @@
     },
     {
       "kind": "code",
-      "loc": 160,
+      "loc": 158,
       "loc_cap": 500,
       "module": "src/synthorg/engine/coordination/group_builder.py",
       "owning_feature": "engine"
@@ -4972,7 +4972,7 @@
     },
     {
       "kind": "code",
-      "loc": 379,
+      "loc": 381,
       "loc_cap": 500,
       "module": "src/synthorg/engine/coordination/parent_rollup.py",
       "owning_feature": "engine"
@@ -5105,28 +5105,28 @@
     },
     {
       "kind": "code",
-      "loc": 55,
+      "loc": 53,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/adapters/_memory_store.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 72,
+      "loc": 70,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/adapters/identity_adapter.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 53,
+      "loc": 51,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/adapters/prompt_template.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 75,
+      "loc": 73,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/adapters/strategy_selection.py",
       "owning_feature": "engine"
@@ -5140,7 +5140,7 @@
     },
     {
       "kind": "code",
-      "loc": 412,
+      "loc": 410,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/factory.py",
       "owning_feature": "engine"
@@ -5161,7 +5161,7 @@
     },
     {
       "kind": "code",
-      "loc": 84,
+      "loc": 82,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/guards/composite.py",
       "owning_feature": "engine"
@@ -5182,28 +5182,28 @@
     },
     {
       "kind": "code",
-      "loc": 162,
+      "loc": 161,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/guards/rollback.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 444,
+      "loc": 443,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/guards/shadow_evaluation.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 109,
+      "loc": 107,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/guards/shadow_protocol.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 81,
+      "loc": 79,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/guards/shadow_providers.py",
       "owning_feature": "engine"
@@ -5224,21 +5224,21 @@
     },
     {
       "kind": "code",
-      "loc": 98,
+      "loc": 95,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/proposers/composite.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 128,
+      "loc": 127,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/proposers/self_report.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 407,
+      "loc": 417,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/proposers/separate_analyzer.py",
       "owning_feature": "engine"
@@ -5252,7 +5252,7 @@
     },
     {
       "kind": "code",
-      "loc": 411,
+      "loc": 407,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/service.py",
       "owning_feature": "engine"
@@ -5266,28 +5266,28 @@
     },
     {
       "kind": "code",
-      "loc": 92,
+      "loc": 91,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/triggers/batched.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 84,
+      "loc": 82,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/triggers/composite.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 86,
+      "loc": 84,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/triggers/inflection.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 55,
+      "loc": 53,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/triggers/per_task.py",
       "owning_feature": "engine"
@@ -5315,7 +5315,7 @@
     },
     {
       "kind": "code",
-      "loc": 215,
+      "loc": 214,
       "loc_cap": 500,
       "module": "src/synthorg/engine/flight_recording/sink.py",
       "owning_feature": "engine"
@@ -5364,14 +5364,14 @@
     },
     {
       "kind": "code",
-      "loc": 419,
+      "loc": 418,
       "loc_cap": 500,
       "module": "src/synthorg/engine/hybrid/replan_helpers.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 255,
+      "loc": 254,
       "loc_cap": 500,
       "module": "src/synthorg/engine/hybrid/step_helpers.py",
       "owning_feature": "engine"
@@ -5546,14 +5546,14 @@
     },
     {
       "kind": "code",
-      "loc": 122,
+      "loc": 121,
       "loc_cap": 500,
       "module": "src/synthorg/engine/intervention/plan_steering.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 213,
+      "loc": 212,
       "loc_cap": 500,
       "module": "src/synthorg/engine/intervention/proposer.py",
       "owning_feature": "engine"
@@ -5630,14 +5630,14 @@
     },
     {
       "kind": "code",
-      "loc": 94,
+      "loc": 95,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/_defaults.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 155,
+      "loc": 154,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/behavior_tagger.py",
       "owning_feature": "engine"
@@ -5665,14 +5665,14 @@
     },
     {
       "kind": "code",
-      "loc": 361,
+      "loc": 371,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/coordination_protocol.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 151,
+      "loc": 152,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/disclosure.py",
       "owning_feature": "engine"
@@ -5686,7 +5686,7 @@
     },
     {
       "kind": "code",
-      "loc": 181,
+      "loc": 179,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/factory.py",
       "owning_feature": "engine"
@@ -5700,21 +5700,21 @@
     },
     {
       "kind": "code",
-      "loc": 83,
+      "loc": 82,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/orchestrator_strategy.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 115,
+      "loc": 114,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/policy_gate.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 394,
+      "loc": 406,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/protocol.py",
       "owning_feature": "engine"
@@ -5728,14 +5728,14 @@
     },
     {
       "kind": "code",
-      "loc": 340,
+      "loc": 341,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/s1_constraints.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 139,
+      "loc": 140,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/semantic_drift.py",
       "owning_feature": "engine"
@@ -5966,7 +5966,7 @@
     },
     {
       "kind": "code",
-      "loc": 253,
+      "loc": 251,
       "loc_cap": 500,
       "module": "src/synthorg/engine/post_execution/memory_hooks.py",
       "owning_feature": "engine"
@@ -6050,14 +6050,14 @@
     },
     {
       "kind": "code",
-      "loc": 46,
+      "loc": 44,
       "loc_cap": 500,
       "module": "src/synthorg/engine/quality/decomposers/identity.py",
       "owning_feature": "engine"
     },
     {
       "kind": "adapter",
-      "loc": 609,
+      "loc": 625,
       "loc_cap": 700,
       "module": "src/synthorg/engine/quality/decomposers/llm.py",
       "owning_feature": "engine"
@@ -6092,7 +6092,7 @@
     },
     {
       "kind": "adapter",
-      "loc": 149,
+      "loc": 152,
       "loc_cap": 700,
       "module": "src/synthorg/engine/quality/graders/_llm_prompt.py",
       "owning_feature": "engine"
@@ -6148,7 +6148,7 @@
     },
     {
       "kind": "code",
-      "loc": 180,
+      "loc": 178,
       "loc_cap": 500,
       "module": "src/synthorg/engine/quality/verification_factory.py",
       "owning_feature": "engine"
@@ -7198,7 +7198,7 @@
     },
     {
       "kind": "code",
-      "loc": 148,
+      "loc": 150,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/disk_quota.py",
       "owning_feature": "workspace"
@@ -7226,28 +7226,28 @@
     },
     {
       "kind": "code",
-      "loc": 69,
+      "loc": 68,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/environment/config.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 441,
+      "loc": 440,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/environment/devcontainer.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 80,
+      "loc": 78,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/environment/factory.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 30,
+      "loc": 28,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/environment/hash_cache.py",
       "owning_feature": "workspace"
@@ -7282,7 +7282,7 @@
     },
     {
       "kind": "code",
-      "loc": 213,
+      "loc": 212,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/environment/service.py",
       "owning_feature": "workspace"
@@ -7310,14 +7310,14 @@
     },
     {
       "kind": "code",
-      "loc": 383,
+      "loc": 381,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/git_backend/_git_ops.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 119,
+      "loc": 118,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/git_backend/config.py",
       "owning_feature": "workspace"
@@ -7331,14 +7331,14 @@
     },
     {
       "kind": "adapter",
-      "loc": 604,
+      "loc": 603,
       "loc_cap": 700,
       "module": "src/synthorg/engine/workspace/git_backend/external_remote.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 99,
+      "loc": 97,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/git_backend/factory.py",
       "owning_feature": "workspace"
@@ -7359,35 +7359,35 @@
     },
     {
       "kind": "code",
-      "loc": 114,
+      "loc": 113,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/git_backend/forge_api/_http.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 102,
+      "loc": 101,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/git_backend/forge_api/factory.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 117,
+      "loc": 116,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/git_backend/forge_api/gitea.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 125,
+      "loc": 124,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/git_backend/forge_api/github.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 134,
+      "loc": 133,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/git_backend/forge_api/gitlab.py",
       "owning_feature": "workspace"
@@ -7415,14 +7415,14 @@
     },
     {
       "kind": "complex_service",
-      "loc": 749,
+      "loc": 748,
       "loc_cap": 1100,
       "module": "src/synthorg/engine/workspace/git_worktree.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 213,
+      "loc": 211,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/merge.py",
       "owning_feature": "workspace"
@@ -7436,49 +7436,49 @@
     },
     {
       "kind": "code",
-      "loc": 251,
+      "loc": 249,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/project_workspace_service.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 69,
+      "loc": 68,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/protocol.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 239,
+      "loc": 238,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/push_queue.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 265,
+      "loc": 264,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/semantic_analyzer.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 273,
+      "loc": 271,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/semantic_checks.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 250,
+      "loc": 249,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/semantic_checks_signatures.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 396,
+      "loc": 394,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/semantic_git_ops.py",
       "owning_feature": "workspace"
@@ -7492,14 +7492,14 @@
     },
     {
       "kind": "code",
-      "loc": 237,
+      "loc": 238,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/semantic_llm_prompt.py",
       "owning_feature": "workspace"
     },
     {
       "kind": "code",
-      "loc": 299,
+      "loc": 298,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/service.py",
       "owning_feature": "workspace"

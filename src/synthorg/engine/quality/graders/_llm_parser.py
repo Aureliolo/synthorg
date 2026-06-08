@@ -8,16 +8,15 @@ grader can fail closed to ``REFER``.
 
 import math
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
 
-from synthorg.engine.quality.verification import VerificationVerdict
-
-if TYPE_CHECKING:
-    from synthorg.engine.quality.verification import VerificationRubric
+from synthorg.engine.quality.verification import (
+    VerificationRubric,
+    VerificationVerdict,
+)
 
 
 def parse_grades(
-    raw: Any,
+    raw: object,
     *,
     rubric: VerificationRubric,
 ) -> dict[str, float] | str:
@@ -44,7 +43,7 @@ def parse_grades(
     return grades
 
 
-def parse_verdict(raw: Any) -> VerificationVerdict | str:
+def parse_verdict(raw: object) -> VerificationVerdict | str:
     """Coerce the verdict string into a ``VerificationVerdict``.
 
     Returns:
@@ -59,7 +58,7 @@ def parse_verdict(raw: Any) -> VerificationVerdict | str:
         return f"unknown verdict {raw!r}"
 
 
-def parse_confidence(raw: Any) -> float | str:
+def parse_confidence(raw: object) -> float | str:
     """Validate confidence is a finite float in [0, 1].
 
     Returns:
@@ -69,7 +68,7 @@ def parse_confidence(raw: Any) -> float | str:
     return _parse_unit_interval(raw, label="confidence")
 
 
-def parse_findings(raw: Any) -> tuple[str, ...] | str:
+def parse_findings(raw: object) -> tuple[str, ...] | str:
     """Validate findings is a list of non-blank strings.
 
     Fails closed: any non-string entry or blank string surfaces a
@@ -93,7 +92,7 @@ def parse_findings(raw: Any) -> tuple[str, ...] | str:
     return tuple(findings)
 
 
-def _parse_unit_interval(value: Any, *, label: str = "value") -> float | str:
+def _parse_unit_interval(value: object, *, label: str = "value") -> float | str:
     """Return *value* as a finite float in [0, 1] or a reason string."""
     if not isinstance(value, int | float) or isinstance(value, bool):
         return f"{label} is not numeric"

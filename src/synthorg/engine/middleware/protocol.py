@@ -15,7 +15,7 @@ from synthorg.engine.middleware.models import (
     ModelCallResult,
     ToolCallResult,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.middleware import (
     MIDDLEWARE_AFTER_AGENT,
     MIDDLEWARE_AFTER_MODEL,
@@ -288,11 +288,13 @@ class AgentMiddlewareChain:
             )
             try:
                 ctx = await mw.before_agent(ctx)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     MIDDLEWARE_HOOK_ERROR,
                     middleware=mw.name,
                     hook="before_agent",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
         return ctx
@@ -315,11 +317,13 @@ class AgentMiddlewareChain:
             )
             try:
                 ctx = await mw.before_model(ctx)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     MIDDLEWARE_HOOK_ERROR,
                     middleware=mw.name,
                     hook="before_model",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
         return ctx
@@ -342,11 +346,13 @@ class AgentMiddlewareChain:
             )
             try:
                 ctx = await mw.after_model(ctx)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     MIDDLEWARE_HOOK_ERROR,
                     middleware=mw.name,
                     hook="after_model",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
         return ctx
@@ -369,11 +375,13 @@ class AgentMiddlewareChain:
             )
             try:
                 ctx = await mw.after_agent(ctx)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     MIDDLEWARE_HOOK_ERROR,
                     middleware=mw.name,
                     hook="after_agent",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
         return ctx
@@ -401,12 +409,14 @@ class AgentMiddlewareChain:
             wrapped = _make_model_wrapper(mw, wrapped)
         try:
             return await wrapped(ctx)
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 MIDDLEWARE_HOOK_ERROR,
                 hook="wrap_model_call",
                 chain_length=len(self._middleware),
                 chain_names=self.names,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -433,12 +443,14 @@ class AgentMiddlewareChain:
             wrapped = _make_tool_wrapper(mw, wrapped)
         try:
             return await wrapped(ctx)
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 MIDDLEWARE_HOOK_ERROR,
                 hook="wrap_tool_call",
                 chain_length=len(self._middleware),
                 chain_names=self.names,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
