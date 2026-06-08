@@ -16,9 +16,8 @@ from typing import TYPE_CHECKING
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.enums import DecisionOutcome
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
-from synthorg.engine.decisions import DecisionRecord
+from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.decision_record import (
     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,

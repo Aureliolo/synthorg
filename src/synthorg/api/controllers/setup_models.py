@@ -5,10 +5,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import SkillPattern
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.templates.enums import SkillPattern
 from synthorg.templates.model_requirements import ModelTier
 
 

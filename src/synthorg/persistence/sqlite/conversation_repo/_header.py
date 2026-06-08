@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 
-from synthorg.core.enums import ConversationStatus
+from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.meta.chief_of_staff.models import Conversation
 from synthorg.observability import get_logger, safe_error_description

@@ -16,8 +16,8 @@ from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import CharterStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import ProjectCharter
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,

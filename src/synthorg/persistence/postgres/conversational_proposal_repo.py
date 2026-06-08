@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import psycopg
 from psycopg.rows import DictRow, dict_row
 
-from synthorg.core.enums import ConversationalProposalStatus
+from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
 from synthorg.observability import get_logger, safe_error_description

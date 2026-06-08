@@ -7,7 +7,7 @@ from typing import override
 
 import pytest
 
-from synthorg.core.enums import ConversationRole
+from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import aiosqlite
 from aiosqlite import Row
 
-from synthorg.core.enums import ConversationalProposalStatus
+from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
 from synthorg.observability import (

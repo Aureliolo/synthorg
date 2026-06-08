@@ -19,8 +19,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import ConversationRole
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_persona_body
 from synthorg.meta.chief_of_staff.enums import ConversationKind

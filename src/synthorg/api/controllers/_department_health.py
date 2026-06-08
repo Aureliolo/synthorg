@@ -22,9 +22,9 @@ from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_recor
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import AgentStatus
 from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR

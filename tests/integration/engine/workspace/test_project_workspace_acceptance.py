@@ -20,10 +20,10 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.core.enums import ConflictType
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.git_backend import (
     GitBackendConfig,
     GitBackendDeps,

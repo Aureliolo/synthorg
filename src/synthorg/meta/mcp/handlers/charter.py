@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING, Any
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import CharterStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import InterviewTurnArgs
 from synthorg.meta.charter.state import CharterStateSlice
 from synthorg.meta.mcp.errors import ArgumentValidationError

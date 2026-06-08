@@ -8,7 +8,7 @@ rather than reaching the service write path.
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import InterventionKind
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import SupersedeMode
 from synthorg.meta.mcp.domains._cockpit_args import (
     SteerArgs,

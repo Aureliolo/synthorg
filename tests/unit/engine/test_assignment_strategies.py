@@ -2,7 +2,6 @@
 
 import pytest
 
-from synthorg.core.enums import AgentStatus
 from synthorg.core.task_enums import Complexity
 from synthorg.engine.assignment.manual import ManualAssignmentStrategy
 from synthorg.engine.assignment.models import (
@@ -18,6 +17,7 @@ from synthorg.engine.assignment.rankers import (
 from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.errors import NoEligibleAgentError, TaskAssignmentError
 from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_assignment_agent, make_assignment_task

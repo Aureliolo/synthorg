@@ -11,7 +11,10 @@ timestamp coercer normalises ``TEXT`` / ``TIMESTAMPTZ`` alike.
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from synthorg.core.enums import ConversationRole, ConversationStatus
+from synthorg.communication.conversation.enums import (
+    ConversationRole,
+    ConversationStatus,
+)
 from synthorg.core.persistence_errors import QueryError
 from synthorg.meta.chief_of_staff.enums import (
     ConversationInviteStatus,

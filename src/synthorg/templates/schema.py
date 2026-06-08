@@ -14,7 +14,6 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import CompanyType, SkillPattern
 from synthorg.core.normalization import (
     normalize_ascii_lowercase,
     normalize_identifier,
@@ -26,6 +25,8 @@ from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.memory.config import EmbedderOverrideConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import TEMPLATE_SCHEMA_VALIDATION_ERROR
+from synthorg.organization.enums import CompanyType
+from synthorg.templates.enums import SkillPattern
 
 logger = get_logger(__name__)
 

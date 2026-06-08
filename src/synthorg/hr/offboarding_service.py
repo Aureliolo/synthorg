@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING
 from synthorg.communication.enums import MessageType
 from synthorg.communication.errors import CommunicationError
 from synthorg.communication.message import Message, TextPart
-from synthorg.core.enums import AgentStatus
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.archival_protocol import ArchivalResult, MemoryArchivalStrategy
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import (
     AgentNotFoundError,
     MemoryArchivalError,

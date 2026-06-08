@@ -327,7 +327,8 @@ into per-sub-domain packages; `api/auto_wire.py`, `api/lifecycle.py`, and
 five `api/` entries (`app.py`, `state.py`, `auto_wire.py`, `lifecycle.py`,
 `lifecycle_builder.py`) drained from the `check_no_growth_in_god_modules.py`
 allowlist and are now governed at their tier cap by
-`check_module_size_budget.py`; `core/enums.py` remains net-shrink until #2051.
+`check_module_size_budget.py`; `core/enums.py` was deleted by #2051 and
+dropped from the (now empty) allowlist.
 `api/state.py` (354 LOC) is governed by the code-tier 500 cap (the EPIC's
 `<150` figure was descriptive, not a #2049 gate). The decomposed sub-package
 files carry no baseline entries, so they are enforced at the controller-tier

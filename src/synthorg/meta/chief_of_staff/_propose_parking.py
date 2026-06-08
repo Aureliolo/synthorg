@@ -12,11 +12,11 @@ import uuid
 from typing import TYPE_CHECKING
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import (
+from synthorg.communication.conversation.enums import (
     ConversationalProposalStatus,
     ConversationStatus,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff._intake_parking import (
     build_work_approval_item,

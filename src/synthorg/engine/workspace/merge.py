@@ -7,8 +7,8 @@ and handles conflict escalation.
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import ConflictEscalation, MergeOrder
 from synthorg.engine.errors import WorkspaceCleanupError, WorkspaceMergeError
+from synthorg.engine.workspace.enums import ConflictEscalation, MergeOrder
 from synthorg.engine.workspace.models import MergeResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (

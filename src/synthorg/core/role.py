@@ -2,7 +2,6 @@
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from synthorg.core.enums import DepartmentName
 from synthorg.core.types import (
     ModelTier,
     NotBlankStr,
@@ -10,6 +9,7 @@ from synthorg.core.types import (
 )
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.ontology.decorator import ontology_entity
+from synthorg.organization.enums import DepartmentName
 
 
 class Skill(BaseModel):
@@ -185,7 +185,7 @@ class CustomRole(BaseModel):
     """User-defined custom role via configuration.
 
     Unlike :class:`Role`, the ``department`` field accepts arbitrary strings
-    in addition to :class:`~synthorg.core.enums.DepartmentName` values,
+    in addition to :class:`~synthorg.organization.enums.DepartmentName` values,
     allowing users to define roles in non-standard departments.
 
     Attributes:

@@ -3,13 +3,13 @@
 import pytest
 
 from synthorg.core.agent import ModelConfig
-from synthorg.core.enums import DepartmentName
 from synthorg.core.role_catalog import (
     BUILTIN_ROLES,
     RED_TEAM_ROLE_NAME,
     get_builtin_role,
 )
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.organization.enums import DepartmentName
 from synthorg.security.redteam.agent import (
     RED_TEAM_AGENT_NAME,
     build_red_team_agent_identity,

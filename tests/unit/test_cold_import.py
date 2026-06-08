@@ -50,8 +50,14 @@ _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
 # is introduced, so its cold-import safety is pinned from the start. The same
 # applies to a dependency-free enum leaf placed inside a feature package whose
 # ``__init__`` is heavy (``approval.enums`` / ``security.autonomy.enums`` /
-# ``security.timeout.enums``): every consumer of those enums now forces the
-# package ``__init__`` to run, so the cold path through that init must be pinned.
+# ``security.timeout.enums`` / ``templates.enums`` /
+# ``engine.workspace.enums`` / ``engine.intervention.enums``): every consumer
+# of those enums now forces the package ``__init__`` to run, so the cold path
+# through that init must be pinned. ``communication.conversation.enums`` and
+# ``meta.charter.enums`` are intentionally absent: both transitively trigger the
+# heavy ``communication`` init, which still cold-cycles (the same
+# ``communication`` <-> ``engine`` edge that keeps ``communication.config`` out),
+# so they cannot import cold on their own; no cold leaf consumes those enums.
 COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.providers.enums",
     "synthorg.core.agent",
@@ -66,6 +72,9 @@ COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.approval.enums",
     "synthorg.security.autonomy.enums",
     "synthorg.security.timeout.enums",
+    "synthorg.templates.enums",
+    "synthorg.engine.workspace.enums",
+    "synthorg.engine.intervention.enums",
 )
 
 

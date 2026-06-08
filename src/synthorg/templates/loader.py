@@ -22,7 +22,6 @@ from pydantic import ValidationError
 
 from synthorg.config.errors import ConfigLocation
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import SkillPattern
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
@@ -38,6 +37,7 @@ from synthorg.observability.events.template import (
     TEMPLATE_LOAD_SUCCESS,
     TEMPLATE_PASS1_FLOAT_FALLBACK,
 )
+from synthorg.templates.enums import SkillPattern
 from synthorg.templates.errors import (
     TemplateNotFoundError,
     TemplateRenderError,

@@ -7,7 +7,7 @@ cases covering positive detections and negative (no-conflict) cases.
 
 import pytest
 
-from synthorg.core.enums import ConflictType
+from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.semantic_checks import (
     check_duplicate_definitions,
     check_import_conflicts,

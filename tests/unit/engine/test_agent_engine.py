@@ -11,7 +11,6 @@ import structlog.testing
 from synthorg.budget.coordination_config import ErrorTaxonomyConfig
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import AgentStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.agent_engine import AgentEngine
@@ -27,6 +26,7 @@ from synthorg.engine.loop_protocol import (
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine_models import TaskMutationResult
 from synthorg.execution.turn import TurnRecord
+from synthorg.hr.enums import AgentStatus
 from synthorg.observability.correlation import (
     bind_correlation_id,
     clear_correlation_ids,

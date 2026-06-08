@@ -34,7 +34,6 @@ from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import AgentStatus
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import ModelTier
@@ -50,6 +49,7 @@ from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.drivers.scripted import ScriptedDriver

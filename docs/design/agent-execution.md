@@ -9,8 +9,8 @@ This page covers the agent-side execution plane: how a single agent runs a task.
 
 ## Agent Execution Status
 
-The `ExecutionStatus` enum (in `core/enums.py`) tracks the per-agent runtime
-execution state:
+The `ExecutionStatus` enum (in `engine/agent_state.py`) tracks the per-agent
+runtime execution state:
 
 | Status | Meaning |
 |--------|---------|

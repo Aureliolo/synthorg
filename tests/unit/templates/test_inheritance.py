@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 import pytest
 
 from synthorg.config.schema import RootConfig
-from synthorg.core.enums import CompanyType
+from synthorg.organization.enums import CompanyType
 from synthorg.templates._inheritance import (
     collect_parent_variables,
     deduplicate_merged_agent_names,

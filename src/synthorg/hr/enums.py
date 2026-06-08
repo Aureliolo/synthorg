@@ -88,3 +88,78 @@ class TrendDirection(StrEnum):
     STABLE = "stable"
     DECLINING = "declining"
     INSUFFICIENT_DATA = "insufficient_data"
+
+
+class AgentStatus(StrEnum):
+    """Lifecycle status of an agent."""
+
+    ACTIVE = "active"
+    ONBOARDING = "onboarding"
+    ON_LEAVE = "on_leave"
+    TERMINATED = "terminated"
+
+
+class RiskTolerance(StrEnum):
+    """Risk tolerance level for agent personality."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class CreativityLevel(StrEnum):
+    """Creativity level for agent personality."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class DecisionMakingStyle(StrEnum):
+    """Decision-making approach used by an agent."""
+
+    ANALYTICAL = "analytical"
+    INTUITIVE = "intuitive"
+    CONSULTATIVE = "consultative"
+    DIRECTIVE = "directive"
+
+
+class CollaborationPreference(StrEnum):
+    """Preferred collaboration mode for an agent."""
+
+    INDEPENDENT = "independent"
+    PAIR = "pair"
+    TEAM = "team"
+
+
+class CommunicationVerbosity(StrEnum):
+    """Communication verbosity level for an agent."""
+
+    TERSE = "terse"
+    BALANCED = "balanced"
+    VERBOSE = "verbose"
+
+
+class ConflictApproach(StrEnum):
+    """Conflict resolution approach used by an agent."""
+
+    AVOID = "avoid"
+    ACCOMMODATE = "accommodate"
+    COMPETE = "compete"
+    COMPROMISE = "compromise"
+    COLLABORATE = "collaborate"
+
+
+class CostTier(StrEnum):
+    """Built-in cost tier identifiers.
+
+    These are the default tiers shipped with the framework. Users can
+    define additional tiers via configuration. Fields that accept cost
+    tiers (e.g. ``SeniorityInfo.cost_tier``) use ``str`` rather than
+    this enum, so custom tier IDs are also valid.
+    """
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    PREMIUM = "premium"

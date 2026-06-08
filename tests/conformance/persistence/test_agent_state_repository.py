@@ -9,9 +9,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import ExecutionStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.agent_state import AgentRuntimeState
+from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration

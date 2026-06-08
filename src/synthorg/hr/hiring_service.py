@@ -14,10 +14,9 @@ from pydantic import ValidationError
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import AgentStatus
 from synthorg.core.role import Skill
 from synthorg.core.types import NotBlankStr, stable_agent_id
-from synthorg.hr.enums import HiringRequestStatus
+from synthorg.hr.enums import AgentStatus, HiringRequestStatus
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
     HiringApprovalRequiredError,

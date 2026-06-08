@@ -91,6 +91,24 @@ Agent orchestration, execution loops, task decomposition, routing, and parallel 
 
 ::: synthorg.engine.workspace.service
 
+::: synthorg.engine.workspace.enums
+
 ## Workflow Enums
 
 ::: synthorg.engine.workflow.enums
+
+## Agent Runtime Status
+
+::: synthorg.engine.agent_state.ExecutionStatus
+
+## Recovery Failure Category
+
+::: synthorg.engine.recovery.FailureCategory
+
+## Review Decision Outcome
+
+::: synthorg.engine.decisions.DecisionOutcome
+
+## Operator Intervention
+
+::: synthorg.engine.intervention.enums

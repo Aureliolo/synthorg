@@ -10,9 +10,9 @@ from synthorg.api.controllers._conversational_resume import (
 )
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
+from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import ConversationalProposalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.meta.chief_of_staff.models import ConversationalProposal

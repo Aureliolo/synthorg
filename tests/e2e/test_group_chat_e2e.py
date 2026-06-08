@@ -18,8 +18,8 @@ captured by a recording strategy wrapping the sequenced replay.
 
 import pytest
 
+from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.communication.meeting.agent_caller import build_meeting_agent_caller
-from synthorg.core.enums import ConversationRole
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_PEER_CONTRIBUTION,

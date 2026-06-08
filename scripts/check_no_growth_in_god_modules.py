@@ -31,7 +31,7 @@ from typing import Final
 
 _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 
-GOD_MODULE_ALLOWLIST: Final[tuple[str, ...]] = ("src/synthorg/core/enums.py",)
+GOD_MODULE_ALLOWLIST: Final[tuple[str, ...]] = ()
 
 
 @dataclasses.dataclass(frozen=True)

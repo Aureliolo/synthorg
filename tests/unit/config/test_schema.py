@@ -14,9 +14,9 @@ from synthorg.config.schema import (
     RoutingRuleConfig,
     TaskAssignmentConfig,
 )
-from synthorg.core.enums import CompanyType
 from synthorg.core.types import stable_agent_id
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.organization.enums import CompanyType
 
 from .conftest import (
     AgentConfigFactory,

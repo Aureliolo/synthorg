@@ -5,8 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from synthorg.core.enums import ExecutionStatus
-from synthorg.engine.agent_state import AgentRuntimeState
+from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
 from synthorg.persistence.sqlite.agent_state_repo import (
     SQLiteAgentStateRepository,
 )

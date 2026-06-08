@@ -9,9 +9,8 @@ append-only row in the ``project_brain_entries`` table. The pair
 logical identity of a record, and ``revision`` increments by one each time the
 record changes (a change is always a new revision, never an in-place update).
 
-All brain-specific enums live here rather than in ``synthorg.core.enums`` so the
-only change to the size-baselined ``core/enums.py`` is the single
-``MemoryCategory.PROJECT_BRAIN`` member.
+All brain-specific enums live here, co-located with the models that branch on
+them.
 """
 
 from enum import StrEnum

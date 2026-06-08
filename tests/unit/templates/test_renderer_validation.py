@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from synthorg.config.schema import RootConfig
-from synthorg.core.enums import CompanyType
+from synthorg.organization.enums import CompanyType
 from synthorg.templates.loader import load_template_file
 from synthorg.templates.presets import validate_preset_references
 from synthorg.templates.renderer import render_template

@@ -8,7 +8,12 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import (
+from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
+from synthorg.core.normalization import normalize_identifier
+from synthorg.core.role import Authority, Skill
+from synthorg.core.tool_constraints import ToolAccessLevel, ToolSubConstraints
+from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.hr.enums import (
     AgentStatus,
     CollaborationPreference,
     CommunicationVerbosity,
@@ -17,11 +22,6 @@ from synthorg.core.enums import (
     DecisionMakingStyle,
     RiskTolerance,
 )
-from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
-from synthorg.core.normalization import normalize_identifier
-from synthorg.core.role import Authority, Skill
-from synthorg.core.tool_constraints import ToolAccessLevel, ToolSubConstraints
-from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger

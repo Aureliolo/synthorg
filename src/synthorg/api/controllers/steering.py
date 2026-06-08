@@ -28,7 +28,6 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import PathId
 from synthorg.api.state import AppState
-from synthorg.core.enums import InterventionKind
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.intervention import (
@@ -36,6 +35,7 @@ from synthorg.engine.intervention import (
     SteeringIssueResult,
     SupersedeMode,
 )
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import STEERABLE_KINDS
 from synthorg.observability import get_logger
 from synthorg.observability.events.cockpit import (

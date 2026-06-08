@@ -7,10 +7,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import DecisionOutcome
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
-from synthorg.engine.decisions import DecisionRecord
+from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
 from synthorg.engine.errors import SelfReviewError
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder

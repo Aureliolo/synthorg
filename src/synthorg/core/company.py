@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import CompanyType
 from synthorg.core.middleware_config import MiddlewareConfig
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr
@@ -19,6 +18,7 @@ from synthorg.observability.events.company import (
     COMPANY_VALIDATION_ERROR,
 )
 from synthorg.ontology.decorator import ontology_entity
+from synthorg.organization.enums import CompanyType
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.timeout.config import ApprovalTimeoutConfig, WaitForeverConfig
 
@@ -409,7 +409,7 @@ class Department(BaseModel):
     """An organizational department.
 
     Department names may be standard values from
-    :class:`~synthorg.core.enums.DepartmentName` or custom names defined
+    :class:`~synthorg.organization.enums.DepartmentName` or custom names defined
     by the organization.
 
     Attributes:

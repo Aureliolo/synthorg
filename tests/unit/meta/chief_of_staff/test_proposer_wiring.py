@@ -13,7 +13,7 @@ from synthorg.api.lifecycle_helpers.conversational_reconcile import (
     reconcile_orphaned_conversational_intake,
 )
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.core.enums import ConversationalProposalStatus
+from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.actor import ConversationalActor
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig

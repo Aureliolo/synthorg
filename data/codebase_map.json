@@ -534,7 +534,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 544,
+      "loc": 548,
       "loc_cap": 600,
       "module": "src/synthorg/api/controllers/_conversational_resume.py",
       "owning_feature": "api_core"
@@ -597,7 +597,7 @@
     },
     {
       "kind": "code",
-      "loc": 548,
+      "loc": 547,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/agents.py",
       "owning_feature": "api_core"
@@ -1556,7 +1556,7 @@
     },
     {
       "kind": "code",
-      "loc": 100,
+      "loc": 102,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/conversational_reconcile.py",
       "owning_feature": "api_core"
@@ -3194,6 +3194,20 @@
     },
     {
       "kind": "code",
+      "loc": 1,
+      "loc_cap": 500,
+      "module": "src/synthorg/communication/conversation/__init__.py",
+      "owning_feature": "communication"
+    },
+    {
+      "kind": "code",
+      "loc": 39,
+      "loc_cap": 500,
+      "module": "src/synthorg/communication/conversation/enums.py",
+      "owning_feature": "communication"
+    },
+    {
+      "kind": "code",
       "loc": 25,
       "loc_cap": 500,
       "module": "src/synthorg/communication/delegation/__init__.py",
@@ -3844,13 +3858,6 @@
       "owning_feature": null
     },
     {
-      "kind": "declarative",
-      "loc": 209,
-      "loc_cap": null,
-      "module": "src/synthorg/core/enums.py",
-      "owning_feature": null
-    },
-    {
       "kind": "code",
       "loc": 272,
       "loc_cap": 500,
@@ -4006,7 +4013,7 @@
     },
     {
       "kind": "code",
-      "loc": 414,
+      "loc": 415,
       "loc_cap": 500,
       "module": "src/synthorg/core/role_catalog.py",
       "owning_feature": null
@@ -4433,7 +4440,7 @@
     },
     {
       "kind": "code",
-      "loc": 166,
+      "loc": 175,
       "loc_cap": 500,
       "module": "src/synthorg/engine/agent_state.py",
       "owning_feature": "engine"
@@ -4895,7 +4902,7 @@
     },
     {
       "kind": "code",
-      "loc": 237,
+      "loc": 236,
       "loc_cap": 500,
       "module": "src/synthorg/engine/coordination/attribution.py",
       "owning_feature": "engine"
@@ -5000,7 +5007,7 @@
     },
     {
       "kind": "code",
-      "loc": 163,
+      "loc": 172,
       "loc_cap": 500,
       "module": "src/synthorg/engine/decisions.py",
       "owning_feature": "engine"
@@ -5500,6 +5507,13 @@
       "loc": 38,
       "loc_cap": 500,
       "module": "src/synthorg/engine/intervention/__init__.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
+      "loc": 14,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/intervention/enums.py",
       "owning_feature": "engine"
     },
     {
@@ -6148,7 +6162,7 @@
     },
     {
       "kind": "code",
-      "loc": 383,
+      "loc": 398,
       "loc_cap": 500,
       "module": "src/synthorg/engine/recovery.py",
       "owning_feature": "engine"
@@ -7191,6 +7205,13 @@
     },
     {
       "kind": "code",
+      "loc": 21,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/workspace/enums.py",
+      "owning_feature": "workspace"
+    },
+    {
+      "kind": "code",
       "loc": 64,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/environment/__init__.py",
@@ -7597,7 +7618,7 @@
     },
     {
       "kind": "code",
-      "loc": 64,
+      "loc": 114,
       "loc_cap": 500,
       "module": "src/synthorg/hr/enums.py",
       "owning_feature": "hr"
@@ -7786,7 +7807,7 @@
     },
     {
       "kind": "code",
-      "loc": 496,
+      "loc": 495,
       "loc_cap": 500,
       "module": "src/synthorg/hr/hiring_service.py",
       "owning_feature": "hr"
@@ -7821,7 +7842,7 @@
     },
     {
       "kind": "code",
-      "loc": 140,
+      "loc": 139,
       "loc_cap": 500,
       "module": "src/synthorg/hr/onboarding_service.py",
       "owning_feature": "hr"
@@ -10425,7 +10446,7 @@
     },
     {
       "kind": "code",
-      "loc": 207,
+      "loc": 208,
       "loc_cap": 500,
       "module": "src/synthorg/meta/charter/_charter_crud.py",
       "owning_feature": "charter"
@@ -10439,9 +10460,16 @@
     },
     {
       "kind": "code",
-      "loc": 384,
+      "loc": 385,
       "loc_cap": 500,
       "module": "src/synthorg/meta/charter/dispatch.py",
+      "owning_feature": "charter"
+    },
+    {
+      "kind": "code",
+      "loc": 14,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/charter/enums.py",
       "owning_feature": "charter"
     },
     {
@@ -10502,7 +10530,7 @@
     },
     {
       "kind": "code",
-      "loc": 259,
+      "loc": 260,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/_intake_parking.py",
       "owning_feature": "meta"
@@ -10551,14 +10579,14 @@
     },
     {
       "kind": "code",
-      "loc": 65,
+      "loc": 64,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/enums.py",
       "owning_feature": "meta"
     },
     {
       "kind": "service",
-      "loc": 507,
+      "loc": 510,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/group_chat.py",
       "owning_feature": "meta"
@@ -14148,6 +14176,13 @@
       "owning_feature": "organization"
     },
     {
+      "kind": "code",
+      "loc": 25,
+      "loc_cap": 500,
+      "module": "src/synthorg/organization/enums.py",
+      "owning_feature": "organization"
+    },
+    {
       "kind": "feature",
       "loc": 51,
       "loc_cap": 100,
@@ -14191,7 +14226,7 @@
     },
     {
       "kind": "code",
-      "loc": 162,
+      "loc": 165,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_conversation_marshalling.py",
       "owning_feature": "persistence"
@@ -14688,7 +14723,7 @@
     },
     {
       "kind": "code",
-      "loc": 264,
+      "loc": 263,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/agent_state_repo.py",
       "owning_feature": "persistence"
@@ -14912,7 +14947,7 @@
     },
     {
       "kind": "code",
-      "loc": 260,
+      "loc": 259,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/decision/_cas.py",
       "owning_feature": "persistence"
@@ -15507,7 +15542,7 @@
     },
     {
       "kind": "code",
-      "loc": 248,
+      "loc": 247,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/agent_state_repo.py",
       "owning_feature": "persistence"
@@ -15703,7 +15738,7 @@
     },
     {
       "kind": "code",
-      "loc": 249,
+      "loc": 248,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/decision/_cas.py",
       "owning_feature": "persistence"
@@ -16221,7 +16256,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 336,
+      "loc": 335,
       "loc_cap": null,
       "module": "src/synthorg/project_brain/models.py",
       "owning_feature": "project_brain"
@@ -18391,6 +18426,13 @@
     },
     {
       "kind": "code",
+      "loc": 23,
+      "loc_cap": 500,
+      "module": "src/synthorg/templates/enums.py",
+      "owning_feature": null
+    },
+    {
+      "kind": "code",
       "loc": 57,
       "loc_cap": 500,
       "module": "src/synthorg/templates/errors.py",
@@ -18475,7 +18517,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 524,
+      "loc": 525,
       "loc_cap": null,
       "module": "src/synthorg/templates/schema.py",
       "owning_feature": null

@@ -9,6 +9,7 @@ drop-box design rationale, and ``docs/design/security.md`` for how
 approval decisions flow through the lifecycle.
 """
 
+from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, Self
 
@@ -21,7 +22,6 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import DecisionOutcome
 from synthorg.core.types import NotBlankStr, validate_unique_strings
 from synthorg.engine.immutable import deep_copy_mapping, freeze_recursive
 from synthorg.engine.strategy.models import (
@@ -30,6 +30,19 @@ from synthorg.engine.strategy.models import (
     RiskCard,
 )
 from synthorg.ontology.decorator import ontology_entity
+
+
+class DecisionOutcome(StrEnum):
+    """Outcome of a review gate decision.
+
+    Used by ``DecisionRecord`` for the auditable decisions drop-box.
+    """
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    AUTO_APPROVED = "auto_approved"
+    AUTO_REJECTED = "auto_rejected"
+    ESCALATED = "escalated"
 
 
 @ontology_entity

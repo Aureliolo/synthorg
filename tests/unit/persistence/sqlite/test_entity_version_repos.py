@@ -240,8 +240,8 @@ async def test_duplicate_pk_idempotency() -> None:
 @pytest.mark.unit
 async def test_role_roundtrip() -> None:
     """Role survives serialization through generic repo."""
-    from synthorg.core.enums import DepartmentName
     from synthorg.core.role import Role
+    from synthorg.organization.enums import DepartmentName
 
     role = Role(
         name="backend-developer",

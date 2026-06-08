@@ -17,7 +17,7 @@ from synthorg.api.controllers._department_health import (
     _resolve_snapshots,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import AgentStatus
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService

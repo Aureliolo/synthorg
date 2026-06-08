@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import ConversationRole
+from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.strategy import LLMCharterInterviewer

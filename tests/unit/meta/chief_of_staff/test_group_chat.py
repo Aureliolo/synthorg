@@ -5,7 +5,10 @@ from typing import override
 
 import pytest
 
-from synthorg.core.enums import ConversationRole, ConversationStatus
+from synthorg.communication.conversation.enums import (
+    ConversationRole,
+    ConversationStatus,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.middleware.s1_constraints import AuthorityDeferenceGuard
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig

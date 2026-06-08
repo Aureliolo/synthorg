@@ -162,7 +162,9 @@ async def _reject_conversational_proposal(
     proposal: object,
 ) -> None:
     """CAS the proposal from PENDING to REJECTED; pipeline never runs."""
-    from synthorg.core.enums import ConversationalProposalStatus  # noqa: PLC0415
+    from synthorg.communication.conversation.enums import (  # noqa: PLC0415
+        ConversationalProposalStatus,
+    )
 
     repo = require_service(
         app_state.slice(MetaStateSlice).conversational_proposal_repo,
@@ -208,7 +210,9 @@ async def _execute_conversational_proposal(
         MemoryError: Raised on the corresponding failure path.
         RecursionError: Raised on the corresponding failure path.
     """
-    from synthorg.core.enums import ConversationalProposalStatus  # noqa: PLC0415
+    from synthorg.communication.conversation.enums import (  # noqa: PLC0415
+        ConversationalProposalStatus,
+    )
     from synthorg.engine.pipeline.models import WorkItem  # noqa: PLC0415
 
     repo = require_service(

@@ -4,11 +4,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from synthorg.core.enums import FailureCategory
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.recovery import (
     FailAndReassignStrategy,
+    FailureCategory,
     RecoveryResult,
 )
 

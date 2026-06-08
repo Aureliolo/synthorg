@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import ConversationStatus
+from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.persistence._generics import (

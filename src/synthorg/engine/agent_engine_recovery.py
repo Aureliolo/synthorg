@@ -31,9 +31,9 @@ from synthorg.observability.events.execution import (
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
-    from synthorg.core.enums import FailureCategory
     from synthorg.core.task import Task
     from synthorg.engine.loop_protocol import BudgetChecker
+    from synthorg.engine.recovery import FailureCategory
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.security.autonomy.models import EffectiveAutonomy

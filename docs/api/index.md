@@ -17,6 +17,8 @@ This section documents every public class, function, and model in the SynthOrg f
 |--------|-------------|
 | [Core](core.md) | Shared domain models: Agent, Task, Role, Company, Project |
 | [Engine](engine.md) | Agent orchestration, execution loops, task decomposition |
+| [Meta](meta.md) | Charter interviews and meta-orchestration subsystems |
+| [Organisation](organization.md) | Company, department, team, and role-version facades |
 | [Providers](providers.md) | LLM provider abstraction, routing, resilience |
 | [Config](config.md) | YAML company configuration loading and validation |
 

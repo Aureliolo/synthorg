@@ -15,9 +15,9 @@ from datetime import datetime
 from typing import LiteralString
 from uuid import UUID
 
-from synthorg.core.enums import CharterStatus
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import (
     BudgetEnvelope,
     ProjectCharter,

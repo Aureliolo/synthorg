@@ -5,8 +5,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import ConflictEscalation, ConflictType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.enums import ConflictEscalation, ConflictType
 
 
 class WorkspaceRequest(BaseModel):

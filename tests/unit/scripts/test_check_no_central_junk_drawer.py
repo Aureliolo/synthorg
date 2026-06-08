@@ -14,6 +14,8 @@ pytestmark = pytest.mark.unit
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "check_no_central_junk_drawer.py"
 
+_ENUMS_REL = "src/synthorg/core/enums.py"
+
 
 def _load_gate() -> ModuleType:
     spec = importlib.util.spec_from_file_location(
@@ -28,24 +30,6 @@ def _load_gate() -> ModuleType:
 
 
 _GATE: Any = cast("Any", _load_gate())
-
-
-# ── core/enums.py counting ──────────────────────────────────────
-
-
-def test_count_top_level_classes_basic() -> None:
-    src = "class A:\n    pass\n\nclass B:\n    pass\n\nx = 1\n"
-    assert _GATE.count_top_level_classes(src) == 2
-
-
-def test_count_top_level_classes_ignores_nested() -> None:
-    src = "class Outer:\n    class Inner:\n        pass\n"
-    assert _GATE.count_top_level_classes(src) == 1
-
-
-def test_count_top_level_classes_ignores_functions() -> None:
-    src = "def foo():\n    class LocalClass:\n        pass\n"
-    assert _GATE.count_top_level_classes(src) == 0
 
 
 # ── api/state.py AppState __slots__ counting ────────────────────
@@ -72,17 +56,17 @@ def test_count_state_slots_no_slots_returns_zero() -> None:
     assert _GATE.count_state_slots(src) == 0
 
 
-# ── End-to-end check ────────────────────────────────────────────
+# ── Project scaffolding ─────────────────────────────────────────
 
 
 def _make_project(tmp_path: Path) -> Path:
-    """Materialise a synthetic project tree with the two junk-drawer files."""
+    """Materialise a synthetic project tree with the state.py junk drawer.
+
+    ``core/enums.py`` is deliberately absent: it has been dissolved and
+    must-not-exist enforcement expects it gone.
+    """
     project = tmp_path
-    (project / "src" / "synthorg" / "core").mkdir(parents=True)
     (project / "src" / "synthorg" / "api").mkdir(parents=True)
-    (project / "src" / "synthorg" / "core" / "enums.py").write_text(
-        "class A:\n    pass\n\nclass B:\n    pass\n", encoding="utf-8"
-    )
     (project / "src" / "synthorg" / "api" / "state.py").write_text(
         "class AppState:\n    __slots__ = ('_a', '_b')\n", encoding="utf-8"
     )
@@ -98,14 +82,43 @@ def _write_baseline(project: Path, payload: dict[str, dict[str, int]]) -> Path:
     return baseline
 
 
+# ── must-not-exist enforcement ──────────────────────────────────
+
+
+def test_check_must_not_exist_passes_when_absent(tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    assert _GATE.check_must_not_exist(project_root=project) == []
+
+
+def test_check_must_not_exist_fails_when_recreated(tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    enums = project / _ENUMS_REL
+    enums.parent.mkdir(parents=True, exist_ok=True)
+    enums.write_text("class A:\n    pass\n", encoding="utf-8")
+    assert _GATE.check_must_not_exist(project_root=project) == [_ENUMS_REL]
+
+
+def test_main_fails_when_enums_recreated(tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    baseline = _write_baseline(
+        project, {"src/synthorg/api/state.py": {"state_slots": 2}}
+    )
+    enums = project / _ENUMS_REL
+    enums.parent.mkdir(parents=True, exist_ok=True)
+    enums.write_text("class A:\n    pass\n", encoding="utf-8")
+    exit_code = _GATE.main(
+        ["--project-root", str(project), "--baseline", str(baseline)]
+    )
+    assert exit_code == 1
+
+
+# ── state.py growth check ───────────────────────────────────────
+
+
 def test_check_passes_when_counts_match_baseline(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
     baseline = _write_baseline(
-        project,
-        {
-            "src/synthorg/core/enums.py": {"top_level_classes": 2},
-            "src/synthorg/api/state.py": {"state_slots": 2},
-        },
+        project, {"src/synthorg/api/state.py": {"state_slots": 2}}
     )
     violations = _GATE.check(project_root=project, baseline_path=baseline)
     assert violations == []
@@ -114,42 +127,32 @@ def test_check_passes_when_counts_match_baseline(tmp_path: Path) -> None:
 def test_check_passes_when_counts_decrease(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
     baseline = _write_baseline(
-        project,
-        {
-            "src/synthorg/core/enums.py": {"top_level_classes": 5},
-            "src/synthorg/api/state.py": {"state_slots": 5},
-        },
+        project, {"src/synthorg/api/state.py": {"state_slots": 5}}
     )
     violations = _GATE.check(project_root=project, baseline_path=baseline)
     assert violations == []
-
-
-def test_check_fails_when_enums_grow(tmp_path: Path) -> None:
-    project = _make_project(tmp_path)
-    baseline = _write_baseline(
-        project,
-        {
-            "src/synthorg/core/enums.py": {"top_level_classes": 1},  # ← stale
-            "src/synthorg/api/state.py": {"state_slots": 2},
-        },
-    )
-    violations = _GATE.check(project_root=project, baseline_path=baseline)
-    assert len(violations) == 1
-    assert "core/enums.py" in violations[0].render()
 
 
 def test_check_fails_when_state_slots_grow(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
     baseline = _write_baseline(
         project,
-        {
-            "src/synthorg/core/enums.py": {"top_level_classes": 2},
-            "src/synthorg/api/state.py": {"state_slots": 1},  # ← stale
-        },
+        {"src/synthorg/api/state.py": {"state_slots": 1}},  # ← stale
     )
     violations = _GATE.check(project_root=project, baseline_path=baseline)
     assert len(violations) == 1
     assert "state.py" in violations[0].render()
+
+
+def test_main_passes_when_clean(tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    baseline = _write_baseline(
+        project, {"src/synthorg/api/state.py": {"state_slots": 2}}
+    )
+    exit_code = _GATE.main(
+        ["--project-root", str(project), "--baseline", str(baseline)]
+    )
+    assert exit_code == 0
 
 
 # ── write_baseline ─────────────────────────────────────────────
@@ -172,8 +175,8 @@ def test_write_baseline_captures_current_counts(tmp_path: Path) -> None:
     baseline.parent.mkdir(parents=True)
     _GATE.write_baseline(project_root=project, baseline_path=baseline)
     payload = json.loads(baseline.read_text(encoding="utf-8"))
-    assert payload["counts"]["src/synthorg/core/enums.py"]["top_level_classes"] == 2
     assert payload["counts"]["src/synthorg/api/state.py"]["state_slots"] == 2
+    assert _ENUMS_REL not in payload["counts"]
 
 
 def test_main_update_baseline_writes_and_exits_zero(tmp_path: Path) -> None:
@@ -191,28 +194,20 @@ def test_main_update_baseline_writes_and_exits_zero(tmp_path: Path) -> None:
     )
     assert exit_code == 0
     payload = json.loads(baseline.read_text(encoding="utf-8"))
-    assert set(payload["counts"]) == {
-        "src/synthorg/core/enums.py",
-        "src/synthorg/api/state.py",
-    }
+    assert set(payload["counts"]) == {"src/synthorg/api/state.py"}
 
 
 def test_main_update_baseline_clears_stale_violations(tmp_path: Path) -> None:
     """--update-baseline rewrites a stale baseline and then exits 0.
 
-    The discriminating case the plain write test misses: a baseline whose
-    recorded count is below the current tree's would normally report a
-    violation; --update-baseline overwrites it to the current counts so a
-    fresh check passes.
+    A baseline whose recorded count is below the current tree's would
+    normally report a violation; --update-baseline overwrites it to the
+    current counts so a fresh check passes.
     """
     project = _make_project(tmp_path)
-    # Stale: baseline records 1 enum class but the synthetic tree has 2.
+    # Stale: baseline records 1 slot but the synthetic tree has 2.
     baseline = _write_baseline(
-        project,
-        {
-            "src/synthorg/core/enums.py": {"top_level_classes": 1},
-            "src/synthorg/api/state.py": {"state_slots": 2},
-        },
+        project, {"src/synthorg/api/state.py": {"state_slots": 1}}
     )
     assert _GATE.check(project_root=project, baseline_path=baseline) != []
     exit_code = _GATE.main(
@@ -227,4 +222,4 @@ def test_main_update_baseline_clears_stale_violations(tmp_path: Path) -> None:
     assert exit_code == 0
     assert _GATE.check(project_root=project, baseline_path=baseline) == []
     payload = json.loads(baseline.read_text(encoding="utf-8"))
-    assert payload["counts"]["src/synthorg/core/enums.py"]["top_level_classes"] == 2
+    assert payload["counts"]["src/synthorg/api/state.py"]["state_slots"] == 2

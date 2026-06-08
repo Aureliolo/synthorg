@@ -11,11 +11,11 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg._core.features import require_service
-from synthorg.core.enums import InterventionKind
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.intervention import SupersedeMode
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import STEERABLE_KINDS
 from synthorg.engine.state import task_engine_of
 from synthorg.meta.mcp.errors import ArgumentValidationError

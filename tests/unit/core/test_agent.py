@@ -15,7 +15,9 @@ from synthorg.core.agent import (
     SkillSet,
     ToolPermissions,
 )
-from synthorg.core.enums import (
+from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
+from synthorg.core.role import Authority, Skill
+from synthorg.hr.enums import (
     AgentStatus,
     CollaborationPreference,
     CommunicationVerbosity,
@@ -24,8 +26,6 @@ from synthorg.core.enums import (
     DecisionMakingStyle,
     RiskTolerance,
 )
-from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
-from synthorg.core.role import Authority, Skill
 from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import (

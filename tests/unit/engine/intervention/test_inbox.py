@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 from typeguard import suppress_type_checks
 
-from synthorg.core.enums import InterventionKind
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.inbox import (
     BrainBackedSteeringInbox,
     build_steering_inbox,

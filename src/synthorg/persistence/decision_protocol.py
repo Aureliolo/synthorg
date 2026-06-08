@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Literal, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import DecisionOutcome
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decisions import DecisionOutcome
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     AppendOnlyRepository,

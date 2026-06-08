@@ -19,8 +19,8 @@ import aiosqlite
 import pytest
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
+from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ConversationStatus
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import (

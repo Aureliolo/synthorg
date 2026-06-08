@@ -7,6 +7,10 @@ search:
 
 Pre-built company templates, personality presets, and template builder.
 
+## Enums
+
+::: synthorg.templates.enums
+
 ## Schema
 
 ::: synthorg.templates.schema

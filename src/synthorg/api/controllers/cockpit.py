@@ -25,13 +25,13 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import PathId
 from synthorg.api.state import AppState
-from synthorg.core.enums import InterventionKind
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit import LiveActivitySnapshot
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.flight_recording import ReplaySeekView
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.cockpit import (

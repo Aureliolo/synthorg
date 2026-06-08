@@ -29,9 +29,9 @@ from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
+from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import AgentStatus, CharterStatus, ConversationStatus
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -40,10 +40,12 @@ from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.dispatch import PROJECT_NAMESPACE, CharterDispatcher
+from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import InterviewTurnArgs, ProjectCharter
 from synthorg.meta.charter.service import CharterInterviewService
 from synthorg.meta.charter.strategy import LLMCharterInterviewer

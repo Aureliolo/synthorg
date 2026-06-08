@@ -7,8 +7,7 @@ from uuid import uuid4
 import pytest
 from pydantic import AwareDatetime
 
-from synthorg.core.enums import ExecutionStatus
-from synthorg.engine.agent_state import AgentRuntimeState
+from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
 from tests._shared import as_uuid, sid
 
 if TYPE_CHECKING:

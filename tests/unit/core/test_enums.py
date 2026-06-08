@@ -3,25 +3,24 @@
 import pytest
 
 from synthorg.core.artifact import ArtifactType
-from synthorg.core.enums import (
-    AgentStatus,
-    CollaborationPreference,
-    CommunicationVerbosity,
-    CompanyType,
-    ConflictApproach,
-    CostTier,
-    CreativityLevel,
-    DecisionMakingStyle,
-    DepartmentName,
-    RiskTolerance,
-    SkillPattern,
-)
 from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
+from synthorg.hr.enums import (
+    AgentStatus,
+    CollaborationPreference,
+    CommunicationVerbosity,
+    ConflictApproach,
+    CostTier,
+    CreativityLevel,
+    DecisionMakingStyle,
+    RiskTolerance,
+)
 from synthorg.memory.enums import ConsolidationInterval
+from synthorg.organization.enums import CompanyType, DepartmentName
 from synthorg.security.autonomy.enums import ActionType
+from synthorg.templates.enums import SkillPattern
 
 # ── Member Counts ──────────────────────────────────────────────────
 

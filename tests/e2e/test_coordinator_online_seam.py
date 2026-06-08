@@ -31,7 +31,6 @@ from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import AgentStatus
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.coordination.config import CoordinationConfig
@@ -40,6 +39,7 @@ from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.models import DecompositionContext
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.drivers.scripted import ScriptedDriver

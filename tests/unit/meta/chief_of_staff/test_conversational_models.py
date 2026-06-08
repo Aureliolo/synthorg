@@ -5,13 +5,13 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import (
+from synthorg.communication.conversation.enums import (
     ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
-    InterventionKind,
 )
 from synthorg.core.task_enums import Complexity, Priority, TaskType
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
     ConversationalProposal,

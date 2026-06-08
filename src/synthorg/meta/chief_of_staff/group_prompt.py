@@ -9,7 +9,7 @@ and the peer block is scanned for authority cues (detect-and-log, the
 :class:`AuthorityDeferenceGuard` contract).
 """
 
-from synthorg.core.enums import ConversationRole
+from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.middleware.s1_constraints import AuthorityDeferenceGuard
 from synthorg.engine.prompt_safety import (

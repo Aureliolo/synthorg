@@ -7,14 +7,6 @@ import structlog.testing
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from synthorg.core.enums import (
-    CollaborationPreference,
-    CommunicationVerbosity,
-    ConflictApproach,
-    CreativityLevel,
-    DecisionMakingStyle,
-    RiskTolerance,
-)
 from synthorg.engine._prompt_helpers import (
     PersonalityTrimInfo,
     _estimate_personality_tokens,
@@ -25,6 +17,14 @@ from synthorg.engine._prompt_helpers import (
 from synthorg.engine.prompt import build_system_prompt
 from synthorg.engine.prompt_profiles import PromptProfile, get_prompt_profile
 from synthorg.engine.token_estimation import DefaultTokenEstimator
+from synthorg.hr.enums import (
+    CollaborationPreference,
+    CommunicationVerbosity,
+    ConflictApproach,
+    CreativityLevel,
+    DecisionMakingStyle,
+    RiskTolerance,
+)
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.prompt import PROMPT_PERSONALITY_TRIMMED
 

@@ -4,12 +4,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import DecisionOutcome
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decisions import DecisionRecord
+from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
 from synthorg.persistence.decision_protocol import DecisionFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import as_uuid, sid

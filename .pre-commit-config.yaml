@@ -869,16 +869,16 @@ repos:
 
       # Allowlisted god-modules must net-shrink on every PR.
       - id: no-growth-in-god-modules
-        name: god-modules must net-shrink (core/enums.py)
+        name: god-modules must net-shrink
         entry: uv run python scripts/check_no_growth_in_god_modules.py
         language: system
         files: ^(src/synthorg/core/enums\.py|scripts/check_no_growth_in_god_modules\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
-      # No new entries in core/enums.py / AppState.
+      # core/enums.py must not exist; no AppState __slots__ growth.
       - id: no-central-junk-drawer
-        name: no new central-junk-drawer entries (#2051 will dissolve)
+        name: no central-junk-drawer (core/enums.py deleted; AppState shrinking)
         entry: uv run python scripts/check_no_central_junk_drawer.py
         language: system
         files: ^(src/synthorg/(core/enums\.py|api/state\.py)|scripts/check_no_central_junk_drawer\.py|scripts/_central_junk_drawer_baseline\.json|\.pre-commit-config\.yaml)$

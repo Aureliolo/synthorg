@@ -12,7 +12,6 @@ mechanism under the simulation harness.
 
 import pytest
 
-from synthorg.core.enums import InterventionKind
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
@@ -21,6 +20,7 @@ from synthorg.engine.intervention import (
     SteeringService,
     build_steering_inbox,
 )
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import SupersedeMode
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.react_loop import ReactLoop

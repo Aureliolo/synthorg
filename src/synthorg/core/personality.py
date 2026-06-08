@@ -8,7 +8,7 @@ import itertools
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import CollaborationPreference, ConflictApproach
+from synthorg.hr.enums import CollaborationPreference, ConflictApproach
 from synthorg.observability import get_logger
 from synthorg.observability.events.personality import (
     PERSONALITY_COMPATIBILITY_COMPUTED,

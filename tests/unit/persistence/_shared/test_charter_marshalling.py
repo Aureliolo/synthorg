@@ -5,9 +5,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from synthorg.core.enums import CharterStatus
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import (
     BudgetEnvelope,
     ProjectCharter,

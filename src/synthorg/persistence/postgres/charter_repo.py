@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING
 import psycopg
 from psycopg.rows import dict_row
 
-from synthorg.core.enums import CharterStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import ProjectCharter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.charter import (
