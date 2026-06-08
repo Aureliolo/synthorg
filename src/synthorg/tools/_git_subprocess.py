@@ -34,8 +34,10 @@ Mirrors the ``tools.git_kill_grace_timeout_seconds`` setting default.
 has no access to the ``ConfigResolver`` boundary.
 """
 
-# Matches http(s)://userinfo@host patterns in git URLs.
-_CREDENTIAL_RE = re.compile(r"(https?://)[^@/]+@")
+# Matches http(s)://userinfo@host patterns in git URLs. Case-insensitive so an
+# uppercase scheme (``HTTPS://user@host``) cannot smuggle credentials past the
+# redactor into logs or tool output.
+_CREDENTIAL_RE = re.compile(r"(https?://)[^@/]+@", re.IGNORECASE)
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]+")
 _MAX_STDERR_FRAGMENT: Final[int] = 500

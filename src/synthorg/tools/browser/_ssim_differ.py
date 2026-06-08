@@ -106,7 +106,6 @@ def _compare_sync(
         BrowserDiffError: If the related operation fails.
     """
     try:
-        import numpy as np  # noqa: PLC0415
         from PIL import Image  # noqa: PLC0415
         from skimage.metrics import (  # noqa: PLC0415
             structural_similarity,

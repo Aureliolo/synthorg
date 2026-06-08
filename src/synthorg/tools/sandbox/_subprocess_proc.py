@@ -27,8 +27,10 @@ logger = get_logger(__name__)
 # Unix process-group support for killing child process trees.
 _HAS_PROCESS_GROUPS: Final[bool] = hasattr(os, "killpg")
 
-# Matches http(s)://user:pass@host patterns in URLs.
-_CREDENTIAL_RE = re.compile(r"(https?://)[^@/]+@")
+# Matches http(s)://user:pass@host patterns in URLs. Case-insensitive so an
+# uppercase scheme (``HTTPS://user:pass@host``) cannot smuggle credentials past
+# the redactor into operator-facing logs.
+_CREDENTIAL_RE = re.compile(r"(https?://)[^@/]+@", re.IGNORECASE)
 
 
 def _redact_args(args: tuple[str, ...]) -> tuple[str, ...]:

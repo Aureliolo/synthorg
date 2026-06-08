@@ -428,6 +428,17 @@ max-complexity = 8
     # do not benefit from anyio.Path indirection.
     "ASYNC240",
 ]
+"src/synthorg/tools/browser/_executor.py" = [
+    # This script is copied into and run inside the sandbox container, whose
+    # default Playwright image ships Python 3.10 -- where function-signature
+    # annotations are evaluated eagerly at definition time. The repo targets
+    # 3.14 (PEP 649 lazy annotations), so ruff considers the quotes around the
+    # TYPE_CHECKING-only BrowserPayload / Violation names unnecessary; removing
+    # them would NameError the executor on the 3.10 sandbox interpreter. The
+    # quotes are load-bearing for the sandbox runtime, so UP037 is suppressed
+    # here only.
+    "UP037",   # quoted annotations are required by the sub-3.14 sandbox runtime
+]
 "src/synthorg/tools/desktop/**/*.py" = [
     # Same rationale as the browser tool: the DesktopTool catches its own
     # DesktopDomainError chain at the execute() boundary and emits a

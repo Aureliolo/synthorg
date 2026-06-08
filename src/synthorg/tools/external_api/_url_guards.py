@@ -21,11 +21,15 @@ def _has_dot_segment(url: str) -> bool:
     The path is percent-decoded first so encoded traversal sequences
     (``%2e`` / ``%2e%2e``) that an upstream server would normalise back
     into ``.`` / ``..`` are detected here rather than slipping past.
+    Backslashes are folded to forward slashes first because IIS and some
+    reverse proxies treat a backslash as a path separator, so a
+    backslash-delimited ``..`` traversal would otherwise evade a
+    forward-slash-only split.
 
     Returns:
         ``True`` when the predicate holds, ``False`` otherwise.
     """
-    path = unquote(urlsplit(url).path)
+    path = unquote(urlsplit(url).path).replace("\\", "/")
     return any(segment in {".", ".."} for segment in path.split("/"))
 
 
