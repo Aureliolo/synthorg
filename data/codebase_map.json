@@ -3775,7 +3775,7 @@
     },
     {
       "kind": "code",
-      "loc": 28,
+      "loc": 32,
       "loc_cap": 500,
       "module": "src/synthorg/core/autonomy_enums.py",
       "owning_feature": null
@@ -4048,7 +4048,7 @@
     },
     {
       "kind": "code",
-      "loc": 230,
+      "loc": 238,
       "loc_cap": 500,
       "module": "src/synthorg/core/tool_constraints.py",
       "owning_feature": null

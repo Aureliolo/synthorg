@@ -13,17 +13,41 @@ Shared domain models, base types, and enums used across the framework.
 
 ## Enums
 
-`synthorg.core.enums` holds the cross-cutting domain enums. Many
-domain-specific enums live with their owning package: agent memory level
-and category in `synthorg.core.memory_enums` (below); seniority and
-strategic output mode under [HR](hr.md); memory consolidation interval
-and org-fact category under [Memory](memory.md); knowledge source type,
-content kind, and source status under [Knowledge](knowledge.md); research
-source type, claim type, and run status under [Research](research.md);
-living-document type under [Docs Engine](docs_engine.md); and the workflow
-type, node, edge, value, and status enums under [Engine](engine.md).
+`synthorg.core.enums` holds the remaining cross-cutting domain enums.
+Foundation enums co-locate with the core model they describe: the task
+family (status, type, priority, complexity, stakes, structure, topology,
+source) plus stakes ordering in `synthorg.core.task_enums`; project
+status and the git-backend / environment discriminators in
+`synthorg.core.project_enums`; autonomy level and ordering in
+`synthorg.core.autonomy_enums`; tool access level in
+`synthorg.core.tool_constraints`; and artifact type in
+`synthorg.core.artifact` (below). Many other domain-specific enums live
+with their owning package: agent memory level and category in
+`synthorg.core.memory_enums` (below); seniority and strategic output mode
+under [HR](hr.md); memory consolidation interval and org-fact category
+under [Memory](memory.md); knowledge source type, content kind, and
+source status under [Knowledge](knowledge.md); research source type,
+claim type, and run status under [Research](research.md); living-document
+type under [Docs Engine](docs_engine.md); and the workflow type, node,
+edge, value, and status enums under [Engine](engine.md).
 
 ::: synthorg.core.enums
+
+## Task Enums
+
+::: synthorg.core.task_enums
+
+## Project Enums
+
+::: synthorg.core.project_enums
+
+## Autonomy Enums
+
+::: synthorg.core.autonomy_enums
+
+## Tool Constraints
+
+::: synthorg.core.tool_constraints
 
 ## Memory Enums
 

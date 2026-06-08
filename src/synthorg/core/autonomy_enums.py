@@ -24,6 +24,14 @@ _AUTONOMY_RANK: dict[AutonomyLevel, int] = {
     AutonomyLevel.FULL: 3,
 }
 
+# Fail loudly if the rank table drifts from the enum membership; a new member
+# left out of the table would otherwise raise a deferred KeyError at the first
+# comparison rather than at import. The symmetric difference names the offender.
+if set(_AUTONOMY_RANK) != set(AutonomyLevel):
+    _autonomy_drift = set(_AUTONOMY_RANK) ^ set(AutonomyLevel)
+    _autonomy_msg = f"_AUTONOMY_RANK out of sync: {_autonomy_drift}"
+    raise RuntimeError(_autonomy_msg)
+
 
 def compare_autonomy(a: AutonomyLevel, b: AutonomyLevel) -> int:
     """Compare two autonomy levels.

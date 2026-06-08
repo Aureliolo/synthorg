@@ -210,6 +210,19 @@ _LEVEL_SUB_CONSTRAINTS: Final[MappingProxyType[ToolAccessLevel, ToolSubConstrain
     )
 )
 
+# CUSTOM is intentionally absent (its missing entry is the sentinel that forces
+# an explicit custom_constraints in get_sub_constraints). Fail loudly at import
+# if any other access level lacks a default, rather than as a deferred runtime
+# ValueError on the first resolution for that level.
+_levels_without_defaults = (
+    set(ToolAccessLevel) - {ToolAccessLevel.CUSTOM} - set(_LEVEL_SUB_CONSTRAINTS)
+)
+if _levels_without_defaults:
+    _missing_levels_msg = (
+        f"_LEVEL_SUB_CONSTRAINTS missing non-CUSTOM levels: {_levels_without_defaults}"
+    )
+    raise RuntimeError(_missing_levels_msg)
+
 
 # ── Resolution ─────────────────────────────────────────────────
 
