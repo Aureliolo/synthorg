@@ -98,7 +98,9 @@ def test_check_must_not_exist_fails_when_recreated(tmp_path: Path) -> None:
     assert _GATE.check_must_not_exist(project_root=project) == [_ENUMS_REL]
 
 
-def test_main_fails_when_enums_recreated(tmp_path: Path) -> None:
+def test_main_fails_when_enums_recreated(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     project = _make_project(tmp_path)
     baseline = _write_baseline(
         project, {"src/synthorg/api/state.py": {"state_slots": 2}}
@@ -110,6 +112,7 @@ def test_main_fails_when_enums_recreated(tmp_path: Path) -> None:
         ["--project-root", str(project), "--baseline", str(baseline)]
     )
     assert exit_code == 1
+    assert "dissolved junk-drawer modules" in capsys.readouterr().err
 
 
 # ── state.py growth check ───────────────────────────────────────

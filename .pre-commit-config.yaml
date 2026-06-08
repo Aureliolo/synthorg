@@ -872,7 +872,7 @@ repos:
         name: god-modules must net-shrink
         entry: uv run python scripts/check_no_growth_in_god_modules.py
         language: system
-        files: ^(src/synthorg/core/enums\.py|scripts/check_no_growth_in_god_modules\.py|\.pre-commit-config\.yaml)$
+        files: ^(scripts/check_no_growth_in_god_modules\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 

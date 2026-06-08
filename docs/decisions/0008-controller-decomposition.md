@@ -115,7 +115,8 @@ Bringing the centre under its caps lifts ADR-0006's Section B exemptions:
   `api/lifecycle.py`, and `api/lifecycle_builder.py` all fall under their
   code-tier cap, so they drop from `check_no_growth_in_god_modules.py`'s
   net-shrink allowlist and are governed by `check_module_size_budget.py`.
-  `core/enums.py` stays until #2051.
+  `core/enums.py` was dissolved and deleted by #2051; the allowlist is now
+  empty.
 - **Mypy narrowed via specific override precedence.** A more-specific
   override beats the `synthorg.api.*` wildcard, so the composition root,
   the lifecycle runners, and the Any-clean decomposed controller packages

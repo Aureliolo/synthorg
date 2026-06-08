@@ -211,10 +211,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.baseline is not None
         else project_root / _BASELINE_REL
     )
+    resurrected = check_must_not_exist(project_root=project_root)
     if args.update_baseline:
+        if resurrected:
+            print(
+                "Refusing --update-baseline: dissolved modules must not exist:",
+                file=sys.stderr,
+            )
+            for rel in resurrected:
+                print(f"  {rel}", file=sys.stderr)
+            return 1
         write_baseline(project_root=project_root, baseline_path=baseline_path)
         return 0
-    resurrected = check_must_not_exist(project_root=project_root)
     violations = check(project_root=project_root, baseline_path=baseline_path)
     if not resurrected and not violations:
         return 0

@@ -54,10 +54,14 @@ _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
 # ``engine.workspace.enums`` / ``engine.intervention.enums``): every consumer
 # of those enums now forces the package ``__init__`` to run, so the cold path
 # through that init must be pinned. ``communication.conversation.enums`` and
-# ``meta.charter.enums`` are intentionally absent: both transitively trigger the
-# heavy ``communication`` init, which still cold-cycles (the same
-# ``communication`` <-> ``engine`` edge that keeps ``communication.config`` out),
-# so they cannot import cold on their own; no cold leaf consumes those enums.
+# ``meta.charter.enums`` are intentionally absent: both reach the heavy
+# ``communication`` init, which still cold-cycles (the same ``communication``
+# <-> ``engine`` edge that keeps ``communication.config`` out).
+# ``communication.conversation.enums`` triggers it directly via its parent
+# package; ``meta.charter.enums`` reaches it indirectly
+# (``meta.charter.__init__`` -> ``meta.charter.service`` ->
+# ``communication.conversation.enums`` -> ``communication.__init__``). Neither
+# can import cold on its own, and no cold leaf consumes those enums.
 COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.providers.enums",
     "synthorg.core.agent",

@@ -88,6 +88,7 @@ def test_net_grow_fails(allowlisted: str) -> None:
 def test_one_loc_grow_fails(allowlisted: str) -> None:
     result = _GATE.classify_change(path=allowlisted, head_loc=2313, staged_loc=2314)
     assert result is not None
+    assert "(+1)" in result.render()
 
 
 def test_nonallowlisted_returns_none(allowlisted: str) -> None:
@@ -169,3 +170,14 @@ def test_main_list_mode_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     # The live allowlist is empty, so --list prints nothing.
     lines = [line for line in captured.out.splitlines() if line.strip()]
     assert lines == sorted(_GATE.GOD_MODULE_ALLOWLIST)
+
+
+def test_main_list_mode_prints_allowlisted_paths(
+    allowlisted: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--list prints each allowlisted path (exercises the print loop)."""
+    exit_code = _GATE.main(["--list"])
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    lines = [line for line in captured.out.splitlines() if line.strip()]
+    assert lines == [allowlisted]
