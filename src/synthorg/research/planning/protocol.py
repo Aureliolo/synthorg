@@ -6,10 +6,9 @@ the plan plus the USD cost they incurred, so the orchestrator can enforce
 the brief's cost ceiling.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.research.models import ResearchBrief, ResearchQueryPlan
+from synthorg.research.models import ResearchBrief, ResearchQueryPlan
 
 
 @runtime_checkable

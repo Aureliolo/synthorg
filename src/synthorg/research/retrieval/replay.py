@@ -7,14 +7,11 @@ reproduces identical retrieval without touching any external provider.
 """
 
 from collections import defaultdict
-from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
 from synthorg.research.enums import ResearchSourceType
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.research.models import RetrievedItem, SubQuery
+from synthorg.research.models import RetrievedItem, SubQuery
 
 
 class ReplayRetrievalSource:

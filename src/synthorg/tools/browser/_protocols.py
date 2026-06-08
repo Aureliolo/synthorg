@@ -6,10 +6,8 @@ the SSIM default in :class:`SSIMDiffer`. Alternate implementations
 constructor without touching the dispatch code.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable

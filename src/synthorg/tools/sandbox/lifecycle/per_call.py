@@ -5,7 +5,7 @@ fresh container, and ``release()`` is a no-op because the caller
 (``DockerSandbox``) destroys the container in its own finally block.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.sandbox import (
@@ -13,11 +13,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_CLEANUP,
     SANDBOX_LIFECYCLE_RELEASE,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 
 logger = get_logger(__name__)
 

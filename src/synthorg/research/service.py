@@ -11,8 +11,8 @@ skipped, and the pipeline continues with the remaining candidates.
 """
 
 import asyncio
+from datetime import datetime
 from itertools import chain
-from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -30,33 +30,28 @@ from synthorg.observability.events.research import (
     RESEARCH_SOURCE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence.research_protocol import (
+    ResearchRunFilter,
+    ResearchRunRepository,
+)
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
-from synthorg.research.enums import ResearchRunStatus
+from synthorg.research.enums import ResearchRunStatus, ResearchSourceType
 from synthorg.research.errors import (
     ResearchBudgetExceededError,
     ResearchError,
     ResearchRunError,
 )
 from synthorg.research.models import (
+    ResearchBrief,
     ResearchRun,
     RetrievedItem,
     SourceCredibility,
     SubQuery,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.persistence.research_protocol import (
-        ResearchRunFilter,
-        ResearchRunRepository,
-    )
-    from synthorg.research.enums import ResearchSourceType
-    from synthorg.research.models import ResearchBrief
-    from synthorg.research.planning.protocol import QueryPlanner
-    from synthorg.research.retrieval.protocol import Deduplicator, RetrievalSource
-    from synthorg.research.synthesis.protocol import Synthesizer
-    from synthorg.research.triage.protocol import CredibilityTriage
+from synthorg.research.planning.protocol import QueryPlanner
+from synthorg.research.retrieval.protocol import Deduplicator, RetrievalSource
+from synthorg.research.synthesis.protocol import Synthesizer
+from synthorg.research.triage.protocol import CredibilityTriage
 
 logger = get_logger(__name__)
 

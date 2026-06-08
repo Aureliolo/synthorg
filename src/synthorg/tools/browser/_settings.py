@@ -10,7 +10,7 @@ so the audit log fires once at startup and the settings track operator
 overrides for the rest of the process lifetime.
 """
 
-from typing import TYPE_CHECKING, Literal, cast
+from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -19,6 +19,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.browser import (
     BROWSER_ARGS_VALIDATION_FAILED,
 )
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.browser._constants import (
     A11Y_MIN_IMPACT_DEFAULT,
     BROWSER_IMAGE_PIN_DEFAULT,
@@ -27,9 +28,6 @@ from synthorg.tools.browser._constants import (
     DEFAULT_VIEWPORT_WIDTH,
     DIFF_SSIM_TOLERANCE_DEFAULT,
 )
-
-if TYPE_CHECKING:
-    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 

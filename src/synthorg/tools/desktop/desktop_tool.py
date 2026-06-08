@@ -21,7 +21,6 @@ import json
 import shutil
 from pathlib import Path
 from typing import (
-    TYPE_CHECKING,
     ClassVar,
     Final,
     LiteralString,
@@ -35,7 +34,7 @@ from pydantic import BaseModel, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
-from synthorg.core.clock import SystemClock
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.desktop import (
@@ -70,6 +69,7 @@ from synthorg.tools.desktop._models import (
 from synthorg.tools.desktop._screenshot_store import WorkspaceScreenshotStore
 from synthorg.tools.desktop._settings import DesktopSettings
 from synthorg.tools.desktop.driver.factory import build_desktop_driver
+from synthorg.tools.desktop.driver.protocol import DesktopDriver
 from synthorg.tools.desktop.errors import (
     DesktopAppNotRunningError,
     DesktopArgumentError,
@@ -79,11 +79,7 @@ from synthorg.tools.desktop.errors import (
     DesktopScreenshotError,
     DesktopSessionError,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
-    from synthorg.tools.desktop.driver.protocol import DesktopDriver
-    from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 

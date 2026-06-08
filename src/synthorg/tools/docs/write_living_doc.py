@@ -6,12 +6,15 @@ forwards). Cross-project authority is checked by callers via the
 :class:`TrustService` seam, not by the tool itself.
 """
 
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import current_execution_identity
+from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.models import DocBlock
+from synthorg.docs_engine.service import DocsService
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -27,11 +30,6 @@ from synthorg.tools.docs._args import (
     WriteLivingDocArgs,
     WriteLivingDocBlockArg,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.docs_engine.models import DocBlock
-    from synthorg.docs_engine.service import DocsService
 
 logger = get_logger(__name__)
 

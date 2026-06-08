@@ -10,9 +10,9 @@ re-raised.  ``BaseException`` subclasses (``KeyboardInterrupt``,
 
 import asyncio
 import copy
+from collections.abc import Iterable
 from contextlib import nullcontext
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.models import EscalationInfo
@@ -38,24 +38,18 @@ from synthorg.observability.events.tool import (
 from synthorg.observability.tracing import tool_span
 from synthorg.providers.models import ToolCall, ToolResult
 from synthorg.security.models import SecurityContext, SecurityVerdictType
+from synthorg.security.protocol import SecurityInterceptionStrategy
+from synthorg.tools.html_parse_guard import HTMLParseGuard
 
-from .base import ToolExecutionResult
+from .base import BaseTool, ToolExecutionResult
 from .errors import ToolExecutionError, ToolNotFoundError
 from .invocation_bridge import record_tool_invocation
+from .invocation_tracker import ToolInvocationTracker
 from .invoker_discovery import ToolInvokerDiscoveryMixin
 from .invoker_validation import ToolInvokerValidationMixin
+from .permissions import ToolPermissionChecker
+from .registry import ToolRegistry
 from .scan_result_handler import handle_sensitive_scan
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.security.protocol import SecurityInterceptionStrategy
-    from synthorg.tools.html_parse_guard import HTMLParseGuard
-
-    from .base import BaseTool
-    from .invocation_tracker import ToolInvocationTracker
-    from .permissions import ToolPermissionChecker
-    from .registry import ToolRegistry
 
 logger = get_logger(__name__)
 

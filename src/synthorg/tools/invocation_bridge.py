@@ -13,10 +13,14 @@ from synthorg.observability.events.tool import TOOL_INVOCATION_RECORD_FAILED
 from synthorg.observability.metrics_hub import (
     record_tool_invocation as record_tool_invocation_metric,
 )
+from synthorg.providers.models import ToolCall, ToolResult
 from synthorg.tools.invocation_record import ToolInvocationRecord
 
 if TYPE_CHECKING:
-    from synthorg.providers.models import ToolCall, ToolResult
+    # ``ToolInvoker`` is kept under TYPE_CHECKING because ``invoker`` imports
+    # this module (``invoker -> invocation_bridge``) at runtime, so a runtime
+    # import back into ``invoker`` here closes that cycle. PEP 649 makes the
+    # bare ``invoker: ToolInvoker`` annotation below safe at module load.
     from synthorg.tools.invoker import ToolInvoker
 
 logger = get_logger(__name__)

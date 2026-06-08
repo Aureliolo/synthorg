@@ -11,8 +11,9 @@ import fnmatch
 import os
 import re
 import signal
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -38,9 +39,6 @@ from synthorg.tools.sandbox.errors import (
     SandboxStartError,
 )
 from synthorg.tools.sandbox.result import SandboxResult
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

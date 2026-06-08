@@ -25,7 +25,7 @@ import re
 from abc import ABC
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import JsonValue
 
@@ -42,10 +42,8 @@ from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._process_cleanup import close_subprocess_transport
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
-
-if TYPE_CHECKING:
-    from synthorg.tools.sandbox.protocol import SandboxBackend
-    from synthorg.tools.sandbox.result import SandboxResult
+from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
 

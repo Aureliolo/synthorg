@@ -8,12 +8,10 @@ registered.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
-    from synthorg.tools.external_api.provider import ExternalAccessProvider
-    from synthorg.tools.network_validator import NetworkPolicy
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.tools.external_api.provider import ExternalAccessProvider
+from synthorg.tools.network_validator import NetworkPolicy
 
 
 @dataclass(frozen=True)

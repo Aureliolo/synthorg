@@ -9,7 +9,8 @@ embedder.
 
 import math
 import re
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from collections.abc import Callable, Sequence
+from typing import Final, Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
 from synthorg.core.normalization import normalize_ascii_lowercase
@@ -17,11 +18,7 @@ from synthorg.research.constants import (
     RESEARCH_DEDUP_JACCARD_THRESHOLD,
     RESEARCH_DEDUP_SHINGLE_SIZE,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
-
-    from synthorg.research.models import RetrievedItem
+from synthorg.research.models import RetrievedItem
 
 _TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[a-z0-9]+")
 

@@ -6,18 +6,13 @@ cited :class:`~synthorg.knowledge.models.KnowledgeHit` into a
 :class:`~synthorg.knowledge.models.Citation`.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.service import KnowledgeService
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
 from synthorg.research.enums import ResearchSourceType
-from synthorg.research.models import ResearchCitation, RetrievedItem
+from synthorg.research.models import ResearchCitation, RetrievedItem, SubQuery
 from synthorg.research.retrieval.sources._shared import make_ref_id, truncate_snippet
 from synthorg.versioning.hashing import compute_text_hash
-
-if TYPE_CHECKING:
-    from synthorg.knowledge.service import KnowledgeService
-    from synthorg.research.models import SubQuery
 
 
 class KnowledgeRetrievalSource:

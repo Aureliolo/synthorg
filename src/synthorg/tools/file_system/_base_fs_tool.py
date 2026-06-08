@@ -5,7 +5,7 @@ Provides the common ``ToolCategory.FILE_SYSTEM`` category and a
 """
 
 from abc import ABC
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from pydantic import JsonValue
 
@@ -13,9 +13,6 @@ from synthorg.observability import safe_error_description
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool
 from synthorg.tools.file_system._path_validator import PathValidator
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _map_os_error(

@@ -6,18 +6,14 @@ items keep their heuristic verdict, so the LLM cost is spent where it
 matters and obviously poor sources never reach it.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.research.constants import RESEARCH_HYBRID_PREFILTER_FACTOR
-
-if TYPE_CHECKING:
-    from synthorg.research.models import (
-        ResearchBrief,
-        RetrievedItem,
-        SourceCredibility,
-    )
-    from synthorg.research.triage.heuristic import HeuristicCredibilityTriage
-    from synthorg.research.triage.llm import LlmCredibilityTriage
+from synthorg.research.models import (
+    ResearchBrief,
+    RetrievedItem,
+    SourceCredibility,
+)
+from synthorg.research.triage.heuristic import HeuristicCredibilityTriage
+from synthorg.research.triage.llm import LlmCredibilityTriage
 
 
 class HybridCredibilityTriage:

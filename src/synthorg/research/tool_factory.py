@@ -6,17 +6,14 @@ and parked on the app state; the per-task tool loader calls
 :meth:`build_tools` with the task scope.
 """
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Iterable
+from typing import Final
 
+from synthorg.core.clock import Clock
+from synthorg.core.types import NotBlankStr
+from synthorg.research.service import ResearchService
 from synthorg.research.tool import ResearchTool
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.core.clock import Clock
-    from synthorg.core.types import NotBlankStr
-    from synthorg.research.service import ResearchService
-    from synthorg.tools.base import BaseTool
+from synthorg.tools.base import BaseTool
 
 RESEARCH_TOOL_NAMES: Final[tuple[str, ...]] = ("research",)
 

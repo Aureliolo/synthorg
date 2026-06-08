@@ -7,7 +7,7 @@ window cancels the timer and returns the warm container.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -20,12 +20,8 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_IDLE_EXPIRED,
     SANDBOX_LIFECYCLE_RELEASE,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
-    from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
+from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 
 logger = get_logger(__name__)
 

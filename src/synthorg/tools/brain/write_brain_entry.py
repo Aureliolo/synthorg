@@ -7,12 +7,13 @@ per-task execution context by the tool factory; cross-project authority is
 checked by callers via the trust seam, not by the tool.
 """
 
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -23,14 +24,11 @@ from synthorg.observability.events.project_brain import (
     BRAIN_ENTRY_APPENDED,
 )
 from synthorg.project_brain.constants import BRAIN_WRITE_ACTION_TYPE
+from synthorg.project_brain.models import BrainEntry
+from synthorg.project_brain.service import ProjectBrainService
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.brain._args import WriteBrainEntryArgs
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.project_brain.models import BrainEntry
-    from synthorg.project_brain.service import ProjectBrainService
 
 logger = get_logger(__name__)
 

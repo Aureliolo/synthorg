@@ -1,16 +1,13 @@
 """Sandbox backend protocol definition."""
 
+from collections.abc import Mapping
 from pathlib import (
     Path,
 )
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.tools.sandbox.result import SandboxResult
+from synthorg.tools.sandbox.result import SandboxResult
 
 
 @runtime_checkable

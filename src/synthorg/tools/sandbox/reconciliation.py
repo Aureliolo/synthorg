@@ -29,21 +29,18 @@ The reconciliation function is a pure async function over a small
 without a real Docker daemon.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
     DOCKER_CONTAINER_REMOVED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.persistence.tracked_container_protocol import (
-        TrackedContainerRepository,
-    )
+from synthorg.persistence.tracked_container_protocol import (
+    TrackedContainerRepository,
+)
 
 logger = get_logger(__name__)
 

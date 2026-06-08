@@ -6,7 +6,7 @@ agent/operator input, so they are wrapped before reaching the prompt.
 """
 
 import json
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import ValidationError
 
@@ -18,13 +18,11 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import RESEARCH_LLM_OUTPUT_INVALID
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.research._args import PlannerOutput
 from synthorg.research._llm import complete_text, extract_json_object
 from synthorg.research.errors import ResearchRunError
 from synthorg.research.models import ResearchBrief, ResearchQueryPlan, SubQuery
-
-if TYPE_CHECKING:
-    from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

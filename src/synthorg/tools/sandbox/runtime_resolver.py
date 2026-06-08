@@ -7,7 +7,7 @@ requested runtime is unavailable.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
@@ -17,9 +17,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_GVISOR_PROBE,
     SANDBOX_GVISOR_UNAVAILABLE,
 )
-
-if TYPE_CHECKING:
-    from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 
 logger = get_logger(__name__)
 

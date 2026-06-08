@@ -6,8 +6,7 @@ workspace root.  This prevents path-traversal attacks via ``../``,
 symlinks, or absolute paths outside the workspace.
 """
 
-from pathlib import PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
@@ -15,9 +14,6 @@ from synthorg.observability.events.tool import (
     TOOL_FS_PATH_VIOLATION,
     TOOL_FS_WORKSPACE_INVALID,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = get_logger(__name__)
 

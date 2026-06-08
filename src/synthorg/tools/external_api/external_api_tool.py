@@ -9,7 +9,7 @@ pluggable :class:`ExternalAccessProvider`.
 """
 
 from datetime import UTC
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import ClassVar, override
 from urllib.parse import unquote, urlsplit
 from uuid import UUID, uuid4
 
@@ -18,10 +18,13 @@ from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.resilience_config import RateLimiterConfig
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.models import Connection
 from synthorg.integrations.errors import (
     ConnectionRateLimitError,
     SecretRetrievalError,
@@ -40,6 +43,10 @@ from synthorg.observability.events.external_api import (
 )
 from synthorg.providers.url_utils import redact_url
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
+from synthorg.security.autonomy.models import EffectiveAutonomy
+from synthorg.security.timeout.risk_tier_classifier import (
+    DefaultRiskTierClassifier,
+)
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.external_api._args import ExternalApiArgs
 from synthorg.tools.external_api._credentials import build_auth_headers
@@ -52,22 +59,15 @@ from synthorg.tools.external_api.errors import (
     ExternalApiError,
     ExternalApiResponseError,
 )
-from synthorg.tools.external_api.provider import ExternalAccessRequest
+from synthorg.tools.external_api.provider import (
+    ExternalAccessProvider,
+    ExternalAccessRequest,
+)
 from synthorg.tools.network_validator import (
     NetworkPolicy,
     extract_hostname,
     validate_url_host,
 )
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
-    from synthorg.integrations.connections.models import Connection
-    from synthorg.security.autonomy.models import EffectiveAutonomy
-    from synthorg.security.timeout.risk_tier_classifier import (
-        DefaultRiskTierClassifier,
-    )
-    from synthorg.tools.external_api.provider import ExternalAccessProvider
 
 logger = get_logger(__name__)
 

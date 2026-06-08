@@ -5,14 +5,12 @@ single source family (knowledge / web / academic / code). A
 :class:`Deduplicator` collapses near-duplicate candidates before synthesis.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
+from synthorg.core.types import NotBlankStr
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.research.enums import ResearchSourceType
-    from synthorg.research.models import RetrievedItem, SubQuery
+from synthorg.research.enums import ResearchSourceType
+from synthorg.research.models import RetrievedItem, SubQuery
 
 
 @runtime_checkable

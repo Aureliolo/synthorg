@@ -1,16 +1,12 @@
 """Factory for sandbox lifecycle strategies."""
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.clock import Clock
 from synthorg.observability import get_logger
+from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
 from synthorg.tools.sandbox.lifecycle.per_task import PerTaskStrategy
-
-if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
-    from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
-    from synthorg.tools.sandbox.lifecycle.protocol import SandboxLifecycleStrategy
+from synthorg.tools.sandbox.lifecycle.protocol import SandboxLifecycleStrategy
 
 logger = get_logger(__name__)
 

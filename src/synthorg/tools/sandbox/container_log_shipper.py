@@ -7,23 +7,19 @@ independently of ``DockerSandbox``.
 
 import asyncio
 import json
-from typing import TYPE_CHECKING
 
+import aiodocker
 from pydantic import JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.config import ContainerLogShippingConfig
 from synthorg.observability.events.sandbox import (
     SANDBOX_CONTAINER_LOGS_COLLECTED,
     SANDBOX_CONTAINER_LOGS_MALFORMED,
     SANDBOX_CONTAINER_LOGS_SHIP_FAILED,
     SANDBOX_CONTAINER_LOGS_SHIPPED,
 )
-
-if TYPE_CHECKING:
-    import aiodocker
-
-    from synthorg.observability.config import ContainerLogShippingConfig
 
 logger = get_logger(__name__)
 

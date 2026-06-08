@@ -15,6 +15,9 @@ from synthorg.tools.invocation_tracker import (
 )
 
 if TYPE_CHECKING:
+    # ``api.state_slices`` is kept under TYPE_CHECKING: the ``api`` layer wires
+    # this feature slice, so a runtime import back up into ``api`` closes a
+    # circular import. PEP 649 makes the bare annotation below safe at load.
     from synthorg.api.state_slices import AppStateSliceMixin
 
 

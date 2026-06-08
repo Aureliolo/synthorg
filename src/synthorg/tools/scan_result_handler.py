@@ -4,19 +4,15 @@ Standalone function extracted from ``ToolInvoker`` to keep
 ``invoker.py`` under the 800-line file limit.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_OUTPUT_REDACTED,
     TOOL_OUTPUT_WITHHELD,
 )
+from synthorg.providers.models import ToolCall
 from synthorg.security.models import OutputScanResult, ScanOutcome
 
 from .base import ToolExecutionResult
-
-if TYPE_CHECKING:
-    from synthorg.providers.models import ToolCall
 
 logger = get_logger(__name__)
 

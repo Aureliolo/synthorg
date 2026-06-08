@@ -7,8 +7,6 @@ implementation; injected at runtime), mapping each result into a
 are untrusted and are wrapped only where they enter a prompt (in synthesis).
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
@@ -24,10 +22,8 @@ from synthorg.research.retrieval.sources._shared import (
     positional_relevance,
     truncate_snippet,
 )
+from synthorg.tools.web.web_search import WebSearchProvider
 from synthorg.versioning.hashing import compute_text_hash
-
-if TYPE_CHECKING:
-    from synthorg.tools.web.web_search import WebSearchProvider
 
 
 class WebRetrievalSource:

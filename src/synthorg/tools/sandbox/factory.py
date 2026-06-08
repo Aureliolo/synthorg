@@ -7,8 +7,9 @@ to look up the correct backend for a tool category, and
 """
 
 import asyncio
+from collections.abc import Mapping
+from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry import StrategyRegistry
@@ -21,22 +22,17 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_FACTORY_RESOLVE,
     SANDBOX_FACTORY_RESOLVE_FAILED,
 )
+from synthorg.persistence.tracked_container_protocol import (
+    TrackedContainerRepository,
+)
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
+from synthorg.tools.sandbox.lifecycle.protocol import (
+    SandboxLifecycleStrategy,
+)
+from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from pathlib import Path
-
-    from synthorg.persistence.tracked_container_protocol import (
-        TrackedContainerRepository,
-    )
-    from synthorg.security.autonomy.enums import ToolCategory
-    from synthorg.tools.sandbox.lifecycle.protocol import (
-        SandboxLifecycleStrategy,
-    )
-    from synthorg.tools.sandbox.protocol import SandboxBackend
-    from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 
 logger = get_logger(__name__)
 

@@ -7,12 +7,13 @@ until the approval decision arrives.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import ClassVar, override
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.validation import is_valid_action_type
 from synthorg.observability import get_logger, safe_error_description
@@ -23,15 +24,12 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RISK_CLASSIFY_FAILED,
 )
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.security.timeout.risk_tier_classifier import (
+    DefaultRiskTierClassifier,
+)
 from synthorg.tools._misc_args import RequestHumanApprovalArgs
 
 from .base import BaseTool, ToolExecutionResult
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.security.timeout.risk_tier_classifier import (
-        DefaultRiskTierClassifier,
-    )
 
 logger = get_logger(__name__)
 

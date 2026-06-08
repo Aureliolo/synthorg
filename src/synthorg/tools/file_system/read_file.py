@@ -5,7 +5,8 @@ file-size guard to prevent loading excessively large files into memory.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, ClassVar, Final, cast, override
+from pathlib import Path
+from typing import ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
@@ -23,9 +24,6 @@ from synthorg.tools.file_system._base_fs_tool import (
     BaseFileSystemTool,
     _map_os_error,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = get_logger(__name__)
 

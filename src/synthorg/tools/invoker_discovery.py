@@ -6,25 +6,21 @@ Relies on ``_registry`` and ``_permission_checker`` declared on the
 concrete invoker.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.tool_disclosure import (
+    ToolL1Metadata,
+    ToolL2Body,
+    ToolL3Resource,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_INVOKE_NOT_FOUND,
     TOOL_PERMISSION_DENIED,
 )
+from synthorg.providers.models import ToolDefinition
 from synthorg.tools.errors import ToolNotFoundError
-
-if TYPE_CHECKING:
-    from synthorg.core.tool_disclosure import (
-        ToolL1Metadata,
-        ToolL2Body,
-        ToolL3Resource,
-    )
-    from synthorg.providers.models import ToolDefinition
-    from synthorg.tools.permissions import ToolPermissionChecker
-    from synthorg.tools.registry import ToolRegistry
+from synthorg.tools.permissions import ToolPermissionChecker
+from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
 

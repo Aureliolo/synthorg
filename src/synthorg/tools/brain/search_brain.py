@@ -6,12 +6,13 @@ risks did we accept around payments"). The transparent RAG path lives on
 memories on the normal ``memory.retrieve`` call.
 """
 
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel, JsonValue
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_BRAIN_STATE, wrap_untrusted
 from synthorg.observability import (
     get_logger,
@@ -23,14 +24,11 @@ from synthorg.observability.events.project_brain import (
     BRAIN_SEARCH_FAILED,
     BRAIN_SEARCH_START,
 )
+from synthorg.project_brain.models import BrainSearchHit
+from synthorg.project_brain.service import ProjectBrainService
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.brain._args import SearchBrainArgs
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.project_brain.models import BrainSearchHit
-    from synthorg.project_brain.service import ProjectBrainService
 
 logger = get_logger(__name__)
 

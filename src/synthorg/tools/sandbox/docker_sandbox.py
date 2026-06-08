@@ -19,8 +19,9 @@ security and the per-execution policy chokepoint.
 import asyncio
 import fnmatch
 import platform
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Final, override
+from typing import Final, override
 
 import aiodocker
 import structlog.contextvars
@@ -29,7 +30,9 @@ from pydantic import JsonValue
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.config import ContainerLogShippingConfig
 from synthorg.observability.events.docker import (
     DOCKER_DAEMON_UNAVAILABLE,
     DOCKER_EXECUTE_FAILED,
@@ -41,6 +44,9 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_ENV_FILTERED,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
 )
+from synthorg.persistence.tracked_container_protocol import (
+    TrackedContainerRepository,
+)
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
@@ -51,21 +57,12 @@ from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
 from synthorg.tools.sandbox.docker_sandbox_sidecar import DockerSandboxSidecarMixin
 from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
 from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Mapping
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.observability.config import ContainerLogShippingConfig
-    from synthorg.persistence.tracked_container_protocol import (
-        TrackedContainerRepository,
-    )
-    from synthorg.tools.sandbox.lifecycle.protocol import (
-        ContainerHandle,
-        SandboxLifecycleStrategy,
-    )
-    from synthorg.tools.sandbox.result import SandboxResult
-    from synthorg.tools.sandbox.runtime_resolver import SandboxRuntimeResolver
+from synthorg.tools.sandbox.lifecycle.protocol import (
+    ContainerHandle,
+    SandboxLifecycleStrategy,
+)
+from synthorg.tools.sandbox.result import SandboxResult
+from synthorg.tools.sandbox.runtime_resolver import SandboxRuntimeResolver
 
 _RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
     {

@@ -8,7 +8,7 @@ validation shared by all tools.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Final, cast, override
+from typing import ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
@@ -40,9 +40,7 @@ from synthorg.tools.git_url_validator import (
     validate_clone_url_host,
     verify_dns_consistency,
 )
-
-if TYPE_CHECKING:
-    from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 

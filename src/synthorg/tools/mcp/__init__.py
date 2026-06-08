@@ -8,6 +8,9 @@ no dependency on the tool base classes.
 import threading
 from typing import TYPE_CHECKING, Final
 
+from .bridge_tool import MCPBridgeTool
+from .cache import MCPResultCache
+from .client import MCPClient
 from .config import MCPConfig, MCPServerConfig
 from .errors import (
     MCPConnectionError,
@@ -16,14 +19,9 @@ from .errors import (
     MCPInvocationError,
     MCPTimeoutError,
 )
+from .factory import MCPToolFactory
 from .models import MCPRawResult, MCPToolInfo
-
-if TYPE_CHECKING:
-    from .bridge_tool import MCPBridgeTool
-    from .cache import MCPResultCache
-    from .client import MCPClient
-    from .factory import MCPToolFactory
-    from .result_mapper import map_call_tool_result
+from .result_mapper import map_call_tool_result
 
 __all__ = [
     "MCPBridgeTool",

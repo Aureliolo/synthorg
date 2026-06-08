@@ -8,7 +8,7 @@ zero-score verdict so it cannot silently pass triage.
 """
 
 import json
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import ValidationError
 
@@ -21,14 +21,12 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import RESEARCH_LLM_OUTPUT_INVALID
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.research._args import TriageOutput, TriageVerdictOut
 from synthorg.research._llm import complete_text, extract_json_object
 from synthorg.research.constants import RESEARCH_TRIAGE_BATCH_SIZE
 from synthorg.research.errors import ResearchRunError
 from synthorg.research.models import ResearchBrief, RetrievedItem, SourceCredibility
-
-if TYPE_CHECKING:
-    from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

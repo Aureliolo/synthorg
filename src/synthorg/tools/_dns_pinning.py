@@ -15,15 +15,12 @@ duplicated.
 """
 
 import ssl
-from typing import TYPE_CHECKING, cast, override
+from collections.abc import AsyncIterable, AsyncIterator, Iterable
+from typing import cast, override
 
 import httpcore
 import httpx
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterable, AsyncIterator, Iterable
-
-    from httpcore._backends.base import SOCKET_OPTION
+from httpcore._backends.base import SOCKET_OPTION
 
 
 class PinnedDnsBackend(httpcore.AsyncNetworkBackend):

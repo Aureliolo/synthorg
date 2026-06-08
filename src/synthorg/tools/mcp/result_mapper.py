@@ -4,7 +4,7 @@ Pure function that maps MCP raw results to the internal
 ``ToolExecutionResult`` format used throughout the tool system.
 """
 
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from mcp.types import (
     AudioContent,
@@ -21,9 +21,7 @@ from synthorg.observability.events.mcp import (
     MCP_RESULT_UNKNOWN_BLOCK,
 )
 from synthorg.tools.base import ToolExecutionResult
-
-if TYPE_CHECKING:
-    from synthorg.tools.mcp.models import MCPRawResult
+from synthorg.tools.mcp.models import MCPRawResult
 
 logger = get_logger(__name__)
 

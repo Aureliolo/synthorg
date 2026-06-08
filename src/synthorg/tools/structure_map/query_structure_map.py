@@ -8,12 +8,14 @@ wrapped via ``wrap_untrusted`` before it can reach an agent prompt.
 """
 
 import builtins
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel
 
 from synthorg.api.boundary import parse_typed
+from synthorg.core.codebase_structure_map import CodebaseStructureMap
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import (
     get_logger,
@@ -23,19 +25,15 @@ from synthorg.observability import (
 from synthorg.observability.events.brownfield import (
     BROWNFIELD_STRUCTURE_QUERY_FAILED,
 )
+from synthorg.persistence.codebase_structure_map_protocol import (
+    CodebaseStructureMapRepository,
+)
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.structure_map._args import (
     QueryStructureMapArgs,
     StructureMapFacet,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.codebase_structure_map import CodebaseStructureMap
-    from synthorg.core.types import NotBlankStr
-    from synthorg.persistence.codebase_structure_map_protocol import (
-        CodebaseStructureMapRepository,
-    )
 
 logger = get_logger(__name__)
 

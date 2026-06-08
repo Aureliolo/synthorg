@@ -7,18 +7,16 @@ Defines the ``BaseTool`` ABC that all concrete tools extend, and the
 import copy
 from abc import ABC, abstractmethod
 from types import MappingProxyType
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.core.tool_disclosure import ToolL1Metadata, ToolL2Body, ToolL3Resource
+from synthorg.observability import get_logger
 from synthorg.observability.events.tool import TOOL_BASE_INVALID_NAME
 from synthorg.providers.models import ToolDefinition
 from synthorg.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
+from synthorg.security.autonomy.enums import ToolCategory
 
 logger = get_logger(__name__)
 

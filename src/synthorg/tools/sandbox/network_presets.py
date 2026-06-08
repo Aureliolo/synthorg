@@ -6,11 +6,9 @@ into ``DockerSandboxConfig.allowed_hosts`` via the
 flattened list -- presets are a Python-side convenience.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from typing import Final
 
 PRESET_PYTHON_DEV: Final[tuple[str, ...]] = (
     "pypi.org:443",

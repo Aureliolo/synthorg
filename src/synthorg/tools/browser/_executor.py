@@ -51,13 +51,11 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
-if TYPE_CHECKING:
-    from playwright.async_api import Page
+from playwright.async_api import Page
 
-    from synthorg.tools.browser._executor_types import BrowserPayload, Violation
-
+from synthorg.tools.browser._executor_types import BrowserPayload, Violation
 
 _DEFAULT_VIEWPORT_WIDTH: Final[int] = 1280
 _DEFAULT_VIEWPORT_HEIGHT: Final[int] = 720

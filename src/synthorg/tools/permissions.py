@@ -12,21 +12,25 @@ checks granular sub-constraints (network mode, terminal access, git
 access, requires_approval) against the tool invocation.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, ClassVar, Self
+from typing import ClassVar, Self
 
+from synthorg.core.agent import ToolPermissions
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.tool_constraints import (
     ToolAccessLevel,
     ToolSubConstraints,
     get_sub_constraints,
 )
+from synthorg.core.tool_disclosure import ToolL1Metadata
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_PERMISSION_CHECKER_CREATED,
     TOOL_PERMISSION_DENIED,
     TOOL_PERMISSION_FILTERED,
 )
+from synthorg.providers.models import ToolDefinition
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.sub_constraint_enforcer import (
     SubConstraintEnforcer,
@@ -34,15 +38,7 @@ from synthorg.tools.sub_constraint_enforcer import (
 )
 
 from .errors import ToolPermissionDeniedError
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.agent import ToolPermissions
-    from synthorg.core.tool_disclosure import ToolL1Metadata
-    from synthorg.providers.models import ToolDefinition
-
-    from .registry import ToolRegistry
+from .registry import ToolRegistry
 
 logger = get_logger(__name__)
 

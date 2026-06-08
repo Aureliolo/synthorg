@@ -4,7 +4,8 @@ import asyncio
 import os
 import pathlib
 import tempfile
-from typing import TYPE_CHECKING, ClassVar, Final, cast, override
+from pathlib import Path
+from typing import ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
@@ -18,9 +19,6 @@ from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.file_system._args import WriteFileArgs
 from synthorg.tools.file_system._base_fs_tool import BaseFileSystemTool
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = get_logger(__name__)
 

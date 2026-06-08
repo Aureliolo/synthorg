@@ -5,7 +5,7 @@ from an MCP server, bridging MCP protocol calls into the internal
 tool system.
 """
 
-from typing import TYPE_CHECKING, override
+from typing import override
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -17,13 +17,11 @@ from synthorg.observability.events.mcp import (
 )
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.mcp.cache import MCPResultCache
+from synthorg.tools.mcp.client import MCPClient
 from synthorg.tools.mcp.errors import MCPError
+from synthorg.tools.mcp.models import MCPToolInfo
 from synthorg.tools.mcp.result_mapper import map_call_tool_result
-
-if TYPE_CHECKING:
-    from synthorg.tools.mcp.cache import MCPResultCache
-    from synthorg.tools.mcp.client import MCPClient
-    from synthorg.tools.mcp.models import MCPToolInfo
 
 logger = get_logger(__name__)
 

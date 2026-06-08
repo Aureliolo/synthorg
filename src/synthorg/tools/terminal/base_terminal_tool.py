@@ -7,7 +7,7 @@ and command allow/blocklist validation.
 
 import re
 from abc import ABC
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import JsonValue
 
@@ -19,10 +19,8 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.terminal import TERMINAL_COMMAND_BLOCKED
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool
+from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.terminal.config import TerminalConfig
-
-if TYPE_CHECKING:
-    from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 
