@@ -191,3 +191,26 @@ class TestEncryptedSqliteLogRedaction:
         for event in events:
             assert "exc_info" not in event
         assert any(e.get("error_type") == "SecretStorageError" for e in events), events
+
+    async def test_rotation_rollback_non_storage_error_propagates(
+        self,
+        backend: EncryptedSqliteSecretBackend,
+    ) -> None:
+        """A non-``SecretStorageError`` during rollback propagates.
+
+        ``_rollback_new`` is narrowed to ``SecretStorageError``; a different
+        failure (a real bug, not a storage error) surfaces instead of being
+        swallowed, the complement of ``test_rotation_rollback_failure_is_scrubbed``.
+        """
+        with (
+            patch.object(
+                backend,
+                "delete",
+                new=AsyncMock(
+                    spec=EncryptedSqliteSecretBackend.delete,
+                    side_effect=RuntimeError("unexpected"),
+                ),
+            ),
+            pytest.raises(RuntimeError, match="unexpected"),
+        ):
+            await backend._rollback_new(NotBlankStr("new-1"))

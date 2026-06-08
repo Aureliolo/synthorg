@@ -7,6 +7,7 @@ by integration tests against a real Postgres container; those live
 outside the unit test suite.
 """
 
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any, override
@@ -317,34 +318,22 @@ def _raising_store() -> PostgresSessionStore:
     return _store(_FakePool(conn))
 
 
-async def test_save_translates_psycopg_error_to_query_error() -> None:
-    """A driver failure in ``save`` surfaces as the domain ``QueryError``."""
+@pytest.mark.parametrize(
+    "invoke",
+    [
+        pytest.param(lambda s: s.save(_make_session()), id="save"),
+        pytest.param(lambda s: s.get("sess-1"), id="get"),
+        pytest.param(lambda s: s.delete("sess-1"), id="delete"),
+        pytest.param(lambda s: s.load_revoked(), id="load_revoked"),
+        pytest.param(lambda s: s.cleanup_expired(), id="cleanup_expired"),
+    ],
+)
+async def test_translates_psycopg_error_to_query_error(
+    invoke: Callable[[PostgresSessionStore], Awaitable[object]],
+) -> None:
+    """Every driver failure surfaces as the domain ``QueryError``."""
     with pytest.raises(QueryError):
-        await _raising_store().save(_make_session())
-
-
-async def test_get_translates_psycopg_error_to_query_error() -> None:
-    """A driver failure in ``get`` surfaces as the domain ``QueryError``."""
-    with pytest.raises(QueryError):
-        await _raising_store().get("sess-1")
-
-
-async def test_delete_translates_psycopg_error_to_query_error() -> None:
-    """A driver failure in ``delete`` surfaces as the domain ``QueryError``."""
-    with pytest.raises(QueryError):
-        await _raising_store().delete("sess-1")
-
-
-async def test_load_revoked_translates_psycopg_error_to_query_error() -> None:
-    """A driver failure in ``load_revoked`` surfaces as ``QueryError``."""
-    with pytest.raises(QueryError):
-        await _raising_store().load_revoked()
-
-
-async def test_cleanup_expired_translates_psycopg_error_to_query_error() -> None:
-    """A driver failure in ``cleanup_expired`` surfaces as ``QueryError``."""
-    with pytest.raises(QueryError):
-        await _raising_store().cleanup_expired()
+        await invoke(_raising_store())
 
 
 @pytest.mark.parametrize(

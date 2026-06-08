@@ -15857,7 +15857,7 @@
     },
     {
       "kind": "code",
-      "loc": 243,
+      "loc": 242,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/mcp_installation_repo.py",
       "owning_feature": "persistence"
@@ -16011,7 +16011,7 @@
     },
     {
       "kind": "code",
-      "loc": 322,
+      "loc": 323,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/risk_override_repo.py",
       "owning_feature": "persistence"

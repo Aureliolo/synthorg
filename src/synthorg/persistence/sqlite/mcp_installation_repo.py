@@ -182,7 +182,6 @@ class SQLiteMcpInstallationRepository:
                 installed_at=coerce_row_timestamp(row[2]),
             )
         except (ValueError, TypeError, KeyError) as exc:
-            reraise_critical(exc)
             msg = f"Failed to deserialize MCP installation {catalog_entry_id!r}"
             logger.warning(
                 PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,

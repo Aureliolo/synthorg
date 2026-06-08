@@ -60,10 +60,14 @@ class SQLiteRiskOverrideRepository:
         """Roll back the current transaction, swallowing driver errors."""
         try:
             await self._db.rollback()
-        except sqlite3.Error, aiosqlite.Error:
+        # aiosqlite raises a bare ValueError("Connection closed") for a closed
+        # connection; treat it as a driver-level rollback failure so this
+        # best-effort rollback never masks the caller's primary error.
+        except (sqlite3.Error, ValueError) as exc:
             logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-                error="rollback failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def save(self, override: RiskTierOverride) -> None:

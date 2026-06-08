@@ -165,3 +165,23 @@ class TestRollbackGuardNarrowing:
         )
         with pytest.raises(RuntimeError, match="unexpected"):
             await repo.save(self._record())
+
+    async def test_connection_closed_during_rollback_is_swallowed(self) -> None:
+        """aiosqlite's ``ValueError("Connection closed")`` is swallowed.
+
+        A rollback on a closed connection raises a bare ``ValueError`` (not
+        a ``sqlite3.Error``); the guard treats it as a driver-level failure
+        so the primary ``QueryError`` stays operative rather than being
+        masked by the connection-state error.
+        """
+        db = mock_of[aiosqlite.Connection](
+            execute=AsyncMock(side_effect=sqlite3.OperationalError("write failed")),
+            rollback=AsyncMock(side_effect=ValueError("Connection closed")),
+            commit=AsyncMock(),
+        )
+        repo = SQLiteCircuitBreakerStateRepository(
+            db, write_context=make_private_write_context()
+        )
+        with pytest.raises(QueryError):
+            await repo.save(self._record())
+        db.rollback.assert_awaited_once()

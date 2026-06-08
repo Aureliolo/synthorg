@@ -37,6 +37,23 @@ class TestBuildCharterRepository:
         backend.get_db.assert_called_once()
         assert any(e.get("error_type") == "PersistenceConnectionError" for e in events)
 
+    def test_unexpected_get_db_error_propagates(self) -> None:
+        """A non-``PersistenceConnectionError`` from ``get_db`` propagates.
+
+        The guard is narrowed to ``PersistenceConnectionError`` (the only
+        error ``get_db`` raises per the ``PersistenceBackend`` contract);
+        any other failure (a real bug) surfaces instead of being swallowed
+        into a ``None`` return, the complement of
+        ``test_returns_none_when_get_db_not_connected``.
+        """
+        backend = mock_of[PersistenceBackend](
+            backend_name="sqlite",
+            is_connected=True,
+            get_db=Mock(side_effect=RuntimeError("unexpected")),
+        )
+        with pytest.raises(RuntimeError, match="unexpected"):
+            build_charter_repository(backend)
+
     def test_returns_none_when_backend_absent(self) -> None:
         """A ``None`` backend short-circuits to ``None`` without touching it."""
         assert build_charter_repository(None) is None

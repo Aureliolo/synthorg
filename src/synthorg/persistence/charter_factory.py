@@ -15,12 +15,17 @@ from synthorg.observability.events.persistence.charter import (
     PERSISTENCE_CHARTER_HANDLE_UNAVAILABLE,
     PERSISTENCE_CHARTER_UNKNOWN_BACKEND,
 )
-from synthorg.persistence.charter_protocol import CharterRepository
-from synthorg.persistence.protocol import PersistenceBackend
 
 if TYPE_CHECKING:
     import aiosqlite
     from psycopg_pool import AsyncConnectionPool
+
+    # Kept TYPE_CHECKING-only: importing charter_protocol at module level
+    # pulls meta.charter (via its enums), whose package init eagerly imports
+    # back into charter_protocol, so a fresh import of this factory before
+    # meta.charter is loaded raises a partially-initialised ImportError.
+    from synthorg.persistence.charter_protocol import CharterRepository
+    from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 

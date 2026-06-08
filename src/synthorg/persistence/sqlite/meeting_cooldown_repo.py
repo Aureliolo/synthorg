@@ -48,7 +48,10 @@ class SQLiteMeetingCooldownRepository:
         """
         try:
             await self._db.rollback()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
+        # aiosqlite raises a bare ValueError("Connection closed") for a closed
+        # connection; treat it as a driver-level rollback failure so this
+        # best-effort rollback never masks the caller's primary error.
+        except (sqlite3.Error, ValueError) as exc:
             logger.warning(
                 event,
                 error_type=type(exc).__name__,
