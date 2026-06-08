@@ -18,10 +18,7 @@ env vars are passed as ``env_overrides`` to the sandbox.
 Without a sandbox, the direct-subprocess path is used.
 """
 
-import asyncio
-import contextlib
 import os
-import re
 from abc import ABC
 from pathlib import Path
 from types import MappingProxyType
@@ -33,36 +30,26 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.git import (
     GIT_COMMAND_FAILED,
     GIT_COMMAND_START,
-    GIT_COMMAND_SUCCESS,
-    GIT_COMMAND_TIMEOUT,
     GIT_REF_INJECTION_BLOCKED,
     GIT_WORKSPACE_VIOLATION,
 )
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools._git_subprocess import (
+    _CONTROL_CHAR_RE,
+    _await_git_process,
+    _process_git_output,
+    _sandbox_result_to_execution_result,
+    _sanitize_command,
+    _start_git_process,
+)
 from synthorg.tools._process_cleanup import close_subprocess_transport
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.protocol import SandboxBackend
-from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT: Final[float] = 30.0
-_DEFAULT_KILL_GRACE_SECONDS: Final[float] = 5.0
-"""Hardcoded fallback kill-grace for git subprocess teardown.
-
-The value matches the default of the
-``tools.git_kill_grace_timeout_seconds`` setting, but the runtime
-wiring from ``ConfigResolver`` -> the git tool classes is not in
-place yet -- this constant is the only source of truth used by
-``_wait_or_kill`` today. Threading the setting through
-``_build_git_tools`` / the git tool constructors is tracked as
-follow-up work on #1398/#1400; until then a change to the setting
-has no effect on git subprocess teardown.
-"""
-
-# Matches http(s)://userinfo@host patterns in git URLs.
-_CREDENTIAL_RE = re.compile(r"(https?://)[^@/]+@")
 
 _GIT_HARDENING_OVERRIDES: Final[MappingProxyType[str, str]] = MappingProxyType(
     {
@@ -97,34 +84,6 @@ _GIT_DISCOVERY_VARS: Final[frozenset[str]] = frozenset(
         "GIT_COMMON_DIR",
     }
 )
-
-
-_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]+")
-_MAX_STDERR_FRAGMENT: Final[int] = 500
-
-
-def _sanitize_command(args: list[str]) -> list[str]:
-    """Redact embedded credentials from git command args for logging.
-
-    Returns:
-        List of ``str``.
-    """
-    return [_CREDENTIAL_RE.sub(r"\1***@", a) for a in args]
-
-
-def _sanitize_stderr(raw: str) -> str:
-    """Replace control characters, redact credentials, and truncate.
-
-    All control characters (including newlines, tabs, and carriage
-    returns) are collapsed into single spaces to prevent log injection
-    and LLM prompt injection via stderr content.  Embedded credentials
-    (``https://user:token@host``) are redacted before truncation.
-
-    Returns:
-        Result of type ``str``.
-    """
-    sanitized = _CONTROL_CHAR_RE.sub(" ", raw).strip()
-    return _CREDENTIAL_RE.sub(r"\1***@", sanitized)[:_MAX_STDERR_FRAGMENT]
 
 
 class _BaseGitTool(BaseTool, ABC):
@@ -313,209 +272,6 @@ class _BaseGitTool(BaseTool, ABC):
         """
         return dict(_GIT_HARDENING_OVERRIDES)
 
-    async def _start_git_process(
-        self,
-        args: list[str],
-        *,
-        work_dir: Path,
-        env: dict[str, str],
-    ) -> asyncio.subprocess.Process | ToolExecutionResult:
-        """Start the git subprocess, returning an error on failure.
-
-        Args:
-            args: Git command arguments.
-            work_dir: Working directory for the subprocess.
-            env: Environment variables for the subprocess.
-
-        Returns:
-            The started ``Process`` on success, or a
-            ``ToolExecutionResult`` with ``is_error=True`` on failure.
-        """
-        try:
-            return await asyncio.create_subprocess_exec(
-                "git",
-                *args,
-                cwd=work_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env,
-            )
-        except OSError as exc:
-            # Drop exc_info + scrub. Git OSError messages can carry
-            # the working-directory path which may include user
-            # namespaces / repo URLs.
-            logger.warning(
-                GIT_COMMAND_FAILED,
-                command=_sanitize_command(["git", *args]),
-                reason="subprocess_start_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return ToolExecutionResult(
-                content="Failed to start git process",
-                is_error=True,
-            )
-
-    async def _await_git_process(
-        self,
-        proc: asyncio.subprocess.Process,
-        args: list[str],
-        *,
-        deadline: float,
-    ) -> tuple[bytes, bytes] | ToolExecutionResult:
-        """Wait for the process with a timeout, returning output or error.
-
-        On timeout, kills the process and waits up to 5 seconds for
-        termination before returning an error result.
-
-        Args:
-            proc: The running subprocess.
-            args: Git command arguments (for logging).
-            deadline: Seconds before the process is killed.
-
-        Returns:
-            A ``(stdout, stderr)`` tuple on success, or a
-            ``ToolExecutionResult`` with ``is_error=True`` on timeout.
-        """
-        try:
-            return await asyncio.wait_for(
-                proc.communicate(),
-                timeout=deadline,
-            )
-        except TimeoutError:
-            with contextlib.suppress(ProcessLookupError):
-                proc.kill()
-            stderr_fragment = ""
-            try:
-                _, raw_stderr = await asyncio.wait_for(
-                    proc.communicate(),
-                    timeout=_DEFAULT_KILL_GRACE_SECONDS,
-                )
-                raw = raw_stderr.decode("utf-8", errors="replace").strip()
-                # Sanitize: strip control chars and truncate for safety.
-                stderr_fragment = _sanitize_stderr(raw)
-            except TimeoutError:
-                logger.warning(
-                    GIT_COMMAND_FAILED,
-                    command=_sanitize_command(["git", *args]),
-                    error="process did not terminate after kill",
-                )
-            logger.warning(
-                GIT_COMMAND_TIMEOUT,
-                command=_sanitize_command(["git", *args]),
-                deadline=deadline,
-                stderr_fragment=stderr_fragment,
-            )
-            msg = f"Git command timed out after {deadline}s"
-            if stderr_fragment:
-                msg += f": {stderr_fragment}"
-            return ToolExecutionResult(
-                content=msg,
-                is_error=True,
-            )
-
-    @staticmethod
-    def _process_git_output(
-        args: list[str],
-        returncode: int | None,
-        stdout_bytes: bytes,
-        stderr_bytes: bytes,
-    ) -> ToolExecutionResult:
-        """Decode output and build the result.
-
-        Prefers stderr for error content; falls back to stdout, then
-        a generic "Unknown git error" message.
-
-        Args:
-            args: Git command arguments (for logging).
-            returncode: Process exit code (``None`` treated as error).
-            stdout_bytes: Raw stdout from the process.
-            stderr_bytes: Raw stderr from the process.
-
-        Returns:
-            A ``ToolExecutionResult`` with decoded content.
-        """
-        stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
-        stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
-        if returncode != 0:
-            # Git auth-failure stderr commonly echoes the remote URL
-            # with embedded userinfo
-            # (``https://user:token@host/...``); ``_sanitize_stderr``
-            # strips those tokens. Both the log field and the
-            # LLM-facing tool result must use the scrubbed copy.
-            sanitized_stderr = _sanitize_stderr(stderr)
-            sanitized_stdout = _sanitize_stderr(stdout)
-            logger.warning(
-                GIT_COMMAND_FAILED,
-                command=_sanitize_command(["git", *args]),
-                returncode=returncode,
-                stderr=sanitized_stderr,
-                stdout=sanitized_stdout,
-            )
-            return ToolExecutionResult(
-                content=sanitized_stderr or sanitized_stdout or "Unknown git error",
-                is_error=True,
-            )
-        logger.debug(GIT_COMMAND_SUCCESS, command=_sanitize_command(["git", *args]))
-        return ToolExecutionResult(content=stdout)
-
-    @staticmethod
-    def _sandbox_result_to_execution_result(
-        args: list[str],
-        result: SandboxResult,
-        *,
-        deadline: float,
-    ) -> ToolExecutionResult:
-        """Convert a ``SandboxResult`` to a ``ToolExecutionResult``.
-
-        Mirrors ``_process_git_output`` but operates on the sandbox
-        result model.
-
-        Args:
-            args: Git command arguments (for logging).
-            result: The sandbox execution result.
-            deadline: Timeout that was used (for logging).
-
-        Returns:
-            A ``ToolExecutionResult`` with the appropriate content.
-        """
-        if result.timed_out:
-            stderr_fragment = (
-                _sanitize_stderr(result.stderr.strip()) if result.stderr else ""
-            )
-            logger.warning(
-                GIT_COMMAND_TIMEOUT,
-                command=_sanitize_command(["git", *args]),
-                deadline=deadline,
-                stderr_fragment=stderr_fragment,
-            )
-            msg = f"Git command timed out after {deadline}s"
-            if stderr_fragment:
-                msg += f": {stderr_fragment}"
-            return ToolExecutionResult(
-                content=msg,
-                is_error=True,
-            )
-        if result.returncode != 0:
-            # Same scrub as ``_process_git_output`` -- sandbox
-            # stderr/stdout can carry remote-URL userinfo on auth
-            # failure paths.
-            sanitized_stderr = _sanitize_stderr(result.stderr) if result.stderr else ""
-            sanitized_stdout = _sanitize_stderr(result.stdout) if result.stdout else ""
-            logger.warning(
-                GIT_COMMAND_FAILED,
-                command=_sanitize_command(["git", *args]),
-                returncode=result.returncode,
-                stderr=sanitized_stderr,
-                stdout=sanitized_stdout,
-            )
-            return ToolExecutionResult(
-                content=(sanitized_stderr or sanitized_stdout or "Unknown git error"),
-                is_error=True,
-            )
-        logger.debug(GIT_COMMAND_SUCCESS, command=_sanitize_command(["git", *args]))
-        return ToolExecutionResult(content=result.stdout)
-
     async def _run_git(
         self,
         args: list[str],
@@ -590,7 +346,7 @@ class _BaseGitTool(BaseTool, ABC):
                 content="Git command failed in sandbox",
                 is_error=True,
             )
-        return self._sandbox_result_to_execution_result(
+        return _sandbox_result_to_execution_result(
             args,
             result,
             deadline=deadline,
@@ -609,7 +365,7 @@ class _BaseGitTool(BaseTool, ABC):
         """
         env = self._build_git_env()
 
-        proc_or_err = await self._start_git_process(
+        proc_or_err = await _start_git_process(
             args,
             work_dir=work_dir,
             env=env,
@@ -618,7 +374,7 @@ class _BaseGitTool(BaseTool, ABC):
             return proc_or_err
 
         try:
-            output_or_err = await self._await_git_process(
+            output_or_err = await _await_git_process(
                 proc_or_err,
                 args,
                 deadline=deadline,
@@ -627,7 +383,7 @@ class _BaseGitTool(BaseTool, ABC):
                 return output_or_err
 
             stdout_bytes, stderr_bytes = output_or_err
-            return self._process_git_output(
+            return _process_git_output(
                 args,
                 proc_or_err.returncode,
                 stdout_bytes,

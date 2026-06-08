@@ -32,6 +32,7 @@ class MockSandbox:
 
     async def execute(  # noqa: PLR0913
         self,
+        *,
         command: str,
         args: tuple[str, ...] = (),
         cwd: Any = None,

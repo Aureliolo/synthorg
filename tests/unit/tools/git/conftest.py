@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import synthorg.tools.git_tools as git_tools_module
+import synthorg.tools._git_clone as git_clone_module
 from synthorg.tools._git_base import _GIT_DISCOVERY_VARS
 from synthorg.tools.git_tools import (
     GitBranchTool,
@@ -207,7 +207,7 @@ def allow_local_clone(monkeypatch: pytest.MonkeyPatch) -> None:
     transport.
     """
     monkeypatch.setattr(
-        git_tools_module,
+        git_clone_module,
         "is_allowed_clone_scheme",
         lambda url: True,
     )
@@ -219,7 +219,7 @@ def allow_local_clone(monkeypatch: pytest.MonkeyPatch) -> None:
         return DnsValidationOk(hostname="localhost")
 
     monkeypatch.setattr(
-        git_tools_module,
+        git_clone_module,
         "validate_clone_url_host",
         _allow_all_hosts,
     )

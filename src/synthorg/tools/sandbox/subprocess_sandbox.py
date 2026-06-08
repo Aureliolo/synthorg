@@ -6,11 +6,6 @@ management, and PATH restriction.
 """
 
 import asyncio
-import contextlib
-import fnmatch
-import os
-import re
-import signal
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
@@ -19,30 +14,29 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
     SANDBOX_CLEANUP,
-    SANDBOX_ENV_FILTERED,
     SANDBOX_EXECUTE_FAILED,
     SANDBOX_EXECUTE_START,
     SANDBOX_EXECUTE_SUCCESS,
     SANDBOX_EXECUTE_TIMEOUT,
     SANDBOX_HEALTH_CHECK,
     SANDBOX_KILL_FAILED,
-    SANDBOX_KILL_FALLBACK,
-    SANDBOX_PATH_FALLBACK,
-    SANDBOX_SPAWN_FAILED,
     SANDBOX_WORKSPACE_VIOLATION,
 )
-from synthorg.tools._process_cleanup import close_subprocess_transport
+from synthorg.tools.sandbox._subprocess_env import _EnvFilterMixin
+from synthorg.tools.sandbox._subprocess_proc import (
+    _close_process,
+    _kill_process,
+    _redact_args,
+    _spawn_process,
+)
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.config import SubprocessSandboxConfig
 from synthorg.tools.sandbox.errors import (
     SandboxError,
-    SandboxStartError,
 )
 from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
-
-_PATH_SEP = ";" if os.name == "nt" else ":"
 
 _DEFAULT_CONFIG = SubprocessSandboxConfig()
 _DEFAULT_KILL_GRACE_SECONDS: Final[float] = 5.0
@@ -52,23 +46,8 @@ _PROJECTS_SUBDIR: Final[str] = "projects"
 Mirrors the ``tools.subprocess_kill_grace_timeout_seconds`` setting.
 """
 
-# Unix process-group support for killing child process trees.
-_HAS_PROCESS_GROUPS: Final[bool] = hasattr(os, "killpg")
 
-# Matches http(s)://user:pass@host patterns in URLs.
-_CREDENTIAL_RE = re.compile(r"(https?://)[^@/]+@")
-
-
-def _redact_args(args: tuple[str, ...]) -> tuple[str, ...]:
-    """Redact embedded credentials from command args for logging.
-
-    Returns:
-        Tuple of ``str``.
-    """
-    return tuple(_CREDENTIAL_RE.sub(r"\1***@", a) for a in args)
-
-
-class SubprocessSandbox:
+class SubprocessSandbox(_EnvFilterMixin):
     """Subprocess sandbox backend.
 
     Runs commands in child processes with filtered environment variables,
@@ -138,265 +117,6 @@ class SubprocessSandbox:
     def workspace(self) -> Path:
         """Workspace root directory."""
         return self._workspace
-
-    def _matches_allowlist(self, name: str) -> bool:
-        """Check if an env var name matches any entry in the allowlist.
-
-        Uses case-insensitive matching on Windows where env var names
-        are case-insensitive.
-
-        Returns:
-            ``True`` if *name* matches any allowlist entry, else ``False``.
-        """
-        check_name = name.upper() if os.name == "nt" else name
-        for pattern in self._config.env_allowlist:
-            check_pattern = pattern.upper() if os.name == "nt" else pattern
-            if fnmatch.fnmatch(check_name, check_pattern):
-                return True
-        return False
-
-    def _matches_denylist(self, name: str) -> bool:
-        """Check if an env var name matches any denylist pattern.
-
-        Both name and patterns are uppercased for case-insensitive
-        matching -- denylist patterns must catch secrets regardless of
-        casing.
-
-        Returns:
-            ``True`` if *name* matches any denylist pattern, else ``False``.
-        """
-        upper = name.upper()
-        return any(
-            fnmatch.fnmatch(upper, pat.upper())
-            for pat in self._config.env_denylist_patterns
-        )
-
-    def _filter_path(self, path_value: str) -> str:
-        """Filter PATH entries, keeping only safe system directories.
-
-        Uses directory-boundary checking to prevent prefix spoofing
-        (e.g. ``/usr/bin-malicious`` is rejected even though it starts
-        with ``/usr/bin``).  Entries are normalized before comparison.
-
-        When no entries survive filtering, falls back to known safe
-        directories that actually exist on the system.
-
-        Returns:
-            Result of type ``str``.
-
-        Raises:
-            SandboxError: If the related operation fails.
-        """
-        safe_prefixes = self._get_safe_path_prefixes()
-        entries = path_value.split(_PATH_SEP)
-        filtered = [e for e in entries if self._is_safe_path_entry(e, safe_prefixes)]
-        if filtered:
-            return _PATH_SEP.join(filtered)
-        logger.warning(
-            SANDBOX_PATH_FALLBACK,
-            reason="no PATH entries matched safe prefixes; using safe defaults",
-            original_entry_count=len(entries),
-        )
-        # Fallback uses fully hardcoded directories -- no os.environ reads,
-        # no user-provided extra_safe_path_prefixes -- so that the
-        # Path.is_dir() filesystem probe receives only compile-time
-        # constants (CodeQL py/path-injection).
-        fallback_dirs = self._get_hardcoded_fallback_dirs()
-        safe_dirs = [p for p in fallback_dirs if Path(p).is_dir()]
-        if not safe_dirs:
-            logger.error(
-                SANDBOX_PATH_FALLBACK,
-                reason="no safe PATH directories exist on system",
-            )
-            msg = (
-                "No safe PATH directories found on system; "
-                "cannot create safe sandbox environment"
-            )
-            raise SandboxError(msg)
-        return _PATH_SEP.join(safe_dirs)
-
-    @staticmethod
-    def _is_safe_path_entry(
-        entry: str,
-        safe_prefixes: tuple[str, ...],
-    ) -> bool:
-        """Check if a PATH entry falls within a safe prefix directory.
-
-        Rejects null-byte entries, then uses directory-boundary
-        matching to prevent prefix spoofing (e.g. ``/usr/bin-malicious``
-        does not match ``/usr/bin``).
-
-        Returns:
-            ``True`` when the predicate holds, ``False`` otherwise.
-        """
-        if "\x00" in entry:
-            return False
-        entry_norm = os.path.normcase(os.path.normpath(entry))
-        for prefix in safe_prefixes:
-            prefix_norm = os.path.normcase(os.path.normpath(prefix))
-            if entry_norm == prefix_norm or entry_norm.startswith(
-                prefix_norm + os.sep,
-            ):
-                return True
-        return False
-
-    @staticmethod
-    def _get_platform_default_dirs() -> tuple[str, ...]:
-        """Return built-in safe PATH directories for the current platform.
-
-        These are built-in system directories -- not influenced by
-        ``SubprocessSandboxConfig`` user configuration.  On Windows,
-        ``SYSTEMROOT`` is read from the process environment at call
-        time (with a safe default fallback).
-
-        Returns:
-            Tuple of ``str``.
-        """
-        if os.name == "nt":
-            system_root = os.environ.get("SYSTEMROOT", r"C:\WINDOWS")
-            return (
-                system_root,
-                str(Path(system_root) / "system32"),
-                r"C:\Program Files\Git",
-                r"C:\Program Files (x86)\Git",
-            )
-        return ("/usr/bin", "/usr/local/bin", "/bin", "/usr/sbin", "/sbin")
-
-    @staticmethod
-    def _get_hardcoded_fallback_dirs() -> tuple[str, ...]:
-        """Return fully hardcoded safe PATH directories for fallback.
-
-        Unlike ``_get_platform_default_dirs``, this reads **no**
-        environment variables -- every value is a compile-time constant.
-        Used only in the fallback branch of ``_filter_path`` where
-        ``Path.is_dir()`` probes the filesystem, so that no
-        ``os.environ`` data reaches a filesystem call
-        (CodeQL ``py/path-injection``).
-
-        Returns:
-            Tuple of ``str``.
-        """
-        if os.name == "nt":
-            return (
-                r"C:\WINDOWS",
-                r"C:\WINDOWS\system32",
-                r"C:\Program Files\Git",
-                r"C:\Program Files (x86)\Git",
-            )
-        return ("/usr/bin", "/usr/local/bin", "/bin", "/usr/sbin", "/sbin")
-
-    def _get_safe_path_prefixes(self) -> tuple[str, ...]:
-        """Return safe PATH prefixes for the current platform.
-
-        Combines built-in platform defaults with any extra prefixes
-        from ``SubprocessSandboxConfig.extra_safe_path_prefixes``.
-
-        Returns:
-            Tuple of ``str``.
-        """
-        return self._get_platform_default_dirs() + self._config.extra_safe_path_prefixes
-
-    def _screen_declaration_env(
-        self,
-        env_additions: Mapping[str, str],
-    ) -> dict[str, str]:
-        """Drop denylisted keys from declaration-sourced env additions.
-
-        The per-project environment declaration is committed code, but
-        unlike the trusted internal overrides (git hardening vars) it is
-        screened through the secret denylist so a declared
-        secret-pattern variable cannot bypass the filter the inherited
-        host environment is subject to. Dropped keys are logged; PATH and
-        other allowed toolchain vars pass through.
-
-        Returns:
-            Mapping from ``str`` to ``str``.
-        """
-        screened: dict[str, str] = {}
-        dropped: list[str] = []
-        for name, value in env_additions.items():
-            if self._matches_denylist(name):
-                dropped.append(name)
-            else:
-                screened[name] = value
-        if dropped:
-            logger.warning(
-                SANDBOX_ENV_FILTERED,
-                source="declaration",
-                dropped_count=len(dropped),
-                dropped_keys=sorted(dropped),
-            )
-        return screened
-
-    def _build_filtered_env(
-        self,
-        env_overrides: Mapping[str, str] | None = None,
-    ) -> dict[str, str]:
-        """Build a filtered environment for the subprocess.
-
-        Starts with an empty dict, copies allowed vars from the current
-        process environment, strips denylist matches, optionally filters
-        PATH, then applies overrides.
-
-        Note: ``env_overrides`` bypass the denylist by design -- they
-        are trusted internal overrides (e.g. git hardening vars).
-        Callers must not pass untrusted user-controlled data as
-        overrides.
-
-        Args:
-            env_overrides: Trusted internal vars applied on top.
-
-        Returns:
-            The filtered environment mapping.
-        """
-        env: dict[str, str] = {}
-        filtered_count = 0
-
-        for name, value in os.environ.items():
-            allowed = self._matches_allowlist(name)
-            denied = self._matches_denylist(name)
-            if allowed and not denied:
-                env[name] = value
-            else:
-                filtered_count += 1
-
-        # Case-insensitive key check on Windows where env var names
-        # are case-insensitive (e.g. "Path" vs "PATH").
-        if self._config.restricted_path and any(k.upper() == "PATH" for k in env):
-            path_keys = [k for k in env if k.upper() == "PATH"]
-            path_val = next(
-                (env[k] for k in reversed(path_keys)),
-                "",
-            )
-            for k in path_keys:
-                del env[k]
-            env["PATH"] = self._filter_path(path_val)
-
-        if env_overrides:
-            env.update(env_overrides)
-            # Re-filter PATH if overrides injected one -- prevents
-            # bypassing the restricted-path guard via env_overrides.
-            # Case-insensitive key check on Windows where env var
-            # names are case-insensitive (e.g. "Path" vs "PATH").
-            if self._config.restricted_path and any(
-                k.upper() == "PATH" for k in env_overrides
-            ):
-                # Consolidate to a canonical PATH key.
-                path_keys = [k for k in env if k.upper() == "PATH"]
-                path_val = next(
-                    (env[k] for k in reversed(path_keys)),
-                    "",
-                )
-                for k in path_keys:
-                    del env[k]
-                env["PATH"] = self._filter_path(path_val)
-
-        logger.debug(
-            SANDBOX_ENV_FILTERED,
-            filtered_count=filtered_count,
-            kept_count=len(env),
-        )
-        return env
 
     def _validate_cwd(self, cwd: Path) -> None:
         """Validate that *cwd* is within the workspace boundary.
@@ -474,89 +194,6 @@ class SubprocessSandbox:
             raise SandboxError(msg)
         return root
 
-    @staticmethod
-    def _kill_process(proc: asyncio.subprocess.Process) -> None:
-        """Kill the process, targeting the process group on Unix.
-
-        On Unix with ``start_new_session=True``, kills the entire
-        process group to prevent orphaned grandchild processes.
-        Falls back to direct ``proc.kill()`` on Windows or on error.
-        Handles ``ProcessLookupError`` when the process already exited.
-        """
-        if _HAS_PROCESS_GROUPS:
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)  # type: ignore[attr-defined,unused-ignore]
-            except ProcessLookupError:
-                return
-            except OSError as kill_exc:
-                logger.warning(
-                    SANDBOX_KILL_FALLBACK,
-                    pid=proc.pid,
-                    error_type=type(kill_exc).__name__,
-                    error=safe_error_description(kill_exc),
-                )
-                with contextlib.suppress(ProcessLookupError):
-                    proc.kill()
-                return
-            else:
-                return
-        with contextlib.suppress(ProcessLookupError):
-            proc.kill()
-
-    @staticmethod
-    def _close_process(proc: asyncio.subprocess.Process) -> None:
-        """Close subprocess transport to prevent ResourceWarning on Windows.
-
-        Delegates to :func:`close_subprocess_transport` -- see its
-        docstring for details on the CPython-internal ``_transport``
-        access and error handling.
-        """
-        close_subprocess_transport(proc)
-
-    async def _spawn_process(
-        self,
-        command: str,
-        args: tuple[str, ...],
-        work_dir: Path,
-        env: dict[str, str],
-    ) -> asyncio.subprocess.Process:
-        """Start the subprocess, raising on failure.
-
-        Args:
-            command: Executable name or path.
-            args: Command arguments.
-            work_dir: Working directory.
-            env: Filtered environment.
-
-        Returns:
-            Result of type ``asyncio.subprocess.Process``.
-
-        Raises:
-            SandboxStartError: If the subprocess could not be started.
-        """
-        try:
-            return await asyncio.create_subprocess_exec(
-                command,
-                *args,
-                cwd=work_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env,
-                start_new_session=_HAS_PROCESS_GROUPS,
-            )
-        except OSError as exc:
-            logger.warning(
-                SANDBOX_SPAWN_FAILED,
-                command=command,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = f"Failed to start '{command}': {safe_error_description(exc)}"
-            raise SandboxStartError(
-                msg,
-                context={"command": command},
-            ) from exc
-
     async def _communicate_with_timeout(
         self,
         proc: asyncio.subprocess.Process,
@@ -583,7 +220,7 @@ class SubprocessSandbox:
                 timeout=deadline,
             )
         except TimeoutError:
-            self._kill_process(proc)
+            _kill_process(proc)
             stdout_bytes, stderr_bytes = await self._drain_after_kill(
                 proc,
                 command,
@@ -699,7 +336,7 @@ class SubprocessSandbox:
             timeout=effective_timeout,
         )
 
-        proc = await self._spawn_process(command, args, work_dir, env)
+        proc = await _spawn_process(command, args, work_dir, env)
         try:
             (
                 stdout_bytes,
@@ -712,7 +349,7 @@ class SubprocessSandbox:
                 effective_timeout,
             )
         finally:
-            self._close_process(proc)
+            _close_process(proc)
 
         stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
         stderr = stderr_bytes.decode("utf-8", errors="replace").strip()

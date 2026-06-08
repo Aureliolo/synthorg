@@ -41,17 +41,17 @@ class _StubRepo:
     async def load_all(self) -> tuple[TrackedContainerRecord, ...]:
         return tuple(self._rows.values())
 
-    async def delete(self, container_id: str) -> bool:
-        self.deleted.append(container_id)
-        return self._rows.pop(container_id, None) is not None
+    async def delete(self, entity_id: str) -> bool:
+        self.deleted.append(entity_id)
+        return self._rows.pop(entity_id, None) is not None
 
-    async def save(self, record: TrackedContainerRecord) -> None:  # pragma: no cover
-        self._rows[record.container_id] = record
+    async def save(self, entity: TrackedContainerRecord) -> None:  # pragma: no cover
+        self._rows[entity.container_id] = entity
 
     async def get(
-        self, container_id: str
+        self, entity_id: str
     ) -> TrackedContainerRecord | None:  # pragma: no cover
-        return self._rows.get(container_id)
+        return self._rows.get(entity_id)
 
     async def list_items(
         self,
