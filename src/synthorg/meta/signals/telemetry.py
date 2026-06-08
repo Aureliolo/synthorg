@@ -6,7 +6,7 @@ A missing counter (dev/test mode) yields an empty summary via the
 safe-default path rather than raising.
 """
 
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -16,11 +16,7 @@ from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.telemetry.event_counter_protocol import TelemetryEventCounter
+from synthorg.telemetry.event_counter_protocol import TelemetryEventCounter
 
 logger = get_logger(__name__)
 

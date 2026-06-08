@@ -6,18 +6,14 @@ There is no silent default: an unrecognised discriminator raises
 pluggable-subsystems contract).
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.budget.tracker import CostTracker
+from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.strategy import (
     CharterInterviewStrategy,
     LLMCharterInterviewer,
 )
 from synthorg.meta.errors import UnknownCharterStrategyError
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.meta.charter.config import CharterConfig
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider
 
 _LLM: str = "llm"
 

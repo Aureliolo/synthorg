@@ -7,18 +7,16 @@ with historical approval rates from the outcome store:
 - **Bayesian**: Beta-conjugate posterior blend.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.chief_of_staff.protocol import OutcomeStore
+from synthorg.meta.models import ImprovementProposal
 from synthorg.observability import get_logger
 from synthorg.observability.events.chief_of_staff import (
     COS_CONFIDENCE_ADJUSTED,
     COS_CONFIDENCE_NO_HISTORY,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.chief_of_staff.protocol import OutcomeStore
-    from synthorg.meta.models import ImprovementProposal
 
 logger = get_logger(__name__)
 

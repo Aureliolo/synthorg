@@ -9,21 +9,19 @@ extracts one sample per agent from its latest snapshot.
 
 import asyncio
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_ABTEST_GROUP_AGGREGATOR_AGENT_SKIPPED,
     META_ABTEST_GROUP_AGGREGATOR_SNAPSHOT_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.performance.models import AgentPerformanceSnapshot
-    from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
 

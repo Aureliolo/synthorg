@@ -7,7 +7,7 @@ interview turn pipeline lives in ``service``; this mixin owns only the
 post-draft lifecycle of a charter.
 """
 
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.clock import Clock
@@ -25,14 +25,8 @@ from synthorg.observability.events.charter import (
     CHARTER_STATE_INCONSISTENT,
     CHARTER_STATUS_TRANSITIONED,
 )
-from synthorg.persistence.charter_protocol import (
-    CharterFilterSpec,
-    CharterRepository,
-)
+from synthorg.persistence.charter_protocol import CharterFilterSpec, CharterRepository
 from synthorg.persistence.conversation_protocol import ConversationRepository
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 logger = get_logger(__name__)
 

@@ -21,10 +21,11 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
+from synthorg.meta.rules.service import CustomRulesService
+
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.meta.rules.service import CustomRulesService
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.errors import SelfImprovementTriggerError

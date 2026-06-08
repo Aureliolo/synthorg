@@ -6,23 +6,17 @@ the observation window and returns a populated
 an empty summary via the safe-default path rather than raising.
 """
 
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.evolution.outcome_store_protocol import EvolutionOutcomeStore
 from synthorg.meta.signal_models import OrgEvolutionSummary
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.meta.evolution.outcome_store_protocol import (
-        EvolutionOutcomeStore,
-    )
 
 logger = get_logger(__name__)
 

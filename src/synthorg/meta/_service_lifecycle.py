@@ -7,15 +7,19 @@ analytics, and resource teardown. The cycle orchestration lives in
 """
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.chief_of_staff.models import ProposalOutcome
+from synthorg.meta.chief_of_staff.outcome_store import MemoryBackendOutcomeStore
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
     ImprovementProposal,
     ProposalAltitude,
     ProposalStatus,
 )
+from synthorg.meta.protocol import ProposalApplier
+from synthorg.meta.telemetry.protocol import AnalyticsEmitter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_OUTCOME_RECORD_FAILED,
@@ -29,18 +33,6 @@ from synthorg.observability.events.meta import (
     META_CODE_GITHUB_CREDS_VALID,
     META_SERVICE_CLOSE_FAILED,
 )
-
-if TYPE_CHECKING:
-    # Deferred to break a genuine import cycle: synthorg.meta.config pulls in
-    # the config -> engine.coordination -> budget graph, which re-enters the
-    # service package that imports this mixin. PEP 649 keeps these resolvable
-    # for typing without the runtime import.
-    from synthorg.meta.chief_of_staff.outcome_store import (
-        MemoryBackendOutcomeStore,
-    )
-    from synthorg.meta.config import SelfImprovementConfig
-    from synthorg.meta.protocol import ProposalApplier
-    from synthorg.meta.telemetry.protocol import AnalyticsEmitter
 
 logger = get_logger(__name__)
 

@@ -9,15 +9,11 @@ log records the refused operation; misconfigured paths surface as
 category.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.meta.errors import RollbackMutationDeniedError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_ROLLBACK_OPERATION_FAILED
 from synthorg.settings.errors import SettingNotFoundError, SettingReadOnlyError
-
-if TYPE_CHECKING:
-    from synthorg.settings.service import SettingsService
+from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 

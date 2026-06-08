@@ -13,22 +13,19 @@ touching callers.
 """
 
 import asyncio
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
+from uuid import UUID
 
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.analytics.service import AnalyticsService
 from synthorg.meta.reports.models import Report, ReportStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.reporting import (
     REPORT_GENERATED,
     REPORT_LISTED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from uuid import UUID
-
-    from synthorg.meta.analytics.service import AnalyticsService
 
 logger = get_logger(__name__)
 _DEFAULT_WINDOW_DAYS: Final[int] = 7

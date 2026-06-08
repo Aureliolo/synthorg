@@ -18,9 +18,10 @@ enabled) so an operator can halt self-extension without a restart.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.toolsmith.service import ToolsmithService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.toolsmith import (
     TOOLSMITH_CYCLE_SCHEDULER_FAILED,
@@ -29,10 +30,7 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_CYCLE_SCHEDULER_STOPPED,
 )
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
-
-if TYPE_CHECKING:
-    from synthorg.meta.toolsmith.service import ToolsmithService
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 

@@ -13,13 +13,15 @@ baseline snapshot is used, since the actionable signal here is the gap
 itself (carried in ``RuleMatch.signal_context``), not org-wide metrics.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
 
 from synthorg.meta.models import (
+    ImprovementProposal,
     ProposalAltitude,
     RuleMatch,
     RuleSeverity,
 )
+from synthorg.meta.protocol import ImprovementStrategy
 from synthorg.meta.signal_models import (
     OrgBudgetSummary,
     OrgCoordinationSummary,
@@ -30,14 +32,8 @@ from synthorg.meta.signal_models import (
     OrgSignalSnapshot,
     OrgTelemetrySummary,
 )
+from synthorg.meta.toolsmith.models import CapabilityGap
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from synthorg.meta.models import ImprovementProposal
-    from synthorg.meta.protocol import ImprovementStrategy
-    from synthorg.meta.toolsmith.models import CapabilityGap
 
 logger = get_logger(__name__)
 

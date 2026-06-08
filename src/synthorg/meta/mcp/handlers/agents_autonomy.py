@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from synthorg.approval.state import ApprovalStateSlice
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import AgentNotFoundError
@@ -30,8 +32,6 @@ from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.autonomy_enums import AutonomyLevel
 
 logger = get_logger(__name__)
 

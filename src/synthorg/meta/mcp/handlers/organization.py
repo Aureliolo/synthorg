@@ -13,8 +13,8 @@ argument / serialisation helpers live in ``_organization_helpers``. This
 module aggregates them into the read-only ``ORGANIZATION_HANDLERS`` map.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.handlers.organization_company import (
@@ -42,10 +42,6 @@ from synthorg.meta.mcp.handlers.organization_teams_roles import (
     _teams_list,
     _teams_update,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
 
 ORGANIZATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {

@@ -6,16 +6,13 @@ convenient group-based access control.
 """
 
 import fnmatch
-from typing import TYPE_CHECKING
 
 from synthorg.core.normalization import normalize_identifier
+from synthorg.meta.mcp.registry import DomainToolRegistry, MCPToolDef
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_SCOPING_FILTERED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.mcp.registry import DomainToolRegistry, MCPToolDef
 
 logger = get_logger(__name__)
 

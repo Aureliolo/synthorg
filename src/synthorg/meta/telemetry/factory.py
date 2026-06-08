@@ -5,17 +5,13 @@ configuration, following the protocol + strategy + factory
 pattern used throughout the meta subsystem.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Collection
 
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.telemetry.collector import InMemoryAnalyticsCollector
 from synthorg.meta.telemetry.emitter import HttpAnalyticsEmitter
 from synthorg.meta.telemetry.recommender import DefaultThresholdRecommender
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from collections.abc import Collection
-
-    from synthorg.meta.config import SelfImprovementConfig
 
 logger = get_logger(__name__)
 

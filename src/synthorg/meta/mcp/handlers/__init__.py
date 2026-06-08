@@ -6,17 +6,14 @@ table keyed by tool name (matching ``MCPToolDef.handler_key``). A
 duplicate key across features is a wiring error and raises.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 
 from synthorg._core.features import discover_features
+from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLERS_BUILT
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.mcp.handler_protocol import ToolHandler
 
 logger = get_logger(__name__)
 

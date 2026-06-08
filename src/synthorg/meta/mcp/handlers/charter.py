@@ -7,15 +7,19 @@ message is fenced as untrusted task data before reaching the model, and
 guardrail here.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.meta.charter.dispatch import CharterDispatcher
 from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import InterviewTurnArgs
+from synthorg.meta.charter.service import CharterInterviewService
 from synthorg.meta.charter.state import CharterStateSlice
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
@@ -31,12 +35,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.meta.charter.dispatch import CharterDispatcher
-    from synthorg.meta.charter.service import CharterInterviewService
 
 logger = get_logger(__name__)
 

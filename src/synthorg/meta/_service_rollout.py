@@ -7,8 +7,8 @@ successful rollout. The cycle / learning / facade surface lives in
 """
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
 
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
     ImprovementProposal,
     OrgSignalSnapshot,
@@ -19,23 +19,14 @@ from synthorg.meta.models import (
     RolloutOutcome,
     RolloutResult,
 )
+from synthorg.meta.protocol import ProposalApplier, RolloutStrategy
+from synthorg.meta.rollout.regression.composite import TieredRegressionDetector
+from synthorg.meta.telemetry.protocol import AnalyticsEmitter
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_ROLLOUT_PRECONDITION_FAILED,
     META_ROLLOUT_REGRESSION_DETECTED,
 )
-
-if TYPE_CHECKING:
-    # Deferred to break a genuine import cycle: synthorg.meta.config pulls in
-    # the config -> engine.coordination -> budget graph, which re-enters the
-    # service package that imports this mixin. PEP 649 keeps these resolvable
-    # for typing without the runtime import.
-    from synthorg.meta.config import SelfImprovementConfig
-    from synthorg.meta.protocol import ProposalApplier, RolloutStrategy
-    from synthorg.meta.rollout.regression.composite import (
-        TieredRegressionDetector,
-    )
-    from synthorg.meta.telemetry.protocol import AnalyticsEmitter
 
 logger = get_logger(__name__)
 

@@ -10,15 +10,11 @@ domain, bounds, unit, nullability).
 """
 
 import operator as _operator
+from collections.abc import Callable
 from enum import StrEnum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, cast
 from uuid import UUID, uuid4
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
 
 from pydantic import (
     AwareDatetime,
@@ -38,6 +34,9 @@ from synthorg.meta.models import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import META_CUSTOM_RULE_LISTED
+
+if TYPE_CHECKING:
+    from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
 
 logger = get_logger(__name__)
 

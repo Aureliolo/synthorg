@@ -14,10 +14,11 @@ serializers), so their violations surface at ``apply()`` instead.
 """
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.appliers._validation import (
     DottedPathError,
@@ -41,10 +42,6 @@ from synthorg.observability.events.meta import (
     META_DRY_RUN_FAILED,
     META_DRY_RUN_STARTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.config.schema import RootConfig
-
 
 logger = get_logger(__name__)
 

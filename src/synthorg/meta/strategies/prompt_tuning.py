@@ -5,11 +5,11 @@ as constitutional principles. Supports three evolution modes:
 org-wide (default), override, and advisory.
 """
 
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from pydantic import JsonValue
 
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
     EvolutionMode,
     ImprovementProposal,
@@ -23,9 +23,6 @@ from synthorg.meta.models import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import META_PROPOSAL_GENERATED
-
-if TYPE_CHECKING:
-    from synthorg.meta.config import SelfImprovementConfig
 
 logger = get_logger(__name__)
 

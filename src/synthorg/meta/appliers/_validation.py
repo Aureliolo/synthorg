@@ -7,12 +7,9 @@ free so they can be shared by the real ``apply()`` path when it
 lands.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
 
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from pydantic import ValidationError
+from pydantic import ValidationError
 
 __all__ = [
     "apply_diff_to_dict",

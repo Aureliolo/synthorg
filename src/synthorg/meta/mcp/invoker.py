@@ -6,14 +6,17 @@ registered handler functions, with structured error mapping.
 
 import json
 import time
+from collections.abc import Mapping
 from copy import deepcopy
 from typing import TYPE_CHECKING, cast
 
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.registry import ToolDefReader
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_SERVER_INVOKE_FAILED,
@@ -25,11 +28,7 @@ from synthorg.observability.prometheus_labels import register_mcp_tool_names
 from synthorg.tools.base import ToolExecutionResult
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.meta.mcp.registry import ToolDefReader
 
 logger = get_logger(__name__)
 

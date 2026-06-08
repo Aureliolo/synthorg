@@ -24,44 +24,39 @@ Design notes:
   action type so existing approval-queue tools remain unaffected.
 """
 
-from typing import TYPE_CHECKING
+from datetime import datetime
 from uuid import uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.models import ProposalAltitude
+from synthorg.meta.models import ImprovementProposal, ProposalAltitude
+from synthorg.meta.signal_models import (
+    OrgBudgetSummary,
+    OrgCoordinationSummary,
+    OrgErrorSummary,
+    OrgEvolutionSummary,
+    OrgPerformanceSummary,
+    OrgScalingSummary,
+    OrgSignalSnapshot,
+    OrgTelemetrySummary,
+)
+from synthorg.meta.signals.budget import BudgetSignalAggregator
+from synthorg.meta.signals.coordination import CoordinationSignalAggregator
+from synthorg.meta.signals.errors import ErrorSignalAggregator
+from synthorg.meta.signals.evolution import EvolutionSignalAggregator
+from synthorg.meta.signals.performance import PerformanceSignalAggregator
+from synthorg.meta.signals.scaling import ScalingSignalAggregator
+from synthorg.meta.signals.snapshot import SnapshotBuilder
+from synthorg.meta.signals.telemetry import TelemetrySignalAggregator
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_PROPOSAL_LISTED,
     META_PROPOSAL_SUBMITTED,
     META_PROPOSAL_UNKNOWN_ALTITUDE,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.meta.models import ImprovementProposal
-    from synthorg.meta.signal_models import (
-        OrgBudgetSummary,
-        OrgCoordinationSummary,
-        OrgErrorSummary,
-        OrgEvolutionSummary,
-        OrgPerformanceSummary,
-        OrgScalingSummary,
-        OrgSignalSnapshot,
-        OrgTelemetrySummary,
-    )
-    from synthorg.meta.signals.budget import BudgetSignalAggregator
-    from synthorg.meta.signals.coordination import CoordinationSignalAggregator
-    from synthorg.meta.signals.errors import ErrorSignalAggregator
-    from synthorg.meta.signals.evolution import EvolutionSignalAggregator
-    from synthorg.meta.signals.performance import PerformanceSignalAggregator
-    from synthorg.meta.signals.scaling import ScalingSignalAggregator
-    from synthorg.meta.signals.snapshot import SnapshotBuilder
-    from synthorg.meta.signals.telemetry import TelemetrySignalAggregator
 
 logger = get_logger(__name__)
 

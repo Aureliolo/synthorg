@@ -8,6 +8,7 @@ fine-tune repositories), so memory-only deployments retain deletion.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
 from synthorg.meta.mcp.errors import (
@@ -42,7 +43,6 @@ from synthorg.observability.events.mcp import (
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

@@ -6,10 +6,10 @@ serialiser shared across the infrastructure sub-domain handler modules
 requests, setup, simulations, template-packs, integration-health).
 """
 
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers.common import err
 from synthorg.meta.mcp.handlers.common_args import (
@@ -19,9 +19,6 @@ from synthorg.meta.mcp.handlers.common_args import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_CAPABILITY_GAP
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

@@ -9,7 +9,7 @@ park / unwind mechanics.
 """
 
 import uuid
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.communication.conversation.enums import (
@@ -55,9 +55,6 @@ from synthorg.persistence.conversation_protocol import (
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalRepository,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 logger = get_logger(__name__)
 

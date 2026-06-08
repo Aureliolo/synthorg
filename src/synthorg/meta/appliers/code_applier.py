@@ -10,7 +10,7 @@ use the GitHub API, making this safe to run inside containers.
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
@@ -25,6 +25,7 @@ from synthorg.meta.appliers._code_validation import (
     _check_proposal_shape,
     _validate_change_preconditions,
 )
+from synthorg.meta.config import CodeModificationConfig
 from synthorg.meta.models import (
     ApplyResult,
     CIValidationResult,
@@ -33,6 +34,7 @@ from synthorg.meta.models import (
     ImprovementProposal,
     ProposalAltitude,
 )
+from synthorg.meta.protocol import CIValidator, GitHubAPI
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -45,10 +47,6 @@ from synthorg.observability.events.meta import (
     META_CI_VALIDATION_FAILED,
     META_CODE_FILE_WRITTEN,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.config import CodeModificationConfig
-    from synthorg.meta.protocol import CIValidator, GitHubAPI
 
 logger = get_logger(__name__)
 

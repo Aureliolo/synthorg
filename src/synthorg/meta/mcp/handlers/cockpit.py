@@ -7,10 +7,12 @@ Read handlers shim through ``app_state.cockpit_service`` and
 the ``/cockpit`` REST controller.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, cast
 
 from synthorg._core.features import require_service
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
@@ -42,10 +44,7 @@ from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

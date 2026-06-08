@@ -7,8 +7,9 @@ for real statistical significance.
 """
 
 import math
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.meta.models import RegressionThresholds
 from synthorg.meta.rollout.ab_models import (
     ABTestComparison,
     ABTestVerdict,
@@ -25,9 +26,6 @@ from synthorg.observability.events.meta import (
     META_ABTEST_TREATMENT_REGRESSED,
     META_ABTEST_WINNER_DECLARED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.models import RegressionThresholds
 
 logger = get_logger(__name__)
 

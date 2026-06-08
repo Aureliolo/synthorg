@@ -5,18 +5,16 @@ confidence adjustment, org-level inflection consumption, and
 alert emission. All protocols are runtime-checkable.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.meta.chief_of_staff.models import (
-        Alert,
-        OrgInflection,
-        OutcomeStats,
-        ProposalOutcome,
-    )
-    from synthorg.meta.models import ImprovementProposal, ProposalAltitude
-
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.chief_of_staff.models import (
+    Alert,
+    OrgInflection,
+    OutcomeStats,
+    ProposalOutcome,
+)
+from synthorg.meta.models import ImprovementProposal, ProposalAltitude
 
 _DEFAULT_RECENT_OUTCOMES_LIMIT: Final[int] = 10
 

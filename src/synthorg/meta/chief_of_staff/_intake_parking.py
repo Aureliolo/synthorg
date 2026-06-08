@@ -13,10 +13,12 @@ back on approval and routes it to ``SteeringService.issue``.
 """
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING, TypeGuard
 
 from synthorg._core.features import require_service
 from synthorg.approval.enums import ApprovalSource, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
@@ -28,6 +30,7 @@ from synthorg.engine.intervention.models import (
     STEERING_INTAKE_TEXT_KEY,
 )
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
+from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
     ConversationalProposal,
@@ -45,11 +48,7 @@ from synthorg.observability.events.approval_gate import (
 from synthorg.observability.events.chief_of_staff import COS_PROPOSE_FAILED
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from synthorg.api.state import AppState
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 
 logger = get_logger(__name__)
 

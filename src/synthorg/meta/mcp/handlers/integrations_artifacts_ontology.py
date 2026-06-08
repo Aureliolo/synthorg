@@ -11,6 +11,7 @@ path enforces the admin guardrail triple and emits
 from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import (
     artifact_facade_service_of,
@@ -47,7 +48,6 @@ from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

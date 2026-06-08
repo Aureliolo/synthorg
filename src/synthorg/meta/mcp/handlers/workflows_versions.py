@@ -7,6 +7,7 @@ degrades to a ``capability_gap`` envelope when the service is not wired.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import (
@@ -36,7 +37,6 @@ from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

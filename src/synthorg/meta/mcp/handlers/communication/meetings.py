@@ -1,11 +1,13 @@
 """Meeting MCP handlers (communication sub-domain)."""
 
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.communication.state import meeting_service_of
+from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -36,10 +38,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

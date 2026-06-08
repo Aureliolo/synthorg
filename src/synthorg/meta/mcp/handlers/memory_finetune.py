@@ -9,6 +9,7 @@ is forwarded to the ``not_supported`` envelope.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import FineTuneRunActiveError
 from synthorg.core.types import NotBlankStr
@@ -53,7 +54,6 @@ from synthorg.observability.events.mcp import (
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

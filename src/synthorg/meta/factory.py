@@ -5,10 +5,13 @@ and regression detectors from configuration, filtering by
 enabled altitudes and disabled rules.
 """
 
+from collections.abc import Mapping
 from copy import deepcopy
 from types import MappingProxyType
-from typing import TYPE_CHECKING, assert_never
+from typing import assert_never
 
+from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.core.clock import Clock
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.appliers.architecture_applier import (
     ArchitectureApplier,
@@ -26,19 +29,31 @@ from synthorg.meta.chief_of_staff.learning import (
     BayesianConfidenceAdjuster,
     ExponentialMovingAverageAdjuster,
 )
+from synthorg.meta.chief_of_staff.protocol import ConfidenceAdjuster
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.guards.approval_gate import ApprovalGateGuard
 from synthorg.meta.guards.rate_limit import RateLimitGuard
 from synthorg.meta.guards.rollback_plan import RollbackPlanGuard
 from synthorg.meta.guards.scope_check import ScopeCheckGuard
 from synthorg.meta.models import ProposalAltitude
+from synthorg.meta.protocol import ImprovementStrategy, ProposalApplier, ProposalGuard
 from synthorg.meta.rollout.ab_test import ABTestRollout
-from synthorg.meta.rollout.before_after import BeforeAfterRollout
+from synthorg.meta.rollout.before_after import BeforeAfterRollout, SnapshotBuilder
 from synthorg.meta.rollout.canary import CanarySubsetRollout
-from synthorg.meta.rollout.inverse_dispatch import default_rollback_handlers
+from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
+from synthorg.meta.rollout.inverse_dispatch import (
+    ArchitectureMutator,
+    CodeMutator,
+    ConfigMutator,
+    PromptMutator,
+    RollbackHandler,
+    default_rollback_handlers,
+)
 from synthorg.meta.rollout.regression.composite import (
     TieredRegressionDetector,
 )
 from synthorg.meta.rollout.rollback import RollbackExecutor
+from synthorg.meta.rollout.roster import OrgRoster
 from synthorg.meta.rules.builtin import default_rules
 from synthorg.meta.rules.engine import RuleEngine
 from synthorg.meta.strategies.architecture import (
@@ -52,30 +67,7 @@ from synthorg.observability.events.meta import (
     META_CONFIG_LOADED,
     META_STRATEGY_REGISTERED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.core.clock import Clock
-    from synthorg.meta.chief_of_staff.protocol import ConfidenceAdjuster
-    from synthorg.meta.config import SelfImprovementConfig
-    from synthorg.meta.protocol import (
-        ImprovementStrategy,
-        ProposalApplier,
-        ProposalGuard,
-    )
-    from synthorg.meta.rollout.before_after import SnapshotBuilder
-    from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
-    from synthorg.meta.rollout.inverse_dispatch import (
-        ArchitectureMutator,
-        CodeMutator,
-        ConfigMutator,
-        PromptMutator,
-        RollbackHandler,
-    )
-    from synthorg.meta.rollout.roster import OrgRoster
-    from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.base import BaseCompletionProvider
 
 logger = get_logger(__name__)
 

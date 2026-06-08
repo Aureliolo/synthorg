@@ -17,10 +17,11 @@ splits park (``propose.py``) from resume (the resume module).
 """
 
 import uuid
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from synthorg.approval.enums import ApprovalSource, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -56,11 +57,6 @@ from synthorg.persistence.conversation_participant_protocol import (
     ConversationParticipantFilterSpec,
     ConversationParticipantRepository,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

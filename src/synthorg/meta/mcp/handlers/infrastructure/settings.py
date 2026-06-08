@@ -1,9 +1,11 @@
 """Settings MCP handlers (infrastructure sub-domain)."""
 
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -25,10 +27,7 @@ from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 from synthorg.settings.state import settings_read_service_of
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

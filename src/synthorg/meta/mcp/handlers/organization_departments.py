@@ -9,6 +9,7 @@ the admin guardrail triple (confirm + reason + actor), emitting
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -40,7 +41,6 @@ from synthorg.organization.state import department_service_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

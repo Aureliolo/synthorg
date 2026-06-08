@@ -6,11 +6,13 @@ facade on :class:`AppState`; capability gaps surface as typed
 ``not_supported`` envelopes via :class:`CapabilityNotSupportedError`.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import evaluation_version_service_of
 from synthorg.infrastructure.state import (
@@ -40,10 +42,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_CAPABILITY_GAP
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

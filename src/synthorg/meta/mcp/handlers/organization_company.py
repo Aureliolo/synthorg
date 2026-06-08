@@ -9,6 +9,7 @@ typed ``not_supported`` envelope via :func:`_map_capability`.
 from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers._mcp_handler_common import (
@@ -27,7 +28,6 @@ from synthorg.organization.state import company_read_service_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 
 async def _company_get(

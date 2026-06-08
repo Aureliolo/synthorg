@@ -13,13 +13,14 @@ unregisters the live handler.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import ApplyResult, ImprovementProposal, ProposalAltitude
+from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
 from synthorg.meta.toolsmith.models import ToolBlueprint, ToolBlueprintState
+from synthorg.meta.toolsmith.protocol import ToolValidationGate
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.toolsmith import (
     TOOLSMITH_APPLY_COMPLETED,
@@ -28,12 +29,8 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_APPLY_STARTED,
     TOOLSMITH_BLUEPRINT_RETIRED,
 )
+from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
 from synthorg.providers.errors import ProviderError
-
-if TYPE_CHECKING:
-    from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
-    from synthorg.meta.toolsmith.protocol import ToolValidationGate
-    from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
 
 logger = get_logger(__name__)
 

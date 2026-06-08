@@ -8,7 +8,7 @@ All thresholds are configurable via constructor arguments
 with sensible defaults.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
@@ -17,11 +17,9 @@ from synthorg.meta.models import (
     RuleMatch,
     RuleSeverity,
 )
+from synthorg.meta.protocol import SignalRule
 from synthorg.meta.rules.benchmark_rule import BenchmarkRegressionRule
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.meta.protocol import SignalRule
 
 logger = get_logger(__name__)
 

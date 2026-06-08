@@ -22,17 +22,13 @@ so handler-layer log assertions in tests have a single, stable event
 source regardless of which domain emitted the event.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.meta.mcp.errors import GuardrailViolationError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_ARGUMENT_INVALID,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.mcp.errors import GuardrailViolationError
 
 logger = get_logger("synthorg.meta.mcp.handlers")
 

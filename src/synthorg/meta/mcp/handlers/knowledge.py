@@ -7,9 +7,11 @@ chunk text is wrapped via ``wrap_untrusted`` because corpus content may
 carry injected instructions.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
@@ -20,6 +22,8 @@ from synthorg.knowledge.constants import (
 )
 from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.errors import KnowledgeSourceNotFoundError
+from synthorg.knowledge.models import KnowledgeHit
+from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
@@ -35,12 +39,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.knowledge.models import KnowledgeHit
-    from synthorg.knowledge.service import KnowledgeService
 
 logger = get_logger(__name__)
 

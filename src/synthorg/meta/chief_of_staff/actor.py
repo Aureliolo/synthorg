@@ -10,14 +10,16 @@ all live in the engine's tool-invoker + ``ApprovalGate`` path, so a
 sensitive action escalates and parks exactly as a task action does.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_ACT_COMPLETED,
@@ -25,14 +27,8 @@ from synthorg.observability.events.chief_of_staff import (
     COS_ACT_PARKED,
     COS_ACT_REQUESTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.agent_engine import AgentEngine
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
-    from synthorg.security.autonomy.models import EffectiveAutonomy
-    from synthorg.security.autonomy.resolver import AutonomyResolver
+from synthorg.security.autonomy.models import EffectiveAutonomy
+from synthorg.security.autonomy.resolver import AutonomyResolver
 
 logger = get_logger(__name__)
 

@@ -1,8 +1,10 @@
 """Operator request-ledger MCP handlers (infrastructure sub-domain)."""
 
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.infrastructure.state import requests_facade_service_of
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import ToolHandler
@@ -19,10 +21,7 @@ from synthorg.meta.mcp.handlers.infrastructure._shared import (
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

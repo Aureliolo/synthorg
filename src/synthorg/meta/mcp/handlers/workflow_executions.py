@@ -11,6 +11,7 @@ pushed the parent module past budget.
 import copy
 from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.errors import (
     SubworkflowDepthExceededError,
@@ -53,7 +54,6 @@ from synthorg.observability.events.mcp import (
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

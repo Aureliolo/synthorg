@@ -7,7 +7,7 @@ yields SUCCESS with the observed elapsed time.
 """
 
 import hashlib
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
@@ -18,6 +18,7 @@ from synthorg.meta.models import (
     RolloutOutcome,
     RolloutResult,
 )
+from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 from synthorg.meta.rollout._observation import observe_until_verdict
 from synthorg.meta.rollout.before_after import (
     SnapshotBuilder,
@@ -29,9 +30,6 @@ from synthorg.observability.events.meta import (
     META_ROLLOUT_FAILED,
     META_ROLLOUT_STARTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 
 logger = get_logger(__name__)
 _DEFAULT_CANARY_FRACTION: Final[float] = 0.2

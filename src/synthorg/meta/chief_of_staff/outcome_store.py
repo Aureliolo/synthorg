@@ -6,22 +6,20 @@ Persists ``ProposalOutcome`` records as episodic memories in the
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.meta.chief_of_staff.models import OutcomeStats, ProposalOutcome
+from synthorg.meta.models import ProposalAltitude
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.chief_of_staff import (
     COS_OUTCOME_RECORD_FAILED,
     COS_OUTCOME_RECORDED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.meta.models import ProposalAltitude
 
 logger = get_logger(__name__)
 _DEFAULT_MIN_OUTCOMES: Final[int] = 3

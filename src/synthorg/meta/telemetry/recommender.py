@@ -5,21 +5,17 @@ adjustments for built-in rules based on observed outcomes.
 """
 
 import copy
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.telemetry.models import ThresholdRecommendation
+from synthorg.meta.telemetry.models import AggregatedPattern, ThresholdRecommendation
+from synthorg.meta.telemetry.protocol import AnalyticsCollector
 from synthorg.observability import get_logger
 from synthorg.observability.events.cross_deployment import (
     XDEPLOY_RECOMMENDATION_GENERATED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.telemetry.models import AggregatedPattern
-    from synthorg.meta.telemetry.protocol import AnalyticsCollector
 
 logger = get_logger(__name__)
 _DEFAULT_MIN_DEPLOYMENTS: Final[int] = 3

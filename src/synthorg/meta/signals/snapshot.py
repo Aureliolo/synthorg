@@ -6,7 +6,6 @@ aggregators in parallel via asyncio.TaskGroup.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.signal_models import (
@@ -20,30 +19,20 @@ from synthorg.meta.signal_models import (
     OrgSignalSnapshot,
     OrgTelemetrySummary,
 )
+from synthorg.meta.signals.benchmark import BenchmarkSignalAggregator
+from synthorg.meta.signals.budget import BudgetSignalAggregator
+from synthorg.meta.signals.coordination import CoordinationSignalAggregator
+from synthorg.meta.signals.errors import ErrorSignalAggregator
+from synthorg.meta.signals.evolution import EvolutionSignalAggregator
+from synthorg.meta.signals.performance import PerformanceSignalAggregator
+from synthorg.meta.signals.scaling import ScalingSignalAggregator
+from synthorg.meta.signals.telemetry import TelemetrySignalAggregator
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
     META_SIGNAL_AGGREGATION_STARTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.signals.benchmark import BenchmarkSignalAggregator
-    from synthorg.meta.signals.budget import BudgetSignalAggregator
-    from synthorg.meta.signals.coordination import (
-        CoordinationSignalAggregator,
-    )
-    from synthorg.meta.signals.errors import ErrorSignalAggregator
-    from synthorg.meta.signals.evolution import (
-        EvolutionSignalAggregator,
-    )
-    from synthorg.meta.signals.performance import (
-        PerformanceSignalAggregator,
-    )
-    from synthorg.meta.signals.scaling import ScalingSignalAggregator
-    from synthorg.meta.signals.telemetry import (
-        TelemetrySignalAggregator,
-    )
 
 logger = get_logger(__name__)
 

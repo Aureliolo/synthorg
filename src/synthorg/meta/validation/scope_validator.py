@@ -7,12 +7,9 @@ the framework.
 
 from fnmatch import fnmatch
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING
 
+from synthorg.meta.models import CodeChange
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.meta.models import CodeChange
 
 logger = get_logger(__name__)
 

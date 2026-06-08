@@ -6,7 +6,6 @@ Wraps :class:`CustomRuleRepository` so the
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
@@ -21,16 +20,12 @@ from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_UPDATE_REJECTED,
     META_CUSTOM_RULE_UPDATED,
 )
+from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
 
 # Fields that are managed by the persistence layer / immutable after
 # creation. Callers must not override these via partial updates; doing so
 # would turn an update into an identity change or rewrite audit history.
 _IMMUTABLE_RULE_FIELDS: frozenset[str] = frozenset({"id", "created_at"})
-
-if TYPE_CHECKING:
-    from synthorg.persistence.custom_rule_protocol import (
-        CustomRuleRepository,
-    )
 
 logger = get_logger(__name__)
 

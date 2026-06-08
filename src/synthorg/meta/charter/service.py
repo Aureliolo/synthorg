@@ -11,7 +11,7 @@ approved charter is dispatched into the work pipeline by
 
 import asyncio
 import uuid
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from synthorg.communication.conversation.enums import (
     ConversationRole,
@@ -20,6 +20,7 @@ from synthorg.communication.conversation.enums import (
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.charter._charter_crud import CharterCrudMixin
+from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import (
     CharterDraft,
@@ -41,20 +42,12 @@ from synthorg.observability.events.charter import (
     CHARTER_INTERVIEW_TURN,
     CHARTER_STATUS_TRANSITIONED,
 )
-from synthorg.persistence.charter_protocol import (
-    CharterFilterSpec,
-    CharterRepository,
-)
+from synthorg.persistence.charter_protocol import CharterFilterSpec, CharterRepository
 from synthorg.persistence.conversation_protocol import (
     ConversationRepository,
     ConversationTurnFilterSpec,
     ConversationTurnRepository,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.meta.charter.config import CharterConfig
 
 logger = get_logger(__name__)
 

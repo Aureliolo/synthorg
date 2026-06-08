@@ -14,7 +14,7 @@ ring-buffer pattern; a durable backend can ship behind the same
 
 import asyncio
 from collections import deque
-from typing import TYPE_CHECKING
+from datetime import datetime, timedelta
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -25,9 +25,6 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_GAP_RECORD_FAILED,
     TOOLSMITH_GAP_RECORDED,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime, timedelta
 
 logger = get_logger(__name__)
 

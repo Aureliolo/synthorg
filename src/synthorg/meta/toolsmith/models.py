@@ -7,8 +7,9 @@ blueprint from ``VALIDATED`` to ``ACTIVE``.
 
 import itertools
 import re
+from datetime import datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Final, Self
+from typing import Final, Self
 
 from pydantic import (
     AwareDatetime,
@@ -19,9 +20,6 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 # Authored tools reuse the MCP tool-surface contract verbatim so a
 # blueprint can be promoted into an ``MCPToolDef`` without re-validation

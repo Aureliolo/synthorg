@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
@@ -56,7 +57,6 @@ from synthorg.observability.events.mcp import (
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

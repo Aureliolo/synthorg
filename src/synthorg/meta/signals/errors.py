@@ -6,23 +6,17 @@ A missing store (e.g. in dev/test mode) yields an empty summary via
 the safe-default path rather than raising.
 """
 
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.classification.taxonomy_store_protocol import ErrorTaxonomyStore
 from synthorg.meta.signal_models import OrgErrorSummary
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.engine.classification.taxonomy_store_protocol import (
-        ErrorTaxonomyStore,
-    )
 
 logger = get_logger(__name__)
 

@@ -15,10 +15,7 @@ from synthorg.meta.appliers._validation import validate_payload_keys
 from synthorg.meta.models import ArchitectureChange
 
 if TYPE_CHECKING:
-    from synthorg.meta.appliers.architecture_applier import (
-        ArchitectureApplierContext,
-    )
-
+    from synthorg.meta.appliers.architecture_applier import ArchitectureApplierContext
 
 _OP_CREATE_ROLE: Final[str] = "create_role"
 _OP_CREATE_DEPARTMENT: Final[str] = "create_department"

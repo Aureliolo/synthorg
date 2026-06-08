@@ -5,17 +5,13 @@ communication sub-domain handler modules (messages, meetings,
 connections, webhooks, tunnel).
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers.common import err
 from synthorg.meta.mcp.handlers.common_args import get_optional_str, require_dict
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_CAPABILITY_GAP
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

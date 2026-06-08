@@ -10,7 +10,8 @@ exceeds the configured threshold.
 import asyncio
 import hashlib
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
+from uuid import UUID
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
@@ -21,6 +22,7 @@ from synthorg.meta.models import (
     RolloutOutcome,
     RolloutResult,
 )
+from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 from synthorg.meta.rollout.ab_comparator import ABTestComparator
 from synthorg.meta.rollout.ab_models import (
     ABTestComparison,
@@ -44,11 +46,6 @@ from synthorg.observability.events.meta import (
     META_ROLLOUT_OBSERVATION_TICK,
     META_ROLLOUT_STARTED,
 )
-
-if TYPE_CHECKING:
-    from uuid import UUID
-
-    from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 
 logger = get_logger(__name__)
 

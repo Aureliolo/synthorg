@@ -17,21 +17,21 @@ Authored-script contract:
 import json
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.handlers.common import err, ok
 from synthorg.meta.toolsmith.errors import ToolsmithError
+from synthorg.meta.toolsmith.models import ToolBlueprint
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.toolsmith import (
     TOOLSMITH_TOOL_INVOKE_FAILED,
     TOOLSMITH_TOOL_INVOKED,
 )
+from synthorg.tools.sandbox.protocol import SandboxBackend
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.meta.mcp.handler_protocol import ToolHandler
-    from synthorg.meta.toolsmith.models import ToolBlueprint
-    from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 
