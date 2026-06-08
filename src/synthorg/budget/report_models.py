@@ -163,7 +163,7 @@ class PeriodComparison(BaseModel):
             None when previous period cost is zero.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     current_period_cost: float = Field(
         ge=0.0,

@@ -37,7 +37,7 @@ class CoordinationEfficiency(BaseModel):
         turns_sas: Average turns for single-agent tasks.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     success_rate: float = Field(
         ge=0.0,
@@ -67,7 +67,7 @@ class CoordinationOverhead(BaseModel):
         turns_sas: Average turns for single-agent tasks.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     turns_mas: float = Field(gt=0, description="Avg turns (multi-agent)")
     turns_sas: float = Field(gt=0, description="Avg turns (single-agent)")
@@ -92,7 +92,7 @@ class ErrorAmplification(BaseModel):
         error_rate_sas: Single-agent error rate.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     error_rate_mas: float = Field(
         ge=0.0,
@@ -120,7 +120,7 @@ class MessageDensity(BaseModel):
         reasoning_turns: Number of reasoning turns.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     inter_agent_messages: int = Field(
         ge=0,
@@ -176,7 +176,7 @@ class AmdahlCeiling(BaseModel):
         recommended_team_size: Team size at 90% of max speedup.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     parallelizable_fraction: float = Field(
         ge=0.0,
@@ -222,7 +222,7 @@ class StragglerGap(BaseModel):
         slowest_agent_id: Identifier of the slowest agent.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     slowest_duration_seconds: float = Field(
         ge=0.0,
@@ -305,7 +305,7 @@ class TokenSpeedupRatio(BaseModel):
         alert: Whether ratio exceeds the alert threshold (computed).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     token_multiplier: float = Field(
         gt=0.0,
@@ -346,7 +346,7 @@ class MessageOverhead(BaseModel):
         is_quadratic: Whether message count exceeds threshold.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     team_size: int = Field(
         gt=0,

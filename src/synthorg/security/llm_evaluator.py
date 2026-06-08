@@ -20,7 +20,6 @@ Design invariants:
 """
 
 import asyncio
-import re
 
 # ``Mapping``, ``CostTracker``, ``ProviderConfig`` and
 # ``ProviderRegistry`` are part of ``LlmSecurityEvaluator.__init__``'s
@@ -56,6 +55,7 @@ from synthorg.providers.models import ChatMessage, CompletionConfig, ToolDefinit
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security._llm_evaluator_support import _LlmEvaluatorSupportMixin
 from synthorg.security.config import LlmFallbackConfig
+from synthorg.security.information_stripper import _CONTROL_CHAR_RE
 from synthorg.security.models import (
     EvaluationConfidence,
     SecurityContext,
@@ -75,9 +75,6 @@ logger = get_logger(__name__)
 _MAX_REASON_LENGTH: Final[int] = 300
 
 _MILLISECONDS_PER_SECOND: Final[float] = 1000.0
-
-# Regex to strip control characters from LLM-returned reason.
-_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 # Derive valid values and mappings from the source enums so they
 # stay in sync automatically when enum members are added.

@@ -8,11 +8,18 @@ and the ``wrap_untrusted`` fence) stays on the evaluator itself.
 """
 
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
+from synthorg.observability.events.security import (
+    SECURITY_LLM_EVAL_CROSS_FAMILY,
+    SECURITY_LLM_EVAL_ERROR,
+    SECURITY_LLM_EVAL_NO_PROVIDER,
+    SECURITY_LLM_EVAL_SAME_FAMILY_FALLBACK,
+)
 from synthorg.providers.family import get_family, providers_excluding_family
 from synthorg.security.config import (
     ArgumentTruncationStrategy,
@@ -26,19 +33,10 @@ from synthorg.security.models import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.config.schema import ProviderConfig
     from synthorg.providers.base import BaseCompletionProvider
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.config import LlmFallbackConfig
-
-from synthorg.observability.events.security import (
-    SECURITY_LLM_EVAL_CROSS_FAMILY,
-    SECURITY_LLM_EVAL_ERROR,
-    SECURITY_LLM_EVAL_NO_PROVIDER,
-    SECURITY_LLM_EVAL_SAME_FAMILY_FALLBACK,
-)
 
 logger = get_logger(__name__)
 

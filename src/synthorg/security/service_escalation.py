@@ -114,12 +114,11 @@ class SecOpsServiceEscalationMixin(SecOpsServiceSafetyMixin):
                 metadata,
             )
 
-        # Local import breaks an ontology-consolidation import cycle:
-        # core.approval -> ontology.__init__ -> persistence (via A5's
-        # consolidated ontology_protocol) -> budget -> security ->
-        # security.service -> core.approval. Keeping this import
-        # function-local avoids re-entering core.approval while it is
-        # still being initialized.
+        # Local import breaks an import cycle:
+        # core.approval -> ontology.__init__ -> persistence ->
+        # budget -> security -> security.service -> core.approval.
+        # Keeping this import function-local avoids re-entering
+        # core.approval while it is still being initialized.
         from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
         from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
 
