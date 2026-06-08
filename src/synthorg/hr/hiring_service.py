@@ -77,11 +77,28 @@ class HiringService:
         self._onboarding_service = onboarding_service
         self._default_model_config = default_model_config
         self._requests: dict[str, HiringRequest] = {}
-        # Serialises read-modify-write on ``_requests`` so two concurrent
-        # pipeline steps on the same request cannot lose an update or
-        # double-instantiate. HiringService has no start/stop lifecycle, so
-        # the lock binds to the active loop on first use without restart risk.
-        self._requests_lock = asyncio.Lock()
+        # Serialises read-modify-write on ``_requests`` per request ID so two
+        # concurrent pipeline steps on the same request cannot lose an update
+        # or double-instantiate, while steps on different requests still run
+        # concurrently (the lock is held across ``await`` points such as
+        # approval-store writes and registry registration). HiringService has
+        # no start/stop lifecycle, so each lock binds to the active loop on
+        # first use without restart risk.
+        self._requests_locks: dict[str, asyncio.Lock] = {}
+
+    def _request_lock(self, request_id: str) -> asyncio.Lock:
+        """Return the lock guarding a single request's read-modify-write.
+
+        Created lazily on first use and keyed by request ID so pipeline
+        steps on different requests never contend.
+
+        Args:
+            request_id: The request ID to serialise.
+
+        Returns:
+            The per-request lock.
+        """
+        return self._requests_locks.setdefault(request_id, asyncio.Lock())
 
     def _get_request(self, request_id: str) -> HiringRequest:
         """Look up a hiring request by ID.
@@ -192,7 +209,7 @@ class HiringService:
         Returns:
             Updated request with the new candidate appended.
         """
-        async with self._requests_lock:
+        async with self._request_lock(str(request.id)):
             request = self._get_request(str(request.id))
             candidate = self._build_candidate(request)
             updated = request.model_copy(
@@ -252,7 +269,7 @@ class HiringService:
         Raises:
             InvalidCandidateError: If the candidate ID is not found.
         """
-        async with self._requests_lock:
+        async with self._request_lock(str(request.id)):
             request = self._get_request(str(request.id))
 
             candidate = next(
@@ -366,7 +383,7 @@ class HiringService:
             InvalidCandidateError: If no candidate is selected.
             HiringError: If instantiation fails.
         """
-        async with self._requests_lock:
+        async with self._request_lock(str(request.id)):
             request = self._get_request(str(request.id))
             self._validate_instantiation_status(request)
             candidate = self._find_selected_candidate(request)

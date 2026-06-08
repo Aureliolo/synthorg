@@ -130,17 +130,17 @@ function installAgentHandlers(f: Fixture = {}) {
             pagination: { total: 1, offset: 0, limit: 200 },
           }),
     ),
-    http.get('/api/v1/agents/:name', ({ params }) =>
+    http.get('/api/v1/agents/:agentId', ({ params }) =>
       f.agent
-        ? f.agent(String(params.name))
-        : HttpResponse.json(apiSuccess(makeAgent({ name: String(params.name) }))),
+        ? f.agent(String(params.agentId))
+        : HttpResponse.json(apiSuccess(makeAgent({ id: String(params.agentId) }))),
     ),
-    http.get('/api/v1/agents/:name/performance', () =>
+    http.get('/api/v1/agents/:agentId/performance', () =>
       f.performance
         ? f.performance()
         : HttpResponse.json(apiSuccess(makePerformance())),
     ),
-    http.get('/api/v1/agents/:name/activity', () =>
+    http.get('/api/v1/agents/:agentId/activity', () =>
       f.activity
         ? f.activity()
         : HttpResponse.json({
@@ -151,7 +151,7 @@ function installAgentHandlers(f: Fixture = {}) {
             pagination: { total: 0, offset: 0, limit: 50 },
           }),
     ),
-    http.get('/api/v1/agents/:name/history', () =>
+    http.get('/api/v1/agents/:agentId/history', () =>
       f.history ? f.history() : HttpResponse.json(apiSuccess([])),
     ),
     http.get('/api/v1/tasks', () =>
@@ -404,7 +404,7 @@ describe('fetchMoreActivity', () => {
       },
     ]
     server.use(
-      http.get('/api/v1/agents/:name/activity', () =>
+      http.get('/api/v1/agents/:agentId/activity', () =>
         HttpResponse.json({
           data: newEvents,
           error: null,
@@ -456,7 +456,7 @@ describe('fetchMoreActivity', () => {
       related_ids: {},
     }))
     server.use(
-      http.get('/api/v1/agents/:name/activity', () =>
+      http.get('/api/v1/agents/:agentId/activity', () =>
         HttpResponse.json({
           data: newEvents,
           error: null,
@@ -500,7 +500,7 @@ describe('fetchMoreActivity', () => {
     })
 
     server.use(
-      http.get('/api/v1/agents/:name/activity', () =>
+      http.get('/api/v1/agents/:agentId/activity', () =>
         HttpResponse.json(apiError('Network error')),
       ),
     )

@@ -96,9 +96,9 @@ function buildHealth(agentId: string): AgentHealthResponse {
   }
 }
 
-function buildPerformance(name: string): AgentPerformanceSummary {
+function buildPerformance(): AgentPerformanceSummary {
   return {
-    agent_name: name,
+    agent_name: 'default-agent',
     tasks_completed_total: 0,
     tasks_completed_7d: 0,
     tasks_completed_30d: 0,
@@ -155,9 +155,9 @@ export const agentsHandlers = [
       }),
     )
   }),
-  http.get('/api/v1/agents/:agentId/performance', ({ params }) =>
+  http.get('/api/v1/agents/:agentId/performance', () =>
     HttpResponse.json(
-      successFor<typeof getAgentPerformance>(buildPerformance(String(params.agentId))),
+      successFor<typeof getAgentPerformance>(buildPerformance()),
     ),
   ),
   http.get('/api/v1/agents/:agentId/activity', () =>

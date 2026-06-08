@@ -92,13 +92,17 @@ async def _require_registered_identity(
     Raises:
         NotFoundError: If no agent with *agent_id* is registered.
     """
+    # str(agent.id) is canonical lowercase, so lowercase the path segment to
+    # resolve case variants -- mirrors _config_agent_by_id so the registry-
+    # backed routes don't 404 on an id the config route would resolve.
+    canonical_agent_id = agent_id.lower()
     return require_resource_or_404(
-        await agent_registry_of(app_state).get(agent_id),
+        await agent_registry_of(app_state).get(canonical_agent_id),
         resource_type="agent",
-        identifier=agent_id,
+        identifier=canonical_agent_id,
         log_event=API_RESOURCE_NOT_FOUND,
         operation="read",
-        extra_log_kwargs={"agent_id": agent_id},
+        extra_log_kwargs={"agent_id": canonical_agent_id},
     )
 
 
@@ -439,6 +443,9 @@ class AgentController(Controller):
         """
         app_state: AppState = state.app_state
         identity = await _require_registered_identity(app_state, agent_id)
+        # Drive downstream reads off the resolved canonical id so they key
+        # the same record the registry matched, even for case variants.
+        agent_id = str(identity.id)
         snapshot = await performance_tracker_of(app_state).get_snapshot(agent_id)
         summary = extract_performance_summary(snapshot, identity.name)
         logger.debug(
@@ -476,6 +483,9 @@ class AgentController(Controller):
         """
         app_state: AppState = state.app_state
         identity = await _require_registered_identity(app_state, agent_id)
+        # Drive downstream reads off the resolved canonical id so they key
+        # the same record the registry matched, even for case variants.
+        agent_id = str(identity.id)
         agent_name = identity.name
         lifecycle_events = await persistence_of(app_state).lifecycle_events.list_events(
             agent_id=agent_id,
@@ -539,6 +549,9 @@ class AgentController(Controller):
         """
         app_state: AppState = state.app_state
         identity = await _require_registered_identity(app_state, agent_id)
+        # Drive downstream reads off the resolved canonical id so they key
+        # the same record the registry matched, even for case variants.
+        agent_id = str(identity.id)
         # No limit here: career events are few per agent and the filter
         # below keeps only ~5 event types; capping would risk dropping
         # older milestones (e.g. the original HIRED event).
@@ -576,6 +589,9 @@ class AgentController(Controller):
         """
         app_state: AppState = state.app_state
         identity = await _require_registered_identity(app_state, agent_id)
+        # Drive downstream reads off the resolved canonical id so they key
+        # the same record the registry matched, even for case variants.
+        agent_id = str(identity.id)
 
         snapshot = await performance_tracker_of(app_state).get_snapshot(
             agent_id,

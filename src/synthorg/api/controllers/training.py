@@ -62,14 +62,18 @@ async def _resolve_agent(
     Raises:
         NotFoundError: Raised on the corresponding failure path.
     """
+    # str(identity.id) is canonical lowercase; lowercase the path segment so
+    # the registry lookup resolves case variants, matching the config-backed
+    # agent routes.
+    canonical_agent_id = agent_id.lower()
     identity = await require_service(
         app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
-    ).get(agent_id)
+    ).get(canonical_agent_id)
     if identity is None:
         logger.warning(
             API_RESOURCE_NOT_FOUND,
             resource="agent",
-            agent_id=str(agent_id),
+            agent_id=canonical_agent_id,
         )
         msg = "Agent not found"
         raise NotFoundError(msg)
@@ -286,7 +290,10 @@ class TrainingController(Controller):
             ``ApiResponse[TrainingResultResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        await _resolve_agent(app_state, agent_id)
+        # Key persistence reads off the resolved canonical id so they match
+        # the id training plans were stored under, even for case variants.
+        identity = await _resolve_agent(app_state, agent_id)
+        agent_id = str(identity.id)
 
         plan = await persistence_of(app_state).training_plans.latest_pending(
             NotBlankStr(agent_id),
@@ -360,7 +367,10 @@ class TrainingController(Controller):
             ``ApiResponse[TrainingResultResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        await _resolve_agent(app_state, agent_id)
+        # Key persistence reads off the resolved canonical id so they match
+        # the id training results were stored under, even for case variants.
+        identity = await _resolve_agent(app_state, agent_id)
+        agent_id = str(identity.id)
 
         result = await persistence_of(app_state).training_results.get_latest(
             NotBlankStr(agent_id),
@@ -404,7 +414,10 @@ class TrainingController(Controller):
             ``ApiResponse[TrainingPlanResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        await _resolve_agent(app_state, agent_id)
+        # Key persistence reads off the resolved canonical id so they match
+        # the id training plans were stored under, even for case variants.
+        identity = await _resolve_agent(app_state, agent_id)
+        agent_id = str(identity.id)
 
         plan = await persistence_of(app_state).training_plans.latest_by_agent(
             NotBlankStr(agent_id),
@@ -445,7 +458,10 @@ class TrainingController(Controller):
             ``ApiResponse[TrainingResultResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        await _resolve_agent(app_state, agent_id)
+        # Key persistence reads off the resolved canonical id so they match
+        # the id training plans were stored under, even for case variants.
+        identity = await _resolve_agent(app_state, agent_id)
+        agent_id = str(identity.id)
 
         plan = await persistence_of(app_state).training_plans.latest_pending(
             NotBlankStr(agent_id),
