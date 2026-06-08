@@ -8,19 +8,17 @@ the prior receipt rather than accumulating duplicates. The full receipt
 is stored as a JSON payload; the structured columns exist for filtering.
 """
 
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
+from synthorg.deliverable_receipts.models import DeliverableReceipt
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     FilteredQueryRepository,
     IdKeyedRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.deliverable_receipts.models import DeliverableReceipt
 
 __all__ = [
     "DeliverableReceiptFilterSpec",

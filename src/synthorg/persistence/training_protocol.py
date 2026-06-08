@@ -1,21 +1,19 @@
 """Training plan and result repository protocols."""
 
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.training.models import (
+    TrainingPlan,
+    TrainingResult,
+)
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     FilteredQueryRepository,
     IdKeyedRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.training.models import (
-        TrainingPlan,
-        TrainingResult,
-    )
 
 __all__ = [
     "TrainingPlanFilterSpec",

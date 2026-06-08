@@ -8,6 +8,8 @@ reference typed against this protocol so the storage implementation
 can be swapped without changing the store itself.
 """
 
+from collections.abc import Sequence
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,9 +24,6 @@ from synthorg.persistence._generics import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import datetime
-
     from typing_extensions import TypedDict
 
     class TransitionKwargs(TypedDict, total=False):

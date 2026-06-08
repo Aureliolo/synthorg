@@ -6,11 +6,16 @@ synchronous checks from the request-handling fast path; the repository
 interface exposes durable read/write operations plus the cache.
 """
 
+from collections.abc import Callable
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.auth.refresh_record import (
+    RefreshConsumeOutcome,
+)
+from synthorg.core.auth.session import Session
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
@@ -18,14 +23,6 @@ from synthorg.persistence._generics import (
     IdKeyedRepository,
 )
 from synthorg.persistence._shared.pagination import DEFAULT_LIST_LIMIT
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from synthorg.core.auth.refresh_record import (
-        RefreshConsumeOutcome,
-    )
-    from synthorg.core.auth.session import Session
 
 __all__ = [
     "LockoutRepository",

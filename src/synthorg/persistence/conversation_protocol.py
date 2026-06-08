@@ -15,7 +15,8 @@ Concrete implementations live in the backend packages
 All protocols are ``@runtime_checkable``; all methods are ``async``.
 """
 
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from datetime import datetime
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,9 +28,6 @@ from synthorg.persistence._generics import (
     AppendOnlyRepository,
     StatefulRepository,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 
 class ConversationTurnFilterSpec(BaseModel):

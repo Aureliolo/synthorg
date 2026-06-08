@@ -6,16 +6,14 @@ these Protocols instead of the SQLite classes so the persistence
 backend can be swapped without touching service code.
 """
 
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.embedding.fine_tune_models import (
+    CheckpointRecord,
+    FineTuneRun,
+)
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
-
-if TYPE_CHECKING:
-    from synthorg.memory.embedding.fine_tune_models import (
-        CheckpointRecord,
-        FineTuneRun,
-    )
 
 
 @runtime_checkable

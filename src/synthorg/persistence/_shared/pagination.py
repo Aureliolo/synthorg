@@ -9,20 +9,18 @@ applies everywhere atomically. Backend-specific concerns (the
 log) stay in the call sites.
 """
 
+from collections.abc import (
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Mapping,
+    Sequence,
+)
 from itertools import count
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from collections.abc import (
-        AsyncIterator,
-        Awaitable,
-        Callable,
-        Mapping,
-        Sequence,
-    )
 
 logger = get_logger(__name__)
 

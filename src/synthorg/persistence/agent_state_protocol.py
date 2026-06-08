@@ -1,12 +1,10 @@
 """AgentState repository protocol."""
 
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
-
-if TYPE_CHECKING:
-    from synthorg.engine.agent_state import AgentRuntimeState
 
 
 @runtime_checkable

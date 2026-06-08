@@ -7,11 +7,10 @@ controllers raise 503 on a ``None`` backend. The idempotency service
 api-core slice to keep this package free of an api-layer dependency.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
@@ -19,9 +18,6 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 
 class PersistenceStateSlice(BaseFeatureStateSlice):

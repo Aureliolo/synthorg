@@ -1,13 +1,11 @@
 """Risk override repository protocol."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.security.rules.risk_override import RiskTierOverride
+from synthorg.security.rules.risk_override import RiskTierOverride
 
 
 @runtime_checkable

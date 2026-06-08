@@ -14,11 +14,12 @@ underlying driver -- ``psycopg``/``psycopg_pool`` instead of
 """
 
 import os
-from typing import TYPE_CHECKING
+from collections.abc import Callable
 from uuid import uuid4
 
 import psycopg
 from cryptography.fernet import Fernet, InvalidToken
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.config import EncryptedPostgresConfig
@@ -37,11 +38,6 @@ from synthorg.observability.events.integrations import (
     SECRET_STORAGE_FAILED,
     SECRET_STORED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

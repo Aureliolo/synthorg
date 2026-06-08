@@ -9,12 +9,10 @@ All query methods use parameterised SQL internally to prevent
 injection.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from datetime import datetime
+from typing import Protocol, runtime_checkable
 
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 
 @runtime_checkable

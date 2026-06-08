@@ -7,24 +7,22 @@ persistence-layer repository; lifecycle methods (``connect`` /
 belong to :class:`PersistenceBackend`.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol, override, runtime_checkable
+from typing import Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.core.types import NotBlankStr
+from synthorg.ontology.models import (
+    DriftReport,
+    EntityDefinition,
+    EntityTier,
+)
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     AppendOnlyRepository,
     IdKeyedRepository,
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.ontology.models import (
-        DriftReport,
-        EntityDefinition,
-        EntityTier,
-    )
 
 _DEFAULT_DRIFT_REPORTS_LIMIT: Final[int] = 10
 

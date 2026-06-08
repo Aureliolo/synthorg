@@ -1,15 +1,13 @@
 """Checkpoint and heartbeat repository protocols."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, AppendOnlyRepository
-
-if TYPE_CHECKING:
-    from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
 
 __all__ = [
     "CheckpointFilterSpec",

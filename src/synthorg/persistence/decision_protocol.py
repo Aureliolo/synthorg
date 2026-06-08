@@ -1,19 +1,16 @@
 """Decision records repository protocol."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Literal, Protocol, override, runtime_checkable
+from typing import Literal, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decisions import DecisionOutcome
+from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     AppendOnlyRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.decisions import DecisionRecord
 
 __all__ = [
     "DecisionFilterSpec",

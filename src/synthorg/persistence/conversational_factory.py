@@ -16,25 +16,24 @@ from synthorg.observability.events.persistence.conversational import (
     PERSISTENCE_CONVERSATIONAL_HANDLE_UNAVAILABLE,
     PERSISTENCE_CONVERSATIONAL_UNKNOWN_BACKEND,
 )
+from synthorg.persistence.conversation_invite_protocol import (
+    ConversationInviteRepository,
+)
+from synthorg.persistence.conversation_participant_protocol import (
+    ConversationParticipantRepository,
+)
+from synthorg.persistence.conversation_protocol import (
+    ConversationRepository,
+    ConversationTurnRepository,
+)
+from synthorg.persistence.conversational_proposal_protocol import (
+    ConversationalProposalRepository,
+)
+from synthorg.persistence.protocol import PersistenceBackend
 
 if TYPE_CHECKING:
     import aiosqlite
     from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.persistence.conversation_invite_protocol import (
-        ConversationInviteRepository,
-    )
-    from synthorg.persistence.conversation_participant_protocol import (
-        ConversationParticipantRepository,
-    )
-    from synthorg.persistence.conversation_protocol import (
-        ConversationRepository,
-        ConversationTurnRepository,
-    )
-    from synthorg.persistence.conversational_proposal_protocol import (
-        ConversationalProposalRepository,
-    )
-    from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 

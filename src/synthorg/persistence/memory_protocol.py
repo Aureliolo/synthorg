@@ -20,20 +20,17 @@ categories) because:
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.enums import OrgFactCategory
+from synthorg.memory.org.models import (
+    OperationLogEntry,
+    OperationLogSnapshot,
+    OrgFact,
+    OrgFactAuthor,
+)
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.enums import OrgFactCategory
-    from synthorg.memory.org.models import (
-        OperationLogEntry,
-        OperationLogSnapshot,
-        OrgFact,
-        OrgFactAuthor,
-    )
-
 
 _DEFAULT_LIST_LIMIT_FACTS: Final[int] = 5
 

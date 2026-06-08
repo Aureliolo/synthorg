@@ -15,13 +15,12 @@ from synthorg.observability.events.persistence.charter import (
     PERSISTENCE_CHARTER_HANDLE_UNAVAILABLE,
     PERSISTENCE_CHARTER_UNKNOWN_BACKEND,
 )
+from synthorg.persistence.charter_protocol import CharterRepository
+from synthorg.persistence.protocol import PersistenceBackend
 
 if TYPE_CHECKING:
     import aiosqlite
     from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.persistence.charter_protocol import CharterRepository
-    from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 

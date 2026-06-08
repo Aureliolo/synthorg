@@ -4,8 +4,11 @@ Creates a ``SecretBackend`` instance from configuration.
 """
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, NamedTuple
+from typing import Literal, NamedTuple
+
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.registry import StrategyRegistry
 from synthorg.integrations.config import SecretBackendConfig
@@ -25,12 +28,6 @@ from synthorg.persistence.secret_backends.env_var import (
 from synthorg.persistence.secret_backends.protocol import (
     SecretBackend,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from psycopg_pool import AsyncConnectionPool
-
 
 logger = get_logger(__name__)
 
