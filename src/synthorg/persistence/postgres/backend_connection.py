@@ -9,7 +9,6 @@ concrete backend.
 import asyncio
 import contextlib
 import math
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg import sql
@@ -27,9 +26,7 @@ from synthorg.observability.events.persistence.backend import (
     PERSISTENCE_BACKEND_DISCONNECTING,
     PERSISTENCE_BACKEND_HEALTH_CHECK,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.config import PostgresConfig
+from synthorg.persistence.config import PostgresConfig
 
 logger = get_logger(__name__)
 

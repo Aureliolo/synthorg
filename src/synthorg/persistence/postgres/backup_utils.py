@@ -14,7 +14,7 @@ import contextlib
 import os
 import shutil
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Final, NoReturn
+from typing import IO, Final, NoReturn
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.observability import get_logger, safe_error_description
@@ -22,9 +22,7 @@ from synthorg.observability.events.backup import (
     BACKUP_COMPONENT_FAILED,
     BACKUP_HANDLER_REGISTRATION_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.config import PostgresConfig
+from synthorg.persistence.config import PostgresConfig
 
 logger = get_logger(__name__)
 

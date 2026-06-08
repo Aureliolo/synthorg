@@ -10,10 +10,12 @@ optimistic-concurrency write paths live in
 """
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, cast
+from datetime import datetime
+from typing import cast
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -40,11 +42,6 @@ from synthorg.persistence.settings_protocol import (
     SettingRow,
     SettingRowKey,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

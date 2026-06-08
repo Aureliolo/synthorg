@@ -9,9 +9,9 @@ synchronous ``is_locked`` checks on the auth hot path.
 import asyncio
 import threading
 from datetime import timedelta
-from typing import TYPE_CHECKING
 
 from psycopg.rows import BaseRowFactory, DictRow
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.clock import Clock, SystemClock
@@ -20,9 +20,6 @@ from synthorg.observability.events.api import (
     API_AUTH_LOCKOUT_CLEANUP,
     API_AUTH_LOCKOUT_RESTORED,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 
 def _import_dict_row() -> BaseRowFactory[DictRow]:

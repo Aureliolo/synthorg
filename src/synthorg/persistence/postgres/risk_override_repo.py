@@ -6,10 +6,11 @@ handle isolation without explicit write locks.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.approval.enums import ApprovalRiskLevel
@@ -29,9 +30,6 @@ from synthorg.persistence._shared.pagination import (
     validate_pagination_args,
 )
 from synthorg.security.rules.risk_override import RiskTierOverride
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

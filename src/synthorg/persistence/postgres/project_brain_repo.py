@@ -7,10 +7,10 @@ and a change is a new row rather than an in-place update.
 
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, TupleRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -36,18 +36,14 @@ from synthorg.persistence._project_brain_sql import (
     row_to_entry,
 )
 from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence.project_brain_protocol import (
+    BrainEntryRevisionKey,
+    BrainFilterSpec,
+)
 from synthorg.project_brain.errors import BrainEntryRevisionConflictError
 from synthorg.project_brain.models import (
     BrainEntry,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.persistence.project_brain_protocol import (
-        BrainEntryRevisionKey,
-        BrainFilterSpec,
-    )
 
 logger = get_logger(__name__)
 

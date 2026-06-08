@@ -10,12 +10,15 @@ all timestamps -- mirrors the Postgres sibling pattern from
 """
 
 import json
+from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, ClassVar, Literal, override
+from typing import ClassVar, Literal, override
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 from pydantic import TypeAdapter
 
 from synthorg.communication.conflict_resolution.escalation.models import (
@@ -37,12 +40,6 @@ from synthorg.observability.events.conflict import (
 )
 from synthorg.persistence._shared import parse_iso_utc
 from synthorg.persistence.postgres._escalation_notify import publish_notifies, subscribe
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-    from contextlib import AbstractAsyncContextManager
-
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

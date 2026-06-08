@@ -1,10 +1,11 @@
 # module-kind: repository
 """Postgres repository implementation for CostRecord."""
 
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.budget.cost_record import CostRecord
@@ -26,13 +27,7 @@ from synthorg.persistence._shared import (
     safe_int,
     validate_pagination_args,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
+from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
 
 logger = get_logger(__name__)
 

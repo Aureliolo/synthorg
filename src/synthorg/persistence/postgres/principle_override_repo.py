@@ -1,8 +1,7 @@
 """Postgres implementation of :class:`PrincipleOverrideRepository`."""
 
-from typing import TYPE_CHECKING
-
 import psycopg
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -16,9 +15,6 @@ from synthorg.observability.events.persistence.principle_override import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc, validate_pagination_args
 from synthorg.persistence.principle_override_protocol import PrincipleOverride
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

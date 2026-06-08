@@ -16,11 +16,10 @@ constraint-classification table and the dict_row deserialisation
 helpers.
 """
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.api.auth.system_user import is_system_user
@@ -99,9 +98,6 @@ def _classify_postgres_user_error(exc: psycopg.Error) -> str | None:
             return classified
     return None
 
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

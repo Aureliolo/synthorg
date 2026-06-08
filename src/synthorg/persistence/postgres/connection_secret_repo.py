@@ -7,23 +7,18 @@ bytes in and receive the same bytes back unchanged.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 import psycopg
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.connection_secret import (
     PERSISTENCE_CONNECTION_SECRET_DELETE_FAILED,
     PERSISTENCE_CONNECTION_SECRET_RETRIEVE_FAILED,
     PERSISTENCE_CONNECTION_SECRET_STORE_FAILED,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.core.types import NotBlankStr
-
 
 logger = get_logger(__name__)
 

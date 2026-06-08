@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
@@ -24,6 +25,7 @@ from synthorg.persistence.postgres.custom_rule_repo import (
     PostgresCustomRuleRepository,
     _row_to_definition,
 )
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -220,7 +222,9 @@ class TestRowToDefinition:
 @pytest.fixture
 def repo() -> tuple[PostgresCustomRuleRepository, _FakePool]:
     pool = _FakePool()
-    instance = PostgresCustomRuleRepository(pool=pool)  # type: ignore[arg-type]
+    instance = PostgresCustomRuleRepository(
+        pool=mock_of[AsyncConnectionPool](connection=pool.connection)
+    )
     return instance, pool
 
 

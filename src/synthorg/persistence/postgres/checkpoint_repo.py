@@ -5,11 +5,12 @@ Postgres stores context_json as native JSONB and timestamps as TIMESTAMPTZ.
 """
 
 import json
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
@@ -27,13 +28,7 @@ from synthorg.observability.events.persistence.checkpoint import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.persistence.checkpoint_protocol import CheckpointFilterSpec
+from synthorg.persistence.checkpoint_protocol import CheckpointFilterSpec
 
 logger = get_logger(__name__)
 

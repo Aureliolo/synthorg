@@ -1,12 +1,12 @@
 """Postgres repository for ceremony scheduler state snapshots."""
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.ceremony_state import (
     PERSISTENCE_CEREMONY_STATE_DELETE_FAILED,
@@ -20,11 +20,6 @@ from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.ceremony_scheduler_state_protocol import (
     CeremonySchedulerStateRecord,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

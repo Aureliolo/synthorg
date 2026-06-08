@@ -16,10 +16,10 @@ process-local pin becomes redundant and can be removed.
 import asyncio
 import math
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
@@ -36,9 +36,6 @@ from synthorg.observability.events.persistence.project_cost_agg import (
     PERSISTENCE_PROJECT_COST_AGG_INCREMENT_FAILED,
     PERSISTENCE_PROJECT_COST_AGG_INCREMENTED,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

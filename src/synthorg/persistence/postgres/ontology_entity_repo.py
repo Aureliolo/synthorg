@@ -2,9 +2,9 @@
 
 import json
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
 
 from psycopg.rows import BaseRowFactory, DictRow
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -32,9 +32,6 @@ from synthorg.persistence._shared import (
     DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 
 def _import_dict_row() -> BaseRowFactory[DictRow]:

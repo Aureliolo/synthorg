@@ -7,10 +7,9 @@ Sibling of :class:`SQLiteBenchmarkScoreRepository` backed by
 ``model_id``.
 """
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.budget.benchmark_models import BenchmarkScoreRecord
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
@@ -27,9 +26,6 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     validate_pagination_args,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

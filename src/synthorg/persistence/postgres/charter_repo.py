@@ -9,10 +9,9 @@ marshalling is shared with the SQLite sibling via
 :mod:`synthorg.persistence._shared.charter_marshalling`.
 """
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
@@ -35,9 +34,6 @@ from synthorg.persistence._shared.charter_marshalling import (
     validate_charter_update_keys,
 )
 from synthorg.persistence.charter_protocol import CharterFilterSpec
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

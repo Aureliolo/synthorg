@@ -9,10 +9,9 @@ Read paths use ``psycopg.rows.dict_row`` so row access is by column
 name -- robust to accidental SELECT re-ordering.
 """
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
@@ -33,10 +32,6 @@ from synthorg.persistence._shared import (
     normalize_utc,
 )
 from synthorg.persistence._shared.pagination import validate_pagination_args
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
 
 logger = get_logger(__name__)
 

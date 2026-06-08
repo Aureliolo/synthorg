@@ -10,11 +10,12 @@ outside the unit test suite.
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any, override
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import psycopg
 import pytest
 from aiosqlite.core import Connection
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.auth.session import Session
@@ -98,12 +99,25 @@ class _FakePool:
         yield self._conn
 
 
+def _store(pool: _FakePool) -> PostgresSessionStore:
+    """Wrap a ``_FakePool`` in an isinstance-passing ``AsyncConnectionPool``.
+
+    The repository constructor's ``pool: AsyncConnectionPool`` annotation is
+    enforced at runtime by typeguard, so a bespoke fake is rejected. The
+    ``mock_of`` double satisfies the ``isinstance`` check while delegating
+    ``connection()`` to the fake's scripted async context manager.
+    """
+    return PostgresSessionStore(
+        mock_of[AsyncConnectionPool](connection=pool.connection)
+    )
+
+
 # -- Protocol compatibility ------------------------------------------
 
 
 def test_postgres_session_store_implements_protocol() -> None:
     """``PostgresSessionStore`` satisfies the :class:`SessionStore` protocol."""
-    pool = MagicMock()
+    pool = mock_of[AsyncConnectionPool]()
     store = PostgresSessionStore(pool)
     assert isinstance(store, SessionStore)
 
@@ -121,7 +135,7 @@ def test_concrete_stores_expose_protocol_shape() -> None:
     test just guards against the two classes drifting away from the
     shared protocol (e.g. a renamed or dropped method).
     """
-    pg_pool = MagicMock()
+    pg_pool = mock_of[AsyncConnectionPool]()
     sqlite_db = mock_of[Connection]()
     pg_store = PostgresSessionStore(pg_pool)
     sqlite_store = SqliteSessionStore(
@@ -155,7 +169,7 @@ async def test_create_executes_insert() -> None:
     cursor = _FakeCursor()
     conn = _FakeConnection([cursor])
     pool = _FakePool(conn)
-    store = PostgresSessionStore(pool)  # type: ignore[arg-type]
+    store = _store(pool)
 
     await store.save(_make_session())
 
@@ -181,7 +195,7 @@ async def test_get_returns_session_when_row_present() -> None:
     cursor = _FakeCursor(fetch_rows=[row])
     conn = _FakeConnection([cursor])
     pool = _FakePool(conn)
-    store = PostgresSessionStore(pool)  # type: ignore[arg-type]
+    store = _store(pool)
 
     session = await store.get("sess-1")
 
@@ -194,7 +208,7 @@ async def test_get_returns_none_when_row_absent() -> None:
     cursor = _FakeCursor(fetch_rows=[])
     conn = _FakeConnection([cursor])
     pool = _FakePool(conn)
-    store = PostgresSessionStore(pool)  # type: ignore[arg-type]
+    store = _store(pool)
 
     assert await store.get("missing") is None
 
@@ -205,7 +219,7 @@ async def test_revoke_updates_revoked_set_when_row_affected() -> None:
     cursor.rowcount = 1
     conn = _FakeConnection([cursor])
     pool = _FakePool(conn)
-    store = PostgresSessionStore(pool)  # type: ignore[arg-type]
+    store = _store(pool)
 
     result = await store.revoke("sess-1")
 
@@ -219,7 +233,7 @@ async def test_revoke_returns_false_when_no_row_affected() -> None:
     cursor.rowcount = 0
     conn = _FakeConnection([cursor])
     pool = _FakePool(conn)
-    store = PostgresSessionStore(pool)  # type: ignore[arg-type]
+    store = _store(pool)
 
     result = await store.revoke("missing")
 
@@ -233,7 +247,7 @@ async def test_load_revoked_populates_in_memory_set() -> None:
     cursor = _FakeCursor(fetch_rows=rows)
     conn = _FakeConnection([cursor])
     pool = _FakePool(conn)
-    store = PostgresSessionStore(pool)  # type: ignore[arg-type]
+    store = _store(pool)
 
     await store.load_revoked()
 
@@ -264,7 +278,7 @@ async def test_enforce_session_limit_revokes_oldest() -> None:
     revoke_cursor.rowcount = 1
     conn = _FakeConnection([list_cursor, revoke_cursor])
     pool = _FakePool(conn)
-    store = PostgresSessionStore(pool)  # type: ignore[arg-type]
+    store = _store(pool)
     # Stub revoke so we do not need to re-supply cursors for it.
     store.revoke = AsyncMock(return_value=True)  # type: ignore[method-assign]
 
@@ -279,7 +293,7 @@ async def test_enforce_session_limit_noop_when_within_cap() -> None:
     cursor = _FakeCursor(fetch_rows=[])
     conn = _FakeConnection([cursor])
     pool = _FakePool(conn)
-    store = PostgresSessionStore(pool)  # type: ignore[arg-type]
+    store = _store(pool)
 
     revoked = await store.enforce_session_limit("user-1", max_sessions=5)
 
@@ -300,7 +314,7 @@ class _RaisingCursor(_FakeCursor):
 
 def _raising_store() -> PostgresSessionStore:
     conn = _FakeConnection([_RaisingCursor(), _RaisingCursor()])
-    return PostgresSessionStore(_FakePool(conn))  # type: ignore[arg-type]
+    return _store(_FakePool(conn))
 
 
 async def test_save_translates_psycopg_error_to_query_error() -> None:
@@ -339,6 +353,6 @@ async def test_cleanup_expired_translates_psycopg_error_to_query_error() -> None
 )
 async def test_list_items_rejects_invalid_pagination(limit: int, offset: int) -> None:
     """Out-of-range pagination args raise ``QueryError`` before any I/O."""
-    store = PostgresSessionStore(_FakePool(_FakeConnection([])))  # type: ignore[arg-type]
+    store = _store(_FakePool(_FakeConnection([])))
     with pytest.raises(QueryError):
         await store.list_items(limit=limit, offset=offset)

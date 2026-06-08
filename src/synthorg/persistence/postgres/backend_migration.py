@@ -6,10 +6,11 @@ Owns ``migrate``, ``_apply_timescaledb_setup``, and
 backend.
 """
 
-from typing import TYPE_CHECKING
+import asyncio
 
 import psycopg
 from psycopg.rows import TupleRow
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger, safe_error_description
@@ -23,13 +24,7 @@ from synthorg.observability.events.persistence.timescaledb import (
     PERSISTENCE_TIMESCALEDB_UNAVAILABLE,
 )
 from synthorg.persistence import migrations
-
-if TYPE_CHECKING:
-    import asyncio
-
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.persistence.config import PostgresConfig
+from synthorg.persistence.config import PostgresConfig
 
 logger = get_logger(__name__)
 

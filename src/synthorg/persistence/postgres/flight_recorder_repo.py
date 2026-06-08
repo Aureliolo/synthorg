@@ -6,11 +6,11 @@ Postgres sibling of ``persistence/sqlite/flight_recorder_repo.py``.
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
@@ -30,9 +30,6 @@ from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameAggregate,
     FlightRecorderFrameFilterSpec,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

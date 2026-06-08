@@ -1,13 +1,15 @@
 """Postgres repository implementation for security audit entries."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.audit_entry import (
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
@@ -20,15 +22,8 @@ from synthorg.persistence._shared.audit import (
     classify_audit_save_error,
     row_to_audit_entry,
 )
-from synthorg.security.models import AuditVerdictStr
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.approval.enums import ApprovalRiskLevel
-    from synthorg.core.types import NotBlankStr
-    from synthorg.persistence.audit_protocol import AuditFilterSpec
-    from synthorg.security.models import AuditEntry
+from synthorg.persistence.audit_protocol import AuditFilterSpec
+from synthorg.security.models import AuditEntry, AuditVerdictStr
 
 logger = get_logger(__name__)
 

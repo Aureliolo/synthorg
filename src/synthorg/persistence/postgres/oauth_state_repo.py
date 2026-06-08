@@ -6,10 +6,10 @@ table.  States are short-lived and consumed once on callback;
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -28,10 +28,6 @@ from synthorg.persistence._shared import (
     normalize_utc,
     validate_pagination_args,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
 
 logger = get_logger(__name__)
 

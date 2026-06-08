@@ -13,8 +13,6 @@ scales linearly with the repository count and the
 ``_require_connected`` contract is uniform across them all.
 """
 
-from typing import TYPE_CHECKING
-
 from psycopg_pool import AsyncConnectionPool
 
 from synthorg.budget.config import BudgetConfig
@@ -24,13 +22,78 @@ from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.core.role import Role
 from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.hr.evaluation.config import EvaluationConfig
+from synthorg.hr.persistence_protocol import (
+    CollaborationMetricRepository,
+    LifecycleEventRepository,
+    TaskMetricRepository,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence.backend import (
     PERSISTENCE_BACKEND_NOT_CONNECTED,
 )
+from synthorg.persistence.agent_state_protocol import AgentStateRepository
+from synthorg.persistence.artifact_protocol import ArtifactRepository
+from synthorg.persistence.audit_protocol import AuditRepository
+from synthorg.persistence.auth_protocol import (
+    RefreshTokenRepository,
+    SessionRepository,
+)
+from synthorg.persistence.ceremony_scheduler_state_protocol import (
+    CeremonySchedulerStateRepository,
+)
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,
+    HeartbeatRepository,
+)
+from synthorg.persistence.circuit_breaker_protocol import (
+    CircuitBreakerStateRepository,
+)
+from synthorg.persistence.code_execution_protocol import (
+    CodeExecutionRecordRepository,
+)
+from synthorg.persistence.codebase_structure_map_protocol import (
+    CodebaseStructureMapRepository,
+)
+from synthorg.persistence.connection_protocol import (
+    ConnectionRepository,
+    ConnectionSecretRepository,
+    OAuthStateRepository,
+    WebhookReceiptRepository,
+)
+from synthorg.persistence.cost_record_protocol import CostRecordRepository
+from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
+from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.deliverable_receipt_protocol import (
+    DeliverableReceiptRepository,
+)
+from synthorg.persistence.docs_protocol import DocsRepository
 from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,
     FineTuneRunRepository,
+)
+from synthorg.persistence.flight_recorder_protocol import (
+    FlightRecorderFrameRepository,
+)
+from synthorg.persistence.idempotency_protocol import IdempotencyRepository
+from synthorg.persistence.knowledge_protocol import (
+    ChunkProvenanceRepository,
+    KnowledgeSourceRepository,
+)
+from synthorg.persistence.knowledge_usage_protocol import (
+    KnowledgeUsageRecordRepository,
+)
+from synthorg.persistence.mcp_protocol import McpInstallationRepository
+from synthorg.persistence.meeting_cooldown_protocol import (
+    MeetingCooldownRepository,
+)
+from synthorg.persistence.memory_protocol import OrgFactRepository
+from synthorg.persistence.message_protocol import MessageRepository
+from synthorg.persistence.ontology_protocol import (
+    OntologyDriftReportRepository,
+    OntologyEntityRepository,
+)
+from synthorg.persistence.parked_context_protocol import (
+    ParkedContextRepository,
 )
 from synthorg.persistence.postgres.connection_repo import (
     PostgresConnectionRepository,
@@ -93,118 +156,51 @@ from synthorg.persistence.postgres.training_result_repo import (
 from synthorg.persistence.postgres.webhook_receipt_repo import (
     PostgresWebhookReceiptRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.persistence_protocol import (
-        CollaborationMetricRepository,
-        LifecycleEventRepository,
-        TaskMetricRepository,
-    )
-    from synthorg.persistence.agent_state_protocol import AgentStateRepository
-    from synthorg.persistence.artifact_protocol import ArtifactRepository
-    from synthorg.persistence.audit_protocol import AuditRepository
-    from synthorg.persistence.auth_protocol import (
-        RefreshTokenRepository,
-        SessionRepository,
-    )
-    from synthorg.persistence.ceremony_scheduler_state_protocol import (
-        CeremonySchedulerStateRepository,
-    )
-    from synthorg.persistence.checkpoint_protocol import (
-        CheckpointRepository,
-        HeartbeatRepository,
-    )
-    from synthorg.persistence.circuit_breaker_protocol import (
-        CircuitBreakerStateRepository,
-    )
-    from synthorg.persistence.code_execution_protocol import (
-        CodeExecutionRecordRepository,
-    )
-    from synthorg.persistence.codebase_structure_map_protocol import (
-        CodebaseStructureMapRepository,
-    )
-    from synthorg.persistence.connection_protocol import (
-        ConnectionRepository,
-        ConnectionSecretRepository,
-        OAuthStateRepository,
-        WebhookReceiptRepository,
-    )
-    from synthorg.persistence.cost_record_protocol import CostRecordRepository
-    from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
-    from synthorg.persistence.decision_protocol import DecisionRepository
-    from synthorg.persistence.deliverable_receipt_protocol import (
-        DeliverableReceiptRepository,
-    )
-    from synthorg.persistence.docs_protocol import DocsRepository
-    from synthorg.persistence.flight_recorder_protocol import (
-        FlightRecorderFrameRepository,
-    )
-    from synthorg.persistence.idempotency_protocol import IdempotencyRepository
-    from synthorg.persistence.knowledge_protocol import (
-        ChunkProvenanceRepository,
-        KnowledgeSourceRepository,
-    )
-    from synthorg.persistence.knowledge_usage_protocol import (
-        KnowledgeUsageRecordRepository,
-    )
-    from synthorg.persistence.mcp_protocol import McpInstallationRepository
-    from synthorg.persistence.meeting_cooldown_protocol import (
-        MeetingCooldownRepository,
-    )
-    from synthorg.persistence.memory_protocol import OrgFactRepository
-    from synthorg.persistence.message_protocol import MessageRepository
-    from synthorg.persistence.ontology_protocol import (
-        OntologyDriftReportRepository,
-        OntologyEntityRepository,
-    )
-    from synthorg.persistence.parked_context_protocol import (
-        ParkedContextRepository,
-    )
-    from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
-    from synthorg.persistence.preset_protocol import PersonalityPresetRepository
-    from synthorg.persistence.principle_override_protocol import (
-        PrincipleOverrideRepository,
-    )
-    from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
-    from synthorg.persistence.project_cost_aggregate_protocol import (
-        ProjectCostAggregateRepository,
-    )
-    from synthorg.persistence.project_environment_protocol import (
-        ProjectEnvironmentRepository,
-    )
-    from synthorg.persistence.project_protocol import ProjectRepository
-    from synthorg.persistence.project_workspace_protocol import (
-        ProjectWorkspaceRepository,
-    )
-    from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
-    from synthorg.persistence.red_team_report_protocol import (
-        RedTeamReportArchiveRepository,
-    )
-    from synthorg.persistence.research_protocol import ResearchRunRepository
-    from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
-    from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
-    from synthorg.persistence.settings_protocol import SettingsRepository
-    from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
-    from synthorg.persistence.subworkflow_protocol import SubworkflowRepository
-    from synthorg.persistence.task_protocol import TaskRepository
-    from synthorg.persistence.tracked_container_protocol import (
-        TrackedContainerRepository,
-    )
-    from synthorg.persistence.training_protocol import (
-        TrainingPlanRepository,
-        TrainingResultRepository,
-    )
-    from synthorg.persistence.user_protocol import (
-        ApiKeyRepository,
-        UserRepository,
-    )
-    from synthorg.persistence.version_protocol import VersionRepository
-    from synthorg.persistence.workflow_definition_protocol import (
-        WorkflowDefinitionRepository,
-    )
-    from synthorg.persistence.workflow_execution_protocol import (
-        WorkflowExecutionRepository,
-    )
+from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
+from synthorg.persistence.preset_protocol import PersonalityPresetRepository
+from synthorg.persistence.principle_override_protocol import (
+    PrincipleOverrideRepository,
+)
+from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
+from synthorg.persistence.project_cost_aggregate_protocol import (
+    ProjectCostAggregateRepository,
+)
+from synthorg.persistence.project_environment_protocol import (
+    ProjectEnvironmentRepository,
+)
+from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.project_workspace_protocol import (
+    ProjectWorkspaceRepository,
+)
+from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
+from synthorg.persistence.red_team_report_protocol import (
+    RedTeamReportArchiveRepository,
+)
+from synthorg.persistence.research_protocol import ResearchRunRepository
+from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
+from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
+from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
+from synthorg.persistence.subworkflow_protocol import SubworkflowRepository
+from synthorg.persistence.task_protocol import TaskRepository
+from synthorg.persistence.tracked_container_protocol import (
+    TrackedContainerRepository,
+)
+from synthorg.persistence.training_protocol import (
+    TrainingPlanRepository,
+    TrainingResultRepository,
+)
+from synthorg.persistence.user_protocol import (
+    ApiKeyRepository,
+    UserRepository,
+)
+from synthorg.persistence.version_protocol import VersionRepository
+from synthorg.persistence.workflow_definition_protocol import (
+    WorkflowDefinitionRepository,
+)
+from synthorg.persistence.workflow_execution_protocol import (
+    WorkflowExecutionRepository,
+)
 
 logger = get_logger(__name__)
 

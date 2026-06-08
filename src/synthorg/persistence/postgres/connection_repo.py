@@ -9,10 +9,9 @@ Mutation audit logging stays at the service layer
 per the persistence-boundary rule.
 """
 
-from typing import TYPE_CHECKING
-
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.resilience_config import RateLimiterConfig
@@ -40,10 +39,6 @@ from synthorg.persistence._shared import (
     validate_pagination_args,
 )
 from synthorg.persistence.connection_protocol import ConnectionFilterSpec
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
 
 logger = get_logger(__name__)
 

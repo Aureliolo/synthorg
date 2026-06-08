@@ -1,7 +1,7 @@
 """Write-path mixin for the Postgres approval repository."""
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import psycopg
 
@@ -15,9 +15,6 @@ from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence.postgres.approval_repo._base import _ApprovalRepoBase
 from synthorg.persistence.postgres.approval_repo._marshalling import item_save_params
 from synthorg.persistence.postgres.approval_repo._sql import APPROVALS_UPSERT_SQL
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 logger = get_logger(__name__)
 
