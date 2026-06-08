@@ -8,12 +8,12 @@ import json
 import re
 from typing import Any
 
-from synthorg.core.enums import ConflictType
 from synthorg.engine.prompt_safety import (
     TAG_CODE_DIFF,
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.models import MergeConflict
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (

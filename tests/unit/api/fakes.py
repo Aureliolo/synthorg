@@ -15,7 +15,6 @@ from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.core.artifact import Artifact
 from synthorg.core.auth.models import ApiKey
 from synthorg.core.codebase_structure_map import CodebaseStructureMap
-from synthorg.core.enums import ExecutionStatus
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     QueryError,
@@ -28,7 +27,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import DocMetadata
-from synthorg.engine.agent_state import AgentRuntimeState
+from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
 from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent

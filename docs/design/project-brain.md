@@ -102,8 +102,9 @@ collections are tuples; derived values use `@computed_field`. Timestamps are
 
 All brain-specific enums (`BrainEntryKind`, `BrainEntryStatus`, `CitationKind`,
 and the per-kind enums such as `BlockerSeverity`, `RiskLevel`, `DependencyKind`)
-live in the feature package, not in `core/enums.py`. Only the single new
-`MemoryCategory.PROJECT_BRAIN` member is added to `core/memory_enums.py`.
+live in the feature package, co-located with the models that branch on them.
+Only the single new `MemoryCategory.PROJECT_BRAIN` member is added to
+`core/memory_enums.py`.
 
 ### Envelope
 

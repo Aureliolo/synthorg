@@ -3,7 +3,6 @@
 import pytest
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import AgentStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine._validation import (
@@ -12,6 +11,7 @@ from synthorg.engine._validation import (
     validate_task,
 )
 from synthorg.engine.errors import ExecutionStateError
+from synthorg.hr.enums import AgentStatus
 
 
 @pytest.mark.unit

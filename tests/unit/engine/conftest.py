@@ -13,13 +13,6 @@ from synthorg.core.agent import (
     SkillSet,
 )
 from synthorg.core.company import Company, CompanyConfig, Department
-from synthorg.core.enums import (
-    AgentStatus,
-    ConflictEscalation,
-    CreativityLevel,
-    DepartmentName,
-    RiskTolerance,
-)
 from synthorg.core.role import Authority, Role, Skill
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import (
@@ -49,12 +42,15 @@ from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.task_execution import TaskExecution
+from synthorg.engine.workspace.enums import ConflictEscalation
 from synthorg.engine.workspace.models import (
     MergeConflict,
     MergeResult,
     Workspace,
 )
+from synthorg.hr.enums import AgentStatus, CreativityLevel, RiskTolerance
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.organization.enums import DepartmentName
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (

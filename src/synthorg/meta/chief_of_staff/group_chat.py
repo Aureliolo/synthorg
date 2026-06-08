@@ -30,11 +30,14 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.budget.tracker import CostTracker
+from synthorg.communication.conversation.enums import (
+    ConversationRole,
+    ConversationStatus,
+)
 from synthorg.communication.meeting._token_tracker import TokenTracker
 from synthorg.communication.meeting.protocol import AgentCaller
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ConversationRole, ConversationStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.middleware.s1_constraints import AuthorityDeferenceGuard
 from synthorg.hr.registry import AgentRegistryService

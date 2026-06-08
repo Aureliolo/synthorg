@@ -77,7 +77,9 @@ async def reconcile_orphaned_conversational_intake(
             approval_store_type=type(approval_store).__name__,
         )
         return
-    from synthorg.core.enums import ConversationalProposalStatus  # noqa: PLC0415
+    from synthorg.communication.conversation.enums import (  # noqa: PLC0415
+        ConversationalProposalStatus,
+    )
     from synthorg.meta.chief_of_staff.enums import (  # noqa: PLC0415
         ConversationInviteStatus,
     )

@@ -7,11 +7,11 @@ import pytest
 from structlog.testing import capture_logs
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import AgentStatus
 from synthorg.core.role import Skill
 from synthorg.core.task_enums import Complexity
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.task_routing import (
     TASK_ROUTING_SCORER_INVALID_CONFIG,

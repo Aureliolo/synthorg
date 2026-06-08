@@ -9,9 +9,10 @@ post-draft lifecycle of a charter.
 
 from typing import TYPE_CHECKING
 
+from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.clock import Clock
-from synthorg.core.enums import CharterStatus, ConversationStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import CharterEditArgs, ProjectCharter
 from synthorg.meta.errors import (
     CharterNotEditableError,

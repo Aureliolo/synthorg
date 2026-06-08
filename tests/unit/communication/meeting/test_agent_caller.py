@@ -20,8 +20,8 @@ from synthorg.core.agent import (
     ModelConfig,
     PersonalityConfig,
 )
-from synthorg.core.enums import AgentStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.meeting import (

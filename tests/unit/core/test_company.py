@@ -16,7 +16,7 @@ from synthorg.core.company import (
     WorkflowHandoff,
     _identity_key,
 )
-from synthorg.core.enums import CompanyType
+from synthorg.organization.enums import CompanyType
 from synthorg.security.timeout.config import (
     DenyOnTimeoutConfig,
     WaitForeverConfig,

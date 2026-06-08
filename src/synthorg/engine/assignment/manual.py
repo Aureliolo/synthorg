@@ -9,7 +9,6 @@ forms are accepted.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import AgentStatus
 from synthorg.engine.assignment._shared import STRATEGY_NAME_MANUAL
 from synthorg.engine.assignment.models import (
     AssignmentCandidate,
@@ -17,6 +16,7 @@ from synthorg.engine.assignment.models import (
     AssignmentResult,
 )
 from synthorg.engine.errors import NoEligibleAgentError, TaskAssignmentError
+from synthorg.hr.enums import AgentStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_FAILED,

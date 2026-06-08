@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ConflictEscalation, ConflictType
+from synthorg.engine.workspace.enums import ConflictEscalation, ConflictType
 from synthorg.engine.workspace.models import (
     MergeConflict,
     MergeResult,

@@ -4,8 +4,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import ConflictEscalation, MergeOrder
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.enums import ConflictEscalation, MergeOrder
 
 
 class SemanticAnalysisConfig(BaseModel):

@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.core.enums import ConflictType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import WorkspaceMergeError, WorkspacePushError
+from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.git_backend import GitBackend, PushResult
 from synthorg.engine.workspace.models import (
     MergeConflict,

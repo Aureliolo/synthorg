@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.core.enums import ConflictType
 from synthorg.engine.workspace.config import (
     PlannerWorktreesConfig,
     SemanticAnalysisConfig,
 )
+from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.git_worktree import PlannerWorktreeStrategy
 from synthorg.engine.workspace.models import WorkspaceRequest
 from synthorg.engine.workspace.semantic_analyzer import AstSemanticAnalyzer

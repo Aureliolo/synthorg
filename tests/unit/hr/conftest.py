@@ -9,12 +9,11 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import AgentStatus
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.enums import FiringReason, HiringRequestStatus
+from synthorg.hr.enums import AgentStatus, FiringReason, HiringRequestStatus
 from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.models import CandidateCard, FiringRequest, HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService

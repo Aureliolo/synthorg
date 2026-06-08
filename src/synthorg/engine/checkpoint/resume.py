@@ -9,13 +9,13 @@ Used by ``AgentEngine`` to keep resume orchestration concise.
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import FailureCategory
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
+from synthorg.engine.recovery import FailureCategory
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.checkpoint import (

@@ -2,8 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import AgentStatus
-from synthorg.hr.enums import OnboardingStep
+from synthorg.hr.enums import AgentStatus, OnboardingStep
 from synthorg.hr.errors import OnboardingError
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService

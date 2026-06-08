@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import psycopg
 from psycopg.rows import dict_row
 
-from synthorg.core.enums import ConversationStatus
+from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.observability import get_logger, safe_error_description

@@ -10,6 +10,7 @@ See the Crash Recovery section of the Engine design page.
 """
 
 import json
+from enum import StrEnum
 from typing import Any, Final, Protocol, Self, runtime_checkable
 
 from pydantic import (
@@ -21,7 +22,6 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import FailureCategory
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr, validate_unique_strings
 from synthorg.engine.context import AgentContext
@@ -40,6 +40,25 @@ from synthorg.observability.events.execution import (
 )
 
 logger = get_logger(__name__)
+
+
+class FailureCategory(StrEnum):
+    """Machine-readable failure classification for recovery results.
+
+    Used by ``RecoveryResult`` to provide structured failure diagnosis
+    that enables smarter checkpoint reconciliation and task reassignment
+    routing.  ``UNKNOWN`` is the honest default for error messages that
+    cannot be confidently classified -- it is explicit rather than a
+    silent ``TOOL_FAILURE`` lie.
+    """
+
+    TOOL_FAILURE = "tool_failure"
+    STAGNATION = "stagnation"
+    BUDGET_EXCEEDED = "budget_exceeded"
+    QUALITY_GATE_FAILED = "quality_gate_failed"
+    TIMEOUT = "timeout"
+    DELEGATION_FAILED = "delegation_failed"
+    UNKNOWN = "unknown"
 
 
 # Keyword rules for inferring failure category from error messages.

@@ -28,13 +28,13 @@ from synthorg.core.company import (
     Team,
     WorkflowHandoff,
 )
-from synthorg.core.enums import DepartmentName
 from synthorg.core.memory_enums import MemoryLevel
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, CustomRole, Role, SeniorityInfo, Skill
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.organization.enums import DepartmentName
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.timeout.config import WaitForeverConfig
 from tests._shared import as_uuid, sid

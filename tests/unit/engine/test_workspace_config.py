@@ -3,11 +3,11 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ConflictEscalation, MergeOrder
 from synthorg.engine.workspace.config import (
     PlannerWorktreesConfig,
     WorkspaceIsolationConfig,
 )
+from synthorg.engine.workspace.enums import ConflictEscalation, MergeOrder
 
 # ---------------------------------------------------------------------------
 # PlannerWorktreesConfig

@@ -10,14 +10,13 @@ import pytest
 import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import FailureCategory
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.context import AgentContext
 from synthorg.engine.context_snapshot import AgentContextSnapshot
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
-from synthorg.engine.recovery import RecoveryResult
+from synthorg.engine.recovery import FailureCategory, RecoveryResult
 from synthorg.engine.task_execution import TaskExecution
 from synthorg.execution.turn import TurnRecord
 from synthorg.memory.models import MemoryStoreRequest

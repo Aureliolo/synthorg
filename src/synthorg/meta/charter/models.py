@@ -24,8 +24,8 @@ from pydantic import (
 )
 
 from synthorg.budget.currency import CurrencyCode
-from synthorg.core.enums import CharterStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.charter.enums import CharterStatus
 
 # ── Charter content building blocks ───────────────────────────────
 

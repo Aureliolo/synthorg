@@ -414,7 +414,7 @@ class TestValidateAsRootConfig:
 @pytest.mark.unit
 class TestCollectVariables:
     def test_extra_user_vars_passed_through(self) -> None:
-        from synthorg.core.enums import CompanyType
+        from synthorg.organization.enums import CompanyType
         from synthorg.templates.renderer import _collect_variables
         from synthorg.templates.schema import (
             CompanyTemplate,
@@ -516,7 +516,7 @@ class TestDepartmentPassthrough:
 
     def test_workflow_handoffs_passthrough(self) -> None:
         """Workflow handoffs pass through to config dict."""
-        from synthorg.core.enums import CompanyType
+        from synthorg.organization.enums import CompanyType
         from synthorg.templates.renderer import _build_config_dict
         from synthorg.templates.schema import (
             CompanyTemplate,
@@ -615,7 +615,7 @@ class TestBuildDepartmentsTypeValidation:
 class TestEscalationPathsPassthrough:
     def test_escalation_paths_included_in_config_dict(self) -> None:
         """Escalation paths pass through to config dict."""
-        from synthorg.core.enums import CompanyType
+        from synthorg.organization.enums import CompanyType
         from synthorg.templates.renderer import _build_config_dict
         from synthorg.templates.schema import (
             CompanyTemplate,

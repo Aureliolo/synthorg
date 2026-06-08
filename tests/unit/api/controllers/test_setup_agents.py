@@ -11,8 +11,8 @@ from synthorg.api.controllers.setup_agents import (
     match_and_assign_models,
 )
 from synthorg.core.domain_errors import ValidationError
-from synthorg.core.enums import CompanyType
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.organization.enums import CompanyType
 from synthorg.templates.schema import (
     CompanyTemplate,
     TemplateAgentConfig,

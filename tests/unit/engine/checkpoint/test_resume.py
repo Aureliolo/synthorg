@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import FailureCategory
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
@@ -14,6 +13,7 @@ from synthorg.engine.checkpoint.resume import (
 )
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
+from synthorg.engine.recovery import FailureCategory
 from synthorg.providers.enums import MessageRole
 
 if TYPE_CHECKING:

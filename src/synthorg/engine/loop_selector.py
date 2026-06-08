@@ -93,7 +93,7 @@ DEFAULT_AUTO_LOOP_RULES: tuple[AutoLoopRule, ...] = (
 )
 
 # Import-time completeness guard (follows _SENIORITY_ORDER pattern in
-# core/enums.py): ensures every Complexity member has a default rule.
+# hr/seniority.py): ensures every Complexity member has a default rule.
 _covered = {r.complexity for r in DEFAULT_AUTO_LOOP_RULES}
 _all_complexities = set(Complexity)
 if _covered != _all_complexities:

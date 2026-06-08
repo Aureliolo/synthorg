@@ -19,10 +19,10 @@ from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import InterventionKind
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.intervention import NoOpSupersessionProposer, SteeringService
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import (
     STEERING_INTAKE_KIND_KEY,
     STEERING_INTAKE_PROJECT_KEY,

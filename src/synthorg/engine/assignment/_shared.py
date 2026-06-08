@@ -7,12 +7,12 @@ are shared by all scorer-based strategies.
 
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import AgentStatus
 from synthorg.engine.assignment.models import (
     AssignmentCandidate,
     AssignmentRequest,
 )
 from synthorg.engine.decomposition.models import SubtaskDefinition
+from synthorg.hr.enums import AgentStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_AGENT_SCORED,

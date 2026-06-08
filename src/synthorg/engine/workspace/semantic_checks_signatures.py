@@ -8,7 +8,7 @@ signature. Shares the AST primitives in :mod:`semantic_checks`.
 import ast
 from typing import TYPE_CHECKING, Final, NamedTuple
 
-from synthorg.core.enums import ConflictType
+from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.models import MergeConflict
 from synthorg.engine.workspace.semantic_checks import _safe_parse, _top_level_names
 

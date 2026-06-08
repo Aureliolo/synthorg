@@ -16,7 +16,7 @@ from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import ConversationalProposalStatus
+from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
 from synthorg.persistence._generics import (

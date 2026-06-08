@@ -4,7 +4,7 @@ from typing import Any, cast
 
 import pytest
 
-from synthorg.core.enums import ConflictType
+from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.semantic_llm_prompt import (
     build_review_message,
     build_semantic_review_tool,

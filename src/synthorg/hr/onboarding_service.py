@@ -7,9 +7,8 @@ automatic activation upon checklist completion.
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import AgentStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.enums import OnboardingStep
+from synthorg.hr.enums import AgentStatus, OnboardingStep
 from synthorg.hr.errors import OnboardingError
 from synthorg.hr.models import OnboardingChecklist, OnboardingStepRecord
 from synthorg.observability import get_logger

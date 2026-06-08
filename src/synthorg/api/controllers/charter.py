@@ -35,9 +35,9 @@ from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import CharterStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import (
     BudgetEnvelope,
     CharterApprovalResult,

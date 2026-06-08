@@ -15,7 +15,10 @@ from typing import cast
 import aiosqlite
 import pytest
 
-from synthorg.core.enums import ConversationRole, ConversationStatus
+from synthorg.communication.conversation.enums import (
+    ConversationRole,
+    ConversationStatus,
+)
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import ConversationKind

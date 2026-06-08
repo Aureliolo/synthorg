@@ -13,8 +13,8 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Final
 
-from synthorg.core.enums import DecisionOutcome
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decisions import DecisionOutcome
 
 _MAX_PAGE_LIMIT: Final[int] = 1_000
 

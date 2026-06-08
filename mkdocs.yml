@@ -204,6 +204,7 @@ nav:
       - api/index.md
       - Core: api/core.md
       - Engine: api/engine.md
+      - Meta: api/meta.md
       - Providers: api/providers.md
       - Communication: api/communication.md
       - Memory: api/memory.md
@@ -213,6 +214,7 @@ nav:
       - Security: api/security.md
       - Budget: api/budget.md
       - HR: api/hr.md
+      - Organisation: api/organization.md
       - Tools: api/tools.md
       - API Layer: api/layer.md
       - Config: api/config.md

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-from synthorg.core.enums import ConflictType
+from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.models import MergeConflict
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (

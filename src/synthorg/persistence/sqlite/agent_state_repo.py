@@ -6,10 +6,9 @@ import sqlite3
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.enums import ExecutionStatus
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.agent_state import AgentRuntimeState
+from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.agent_state import (
     PERSISTENCE_AGENT_STATE_ACTIVE_QUERIED,

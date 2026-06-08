@@ -12,9 +12,9 @@ from pydantic import BaseModel
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.core.company import Company
-from synthorg.core.enums import DepartmentName
 from synthorg.core.role import Role
 from synthorg.hr.evaluation.config import EvaluationConfig
+from synthorg.organization.enums import DepartmentName
 from synthorg.versioning import VersionSnapshot, compute_content_hash
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers

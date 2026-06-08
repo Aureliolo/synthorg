@@ -6,7 +6,6 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import AgentStatus
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskType
@@ -18,6 +17,7 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid, sid
 

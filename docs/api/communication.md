@@ -7,6 +7,10 @@ search:
 
 Inter-agent messaging: bus, dispatcher, delegation, loop prevention, conflict resolution, and meeting protocols.
 
+## Conversation Enums
+
+::: synthorg.communication.conversation.enums
+
 ## Message
 
 ::: synthorg.communication.message

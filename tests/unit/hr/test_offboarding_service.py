@@ -8,11 +8,11 @@ import pytest
 
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message
-from synthorg.core.enums import AgentStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.archival_protocol import ArchivalResult
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import (
     AgentNotFoundError,
     MemoryArchivalError,

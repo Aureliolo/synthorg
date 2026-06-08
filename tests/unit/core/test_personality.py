@@ -3,14 +3,11 @@
 import pytest
 
 from synthorg.core.agent import PersonalityConfig
-from synthorg.core.enums import (
-    CollaborationPreference,
-    ConflictApproach,
-)
 from synthorg.core.personality import (
     compute_compatibility,
     compute_team_compatibility,
 )
+from synthorg.hr.enums import CollaborationPreference, ConflictApproach
 
 
 @pytest.mark.unit

@@ -6,7 +6,7 @@ import pytest
 from pydantic import JsonValue
 
 from synthorg.core.agent import PersonalityConfig
-from synthorg.core.enums import (
+from synthorg.hr.enums import (
     CollaborationPreference,
     ConflictApproach,
     DecisionMakingStyle,

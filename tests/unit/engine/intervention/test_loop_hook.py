@@ -5,9 +5,9 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import InterventionKind
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.loop_hook import (
     build_steering_message,
     check_steering,

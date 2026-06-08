@@ -9,9 +9,9 @@ at the MCP boundary rather than slipping into the service write path.
 
 from pydantic import Field
 
-from synthorg.core.enums import InterventionKind
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention import SupersedeMode
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.meta.mcp.domains._common_args import AdminGuardrailFields, _ArgsBase
 
 

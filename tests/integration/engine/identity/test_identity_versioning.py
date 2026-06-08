@@ -18,9 +18,8 @@ import aiosqlite
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import DecisionOutcome
 from synthorg.core.task import Task
-from synthorg.engine.decisions import DecisionRecord
+from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence import migrations

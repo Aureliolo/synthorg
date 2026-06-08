@@ -2,7 +2,8 @@
 
 import pytest
 
-from synthorg.core.enums import DecisionOutcome, FailureCategory
+from synthorg.engine.decisions import DecisionOutcome
+from synthorg.engine.recovery import FailureCategory
 
 
 @pytest.mark.unit

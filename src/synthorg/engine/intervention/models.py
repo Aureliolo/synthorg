@@ -26,8 +26,8 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import InterventionKind
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.intervention.enums import InterventionKind
 
 #: Umbrella tag every steering brain entry carries for the inbox projection.
 STEERING_TAG: Final[NotBlankStr] = NotBlankStr("steering")

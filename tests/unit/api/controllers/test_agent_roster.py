@@ -14,7 +14,7 @@ from synthorg.api.controllers.agent_roster import (
     AgentRosterController,
 )
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import AgentStatus
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from tests._shared import LoopAsyncClient, make_app_state
 from tests.unit.meta.chief_of_staff.propose_fakes import build_registry, make_identity

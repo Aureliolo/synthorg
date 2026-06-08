@@ -8,13 +8,26 @@ is independent of the heavier checkpoint system.
 """
 
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.currency import CurrencyCode
-from synthorg.core.enums import ExecutionStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
+
+
+class ExecutionStatus(StrEnum):
+    """Runtime execution status of an agent.
+
+    Tracks whether an agent is currently executing, paused (e.g. waiting
+    for approval), or idle.  Used by ``AgentRuntimeState`` for dashboard
+    queries and graceful-shutdown discovery.
+    """
+
+    IDLE = "idle"
+    EXECUTING = "executing"
+    PAUSED = "paused"
 
 
 class AgentRuntimeState(BaseModel):

@@ -17,10 +17,11 @@ from typing import TYPE_CHECKING, TypeGuard
 
 from synthorg._core.features import require_service
 from synthorg.approval.enums import ApprovalSource, ApprovalStatus
+from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ConversationalProposalStatus, InterventionKind
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import (
     STEERING_INTAKE_KIND_KEY,
     STEERING_INTAKE_PROJECT_KEY,

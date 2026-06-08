@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ConflictType
 from synthorg.engine.workspace.config import SemanticAnalysisConfig
+from synthorg.engine.workspace.enums import ConflictType
 
 # Analyzer no longer reads from disk -- merged_sources are passed directly.
 from synthorg.engine.workspace.models import MergeConflict, Workspace

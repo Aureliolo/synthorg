@@ -200,7 +200,7 @@ async def test_dispatcher_builds_claim_without_task_snapshot() -> None:
 def test_queue_config_requires_distributed_bus_via_root_config() -> None:
     """queue.enabled + internal bus should fail RootConfig validation."""
     from synthorg.config.schema import RootConfig
-    from synthorg.core.enums import CompanyType
+    from synthorg.organization.enums import CompanyType
 
     with pytest.raises(
         ValueError,

@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
 """No-central-junk-drawer gate.
 
-Two modules in ``src/synthorg/`` accumulate everything from unrelated
-domains today:
+Two enforcement modes for the central junk-drawer modules:
 
-* ``src/synthorg/core/enums.py``: 57 StrEnums across 8 domains.
+* ``src/synthorg/core/enums.py`` has been fully dissolved into the
+  per-feature ``enums.py`` modules; it MUST NOT exist. Recreating it
+  fails the build.
 * ``src/synthorg/api/state.py``: the giant ``AppState`` attribute-bag
-  via ``__slots__``.
-
-This gate locks today's counts via ``scripts/_central_junk_drawer_baseline.json``
-and fails the build if any count grows. Net-decreases are allowed.
+  via ``__slots__`` is still being dissolved; its count is locked via
+  ``scripts/_central_junk_drawer_baseline.json`` and may shrink but not
+  grow.
 
 Counting rules:
 
-* enums.py: top-level ``ClassDef`` nodes.
 * api/state.py: aggregate length of every class body's ``__slots__``
   tuple/list.
-
-These files are being dissolved into their feature directories; this
-gate exists so no new entries accumulate in them until then.
 
 Usage::
 
@@ -38,6 +34,9 @@ _BASELINE_REL = Path("scripts") / "_central_junk_drawer_baseline.json"
 
 _ENUMS_REL: Final[str] = "src/synthorg/core/enums.py"
 _STATE_REL: Final[str] = "src/synthorg/api/state.py"
+
+# Dissolved junk-drawer modules that must never be recreated.
+_MUST_NOT_EXIST: Final[tuple[str, ...]] = (_ENUMS_REL,)
 
 _BASELINE_DESCRIPTION = (
     "Frozen counts of central junk-drawer modules. Each entry under "
@@ -70,14 +69,6 @@ def _parse_or_empty(source: str) -> ast.Module | None:
         return ast.parse(source)
     except SyntaxError:
         return None
-
-
-def count_top_level_classes(source: str) -> int:
-    """Count module-level ``ClassDef`` nodes; nested defs are excluded."""
-    tree = _parse_or_empty(source)
-    if tree is None:
-        return 0
-    return sum(1 for node in tree.body if isinstance(node, ast.ClassDef))
 
 
 def count_state_slots(source: str) -> int:
@@ -122,11 +113,6 @@ def _read_source(project_root: Path, rel: str) -> str:
 def _current_counts(project_root: Path) -> dict[str, dict[str, int]]:
     """Compute today's counts for every tracked junk-drawer file."""
     return {
-        _ENUMS_REL: {
-            "top_level_classes": count_top_level_classes(
-                _read_source(project_root, _ENUMS_REL)
-            ),
-        },
         _STATE_REL: {
             "state_slots": count_state_slots(_read_source(project_root, _STATE_REL)),
         },
@@ -175,6 +161,11 @@ def check(*, project_root: Path, baseline_path: Path) -> list[Violation]:
     return sorted(violations, key=lambda v: (v.path, v.metric))
 
 
+def check_must_not_exist(*, project_root: Path) -> list[str]:
+    """Return any dissolved junk-drawer paths that still exist."""
+    return [rel for rel in _MUST_NOT_EXIST if (project_root / rel).is_file()]
+
+
 def write_baseline(*, project_root: Path, baseline_path: Path) -> None:
     """Regenerate the baseline file from the current tree."""
     payload = {
@@ -220,20 +211,39 @@ def main(argv: list[str] | None = None) -> int:
         if args.baseline is not None
         else project_root / _BASELINE_REL
     )
+    resurrected = check_must_not_exist(project_root=project_root)
     if args.update_baseline:
+        if resurrected:
+            print(
+                "Refusing --update-baseline: dissolved modules must not exist:",
+                file=sys.stderr,
+            )
+            for rel in resurrected:
+                print(f"  {rel}", file=sys.stderr)
+            return 1
         write_baseline(project_root=project_root, baseline_path=baseline_path)
         return 0
     violations = check(project_root=project_root, baseline_path=baseline_path)
-    if not violations:
+    if not resurrected and not violations:
         return 0
-    print("Central junk-drawer counts must not grow. Violations:", file=sys.stderr)
-    for violation in violations:
-        print(f"  {violation.render()}", file=sys.stderr)
-    print(
-        "\nPut new constants / enums / state attributes in their feature "
-        "directory, not in the central junk-drawer files.",
-        file=sys.stderr,
-    )
+    if resurrected:
+        print("These dissolved junk-drawer modules must not exist:", file=sys.stderr)
+        for rel in resurrected:
+            print(f"  {rel}", file=sys.stderr)
+        print(
+            "\ncore/enums.py was dissolved into per-feature enums.py modules. "
+            "Put new enums in their feature directory, not in a central file.",
+            file=sys.stderr,
+        )
+    if violations:
+        print("Central junk-drawer counts must not grow. Violations:", file=sys.stderr)
+        for violation in violations:
+            print(f"  {violation.render()}", file=sys.stderr)
+        print(
+            "\nPut new constants / enums / state attributes in their feature "
+            "directory, not in the central junk-drawer files.",
+            file=sys.stderr,
+        )
     return 1
 
 

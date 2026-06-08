@@ -12,7 +12,6 @@ from synthorg.api.auth.service import AuthService
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import AgentStatus
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.attribution import (
     CoordinationResultWithAttribution,
@@ -23,6 +22,7 @@ from synthorg.engine.coordination.models import (
 )
 from synthorg.engine.errors import CoordinationPhaseError
 from synthorg.engine.task_engine import TaskEngine
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import (

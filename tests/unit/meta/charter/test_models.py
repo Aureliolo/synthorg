@@ -8,7 +8,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from synthorg.core.enums import CharterStatus
+from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import (
     BudgetEnvelope,
     CharterDraft,

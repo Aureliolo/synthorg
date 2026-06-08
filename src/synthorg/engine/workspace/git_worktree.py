@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import ConflictType
 from synthorg.engine.errors import (
     WorkspaceCleanupError,
     WorkspaceError,
@@ -24,6 +23,7 @@ from synthorg.engine.errors import (
 )
 from synthorg.engine.workspace._git_subprocess import run_git_subprocess
 from synthorg.engine.workspace.config import PlannerWorktreesConfig
+from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.models import (
     MergeConflict,
     MergeResult,

@@ -4,7 +4,7 @@
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import AgentStatus
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import AgentAlreadyRegisteredError, AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel

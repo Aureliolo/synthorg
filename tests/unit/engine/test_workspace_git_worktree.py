@@ -1129,7 +1129,7 @@ class TestRunSemanticAnalysis:
         self,
     ) -> None:
         """Logs a warning when semantic conflicts are detected."""
-        from synthorg.core.enums import ConflictType
+        from synthorg.engine.workspace.enums import ConflictType
         from synthorg.engine.workspace.models import MergeConflict
 
         conflict = MergeConflict(

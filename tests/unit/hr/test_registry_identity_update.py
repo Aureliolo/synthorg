@@ -14,7 +14,7 @@ import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import AgentStatus
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel

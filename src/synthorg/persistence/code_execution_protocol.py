@@ -9,8 +9,8 @@ so claimed test results always reconcile against a persisted record.
 
 The model lives here (alongside its protocol) so the code-runner tool
 imports it from persistence rather than from the feature package above
-it. ``CodeExecutionPurpose`` is defined here rather than in
-``core/enums.py`` because that module is a net-shrink god-module.
+it. ``CodeExecutionPurpose`` is defined here too, co-located with the
+protocol that consumes it.
 """
 
 from datetime import UTC, datetime

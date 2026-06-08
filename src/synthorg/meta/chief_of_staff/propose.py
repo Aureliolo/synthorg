@@ -19,12 +19,12 @@ from synthorg.approval.protocol import (
 )
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
-from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import (
+from synthorg.communication.conversation.enums import (
     ConversationRole,
     ConversationStatus,
 )
+from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted

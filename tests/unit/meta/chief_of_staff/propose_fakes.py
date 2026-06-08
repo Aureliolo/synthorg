@@ -10,17 +10,17 @@ from datetime import UTC, date, datetime
 from uuid import uuid4
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.communication.conversation.enums import (
+    ConversationalProposalStatus,
+    ConversationStatus,
+)
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
     PersonalityConfig,
 )
-from synthorg.core.enums import (
-    AgentStatus,
-    ConversationalProposalStatus,
-    ConversationStatus,
-)
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig

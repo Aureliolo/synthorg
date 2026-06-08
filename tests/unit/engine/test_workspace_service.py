@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import ConflictType
 from synthorg.engine.errors import WorkspaceCleanupError, WorkspaceSetupError
 from synthorg.engine.workspace.config import (
     WorkspaceIsolationConfig,
 )
+from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.models import (
     MergeConflict,
     MergeResult,

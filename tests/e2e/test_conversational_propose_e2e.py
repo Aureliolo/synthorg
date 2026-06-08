@@ -33,13 +33,12 @@ from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
-from synthorg.config.schema import RootConfig
-from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import (
-    AgentStatus,
+from synthorg.communication.conversation.enums import (
     ConversationalProposalStatus,
     ConversationStatus,
 )
+from synthorg.config.schema import RootConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -48,6 +47,7 @@ from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig

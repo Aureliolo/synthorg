@@ -100,11 +100,12 @@ mandatory_rules:
     # primary gate per MANDATORY paragraph):
     #
     #   scripts/check_no_growth_in_god_modules.py
-    #     - operational corollary of the size budget: the explicit
-    #       allowlist (now core/enums.py) must net-shrink.
+    #     - operational corollary of the size budget: every file in the
+    #       explicit allowlist (now empty; core/enums.py was deleted)
+    #       must net-shrink.
     #   scripts/check_no_central_junk_drawer.py
-    #     - blocks new entries in core/enums.py and AppState __slots__
-    #       while they dissolve into their feature directories.
+    #     - core/enums.py must not exist (dissolved into feature
+    #       directories); AppState __slots__ may shrink but not grow.
     #   scripts/check_no_circular_imports.py
     #   scripts/check_module_depth.py
     #   scripts/check_protocol_documented.py

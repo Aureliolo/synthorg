@@ -38,8 +38,8 @@
     },
     "src/synthorg/api/controllers/_conversational_resume.py": {
       "cap": 600,
-      "loc": 544,
-      "ratio": 0.907,
+      "loc": 548,
+      "ratio": 0.913,
       "tier": "orchestrator"
     },
     "src/synthorg/api/controllers/_department_health.py": {
@@ -56,8 +56,8 @@
     },
     "src/synthorg/api/controllers/agents.py": {
       "cap": 500,
-      "loc": 548,
-      "ratio": 1.096,
+      "loc": 547,
+      "ratio": 1.094,
       "tier": "code"
     },
     "src/synthorg/api/controllers/analytics.py": {
@@ -374,8 +374,8 @@
     },
     "src/synthorg/core/role_catalog.py": {
       "cap": 500,
-      "loc": 414,
-      "ratio": 0.828,
+      "loc": 415,
+      "ratio": 0.83,
       "tier": "code"
     },
     "src/synthorg/docs_engine/service.py": {
@@ -638,8 +638,8 @@
     },
     "src/synthorg/hr/hiring_service.py": {
       "cap": 500,
-      "loc": 496,
-      "ratio": 0.992,
+      "loc": 495,
+      "ratio": 0.99,
       "tier": "code"
     },
     "src/synthorg/hr/performance/models.py": {
@@ -824,8 +824,8 @@
     },
     "src/synthorg/meta/chief_of_staff/group_chat.py": {
       "cap": 600,
-      "loc": 507,
-      "ratio": 0.845,
+      "loc": 510,
+      "ratio": 0.85,
       "tier": "service"
     },
     "src/synthorg/meta/chief_of_staff/models.py": {
@@ -1196,8 +1196,8 @@
     },
     "src/synthorg/security/config.py": {
       "cap": 500,
-      "loc": 551,
-      "ratio": 1.102,
+      "loc": 549,
+      "ratio": 1.098,
       "tier": "code"
     },
     "src/synthorg/security/llm_evaluator.py": {
@@ -1365,6 +1365,7 @@
     "synthorg.budget.tracker": 72,
     "synthorg.client.models": 34,
     "synthorg.communication.bus_protocol": 30,
+    "synthorg.communication.conversation.enums": 20,
     "synthorg.communication.enums": 29,
     "synthorg.communication.errors": 23,
     "synthorg.communication.mcp_errors": 25,
@@ -1379,7 +1380,6 @@
     "synthorg.core.clock": 154,
     "synthorg.core.critical_errors": 471,
     "synthorg.core.domain_errors": 176,
-    "synthorg.core.enums": 76,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 47,
     "synthorg.core.normalization": 72,
@@ -1399,7 +1399,7 @@
     "synthorg.engine.workflow.definition": 37,
     "synthorg.engine.workflow.enums": 33,
     "synthorg.execution.turn": 29,
-    "synthorg.hr.enums": 22,
+    "synthorg.hr.enums": 33,
     "synthorg.hr.performance.models": 47,
     "synthorg.hr.performance.tracker": 26,
     "synthorg.hr.registry": 40,

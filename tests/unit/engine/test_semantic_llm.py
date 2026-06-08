@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import JsonValue
 
-from synthorg.core.enums import ConflictType
+from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.models import Workspace
 from synthorg.engine.workspace.semantic_llm import LlmSemanticAnalyzer
 from synthorg.providers.enums import FinishReason

@@ -30,9 +30,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
+from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ConversationRole
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.role_catalog import get_builtin_role
 from synthorg.core.types import NotBlankStr

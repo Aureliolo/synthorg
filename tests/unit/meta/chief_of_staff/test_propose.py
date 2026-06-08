@@ -5,13 +5,13 @@ import asyncio
 import pytest
 
 from synthorg.approval.enums import ApprovalSource, ApprovalStatus
-from synthorg.core.enums import (
+from synthorg.communication.conversation.enums import (
     ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
-    InterventionKind,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import (
     STEERING_INTAKE_KIND_KEY,
     STEERING_INTAKE_PROJECT_KEY,

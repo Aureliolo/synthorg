@@ -34,7 +34,6 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import AgentStatus
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task_enums import TaskStatus, TaskType
@@ -57,6 +56,7 @@ from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.engine.workspace.git_backend import EmbeddedGitBackend
 from synthorg.engine.workspace.git_backend.config import GitBackendConfig
 from synthorg.engine.workspace.project_workspace_service import ProjectWorkspaceService
+from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.knowledge.service import KnowledgeService

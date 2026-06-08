@@ -4,9 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import CharterStatus, ConversationStatus
+from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.charter.config import CharterConfig
+from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import (
     BudgetEnvelope,
     CharterDraft,

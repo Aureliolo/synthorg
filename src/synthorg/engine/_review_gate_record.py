@@ -10,8 +10,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from synthorg.core.enums import DecisionOutcome
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.engine.decisions import DecisionOutcome
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_DECISION_RECORD_FAILED,

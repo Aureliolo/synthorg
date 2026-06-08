@@ -13,14 +13,14 @@ import asyncio
 import uuid
 from typing import TYPE_CHECKING
 
-from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import (
-    CharterStatus,
+from synthorg.communication.conversation.enums import (
     ConversationRole,
     ConversationStatus,
 )
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.charter._charter_crud import CharterCrudMixin
+from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import (
     CharterDraft,
     InterviewTurnArgs,

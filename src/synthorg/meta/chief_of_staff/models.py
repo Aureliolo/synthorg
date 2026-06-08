@@ -18,14 +18,14 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import (
+from synthorg.communication.conversation.enums import (
     ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
-    InterventionKind,
 )
 from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import STEERABLE_KINDS
 from synthorg.meta.chief_of_staff.enums import ConversationKind
 from synthorg.meta.models import ProposalAltitude, RuleSeverity

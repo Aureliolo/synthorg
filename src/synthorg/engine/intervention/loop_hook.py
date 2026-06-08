@@ -14,8 +14,8 @@ trusted prompt frame.
 """
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import InterventionKind
 from synthorg.engine.context import AgentContext
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.intervention.models import ActiveSteeringDirective
 from synthorg.engine.prompt_safety import TAG_BRAIN_STATE, wrap_untrusted

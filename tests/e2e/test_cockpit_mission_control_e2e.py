@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import InterventionKind
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -23,6 +22,7 @@ from synthorg.engine.flight_recording import (
     PersistenceFlightRecorderSink,
 )
 from synthorg.engine.intervention import NoOpSupersessionProposer, SteeringService
+from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame
 from tests._shared import FakeClock, as_uuid, mock_of, sid

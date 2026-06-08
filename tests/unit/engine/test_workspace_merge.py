@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import ConflictEscalation, ConflictType, MergeOrder
 from synthorg.engine.errors import WorkspaceMergeError
+from synthorg.engine.workspace.enums import ConflictEscalation, ConflictType, MergeOrder
 from synthorg.engine.workspace.merge import MergeOrchestrator
 from synthorg.engine.workspace.models import (
     MergeConflict,

@@ -2,7 +2,7 @@
 
 Provides configurable metadata for cost tiers: price ranges, display
 properties, and model-to-tier classification.  The built-in ``CostTier``
-enum (``synthorg.core.enums``) defines the tier values; this module adds
+enum (``synthorg.hr.enums``) defines the tier values; this module adds
 a configurable layer on top.
 """
 

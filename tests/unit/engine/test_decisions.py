@@ -5,8 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import DecisionOutcome
-from synthorg.engine.decisions import DecisionRecord
+from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
 
 
 def _make_record(**overrides: object) -> DecisionRecord:

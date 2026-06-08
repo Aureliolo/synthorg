@@ -16,9 +16,9 @@ import sqlite3
 
 import aiosqlite
 
-from synthorg.core.enums import CharterStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import ProjectCharter
 from synthorg.observability import (
     get_logger,

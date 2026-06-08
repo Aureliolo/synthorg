@@ -13,28 +13,32 @@ Shared domain models, base types, and enums used across the framework.
 
 ## Enums
 
-`synthorg.core.enums` holds the remaining cross-cutting domain enums.
-Foundation enums co-locate with the core model they describe: the task
-family (status, type, priority, complexity, stakes, structure, topology,
-source) plus stakes ordering in `synthorg.core.task_enums`; project
-status and the git-backend / environment discriminators in
-`synthorg.core.project_enums`; autonomy level and ordering in
-`synthorg.core.autonomy_enums`; tool access level in
-`synthorg.core.tool_constraints`; and artifact type in
-`synthorg.core.artifact` (below). Many other domain-specific enums live
-with their owning package: agent memory level and category in
-`synthorg.core.memory_enums` (below); seniority and strategic output mode
-under [HR](hr.md); memory consolidation interval and org-fact category
-under [Memory](memory.md); knowledge source type, content kind, and
-source status under [Knowledge](knowledge.md); research source type,
-claim type, and run status under [Research](research.md); living-document
-type under [Docs Engine](docs_engine.md); the workflow type, node,
-edge, value, and status enums under [Engine](engine.md); approval status,
-risk level, and source in `synthorg.approval.enums` (below); and the
-security action-type taxonomy, tool category, autonomy-downgrade reason,
-and timeout-action type under [Security](security.md).
-
-::: synthorg.core.enums
+Domain enums co-locate with the package that owns them. Foundation enums
+that core models depend on stay core-local: the task family (status, type,
+priority, complexity, stakes, structure, topology, source) plus stakes
+ordering in `synthorg.core.task_enums`; project status and the git-backend
+/ environment discriminators in `synthorg.core.project_enums`; autonomy
+level and ordering in `synthorg.core.autonomy_enums`; tool access level in
+`synthorg.core.tool_constraints`; agent memory level and category in
+`synthorg.core.memory_enums`; and artifact type in `synthorg.core.artifact`
+(all below). Every other domain enum lives with its owning package: agent
+status, the personality traits (risk tolerance, creativity, decision style,
+collaboration preference, communication verbosity, conflict approach), cost
+tier, seniority, and strategic output mode under [HR](hr.md); company type
+and department name under [Organisation](organization.md); the skill-pattern
+taxonomy under [Templates](templates.md); memory consolidation interval and
+org-fact category under [Memory](memory.md); knowledge source type, content
+kind, and source status under [Knowledge](knowledge.md); research source
+type, claim type, and run status under [Research](research.md);
+living-document type under [Docs Engine](docs_engine.md); the workflow
+enums, workspace merge enums (order, escalation, conflict type), operator
+intervention kind, and the agent-runtime execution, recovery, and decision
+enums under [Engine](engine.md); the conversation turn, status, and proposal
+enums under [Communication](communication.md); the charter status enum under
+[Meta](meta.md); approval status, risk level, and source in
+`synthorg.approval.enums` (below); and the security action-type taxonomy,
+tool category, autonomy-downgrade reason, and timeout-action type under
+[Security](security.md).
 
 ## Task Enums
 

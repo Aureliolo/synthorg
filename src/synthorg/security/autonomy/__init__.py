@@ -3,7 +3,7 @@
 Note: ``AutonomyResolver`` and ``HumanOnlyPromotionStrategy`` are **not**
 re-exported here to avoid a circular import chain
 (``core.company`` → ``security.autonomy.models`` → this ``__init__`` →
-``resolver`` → ``security.action_types`` → ``core.enums`` → ``core``).
+``resolver`` → ``security.action_types`` → ``security.autonomy.enums``).
 Import them directly from their modules when needed.
 """
 

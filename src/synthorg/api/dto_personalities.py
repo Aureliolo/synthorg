@@ -4,7 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import (
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import (
     CollaborationPreference,
     CommunicationVerbosity,
     ConflictApproach,
@@ -12,7 +13,6 @@ from synthorg.core.enums import (
     DecisionMakingStyle,
     RiskTolerance,
 )
-from synthorg.core.types import NotBlankStr
 from synthorg.templates.preset_models import PresetSource
 
 __all__ = [
