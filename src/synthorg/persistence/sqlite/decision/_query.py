@@ -8,12 +8,12 @@ not yet committed.
 
 import json
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decisions import DecisionRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.decision_record import (
@@ -30,9 +30,6 @@ from synthorg.persistence.sqlite.decision._sql import (
     _MAX_PAGE_LIMIT,
     _ROLE_TO_COLUMN,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

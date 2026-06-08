@@ -3,7 +3,7 @@
 
 import contextlib
 import sqlite3
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 import aiosqlite
 from pydantic import ValidationError
@@ -24,15 +24,11 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.datetime_marshaller import format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence.checkpoint_protocol import CheckpointFilterSpec
 from synthorg.persistence.sqlite._shared import (
     WriteContext,
     is_unique_constraint_error,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.persistence.checkpoint_protocol import CheckpointFilterSpec
 
 logger = get_logger(__name__)
 

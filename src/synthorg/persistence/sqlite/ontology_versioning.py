@@ -10,17 +10,14 @@ persistence -> ontology, never the other way around.
 import json
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from typing import TYPE_CHECKING
 
 import aiosqlite
 
+from synthorg.ontology.models import EntityDefinition
 from synthorg.ontology.versioning import _safe_deserialize_snapshot_json
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
+from synthorg.persistence.version_protocol import VersionRepository
 from synthorg.versioning.service import VersioningService
-
-if TYPE_CHECKING:
-    from synthorg.ontology.models import EntityDefinition
-    from synthorg.persistence.version_protocol import VersionRepository
 
 type WriteContextFn = Callable[[], AbstractAsyncContextManager[None]]
 

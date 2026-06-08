@@ -8,12 +8,13 @@ a serialised JSON document (``locator_json``) plus its discriminator
 
 import json
 import sqlite3
-from typing import TYPE_CHECKING
+from collections.abc import Iterable
 
 import aiosqlite
 from pydantic import TypeAdapter, ValidationError
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.enums import ContentKind
 from synthorg.knowledge.models import ChunkProvenanceRow, ProvenanceLocator
 from synthorg.observability import get_logger, safe_error_description
@@ -33,16 +34,11 @@ from synthorg.observability.events.persistence.knowledge_provenance import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.persistence.knowledge_protocol import (
-        ChunkProvenanceFilter,
-        ChunkProvenanceKey,
-    )
-    from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.knowledge_protocol import (
+    ChunkProvenanceFilter,
+    ChunkProvenanceKey,
+)
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

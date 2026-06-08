@@ -1,12 +1,12 @@
 """SQLite repository for tracked Docker container records."""
 
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.tracked_container import (
     PERSISTENCE_TRACKED_CONTAINER_DELETE_FAILED,
@@ -22,9 +22,6 @@ from synthorg.persistence._shared.datetime_marshaller import (
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.tracked_container_protocol import TrackedContainerRecord
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

@@ -20,7 +20,7 @@ Example::
 import json
 import re
 import sqlite3
-from typing import TYPE_CHECKING
+from collections.abc import Callable
 
 import aiosqlite
 from pydantic import BaseModel, ValidationError
@@ -44,9 +44,6 @@ from synthorg.persistence._shared.datetime_marshaller import (
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.version_protocol import _DEFAULT_LIST_LIMIT_50
 from synthorg.versioning.models import VersionSnapshot
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 logger = get_logger(__name__)
 

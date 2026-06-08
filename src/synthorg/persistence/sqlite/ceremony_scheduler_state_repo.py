@@ -1,12 +1,12 @@
 """SQLite repository for ceremony scheduler state snapshots."""
 
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.ceremony_state import (
     PERSISTENCE_CEREMONY_STATE_DELETE_FAILED,
@@ -24,9 +24,6 @@ from synthorg.persistence.ceremony_scheduler_state_protocol import (
     CeremonySchedulerStateRecord,
 )
 from synthorg.persistence.sqlite._shared import WriteContext
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

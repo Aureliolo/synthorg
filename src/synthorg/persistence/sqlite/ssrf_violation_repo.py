@@ -3,12 +3,12 @@
 import contextlib
 import sqlite3
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, PersistenceError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.ssrf_violation import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
@@ -26,9 +26,6 @@ from synthorg.persistence.sqlite._shared import (
     is_unique_constraint_error,
 )
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

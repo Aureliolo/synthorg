@@ -2,11 +2,12 @@
 
 import json
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 
+from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.preset_override import (
     PERSISTENCE_PRESET_OVERRIDE_DELETE_FAILED,
@@ -22,10 +23,6 @@ from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.providers.enums import AuthType
 from synthorg.providers.management.capability_dtos import PresetOverride
-
-if TYPE_CHECKING:
-    from synthorg.config.schema import ProviderModelConfig
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

@@ -7,11 +7,11 @@ by the human consent decision), and filtered queries by
 """
 
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import ConversationInviteStatus
 from synthorg.meta.chief_of_staff.group_models import ConversationInvite
 from synthorg.observability import (
@@ -34,9 +34,6 @@ from synthorg.persistence.conversation_invite_protocol import (
     ConversationInviteFilterSpec,
 )
 from synthorg.persistence.sqlite._shared import WriteContext
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

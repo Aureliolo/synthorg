@@ -1,12 +1,12 @@
 """SQLite repository for the conversation header (id-keyed CRUD + CAS)."""
 
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 
 from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import Conversation
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.conversation import (
@@ -22,9 +22,6 @@ from synthorg.persistence.sqlite.conversation_repo._base import (
     _MAX_PAGE_LIMIT,
     _safe_rollback,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

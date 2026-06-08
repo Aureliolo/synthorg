@@ -4,10 +4,11 @@ import contextlib
 import json
 import sqlite3
 from datetime import datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import aiosqlite
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_STORE_DESERIALIZE_FAILED,
@@ -16,11 +17,8 @@ from synthorg.observability.events.ontology import (
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence.ontology_protocol import DriftReportFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.persistence.ontology_protocol import DriftReportFilterSpec
 
 logger = get_logger(__name__)
 

@@ -3,7 +3,6 @@
 
 import json
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import BaseModel, ValidationError
@@ -25,9 +24,7 @@ from synthorg.observability.events.persistence.task import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext
-
-if TYPE_CHECKING:
-    from synthorg.persistence.task_protocol import TaskFilterSpec
+from synthorg.persistence.task_protocol import TaskFilterSpec
 
 logger = get_logger(__name__)
 

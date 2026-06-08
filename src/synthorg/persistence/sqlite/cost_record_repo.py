@@ -3,7 +3,7 @@
 
 import json
 import sqlite3
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 import aiosqlite
 from pydantic import ValidationError
@@ -28,12 +28,8 @@ from synthorg.persistence._shared import (
     safe_int,
     validate_pagination_args,
 )
+from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
 
 logger = get_logger(__name__)
 

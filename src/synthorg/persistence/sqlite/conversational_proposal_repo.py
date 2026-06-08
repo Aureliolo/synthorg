@@ -7,13 +7,13 @@ driven by the approval decision), and filtered queries by
 """
 
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from aiosqlite import Row
 
 from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
 from synthorg.observability import (
     get_logger,
@@ -35,9 +35,6 @@ from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
 )
 from synthorg.persistence.sqlite._shared import WriteContext
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

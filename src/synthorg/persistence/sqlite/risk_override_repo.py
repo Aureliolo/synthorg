@@ -2,13 +2,13 @@
 
 import sqlite3
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.persistence_errors import DuplicateRecordError, PersistenceError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.risk_override import (
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
@@ -25,9 +25,6 @@ from synthorg.persistence.sqlite._shared import (
     is_unique_constraint_error,
 )
 from synthorg.security.rules.risk_override import RiskTierOverride
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

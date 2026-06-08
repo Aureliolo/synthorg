@@ -7,8 +7,8 @@ revision per ``entry_id``, computed with a window function.
 
 import json
 import sqlite3
+from collections.abc import Iterable
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import ValidationError
@@ -37,19 +37,15 @@ from synthorg.persistence._project_brain_sql import (
 )
 from synthorg.persistence._shared import format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence.project_brain_protocol import (
+    BrainEntryRevisionKey,
+    BrainFilterSpec,
+)
+from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.project_brain.errors import BrainEntryRevisionConflictError
 from synthorg.project_brain.models import (
     BrainEntry,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.persistence.project_brain_protocol import (
-        BrainEntryRevisionKey,
-        BrainFilterSpec,
-    )
-    from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

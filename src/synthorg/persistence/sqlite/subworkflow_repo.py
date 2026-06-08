@@ -10,13 +10,11 @@ import json
 import sqlite3
 from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal, cast
+from typing import Literal, cast
 
+import aiosqlite
 from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
-
-if TYPE_CHECKING:
-    import aiosqlite
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr

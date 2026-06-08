@@ -1,12 +1,12 @@
 """SQLite repository for meeting cooldown timestamps."""
 
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.meeting_cooldown import (
     PERSISTENCE_MEETING_COOLDOWN_DELETE_FAILED,
@@ -22,9 +22,6 @@ from synthorg.persistence._shared.datetime_marshaller import (
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.meeting_cooldown_protocol import MeetingCooldownRecord
 from synthorg.persistence.sqlite._shared import WriteContext
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

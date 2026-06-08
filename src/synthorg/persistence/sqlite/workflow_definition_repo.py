@@ -10,14 +10,8 @@ the SQL statements live in
 
 import sqlite3
 from datetime import UTC
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import aiosqlite
-
-    from synthorg.persistence.workflow_definition_protocol import (
-        WorkflowDefinitionFilterSpec,
-    )
+import aiosqlite
 
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
@@ -47,6 +41,9 @@ from synthorg.persistence.sqlite._workflow_definition_sql import (
     INSERT_IGNORE_SQL,
     UPDATE_SQL,
     UPSERT_SQL,
+)
+from synthorg.persistence.workflow_definition_protocol import (
+    WorkflowDefinitionFilterSpec,
 )
 
 logger = get_logger(__name__)

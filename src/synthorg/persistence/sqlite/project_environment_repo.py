@@ -1,7 +1,6 @@
 """SQLite repository implementation for ProjectEnvironment."""
 
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import ValidationError
@@ -23,9 +22,7 @@ from synthorg.observability.events.persistence.project_environment import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
-
-if TYPE_CHECKING:
-    from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 
