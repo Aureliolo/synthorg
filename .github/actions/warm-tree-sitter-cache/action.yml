@@ -10,10 +10,12 @@ description: |
   whose only job is downloading the tarball, so the same 502 retries
   cleanly here instead of poisoning a multi-minute test run.
 
-  Matches the project standard for transient downloads: the curl
-  ``--connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300``
-  pattern (exponential backoff, bounded retry window), as used in
-  .github/actions/setup-apko/action.yml.
+  The Rust binding performs the fetch internally, so the project's curl
+  download-retry flags cannot be threaded into it. This step instead
+  wraps the Python call in an explicit bounded-retry loop (3 attempts,
+  10s fixed back-off) that follows the same fail-cleanly intent as the
+  curl standard in .github/actions/setup-apko/action.yml, without being
+  able to share its exact mechanism.
 
 runs:
   using: composite
