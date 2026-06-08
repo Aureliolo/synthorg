@@ -1,9 +1,9 @@
 """Workspace-scoped git clone tool with SSRF + DNS-rebinding mitigation.
 
-Split out of ``git_tools`` because clone carries the entire URL-validation
-surface (scheme allowlist, host/IP SSRF checks, TOCTOU DNS pinning) that the
-read/branch/commit tools do not. See ``_git_base._BaseGitTool`` for the
-subprocess execution model shared by all git tools.
+Clone carries the entire URL-validation surface (scheme allowlist, host/IP
+SSRF checks, TOCTOU DNS pinning) that the read/branch/commit tools do not.
+See ``_git_base._BaseGitTool`` for the subprocess execution model shared by
+all git tools.
 """
 
 from pathlib import Path

@@ -18566,7 +18566,7 @@
     },
     {
       "kind": "code",
-      "loc": 223,
+      "loc": 220,
       "loc_cap": 500,
       "module": "src/synthorg/tools/_git_subprocess.py",
       "owning_feature": "tools"
@@ -19140,7 +19140,7 @@
     },
     {
       "kind": "code",
-      "loc": 56,
+      "loc": 55,
       "loc_cap": 500,
       "module": "src/synthorg/tools/external_api/_url_guards.py",
       "owning_feature": "tools"
@@ -19483,7 +19483,7 @@
     },
     {
       "kind": "code",
-      "loc": 119,
+      "loc": 129,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/_subprocess_proc.py",
       "owning_feature": "tools"
@@ -19665,7 +19665,7 @@
     },
     {
       "kind": "code",
-      "loc": 361,
+      "loc": 362,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/subprocess_sandbox.py",
       "owning_feature": "tools"

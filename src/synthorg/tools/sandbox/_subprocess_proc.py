@@ -1,9 +1,9 @@
 """Process-lifecycle helpers for the subprocess sandbox.
 
 Stateless functions for spawning, killing, and closing child processes, plus
-the credential redactor and the platform default-PATH directories. Split out
-of ``subprocess_sandbox`` so the backend module stays focused on the execute
-flow and workspace validation.
+the credential redactor and the platform default-PATH directories. The backend
+module composes these to stay focused on the execute flow and workspace
+validation.
 """
 
 import asyncio
@@ -38,6 +38,20 @@ def _redact_args(args: tuple[str, ...]) -> tuple[str, ...]:
         Tuple of ``str``.
     """
     return tuple(_CREDENTIAL_RE.sub(r"\1***@", a) for a in args)
+
+
+def _redact_credentials(text: str) -> str:
+    """Redact embedded ``user:pass@host`` credentials from text for logging.
+
+    Subprocess stderr can echo a credential-bearing URL (e.g. a git
+    operation routed through the sandbox), so the operator-facing log field
+    is scrubbed even though the ``SandboxResult`` returned to the caller
+    keeps the raw output.
+
+    Returns:
+        Result of type ``str``.
+    """
+    return _CREDENTIAL_RE.sub(r"\1***@", text)
 
 
 def _get_platform_default_dirs() -> tuple[str, ...]:

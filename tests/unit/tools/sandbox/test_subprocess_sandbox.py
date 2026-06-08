@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
+from synthorg.tools.sandbox._subprocess_proc import _redact_credentials
 from synthorg.tools.sandbox.config import SubprocessSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
@@ -750,3 +751,26 @@ class TestRuntimePathFiltering:
                 env_overrides={"Path": r"C:\suspicious\dir"},
             )
             assert "suspicious" not in env.get("PATH", "").lower()
+
+
+# ── Credential redaction ─────────────────────────────────────────
+
+
+class TestRedactCredentials:
+    """``_redact_credentials`` scrubs URL userinfo from log-bound stderr."""
+
+    def test_credential_url_is_redacted(self) -> None:
+        text = "fatal: clone failed for https://alice:s3cret@example.com/repo.git"
+        assert _redact_credentials(text) == (
+            "fatal: clone failed for https://***@example.com/repo.git"
+        )
+
+    def test_multiple_credentials_redacted(self) -> None:
+        text = "http://u1:p1@a.test/x and https://u2:p2@b.test/y"
+        assert (
+            _redact_credentials(text) == "http://***@a.test/x and https://***@b.test/y"
+        )
+
+    def test_credential_free_text_unchanged(self) -> None:
+        text = "command not found: git\nexit status 127"
+        assert _redact_credentials(text) == text

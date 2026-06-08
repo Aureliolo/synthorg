@@ -27,6 +27,7 @@ from synthorg.tools.sandbox._subprocess_proc import (
     _close_process,
     _kill_process,
     _redact_args,
+    _redact_credentials,
     _spawn_process,
 )
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
@@ -369,7 +370,7 @@ class SubprocessSandbox(_EnvFilterMixin):
                 command=command,
                 args=_redact_args(args),
                 returncode=returncode,
-                stderr=stderr,
+                stderr=_redact_credentials(stderr),
             )
         else:
             logger.debug(

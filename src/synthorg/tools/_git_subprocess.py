@@ -2,9 +2,8 @@
 
 Holds the credential/stderr sanitisers and the four subprocess-execution
 helpers (process start, timed wait, output decoding, and sandbox-result
-conversion) that ``_git_base`` composes. Splitting these out keeps the
-base-tool module focused on workspace-boundary validation and command
-orchestration.
+conversion) that ``_git_base`` composes, leaving the base-tool module to
+own workspace-boundary validation and command orchestration.
 
 All output that can reach the LLM (``ToolExecutionResult.content``) or the
 log stream is scrubbed of embedded credentials and control characters here.
@@ -28,13 +27,11 @@ from synthorg.tools.sandbox.result import SandboxResult
 logger = get_logger(__name__)
 
 _DEFAULT_KILL_GRACE_SECONDS: Final[float] = 5.0
-"""Hardcoded fallback kill-grace for git subprocess teardown.
+"""Fallback kill-grace for git subprocess teardown.
 
-The value matches the default of the
-``tools.git_kill_grace_timeout_seconds`` setting, but the runtime
-wiring from ``ConfigResolver`` -> the git tool classes is not in
-place yet -- this constant is the only source of truth used by
-``_await_git_process`` today.
+Mirrors the ``tools.git_kill_grace_timeout_seconds`` setting default.
+``_await_git_process`` uses this constant directly because this module
+has no access to the ``ConfigResolver`` boundary.
 """
 
 # Matches http(s)://userinfo@host patterns in git URLs.

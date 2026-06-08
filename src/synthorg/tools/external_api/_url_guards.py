@@ -2,8 +2,7 @@
 
 Pure functions with no governance state: the restricted-header set, the
 path-traversal predicate, and the agent-header sanitisation that keeps the
-approval signature and the egress request in lockstep. Split out of
-``external_api_tool`` so the tool module stays focused on the governed flow.
+approval signature and the egress request in lockstep.
 """
 
 from urllib.parse import unquote, urlsplit

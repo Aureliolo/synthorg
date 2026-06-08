@@ -9,6 +9,8 @@ in a ``ToolRegistry``.
 """
 
 import math
+from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.autonomy_enums import AutonomyLevel
@@ -49,8 +51,6 @@ if TYPE_CHECKING:
     # ``config.schema`` / ``communication`` / ``memory`` types closes a circular
     # import against a partially-initialised module. The cross-package signature
     # types stay here; PEP 649 makes the bare annotations below safe at load.
-    from collections.abc import Mapping
-    from pathlib import Path
 
     from synthorg.communication.async_tasks.service import AsyncTaskService
     from synthorg.config.schema import RootConfig
