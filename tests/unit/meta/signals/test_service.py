@@ -6,8 +6,8 @@ from uuid import uuid4
 
 import pytest
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.meta.models import (
     ConfigChange,
     ImprovementProposal,

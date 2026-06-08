@@ -10,8 +10,8 @@ no caller needs to know the concrete ``ApprovalStore`` lives in
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
     from synthorg.core.approval import ApprovalItem
-    from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
     from synthorg.core.types import NotBlankStr
 
 

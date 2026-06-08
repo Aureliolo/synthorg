@@ -12,8 +12,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.core.validation import is_valid_action_type
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
@@ -22,6 +22,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RISK_CLASSIFIED,
     APPROVAL_GATE_RISK_CLASSIFY_FAILED,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._misc_args import RequestHumanApprovalArgs
 
 from .base import BaseTool, ToolExecutionResult
@@ -162,8 +163,8 @@ class RequestHumanApprovalTool(BaseTool):
             The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
         """
         try:
+            from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
             from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
-            from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
 
             item = ApprovalItem(
                 id=UUID(approval_id),

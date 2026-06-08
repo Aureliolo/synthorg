@@ -4,12 +4,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import ToolCategory
 from synthorg.ontology.injection.tool import (
     LOOKUP_ENTITY_TOOL_NAME,
     LookupEntityTool,
     ToolBasedInjectionStrategy,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 
 
 @pytest.mark.unit

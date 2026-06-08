@@ -20,7 +20,7 @@ import pytest
 from pydantic import JsonValue
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.core.enums import ApprovalStatus
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType

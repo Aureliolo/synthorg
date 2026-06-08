@@ -8,8 +8,8 @@ and apply the configured ``TimeoutPolicy``.
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalStatus, TimeoutActionType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.timeout import (
     TIMEOUT_AUTO_APPROVED,
@@ -18,6 +18,7 @@ from synthorg.observability.events.timeout import (
     TIMEOUT_POLICY_EVALUATED,
     TIMEOUT_WAITING,
 )
+from synthorg.security.timeout.enums import TimeoutActionType
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.protocol import TimeoutPolicy
 

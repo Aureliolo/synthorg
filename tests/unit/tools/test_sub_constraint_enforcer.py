@@ -3,7 +3,6 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.core.tool_constraints import (
     FileSystemScope,
     GitAccess,
@@ -11,6 +10,7 @@ from synthorg.core.tool_constraints import (
     TerminalAccess,
     ToolSubConstraints,
 )
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.sub_constraint_enforcer import (
     SubConstraintEnforcer,
     SubConstraintViolation,

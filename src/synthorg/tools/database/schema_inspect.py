@@ -11,13 +11,13 @@ from typing import ClassVar, Final, cast, override
 import aiosqlite
 from pydantic import BaseModel
 
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.database import (
     DB_SCHEMA_INSPECT_FAILED,
     DB_SCHEMA_INSPECT_START,
     DB_SCHEMA_INSPECT_SUCCESS,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.database._args import SchemaInspectArgs
 from synthorg.tools.database.base_db_tool import BaseDatabaseTool

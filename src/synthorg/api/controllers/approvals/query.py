@@ -25,11 +25,8 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
-from synthorg.core.enums import (
-    ApprovalRiskLevel,
-    ApprovalStatus,
-)
 
 _DEFAULT_LIMIT: Final[int] = 50
 

@@ -10,12 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
 from synthorg.security.action_types import (
     ActionTypeCategory,
     ActionTypeRegistry,
 )
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 
 pytestmark = pytest.mark.unit
 

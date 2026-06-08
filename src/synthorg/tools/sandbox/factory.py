@@ -28,10 +28,10 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
-    from synthorg.core.enums import ToolCategory
     from synthorg.persistence.tracked_container_protocol import (
         TrackedContainerRepository,
     )
+    from synthorg.security.autonomy.enums import ToolCategory
     from synthorg.tools.sandbox.lifecycle.protocol import (
         SandboxLifecycleStrategy,
     )

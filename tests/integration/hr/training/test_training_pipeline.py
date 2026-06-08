@@ -10,8 +10,9 @@ from uuid import uuid4
 
 import pytest
 
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import AgentStatus, ApprovalStatus
+from synthorg.core.enums import AgentStatus
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService

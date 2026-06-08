@@ -25,13 +25,9 @@ from synthorg.api.controllers._conversational_resume import (
     try_conversational_invite_resume,
 )
 from synthorg.api.state import AppState
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import (
-    ApprovalRiskLevel,
-    ApprovalSource,
-    ApprovalStatus,
-)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig

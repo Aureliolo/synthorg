@@ -268,7 +268,7 @@
     },
     {
       "kind": "code",
-      "loc": 564,
+      "loc": 561,
       "loc_cap": 500,
       "module": "src/synthorg/api/approval_store.py",
       "owning_feature": "api_core"
@@ -639,7 +639,7 @@
     },
     {
       "kind": "controller",
-      "loc": 119,
+      "loc": 116,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/approvals/query.py",
       "owning_feature": "api_core"
@@ -2000,6 +2000,13 @@
       "loc": 26,
       "loc_cap": 500,
       "module": "src/synthorg/approval/_construction.py",
+      "owning_feature": "approval"
+    },
+    {
+      "kind": "code",
+      "loc": 35,
+      "loc_cap": 500,
+      "module": "src/synthorg/approval/enums.py",
       "owning_feature": "approval"
     },
     {
@@ -3719,7 +3726,7 @@
     },
     {
       "kind": "code",
-      "loc": 148,
+      "loc": 144,
       "loc_cap": 500,
       "module": "src/synthorg/core/approval.py",
       "owning_feature": null
@@ -3838,7 +3845,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 324,
+      "loc": 209,
       "loc_cap": null,
       "module": "src/synthorg/core/enums.py",
       "owning_feature": null
@@ -7779,7 +7786,7 @@
     },
     {
       "kind": "code",
-      "loc": 494,
+      "loc": 496,
       "loc_cap": 500,
       "module": "src/synthorg/hr/hiring_service.py",
       "owning_feature": "hr"
@@ -10495,7 +10502,7 @@
     },
     {
       "kind": "code",
-      "loc": 263,
+      "loc": 259,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/_intake_parking.py",
       "owning_feature": "meta"
@@ -14289,7 +14296,7 @@
     },
     {
       "kind": "code",
-      "loc": 231,
+      "loc": 228,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/approval_protocol.py",
       "owning_feature": "persistence"
@@ -17040,6 +17047,13 @@
     },
     {
       "kind": "code",
+      "loc": 78,
+      "loc_cap": 500,
+      "module": "src/synthorg/security/autonomy/enums.py",
+      "owning_feature": "security"
+    },
+    {
+      "kind": "code",
       "loc": 11,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/errors.py",
@@ -17089,7 +17103,7 @@
     },
     {
       "kind": "code",
-      "loc": 552,
+      "loc": 549,
       "loc_cap": 500,
       "module": "src/synthorg/security/config.py",
       "owning_feature": "security"
@@ -17117,7 +17131,7 @@
     },
     {
       "kind": "code",
-      "loc": 225,
+      "loc": 226,
       "loc_cap": 500,
       "module": "src/synthorg/security/models.py",
       "owning_feature": "security"
@@ -17432,7 +17446,7 @@
     },
     {
       "kind": "code",
-      "loc": 91,
+      "loc": 92,
       "loc_cap": 500,
       "module": "src/synthorg/security/rules/risk_classifier.py",
       "owning_feature": "security"
@@ -17488,9 +17502,16 @@
     },
     {
       "kind": "code",
-      "loc": 175,
+      "loc": 176,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/config.py",
+      "owning_feature": "security"
+    },
+    {
+      "kind": "code",
+      "loc": 8,
+      "loc_cap": 500,
+      "module": "src/synthorg/security/timeout/enums.py",
       "owning_feature": "security"
     },
     {
@@ -17537,7 +17558,7 @@
     },
     {
       "kind": "code",
-      "loc": 284,
+      "loc": 285,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/policies.py",
       "owning_feature": "security"
@@ -17565,14 +17586,14 @@
     },
     {
       "kind": "code",
-      "loc": 111,
+      "loc": 112,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/risk_tier_classifier.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 376,
+      "loc": 377,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/scheduler.py",
       "owning_feature": "security"
@@ -17586,7 +17607,7 @@
     },
     {
       "kind": "code",
-      "loc": 116,
+      "loc": 117,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/timeout_checker.py",
       "owning_feature": "security"
@@ -18559,7 +18580,7 @@
     },
     {
       "kind": "code",
-      "loc": 246,
+      "loc": 247,
       "loc_cap": 500,
       "module": "src/synthorg/tools/approval_tool.py",
       "owning_feature": "tools"
@@ -18993,14 +19014,14 @@
     },
     {
       "kind": "code",
-      "loc": 137,
+      "loc": 134,
       "loc_cap": 500,
       "module": "src/synthorg/tools/docs/search_living_docs.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 160,
+      "loc": 157,
       "loc_cap": 500,
       "module": "src/synthorg/tools/docs/write_living_doc.py",
       "owning_feature": "tools"
@@ -19070,7 +19091,7 @@
     },
     {
       "kind": "code",
-      "loc": 533,
+      "loc": 528,
       "loc_cap": 500,
       "module": "src/synthorg/tools/external_api/external_api_tool.py",
       "owning_feature": "tools"

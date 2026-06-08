@@ -11,13 +11,13 @@ from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
     WEB_SEARCH_FAILED,
     WEB_SEARCH_START,
     WEB_SEARCH_SUCCESS,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web._args import WebSearchArgs

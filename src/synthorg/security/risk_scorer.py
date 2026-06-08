@@ -12,13 +12,13 @@ from typing import Final, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.risk_budget import (
     RISK_BUDGET_SCORE_COMPUTED,
     RISK_BUDGET_SCORE_FALLBACK,
     RISK_BUDGET_SCORER_CREATED,
 )
+from synthorg.security.autonomy.enums import ActionType
 
 logger = get_logger(__name__)
 

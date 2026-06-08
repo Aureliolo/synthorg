@@ -8,12 +8,13 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.persistence.audit_protocol import AuditFilterSpec, AuditRepository
 from synthorg.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from tests._shared.persistence import make_private_write_context
 

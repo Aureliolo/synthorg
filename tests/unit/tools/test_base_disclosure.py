@@ -4,8 +4,8 @@ from typing import Any, override
 
 import pytest
 
-from synthorg.core.enums import ToolCategory
 from synthorg.core.tool_disclosure import ToolL1Metadata, ToolL2Body, ToolL3Resource
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 

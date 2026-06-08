@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, model_validator
 
-from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (

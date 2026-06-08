@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import ToolCategory
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.desktop import DesktopTool
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult

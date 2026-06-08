@@ -27,10 +27,10 @@ from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 
 # ``prompt_safety`` is imported lazily inside this module's helpers

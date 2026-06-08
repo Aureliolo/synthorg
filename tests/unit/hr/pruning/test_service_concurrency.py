@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.core.enums import ApprovalStatus
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.models import FiringRequest, OffboardingRecord
 from synthorg.hr.performance.models import AgentPerformanceSnapshot

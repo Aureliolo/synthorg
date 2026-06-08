@@ -23,6 +23,7 @@ from synthorg.api.auth.service import AuthService
 from synthorg.api.config import ApiConfig, RateLimitConfig
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.state import AppState
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
 from synthorg.communication.delegation.record_store import (
@@ -36,7 +37,6 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import User
 from synthorg.core.auth.roles import HumanRole
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter

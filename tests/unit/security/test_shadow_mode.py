@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.security.audit import AuditLog
 from synthorg.security.config import SecurityConfig, SecurityEnforcementMode
 from synthorg.security.models import (
@@ -24,7 +24,7 @@ def _make_context(
     tool_name: str = "test_tool",
     action_type: str = "code:write",
 ) -> SecurityContext:
-    from synthorg.core.enums import ToolCategory
+    from synthorg.security.autonomy.enums import ToolCategory
 
     return SecurityContext(
         tool_name=tool_name,

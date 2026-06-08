@@ -21,10 +21,11 @@ from datetime import UTC, datetime
 import pytest
 from psycopg.types.json import Jsonb
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
 from synthorg.persistence.jsonb_capability import JsonbQueryCapability
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
+from synthorg.security.autonomy.enums import ToolCategory
 
 logger = get_logger(__name__)
 

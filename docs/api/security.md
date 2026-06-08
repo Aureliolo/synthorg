@@ -57,6 +57,8 @@ Security subsystem: rule engine, trust strategies, autonomy levels, output scann
 
 ## Autonomy
 
+::: synthorg.security.autonomy.enums
+
 ::: synthorg.security.autonomy.protocol
 
 ::: synthorg.security.autonomy.models
@@ -64,6 +66,8 @@ Security subsystem: rule engine, trust strategies, autonomy levels, output scann
 ::: synthorg.security.autonomy.resolver
 
 ## Timeout Policies
+
+::: synthorg.security.timeout.enums
 
 ::: synthorg.security.timeout.protocol
 

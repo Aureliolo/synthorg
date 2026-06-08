@@ -39,7 +39,6 @@ from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.browser import (
     BROWSER_ARGS_VALIDATION_FAILED,
@@ -62,6 +61,7 @@ from synthorg.observability.events.browser import (
     BROWSER_START_COMMAND_START,
     BROWSER_START_COMMAND_SUCCESS,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.browser._args import A11yImpact, BrowserToolArgs
 from synthorg.tools.browser._baseline import WorkspaceBaselineStore

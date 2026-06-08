@@ -16,11 +16,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import (
-    ApprovalRiskLevel,
-    ApprovalSource,
-    ApprovalStatus,
-)
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.evidence import EvidencePackage
 from synthorg.core.types import NotBlankStr
 from synthorg.ontology.decorator import ontology_entity

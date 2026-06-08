@@ -11,12 +11,12 @@ from typing import ClassVar, cast, override
 
 from pydantic import BaseModel
 
-from synthorg.core.enums import ToolCategory
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import get_logger
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_AGENT_COMPACTION_REQUESTED,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._misc_args import CompactContextArgs
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 

@@ -4,7 +4,6 @@ from typing import Any, override
 
 import pytest
 
-from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.core.tool_constraints import (
     NetworkMode,
     TerminalAccess,
@@ -12,6 +11,7 @@ from synthorg.core.tool_constraints import (
     ToolSubConstraints,
 )
 from synthorg.providers.models import ToolCall
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker

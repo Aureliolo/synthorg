@@ -4,8 +4,8 @@ from typing import Any, override
 
 import pytest
 
-from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 # ── Concrete test tool ───────────────────────────────────────────

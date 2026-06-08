@@ -4,8 +4,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from tests._shared import as_uuid
 
 

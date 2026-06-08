@@ -11,13 +11,13 @@ from typing import TYPE_CHECKING, Final
 
 from pydantic import JsonValue
 
-from synthorg.core.enums import ToolCategory
 from synthorg.core.normalization import (
     collapse_whitespace_lowercase,
     normalize_ascii_lowercase,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.terminal import TERMINAL_COMMAND_BLOCKED
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool
 from synthorg.tools.terminal.config import TerminalConfig
 

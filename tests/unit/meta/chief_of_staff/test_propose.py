@@ -4,9 +4,8 @@ import asyncio
 
 import pytest
 
+from synthorg.approval.enums import ApprovalSource, ApprovalStatus
 from synthorg.core.enums import (
-    ApprovalSource,
-    ApprovalStatus,
     ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,

@@ -3,9 +3,9 @@
 import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import ActionType
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.security.action_types import ActionTypeRegistry
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.security.autonomy.models import (
     BUILTIN_PRESETS,
     AutonomyConfig,

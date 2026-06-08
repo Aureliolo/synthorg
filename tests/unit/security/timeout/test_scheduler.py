@@ -5,8 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, TimeoutActionType
+from synthorg.security.timeout.enums import TimeoutActionType
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from tests._shared import as_uuid

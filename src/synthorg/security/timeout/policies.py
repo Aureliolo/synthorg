@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import ApprovalRiskLevel, TimeoutActionType
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.timeout import (
     TIMEOUT_AUTO_DENIED,
@@ -14,6 +14,7 @@ from synthorg.security.timeout.config import (
     EscalationStep,
     TierConfig,
 )
+from synthorg.security.timeout.enums import TimeoutActionType
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.protocol import RiskTierClassifier
 

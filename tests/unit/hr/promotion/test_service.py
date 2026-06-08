@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.core.enums import ApprovalStatus
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import (

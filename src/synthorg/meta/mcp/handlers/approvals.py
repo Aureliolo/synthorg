@@ -23,13 +23,13 @@ from types import MappingProxyType
 from typing import Any
 from uuid import uuid4
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.agent import (
     AgentIdentity,
 )
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,

@@ -12,8 +12,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.providers.models import ToolCall
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.models import (
     OutputScanResult,
     ScanOutcome,

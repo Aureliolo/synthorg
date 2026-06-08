@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.security.timeout.models import TimeoutAction
 
 if TYPE_CHECKING:

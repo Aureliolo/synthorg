@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
 from synthorg.hr.models import FiringRequest, OffboardingRecord

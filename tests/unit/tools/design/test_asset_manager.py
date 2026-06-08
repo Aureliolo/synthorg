@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from synthorg.core.enums import ActionType, ToolCategory
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.design.asset_manager import AssetManagerTool
 
 

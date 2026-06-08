@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import JsonValue
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     CompletionResponse,
@@ -15,6 +15,7 @@ from synthorg.providers.models import (
     ToolCall,
 )
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.config import (
     ArgumentTruncationStrategy,
     LlmFallbackConfig,

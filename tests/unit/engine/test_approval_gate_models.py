@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.models import EscalationInfo, ResumePayload
-from synthorg.core.enums import ApprovalRiskLevel
 
 pytestmark = pytest.mark.unit
 

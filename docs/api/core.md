@@ -28,8 +28,11 @@ under [HR](hr.md); memory consolidation interval and org-fact category
 under [Memory](memory.md); knowledge source type, content kind, and
 source status under [Knowledge](knowledge.md); research source type,
 claim type, and run status under [Research](research.md); living-document
-type under [Docs Engine](docs_engine.md); and the workflow type, node,
-edge, value, and status enums under [Engine](engine.md).
+type under [Docs Engine](docs_engine.md); the workflow type, node,
+edge, value, and status enums under [Engine](engine.md); approval status,
+risk level, and source in `synthorg.approval.enums` (below); and the
+security action-type taxonomy, tool category, autonomy-downgrade reason,
+and timeout-action type under [Security](security.md).
 
 ::: synthorg.core.enums
 
@@ -82,6 +85,8 @@ edge, value, and status enums under [Engine](engine.md).
 ::: synthorg.core.project
 
 ## Approval
+
+::: synthorg.approval.enums
 
 ::: synthorg.core.approval
 

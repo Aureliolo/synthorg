@@ -38,14 +38,11 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from synthorg.api._approval_expiration import ApprovalExpirationMixin
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
-from synthorg.core.enums import (
-    ApprovalRiskLevel,
-    ApprovalStatus,
-)
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description

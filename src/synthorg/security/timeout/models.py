@@ -4,8 +4,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import TimeoutActionType
 from synthorg.core.types import NotBlankStr
+from synthorg.security.timeout.enums import TimeoutActionType
 
 
 class TimeoutAction(BaseModel):

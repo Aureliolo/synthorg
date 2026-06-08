@@ -99,7 +99,7 @@ async def try_mid_execution_resume(
         RecursionError: Raised on the corresponding failure path.
         AgentRuntimeNotConfiguredError: Raised on the corresponding failure path.
     """
-    from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
+    from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
 
     item = await _reread_approval_item(app_state, approval_id)
     if item is not None:

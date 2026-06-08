@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from synthorg.core.enums import ToolCategory
 from synthorg.observability.events.sandbox import SANDBOX_FACTORY_CLEANUP_FAILED
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.sandbox.config import SubprocessSandboxConfig
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.factory import (

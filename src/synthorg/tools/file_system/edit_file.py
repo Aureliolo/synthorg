@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_FS_EDIT,
@@ -17,6 +16,7 @@ from synthorg.observability.events.tool import (
     TOOL_FS_NOOP,
     TOOL_FS_SIZE_EXCEEDED,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.file_system._args import EditFileArgs
 from synthorg.tools.file_system._base_fs_tool import (

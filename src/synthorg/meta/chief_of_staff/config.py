@@ -10,7 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import RuleSeverity
 

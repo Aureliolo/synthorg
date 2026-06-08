@@ -12,10 +12,11 @@ from typing import Any
 
 import pytest
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.observability.prometheus_collector import PrometheusCollector
 from synthorg.security.audit import AuditLog
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.models import AuditEntry
 
 pytestmark = pytest.mark.unit

@@ -6,8 +6,8 @@ from psycopg.rows import DictRow
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.evidence import EvidencePackage
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description

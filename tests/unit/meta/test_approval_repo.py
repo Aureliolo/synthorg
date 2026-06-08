@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.persistence.approval_protocol import ApprovalFilterSpec
 from synthorg.persistence.sqlite.approval_repo import SQLiteApprovalRepository
 from tests._shared import as_uuid, sid

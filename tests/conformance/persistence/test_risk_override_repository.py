@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.rules.risk_override import RiskTierOverride

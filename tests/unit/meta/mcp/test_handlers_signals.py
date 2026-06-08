@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.state import AppState
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.meta.mcp.handlers.signals import SIGNAL_HANDLERS
 from synthorg.meta.signal_models import (
     OrgBudgetSummary,

@@ -16,7 +16,6 @@ from synthorg.core.agent import (
     PersonalityConfig,
     ToolPermissions,
 )
-from synthorg.core.enums import ToolCategory
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.tool_constraints import ToolAccessLevel
@@ -33,6 +32,7 @@ from synthorg.providers.models import (
     ToolCall,
     ToolDefinition,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.registry import ToolRegistry
 from tests._shared import as_uuid

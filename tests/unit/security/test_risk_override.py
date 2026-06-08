@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.security.rules.risk_classifier import RiskClassifier
 from synthorg.security.rules.risk_override import (
     RiskTierOverride,

@@ -7,8 +7,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, TimeoutActionType
+from synthorg.security.timeout.enums import TimeoutActionType
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.protocol import TimeoutPolicy
 from synthorg.security.timeout.timeout_checker import TimeoutChecker

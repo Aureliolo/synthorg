@@ -4,7 +4,7 @@ from typing import Any, override
 
 import pytest
 
-from synthorg.core.enums import ToolCategory
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.registry import ToolRegistry
 

@@ -35,11 +35,11 @@ from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import UnauthorizedError
-from synthorg.core.enums import ApprovalStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APPROVAL_CREATED
 from synthorg.observability.events.security import SECURITY_AUTH_FAILED

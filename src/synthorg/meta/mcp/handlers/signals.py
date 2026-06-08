@@ -21,10 +21,10 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.agent import (
     AgentIdentity,
 )
-from synthorg.core.enums import ApprovalStatus
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,

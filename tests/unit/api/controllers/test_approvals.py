@@ -8,8 +8,8 @@ from uuid import UUID
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import (
     LoopAsyncClient,

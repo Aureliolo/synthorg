@@ -16,14 +16,10 @@ from synthorg.api.controllers._conversational_resume import (
     try_conversational_intake_resume,
 )
 from synthorg.api.state import AppState
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import (
-    ApprovalRiskLevel,
-    ApprovalSource,
-    ApprovalStatus,
-    InterventionKind,
-)
+from synthorg.core.enums import InterventionKind
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.intervention import NoOpSupersessionProposer, SteeringService

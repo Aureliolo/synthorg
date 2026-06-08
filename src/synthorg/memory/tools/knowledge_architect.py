@@ -16,7 +16,6 @@ from pydantic import BaseModel
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ToolCategory
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.models import (
@@ -43,6 +42,7 @@ from synthorg.observability.events.memory import (
     KNOWLEDGE_ARCHITECT_WRITE_DENIED,
     KNOWLEDGE_ARCHITECT_WRITE_FAILED,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 if TYPE_CHECKING:

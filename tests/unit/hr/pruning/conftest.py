@@ -4,9 +4,9 @@ from datetime import UTC, datetime
 
 from pydantic import AwareDatetime
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection
 from synthorg.hr.performance.models import (

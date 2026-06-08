@@ -10,9 +10,9 @@ from typing import Final
 
 from pydantic import JsonValue
 
-from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger
 from synthorg.observability.events.web import WEB_SSRF_BLOCKED
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool
 from synthorg.tools.network_validator import (
     DnsValidationOk,

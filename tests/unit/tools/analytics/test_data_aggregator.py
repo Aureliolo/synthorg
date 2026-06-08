@@ -4,7 +4,7 @@ from typing import Any, cast
 
 import pytest
 
-from synthorg.core.enums import ActionType, ToolCategory
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.analytics.config import AnalyticsToolsConfig
 from synthorg.tools.analytics.data_aggregator import (
     AnalyticsProvider,

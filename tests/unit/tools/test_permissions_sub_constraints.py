@@ -2,13 +2,13 @@
 
 import pytest
 
-from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.core.tool_constraints import (
     NetworkMode,
     TerminalAccess,
     ToolAccessLevel,
     ToolSubConstraints,
 )
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.permissions import ToolPermissionChecker
 
 

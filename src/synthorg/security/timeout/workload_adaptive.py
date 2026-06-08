@@ -15,7 +15,7 @@ from synthorg.security.timeout.risk_tier_classifier import elevate_one_tier
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from synthorg.core.enums import ApprovalRiskLevel
+    from synthorg.approval.enums import ApprovalRiskLevel
     from synthorg.security.timeout.protocol import RiskTierClassifier
 
 

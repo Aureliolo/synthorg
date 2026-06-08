@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.security.timeout.config import TieredTimeoutConfig
 from synthorg.security.timeout.errors import RiskClassifierConfigError

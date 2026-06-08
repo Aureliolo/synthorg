@@ -336,7 +336,7 @@ class TestAgentEngineWithTools:
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        from synthorg.core.enums import ToolCategory
+        from synthorg.security.autonomy.enums import ToolCategory
         from synthorg.tools.base import BaseTool, ToolExecutionResult
         from synthorg.tools.registry import ToolRegistry
 
@@ -384,10 +384,10 @@ class TestAgentEngineMemoryToolWiring:
         sample_agent_with_personality: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        from synthorg.core.enums import ToolCategory
         from synthorg.memory.injection import InjectionStrategy
         from synthorg.memory.retrieval_config import MemoryRetrievalConfig
         from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
+        from synthorg.security.autonomy.enums import ToolCategory
         from synthorg.tools.base import BaseTool, ToolExecutionResult
         from synthorg.tools.registry import ToolRegistry
 
@@ -432,7 +432,7 @@ class TestAgentEngineMemoryToolWiring:
         sample_agent_with_personality: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        from synthorg.core.enums import ToolCategory
+        from synthorg.security.autonomy.enums import ToolCategory
         from synthorg.tools.base import BaseTool, ToolExecutionResult
         from synthorg.tools.registry import ToolRegistry
 

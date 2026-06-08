@@ -14,8 +14,8 @@ from synthorg.core.clock import SystemClock
 from synthorg.security.timeout.risk_tier_classifier import elevate_one_tier
 
 if TYPE_CHECKING:
+    from synthorg.approval.enums import ApprovalRiskLevel
     from synthorg.core.clock import Clock
-    from synthorg.core.enums import ApprovalRiskLevel
     from synthorg.security.timeout.protocol import RiskTierClassifier
 
 _SATURDAY: int = 5  # datetime.weekday(): Mon=0 .. Sun=6

@@ -81,6 +81,6 @@ are monotonic per ``entry_id`` and server-assigned."""
 
 BRAIN_WRITE_ACTION_TYPE: Final[NotBlankStr] = NotBlankStr("brain:write")
 """Action-type string for the brain write tool, routed through the trust and
-capability system as a write action. Defined here rather than as a
-``core.enums.ActionType`` member because that module is a net-shrink-only
-god-module; the ``ActionType`` taxonomy accepts custom action-type strings."""
+capability system as a write action. A custom action-type string defined here
+alongside the other brain constants; the ``security.autonomy.enums.ActionType``
+taxonomy accepts custom action-type strings beyond its built-in members."""

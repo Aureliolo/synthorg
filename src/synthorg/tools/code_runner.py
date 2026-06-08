@@ -9,7 +9,6 @@ from pydantic import BaseModel
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ToolCategory
 from synthorg.core.execution_identity import current_execution_identity
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.code_runner import (
@@ -26,6 +25,7 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionPurpose,
     CodeExecutionRecord,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._misc_args import CodeRunnerArgs
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError

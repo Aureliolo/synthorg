@@ -12,9 +12,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.autonomy import (
     AUTONOMY_ACTION_AUTO_APPROVED,
@@ -612,8 +612,8 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         # security.service -> core.approval. Keeping this import
         # function-local avoids re-entering core.approval while it is
         # still being initialized.
+        from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
         from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
-        from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
 
         item = ApprovalItem(
             id=uuid.UUID(approval_id),

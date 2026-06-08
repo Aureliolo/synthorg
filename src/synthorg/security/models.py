@@ -16,8 +16,9 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.security.autonomy.enums import ToolCategory
 
 
 class ScanOutcome(StrEnum):

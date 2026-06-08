@@ -28,6 +28,7 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._approval_review_gate import signal_resume_intent
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
@@ -36,7 +37,6 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.enums import (
     AgentStatus,
-    ApprovalStatus,
     ConversationalProposalStatus,
     ConversationStatus,
 )

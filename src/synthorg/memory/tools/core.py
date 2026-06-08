@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel
 
-from synthorg.core.enums import ToolCategory
 from synthorg.memory.self_editing import (
     CORE_MEMORY_READ_TOOL,
     CORE_MEMORY_WRITE_TOOL,
@@ -15,6 +14,7 @@ from synthorg.memory.self_editing_args import (
     CoreMemoryWriteArgs,
 )
 from synthorg.memory.tools._shared import _is_error_response
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 if TYPE_CHECKING:

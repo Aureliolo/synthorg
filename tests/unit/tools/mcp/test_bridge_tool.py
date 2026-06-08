@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 from typeguard import suppress_type_checks
 
-from synthorg.core.enums import ToolCategory
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.mcp.bridge_tool import MCPBridgeTool
 from synthorg.tools.mcp.client import MCPClient

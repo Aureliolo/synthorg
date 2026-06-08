@@ -11,9 +11,10 @@ from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ActionType, AgentStatus, ApprovalRiskLevel
+from synthorg.core.enums import AgentStatus
 from synthorg.core.role import Skill
 from synthorg.core.types import NotBlankStr, stable_agent_id
 from synthorg.hr.enums import HiringRequestStatus
@@ -40,6 +41,7 @@ from synthorg.observability.events.hr import (
     HR_HIRING_REQUEST_INVALID,
     HR_HIRING_REQUEST_NOT_FOUND,
 )
+from synthorg.security.autonomy.enums import ActionType
 
 if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol

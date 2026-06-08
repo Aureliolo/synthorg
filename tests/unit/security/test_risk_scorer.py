@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import ActionType
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.security.risk_scorer import (
     DefaultRiskScorer,
     RiskScore,

@@ -8,7 +8,7 @@ from abc import ABC
 
 from pydantic import JsonValue
 
-from synthorg.core.enums import ToolCategory
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool
 from synthorg.tools.design.config import DesignToolsConfig
 

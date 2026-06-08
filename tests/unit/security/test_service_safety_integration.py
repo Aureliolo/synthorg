@@ -7,8 +7,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.config import SafetyClassifierConfig, SecurityConfig
 from synthorg.security.denial_tracker import DenialTracker
 from synthorg.security.models import (

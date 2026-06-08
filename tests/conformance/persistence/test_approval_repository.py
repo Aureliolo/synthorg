@@ -15,8 +15,8 @@ from typing import cast
 import aiosqlite
 import pytest
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.approval_protocol import (
     ApprovalFilterSpec,

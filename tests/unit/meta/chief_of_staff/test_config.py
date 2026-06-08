@@ -61,7 +61,7 @@ class TestChiefOfStaffConfig:
         assert cfg.propose_max_clarification_turns == 5
 
     def test_propose_default_risk_level_medium(self) -> None:
-        from synthorg.core.enums import ApprovalRiskLevel
+        from synthorg.approval.enums import ApprovalRiskLevel
 
         cfg = ChiefOfStaffConfig()
         assert cfg.propose_default_risk_level is ApprovalRiskLevel.MEDIUM
