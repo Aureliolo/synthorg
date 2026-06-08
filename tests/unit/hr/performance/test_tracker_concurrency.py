@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Concurrency regression tests for PerformanceTracker.
 
 The tracker's ``_metrics_lock`` historically only protected

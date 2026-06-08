@@ -5,7 +5,7 @@ from typing import Any
 import structlog
 
 
-def get_logger(name: str, **initial_bindings: Any) -> Any:
+def get_logger(name: str, **initial_bindings: object) -> Any:  # type: ignore[explicit-any]  # structlog lazy proxy; see docstring
     """Get a structured logger bound to the given name.
 
     Thin wrapper over :func:`structlog.get_logger` that ensures

@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for AgentRegistryService."""
 
 import pytest

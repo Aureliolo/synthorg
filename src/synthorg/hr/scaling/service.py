@@ -1,3 +1,4 @@
+# module-kind: service
 """Scaling service -- orchestrates the scaling pipeline.
 
 Trigger -> build context -> strategies (parallel) -> merge ->
@@ -6,13 +7,19 @@ guards (sequential) -> execute.
 
 import asyncio
 from collections import deque
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
+from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.models import FiringRequest
+from synthorg.hr.offboarding_service import OffboardingService
+from synthorg.hr.scaling.config import ScalingConfig
+from synthorg.hr.scaling.context import ScalingContextBuilder
 from synthorg.hr.scaling.enums import (
     ScalingActionType,
     ScalingOutcome,
@@ -26,6 +33,11 @@ from synthorg.hr.scaling.models import (
     ScalingActionRecord,
     ScalingContext,
     ScalingDecision,
+)
+from synthorg.hr.scaling.protocols import (
+    ScalingGuard,
+    ScalingStrategy,
+    ScalingTrigger,
 )
 from synthorg.observability import (
     get_logger,
@@ -42,27 +54,16 @@ from synthorg.observability.events.hr import (
     HR_SCALING_STRATEGY_EVALUATED,
 )
 
-if TYPE_CHECKING:
-    from synthorg.hr.hiring_service import HiringService
-    from synthorg.hr.offboarding_service import OffboardingService
-    from synthorg.hr.scaling.config import ScalingConfig
-    from synthorg.hr.scaling.context import ScalingContextBuilder
-    from synthorg.hr.scaling.protocols import (
-        ScalingGuard,
-        ScalingStrategy,
-        ScalingTrigger,
-    )
-
 
 @runtime_checkable
 class AgentLookup(Protocol):
     """Protocol for agent registry lookups."""
 
-    async def get(self, agent_id: str) -> Any | None:
+    async def get(self, agent_id: str) -> AgentIdentity | None:
         """Retrieve an agent by ID.
 
         Returns:
-            The matching ``Any``, or ``None`` when no match is found.
+            The matching ``AgentIdentity``, or ``None`` when no match is found.
         """
         ...
 
@@ -216,7 +217,7 @@ class ScalingService:
         self,
         *,
         agent_ids: tuple[NotBlankStr, ...],
-        context_kwargs: dict[str, Any] | None = None,
+        context_kwargs: Mapping[str, Mapping[str, object] | None] | None = None,
     ) -> tuple[ScalingDecision, ...]:
         """Run the evaluation pipeline.
 
@@ -509,11 +510,11 @@ class ScalingService:
             executed_at=now,
         )
 
-    def _iter_inner_guards(self) -> list[Any]:
+    def _iter_inner_guards(self) -> list[ScalingGuard]:
         """Flatten the guard chain into a list of leaf guards.
 
         Returns:
-            List of ``Any``.
+            List of ``ScalingGuard``.
         """
         guard = self._guard
         if isinstance(guard, CompositeScalingGuard):

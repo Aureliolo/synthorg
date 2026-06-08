@@ -1,13 +1,13 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for OffboardingService."""
 
 from collections.abc import Sequence
-from typing import Any, override
+from typing import override
 
 import pytest
 
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message
+from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
@@ -22,6 +22,10 @@ from synthorg.hr.errors import (
 from synthorg.hr.models import OffboardingRecord
 from synthorg.hr.offboarding_service import OffboardingService
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
+from synthorg.memory.consolidation.archival import ArchivalStore
+from synthorg.memory.org.protocol import OrgMemoryBackend
+from synthorg.memory.protocol import MemoryBackend
 from tests.unit.hr.conftest import (
     make_agent_identity,
     make_firing_request,
@@ -116,10 +120,10 @@ class FakeArchivalStrategy:
         self,
         *,
         agent_id: NotBlankStr,
-        memory_backend: Any,
-        archival_store: Any,
-        org_memory_backend: Any = None,
-        agent_seniority: Any = None,
+        memory_backend: MemoryBackend,
+        archival_store: ArchivalStore,
+        org_memory_backend: OrgMemoryBackend | None = None,
+        agent_seniority: SeniorityLevel | None = None,
     ) -> ArchivalResult:
         return ArchivalResult(
             agent_id=agent_id,
@@ -176,8 +180,14 @@ class FakeMessageBus:
     ) -> None:
         pass
 
-    async def subscribe(self, channel_name: str, subscriber_id: str) -> Any:
-        return None
+    async def subscribe(
+        self,
+        channel_name: str,
+        subscriber_id: str,
+    ) -> Subscription:
+        # Offboarding never subscribes; the stub exists only to satisfy
+        # the MessageBus protocol surface.
+        raise NotImplementedError
 
     async def unsubscribe(self, channel_name: str, subscriber_id: str) -> None:
         pass
@@ -188,7 +198,7 @@ class FakeMessageBus:
         subscriber_id: str,
         *,
         timeout: float | None = None,  # noqa: ASYNC109
-    ) -> Any:
+    ) -> DeliveryEnvelope | None:
         return None
 
     async def create_channel(self, channel: Channel) -> Channel:
@@ -437,10 +447,10 @@ class TestOffboardingServiceFullPipeline:
                 self,
                 *,
                 agent_id: NotBlankStr,
-                memory_backend: Any,
-                archival_store: Any,
-                org_memory_backend: Any = None,
-                agent_seniority: Any = None,
+                memory_backend: MemoryBackend,
+                archival_store: ArchivalStore,
+                org_memory_backend: OrgMemoryBackend | None = None,
+                agent_seniority: SeniorityLevel | None = None,
             ) -> ArchivalResult:
                 msg = "archival boom"
                 raise MemoryArchivalError(msg)

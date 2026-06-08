@@ -13,8 +13,7 @@ at the wrapper level), so the rejected sample drops cleanly without
 crashing the business path.
 """
 
-from collections.abc import Iterator
-from typing import Any
+from collections.abc import Callable, Iterator
 
 import pytest
 import structlog.testing
@@ -105,14 +104,14 @@ def test_update_label_snapshot_replaces_atomically() -> None:
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ("validator", "snapshot_kwargs", "label_substring", "unknown", "known"),
+    ("validator", "snapshot", "label_substring", "unknown", "known"),
     [
         pytest.param(
             validate_workflow_definition_id,
-            {
-                "workflow_definition_ids": frozenset({"wf-onboarding"}),
-                "workflow_definition_ids_seeded": True,
-            },
+            _LabelSnapshot(
+                workflow_definition_ids=frozenset({"wf-onboarding"}),
+                workflow_definition_ids_seeded=True,
+            ),
             "workflow_definition_id",
             "wf-unknown",
             "wf-onboarding",
@@ -120,10 +119,10 @@ def test_update_label_snapshot_replaces_atomically() -> None:
         ),
         pytest.param(
             validate_department,
-            {
-                "departments": frozenset({"engineering"}),
-                "departments_seeded": True,
-            },
+            _LabelSnapshot(
+                departments=frozenset({"engineering"}),
+                departments_seeded=True,
+            ),
             "department",
             "ops",
             "engineering",
@@ -132,13 +131,13 @@ def test_update_label_snapshot_replaces_atomically() -> None:
     ],
 )
 def test_per_source_validator_rejects_unknown_accepts_known(
-    validator: Any,
-    snapshot_kwargs: dict[str, Any],
+    validator: Callable[[str], None],
+    snapshot: _LabelSnapshot,
     label_substring: str,
     unknown: str,
     known: str,
 ) -> None:
-    update_label_snapshot(_LabelSnapshot(**snapshot_kwargs))
+    update_label_snapshot(snapshot)
     with pytest.raises(ValueError, match=label_substring):
         validator(unknown)
     validator(known)

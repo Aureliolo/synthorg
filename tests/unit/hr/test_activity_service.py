@@ -1,8 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for :class:`ActivityFeedService`."""
 
-from datetime import UTC, datetime, timedelta
-from typing import Any, override
+from datetime import UTC, datetime, timedelta, tzinfo
+from typing import override
 
 import pytest
 
@@ -36,7 +35,7 @@ class _FrozenDatetime(datetime):
 
     @override
     @classmethod
-    def now(cls, tz: Any = None) -> _FrozenDatetime:
+    def now(cls, tz: tzinfo | None = None) -> _FrozenDatetime:
         # Cast to the subclass so mypy treats the return value as
         # ``_FrozenDatetime`` (matching the supertype covariance rule).
         base = _FROZEN_WALL if tz is None else _FROZEN_WALL.astimezone(tz)

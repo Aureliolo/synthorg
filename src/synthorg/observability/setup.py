@@ -6,14 +6,12 @@ wires structlog processors, stdlib handlers, and per-logger levels.
 
 import logging
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 import structlog
+from structlog.typing import Processor
 
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
@@ -78,7 +76,7 @@ _THIRD_PARTY_LOGGER_LEVELS: tuple[tuple[str, LogLevel], ...] = (
 # ``enable_correlation=False`` also suppresses ``trace_id``/``span_id``
 # injection -- otherwise the flag would disable ``merge_contextvars``
 # but still emit trace fields whenever an OTel span is active.
-_BASE_PROCESSORS: tuple[Any, ...] = (
+_BASE_PROCESSORS: tuple[Processor, ...] = (
     structlog.stdlib.add_logger_name,
     structlog.stdlib.add_log_level,
     structlog.stdlib.PositionalArgumentsFormatter(),
@@ -107,7 +105,7 @@ _BASE_PROCESSORS: tuple[Any, ...] = (
 def _build_shared_processors(
     *,
     enable_correlation: bool = True,
-) -> list[Any]:
+) -> list[Processor]:
     """Build the shared processor chain for stdlib-originated log records.
 
     Applied via the ``ProcessorFormatter`` pre-chain to foreign
@@ -120,7 +118,7 @@ def _build_shared_processors(
     Returns:
         A list of structlog processors for the foreign pre-chain.
     """
-    processors: list[Any] = []
+    processors: list[Processor] = []
     if enable_correlation:
         processors.append(structlog.contextvars.merge_contextvars)
         processors.append(inject_trace_context)
@@ -155,7 +153,7 @@ def _configure_structlog(*, enable_correlation: bool = True) -> None:
     Args:
         enable_correlation: Whether to include ``merge_contextvars``.
     """
-    processors: list[Any] = []
+    processors: list[Processor] = []
     if enable_correlation:
         processors.append(structlog.contextvars.merge_contextvars)
         processors.append(inject_trace_context)
@@ -213,7 +211,7 @@ def _handle_sink_failure(
 def _attach_handlers(
     config: LogConfig,
     root_logger: logging.Logger,
-    shared_processors: list[Any],
+    shared_processors: list[Processor],
     *,
     routing_overrides: Mapping[str, tuple[str, ...]] | None = None,
 ) -> None:

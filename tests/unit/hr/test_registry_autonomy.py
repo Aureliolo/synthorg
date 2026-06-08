@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for AgentRegistryService.update_autonomy().
 
 Mirrors the REST endpoint semantics: every change routes through human
@@ -7,7 +6,7 @@ audit events, and -- when an approval store is wired -- enqueues the
 request for human review.
 """
 
-from typing import Any, override
+from typing import override
 from uuid import uuid4
 
 import pytest
@@ -55,12 +54,12 @@ class _RecordingApprovalStore:
     async def add(self, item: ApprovalItem) -> None:
         self.added.append(item)
 
-    async def delete(self, approval_id: Any) -> bool:
+    async def delete(self, approval_id: NotBlankStr) -> bool:
         before = len(self.added)
         self.added = [item for item in self.added if item.id != approval_id]
         return len(self.added) < before
 
-    async def get(self, approval_id: Any) -> ApprovalItem | None:
+    async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
         return None
 
     async def list_items(
@@ -81,7 +80,9 @@ class _RecordingApprovalStore:
     ) -> ApprovalItem | None:
         return None
 
-    async def consume_if_approved(self, approval_id: Any) -> ApprovalItem | None:
+    async def consume_if_approved(
+        self, approval_id: NotBlankStr
+    ) -> ApprovalItem | None:
         return None
 
 

@@ -2,9 +2,10 @@
 
 import re
 import sys
-from collections.abc import Mapping, MutableMapping
-from typing import Any
+from collections.abc import Mapping
 from uuid import UUID
+
+from structlog.typing import EventDict, WrappedLogger
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability.redaction import scrub_secret_tokens
@@ -18,7 +19,7 @@ _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
 _REDACTED = "**REDACTED**"
 
 
-def _redact_value(value: Any) -> Any:
+def _redact_value(value: object) -> object:
     """Recursively redact sensitive keys in nested structures.
 
     Args:
@@ -44,10 +45,10 @@ def _redact_value(value: Any) -> Any:
 
 
 def sanitize_sensitive_fields(
-    logger: Any,  # noqa: ARG001
+    logger: WrappedLogger,  # noqa: ARG001
     method_name: str,  # noqa: ARG001
-    event_dict: MutableMapping[str, Any],
-) -> Mapping[str, Any]:
+    event_dict: EventDict,
+) -> EventDict:
     """Redact values of keys matching sensitive patterns.
 
     Returns a new dict rather than mutating the original event dict,
@@ -73,7 +74,7 @@ def sanitize_sensitive_fields(
     }
 
 
-def _coerce_uuid_value(value: Any) -> Any:
+def _coerce_uuid_value(value: object) -> object:
     """Recursively render ``UUID`` leaves as their canonical strings.
 
     Traverses nested mapping / list / tuple structures, replacing every
@@ -99,10 +100,10 @@ def _coerce_uuid_value(value: Any) -> Any:
 
 
 def coerce_uuids(
-    logger: Any,  # noqa: ARG001
+    logger: WrappedLogger,  # noqa: ARG001
     method_name: str,  # noqa: ARG001
-    event_dict: MutableMapping[str, Any],
-) -> Mapping[str, Any]:
+    event_dict: EventDict,
+) -> EventDict:
     """Render UUID log values as their canonical hyphenated strings.
 
     Entity ids are typed ``UUID``. Passed bare into a log call they
@@ -126,7 +127,7 @@ def coerce_uuids(
     return {key: _coerce_uuid_value(value) for key, value in event_dict.items()}
 
 
-def _scrub_value(value: Any) -> Any:
+def _scrub_value(value: object) -> object:
     """Recursively scrub credential patterns out of string values.
 
     Traverses nested mapping / list / tuple structures, applying
@@ -157,10 +158,10 @@ def _scrub_value(value: Any) -> Any:
 
 
 def scrub_event_fields(
-    logger: Any,  # noqa: ARG001
+    logger: WrappedLogger,  # noqa: ARG001
     method_name: str,  # noqa: ARG001
-    event_dict: MutableMapping[str, Any],
-) -> Mapping[str, Any]:
+    event_dict: EventDict,
+) -> EventDict:
     """Deep-scrub credential patterns out of every string value.
 
     Belt-and-braces defence against the ``error=str(exc)`` leak

@@ -17,17 +17,15 @@ never see.
 import asyncio
 import copy
 import time
+from collections.abc import Callable, Coroutine, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final
+from typing import Any, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.async_task import (
     BACKGROUND_TASKS_DRAIN_TIMEOUT,
 )
 from synthorg.observability.events.notification import NOTIFICATION_SEND_FAILED
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine, Mapping
 
 logger = get_logger(__name__)
 
@@ -59,15 +57,15 @@ class BackgroundTaskRegistry:
 
     def __init__(self, *, owner: str) -> None:
         self._owner = owner
-        self._tasks: set[asyncio.Task[Any]] = set()
+        self._tasks: set[asyncio.Task[object]] = set()
 
     def spawn(
         self,
-        coro: Coroutine[Any, Any, Any],
+        coro: Coroutine[object, object, object],
         *,
         event: str,
-        **context: Any,
-    ) -> asyncio.Task[Any]:
+        **context: object,
+    ) -> asyncio.Task[object]:
         """Create and track a background task.
 
         Args:
@@ -101,8 +99,8 @@ class BackgroundTaskRegistry:
     def _make_done_callback(
         self,
         event: str,
-        context: Mapping[str, Any],
-    ) -> Callable[[asyncio.Task[Any]], None]:
+        context: Mapping[str, object],
+    ) -> Callable[[asyncio.Task[object]], None]:
         """Build a done-callback that discards the task and logs failures.
 
         Returns:
@@ -112,7 +110,7 @@ class BackgroundTaskRegistry:
         owner = self._owner
         tasks = self._tasks
 
-        def _on_done(task: asyncio.Task[Any]) -> None:
+        def _on_done(task: asyncio.Task[object]) -> None:
             tasks.discard(task)
             if task.cancelled():
                 return
@@ -207,11 +205,11 @@ class BackgroundTaskRegistry:
         return len(self._tasks)
 
 
-def log_task_exceptions(
+def log_task_exceptions(  # type: ignore[explicit-any]  # structlog proxy; see log_exception_redacted
     logger_: Any,
     event: str,
-    **context: Any,
-) -> Callable[[asyncio.Task[Any]], None]:
+    **context: object,
+) -> Callable[[asyncio.Task[object]], None]:
     """Build an :meth:`asyncio.Task.add_done_callback`-compatible callback.
 
     This is a plain factory -- it returns a single callback and does
@@ -244,7 +242,7 @@ def log_task_exceptions(
     """
     frozen_context = MappingProxyType(copy.deepcopy(context))
 
-    def _on_done(task: asyncio.Task[Any]) -> None:
+    def _on_done(task: asyncio.Task[object]) -> None:
         if task.cancelled():
             return
         exc = task.exception()

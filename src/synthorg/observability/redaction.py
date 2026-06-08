@@ -250,12 +250,12 @@ def safe_error_description(exc: BaseException) -> str:
     return candidate[:keep] + _TRUNCATION_MARKER
 
 
-def log_exception_redacted(
+def log_exception_redacted(  # type: ignore[explicit-any]  # structlog proxy; see docstring
     logger: Any,
     event: str,
     exc: BaseException,
     /,
-    **kwargs: Any,
+    **kwargs: object,
 ) -> None:
     """Emit an ERROR log for *exc* with the redacted-error kwargs applied.
 

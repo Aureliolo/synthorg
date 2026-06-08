@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Concurrency tests for HRRegistry.clear.
 
 Production-safe ``clear`` must hold the same lock as ``register`` and
@@ -8,7 +7,6 @@ Production-safe ``clear`` must hold the same lock as ``register`` and
 import asyncio
 import uuid
 from collections.abc import Coroutine
-from typing import Any
 
 import pytest
 
@@ -28,7 +26,7 @@ def _make_identity(suffix: str) -> AgentIdentity:
 
 
 async def _record_outcome(
-    coro: Coroutine[Any, Any, Any],
+    coro: Coroutine[object, object, object],
     sink: list[BaseException | None],
 ) -> None:
     """Run *coro* under TaskGroup without aborting siblings on failure.

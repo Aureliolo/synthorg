@@ -630,11 +630,6 @@ disallow_any_explicit = false
 module = "synthorg.meta.*"
 disallow_any_explicit = false
 
-
-[[tool.mypy.overrides]]
-module = "synthorg.observability.*"
-disallow_any_explicit = false
-
 [[tool.mypy.overrides]]
 module = "synthorg.settings.*"
 disallow_any_explicit = false
@@ -652,7 +647,6 @@ module = [
     "synthorg.backup.*",
     "synthorg.coordination.*",
     "synthorg.docs_engine.*",
-    "synthorg.hr.*",
     "synthorg.infrastructure.*",
     "synthorg.notifications.*",
     "synthorg.organization.*",

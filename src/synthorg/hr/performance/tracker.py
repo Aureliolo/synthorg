@@ -21,8 +21,9 @@ the pluggable algorithms.
 import asyncio
 import math
 import re
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -87,7 +88,7 @@ MAX_BATCH_SNAPSHOTS_LOOKUP: Final[int] = 1024
 
 
 def _coerce_finite_weights(
-    raw: Any,
+    raw: Iterable[tuple[str, float]],
 ) -> tuple[tuple[NotBlankStr, float], ...]:
     """Coerce ``describe_weights()`` output into a calibration-safe tuple.
 

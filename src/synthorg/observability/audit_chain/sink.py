@@ -6,15 +6,19 @@ import json
 import logging
 import math
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, override
 
 from pydantic import ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.audit_chain.chain import HashChain
+from synthorg.observability.audit_chain.config import AuditChainConfig
 from synthorg.observability.audit_chain.payloads import AuditChainEventPayload
+from synthorg.observability.audit_chain.protocol import SignedPayload
+from synthorg.observability.audit_chain.timestamping import TimestampResult
 from synthorg.observability.events.audit_chain import (
     AUDIT_CHAIN_CALLBACK_ERROR,
     AUDIT_CHAIN_EMIT_ERROR,
@@ -24,17 +28,15 @@ from synthorg.observability.events.audit_chain import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from synthorg.observability.audit_chain.config import AuditChainConfig
+    # Collaborator protocols stay TYPE_CHECKING: the boundary tests pass
+    # partial signer/provider fakes, and a runtime import would make
+    # typeguard's check_protocol reject them at call time.
     from synthorg.observability.audit_chain.protocol import AuditChainSigner
-    from synthorg.observability.audit_chain.timestamping import (
-        TimestampProvider,
-    )
+    from synthorg.observability.audit_chain.timestamping import TimestampProvider
 
-    # Signature: (status, chain_depth, timestamp_unix) -> None
-    # where status is one of: "signed", "fallback", "error".
-    AppendCallback = Callable[[str, int, float], None]
+# Signature: (status, chain_depth, timestamp_unix) -> None
+# where status is one of: "signed", "fallback", "error".
+AppendCallback = Callable[[str, int, float], None]
 
 logger = get_logger(__name__)
 
@@ -239,7 +241,7 @@ class AuditChainSink(logging.Handler):
     async def _sign_and_timestamp(
         self,
         data: bytes,
-    ) -> tuple[Any, Any]:
+    ) -> tuple[SignedPayload, TimestampResult]:
         """Run sign + binding-payload compute + timestamp as one unit.
 
         The three steps have to be serialised together so a

@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Shared fixtures and factories for HR unit tests."""
 
 from datetime import UTC, date, datetime
-from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -85,7 +83,7 @@ def make_candidate_card(  # noqa: PLR0913
     candidate_id: str | None = None,
 ) -> CandidateCard:
     """Build a CandidateCard with sensible defaults."""
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, object] = {
         "name": name,
         "role": role,
         "department": department,
@@ -97,7 +95,7 @@ def make_candidate_card(  # noqa: PLR0913
     }
     if candidate_id is not None:
         kwargs["id"] = candidate_id
-    return CandidateCard(**kwargs)
+    return CandidateCard.model_validate(kwargs)
 
 
 def make_hiring_request(  # noqa: PLR0913
@@ -116,7 +114,7 @@ def make_hiring_request(  # noqa: PLR0913
     request_id: str | None = None,
 ) -> HiringRequest:
     """Build a HiringRequest with sensible defaults."""
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, object] = {
         "requested_by": requested_by,
         "department": department,
         "role": role,
@@ -132,7 +130,7 @@ def make_hiring_request(  # noqa: PLR0913
     }
     if request_id is not None:
         kwargs["id"] = request_id
-    return HiringRequest(**kwargs)
+    return HiringRequest.model_validate(kwargs)
 
 
 def make_firing_request(

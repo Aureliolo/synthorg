@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Direct unit tests for the per-pillar ``MetricExtractor`` implementations.
 
 These tests exercise each extractor's ``extract()`` method in
@@ -8,7 +7,7 @@ behaviour; these cover the extractor's data-extraction contract.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -33,6 +32,8 @@ from synthorg.hr.performance.models import (
     LlmCalibrationRecord,
     WindowMetrics,
 )
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import mock_of
 
 from .conftest import (
     make_evaluation_context,
@@ -290,14 +291,10 @@ class TestEfficiencyMetricExtractor:
 
     async def test_resolver_disables_cost(self) -> None:
         # Stubbed resolver returns False for hr.evaluation_cost_enabled.
-        from unittest.mock import AsyncMock
-
-        resolver: Any = AsyncMock()
-
         async def _get_bool(namespace: str, key: str) -> bool:
             return not (namespace == "hr" and key == "evaluation_cost_enabled")
 
-        resolver.get_bool = AsyncMock(side_effect=_get_bool)
+        resolver = mock_of[ConfigResolver](get_bool=AsyncMock(side_effect=_get_bool))
         snapshot = self._snapshot_with_window()
         extractor = EfficiencyMetricExtractor(config_resolver=resolver)
         result = await extractor.extract(_ctx(snapshot=snapshot))

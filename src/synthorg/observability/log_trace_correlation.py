@@ -8,16 +8,16 @@ API is not installed, the import is lazy and also no-ops -- tracing
 is an opt-in feature and logging must never depend on it.
 """
 
-from typing import Any
+from structlog.typing import EventDict, WrappedLogger
 
 from synthorg.core.critical_errors import reraise_critical
 
 
 def inject_trace_context(
-    _logger: Any,
+    _logger: WrappedLogger,
     _method_name: str,
-    event_dict: dict[str, Any],
-) -> dict[str, Any]:
+    event_dict: EventDict,
+) -> EventDict:
     """Attach the current span's trace/span ids to *event_dict*.
 
     Invariants:

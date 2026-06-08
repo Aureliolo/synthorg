@@ -75,4 +75,5 @@ allow_indirect_imports = true
 ignore_imports =
     synthorg.observability.feature -> synthorg.api.controllers.metrics
     synthorg.observability.prometheus_collector -> synthorg.api.state
+    synthorg.observability._prometheus_label_fetchers -> synthorg.api.state
     synthorg.observability.startup_wiring -> synthorg.api.state

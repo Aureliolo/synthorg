@@ -130,7 +130,9 @@ class TestOtlpHandler:
                 agent_id="agent-789",
             )
             handler.setFormatter(_JsonFormatter())
-            result = handler._format_as_otlp_dict(record)
+            # Round-trip through JSON so the heterogeneous OTLP dict (typed
+            # ``dict[str, object]`` at the source) is navigable in assertions.
+            result = json.loads(json.dumps(handler._format_as_otlp_dict(record)))
             # Body is OTLP AnyValue with stringValue from self.format()
             body = json.loads(result["body"]["stringValue"])
             assert body["event"] == "test event"
@@ -150,7 +152,7 @@ class TestOtlpHandler:
         handler = _make_handler()
         try:
             record = _make_record("plain event")
-            result = handler._format_as_otlp_dict(record)
+            result = json.loads(json.dumps(handler._format_as_otlp_dict(record)))
             body = json.loads(result["body"]["stringValue"])
             assert body["event"] == "plain event"
             attr_keys = {a["key"] for a in result["attributes"]}

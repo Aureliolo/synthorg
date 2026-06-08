@@ -13,14 +13,16 @@ import sys
 import threading
 import urllib.error
 import urllib.request
-from typing import TYPE_CHECKING, Any, Final, override
+from typing import TYPE_CHECKING, Final, override
 
 import structlog
 from structlog.stdlib import ProcessorFormatter
+from structlog.typing import Processor
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import safe_error_description
+from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import OtlpProtocol
 from synthorg.observability.events.metrics import (
     METRICS_OTLP_CALLBACK_ERROR,
@@ -32,8 +34,9 @@ from synthorg.observability.events.metrics import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from synthorg.observability.config import SinkConfig
-
+    # Stays TYPE_CHECKING: a runtime alias would make typeguard reject a
+    # non-callable ``callback`` before ``set_export_callback`` can raise
+    # its own TypeError (the contract the boundary test pins).
     ExportCallback = Callable[[str, int], None]
     # Signature: (outcome: "success"|"failure", dropped_records: int) -> None
 
@@ -192,7 +195,7 @@ class OtlpHandler(logging.Handler):
         with self._pending_lock:
             self._dropped_count += count
 
-    def _format_as_otlp_dict(self, record: logging.LogRecord) -> dict[str, Any]:
+    def _format_as_otlp_dict(self, record: logging.LogRecord) -> dict[str, object]:
         """Convert a log record to an OTLP-compatible dictionary.
 
         Maps correlation IDs to trace attributes and Python log levels
@@ -204,7 +207,7 @@ class OtlpHandler(logging.Handler):
         Returns:
             Dictionary with OTLP log record fields.
         """
-        attributes: list[dict[str, Any]] = [
+        attributes: list[dict[str, object]] = [
             {
                 "key": "logger.name",
                 "value": {"stringValue": record.name},
@@ -266,7 +269,7 @@ class OtlpHandler(logging.Handler):
 
     def _export_batch(self, records: list[logging.LogRecord]) -> None:
         """Export a batch of records as OTLP JSON log records."""
-        log_records: list[dict[str, Any]] = []
+        log_records: list[dict[str, object]] = []
         format_drops = 0
         for record in records:
             try:
@@ -390,7 +393,7 @@ class OtlpHandler(logging.Handler):
 
 def build_otlp_handler(
     sink: SinkConfig,
-    foreign_pre_chain: list[Any],
+    foreign_pre_chain: list[Processor],
 ) -> OtlpHandler:
     """Build an OtlpHandler from an OTLP sink configuration.
 
@@ -417,8 +420,8 @@ def build_otlp_handler(
     )
     handler.setLevel(sink.level.value)
 
-    renderer: Any = structlog.processors.JSONRenderer()
-    processors: list[Any] = [
+    renderer: Processor = structlog.processors.JSONRenderer()
+    processors: list[Processor] = [
         ProcessorFormatter.remove_processors_meta,
         structlog.processors.format_exc_info,
         renderer,

@@ -4,12 +4,12 @@ import json
 import logging
 import logging.handlers
 import socket
-from typing import Any
 from unittest.mock import patch
 
 import pytest
 import structlog
 from structlog.stdlib import ProcessorFormatter
+from structlog.typing import Processor
 
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import (
@@ -25,13 +25,13 @@ from synthorg.observability.syslog_handler import (
 )
 
 
-def _syslog_sink(**overrides: Any) -> SinkConfig:
-    defaults: dict[str, Any] = {
+def _syslog_sink(**overrides: object) -> SinkConfig:
+    defaults: dict[str, object] = {
         "sink_type": SinkType.SYSLOG,
         "syslog_host": "localhost",
     }
     defaults.update(overrides)
-    return SinkConfig(**defaults)
+    return SinkConfig.model_validate(defaults)
 
 
 @pytest.mark.unit
@@ -158,7 +158,7 @@ class TestSyslogHandlerEmit:
         handler_cleanup: list[logging.Handler],
     ) -> None:
         sink = _syslog_sink()
-        pre_chain = [
+        pre_chain: list[Processor] = [
             structlog.stdlib.add_logger_name,
             structlog.stdlib.add_log_level,
             structlog.processors.TimeStamper(fmt="iso", utc=True),

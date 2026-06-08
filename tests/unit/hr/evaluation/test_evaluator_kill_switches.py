@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Coverage for the four hr.evaluation_*_enabled flag → pillar gates.
 
 Each flag maps to either a pillar or an efficiency sub-metric and
@@ -7,7 +6,6 @@ ConfigResolver (best-effort mapping documented in
 ``EvaluationService.__init__``).
 """
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,33 +14,38 @@ from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.evaluator import EvaluationService
+from synthorg.hr.evaluation.models import EvaluationContext
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
 
-def _make_resolver(values: dict[str, bool]) -> Any:
-    resolver = AsyncMock()
-
+def _make_resolver(values: dict[str, bool]) -> ConfigResolver:
     async def _get_bool(namespace: str, key: str) -> bool:
         return values.get(f"{namespace}/{key}", True)
 
-    resolver.get_bool = AsyncMock(side_effect=_get_bool)
+    resolver: ConfigResolver = mock_of[ConfigResolver](
+        get_bool=AsyncMock(side_effect=_get_bool),
+    )
     return resolver
 
 
 @pytest.fixture
-def tracker_with_no_data() -> Any:
-    tracker = MagicMock()
+def tracker_with_no_data() -> PerformanceTracker:
     snapshot = MagicMock()
     snapshot.windows = ()
-    tracker.get_snapshot = AsyncMock(return_value=snapshot)
-    tracker.get_task_metrics = MagicMock(return_value=())
-    tracker.sampler = None
+    tracker: PerformanceTracker = mock_of[PerformanceTracker](
+        get_snapshot=AsyncMock(return_value=snapshot),
+        get_task_metrics=MagicMock(return_value=()),
+        sampler=None,
+    )
     return tracker
 
 
 async def test_intelligence_pillar_skipped_when_quality_disabled(
-    tracker_with_no_data: Any,
+    tracker_with_no_data: PerformanceTracker,
 ) -> None:
     """Intelligence pillar is omitted when evaluation_quality_enabled=False."""
     resolver = _make_resolver({"hr/evaluation_quality_enabled": False})
@@ -62,7 +65,7 @@ async def test_intelligence_pillar_skipped_when_quality_disabled(
 
 
 async def test_resilience_pillar_skipped_when_task_count_disabled(
-    tracker_with_no_data: Any,
+    tracker_with_no_data: PerformanceTracker,
 ) -> None:
     """Resilience pillar is omitted when evaluation_task_count_enabled=False."""
     resolver = _make_resolver({"hr/evaluation_task_count_enabled": False})
@@ -109,7 +112,7 @@ async def test_efficiency_time_submetric_gated_by_evaluation_latency_enabled() -
     assert "tokens" in metrics.weights
 
 
-def _make_efficiency_context() -> Any:
+def _make_efficiency_context() -> EvaluationContext:
     """Build a minimal EvaluationContext for extractor unit tests.
 
     The window has every sub-metric populated so we observe which

@@ -7604,6 +7604,13 @@
     },
     {
       "kind": "code",
+      "loc": 93,
+      "loc_cap": 500,
+      "module": "src/synthorg/hr/_activity_validation.py",
+      "owning_feature": "hr"
+    },
+    {
+      "kind": "code",
       "loc": 15,
       "loc_cap": 500,
       "module": "src/synthorg/hr/_construction.py",
@@ -7617,9 +7624,9 @@
       "owning_feature": "hr"
     },
     {
-      "kind": "code",
-      "loc": 673,
-      "loc_cap": 500,
+      "kind": "service",
+      "loc": 592,
+      "loc_cap": 600,
       "module": "src/synthorg/hr/activity_service.py",
       "owning_feature": "hr"
     },
@@ -7939,9 +7946,9 @@
       "owning_feature": "hr"
     },
     {
-      "kind": "code",
+      "kind": "declarative",
       "loc": 514,
-      "loc_cap": 500,
+      "loc_cap": null,
       "module": "src/synthorg/hr/performance/models.py",
       "owning_feature": "hr"
     },
@@ -7982,7 +7989,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 912,
+      "loc": 913,
       "loc_cap": 1100,
       "module": "src/synthorg/hr/performance/tracker.py",
       "owning_feature": "hr"
@@ -8079,9 +8086,9 @@
       "owning_feature": "hr"
     },
     {
-      "kind": "code",
-      "loc": 544,
-      "loc_cap": 500,
+      "kind": "service",
+      "loc": 538,
+      "loc_cap": 600,
       "module": "src/synthorg/hr/promotion/service.py",
       "owning_feature": "hr"
     },
@@ -8164,7 +8171,7 @@
     },
     {
       "kind": "code",
-      "loc": 178,
+      "loc": 174,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/context.py",
       "owning_feature": "hr"
@@ -8241,7 +8248,7 @@
     },
     {
       "kind": "code",
-      "loc": 255,
+      "loc": 256,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/models.py",
       "owning_feature": "hr"
@@ -8254,9 +8261,9 @@
       "owning_feature": "hr"
     },
     {
-      "kind": "code",
-      "loc": 522,
-      "loc_cap": 500,
+      "kind": "service",
+      "loc": 523,
+      "loc_cap": 600,
       "module": "src/synthorg/hr/scaling/service.py",
       "owning_feature": "hr"
     },
@@ -8395,6 +8402,13 @@
     },
     {
       "kind": "code",
+      "loc": 132,
+      "loc_cap": 500,
+      "module": "src/synthorg/hr/training/_guards_runner.py",
+      "owning_feature": "hr"
+    },
+    {
+      "kind": "code",
       "loc": 148,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/_storage.py",
@@ -8520,9 +8534,9 @@
       "owning_feature": "hr"
     },
     {
-      "kind": "code",
-      "loc": 682,
-      "loc_cap": 500,
+      "kind": "service",
+      "loc": 572,
+      "loc_cap": 600,
       "module": "src/synthorg/hr/training/service.py",
       "owning_feature": "hr"
     },
@@ -12469,6 +12483,13 @@
     },
     {
       "kind": "code",
+      "loc": 67,
+      "loc_cap": 500,
+      "module": "src/synthorg/observability/_endpoint_safety.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "code",
       "loc": 28,
       "loc_cap": 500,
       "module": "src/synthorg/observability/_logger.py",
@@ -12476,9 +12497,23 @@
     },
     {
       "kind": "code",
-      "loc": 170,
+      "loc": 122,
+      "loc_cap": 500,
+      "module": "src/synthorg/observability/_prometheus_label_fetchers.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "code",
+      "loc": 203,
       "loc_cap": 500,
       "module": "src/synthorg/observability/_shipping_sink_parsers.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "code",
+      "loc": 204,
+      "loc_cap": 500,
+      "module": "src/synthorg/observability/_sink_config_parsers.py",
       "owning_feature": "observability"
     },
     {
@@ -12531,9 +12566,9 @@
       "owning_feature": "observability"
     },
     {
-      "kind": "code",
-      "loc": 511,
-      "loc_cap": 500,
+      "kind": "adapter",
+      "loc": 517,
+      "loc_cap": 700,
       "module": "src/synthorg/observability/audit_chain/tsa_client.py",
       "owning_feature": "observability"
     },
@@ -12546,15 +12581,15 @@
     },
     {
       "kind": "code",
-      "loc": 227,
+      "loc": 226,
       "loc_cap": 500,
       "module": "src/synthorg/observability/background_tasks.py",
       "owning_feature": "observability"
     },
     {
-      "kind": "code",
-      "loc": 757,
-      "loc_cap": 500,
+      "kind": "declarative",
+      "loc": 697,
+      "loc_cap": null,
       "module": "src/synthorg/observability/config.py",
       "owning_feature": "observability"
     },
@@ -13904,7 +13939,7 @@
     },
     {
       "kind": "code",
-      "loc": 349,
+      "loc": 350,
       "loc_cap": 500,
       "module": "src/synthorg/observability/otlp_handler.py",
       "owning_feature": "observability"
@@ -13924,9 +13959,9 @@
       "owning_feature": "observability"
     },
     {
-      "kind": "code",
-      "loc": 684,
-      "loc_cap": 500,
+      "kind": "service",
+      "loc": 585,
+      "loc_cap": 600,
       "module": "src/synthorg/observability/prometheus_collector.py",
       "owning_feature": "observability"
     },
@@ -14023,21 +14058,21 @@
     },
     {
       "kind": "code",
-      "loc": 328,
+      "loc": 327,
       "loc_cap": 500,
       "module": "src/synthorg/observability/setup.py",
       "owning_feature": "observability"
     },
     {
       "kind": "code",
-      "loc": 623,
+      "loc": 453,
       "loc_cap": 500,
       "module": "src/synthorg/observability/sink_config_builder.py",
       "owning_feature": "observability"
     },
     {
       "kind": "code",
-      "loc": 425,
+      "loc": 424,
       "loc_cap": 500,
       "module": "src/synthorg/observability/sinks.py",
       "owning_feature": "observability"
@@ -14058,7 +14093,7 @@
     },
     {
       "kind": "code",
-      "loc": 85,
+      "loc": 84,
       "loc_cap": 500,
       "module": "src/synthorg/observability/syslog_handler.py",
       "owning_feature": "observability"

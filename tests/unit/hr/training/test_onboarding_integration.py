@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for training onboarding integration."""
 
 from datetime import UTC, datetime
-from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -68,8 +66,8 @@ class TestTrainingOnboardingBridge:
 
         result = await bridge.run_training_step("new-1")
 
-        cast(Any, training_service.execute).assert_awaited_once()
-        cast(Any, onboarding.complete_step).assert_awaited_once_with(
+        training_service.execute.assert_awaited_once()
+        onboarding.complete_step.assert_awaited_once_with(
             "new-1",
             OnboardingStep.LEARNED_FROM_SENIORS,
             notes=result.id,
@@ -92,9 +90,9 @@ class TestTrainingOnboardingBridge:
 
         await bridge.run_training_step("new-1", skip_training=True)
         # Training service still runs (it short-circuits internally on skip)
-        cast(Any, training_service.execute).assert_awaited_once()
+        training_service.execute.assert_awaited_once()
         # Onboarding step should still complete since no review is pending.
-        cast(Any, onboarding.complete_step).assert_awaited_once()
+        onboarding.complete_step.assert_awaited_once()
 
     async def test_passes_override_sources(self) -> None:
         registry = mock_of[AgentRegistryService](
@@ -116,7 +114,7 @@ class TestTrainingOnboardingBridge:
             override_sources=("senior-a", "senior-b"),
         )
 
-        call_args = cast(Any, training_service.execute).call_args
+        call_args = training_service.execute.call_args
         plan = call_args[0][0]
         assert plan.override_sources == ("senior-a", "senior-b")
 

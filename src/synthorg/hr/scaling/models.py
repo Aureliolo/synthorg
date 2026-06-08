@@ -5,7 +5,7 @@ and action records.
 """
 
 from collections.abc import Mapping
-from typing import Any, Self
+from typing import Self
 from uuid import uuid4
 
 from pydantic import (
@@ -18,6 +18,7 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.hr.scaling.enums import (
     ScalingActionType,
     ScalingOutcome,
@@ -94,7 +95,7 @@ class ScalingContext(BaseModel):
         default=(),
         description="Golden-benchmark quality signals (e.g. regression flag)",
     )
-    performance_snapshots: Mapping[NotBlankStr, Any] = Field(
+    performance_snapshots: Mapping[NotBlankStr, AgentPerformanceSnapshot] = Field(
         default_factory=dict,
         description="Raw performance snapshots keyed by agent_id",
     )

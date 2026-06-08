@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for ActivityFeedService.list_recent_activity().
 
 The new entry point is the no-agent-required variant of
@@ -8,17 +7,20 @@ that operators query for "recent activity in this project" or
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.activity_service import ActivityFeedService
 from synthorg.hr.performance.models import TaskMetricRecord
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.persistence_protocol import LifecycleEventRepository
 from tests._shared import mock_of
 
 
@@ -49,23 +51,25 @@ def _make_task_metric(
 
 
 @pytest.fixture
-def lifecycle_repo() -> Any:
-    repo = AsyncMock()
-    repo.list_events.return_value = ()
+def lifecycle_repo() -> LifecycleEventRepository:
+    repo: LifecycleEventRepository = mock_of[LifecycleEventRepository](
+        list_events=AsyncMock(return_value=()),
+    )
     return repo
 
 
 @pytest.fixture
-def performance_tracker() -> Any:
-    tracker = MagicMock()
-    tracker.get_task_metrics = MagicMock(return_value=())
+def performance_tracker() -> PerformanceTracker:
+    tracker: PerformanceTracker = mock_of[PerformanceTracker](
+        get_task_metrics=MagicMock(return_value=()),
+    )
     return tracker
 
 
 @pytest.fixture
 def service(
-    lifecycle_repo: Any,
-    performance_tracker: Any,
+    lifecycle_repo: LifecycleEventRepository,
+    performance_tracker: PerformanceTracker,
 ) -> ActivityFeedService:
     return ActivityFeedService(
         performance_tracker=performance_tracker,
@@ -80,10 +84,10 @@ class TestListRecentActivity:
     async def test_unfiltered_happy_path(
         self,
         service: ActivityFeedService,
-        performance_tracker: Any,
+        performance_tracker: PerformanceTracker,
     ) -> None:
         completed_at = _now() - timedelta(minutes=5)
-        performance_tracker.get_task_metrics.return_value = (
+        cast(MagicMock, performance_tracker.get_task_metrics).return_value = (
             _make_task_metric(
                 agent_id="agent-1",
                 task_id="task-1",
@@ -106,10 +110,10 @@ class TestListRecentActivity:
     async def test_task_id_filter(
         self,
         service: ActivityFeedService,
-        performance_tracker: Any,
+        performance_tracker: PerformanceTracker,
     ) -> None:
         completed_at = _now() - timedelta(minutes=5)
-        performance_tracker.get_task_metrics.return_value = (
+        cast(MagicMock, performance_tracker.get_task_metrics).return_value = (
             _make_task_metric(
                 agent_id="agent-1",
                 task_id="task-1",
@@ -138,8 +142,8 @@ class TestListRecentActivity:
     @pytest.mark.unit
     async def test_project_filter_excludes_unattributed_sources(
         self,
-        lifecycle_repo: Any,
-        performance_tracker: Any,
+        lifecycle_repo: LifecycleEventRepository,
+        performance_tracker: PerformanceTracker,
     ) -> None:
         """``project=...`` keeps only events that carry the matching project_id.
 
@@ -154,7 +158,7 @@ class TestListRecentActivity:
         completed_at = _now() - timedelta(minutes=5)
         # One task metric per project would survive a project filter
         # before the regression fix; assert it is now dropped.
-        performance_tracker.get_task_metrics.return_value = (
+        cast(MagicMock, performance_tracker.get_task_metrics).return_value = (
             _make_task_metric(
                 agent_id="agent-x",
                 task_id="task-x",
@@ -182,11 +186,8 @@ class TestListRecentActivity:
             project_id="proj-other",
             cost=2.0,
         )
-        cost_tracker = cast(
-            Any,
-            mock_of[CostTracker](
-                get_records=AsyncMock(return_value=(cost_in_scope, cost_out_of_scope)),
-            ),
+        cost_tracker = mock_of[CostTracker](
+            get_records=AsyncMock(return_value=(cost_in_scope, cost_out_of_scope)),
         )
         service = ActivityFeedService(
             performance_tracker=performance_tracker,
@@ -212,10 +213,10 @@ class TestListRecentActivity:
     async def test_pagination(
         self,
         service: ActivityFeedService,
-        performance_tracker: Any,
+        performance_tracker: PerformanceTracker,
     ) -> None:
         completed_at = _now() - timedelta(minutes=5)
-        performance_tracker.get_task_metrics.return_value = tuple(
+        cast(MagicMock, performance_tracker.get_task_metrics).return_value = tuple(
             _make_task_metric(
                 agent_id=f"agent-{i}",
                 task_id=f"task-{i}",
@@ -250,21 +251,21 @@ class TestListRecentActivity:
     @pytest.mark.unit
     async def test_isolated_source_failure_does_not_abort(
         self,
-        lifecycle_repo: Any,
-        performance_tracker: Any,
+        lifecycle_repo: LifecycleEventRepository,
+        performance_tracker: PerformanceTracker,
     ) -> None:
         """A failing optional source must not abort the merge."""
 
         class _BoomCostTracker:
             async def get_records(
                 self,
-                **_: Any,
-            ) -> tuple[Any, ...]:
+                **_: object,
+            ) -> tuple[CostRecord, ...]:
                 msg = "cost tracker explodes"
                 raise RuntimeError(msg)
 
         completed_at = _now() - timedelta(minutes=5)
-        performance_tracker.get_task_metrics.return_value = (
+        cast(MagicMock, performance_tracker.get_task_metrics).return_value = (
             _make_task_metric(
                 agent_id="agent-1",
                 task_id="task-1",

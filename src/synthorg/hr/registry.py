@@ -20,7 +20,7 @@ reaching into ``_agents`` directly.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.normalization import (
@@ -361,7 +361,7 @@ class AgentRegistryService:
     async def update_identity(
         self,
         agent_id: NotBlankStr,
-        **updates: Any,
+        **updates: object,
     ) -> AgentIdentity:
         """Update agent identity fields via model_copy(update=...).
 
@@ -507,7 +507,7 @@ class AgentRegistryService:
     async def apply_identity_update(
         self,
         agent_id: NotBlankStr,
-        updates: dict[str, Any],
+        updates: dict[str, object],
         *,
         saved_by: str,
     ) -> AgentIdentity:

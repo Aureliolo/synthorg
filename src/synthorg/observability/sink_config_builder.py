@@ -18,17 +18,43 @@ The two JSON inputs come from ``SettingsService`` settings:
   All types accept optional ``level``.
 """
 
-import json
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Final, cast
+from typing import Final, cast
 
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability._shipping_sink_parsers import (
     build_custom_http_sink as _build_custom_http_sink_impl,
 )
 from synthorg.observability._shipping_sink_parsers import (
     build_custom_syslog_sink as _build_custom_syslog_sink_impl,
+)
+from synthorg.observability._sink_config_parsers import (
+    parse_bool as _parse_bool,
+)
+from synthorg.observability._sink_config_parsers import (
+    parse_common_sink_fields as _parse_common_sink_fields,
+)
+from synthorg.observability._sink_config_parsers import (
+    parse_enum_field as _parse_enum_field,
+)
+from synthorg.observability._sink_config_parsers import (
+    parse_int_field as _parse_int_field,
+)
+from synthorg.observability._sink_config_parsers import (
+    parse_json as _parse_json,
+)
+from synthorg.observability._sink_config_parsers import (
+    parse_level as _parse_level,
+)
+from synthorg.observability._sink_config_parsers import (
+    parse_number_field as _parse_number_field,
+)
+from synthorg.observability._sink_config_parsers import (
+    parse_rotation_override as _parse_rotation_override,
+)
+from synthorg.observability._sink_config_parsers import (
+    reject_unknown_fields as _reject_unknown_fields,
 )
 from synthorg.observability.config import (
     DEFAULT_SINKS,
@@ -38,7 +64,6 @@ from synthorg.observability.config import (
 )
 from synthorg.observability.enums import (
     LogLevel,
-    RotationStrategy,
     SinkType,
 )
 
@@ -53,12 +78,6 @@ DEFAULT_FILE_PATHS: frozenset[str] = frozenset(
 
 # Valid sink identifiers for overrides.
 _VALID_OVERRIDE_KEYS: frozenset[str] = DEFAULT_FILE_PATHS | {CONSOLE_SINK_ID}
-
-_LEVEL_MAP: dict[str, LogLevel] = {level.value.lower(): level for level in LogLevel}
-
-_STRATEGY_MAP: dict[str, RotationStrategy] = {
-    s.value.lower(): s for s in RotationStrategy
-}
 
 # Allowed field names for strict validation.
 _OVERRIDE_FIELDS: frozenset[str] = frozenset(
@@ -93,9 +112,6 @@ _CUSTOM_HTTP_SINK_FIELDS: frozenset[str] = frozenset(
 _CUSTOM_SINK_FIELDS: frozenset[str] = (
     _CUSTOM_FILE_SINK_FIELDS | _CUSTOM_SYSLOG_SINK_FIELDS | _CUSTOM_HTTP_SINK_FIELDS
 )
-_ROTATION_FIELDS: frozenset[str] = frozenset(
-    {"strategy", "max_bytes", "backup_count", "compress_rotated"},
-)
 _VALID_CUSTOM_SINK_TYPES: frozenset[str] = frozenset(
     {"file", "syslog", "http"},
 )
@@ -117,60 +133,10 @@ class SinkBuildResult:
     routing_overrides: MappingProxyType[str, tuple[str, ...]]
 
 
-# -- Validation helpers --------------------------------------------
+# -- JSON / override parsing ---------------------------------------
 
 
-def _reject_unknown_fields(
-    fields: dict[str, Any],
-    allowed: frozenset[str],
-    context: str,
-) -> None:
-    """Raise ValueError if *fields* contains keys not in *allowed*.
-
-    Raises:
-        ValueError: If *fields* contains any key not present in *allowed*.
-    """
-    unknown = set(fields) - allowed
-    if unknown:
-        msg = f"Unknown fields in {context}: {sorted(unknown)}"
-        raise ValueError(msg)
-
-
-def _parse_bool(raw: Any, *, field_name: str) -> bool:
-    """Require an actual JSON boolean.
-
-    Returns:
-        The boolean value of *raw*.
-
-    Raises:
-        ValueError: If *raw* is not a ``bool``.
-    """
-    if not isinstance(raw, bool):
-        msg = f"{field_name} must be a boolean, got {type(raw).__name__}"
-        raise ValueError(msg)
-    return raw
-
-
-# -- JSON parsing helpers ------------------------------------------
-
-
-def _parse_json(raw: str, label: str) -> Any:
-    """Parse a JSON string, raising ValueError on failure.
-
-    Returns:
-        The deserialized Python object.
-
-    Raises:
-        ValueError: If the string is not valid JSON.
-    """
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as exc:
-        msg = f"Invalid JSON for {label}: {safe_error_description(exc)}"
-        raise ValueError(msg) from exc
-
-
-def _parse_sink_overrides(raw: str) -> dict[str, dict[str, Any]]:
+def _parse_sink_overrides(raw: str) -> dict[str, dict[str, object]]:
     """Parse and validate the ``sink_overrides`` JSON string.
 
     Returns:
@@ -206,7 +172,7 @@ def _parse_sink_overrides(raw: str) -> dict[str, dict[str, Any]]:
     return data
 
 
-def _parse_custom_sinks(raw: str) -> list[dict[str, Any]]:
+def _parse_custom_sinks(raw: str) -> list[dict[str, object]]:
     """Parse and validate the ``custom_sinks`` JSON string.
 
     Returns:
@@ -235,96 +201,12 @@ def _parse_custom_sinks(raw: str) -> list[dict[str, Any]]:
     return data
 
 
-# -- Level / rotation helpers --------------------------------------
-
-
-def _parse_level(raw: Any) -> LogLevel:
-    """Convert a level value to LogLevel (case-insensitive).
-
-    Returns:
-        The ``LogLevel`` member matching *raw* (case-insensitive).
-
-    Raises:
-        ValueError: If *raw* is not a string or not a recognized level.
-    """
-    if not isinstance(raw, str):
-        msg = f"level must be a string, got {type(raw).__name__}"
-        raise ValueError(msg)
-    level = _LEVEL_MAP.get(raw.lower())
-    if level is None:
-        valid = ", ".join(sorted(_LEVEL_MAP))
-        msg = f"Invalid level {raw!r}. Valid levels: {valid}"
-        raise ValueError(msg)
-    return level
-
-
-def _parse_rotation_override(
-    raw: Any,
-    base: RotationConfig | None,
-) -> RotationConfig:
-    """Merge a rotation override dict into an existing RotationConfig.
-
-    Only fields present in *raw* are overridden; others are preserved
-    from *base* (or defaults if base is None).
-
-    Returns:
-        A merged ``RotationConfig`` with *raw*'s fields applied over the
-        *base* defaults.
-
-    Raises:
-        ValueError: If *raw* is not a dict, contains unknown fields,
-            or field values are invalid.
-    """
-    if not isinstance(raw, dict):
-        msg = f"rotation must be a JSON object, got {type(raw).__name__}"
-        raise ValueError(msg)
-    _reject_unknown_fields(raw, _ROTATION_FIELDS, "rotation")
-
-    base = base or RotationConfig()
-    updates: dict[str, Any] = {}
-
-    if "strategy" in raw:
-        strategy = _STRATEGY_MAP.get(str(raw["strategy"]).lower())
-        if strategy is None:
-            valid = ", ".join(sorted(_STRATEGY_MAP))
-            msg = f"Invalid rotation strategy {raw['strategy']!r}. Valid: {valid}"
-            raise ValueError(msg)
-        updates["strategy"] = strategy
-
-    if "max_bytes" in raw:
-        val = raw["max_bytes"]
-        if not isinstance(val, int) or isinstance(val, bool):
-            msg = f"Invalid max_bytes value {val!r}: must be an integer"
-            raise ValueError(msg)
-        updates["max_bytes"] = val
-
-    if "backup_count" in raw:
-        val = raw["backup_count"]
-        if not isinstance(val, int) or isinstance(val, bool):
-            msg = f"Invalid backup_count value {val!r}: must be an integer"
-            raise ValueError(msg)
-        updates["backup_count"] = val
-
-    if "compress_rotated" in raw:
-        updates["compress_rotated"] = _parse_bool(
-            raw["compress_rotated"],
-            field_name="rotation.compress_rotated",
-        )
-
-    if not updates:
-        return base
-    merged = {**base.model_dump(), **updates}
-    # model_validate enforces compress_rotated + strategy check via
-    # RotationConfig._reject_compress_with_external.
-    return RotationConfig.model_validate(merged)
-
-
 # -- Override application ------------------------------------------
 
 
 def _apply_override(
     sink: SinkConfig,
-    override: dict[str, Any],
+    override: dict[str, object],
     identifier: str,
 ) -> SinkConfig | None:
     """Apply an override dict to a single SinkConfig.
@@ -349,7 +231,7 @@ def _apply_override(
                 raise ValueError(msg)
             return None
 
-    updates: dict[str, Any] = {}
+    updates: dict[str, object] = {}
 
     if "level" in override:
         updates["level"] = _parse_level(override["level"])
@@ -376,7 +258,7 @@ def _apply_override(
 
 
 def _build_custom_sink(
-    entry: dict[str, Any],
+    entry: dict[str, object],
     index: int,
 ) -> SinkConfig:
     """Construct a SinkConfig from a custom sink definition dict.
@@ -434,7 +316,7 @@ def _build_custom_sink(
 
 
 def _build_custom_file_sink(
-    entry: dict[str, Any],
+    entry: dict[str, object],
     index: int,
 ) -> SinkConfig:
     """Build a FILE SinkConfig from a custom sink entry.
@@ -484,113 +366,8 @@ def _build_custom_file_sink(
     )
 
 
-def _parse_enum_field(
-    entry: dict[str, Any],
-    key: str,
-    mapping: dict[str, Any],
-    label: str,
-    context: str,
-) -> Any:
-    """Parse a string field as an enum via a lookup map.
-
-    Returns:
-        The enum member that *entry[key]* maps to (case-insensitive).
-
-    Raises:
-        ValueError: If the value is not a string or does not match any
-            entry in *mapping*.
-    """
-    raw = entry[key]
-    if not isinstance(raw, str):
-        msg = f"{context}.{key} must be a string"
-        raise ValueError(msg)
-    parsed = mapping.get(raw.lower())
-    if parsed is None:
-        valid = ", ".join(sorted(mapping))
-        msg = f"Invalid {label} {raw!r}. Valid: {valid}"
-        raise ValueError(msg)
-    return parsed
-
-
-def _parse_common_sink_fields(
-    entry: dict[str, Any],
-    index: int,
-    *,
-    sink_type: str = "file",
-) -> tuple[LogLevel, bool]:
-    """Extract level and json_format from a custom sink entry.
-
-    Args:
-        entry: The custom sink entry dict.
-        index: Index within the custom_sinks array.
-        sink_type: The sink type string (file, syslog, http).
-
-    Returns:
-        Tuple of (level, json_format).
-
-    Raises:
-        ValueError: If json_format is set for syslog/http sinks.
-    """
-    level = _parse_level(entry["level"]) if "level" in entry else LogLevel.INFO
-    json_format = True
-    if "json_format" in entry:
-        if sink_type in ("syslog", "http"):
-            msg = (
-                f"json_format is not supported for "
-                f"{sink_type} sinks (custom_sinks[{index}])"
-            )
-            raise ValueError(msg)
-        json_format = _parse_bool(
-            entry["json_format"],
-            field_name=f"custom_sinks[{index}].json_format",
-        )
-    return level, json_format
-
-
-def _parse_int_field(
-    entry: dict[str, Any],
-    key: str,
-    context: str,
-) -> int:
-    """Parse a strict integer field (rejects booleans).
-
-    Returns:
-        The integer value of *entry[key]*.
-
-    Raises:
-        ValueError: If the value is not a plain ``int`` (a ``bool`` is
-            rejected).
-    """
-    val = entry[key]
-    if not isinstance(val, int) or isinstance(val, bool):
-        msg = f"{context}.{key} must be an integer"
-        raise ValueError(msg)
-    return val
-
-
-def _parse_number_field(
-    entry: dict[str, Any],
-    key: str,
-    context: str,
-) -> float:
-    """Parse a numeric field (int or float, rejects booleans).
-
-    Returns:
-        The value of *entry[key]* coerced to ``float``.
-
-    Raises:
-        ValueError: If the value is not ``int`` or ``float`` (a ``bool``
-            is rejected).
-    """
-    val = entry[key]
-    if not isinstance(val, int | float) or isinstance(val, bool):
-        msg = f"{context}.{key} must be a number"
-        raise ValueError(msg)
-    return float(val)
-
-
 def _build_custom_syslog_sink(
-    entry: dict[str, Any],
+    entry: dict[str, object],
     index: int,
 ) -> SinkConfig:
     """Build a SYSLOG SinkConfig from a custom sink entry.
@@ -609,7 +386,7 @@ def _build_custom_syslog_sink(
 
 
 def _build_custom_http_sink(
-    entry: dict[str, Any],
+    entry: dict[str, object],
     index: int,
 ) -> SinkConfig:
     """Build an HTTP SinkConfig from a custom sink entry.
@@ -628,7 +405,7 @@ def _build_custom_http_sink(
 
 
 def _extract_routing(
-    entry: dict[str, Any],
+    entry: dict[str, object],
     file_path: str,
 ) -> tuple[str, ...] | None:
     """Extract and validate routing prefixes from a custom sink entry.
@@ -667,7 +444,7 @@ def _extract_routing(
 
 
 def _merge_default_sinks(
-    overrides: dict[str, dict[str, Any]],
+    overrides: dict[str, dict[str, object]],
 ) -> list[SinkConfig]:
     """Apply overrides to DEFAULT_SINKS, returning the merged list.
 
@@ -692,7 +469,7 @@ def _merge_default_sinks(
 
 
 def _process_custom_entries(
-    custom_entries: list[dict[str, Any]],
+    custom_entries: list[dict[str, object]],
     merged: list[SinkConfig],
 ) -> MappingProxyType[str, tuple[str, ...]]:
     """Build custom sinks, append to *merged*, return routing overrides.
