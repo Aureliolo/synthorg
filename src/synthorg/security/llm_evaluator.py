@@ -54,8 +54,8 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig, ToolDefinition
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security._llm_evaluator_support import _LlmEvaluatorSupportMixin
+from synthorg.security._shared_patterns import CONTROL_CHAR_RE
 from synthorg.security.config import LlmFallbackConfig
-from synthorg.security.information_stripper import _CONTROL_CHAR_RE
 from synthorg.security.models import (
     EvaluationConfidence,
     SecurityContext,
@@ -501,5 +501,5 @@ class LlmSecurityEvaluator(_LlmEvaluatorSupportMixin):
             str(raw_reason).strip() if raw_reason else "LLM security evaluation"
         )
         # Strip control characters to prevent log injection.
-        reason_clean = _CONTROL_CHAR_RE.sub(" ", reason_raw)
+        reason_clean = CONTROL_CHAR_RE.sub(" ", reason_raw)
         return reason_clean[:_MAX_REASON_LENGTH]

@@ -17,14 +17,17 @@ logger = get_logger(__name__)
 def _budget_percent(dept: dict[str, object]) -> float:
     """Read a department's ``budget_percent`` as a float.
 
-    The cast is type-only (a runtime no-op): a non-numeric value still
-    raises in the arithmetic exactly as it did before, so the contract
+    A missing key and an explicit ``None`` both read as ``0.0`` (an
+    explicit null is treated the same as absent). Any other non-numeric
+    value still raises in the downstream arithmetic, so the contract
     that ``budget_percent`` is numeric is unchanged.
 
     Returns:
-        The department's ``budget_percent`` value.
+        The department's ``budget_percent`` value, or ``0.0`` when the
+        key is absent or explicitly ``None``.
     """
-    return cast("float", dept.get("budget_percent", 0.0))
+    value = dept.get("budget_percent")
+    return cast("float", value if value is not None else 0.0)
 
 
 class RebalanceMode(StrEnum):

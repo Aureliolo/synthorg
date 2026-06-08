@@ -73,7 +73,8 @@ class SecOpsServiceEscalationMixin(SecOpsServiceSafetyMixin):
                 },
             )
 
-        approval_id = str(uuid.uuid4())
+        approval_uuid = uuid.uuid4()
+        approval_id = str(approval_uuid)
         now = datetime.now(UTC)
         description = verdict.reason
         metadata: dict[str, str] = {
@@ -123,7 +124,7 @@ class SecOpsServiceEscalationMixin(SecOpsServiceSafetyMixin):
         from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
 
         item = ApprovalItem(
-            id=uuid.UUID(approval_id),
+            id=approval_uuid,
             action_type=context.action_type,
             title=f"Security escalation: {context.tool_name}",
             description=description,

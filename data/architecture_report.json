@@ -242,8 +242,8 @@
     },
     "src/synthorg/budget/automated_reports.py": {
       "cap": 500,
-      "loc": 430,
-      "ratio": 0.86,
+      "loc": 431,
+      "ratio": 0.862,
       "tier": "code"
     },
     "src/synthorg/budget/config.py": {
@@ -252,16 +252,10 @@
       "ratio": 0.934,
       "tier": "code"
     },
-    "src/synthorg/budget/coordination_metrics.py": {
-      "cap": 500,
-      "loc": 580,
-      "ratio": 1.16,
-      "tier": "code"
-    },
     "src/synthorg/budget/optimizer.py": {
       "cap": 500,
-      "loc": 679,
-      "ratio": 1.358,
+      "loc": 418,
+      "ratio": 0.836,
       "tier": "code"
     },
     "src/synthorg/budget/optimizer_models.py": {
@@ -272,14 +266,8 @@
     },
     "src/synthorg/budget/quota_tracker.py": {
       "cap": 500,
-      "loc": 460,
-      "ratio": 0.92,
-      "tier": "code"
-    },
-    "src/synthorg/budget/reports.py": {
-      "cap": 500,
-      "loc": 508,
-      "ratio": 1.016,
+      "loc": 459,
+      "ratio": 0.918,
       "tier": "code"
     },
     "src/synthorg/client/factory.py": {
@@ -1200,28 +1188,22 @@
       "ratio": 0.908,
       "tier": "code"
     },
-    "src/synthorg/security/config.py": {
-      "cap": 500,
-      "loc": 549,
-      "ratio": 1.098,
-      "tier": "code"
-    },
     "src/synthorg/security/llm_evaluator.py": {
       "cap": 500,
-      "loc": 639,
-      "ratio": 1.278,
+      "loc": 414,
+      "ratio": 0.828,
       "tier": "code"
     },
     "src/synthorg/security/safety_classifier.py": {
       "cap": 500,
-      "loc": 549,
-      "ratio": 1.098,
+      "loc": 486,
+      "ratio": 0.972,
       "tier": "code"
     },
     "src/synthorg/security/service.py": {
       "cap": 500,
-      "loc": 560,
-      "ratio": 1.12,
+      "loc": 451,
+      "ratio": 0.902,
       "tier": "code"
     },
     "src/synthorg/settings/bridge_configs.py": {
@@ -1359,16 +1341,16 @@
     "synthorg.api.rate_limits": 55,
     "synthorg.api.state": 147,
     "synthorg.api.state_slices": 30,
-    "synthorg.approval.enums": 67,
-    "synthorg.approval.protocol": 39,
+    "synthorg.approval.enums": 69,
+    "synthorg.approval.protocol": 40,
     "synthorg.approval.state": 21,
     "synthorg.budget.call_category": 43,
-    "synthorg.budget.config": 24,
+    "synthorg.budget.config": 25,
     "synthorg.budget.cost_record": 23,
-    "synthorg.budget.currency": 62,
+    "synthorg.budget.currency": 64,
     "synthorg.budget.errors": 23,
     "synthorg.budget.state": 23,
-    "synthorg.budget.tracker": 72,
+    "synthorg.budget.tracker": 73,
     "synthorg.client.models": 34,
     "synthorg.communication.bus_protocol": 30,
     "synthorg.communication.conversation.enums": 20,
@@ -1377,14 +1359,14 @@
     "synthorg.communication.mcp_errors": 25,
     "synthorg.communication.message": 29,
     "synthorg.communication.state": 20,
-    "synthorg.config.schema": 57,
+    "synthorg.config.schema": 58,
     "synthorg.core.agent": 150,
     "synthorg.core.approval": 35,
     "synthorg.core.auth.models": 27,
     "synthorg.core.auth.roles": 25,
     "synthorg.core.autonomy_enums": 34,
     "synthorg.core.clock": 154,
-    "synthorg.core.critical_errors": 471,
+    "synthorg.core.critical_errors": 472,
     "synthorg.core.domain_errors": 176,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 47,
@@ -1431,7 +1413,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 63,
-    "synthorg.observability": 1475,
+    "synthorg.observability": 1480,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 149,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1447,7 +1429,7 @@
     "synthorg.observability.events.meta": 55,
     "synthorg.observability.events.ontology": 20,
     "synthorg.observability.events.provider": 26,
-    "synthorg.observability.events.security": 63,
+    "synthorg.observability.events.security": 66,
     "synthorg.observability.events.settings": 32,
     "synthorg.observability.events.tool": 24,
     "synthorg.observability.events.training": 22,
@@ -1469,12 +1451,12 @@
     "synthorg.providers.errors": 34,
     "synthorg.providers.models": 109,
     "synthorg.providers.protocol": 63,
-    "synthorg.providers.registry": 29,
+    "synthorg.providers.registry": 30,
     "synthorg.providers.state": 25,
     "synthorg.research.models": 22,
     "synthorg.security.autonomy.enums": 72,
     "synthorg.security.autonomy.models": 31,
-    "synthorg.security.models": 24,
+    "synthorg.security.models": 27,
     "synthorg.settings.enums": 109,
     "synthorg.settings.errors": 24,
     "synthorg.settings.mirrors": 21,

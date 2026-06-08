@@ -20,7 +20,6 @@ Design invariants:
 
 import asyncio
 import html
-import re
 import secrets
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
@@ -67,6 +66,7 @@ from synthorg.providers.models import (
     CompletionResponse,
     ToolDefinition,
 )
+from synthorg.security._shared_patterns import CONTROL_CHAR_RE
 from synthorg.security.config import SafetyClassifierConfig
 from synthorg.security.information_stripper import InformationStripper
 
@@ -84,22 +84,6 @@ logger = get_logger(__name__)
 _MAX_REASON_LENGTH: Final[int] = 300
 
 _MILLISECONDS_PER_SECOND: Final[float] = 1000.0
-
-# Regex to strip control and formatting characters from LLM-returned
-# reason.  Best-effort coverage: ASCII control (C0/DEL), Unicode bidi
-# overrides, zero-width chars, line/paragraph separators, and known
-# invisible characters used in prompt injection payloads.
-_CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(
-    r"[\x00-\x1f\x7f"
-    r"\u200b-\u200f"  # zero-width and bidi marks
-    r"\u2028-\u2029"  # line / paragraph separators
-    r"\u202a-\u202e"  # bidi embedding/override
-    r"\u2066-\u2069"  # bidi isolate
-    r"\u2800"  # braille blank (invisible)
-    r"\u3164"  # hangul filler (invisible)
-    r"\ufeff"  # BOM / zero-width no-break space
-    r"]",
-)
 
 
 # ── Enums and models ─────────────────────────────────────────────
@@ -601,7 +585,7 @@ class SafetyClassifier:
         # Strip control chars first, then whitespace -- a reason
         # composed entirely of control chars becomes empty after
         # substitution, which would violate NotBlankStr.
-        reason_clean = _CONTROL_CHAR_RE.sub(
+        reason_clean = CONTROL_CHAR_RE.sub(
             " ",
             str(raw_reason) if raw_reason else "",
         ).strip()

@@ -11,6 +11,7 @@ from typing import Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import SECURITY_INFO_STRIP_COMPLETE
+from synthorg.security._shared_patterns import CONTROL_CHAR_RE
 from synthorg.security.rules.credential_detector import CREDENTIAL_PATTERNS
 from synthorg.security.rules.data_leak_detector import PII_PATTERNS
 
@@ -41,37 +42,6 @@ _CREDENTIAL_PLACEHOLDER: Final[str] = "[CREDENTIAL]"
 _PII_PLACEHOLDER: Final[str] = "[PII]"
 _ID_PLACEHOLDER: Final[str] = "[ID]"
 _EMAIL_PLACEHOLDER: Final[str] = "[EMAIL]"
-
-
-def _build_control_char_re() -> re.Pattern[str]:
-    """Build the control / formatting character-stripping pattern.
-
-    Best-effort coverage: ASCII control (C0/DEL), Unicode bidi overrides,
-    zero-width chars, line/paragraph separators, and known invisible
-    characters used in prompt injection payloads. Built from codepoint
-    ranges so the source carries no literal invisible characters.
-
-    Returns:
-        The compiled control-character class pattern.
-    """
-    ranges: tuple[tuple[int, int], ...] = (
-        (0x00, 0x1F),  # ASCII control (C0)
-        (0x7F, 0x7F),  # DEL
-        (0x200B, 0x200F),  # zero-width and bidi marks
-        (0x2028, 0x2029),  # line / paragraph separators
-        (0x202A, 0x202E),  # bidi embedding/override
-        (0x2066, 0x2069),  # bidi isolate
-        (0x2800, 0x2800),  # braille blank (invisible)
-        (0x3164, 0x3164),  # hangul filler (invisible)
-        (0xFEFF, 0xFEFF),  # BOM / zero-width no-break space
-    )
-    parts = [chr(lo) if lo == hi else f"{chr(lo)}-{chr(hi)}" for lo, hi in ranges]
-    return re.compile("[" + "".join(parts) + "]")
-
-
-# Regex to strip control and formatting characters.  Shared with the
-# safety classifier's LLM-reason sanitization.
-_CONTROL_CHAR_RE: Final[re.Pattern[str]] = _build_control_char_re()
 
 
 class InformationStripper:
@@ -118,7 +88,7 @@ class InformationStripper:
 
         # Strip bidi overrides and zero-width characters that
         # could hide prompt injection payloads.
-        result = _CONTROL_CHAR_RE.sub(" ", result)
+        result = CONTROL_CHAR_RE.sub(" ", result)
 
         logger.debug(
             SECURITY_INFO_STRIP_COMPLETE,
