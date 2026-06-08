@@ -323,8 +323,8 @@ describe('fetchAgentDetail', () => {
   })
 
   it('rejects stale responses when a newer fetch starts', async () => {
-    const agentA = makeAgent({ name: 'Alice Smith' })
-    const agentB = makeAgent({ name: 'Bob Jones', role: 'Designer' })
+    const agentA = makeAgent({ id: 'agent-001', name: 'Alice Smith' })
+    const agentB = makeAgent({ id: 'agent-002', name: 'Bob Jones', role: 'Designer' })
 
     let releaseA!: () => void
     const gateA = new Promise<void>((resolve) => {
