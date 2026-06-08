@@ -38,8 +38,8 @@
     },
     "src/synthorg/api/controllers/_conversational_resume.py": {
       "cap": 600,
-      "loc": 552,
-      "ratio": 0.92,
+      "loc": 544,
+      "ratio": 0.907,
       "tier": "orchestrator"
     },
     "src/synthorg/api/controllers/_department_health.py": {
@@ -56,8 +56,8 @@
     },
     "src/synthorg/api/controllers/agents.py": {
       "cap": 500,
-      "loc": 549,
-      "ratio": 1.098,
+      "loc": 547,
+      "ratio": 1.094,
       "tier": "code"
     },
     "src/synthorg/api/controllers/analytics.py": {
@@ -176,8 +176,8 @@
     },
     "src/synthorg/api/controllers/training.py": {
       "cap": 500,
-      "loc": 495,
-      "ratio": 0.99,
+      "loc": 496,
+      "ratio": 0.992,
       "tier": "code"
     },
     "src/synthorg/api/controllers/users.py": {
@@ -350,8 +350,8 @@
     },
     "src/synthorg/config/schema.py": {
       "cap": 500,
-      "loc": 755,
-      "ratio": 1.51,
+      "loc": 759,
+      "ratio": 1.518,
       "tier": "code"
     },
     "src/synthorg/coordination/ceremony_policy/policy_resolver.py": {
@@ -638,8 +638,8 @@
     },
     "src/synthorg/hr/hiring_service.py": {
       "cap": 500,
-      "loc": 460,
-      "ratio": 0.92,
+      "loc": 494,
+      "ratio": 0.988,
       "tier": "code"
     },
     "src/synthorg/hr/performance/models.py": {
@@ -1380,11 +1380,11 @@
     "synthorg.core.enums": 340,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 47,
-    "synthorg.core.normalization": 73,
+    "synthorg.core.normalization": 72,
     "synthorg.core.persistence_errors": 190,
     "synthorg.core.registry": 27,
     "synthorg.core.task": 91,
-    "synthorg.core.types": 1054,
+    "synthorg.core.types": 1055,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 80,

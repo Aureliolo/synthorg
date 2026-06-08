@@ -50,6 +50,7 @@ vi.mock('@/pages/agents/QualityScoreOverride', () => ({
 const defaultHookReturn: UseAgentDetailDataReturn = {
   agent: makeAgent('alice'),
   performance: null,
+  health: null,
   performanceCards: [],
   insights: [],
   agentTasks: [],

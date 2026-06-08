@@ -292,7 +292,7 @@ The AgentCard layout must be **identical** across the Agents page, Org Chart nod
 
 - L0 must be scannable in < 1 second (3-5 data points maximum per card)
 - L1 tooltips must never contain interactive elements (links, buttons)
-- L2 panels are URL-addressable for deep linking (e.g. `/agents/{name}`)
+- L2 panels are URL-addressable for deep linking (e.g. `/agents/{agentId}`)
 - L3 navigation always creates a browser history entry
 
 ### 3.2 Hover Behaviour

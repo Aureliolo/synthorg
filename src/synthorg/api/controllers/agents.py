@@ -27,7 +27,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathName
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState
@@ -37,7 +37,6 @@ from synthorg.config.schema import AgentConfig
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.enums import AgentStatus, ToolAccessLevel
-from synthorg.core.normalization import find_by_name_ci
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.activity import (
     ActivityEvent,
@@ -51,7 +50,7 @@ from synthorg.hr.performance.summary import (
     extract_performance_summary,
 )
 from synthorg.hr.state import agent_registry_of, performance_tracker_of
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     AGENT_DELETED_AUDIT,
     AGENT_DELETION_REQUESTED,
@@ -77,53 +76,62 @@ _DEFAULT_LIMIT: Final[int] = 50
 _MAX_LIFECYCLE_EVENTS: Final[int] = 10_000
 
 
-async def _resolve_agent_id(
+async def _require_registered_identity(
     app_state: AppState,
-    agent_name: str,
-) -> str:
-    """Resolve an agent name to its ID via the registry.
+    agent_id: str,
+) -> AgentIdentity:
+    """Resolve a registered agent by its stable id.
 
     Args:
         app_state: Application state with agent registry.
-        agent_name: Agent display name.
+        agent_id: Stable agent id from the URL path.
 
     Returns:
-        Agent ID as string.
+        The registered ``AgentIdentity``.
 
     Raises:
-        NotFoundError: If the agent is not found in the registry.
+        NotFoundError: If no agent with *agent_id* is registered.
     """
-    identity = require_resource_or_404(
-        await agent_registry_of(app_state).get_by_name(agent_name),
-        resource_type="agent",
-        identifier=agent_name,
-        log_event=API_RESOURCE_NOT_FOUND,
-        operation="read",
-        extra_log_kwargs={"name": agent_name},
-    )
-    return str(identity.id)
-
-
-async def _resolve_agent_identity(
-    app_state: AppState,
-    agent_name: str,
-) -> AgentIdentity:
-    """Resolve an agent name to its full identity.
-
-    Raises:
-        NotFoundError: If the agent is not found in the registry.
-
-    Returns:
-        ``AgentIdentity`` instance.
-    """
+    # str(agent.id) is canonical lowercase, so lowercase the path segment to
+    # resolve case variants -- mirrors _config_agent_by_id so the registry-
+    # backed routes don't 404 on an id the config route would resolve.
+    canonical_agent_id = agent_id.lower()
     return require_resource_or_404(
-        await agent_registry_of(app_state).get_by_name(agent_name),
+        await agent_registry_of(app_state).get(canonical_agent_id),
         resource_type="agent",
-        identifier=agent_name,
+        identifier=canonical_agent_id,
         log_event=API_RESOURCE_NOT_FOUND,
         operation="read",
-        extra_log_kwargs={"name": agent_name},
+        extra_log_kwargs={"agent_id": canonical_agent_id},
     )
+
+
+async def _config_agent_by_id(
+    app_state: AppState,
+    agent_id: str,
+) -> AgentConfig:
+    """Resolve a config-sourced agent by its stable id.
+
+    Args:
+        app_state: Application state with the config resolver.
+        agent_id: Stable agent id from the URL path.
+
+    Returns:
+        The matching ``AgentConfig``.
+
+    Raises:
+        NotFoundError: If no configured agent has *agent_id*.
+    """
+    # str(agent.id) is canonical lowercase, so lowercase the path segment to
+    # resolve case variants; a non-matching (or malformed) id falls through.
+    target = agent_id.lower()
+    agents = await config_resolver_of(app_state).get_agents()
+    for agent in agents:
+        if str(agent.id) == target:
+            return agent
+    msg = "Agent not found"
+    logger.warning(API_RESOURCE_NOT_FOUND, resource="agent", agent_id=agent_id)
+    raise NotFoundError(msg)
 
 
 class TrustSummary(BaseModel):
@@ -239,17 +247,17 @@ class AgentController(Controller):
         )
         return PaginatedResponse(data=page, pagination=meta)
 
-    @get("/{agent_name:str}")
+    @get("/{agent_id:str}")
     async def get_agent(
         self,
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
     ) -> ApiResponse[AgentConfig]:
-        """Get an agent by name.
+        """Get an agent by its stable id.
 
         Args:
             state: Application state.
-            agent_name: Agent name to look up.
+            agent_id: Stable agent id to look up.
 
         Returns:
             Agent configuration envelope.
@@ -258,13 +266,8 @@ class AgentController(Controller):
             NotFoundError: If the agent is not found.
         """
         app_state: AppState = state.app_state
-        agents = await config_resolver_of(app_state).get_agents()
-        found = find_by_name_ci(agents, agent_name)
-        if found is not None:
-            return ApiResponse(data=found)
-        msg = "Agent not found"
-        logger.warning(API_RESOURCE_NOT_FOUND, resource="agent", name=agent_name)
-        raise NotFoundError(msg)
+        found = await _config_agent_by_id(app_state, agent_id)
+        return ApiResponse(data=found)
 
     @post(
         "/",
@@ -305,7 +308,7 @@ class AgentController(Controller):
         return ApiResponse(data=agent)
 
     @patch(
-        "/{agent_name:str}",
+        "/{agent_id:str}",
         guards=[
             require_org_mutation(),
             per_op_rate_limit_from_policy("agents.update", key="user"),
@@ -315,7 +318,7 @@ class AgentController(Controller):
         self,
         request: Request[Any, Any, Any],
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
         data: UpdateAgentOrgRequest,
     ) -> Response[ApiResponse[AgentConfig]]:
         """Update an existing agent.
@@ -325,13 +328,14 @@ class AgentController(Controller):
         Args:
             request: Incoming request (for WS publishing).
             state: Application state.
-            agent_name: Agent name.
+            agent_id: Stable agent id.
             data: Partial update request.
 
         Returns:
             Updated agent config envelope with ETag header.
         """
         app_state: AppState = state.app_state
+        agent_name = (await _config_agent_by_id(app_state, agent_id)).name
         if_match = request.headers.get("if-match")
         updated = await org_mutation_service_of(app_state).update_agent(
             agent_name,
@@ -371,7 +375,7 @@ class AgentController(Controller):
         )
 
     @delete(
-        "/{agent_name:str}",
+        "/{agent_id:str}",
         guards=[
             require_org_mutation(),
             per_op_rate_limit_from_policy("agents.delete", key="user"),
@@ -382,16 +386,17 @@ class AgentController(Controller):
         self,
         request: Request[Any, Any, Any],
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
     ) -> None:
         """Delete an agent from the org config.
 
         Args:
             request: Incoming request (for WS publishing).
             state: Application state.
-            agent_name: Agent name.
+            agent_id: Stable agent id.
         """
         app_state: AppState = state.app_state
+        agent_name = (await _config_agent_by_id(app_state, agent_id)).name
         actor = get_authenticated_user_id()
         # Pre-delete intent log -- fires BEFORE persistence so the
         # forensic audit chain captures the operator's request even if
@@ -418,17 +423,17 @@ class AgentController(Controller):
             {"name": agent_name},
         )
 
-    @get("/{agent_name:str}/performance")
+    @get("/{agent_id:str}/performance")
     async def get_agent_performance(
         self,
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
     ) -> ApiResponse[AgentPerformanceSummary]:
         """Get an agent's performance summary.
 
         Args:
             state: Application state.
-            agent_name: Agent name to look up.
+            agent_id: Stable agent id to look up.
 
         Returns:
             Performance summary envelope.
@@ -437,21 +442,24 @@ class AgentController(Controller):
             NotFoundError: If the agent is not found.
         """
         app_state: AppState = state.app_state
-        agent_id = await _resolve_agent_id(app_state, agent_name)
+        identity = await _require_registered_identity(app_state, agent_id)
+        # Drive downstream reads off the resolved canonical id so they key
+        # the same record the registry matched, even for case variants.
+        agent_id = str(identity.id)
         snapshot = await performance_tracker_of(app_state).get_snapshot(agent_id)
-        summary = extract_performance_summary(snapshot, agent_name)
+        summary = extract_performance_summary(snapshot, identity.name)
         logger.debug(
             API_AGENT_PERFORMANCE_QUERIED,
-            agent_name=agent_name,
+            agent_name=identity.name,
             tasks_total=summary.tasks_completed_total,
         )
         return ApiResponse(data=summary)
 
-    @get("/{agent_name:str}/activity")
+    @get("/{agent_id:str}/activity")
     async def get_agent_activity(
         self,
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[ActivityEvent]:
@@ -462,7 +470,7 @@ class AgentController(Controller):
 
         Args:
             state: Application state.
-            agent_name: Agent name to look up.
+            agent_id: Stable agent id to look up.
             cursor: Opaque pagination cursor returned by the previous
                 page; ``None`` starts at the beginning.
             limit: Page size.
@@ -474,8 +482,11 @@ class AgentController(Controller):
             NotFoundError: If the agent is not found.
         """
         app_state: AppState = state.app_state
-        agent_id = await _resolve_agent_id(app_state, agent_name)
-
+        identity = await _require_registered_identity(app_state, agent_id)
+        # Drive downstream reads off the resolved canonical id so they key
+        # the same record the registry matched, even for case variants.
+        agent_id = str(identity.id)
+        agent_name = identity.name
         lifecycle_events = await persistence_of(app_state).lifecycle_events.list_events(
             agent_id=agent_id,
             limit=_MAX_LIFECYCLE_EVENTS,
@@ -483,16 +494,17 @@ class AgentController(Controller):
         task_metrics = performance_tracker_of(app_state).get_task_metrics(
             agent_id=agent_id,
         )
-
         try:
             budget_cfg = await config_resolver_of(app_state).get_budget_config()
             currency = budget_cfg.currency
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 API_REQUEST_ERROR,
                 endpoint="agents.activity",
                 agent_name=agent_name,
                 detail="budget config unavailable, using default currency",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             currency = DEFAULT_CURRENCY
         timeline = merge_activity_timeline(
@@ -514,11 +526,11 @@ class AgentController(Controller):
         )
         return PaginatedResponse(data=page, pagination=meta)
 
-    @get("/{agent_name:str}/history")
+    @get("/{agent_id:str}/history")
     async def get_agent_history(
         self,
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
     ) -> ApiResponse[tuple[CareerEvent, ...]]:
         """Get an agent's career history.
 
@@ -527,7 +539,7 @@ class AgentController(Controller):
 
         Args:
             state: Application state.
-            agent_name: Agent name to look up.
+            agent_id: Stable agent id to look up.
 
         Returns:
             Career events envelope.
@@ -536,7 +548,10 @@ class AgentController(Controller):
             NotFoundError: If the agent is not found.
         """
         app_state: AppState = state.app_state
-        agent_id = await _resolve_agent_id(app_state, agent_name)
+        identity = await _require_registered_identity(app_state, agent_id)
+        # Drive downstream reads off the resolved canonical id so they key
+        # the same record the registry matched, even for case variants.
+        agent_id = str(identity.id)
         # No limit here: career events are few per agent and the filter
         # below keeps only ~5 event types; capping would risk dropping
         # older milestones (e.g. the original HIRED event).
@@ -546,16 +561,16 @@ class AgentController(Controller):
         career = filter_career_events(events)
         logger.debug(
             API_AGENT_HISTORY_QUERIED,
-            agent_name=agent_name,
+            agent_name=identity.name,
             career_events=len(career),
         )
         return ApiResponse(data=career)
 
-    @get("/{agent_name:str}/health")
+    @get("/{agent_id:str}/health")
     async def get_agent_health(
         self,
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
     ) -> ApiResponse[AgentHealthResponse]:
         """Get composite health for an agent.
 
@@ -564,7 +579,7 @@ class AgentController(Controller):
 
         Args:
             state: Application state.
-            agent_name: Agent name to look up.
+            agent_id: Stable agent id to look up.
 
         Returns:
             Agent health envelope.
@@ -573,15 +588,12 @@ class AgentController(Controller):
             NotFoundError: If the agent is not found.
         """
         app_state: AppState = state.app_state
-        identity = await _resolve_agent_identity(
-            app_state,
-            agent_name,
-        )
+        identity = await _require_registered_identity(app_state, agent_id)
+        # Drive downstream reads off the resolved canonical id so they key
+        # the same record the registry matched, even for case variants.
         agent_id = str(identity.id)
 
-        snapshot = await performance_tracker_of(app_state).get_snapshot(
-            agent_id,
-        )
+        snapshot = await performance_tracker_of(app_state).get_snapshot(agent_id)
         trend = _extract_quality_trend(snapshot)
         perf = PerformanceSummary(
             quality_score=snapshot.overall_quality_score,
@@ -592,9 +604,7 @@ class AgentController(Controller):
         trust: TrustSummary | None = None
         trust_service = app_state.slice(SecurityStateSlice).trust_service
         if trust_service is not None:
-            trust_state = trust_service.get_trust_state(
-                agent_id,
-            )
+            trust_state = trust_service.get_trust_state(agent_id)
             if trust_state is not None:
                 trust = TrustSummary(
                     level=trust_state.global_level,
@@ -621,7 +631,7 @@ class AgentController(Controller):
         )
         logger.info(
             API_AGENT_HEALTH_QUERIED,
-            agent_name=agent_name,
+            agent_name=identity.name,
         )
         return ApiResponse(data=health)
 

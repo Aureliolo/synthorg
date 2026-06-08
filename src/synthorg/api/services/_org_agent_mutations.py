@@ -16,6 +16,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.normalization import compare_ci, normalize_identifier
+from synthorg.core.types import stable_agent_id
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -275,6 +276,15 @@ class OrgAgentMutationsMixin:
                 check_if_match(if_match, compute_etag(cur, ""), f"agent:{name}")
 
             updates = await self._validate_agent_update(name, data, agents)
+            if "name" in updates:
+                # ``model_copy`` bypasses the before-validator that derives the
+                # stable id from the name, so a rename would otherwise return
+                # and persist the old name's id (now unroutable). Re-stamp it
+                # so the row is addressable under its new name.
+                updates = {
+                    **updates,
+                    "id": stable_agent_id(str(updates["name"])),
+                }
             updated = existing.model_copy(update=updates, deep=True)
             new_agents = tuple(
                 updated if compare_ci(a.name, name) else a for a in agents

@@ -59,6 +59,9 @@ chain reflects every status flip."""
 
 # ── Error-path events ───────────────────────────────────────────
 
+HR_HIRING_REQUEST_NOT_FOUND: Final[str] = "hr.hiring.request_not_found"
+HR_HIRING_REQUEST_INVALID: Final[str] = "hr.hiring.request_invalid"
+HR_HIRING_CANDIDATE_NOT_FOUND: Final[str] = "hr.hiring.candidate_not_found"
 HR_HIRING_INSTANTIATION_FAILED: Final[str] = "hr.hiring.instantiation_failed"
 HR_FIRING_REASSIGNMENT_FAILED: Final[str] = "hr.firing.reassignment_failed"
 HR_FIRING_ARCHIVAL_FAILED: Final[str] = "hr.firing.archival_failed"

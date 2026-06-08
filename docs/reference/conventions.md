@@ -281,6 +281,19 @@ Three rules apply on top of §8's frozen `ConfigDict`:
   redundant field; let it derive. Canonical example:
   `TokenUsage.total_tokens` is a computed field over `prompt_tokens`
   and `completion_tokens`.
+* **Declared field + `mode="before"` validator for derived values that
+  must survive a settings round-trip.** A `@computed_field` is rejected
+  by `extra="forbid"` when a model that is persisted via the settings
+  layer is reconstructed (the computed key appears in `model_dump()`
+  output and is then an unexpected key on `model_validate`). For those
+  models, declare the field normally and force its value from a
+  `@model_validator(mode="before")` that re-derives it on every
+  validation (so a stored value round-trips and a stale one is
+  repaired). Canonical example: `AgentConfig.id` is derived from `name`
+  via `stable_agent_id(name)` in `_derive_stable_id`; the
+  `default_factory=uuid4` is a vestigial placeholder that keeps the
+  field non-required for mypy and is overwritten on every name-bearing
+  construction.
 * **`allow_inf_nan=False` everywhere.** Already part of the standard
   `ConfigDict` from §8. The point is that numeric fields reject `NaN`
   and `Inf` at validation time rather than producing silent garbage

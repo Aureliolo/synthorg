@@ -111,12 +111,12 @@ class TestBootstrapAgents:
         registry: AgentRegistryService,
         make_config_resolver: Callable[..., ConfigResolver],
     ) -> None:
-        """Calling bootstrap twice does not crash.
+        """Calling bootstrap twice is idempotent.
 
-        Fresh ``AgentConfig`` objects produce new UUIDs on each call,
-        so the second invocation registers additional agents rather
-        than skipping.  This test verifies resilience (no crash on
-        repeated invocation), not true idempotent skip behaviour.
+        Agent ids are derived deterministically from the agent name, so
+        the second invocation reconstructs the same ids, collides with
+        the already-registered agents, and skips them rather than
+        registering duplicates.
         """
         from synthorg.api.bootstrap import bootstrap_agents
 
@@ -130,8 +130,8 @@ class TestBootstrapAgents:
         assert first_count == 2
 
         second_count = await bootstrap_agents(config_resolver, registry)
-        assert second_count == 2
-        assert await registry.agent_count() == 4
+        assert second_count == 0
+        assert await registry.agent_count() == 2
 
     async def test_skips_invalid_config_without_aborting(
         self,

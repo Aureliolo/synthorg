@@ -10,10 +10,10 @@ than by its mutable, non-unique display name. The multi-agent group
 chat participant picker is the first consumer: it sends the
 selected ids to ``POST /meta/chat/group``.
 
-Kept out of :class:`AgentController` (config-time, name-addressed, and
-already at its module-size baseline) so the runtime-roster concern grows
-on its own controller; both mount under ``/agents`` and the literal
-``/active`` route resolves ahead of ``/{agent_name}``.
+Kept out of :class:`AgentController` (config-time and already at its
+module-size baseline) so the runtime-roster concern grows on its own
+controller; both mount under ``/agents`` and the literal ``/active``
+route resolves ahead of ``/{agent_id}``.
 """
 
 from litestar import Controller, get

@@ -59,6 +59,7 @@ def _identity_from_config(config: AgentConfig, *, clock: Clock) -> AgentIdentity
         A fully constructed AgentIdentity.
     """
     return AgentIdentity(
+        id=config.id,
         name=config.name,
         role=config.role,
         department=config.department,

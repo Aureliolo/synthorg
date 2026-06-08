@@ -17,7 +17,7 @@ import {
 } from '@/api/endpoints/training'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { useToastStore } from '@/stores/toast'
 
 const log = createLogger('training')
@@ -37,17 +37,17 @@ interface TrainingState {
   planRequestTokens: TokenMap
   resultRequestTokens: TokenMap
 
-  fetchPlan: (agentName: string) => Promise<void>
-  fetchResult: (agentName: string) => Promise<void>
-  hydrateForAgent: (agentName: string) => Promise<void>
+  fetchPlan: (agentId: string) => Promise<void>
+  fetchResult: (agentId: string) => Promise<void>
+  hydrateForAgent: (agentId: string) => Promise<void>
   createPlan: (
-    agentName: string,
+    agentId: string,
     overrides: TrainingPlanRequest,
   ) => Promise<TrainingPlanResponse | null>
-  executePlan: (agentName: string) => Promise<TrainingResultResponse | null>
-  previewPlan: (agentName: string) => Promise<TrainingResultResponse | null>
+  executePlan: (agentId: string) => Promise<TrainingResultResponse | null>
+  previewPlan: (agentId: string) => Promise<TrainingResultResponse | null>
   updateOverrides: (
-    agentName: string,
+    agentId: string,
     planId: string,
     data: TrainingOverridesRequest,
   ) => Promise<TrainingPlanResponse | null>
@@ -79,41 +79,41 @@ function isExpectedNotFound(err: unknown): boolean {
 async function fetchPlanImpl(
   set: TrainingSet,
   get: TrainingGet,
-  agentName: string,
+  agentId: string,
 ): Promise<void> {
-  const token = (get().planRequestTokens[agentName] ?? 0) + 1
+  const token = (get().planRequestTokens[agentId] ?? 0) + 1
   set((state) => ({
-    planLoading: setMap(state.planLoading, agentName, true),
-    planError: setMap(state.planError, agentName, null),
-    planRequestTokens: setMap(state.planRequestTokens, agentName, token),
+    planLoading: setMap(state.planLoading, agentId, true),
+    planError: setMap(state.planError, agentId, null),
+    planRequestTokens: setMap(state.planRequestTokens, agentId, token),
   }))
   const isCurrent = () =>
-    get().planRequestTokens[agentName] === token
+    get().planRequestTokens[agentId] === token
   try {
-    const plan = await getLatestTrainingPlan(agentName)
+    const plan = await getLatestTrainingPlan(agentId)
     if (!isCurrent()) return
     set((state) => ({
-      plansByAgent: setMap(state.plansByAgent, agentName, plan),
-      planLoading: setMap(state.planLoading, agentName, false),
-      planError: setMap(state.planError, agentName, null),
+      plansByAgent: setMap(state.plansByAgent, agentId, plan),
+      planLoading: setMap(state.planLoading, agentId, false),
+      planError: setMap(state.planError, agentId, null),
     }))
   } catch (err) {
     if (!isCurrent()) return
     if (isExpectedNotFound(err)) {
       set((state) => ({
-        plansByAgent: setMap(state.plansByAgent, agentName, null),
-        planLoading: setMap(state.planLoading, agentName, false),
-        planError: setMap(state.planError, agentName, null),
+        plansByAgent: setMap(state.plansByAgent, agentId, null),
+        planLoading: setMap(state.planLoading, agentId, false),
+        planError: setMap(state.planError, agentId, null),
       }))
       return
     }
     log.error(
       'fetchPlan failed',
-      sanitizeForLog({ agentName, err, message: getErrorMessage(err) }),
+      sanitizeForLog({ agentId, err, message: getErrorMessage(err) }),
     )
     set((state) => ({
-      planLoading: setMap(state.planLoading, agentName, false),
-      planError: setMap(state.planError, agentName, getErrorMessage(err)),
+      planLoading: setMap(state.planLoading, agentId, false),
+      planError: setMap(state.planError, agentId, getErrorMessage(err)),
     }))
   }
 }
@@ -121,62 +121,62 @@ async function fetchPlanImpl(
 async function fetchResultImpl(
   set: TrainingSet,
   get: TrainingGet,
-  agentName: string,
+  agentId: string,
 ): Promise<void> {
-  const token = (get().resultRequestTokens[agentName] ?? 0) + 1
+  const token = (get().resultRequestTokens[agentId] ?? 0) + 1
   set((state) => ({
-    resultLoading: setMap(state.resultLoading, agentName, true),
-    resultError: setMap(state.resultError, agentName, null),
-    resultRequestTokens: setMap(state.resultRequestTokens, agentName, token),
+    resultLoading: setMap(state.resultLoading, agentId, true),
+    resultError: setMap(state.resultError, agentId, null),
+    resultRequestTokens: setMap(state.resultRequestTokens, agentId, token),
   }))
   const isCurrent = () =>
-    get().resultRequestTokens[agentName] === token
+    get().resultRequestTokens[agentId] === token
   try {
-    const result = await getTrainingResult(agentName)
+    const result = await getTrainingResult(agentId)
     if (!isCurrent()) return
     set((state) => ({
-      resultsByAgent: setMap(state.resultsByAgent, agentName, result),
-      resultLoading: setMap(state.resultLoading, agentName, false),
-      resultError: setMap(state.resultError, agentName, null),
+      resultsByAgent: setMap(state.resultsByAgent, agentId, result),
+      resultLoading: setMap(state.resultLoading, agentId, false),
+      resultError: setMap(state.resultError, agentId, null),
     }))
   } catch (err) {
     if (!isCurrent()) return
     if (isExpectedNotFound(err)) {
       set((state) => ({
-        resultsByAgent: setMap(state.resultsByAgent, agentName, null),
-        resultLoading: setMap(state.resultLoading, agentName, false),
-        resultError: setMap(state.resultError, agentName, null),
+        resultsByAgent: setMap(state.resultsByAgent, agentId, null),
+        resultLoading: setMap(state.resultLoading, agentId, false),
+        resultError: setMap(state.resultError, agentId, null),
       }))
       return
     }
     const message = getErrorMessage(err)
     log.error(
       'fetchResult failed',
-      sanitizeForLog({ agentName, err, message }),
+      sanitizeForLog({ agentId, err, message }),
     )
     set((state) => ({
-      resultLoading: setMap(state.resultLoading, agentName, false),
-      resultError: setMap(state.resultError, agentName, message),
+      resultLoading: setMap(state.resultLoading, agentId, false),
+      resultError: setMap(state.resultError, agentId, message),
     }))
   }
 }
 
 async function createPlanImpl(
   set: TrainingSet,
-  agentName: string,
+  agentId: string,
   overrides: TrainingPlanRequest,
 ): Promise<TrainingPlanResponse | null> {
   try {
-    const plan = await createTrainingPlan(agentName, overrides)
+    const plan = await createTrainingPlan(agentId, overrides)
     set((state) => ({
-      plansByAgent: setMap(state.plansByAgent, agentName, plan),
-      resultsByAgent: setMap(state.resultsByAgent, agentName, null),
-      planError: setMap(state.planError, agentName, null),
-      resultError: setMap(state.resultError, agentName, null),
-      planLoading: setMap(state.planLoading, agentName, false),
-      resultLoading: setMap(state.resultLoading, agentName, false),
-      planRequestTokens: bumpToken(state.planRequestTokens, agentName),
-      resultRequestTokens: bumpToken(state.resultRequestTokens, agentName),
+      plansByAgent: setMap(state.plansByAgent, agentId, plan),
+      resultsByAgent: setMap(state.resultsByAgent, agentId, null),
+      planError: setMap(state.planError, agentId, null),
+      resultError: setMap(state.resultError, agentId, null),
+      planLoading: setMap(state.planLoading, agentId, false),
+      resultLoading: setMap(state.resultLoading, agentId, false),
+      planRequestTokens: bumpToken(state.planRequestTokens, agentId),
+      resultRequestTokens: bumpToken(state.resultRequestTokens, agentId),
     }))
     useToastStore.getState().add({
       variant: 'success',
@@ -186,11 +186,11 @@ async function createPlanImpl(
   } catch (err) {
     log.error(
       'createPlan failed',
-      sanitizeForLog({ agentName, err, message: getErrorMessage(err) }),
+      sanitizeForLog({ agentId, err, message: getErrorMessage(err) }),
     )
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to create training plan',
+      ...getCrudErrorTitle(err, 'Failed to create training plan'),
       description: getErrorMessage(err),
     })
     return null
@@ -199,21 +199,21 @@ async function createPlanImpl(
 
 function buildExecutedPlanPatch(
   state: TrainingState,
-  agentName: string,
+  agentId: string,
   result: TrainingResultResponse,
 ): Partial<TrainingState> {
   const next: Partial<TrainingState> = {
-    resultsByAgent: setMap(state.resultsByAgent, agentName, result),
-    resultError: setMap(state.resultError, agentName, null),
-    planError: setMap(state.planError, agentName, null),
-    planLoading: setMap(state.planLoading, agentName, false),
-    resultLoading: setMap(state.resultLoading, agentName, false),
-    planRequestTokens: bumpToken(state.planRequestTokens, agentName),
-    resultRequestTokens: bumpToken(state.resultRequestTokens, agentName),
+    resultsByAgent: setMap(state.resultsByAgent, agentId, result),
+    resultError: setMap(state.resultError, agentId, null),
+    planError: setMap(state.planError, agentId, null),
+    planLoading: setMap(state.planLoading, agentId, false),
+    resultLoading: setMap(state.resultLoading, agentId, false),
+    planRequestTokens: bumpToken(state.planRequestTokens, agentId),
+    resultRequestTokens: bumpToken(state.resultRequestTokens, agentId),
   }
-  const cached = state.plansByAgent[agentName]
+  const cached = state.plansByAgent[agentId]
   if (cached) {
-    next.plansByAgent = setMap(state.plansByAgent, agentName, {
+    next.plansByAgent = setMap(state.plansByAgent, agentId, {
       ...cached,
       status: 'executed',
       executed_at: result.completed_at,
@@ -224,11 +224,11 @@ function buildExecutedPlanPatch(
 
 async function executePlanImpl(
   set: TrainingSet,
-  agentName: string,
+  agentId: string,
 ): Promise<TrainingResultResponse | null> {
   try {
-    const result = await executeTrainingPlan(agentName)
-    set((state) => buildExecutedPlanPatch(state, agentName, result))
+    const result = await executeTrainingPlan(agentId)
+    set((state) => buildExecutedPlanPatch(state, agentId, result))
     useToastStore.getState().add({
       variant: 'success',
       title: 'Training executed',
@@ -237,11 +237,11 @@ async function executePlanImpl(
   } catch (err) {
     log.error(
       'executePlan failed',
-      sanitizeForLog({ agentName, err, message: getErrorMessage(err) }),
+      sanitizeForLog({ agentId, err, message: getErrorMessage(err) }),
     )
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Training execution failed',
+      ...getCrudErrorTitle(err, 'Training execution failed'),
       description: getErrorMessage(err),
     })
     return null
@@ -249,18 +249,18 @@ async function executePlanImpl(
 }
 
 async function previewPlanImpl(
-  agentName: string,
+  agentId: string,
 ): Promise<TrainingResultResponse | null> {
   try {
-    return await previewTrainingPlan(agentName)
+    return await previewTrainingPlan(agentId)
   } catch (err) {
     log.error(
       'previewPlan failed',
-      sanitizeForLog({ agentName, err, message: getErrorMessage(err) }),
+      sanitizeForLog({ agentId, err, message: getErrorMessage(err) }),
     )
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Training preview failed',
+      ...getCrudErrorTitle(err, 'Training preview failed'),
       description: getErrorMessage(err),
     })
     return null
@@ -269,17 +269,17 @@ async function previewPlanImpl(
 
 async function updateOverridesImpl(
   set: TrainingSet,
-  agentName: string,
+  agentId: string,
   planId: string,
   data: TrainingOverridesRequest,
 ): Promise<TrainingPlanResponse | null> {
   try {
-    const plan = await updateTrainingOverrides(agentName, planId, data)
+    const plan = await updateTrainingOverrides(agentId, planId, data)
     set((state) => ({
-      plansByAgent: setMap(state.plansByAgent, agentName, plan),
-      planError: setMap(state.planError, agentName, null),
-      planLoading: setMap(state.planLoading, agentName, false),
-      planRequestTokens: bumpToken(state.planRequestTokens, agentName),
+      plansByAgent: setMap(state.plansByAgent, agentId, plan),
+      planError: setMap(state.planError, agentId, null),
+      planLoading: setMap(state.planLoading, agentId, false),
+      planRequestTokens: bumpToken(state.planRequestTokens, agentId),
     }))
     useToastStore.getState().add({
       variant: 'success',
@@ -290,7 +290,7 @@ async function updateOverridesImpl(
     log.error(
       'updateOverrides failed',
       sanitizeForLog({
-        agentName,
+        agentId,
         planId,
         err,
         message: getErrorMessage(err),
@@ -298,7 +298,7 @@ async function updateOverridesImpl(
     )
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to save overrides',
+      ...getCrudErrorTitle(err, 'Failed to save overrides'),
       description: getErrorMessage(err),
     })
     return null
@@ -315,20 +315,20 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
   planRequestTokens: {},
   resultRequestTokens: {},
 
-  fetchPlan: (agentName) => fetchPlanImpl(set, get, agentName),
-  fetchResult: (agentName) => fetchResultImpl(set, get, agentName),
-  hydrateForAgent: async (agentName) => {
+  fetchPlan: (agentId) => fetchPlanImpl(set, get, agentId),
+  fetchResult: (agentId) => fetchResultImpl(set, get, agentId),
+  hydrateForAgent: async (agentId) => {
     await Promise.all([
-      get().fetchPlan(agentName),
-      get().fetchResult(agentName),
+      get().fetchPlan(agentId),
+      get().fetchResult(agentId),
     ])
   },
-  createPlan: (agentName, overrides) =>
-    createPlanImpl(set, agentName, overrides),
-  executePlan: (agentName) => executePlanImpl(set, agentName),
-  previewPlan: (agentName) => previewPlanImpl(agentName),
-  updateOverrides: (agentName, planId, data) =>
-    updateOverridesImpl(set, agentName, planId, data),
+  createPlan: (agentId, overrides) =>
+    createPlanImpl(set, agentId, overrides),
+  executePlan: (agentId) => executePlanImpl(set, agentId),
+  previewPlan: (agentId) => previewPlanImpl(agentId),
+  updateOverrides: (agentId, planId, data) =>
+    updateOverridesImpl(set, agentId, planId, data),
 }))
 
 export interface TrainingForAgent {
@@ -358,33 +358,33 @@ interface AgentErrorPair {
 
 function pickAgentLoading(
   state: TrainingState,
-  agentName: string,
+  agentId: string,
 ): AgentLoadingPair {
   return {
-    planLoading: state.planLoading[agentName] ?? false,
-    resultLoading: state.resultLoading[agentName] ?? false,
+    planLoading: state.planLoading[agentId] ?? false,
+    resultLoading: state.resultLoading[agentId] ?? false,
   }
 }
 
 function pickAgentErrors(
   state: TrainingState,
-  agentName: string,
+  agentId: string,
 ): AgentErrorPair {
   return {
-    planError: state.planError[agentName] ?? null,
-    resultError: state.resultError[agentName] ?? null,
+    planError: state.planError[agentId] ?? null,
+    resultError: state.resultError[agentId] ?? null,
   }
 }
 
 function selectTrainingForAgent(
   state: TrainingState,
-  agentName: string,
+  agentId: string,
 ): TrainingForAgent {
-  const loading = pickAgentLoading(state, agentName)
-  const errors = pickAgentErrors(state, agentName)
+  const loading = pickAgentLoading(state, agentId)
+  const errors = pickAgentErrors(state, agentId)
   return {
-    plan: state.plansByAgent[agentName] ?? null,
-    result: state.resultsByAgent[agentName] ?? null,
+    plan: state.plansByAgent[agentId] ?? null,
+    result: state.resultsByAgent[agentId] ?? null,
     loading: loading.planLoading || loading.resultLoading,
     ...loading,
     error: errors.planError ?? errors.resultError,
@@ -397,8 +397,8 @@ function selectTrainingForAgent(
  * ``useShallow`` so re-renders only fire when one of the underlying
  * fields changes, not on every store update.
  */
-export function useTrainingForAgent(agentName: string): TrainingForAgent {
+export function useTrainingForAgent(agentId: string): TrainingForAgent {
   return useTrainingStore(
-    useShallow((state) => selectTrainingForAgent(state, agentName)),
+    useShallow((state) => selectTrainingForAgent(state, agentId)),
   )
 }

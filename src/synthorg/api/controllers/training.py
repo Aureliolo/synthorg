@@ -19,7 +19,7 @@ from synthorg.api.dto_training import (
     UpdateTrainingOverridesRequest,
 )
 from synthorg.api.guards import require_org_mutation, require_read_access
-from synthorg.api.path_params import PathId, PathName
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
@@ -52,9 +52,9 @@ logger = get_logger(__name__)
 
 async def _resolve_agent(
     app_state: AppState,
-    agent_name: PathName,
+    agent_id: PathId,
 ) -> AgentIdentity:
-    """Resolve agent name to identity, raising NotFoundError.
+    """Resolve a stable agent id to its identity, raising NotFoundError.
 
     Returns:
         ``AgentIdentity`` instance.
@@ -62,14 +62,18 @@ async def _resolve_agent(
     Raises:
         NotFoundError: Raised on the corresponding failure path.
     """
+    # str(identity.id) is canonical lowercase; lowercase the path segment so
+    # the registry lookup resolves case variants, matching the config-backed
+    # agent routes.
+    canonical_agent_id = agent_id.lower()
     identity = await require_service(
         app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
-    ).get_by_name(agent_name)
+    ).get(canonical_agent_id)
     if identity is None:
         logger.warning(
             API_RESOURCE_NOT_FOUND,
             resource="agent",
-            name=str(agent_name),
+            agent_id=canonical_agent_id,
         )
         msg = "Agent not found"
         raise NotFoundError(msg)
@@ -184,7 +188,7 @@ def _result_to_response(result: TrainingResult) -> TrainingResultResponse:
 class TrainingController(Controller):
     """Training mode API endpoints."""
 
-    path = "/agents/{agent_name:str}/training"
+    path = "/agents/{agent_id:str}/training"
 
     @post(
         "/plan",
@@ -197,7 +201,7 @@ class TrainingController(Controller):
     async def create_plan(
         self,
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
         data: CreateTrainingPlanRequest,
     ) -> ApiResponse[TrainingPlanResponse]:
         """Create a training plan for the specified agent.
@@ -207,7 +211,7 @@ class TrainingController(Controller):
 
         Args:
             state: Application state.
-            agent_name: Agent identifier from the URL path.
+            agent_id: Stable agent id from the URL path.
             data: Request body (content types, caps, overrides, flags).
 
         Returns:
@@ -216,10 +220,10 @@ class TrainingController(Controller):
         Raises:
             ValidationError: If the request contains invalid
                 content types, caps, or override sources.
-            NotFoundError: If the agent name does not resolve.
+            NotFoundError: If the agent id does not resolve.
         """
         app_state: AppState = state.app_state
-        identity = await _resolve_agent(app_state, agent_name)
+        identity = await _resolve_agent(app_state, agent_id)
         enabled_types = _parse_content_types(data.content_types)
         override_sources = _coerce_override_sources(data.override_sources)
 
@@ -265,13 +269,13 @@ class TrainingController(Controller):
     async def execute_plan(
         self,
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
     ) -> ApiResponse[TrainingResultResponse]:
         """Execute the latest pending training plan.
 
         Args:
             state: Application state.
-            agent_name: Agent identifier from the URL path.
+            agent_id: Stable agent id from the URL path.
 
         Raises:
             NotFoundError: If no pending plan exists for the agent.
@@ -286,7 +290,9 @@ class TrainingController(Controller):
             ``ApiResponse[TrainingResultResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        identity = await _resolve_agent(app_state, agent_name)
+        # Key persistence reads off the resolved canonical id so they match
+        # the id training plans were stored under, even for case variants.
+        identity = await _resolve_agent(app_state, agent_id)
         agent_id = str(identity.id)
 
         plan = await persistence_of(app_state).training_plans.latest_pending(
@@ -346,13 +352,13 @@ class TrainingController(Controller):
     async def get_result(
         self,
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
     ) -> ApiResponse[TrainingResultResponse]:
         """Get the latest training result for an agent.
 
         Args:
             state: Application state.
-            agent_name: Agent identifier from the URL path.
+            agent_id: Stable agent id from the URL path.
 
         Raises:
             NotFoundError: If no result is stored for the agent.
@@ -361,7 +367,9 @@ class TrainingController(Controller):
             ``ApiResponse[TrainingResultResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        identity = await _resolve_agent(app_state, agent_name)
+        # Key persistence reads off the resolved canonical id so they match
+        # the id training results were stored under, even for case variants.
+        identity = await _resolve_agent(app_state, agent_id)
         agent_id = str(identity.id)
 
         result = await persistence_of(app_state).training_results.get_latest(
@@ -386,7 +394,7 @@ class TrainingController(Controller):
     async def get_latest_plan(
         self,
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
     ) -> ApiResponse[TrainingPlanResponse]:
         """Get the most recently created training plan for an agent.
 
@@ -397,7 +405,7 @@ class TrainingController(Controller):
 
         Args:
             state: Application state.
-            agent_name: Agent identifier from the URL path.
+            agent_id: Stable agent id from the URL path.
 
         Raises:
             NotFoundError: If no plan has been created for the agent.
@@ -406,7 +414,9 @@ class TrainingController(Controller):
             ``ApiResponse[TrainingPlanResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        identity = await _resolve_agent(app_state, agent_name)
+        # Key persistence reads off the resolved canonical id so they match
+        # the id training plans were stored under, even for case variants.
+        identity = await _resolve_agent(app_state, agent_id)
         agent_id = str(identity.id)
 
         plan = await persistence_of(app_state).training_plans.latest_by_agent(
@@ -431,13 +441,13 @@ class TrainingController(Controller):
     async def preview_plan(
         self,
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
     ) -> ApiResponse[TrainingResultResponse]:
         """Preview a training plan (dry run).
 
         Args:
             state: Application state.
-            agent_name: Agent identifier from the URL path.
+            agent_id: Stable agent id from the URL path.
 
         Raises:
             NotFoundError: If no pending plan exists for the agent.
@@ -448,7 +458,9 @@ class TrainingController(Controller):
             ``ApiResponse[TrainingResultResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        identity = await _resolve_agent(app_state, agent_name)
+        # Key persistence reads off the resolved canonical id so they match
+        # the id training plans were stored under, even for case variants.
+        identity = await _resolve_agent(app_state, agent_id)
         agent_id = str(identity.id)
 
         plan = await persistence_of(app_state).training_plans.latest_pending(
@@ -483,7 +495,7 @@ class TrainingController(Controller):
     async def update_overrides(
         self,
         state: State,
-        agent_name: PathName,
+        agent_id: PathId,
         plan_id: PathId,
         data: UpdateTrainingOverridesRequest,
     ) -> ApiResponse[TrainingPlanResponse]:
@@ -494,7 +506,7 @@ class TrainingController(Controller):
 
         Args:
             state: Application state.
-            agent_name: Agent identifier from the URL path.
+            agent_id: Stable agent id from the URL path.
             plan_id: Training plan id from the URL path.
             data: Request body with optional override updates.
 
@@ -508,7 +520,7 @@ class TrainingController(Controller):
             TrainingPlanNotModifiableError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        identity = await _resolve_agent(app_state, agent_name)
+        identity = await _resolve_agent(app_state, agent_id)
 
         plan = await persistence_of(app_state).training_plans.get(
             NotBlankStr(plan_id),

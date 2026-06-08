@@ -57,24 +57,22 @@ function buildResult(
 }
 
 export const trainingHandlers = [
-  http.post('/api/v1/agents/:name/training/plan', () =>
-    HttpResponse.json(successFor<typeof createTrainingPlan>(buildPlan()), {
-      status: 201,
-    }),
+  http.post('/api/v1/agents/:agentId/training/plan', () =>
+    HttpResponse.json(successFor<typeof createTrainingPlan>(buildPlan())),
   ),
-  http.post('/api/v1/agents/:name/training/execute', () =>
+  http.post('/api/v1/agents/:agentId/training/execute', () =>
     HttpResponse.json(successFor<typeof executeTrainingPlan>(buildResult())),
   ),
-  http.get('/api/v1/agents/:name/training/result', () =>
+  http.get('/api/v1/agents/:agentId/training/result', () =>
     HttpResponse.json(successFor<typeof getTrainingResult>(buildResult())),
   ),
-  http.get('/api/v1/agents/:name/training/plan', () =>
+  http.get('/api/v1/agents/:agentId/training/plan', () =>
     HttpResponse.json(successFor<typeof getLatestTrainingPlan>(buildPlan())),
   ),
-  http.post('/api/v1/agents/:name/training/preview', () =>
+  http.post('/api/v1/agents/:agentId/training/preview', () =>
     HttpResponse.json(successFor<typeof previewTrainingPlan>(buildResult())),
   ),
-  http.put('/api/v1/agents/:name/training/plan/:planId/overrides', ({ params }) =>
+  http.put('/api/v1/agents/:agentId/training/plan/:planId/overrides', ({ params }) =>
     HttpResponse.json(
       successFor<typeof updateTrainingOverrides>(
         buildPlan({ id: String(params.planId) }),

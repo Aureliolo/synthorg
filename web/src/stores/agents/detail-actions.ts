@@ -1,6 +1,7 @@
 import {
   getAgent,
   getAgentActivity,
+  getAgentHealth,
   getAgentHistory,
   getAgentPerformance,
 } from '@/api/endpoints/agents'
@@ -19,6 +20,7 @@ import type {
   AgentConfig,
 } from '@/api/types/agents'
 import type {
+  AgentHealthResponse,
   AgentPerformanceSummary,
   CareerEvent,
   Task,
@@ -26,9 +28,9 @@ import type {
 import type { PaginatedResult } from '@/api/client'
 import {
   MAX_ACTIVITIES,
-  clearDetailRequestName,
-  getDetailRequestName,
-  setDetailRequestName,
+  clearDetailRequestId,
+  getDetailRequestId,
+  setDetailRequestId,
 } from './_state'
 import type { AgentsGet, AgentsSet } from './types'
 
@@ -37,25 +39,34 @@ const log = createLogger('agents')
 interface DetailFetchResult {
   agentResult: PromiseSettledResult<AgentConfig>
   perfResult: PromiseSettledResult<AgentPerformanceSummary>
+  healthResult: PromiseSettledResult<AgentHealthResponse>
   tasksResult: PromiseSettledResult<{ data: Task[] }>
   activityResult: PromiseSettledResult<PaginatedResult<AgentActivityEvent>>
   historyResult: PromiseSettledResult<readonly CareerEvent[]>
 }
 
 async function fetchAllDetailEndpoints(
-  name: string,
+  agentId: string,
 ): Promise<DetailFetchResult> {
-  const [agentResult, perfResult, tasksResult, activityResult, historyResult] =
-    await Promise.allSettled([
-      getAgent(name),
-      getAgentPerformance(name),
-      listTasks({ assigned_to: name, limit: 50 }),
-      getAgentActivity(name, { limit: 20 }),
-      getAgentHistory(name),
-    ])
+  const [
+    agentResult,
+    perfResult,
+    healthResult,
+    tasksResult,
+    activityResult,
+    historyResult,
+  ] = await Promise.allSettled([
+    getAgent(agentId),
+    getAgentPerformance(agentId),
+    getAgentHealth(agentId),
+    listTasks({ assigned_to: agentId, limit: 50 }),
+    getAgentActivity(agentId, { limit: 20 }),
+    getAgentHistory(agentId),
+  ])
   return {
     agentResult,
     perfResult,
+    healthResult,
     tasksResult,
     activityResult,
     historyResult,
@@ -65,6 +76,7 @@ async function fetchAllDetailEndpoints(
 function collectPartialErrors(results: DetailFetchResult): string[] {
   const out: string[] = []
   if (results.perfResult.status === 'rejected') out.push('performance metrics')
+  if (results.healthResult.status === 'rejected') out.push('health')
   if (results.tasksResult.status === 'rejected') out.push('task history')
   if (results.activityResult.status === 'rejected') out.push('activity')
   if (results.historyResult.status === 'rejected') out.push('career history')
@@ -111,6 +123,7 @@ function buildDetailPatch(
   return {
     selectedAgent: agent,
     performance: valueOrFallback(results.perfResult, null),
+    health: valueOrFallback(results.healthResult, null),
     agentTasks: results.tasksResult.status === 'fulfilled'
       ? results.tasksResult.value.data
       : [],
@@ -126,14 +139,14 @@ function buildDetailPatch(
 
 async function fetchAgentDetailImpl(
   set: AgentsSet,
-  name: string,
+  agentId: string,
 ): Promise<void> {
-  setDetailRequestName(name)
+  setDetailRequestId(agentId)
   set({ detailLoading: true, detailError: null })
   try {
-    const results = await fetchAllDetailEndpoints(name)
+    const results = await fetchAllDetailEndpoints(agentId)
     // Guard against stale responses from rapid navigation.
-    if (getDetailRequestName() !== name) return
+    if (getDetailRequestId() !== agentId) return
     const agent = results.agentResult.status === 'fulfilled'
       ? results.agentResult.value
       : null
@@ -147,6 +160,7 @@ async function fetchAgentDetailImpl(
       set({
         selectedAgent: null,
         performance: null,
+        health: null,
         agentTasks: [],
         activity: [],
         activityTotal: 0,
@@ -161,13 +175,13 @@ async function fetchAgentDetailImpl(
     }
     set(buildDetailPatch(agent, results, collectPartialErrors(results)))
   } catch (err) {
-    if (getDetailRequestName() !== name) return
-    // ``name`` originates from a URL segment / router param and is
+    if (getDetailRequestId() !== agentId) return
+    // ``agentId`` originates from a URL segment / router param and is
     // therefore attacker-controlled; sanitize before embedding in the
     // structured log.
     log.warn(
       'Failed to load agent detail',
-      { agent: sanitizeForLog(name) },
+      { agent: sanitizeForLog(agentId) },
       err,
     )
     set({ detailLoading: false, detailError: getErrorMessage(err) })
@@ -176,7 +190,7 @@ async function fetchAgentDetailImpl(
 
 function canFetchMoreActivity(
   get: AgentsGet,
-  name: string,
+  agentId: string,
 ): boolean {
   const {
     activity,
@@ -188,23 +202,23 @@ function canFetchMoreActivity(
   if (activityLoading) return false
   if (activity.length >= MAX_ACTIVITIES) return false
   if (!activityHasMore || !activityNextCursor) return false
-  if (selectedAgent && selectedAgent.name !== name) return false
+  if (selectedAgent && selectedAgent.id !== agentId) return false
   return true
 }
 
 async function fetchMoreActivityImpl(
   set: AgentsSet,
   get: AgentsGet,
-  name: string,
+  agentId: string,
 ): Promise<void> {
-  if (!canFetchMoreActivity(get, name)) return
+  if (!canFetchMoreActivity(get, agentId)) return
   const cursor = get().activityNextCursor
   if (cursor === null) return
   set({ activityLoading: true })
   try {
-    const result = await getAgentActivity(name, { cursor, limit: 20 })
+    const result = await getAgentActivity(agentId, { cursor, limit: 20 })
     // Ignore response if agent changed while fetching.
-    if (get().selectedAgent?.name !== name) {
+    if (get().selectedAgent?.id !== agentId) {
       set({ activityLoading: false })
       return
     }
@@ -229,10 +243,11 @@ async function fetchMoreActivityImpl(
 }
 
 function clearDetailImpl(set: AgentsSet): void {
-  clearDetailRequestName()
+  clearDetailRequestId()
   set({
     selectedAgent: null,
     performance: null,
+    health: null,
     agentTasks: [],
     activity: [],
     activityTotal: 0,
@@ -247,9 +262,9 @@ function clearDetailImpl(set: AgentsSet): void {
 
 export function createDetailActions(set: AgentsSet, get: AgentsGet) {
   return {
-    fetchAgentDetail: (name: string) => fetchAgentDetailImpl(set, name),
-    fetchMoreActivity: (name: string) =>
-      fetchMoreActivityImpl(set, get, name),
+    fetchAgentDetail: (agentId: string) => fetchAgentDetailImpl(set, agentId),
+    fetchMoreActivity: (agentId: string) =>
+      fetchMoreActivityImpl(set, get, agentId),
     clearDetail: () => clearDetailImpl(set),
   }
 }

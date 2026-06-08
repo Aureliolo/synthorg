@@ -146,8 +146,9 @@ async function fetchAgentMaps(): Promise<AgentMaps> {
   try {
     const agentsResult = await listAgents({ limit: 100 })
     for (const agent of agentsResult.data) {
-      const keys = new Set<string>([agent.name])
-      if (agent.id) keys.add(agent.id)
+      // Cost records reference the stable agent id; key by id (and name
+      // too, so name-keyed display paths still resolve).
+      const keys = new Set<string>([agent.id, agent.name])
       for (const key of keys) {
         agentNameMap.set(key, agent.name)
         agentDeptMap.set(key, agent.department)

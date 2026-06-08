@@ -1,5 +1,5 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
-import type { ActiveAgentSummary } from '../types'
+import type { ActiveAgentSummary, AgentHealthResponse } from '../types'
 import type {
   AgentActivityEvent,
   AgentPerformanceSummary,
@@ -14,8 +14,9 @@ export async function listAgents(params?: PaginationParams): Promise<PaginatedRe
   return unwrapPaginated<DashboardAgentConfig>(response)
 }
 
-// Active registered agents WITH their stable runtime UUIDs (the
-// config-sourced ``listAgents`` carries no id). Backs the group-chat
+// Active registered agents WITH their stable runtime UUIDs. The
+// config-sourced ``listAgents`` now carries the same id, so both
+// surfaces address agents by one UUID. Backs the group-chat
 // participant picker, which sends the selected ids to /meta/chat/group.
 export async function listActiveAgents(): Promise<readonly ActiveAgentSummary[]> {
   const response =
@@ -23,8 +24,8 @@ export async function listActiveAgents(): Promise<readonly ActiveAgentSummary[]>
   return unwrap(response)
 }
 
-export async function getAgent(name: string): Promise<DashboardAgentConfig> {
-  const response = await apiClient.get<ApiResponse<DashboardAgentConfig>>(`/agents/${encodeURIComponent(name)}`)
+export async function getAgent(agentId: string): Promise<DashboardAgentConfig> {
+  const response = await apiClient.get<ApiResponse<DashboardAgentConfig>>(`/agents/${encodeURIComponent(agentId)}`)
   return unwrap(response)
 }
 
@@ -41,27 +42,34 @@ export async function setAutonomy(
   return unwrap(response)
 }
 
-export async function getAgentPerformance(name: string): Promise<AgentPerformanceSummary> {
+export async function getAgentPerformance(agentId: string): Promise<AgentPerformanceSummary> {
   const response = await apiClient.get<ApiResponse<AgentPerformanceSummary>>(
-    `/agents/${encodeURIComponent(name)}/performance`,
+    `/agents/${encodeURIComponent(agentId)}/performance`,
   )
   return unwrap(response)
 }
 
 export async function getAgentActivity(
-  name: string,
+  agentId: string,
   params?: PaginationParams,
 ): Promise<PaginatedResult<AgentActivityEvent>> {
   const response = await apiClient.get<PaginatedResponse<AgentActivityEvent>>(
-    `/agents/${encodeURIComponent(name)}/activity`,
+    `/agents/${encodeURIComponent(agentId)}/activity`,
     { params },
   )
   return unwrapPaginated<AgentActivityEvent>(response)
 }
 
-export async function getAgentHistory(name: string): Promise<readonly CareerEvent[]> {
+export async function getAgentHistory(agentId: string): Promise<readonly CareerEvent[]> {
   const response = await apiClient.get<ApiResponse<readonly CareerEvent[]>>(
-    `/agents/${encodeURIComponent(name)}/history`,
+    `/agents/${encodeURIComponent(agentId)}/history`,
+  )
+  return unwrap(response)
+}
+
+export async function getAgentHealth(agentId: string): Promise<AgentHealthResponse> {
+  const response = await apiClient.get<ApiResponse<AgentHealthResponse>>(
+    `/agents/${encodeURIComponent(agentId)}/health`,
   )
   return unwrap(response)
 }

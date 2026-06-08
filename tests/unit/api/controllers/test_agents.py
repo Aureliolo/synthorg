@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from synthorg.config.schema import AgentConfig, RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import Complexity, TaskType, ToolAccessLevel
+from synthorg.core.types import stable_agent_id
 from synthorg.hr.enums import LifecycleEventType, TrendDirection
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
@@ -88,7 +89,7 @@ class TestAgentController:
         assert resp.status_code == 400
 
 
-@pytest.mark.integration
+@pytest.mark.unit
 class TestAgentControllerDbOverride:
     """Test that DB-stored settings override YAML agents."""
 
@@ -135,7 +136,9 @@ class TestAgentControllerDbOverride:
             names = {a["name"] for a in body["data"]}
             assert names == {"db-agent-1", "db-agent-2"}
 
-            detail_resp = await client.get("/api/v1/agents/db-agent-1")
+            detail_resp = await client.get(
+                f"/api/v1/agents/{stable_agent_id('db-agent-1')}"
+            )
             assert detail_resp.status_code == 200
             detail = detail_resp.json()
             assert detail["data"]["name"] == "db-agent-1"
@@ -149,7 +152,10 @@ class TestAgentControllerDbOverride:
 
 _NOW = datetime(2026, 3, 24, 12, 0, 0, tzinfo=UTC)
 _AGENT_NAME = "test-agent"
-_AGENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+# Derive the id the same way production does, so the sub-resource routes
+# (addressed by id) exercise the real name->id derivation rather than an
+# arbitrary literal that happens to match the registered identity.
+_AGENT_ID = str(stable_agent_id(_AGENT_NAME))
 
 
 def _make_identity(
@@ -231,7 +237,7 @@ class TestAgentPerformance:
                 ),
             )
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/performance")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/performance")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -248,7 +254,7 @@ class TestAgentPerformance:
     ) -> None:
         await agent_registry.register(_make_identity())
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/performance")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/performance")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -267,18 +273,13 @@ class TestAgentPerformance:
         assert resp.status_code == 404
         assert resp.json()["success"] is False
 
-    # NOTE: the former "returns 503 when no agent registry is configured"
-    # trio of HTTP-level tests was removed after ``create_app`` began
-    # auto-wiring ``AgentRegistryService``.  The controller's 503 branch is
-    # defensive code for callers that build ``AppState`` directly without a
-    # registry; its underlying behaviour is covered by
-    # ``tests/unit/api/test_state.py``, which asserts that
-    # ``AppState.agent_registry`` raises ``ServiceUnavailableError`` when
-    # the registry is ``None``.  Litestar maps that exception to HTTP 503
-    # automatically.  An HTTP-level re-test would require constructing a
-    # second full app with ``agent_registry=None`` just to exercise one
-    # branch; the property-level coverage is sufficient given the simple
-    # one-line path from property access to 503 response.
+    # The controller's "no agent registry -> 503" branch is defensive code
+    # for callers that build ``AppState`` directly without a registry. It is
+    # covered at the property level in ``tests/unit/api/test_state.py``, which
+    # asserts ``AppState.agent_registry`` raises ``ServiceUnavailableError``
+    # when the registry is ``None``; Litestar maps that to HTTP 503. An
+    # HTTP-level test would need a second full app with ``agent_registry=None``
+    # just to exercise one branch, so the property-level coverage suffices.
 
 
 # ── Activity endpoint tests ───────────────────────────────────
@@ -313,7 +314,7 @@ class TestAgentActivity:
             ),
         )
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/activity")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/activity")
 
         assert resp.status_code == 200
         body = resp.json()
@@ -342,7 +343,7 @@ class TestAgentActivity:
 
         # Walk the first page (no cursor) -> collect next_cursor -> walk page 2.
         resp1 = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_NAME}/activity",
+            f"/api/v1/agents/{_AGENT_ID}/activity",
             params={"limit": 2},
         )
         assert resp1.status_code == 200
@@ -353,7 +354,7 @@ class TestAgentActivity:
         assert len(body1["data"]) == 2
 
         resp2 = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_NAME}/activity",
+            f"/api/v1/agents/{_AGENT_ID}/activity",
             params={"limit": 2, "cursor": body1["pagination"]["next_cursor"]},
         )
         assert resp2.status_code == 200
@@ -375,7 +376,7 @@ class TestAgentActivity:
         # has 1 item and clears has_more + next_cursor per the
         # PaginationMeta consistency validator).
         resp3 = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_NAME}/activity",
+            f"/api/v1/agents/{_AGENT_ID}/activity",
             params={"limit": 2, "cursor": body2["pagination"]["next_cursor"]},
         )
         assert resp3.status_code == 200
@@ -391,7 +392,7 @@ class TestAgentActivity:
     ) -> None:
         await agent_registry.register(_make_identity())
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/activity")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/activity")
 
         assert resp.status_code == 200
         body = resp.json()
@@ -440,7 +441,7 @@ class TestAgentHistory:
             ),
         )
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/history")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -470,7 +471,7 @@ class TestAgentHistory:
             ),
         )
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/history")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -485,7 +486,7 @@ class TestAgentHistory:
     ) -> None:
         await agent_registry.register(_make_identity())
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/history")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -511,7 +512,7 @@ class TestAgentHealth:
     ) -> None:
         await agent_registry.register(_make_identity())
         resp = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_NAME}/health",
+            f"/api/v1/agents/{_AGENT_ID}/health",
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -530,7 +531,7 @@ class TestAgentHealth:
         """Trust is None when TrustService has no state for agent."""
         await agent_registry.register(_make_identity())
         resp = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_NAME}/health",
+            f"/api/v1/agents/{_AGENT_ID}/health",
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -551,7 +552,7 @@ class TestAgentHealth:
         """Verify performance sub-object has correct field types."""
         await agent_registry.register(_make_identity())
         resp = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_NAME}/health",
+            f"/api/v1/agents/{_AGENT_ID}/health",
         )
         assert resp.status_code == 200
         perf = resp.json()["data"]["performance"]

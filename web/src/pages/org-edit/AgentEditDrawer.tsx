@@ -18,8 +18,8 @@ export interface AgentEditDrawerProps {
   onClose: () => void
   agent: AgentConfig | null
   departments: readonly Department[]
-  onUpdate: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
-  onDelete: (name: string) => Promise<boolean>
+  onUpdate: (agentId: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
+  onDelete: (agentId: string) => Promise<boolean>
   saving: boolean
 }
 
@@ -65,7 +65,7 @@ function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
     level: 'mid',
   })
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const del = useDrawerDelete(agent?.name, onDelete, onClose)
+  const del = useDrawerDelete(agent?.id, onDelete, onClose)
 
   // Render-phase prop sync (the "adjust state when a prop changes"
   // pattern): reseed the form whenever a different agent is opened.
@@ -98,7 +98,7 @@ function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
       return
     }
     setSubmitError(null)
-    const result = await onUpdate(agent.name, {
+    const result = await onUpdate(agent.id, {
       name: trimmedName,
       role: form.role.trim() || undefined,
       department: form.department,
@@ -160,11 +160,6 @@ function AgentEditBody({ agent, saving, form, onClose }: AgentEditBodyProps) {
         value={form.form.level}
         onChange={(v) => form.setForm((prev) => ({ ...prev, level: v as SeniorityLevel }))}
       />
-
-      <div className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Status</p>
-        <StatusBadge status={toRuntimeStatus(agent.status ?? 'active')} />
-      </div>
 
       <div className="border-t border-border pt-4 space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Model</p>

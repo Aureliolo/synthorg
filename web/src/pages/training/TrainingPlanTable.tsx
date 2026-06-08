@@ -13,6 +13,7 @@ import type {
 import type { AgentRuntimeStatus } from '@/lib/utils'
 
 export interface TrainingPlanRow {
+  agentId: string
   agentName: string
   plan: TrainingPlanResponse | null
   result: TrainingResultResponse | null
@@ -20,7 +21,7 @@ export interface TrainingPlanRow {
 
 export interface TrainingPlanTableProps {
   rows: readonly TrainingPlanRow[]
-  onExecute: (agentName: string) => void
+  onExecute: (agentId: string) => void
 }
 
 function sumStored(result: TrainingResultResponse | null): number {
@@ -46,7 +47,7 @@ function statusDot(plan: TrainingPlanResponse | null): AgentRuntimeStatus {
 
 interface TrainingPlanTableRowProps {
   row: TrainingPlanRow
-  onExecute: (agentName: string) => void
+  onExecute: (agentId: string) => void
 }
 
 function TrainingPlanTableRow({ row, onExecute }: TrainingPlanTableRowProps) {
@@ -54,7 +55,7 @@ function TrainingPlanTableRow({ row, onExecute }: TrainingPlanTableRowProps) {
     <tr>
       <td className="p-card">
         <Link
-          to={`/agents/${encodeURIComponent(row.agentName)}`}
+          to={`/agents/${encodeURIComponent(row.agentId)}`}
           className="font-medium text-foreground hover:text-accent"
         >
           {row.agentName}
@@ -82,13 +83,13 @@ function TrainingPlanTableRow({ row, onExecute }: TrainingPlanTableRowProps) {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => onExecute(row.agentName)}
+            onClick={() => onExecute(row.agentId)}
           >
             Execute
           </Button>
         ) : (
           <Button asChild size="sm" variant="ghost">
-            <Link to={`/agents/${encodeURIComponent(row.agentName)}`}>
+            <Link to={`/agents/${encodeURIComponent(row.agentId)}`}>
               Open
             </Link>
           </Button>
@@ -131,7 +132,7 @@ export function TrainingPlanTable({ rows, onExecute }: TrainingPlanTableProps) {
         <tbody className="divide-y divide-border">
           {rows.map((row) => (
             <TrainingPlanTableRow
-              key={row.agentName}
+              key={row.agentId}
               row={row}
               onExecute={onExecute}
             />

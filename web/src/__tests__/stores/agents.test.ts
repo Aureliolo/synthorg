@@ -110,7 +110,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 type HandlerResult = Response | Promise<Response>
 type Fixture = Partial<{
   agentList: () => HandlerResult
-  agent: (name: string) => HandlerResult
+  agent: (agentId: string) => HandlerResult
   performance: () => HandlerResult
   activity: () => HandlerResult
   history: () => HandlerResult
@@ -130,17 +130,17 @@ function installAgentHandlers(f: Fixture = {}) {
             pagination: { total: 1, offset: 0, limit: 200 },
           }),
     ),
-    http.get('/api/v1/agents/:name', ({ params }) =>
+    http.get('/api/v1/agents/:agentId', ({ params }) =>
       f.agent
-        ? f.agent(String(params.name))
-        : HttpResponse.json(apiSuccess(makeAgent({ name: String(params.name) }))),
+        ? f.agent(String(params.agentId))
+        : HttpResponse.json(apiSuccess(makeAgent({ id: String(params.agentId) }))),
     ),
-    http.get('/api/v1/agents/:name/performance', () =>
+    http.get('/api/v1/agents/:agentId/performance', () =>
       f.performance
         ? f.performance()
         : HttpResponse.json(apiSuccess(makePerformance())),
     ),
-    http.get('/api/v1/agents/:name/activity', () =>
+    http.get('/api/v1/agents/:agentId/activity', () =>
       f.activity
         ? f.activity()
         : HttpResponse.json({
@@ -151,7 +151,7 @@ function installAgentHandlers(f: Fixture = {}) {
             pagination: { total: 0, offset: 0, limit: 50 },
           }),
     ),
-    http.get('/api/v1/agents/:name/history', () =>
+    http.get('/api/v1/agents/:agentId/history', () =>
       f.history ? f.history() : HttpResponse.json(apiSuccess([])),
     ),
     http.get('/api/v1/tasks', () =>
@@ -264,7 +264,7 @@ describe('fetchAgentDetail', () => {
       agent: () => HttpResponse.json(apiSuccess(agent)),
     })
 
-    await useAgentsStore.getState().fetchAgentDetail('Alice Smith')
+    await useAgentsStore.getState().fetchAgentDetail('agent-001')
 
     const state = useAgentsStore.getState()
     expect(state.selectedAgent).toEqual(agent)
@@ -278,7 +278,7 @@ describe('fetchAgentDetail', () => {
       performance: () => HttpResponse.json(apiError('fail')),
     })
 
-    await useAgentsStore.getState().fetchAgentDetail('Alice Smith')
+    await useAgentsStore.getState().fetchAgentDetail('agent-001')
 
     const state = useAgentsStore.getState()
     expect(state.selectedAgent).not.toBeNull()
@@ -294,7 +294,7 @@ describe('fetchAgentDetail', () => {
       history: () => HttpResponse.json(apiError('history fail')),
     })
 
-    await useAgentsStore.getState().fetchAgentDetail('Alice Smith')
+    await useAgentsStore.getState().fetchAgentDetail('agent-001')
 
     const state = useAgentsStore.getState()
     expect(state.selectedAgent).not.toBeNull()
@@ -315,7 +315,7 @@ describe('fetchAgentDetail', () => {
       history: () => HttpResponse.json(apiError('fail')),
     })
 
-    await useAgentsStore.getState().fetchAgentDetail('Unknown')
+    await useAgentsStore.getState().fetchAgentDetail('agent-unknown')
 
     const state = useAgentsStore.getState()
     expect(state.selectedAgent).toBeNull()
@@ -323,16 +323,16 @@ describe('fetchAgentDetail', () => {
   })
 
   it('rejects stale responses when a newer fetch starts', async () => {
-    const agentA = makeAgent({ name: 'Alice Smith' })
-    const agentB = makeAgent({ name: 'Bob Jones', role: 'Designer' })
+    const agentA = makeAgent({ id: 'agent-001', name: 'Alice Smith' })
+    const agentB = makeAgent({ id: 'agent-002', name: 'Bob Jones', role: 'Designer' })
 
     let releaseA!: () => void
     const gateA = new Promise<void>((resolve) => {
       releaseA = resolve
     })
     installAgentHandlers({
-      agent: async (name: string) => {
-        if (name === 'Alice Smith') {
+      agent: async (agentId: string) => {
+        if (agentId === 'agent-001') {
           await gateA
           return HttpResponse.json(apiSuccess(agentA))
         }
@@ -340,8 +340,8 @@ describe('fetchAgentDetail', () => {
       },
     })
 
-    const promiseA = useAgentsStore.getState().fetchAgentDetail('Alice Smith')
-    const promiseB = useAgentsStore.getState().fetchAgentDetail('Bob Jones')
+    const promiseA = useAgentsStore.getState().fetchAgentDetail('agent-001')
+    const promiseB = useAgentsStore.getState().fetchAgentDetail('agent-002')
 
     await promiseB
     expect(useAgentsStore.getState().selectedAgent?.name).toBe('Bob Jones')
@@ -404,7 +404,7 @@ describe('fetchMoreActivity', () => {
       },
     ]
     server.use(
-      http.get('/api/v1/agents/:name/activity', () =>
+      http.get('/api/v1/agents/:agentId/activity', () =>
         HttpResponse.json({
           data: newEvents,
           error: null,
@@ -421,7 +421,7 @@ describe('fetchMoreActivity', () => {
       ),
     )
 
-    await useAgentsStore.getState().fetchMoreActivity('Alice Smith')
+    await useAgentsStore.getState().fetchMoreActivity('agent-001')
 
     expect(useAgentsStore.getState().activity).toHaveLength(2)
     // Cursor pagination: ``activityTotal`` is the in-memory display
@@ -456,7 +456,7 @@ describe('fetchMoreActivity', () => {
       related_ids: {},
     }))
     server.use(
-      http.get('/api/v1/agents/:name/activity', () =>
+      http.get('/api/v1/agents/:agentId/activity', () =>
         HttpResponse.json({
           data: newEvents,
           error: null,
@@ -473,7 +473,7 @@ describe('fetchMoreActivity', () => {
       ),
     )
 
-    await useAgentsStore.getState().fetchMoreActivity('Alice Smith')
+    await useAgentsStore.getState().fetchMoreActivity('agent-001')
 
     expect(useAgentsStore.getState().activity).toHaveLength(100)
     // Intermediate page must advance the cursor + keep ``hasMore``
@@ -500,12 +500,12 @@ describe('fetchMoreActivity', () => {
     })
 
     server.use(
-      http.get('/api/v1/agents/:name/activity', () =>
+      http.get('/api/v1/agents/:agentId/activity', () =>
         HttpResponse.json(apiError('Network error')),
       ),
     )
 
-    await useAgentsStore.getState().fetchMoreActivity('Alice Smith')
+    await useAgentsStore.getState().fetchMoreActivity('agent-001')
 
     expect(useAgentsStore.getState().activity).toHaveLength(1)
     expect(useAgentsStore.getState().activity[0]!.description).toBe('Task done')

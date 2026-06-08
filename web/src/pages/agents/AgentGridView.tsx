@@ -14,8 +14,8 @@ interface AgentGridViewProps {
   agents: readonly AgentConfig[]
   className?: string
   /**
-   * Optional selection set keyed on the agent's stable id (or name
-   * fallback). When provided alongside ``onToggleSelect``, each card
+   * Optional selection set keyed on the agent's stable UUID id. When
+   * provided alongside ``onToggleSelect``, each card
    * renders a checkbox overlay; otherwise the grid stays
    * selection-unaware so unrelated callers (detail-page sidebars,
    * dashboard widgets) keep their existing layout.
@@ -25,7 +25,7 @@ interface AgentGridViewProps {
 }
 
 function agentKey(agent: AgentConfig): string {
-  return agent.id ?? agent.name
+  return agent.id
 }
 
 interface AgentGridItemProps {

@@ -51,64 +51,66 @@ export interface TrainingResultResponse {
 export interface TrainingOverridesRequest {
   override_sources?: string[]
   custom_caps?: Partial<Record<ContentType, number>>
+  content_types?: ContentType[]
+  skip_training?: boolean
 }
 
 // -- Endpoints -------------------------------------------------------
 
 export async function createTrainingPlan(
-  agentName: string,
+  agentId: string,
   data: TrainingPlanRequest,
 ): Promise<TrainingPlanResponse> {
   const response = await apiClient.post<ApiResponse<TrainingPlanResponse>>(
-    `/agents/${encodeURIComponent(agentName)}/training/plan`,
+    `/agents/${encodeURIComponent(agentId)}/training/plan`,
     data,
   )
   return unwrap(response)
 }
 
 export async function executeTrainingPlan(
-  agentName: string,
+  agentId: string,
 ): Promise<TrainingResultResponse> {
   const response = await apiClient.post<ApiResponse<TrainingResultResponse>>(
-    `/agents/${encodeURIComponent(agentName)}/training/execute`,
+    `/agents/${encodeURIComponent(agentId)}/training/execute`,
   )
   return unwrap(response)
 }
 
 export async function getTrainingResult(
-  agentName: string,
+  agentId: string,
 ): Promise<TrainingResultResponse> {
   const response = await apiClient.get<ApiResponse<TrainingResultResponse>>(
-    `/agents/${encodeURIComponent(agentName)}/training/result`,
+    `/agents/${encodeURIComponent(agentId)}/training/result`,
   )
   return unwrap(response)
 }
 
 export async function getLatestTrainingPlan(
-  agentName: string,
+  agentId: string,
 ): Promise<TrainingPlanResponse> {
   const response = await apiClient.get<ApiResponse<TrainingPlanResponse>>(
-    `/agents/${encodeURIComponent(agentName)}/training/plan`,
+    `/agents/${encodeURIComponent(agentId)}/training/plan`,
   )
   return unwrap(response)
 }
 
 export async function previewTrainingPlan(
-  agentName: string,
+  agentId: string,
 ): Promise<TrainingResultResponse> {
   const response = await apiClient.post<ApiResponse<TrainingResultResponse>>(
-    `/agents/${encodeURIComponent(agentName)}/training/preview`,
+    `/agents/${encodeURIComponent(agentId)}/training/preview`,
   )
   return unwrap(response)
 }
 
 export async function updateTrainingOverrides(
-  agentName: string,
+  agentId: string,
   planId: string,
   data: TrainingOverridesRequest,
 ): Promise<TrainingPlanResponse> {
   const response = await apiClient.put<ApiResponse<TrainingPlanResponse>>(
-    `/agents/${encodeURIComponent(agentName)}/training/plan/${encodeURIComponent(planId)}/overrides`,
+    `/agents/${encodeURIComponent(agentId)}/training/plan/${encodeURIComponent(planId)}/overrides`,
     data,
   )
   return unwrap(response)

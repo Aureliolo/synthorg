@@ -24,6 +24,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
   // Detail page defaults
   selectedAgent: null,
   performance: null,
+  health: null,
   agentTasks: [],
   activity: [],
   activityTotal: 0,

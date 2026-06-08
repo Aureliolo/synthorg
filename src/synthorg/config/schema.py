@@ -2,6 +2,7 @@
 
 from collections import Counter
 from typing import ClassVar, Literal, Self, cast
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
@@ -25,7 +26,7 @@ from synthorg.core.company import (
 )
 from synthorg.core.enums import AutonomyLevel, CompanyType
 from synthorg.core.role import CustomRole
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, stable_agent_id
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
 from synthorg.engine.strategy.models import StrategyConfig
@@ -168,6 +169,7 @@ class AgentConfig(BaseModel):
     engine rehydrates each into its typed form at startup.
 
     Attributes:
+        id: Stable agent id derived deterministically from ``name``.
         name: Agent display name.
         role: Role name.
         department: Department name.
@@ -186,6 +188,14 @@ class AgentConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    # The before-validator overwrites this with stable_agent_id(name) on
+    # every name-bearing construction, so the uuid4 factory is a vestigial
+    # placeholder that keeps the field non-required for mypy; it is not a
+    # real fallback in normal operation.
+    id: UUID = Field(
+        default_factory=uuid4,
+        description="Stable agent id, derived deterministically from the name.",
+    )
     name: NotBlankStr = Field(description="Agent display name")
     role: NotBlankStr = Field(description="Role name")
     department: NotBlankStr = Field(description="Department name")
@@ -195,12 +205,7 @@ class AgentConfig(BaseModel):
     )
     personality_preset: NotBlankStr | None = Field(
         default=None,
-        description=(
-            "Named personality preset.  ``setup_agents`` writes the "
-            "resolved preset name back when bootstrapping from a "
-            "template, so the company-agents setting must round-trip "
-            "the field rather than reject it under ``extra=forbid``."
-        ),
+        description="Named personality preset; round-trips from template setup.",
     )
     personality: dict[str, JsonValue] = Field(
         default_factory=dict,
@@ -235,24 +240,30 @@ class AgentConfig(BaseModel):
     )
     tier: Literal["large", "medium", "small"] | None = Field(
         default=None,
-        description=(
-            "Resolved model tier from the setup wizard "
-            "(``large`` / ``medium`` / ``small``). Round-trips so the "
-            "company-agents setting survives Pydantic validation when "
-            "the wizard persists tier alongside the model selection."
-        ),
+        description="Resolved model tier from the setup wizard; round-trips.",
     )
     model_requirement: dict[str, JsonValue] | None = Field(
         default=None,
         description=(
-            "Structured model requirement dict emitted by the setup "
-            "wizard (tier / priority / min_context / capabilities). "
-            "Stored as a raw dict because the canonical "
-            "``ModelRequirement`` model lives in ``synthorg.templates`` "
-            "and importing it here would create a config -> templates "
-            "cycle; the matcher rehydrates the dict at use sites."
+            "Raw model requirement dict from the setup wizard; kept raw to "
+            "avoid a config -> templates import cycle."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_stable_id(cls, data: object) -> object:
+        """Force ``id`` to ``stable_agent_id(name)`` before validation.
+
+        A declared field (unlike a computed one) round-trips through the
+        settings write-then-read cycle under ``extra="forbid"``.
+
+        Returns:
+            *data* with a canonical ``id`` when name-bearing, else unchanged.
+        """
+        if isinstance(data, dict) and data.get("name"):
+            return {**data, "id": str(stable_agent_id(str(data["name"])))}
+        return data
 
 
 class GracefulShutdownConfig(BaseModel):

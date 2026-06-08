@@ -25,25 +25,24 @@ export {
 
 /**
  * AgentConfig with optional dashboard / WS extras layered on top of
- * the wire ``AgentConfig``. ``id`` and ``status`` live on
- * ``AgentIdentity`` in the persistence layer and arrive on the
- * dashboard via WS agent-updated payloads (the HTTP list / get
- * endpoints return the config-time shape only). ``hiring_date`` is
- * surfaced by the dashboard's projection but is not part of the
- * wire ``AgentConfig``.
+ * the wire ``AgentConfig``. ``id`` is the stable agent UUID and now
+ * arrives on the wire from every list / get endpoint (derived
+ * deterministically from the agent name), so the dashboard addresses
+ * agents by it uniformly. ``status`` lives on ``AgentIdentity`` in the
+ * persistence layer and arrives via WS agent-updated payloads;
+ * ``hiring_date`` is surfaced by the dashboard's projection but is not
+ * part of the wire ``AgentConfig``.
  *
- * The wire's required-vs-optional shape is now correct out of the
- * generator, so this type only ADDS optional extras: it is NOT an
- * ``Omit<Wire, ...> & { ... }`` tightening overlay.
+ * This type only ADDS optional dashboard extras; it does not tighten or
+ * omit any wire field (it is not an ``Omit<Wire, ...> & { ... }`` overlay).
  */
 export type AgentConfig = WireAgentConfig & {
-  id?: string
   status?: AgentStatus
   hiring_date?: string
 }
 
 /**
- * Alias retained for call sites that want to mark the dashboard view
- * explicitly. New code should prefer ``AgentConfig`` directly.
+ * Semantic alias for call sites that want to name the dashboard-context
+ * usage of ``AgentConfig`` explicitly.
  */
 export type DashboardAgentConfig = AgentConfig

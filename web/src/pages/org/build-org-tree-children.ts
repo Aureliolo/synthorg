@@ -30,7 +30,7 @@ export function emitDeptChildren(dept: DashboardDepartment, ctx: BuildContext): 
     dept,
     deptMembers,
     groupId: `dept-${dept.name}`,
-    headId: head ? (head.id ?? head.name) : undefined,
+    headId: head ? head.id : undefined,
     agentTeamGroup: new Map(),
     teamLeadOf: new Map(),
   }
@@ -55,7 +55,7 @@ function emitTeamGroups(ctx: BuildContext, state: DeptEmitState): void {
     const teamGroupId = `team-${dept.name}-${team.name}`
     const teamMembers = deptMembers.filter((a) => team.members.includes(a.name))
     const teamLead = resolveTeamLead(team, teamMembers, deptMembers)
-    const teamLeadId = teamLead ? (teamLead.id ?? teamLead.name) : undefined
+    const teamLeadId = teamLead ? teamLead.id : undefined
 
     ctx.nodes.push({
       id: teamGroupId,
@@ -93,7 +93,7 @@ function mapTeamMembers(
   teamLeadOf: Map<string, string>,
 ): void {
   for (const member of teamMembers) {
-    const memberId = member.id ?? member.name
+    const memberId = member.id
     agentTeamGroup.set(memberId, teamGroupId)
     if (teamLeadId && memberId !== teamLeadId && !teamLeadOf.has(memberId)) {
       teamLeadOf.set(memberId, teamLeadId)
@@ -104,7 +104,7 @@ function mapTeamMembers(
 function emitDeptAgents(ctx: BuildContext, state: DeptEmitState): void {
   const { deptMembers, groupId, headId, agentTeamGroup } = state
   for (const agent of deptMembers) {
-    const agentId = agent.id ?? agent.name
+    const agentId = agent.id
     const runtimeStatus = resolveRuntimeStatus(
       agentId,
       agent.status ?? 'active',

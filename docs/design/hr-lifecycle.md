@@ -315,7 +315,7 @@ human decision.
 
 ## Performance Tracking
 
-Performance data is exposed via three API sub-routes on `/api/v1/agents/{name}`:
+Performance data is exposed via three API sub-routes on `/api/v1/agents/{agent_id}` (the agent's stable id):
 
 | Sub-route | Response model | Description |
 |-----------|---------------|-------------|

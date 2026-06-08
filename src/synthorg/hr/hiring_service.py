@@ -4,6 +4,7 @@ Orchestrates the hiring pipeline: request creation, candidate
 generation, approval submission, and agent instantiation.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
@@ -14,7 +15,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ActionType, AgentStatus, ApprovalRiskLevel
 from synthorg.core.role import Skill
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, stable_agent_id
 from synthorg.hr.enums import HiringRequestStatus
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
@@ -32,9 +33,12 @@ from synthorg.observability.events.hr import (
     HIRING_REQUEST_STATUS_TRANSITIONED,
     HR_HIRING_APPROVAL_SUBMITTED,
     HR_HIRING_CANDIDATE_GENERATED,
+    HR_HIRING_CANDIDATE_NOT_FOUND,
     HR_HIRING_INSTANTIATED,
     HR_HIRING_INSTANTIATION_FAILED,
     HR_HIRING_REQUEST_CREATED,
+    HR_HIRING_REQUEST_INVALID,
+    HR_HIRING_REQUEST_NOT_FOUND,
 )
 
 if TYPE_CHECKING:
@@ -73,6 +77,14 @@ class HiringService:
         self._onboarding_service = onboarding_service
         self._default_model_config = default_model_config
         self._requests: dict[str, HiringRequest] = {}
+        # Serialises read-modify-write on ``_requests`` per request ID so two
+        # concurrent pipeline steps on the same request cannot lose an update
+        # or double-instantiate, while steps on different requests still run
+        # concurrently (the lock is held across ``await`` points such as
+        # approval-store writes and registry registration). HiringService has
+        # no start/stop lifecycle, so each lock binds to the active loop on
+        # first use without restart risk.
+        self._requests_locks: dict[str, asyncio.Lock] = {}
 
     def _get_request(self, request_id: str) -> HiringRequest:
         """Look up a hiring request by ID.
@@ -90,7 +102,7 @@ class HiringService:
         if request is None:
             msg = f"Hiring request {request_id!r} not found"
             logger.warning(
-                HR_HIRING_REQUEST_CREATED,
+                HR_HIRING_REQUEST_NOT_FOUND,
                 request_id=request_id,
                 error=msg,
             )
@@ -127,22 +139,11 @@ class HiringService:
         Raises:
             HiringError: If the related operation fails.
         """
-        try:
-            parsed_level = SeniorityLevel(level)
-        except ValueError as exc:
-            msg = f"Invalid seniority level {level!r} for hiring request"
-            logger.warning(
-                HR_HIRING_REQUEST_CREATED,
-                error=msg,
-                level=level,
-            )
-            raise HiringError(msg) from exc
-
         request = HiringRequest(
             requested_by=requested_by,
             department=department,
             role=role,
-            level=parsed_level,
+            level=self._parse_level(level),
             required_skills=required_skills,
             reason=reason,
             budget_limit_monthly=budget_limit_monthly,
@@ -158,6 +159,25 @@ class HiringService:
             role=str(role),
         )
         return request
+
+    def _parse_level(self, level: str) -> SeniorityLevel:
+        """Parse a seniority-level string into the enum.
+
+        Args:
+            level: Raw seniority level value.
+
+        Returns:
+            The parsed ``SeniorityLevel``.
+
+        Raises:
+            HiringError: If *level* is not a valid seniority level.
+        """
+        try:
+            return SeniorityLevel(level)
+        except ValueError as exc:
+            msg = f"Invalid seniority level {level!r} for hiring request"
+            logger.warning(HR_HIRING_REQUEST_INVALID, error=msg, level=level)
+            raise HiringError(msg) from exc
 
     async def generate_candidate(
         self,
@@ -175,9 +195,31 @@ class HiringService:
         Returns:
             Updated request with the new candidate appended.
         """
-        request = self._get_request(str(request.id))
+        async with self._requests_locks.setdefault(str(request.id), asyncio.Lock()):
+            request = self._get_request(str(request.id))
+            candidate = self._build_candidate(request)
+            updated = request.model_copy(
+                update={"candidates": (*request.candidates, candidate)},
+            )
+            self._requests[str(updated.id)] = updated
 
-        candidate = CandidateCard(
+        logger.info(
+            HR_HIRING_CANDIDATE_GENERATED,
+            request_id=str(request.id),
+            candidate_id=str(candidate.id),
+        )
+        return updated
+
+    def _build_candidate(self, request: HiringRequest) -> CandidateCard:
+        """Build a candidate card from a hiring request's role/level defaults.
+
+        Args:
+            request: The hiring request to generate a candidate for.
+
+        Returns:
+            A new ``CandidateCard``.
+        """
+        return CandidateCard(
             name=NotBlankStr(f"{request.role}-{request.department}-agent"),
             role=request.role,
             department=request.department,
@@ -193,18 +235,6 @@ class HiringService:
             ),
             template_source=request.template_name,
         )
-
-        updated = request.model_copy(
-            update={"candidates": (*request.candidates, candidate)},
-        )
-        self._requests[str(updated.id)] = updated
-
-        logger.info(
-            HR_HIRING_CANDIDATE_GENERATED,
-            request_id=str(request.id),
-            candidate_id=str(candidate.id),
-        )
-        return updated
 
     async def submit_for_approval(
         self,
@@ -225,35 +255,38 @@ class HiringService:
         Raises:
             InvalidCandidateError: If the candidate ID is not found.
         """
-        request = self._get_request(str(request.id))
+        async with self._requests_locks.setdefault(str(request.id), asyncio.Lock()):
+            request = self._get_request(str(request.id))
 
-        candidate = next(
-            (c for c in request.candidates if str(c.id) == candidate_id),
-            None,
-        )
-        if candidate is None:
-            msg = f"Candidate {candidate_id!r} not found on request {request.id!r}"
-            logger.warning(
-                HR_HIRING_APPROVAL_SUBMITTED,
-                request_id=str(request.id),
-                error=msg,
+            candidate = next(
+                (c for c in request.candidates if str(c.id) == candidate_id),
+                None,
             )
-            raise InvalidCandidateError(msg)
+            if candidate is None:
+                msg = f"Candidate {candidate_id!r} not found on request {request.id!r}"
+                logger.warning(
+                    HR_HIRING_CANDIDATE_NOT_FOUND,
+                    request_id=str(request.id),
+                    error=msg,
+                )
+                raise InvalidCandidateError(msg)
 
-        previous_status = request.status
-        if self._approval_store is None:
-            # Auto-approve when no approval store.
-            updated = request.model_copy(
-                update={
-                    "status": HiringRequestStatus.APPROVED,
-                    "selected_candidate_id": candidate_id,
-                },
-            )
-        else:
-            # Create an approval item.
-            updated = await self._submit_approval_item(request, candidate, candidate_id)
+            previous_status = request.status
+            if self._approval_store is None:
+                # Auto-approve when no approval store.
+                updated = request.model_copy(
+                    update={
+                        "status": HiringRequestStatus.APPROVED,
+                        "selected_candidate_id": candidate_id,
+                    },
+                )
+            else:
+                # Create an approval item.
+                updated = await self._submit_approval_item(
+                    request, candidate, candidate_id
+                )
 
-        self._requests[str(updated.id)] = updated
+            self._requests[str(updated.id)] = updated
 
         # Emit the status-transition log only when the status actually
         # flipped: the auto-approve branch goes PENDING -> APPROVED,
@@ -336,34 +369,17 @@ class HiringService:
             InvalidCandidateError: If no candidate is selected.
             HiringError: If instantiation fails.
         """
-        request = self._get_request(str(request.id))
-        self._validate_instantiation_status(request)
-        candidate = self._find_selected_candidate(request)
+        async with self._requests_locks.setdefault(str(request.id), asyncio.Lock()):
+            request = self._get_request(str(request.id))
+            self._validate_instantiation_status(request)
+            candidate = self._find_selected_candidate(request)
 
-        identity = self._build_agent_identity(candidate)
-        await self._register_agent(identity, request)
+            identity = self._build_agent_identity(candidate)
+            await self._register_agent(identity, request)
+            self._apply_instantiated_status(request)
 
-        # Update request status.
-        previous_status = request.status
-        updated = request.model_copy(
-            update={"status": HiringRequestStatus.INSTANTIATED},
-        )
-        self._requests[str(updated.id)] = updated
-
-        # Status flip is logged AFTER the dict write succeeds and
-        # before downstream callbacks (``_try_onboard``); a failure in
-        # the onboarding hook should not mask the persisted
-        # transition.  ``_validate_instantiation_status`` enforces the
-        # ``previous_status == APPROVED`` invariant, so we always emit
-        # an APPROVED -> INSTANTIATED transition here.
-        logger.info(
-            HIRING_REQUEST_STATUS_TRANSITIONED,
-            request_id=str(updated.id),
-            from_status=previous_status.value,
-            to_status=updated.status.value,
-        )
-
-        # Start onboarding if service is available.
+        # Onboarding runs outside the lock: it is non-fatal and should
+        # not hold up other pipeline steps on the same request.
         await self._try_onboard(identity)
 
         logger.info(
@@ -373,6 +389,29 @@ class HiringService:
             agent_name=str(identity.name),
         )
         return identity
+
+    def _apply_instantiated_status(self, request: HiringRequest) -> None:
+        """Persist the APPROVED -> INSTANTIATED status flip and log it.
+
+        Logs AFTER the dict write succeeds and before downstream
+        callbacks; ``_validate_instantiation_status`` enforces the
+        ``previous_status == APPROVED`` invariant, so this always emits an
+        APPROVED -> INSTANTIATED transition.
+
+        Args:
+            request: The approved request being instantiated.
+        """
+        previous_status = request.status
+        updated = request.model_copy(
+            update={"status": HiringRequestStatus.INSTANTIATED},
+        )
+        self._requests[str(updated.id)] = updated
+        logger.info(
+            HIRING_REQUEST_STATUS_TRANSITIONED,
+            request_id=str(updated.id),
+            from_status=previous_status.value,
+            to_status=updated.status.value,
+        )
 
     def _validate_instantiation_status(self, request: HiringRequest) -> None:
         """Validate that the request is in a valid state for instantiation.
@@ -475,6 +514,7 @@ class HiringService:
         )
         try:
             return AgentIdentity(
+                id=stable_agent_id(candidate.name),
                 name=candidate.name,
                 role=candidate.role,
                 department=candidate.department,

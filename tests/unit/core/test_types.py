@@ -1,10 +1,16 @@
 """Tests for core type annotations and validation helpers."""
 
+from uuid import UUID
+
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from synthorg.budget.currency import CURRENCY_SYMBOLS, MINOR_UNITS, CurrencyCode
-from synthorg.core.types import NotBlankStr, validate_unique_strings
+from synthorg.core.types import (
+    NotBlankStr,
+    stable_agent_id,
+    validate_unique_strings,
+)
 
 # ── Test models ─────────────────────────────────────────────────
 
@@ -227,3 +233,31 @@ class TestOptionalCurrencyCode:
     def test_rejects_unknown_code_even_when_optional(self) -> None:
         with pytest.raises(ValidationError):
             _OptionalCurrencyModel(currency="ZZZ")
+
+
+@pytest.mark.unit
+class TestStableAgentId:
+    """``stable_agent_id`` deterministically maps a name to a UUID."""
+
+    def test_golden_value(self) -> None:
+        """Pin a name to its exact derived id.
+
+        Guards the load-bearing namespace constant: changing it would
+        silently re-id every agent and orphan all id-keyed persisted data
+        (training plans, metrics, lifecycle events). A failure here means
+        the namespace changed, not that ``uuid5`` is broken.
+        """
+        assert stable_agent_id("golden-agent") == UUID(
+            "ca12309e-8e3e-5801-beb2-386bfe2ad169"
+        )
+
+    def test_is_deterministic(self) -> None:
+        assert stable_agent_id("Alice") == stable_agent_id("Alice")
+
+    def test_distinct_names_distinct_ids(self) -> None:
+        assert stable_agent_id("Alice") != stable_agent_id("Bob")
+
+    def test_is_case_sensitive(self) -> None:
+        """Names differing only in case derive different ids (uniqueness is
+        enforced upstream by the config's unique-name validator)."""
+        assert stable_agent_id("Alice") != stable_agent_id("alice")

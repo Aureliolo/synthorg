@@ -50,10 +50,10 @@ export interface CompanyState {
   reorderDepartments: (orderedNames: string[]) => Promise<boolean>
   createAgent: (data: CreateAgentOrgRequest) => Promise<AgentConfig | null>
   updateAgent: (
-    name: string,
+    agentId: string,
     data: UpdateAgentOrgRequest,
   ) => Promise<AgentConfig | null>
-  deleteAgent: (name: string) => Promise<boolean>
+  deleteAgent: (agentId: string) => Promise<boolean>
   reorderAgents: (deptName: string, orderedIds: string[]) => Promise<boolean>
 
   createTeam: (
@@ -81,7 +81,7 @@ export interface CompanyState {
     orderedIds: string[],
   ) => () => void
   optimisticReassignAgent: (
-    agentName: string,
+    agentId: string,
     newDepartment: DepartmentName,
   ) => () => void
 }

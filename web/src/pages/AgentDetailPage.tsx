@@ -7,6 +7,7 @@ import { VersionHistorySection } from '@/components/version-rollback/VersionHist
 import { ROUTES } from '@/router/routes'
 import { AgentDetailSkeleton } from './agents/AgentDetailSkeleton'
 import { AgentIdentityHeader } from './agents/AgentIdentityHeader'
+import { AgentHealthCard } from './agents/AgentHealthCard'
 import { ProseInsight } from './agents/ProseInsight'
 import { PerformanceMetrics } from './agents/PerformanceMetrics'
 import { ToolBadges } from './agents/ToolBadges'
@@ -22,8 +23,8 @@ import {
 } from './agents/useAgentDetailPageController'
 
 export default function AgentDetailPage() {
-  // URLs use the agent's stable ID (or name as a fallback). Display names can
-  // contain arbitrary characters; the id is URL-safe by construction.
+  // URLs use the agent's stable UUID. Display names can contain arbitrary
+  // characters; the id is URL-safe by construction.
   const { agentId } = useParams<{ agentId: string }>()
   const ctrl = useAgentDetailPageController(agentId)
   const { data } = ctrl
@@ -101,7 +102,7 @@ function AgentDetailBanners({ ctrl }: CtrlProps) {
 }
 
 function AgentDetailContent({ ctrl }: CtrlProps) {
-  const { agent, performanceCards, insights, agentTasks, activity, activityTotal, careerHistory, fetchMoreActivity } =
+  const { agent, health, performanceCards, insights, agentTasks, activity, activityTotal, careerHistory, fetchMoreActivity } =
     ctrl.data
   if (!agent) return null
   const allowedTools = extractAllowedTools(agent.tools['allowed'])
@@ -110,6 +111,9 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
     <>
       <ErrorBoundary level="section">
         <AgentIdentityHeader agent={agent} />
+      </ErrorBoundary>
+      <ErrorBoundary level="section">
+        <AgentHealthCard health={health} />
       </ErrorBoundary>
       <ErrorBoundary level="section">
         <ProseInsight insights={insights} />
@@ -121,13 +125,13 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
         <ToolBadges tools={allowedTools} />
       </ErrorBoundary>
       <ErrorBoundary level="section">
-        {agent.id && <QualityScoreOverride agentId={agent.id} />}
+        <QualityScoreOverride agentId={agent.id} />
       </ErrorBoundary>
       <ErrorBoundary level="section">
-        {agent.id && <CollaborationPanel agentId={agent.id} />}
+        <CollaborationPanel agentId={agent.id} />
       </ErrorBoundary>
       <ErrorBoundary level="section">
-        <TrainingSection agentName={agent.name} />
+        <TrainingSection agentId={agent.id} />
       </ErrorBoundary>
       <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
         <ErrorBoundary level="section">

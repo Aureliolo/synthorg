@@ -434,7 +434,7 @@ describe('useCompanyStore', () => {
 
       const result = await useCompanyStore
         .getState()
-        .updateAgent('alice', { role: 'Senior Dev', autonomy_level: null, level: null })
+        .updateAgent('agent-alice', { role: 'Senior Dev', autonomy_level: null, level: null })
       expect(result).not.toBeNull()
       expect(result!.role).toBe('Senior Dev')
     })
@@ -452,7 +452,7 @@ describe('useCompanyStore', () => {
         config: { ...mockConfig, agents: [agent] },
       })
 
-      await useCompanyStore.getState().deleteAgent('alice')
+      await useCompanyStore.getState().deleteAgent('agent-alice')
       expect(useCompanyStore.getState().config!.agents).toHaveLength(0)
     })
   })
@@ -474,7 +474,17 @@ describe('useCompanyStore', () => {
           return HttpResponse.json(apiSuccess(mockConfig))
         }),
       )
-      useCompanyStore.setState({ config: mockConfig })
+      // reorderAgents takes ids; seed agents so the ids resolve to names
+      // for the reorder body (the store now rejects unknown ids).
+      useCompanyStore.setState({
+        config: {
+          ...mockConfig,
+          agents: [
+            makeAgent('a-1', { id: 'a-1' }),
+            makeAgent('a-2', { id: 'a-2' }),
+          ],
+        },
+      })
 
       await useCompanyStore
         .getState()
@@ -490,7 +500,15 @@ describe('useCompanyStore', () => {
           HttpResponse.json(apiError('Reorder failed'), { status: 400 }),
         ),
       )
-      useCompanyStore.setState({ config: mockConfig })
+      useCompanyStore.setState({
+        config: {
+          ...mockConfig,
+          agents: [
+            makeAgent('a-1', { id: 'a-1' }),
+            makeAgent('a-2', { id: 'a-2' }),
+          ],
+        },
+      })
 
       const result = await useCompanyStore
         .getState()
@@ -535,7 +553,7 @@ describe('useCompanyStore', () => {
 
       const agentIds = config.agents
         .filter((a) => a.department === 'engineering')
-        .map((a) => a.id ?? a.name)
+        .map((a) => a.id)
         .reverse()
 
       const rollback = useCompanyStore
@@ -545,13 +563,13 @@ describe('useCompanyStore', () => {
       const reordered = useCompanyStore
         .getState()
         .config!.agents.filter((a) => a.department === 'engineering')
-      expect(reordered.map((a) => a.id ?? a.name)).toEqual(agentIds)
+      expect(reordered.map((a) => a.id)).toEqual(agentIds)
 
       rollback()
       const restored = useCompanyStore
         .getState()
         .config!.agents.filter((a) => a.department === 'engineering')
-      expect(restored.map((a) => a.id ?? a.name)).toEqual(agentIds.toReversed())
+      expect(restored.map((a) => a.id)).toEqual(agentIds.toReversed())
     })
   })
 })
