@@ -11,7 +11,7 @@ import json
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.consolidation.models import ConsolidationResult
 from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
 from synthorg.observability import get_logger, safe_error_description

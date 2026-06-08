@@ -33,7 +33,7 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, ToolDefinition
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import MemoryCategory
+    from synthorg.core.memory_enums import MemoryCategory
     from synthorg.memory.models import MemoryEntry
     from synthorg.memory.protocol import MemoryBackend
     from synthorg.memory.reformulation import (

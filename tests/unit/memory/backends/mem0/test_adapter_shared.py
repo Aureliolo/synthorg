@@ -284,7 +284,7 @@ class TestSearchShared:
             ],
         )
 
-        from synthorg.core.enums import MemoryCategory
+        from synthorg.core.memory_enums import MemoryCategory
 
         query = MemoryQuery(
             text="test",

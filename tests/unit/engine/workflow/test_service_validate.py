@@ -4,12 +4,16 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
 )
 from synthorg.engine.workflow.service import WorkflowService
 from synthorg.engine.workflow.validation_types import (

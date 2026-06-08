@@ -7,8 +7,8 @@ import psycopg
 from psycopg.rows import DictRow, TupleRow, dict_row
 from pydantic import TypeAdapter, ValidationError
 
-from synthorg.core.enums import ContentKind
 from synthorg.core.persistence_errors import QueryError
+from synthorg.knowledge.enums import ContentKind
 from synthorg.knowledge.models import ChunkProvenanceRow, ProvenanceLocator
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.knowledge_provenance import (

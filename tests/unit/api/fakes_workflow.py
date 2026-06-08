@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING
 
 from packaging.version import InvalidVersion, Version
 
-from synthorg.core.enums import WorkflowExecutionStatus, WorkflowNodeType
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
 )
+from synthorg.engine.workflow.enums import WorkflowExecutionStatus, WorkflowNodeType
 from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,

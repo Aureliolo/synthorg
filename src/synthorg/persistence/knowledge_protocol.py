@@ -18,11 +18,8 @@ from typing import Protocol, Self, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import (
-    SourceStatus,
-    SourceType,
-)
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.models import ChunkProvenanceRow, KnowledgeSource
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,

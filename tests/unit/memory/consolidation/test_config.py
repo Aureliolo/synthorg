@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ConsolidationInterval, MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.consolidation.config import (
     ArchivalConfig,
     ConsolidationConfig,
@@ -12,6 +12,7 @@ from synthorg.memory.consolidation.config import (
     RetentionConfig,
 )
 from synthorg.memory.consolidation.models import RetentionRule
+from synthorg.memory.enums import ConsolidationInterval
 
 
 @pytest.mark.unit

@@ -13,11 +13,21 @@ Shared domain models, base types, and enums used across the framework.
 
 ## Enums
 
-Domain-specific enums live with their owning package: seniority and
-strategic output mode are documented under [HR](hr.md) (`synthorg.hr.seniority`,
-`synthorg.hr.strategy_mode`).
+`synthorg.core.enums` holds the cross-cutting domain enums. Many
+domain-specific enums live with their owning package: agent memory level
+and category in `synthorg.core.memory_enums` (below); seniority and
+strategic output mode under [HR](hr.md); memory consolidation interval
+and org-fact category under [Memory](memory.md); knowledge source type,
+content kind, and source status under [Knowledge](knowledge.md); research
+source type, claim type, and run status under [Research](research.md);
+living-document type under [Docs Engine](docs_engine.md); and the workflow
+type, node, edge, value, and status enums under [Engine](engine.md).
 
 ::: synthorg.core.enums
+
+## Memory Enums
+
+::: synthorg.core.memory_enums
 
 ## Agent
 

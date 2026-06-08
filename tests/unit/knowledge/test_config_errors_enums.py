@@ -3,9 +3,10 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ContentKind, MemoryCategory, SourceStatus, SourceType
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.knowledge.config import KnowledgeConfig
+from synthorg.knowledge.enums import ContentKind, SourceStatus, SourceType
 from synthorg.knowledge.errors import (
     KnowledgeDependencyError,
     KnowledgeError,

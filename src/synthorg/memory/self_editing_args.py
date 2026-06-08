@@ -25,7 +25,7 @@ from pydantic import (
     TypeAdapter,
 )
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 
 # Persistent (non-volatile) subset of MemoryCategory.  Archival memory

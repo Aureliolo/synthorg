@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.chunker import DocChunker
 from synthorg.docs_engine.constants import (
@@ -12,6 +11,7 @@ from synthorg.docs_engine.constants import (
     DOCS_SLUG_TAG_PREFIX,
     DOCS_TYPE_TAG_PREFIX,
 )
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import (
     BulletListBlock,
     DecisionBlock,

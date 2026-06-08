@@ -22,12 +22,12 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
     DOCS_SEARCH_DEFAULT_LIMIT,
     DOCS_SEARCH_MAX_LIMIT,
 )
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import (
     DocSearchHit,
     DocSummary,

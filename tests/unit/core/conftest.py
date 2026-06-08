@@ -31,11 +31,11 @@ from synthorg.core.company import (
 from synthorg.core.enums import (
     Complexity,
     DepartmentName,
-    MemoryLevel,
     Priority,
     TaskStatus,
     TaskType,
 )
+from synthorg.core.memory_enums import MemoryLevel
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, CustomRole, Role, SeniorityInfo, Skill
 from synthorg.core.task import AcceptanceCriterion, Task

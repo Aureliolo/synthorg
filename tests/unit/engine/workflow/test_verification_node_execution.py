@@ -2,12 +2,12 @@
 
 import pytest
 
-from synthorg.core.enums import (
+from synthorg.engine.quality.verification import VerificationVerdict
+from synthorg.engine.workflow.enums import (
     WorkflowEdgeType,
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
-from synthorg.engine.quality.verification import VerificationVerdict
 from synthorg.engine.workflow.execution_activation_helpers import (
     process_verification_node,
 )

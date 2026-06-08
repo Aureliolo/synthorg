@@ -5,12 +5,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import (
+from synthorg.core.persistence_errors import QueryError
+from synthorg.engine.workflow.enums import (
     WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
-from synthorg.core.persistence_errors import QueryError
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,

@@ -8,9 +8,9 @@ bundled implementation; injected at runtime), mapping each result into a
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import ResearchSourceType
 from synthorg.core.types import NotBlankStr
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
+from synthorg.research.enums import ResearchSourceType
 from synthorg.research.models import (
     CodeSourceLocator,
     ResearchCitation,

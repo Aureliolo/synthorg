@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import SourceType
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.models import Citation, CodeLocator, KnowledgeHit
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.providers.enums import FinishReason

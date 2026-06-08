@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import SourceStatus, SourceType
 from synthorg.core.execution_identity import current_execution_identity
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.chunking import chunk_raw_document
@@ -23,6 +22,7 @@ from synthorg.knowledge.constants import (
     KNOWLEDGE_LIST_DEFAULT_LIMIT,
     KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
 )
+from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.errors import (
     KnowledgeError,
     KnowledgeSourceNotFoundError,

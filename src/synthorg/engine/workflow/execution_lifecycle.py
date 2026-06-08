@@ -8,12 +8,7 @@ persistence to the injected repository.
 
 from datetime import UTC, datetime
 
-from synthorg.core.enums import (
-    TaskStatus,
-    WorkflowExecutionStatus,
-    WorkflowNodeExecutionStatus,
-    WorkflowNodeType,
-)
+from synthorg.core.enums import TaskStatus
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
     RecordNotFoundError,
@@ -24,6 +19,11 @@ from synthorg.engine.errors import (
     WorkflowExecutionNotFoundError,
 )
 from synthorg.engine.task_engine_models import TaskStateChanged
+from synthorg.engine.workflow.enums import (
+    WorkflowExecutionStatus,
+    WorkflowNodeExecutionStatus,
+    WorkflowNodeType,
+)
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,

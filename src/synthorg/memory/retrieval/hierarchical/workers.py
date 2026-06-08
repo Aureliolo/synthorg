@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory import errors as memory_errors
 from synthorg.memory.models import MemoryQuery
 from synthorg.memory.ranking import (

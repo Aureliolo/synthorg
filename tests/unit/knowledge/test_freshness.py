@@ -2,8 +2,8 @@
 
 import pytest
 
-from synthorg.core.enums import ContentKind
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.enums import ContentKind
 from synthorg.knowledge.freshness import ChunkDiff, diff_chunks, make_chunk_id
 from synthorg.knowledge.models import KnowledgeChunk, WebLocator
 from synthorg.versioning.hashing import compute_text_hash

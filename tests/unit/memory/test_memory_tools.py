@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import MemoryCategory, ToolCategory
+from synthorg.core.enums import ToolCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.injection import InjectionStrategy, MemoryInjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend

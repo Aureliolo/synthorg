@@ -75,12 +75,12 @@ async def _make_repo[T: BaseModel](
 @pytest.mark.unit
 async def test_workflow_definition_roundtrip() -> None:
     """WorkflowDefinition with nodes/edges survives serialization."""
-    from synthorg.core.enums import WorkflowNodeType, WorkflowType
     from synthorg.engine.workflow.definition import (
         WorkflowDefinition,
         WorkflowEdge,
         WorkflowNode,
     )
+    from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
 
     defn = WorkflowDefinition(
         id="wfdef-roundtrip",

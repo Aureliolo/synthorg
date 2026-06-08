@@ -9,7 +9,7 @@ from typing import override
 
 import pytest
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import SYSTEM_DOCS_AGENT_ID
 from synthorg.docs_engine.retrieval_facade import ProjectAwareMemoryFacade

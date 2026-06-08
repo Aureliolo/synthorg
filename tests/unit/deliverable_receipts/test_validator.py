@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import SourceStatus, SourceType
 from synthorg.deliverable_receipts.models import (
     DeliverableReceipt,
     ReceiptCassetteRef,
@@ -15,6 +14,7 @@ from synthorg.deliverable_receipts.models import (
     ReceiptTestEntry,
 )
 from synthorg.deliverable_receipts.validator import ReceiptValidator
+from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.models import KnowledgeSource
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionPurpose,

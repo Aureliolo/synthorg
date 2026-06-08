@@ -9,17 +9,17 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import (
-    WorkflowEdgeType,
-    WorkflowNodeType,
-    WorkflowType,
-    WorkflowValueType,
-)
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowIODeclaration,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
+    WorkflowValueType,
 )
 from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 from synthorg.engine.workflow.validation import (

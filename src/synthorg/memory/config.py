@@ -9,15 +9,13 @@ from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import (
-    ConsolidationInterval,
-    MemoryLevel,
-)
+from synthorg.core.memory_enums import MemoryLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.composite.config import (
     CompositeBackendConfig,
 )
 from synthorg.memory.consolidation.config import ConsolidationConfig
+from synthorg.memory.enums import ConsolidationInterval
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.observability import get_logger

@@ -21,7 +21,8 @@ from typing import Final
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import MemoryCategory, TaskStatus, TaskType
+from synthorg.core.enums import TaskStatus, TaskType
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine

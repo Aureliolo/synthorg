@@ -10,9 +10,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.enums import SourceStatus, SourceType
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.models import KnowledgeSource
 from synthorg.persistence.knowledge_protocol import KnowledgeSourceFilter
 from synthorg.persistence.protocol import PersistenceBackend

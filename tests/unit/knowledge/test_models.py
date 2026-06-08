@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from synthorg.core.enums import ContentKind, SourceStatus, SourceType
+from synthorg.knowledge.enums import ContentKind, SourceStatus, SourceType
 from synthorg.knowledge.models import (
     Citation,
     CodeLocator,

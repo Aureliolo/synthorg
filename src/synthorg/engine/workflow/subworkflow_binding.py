@@ -28,8 +28,8 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import WorkflowValueType
 from synthorg.engine.errors import SubworkflowIOError
+from synthorg.engine.workflow.enums import WorkflowValueType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import SUBWORKFLOW_IO_INVALID
 

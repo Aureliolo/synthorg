@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from synthorg.core.enums import ContentKind, SourceStatus, SourceType
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.enums import ContentKind, SourceStatus, SourceType
 from synthorg.knowledge.errors import (
     KnowledgeSourceUnavailableError,
     KnowledgeValidationError,

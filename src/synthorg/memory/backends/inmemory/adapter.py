@@ -12,7 +12,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Final
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.errors import (
     MemoryConnectionError,

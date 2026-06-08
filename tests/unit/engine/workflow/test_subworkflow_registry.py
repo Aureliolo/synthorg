@@ -6,11 +6,6 @@ from typing import override
 
 import pytest
 
-from synthorg.core.enums import (
-    WorkflowEdgeType,
-    WorkflowNodeType,
-    WorkflowType,
-)
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.engine.errors import (
     SubworkflowIOError,
@@ -21,6 +16,11 @@ from synthorg.engine.workflow.definition import (
     WorkflowEdge,
     WorkflowIODeclaration,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
 )
 from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,

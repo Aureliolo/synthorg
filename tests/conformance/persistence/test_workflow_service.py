@@ -10,12 +10,16 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import WorkflowNodeType, WorkflowType, WorkflowValueType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowIODeclaration,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowNodeType,
+    WorkflowType,
+    WorkflowValueType,
 )
 from synthorg.engine.workflow.service import WorkflowService
 from synthorg.persistence.protocol import PersistenceBackend

@@ -25,8 +25,8 @@ from evals.models.brief import (
     RubricGradeType,
 )
 from evals.scoring.research import grade_research_run
-from synthorg.core.enums import ResearchSourceType
 from synthorg.core.types import NotBlankStr
+from synthorg.research.enums import ResearchSourceType
 from synthorg.research.models import ResearchBrief
 from synthorg.research.planning.llm_planner import LlmQueryPlanner
 from synthorg.research.retrieval.dedup import LexicalDeduplicator

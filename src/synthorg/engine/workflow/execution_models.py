@@ -14,12 +14,12 @@ from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.core.enums import (
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.enums import (
     WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
-from synthorg.core.types import NotBlankStr
 
 
 class ExecutionFrame(BaseModel):

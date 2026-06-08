@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from typeguard import suppress_type_checks
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.context import (
     CompositeContextProvider,

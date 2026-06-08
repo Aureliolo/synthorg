@@ -29,7 +29,8 @@ from typing import Final, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import MemoryCategory, TaskStatus
+from synthorg.core.enums import TaskStatus
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.distillation import DISTILLATION_TAG

@@ -12,11 +12,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import DocType
 from synthorg.core.execution_identity import (
     ExecutionIdentity,
     execution_identity_scope,
 )
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import DocMetadata
 from synthorg.docs_engine.service import DocsService
 from synthorg.tools.docs.write_living_doc import WriteLivingDocTool

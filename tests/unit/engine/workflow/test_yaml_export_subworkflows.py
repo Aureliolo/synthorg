@@ -5,17 +5,17 @@ from datetime import UTC, datetime
 import pytest
 import yaml
 
-from synthorg.core.enums import (
-    WorkflowEdgeType,
-    WorkflowNodeType,
-    WorkflowType,
-    WorkflowValueType,
-)
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowIODeclaration,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
+    WorkflowValueType,
 )
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
 

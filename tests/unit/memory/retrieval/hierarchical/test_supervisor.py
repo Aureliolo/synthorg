@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.models import MemoryEntry
 from synthorg.memory.retrieval.hierarchical.models import (
     RetrievalRetryCorrection,

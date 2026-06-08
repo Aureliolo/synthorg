@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 from typeguard import suppress_type_checks
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.backends.mem0.mappers import (
     _PREFIX,
     PUBLISHER_KEY,

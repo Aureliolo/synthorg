@@ -9,9 +9,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.enums import WorkflowNodeType, WorkflowType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition, WorkflowNode
+from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.versioning.hashing import compute_content_hash
 from synthorg.versioning.models import VersionSnapshot

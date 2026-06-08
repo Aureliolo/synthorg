@@ -5,12 +5,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
 )
 from synthorg.engine.workflow.version_service import WorkflowVersionService
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository

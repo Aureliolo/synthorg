@@ -463,9 +463,7 @@ class EvolutionService:
             return ()
 
         try:
-            from synthorg.core.enums import (  # noqa: PLC0415
-                MemoryCategory,
-            )
+            from synthorg.core.memory_enums import MemoryCategory  # noqa: PLC0415
             from synthorg.memory.models import (  # noqa: PLC0415
                 MemoryQuery,
             )

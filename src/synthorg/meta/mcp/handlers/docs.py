@@ -11,13 +11,13 @@ from typing import TYPE_CHECKING, Any
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
     DOCS_HISTORY_DEFAULT_LIMIT,
     DOCS_LIST_DEFAULT_LIMIT,
     DOCS_SEARCH_DEFAULT_LIMIT,
 )
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.errors import (
     DocCommitError,
     DocIndexError,

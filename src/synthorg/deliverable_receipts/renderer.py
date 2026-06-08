@@ -10,8 +10,8 @@ heading onward) is stripped before the fresh section is appended.
 
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import (
     BulletListBlock,
     DocBlock,

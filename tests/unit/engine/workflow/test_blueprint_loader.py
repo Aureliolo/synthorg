@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 import pytest
 
-from synthorg.core.enums import WorkflowNodeType
 from synthorg.engine.workflow import blueprint_loader as _bl_module
 from synthorg.engine.workflow.blueprint_errors import (
     BlueprintNotFoundError,
@@ -18,6 +17,7 @@ from synthorg.engine.workflow.blueprint_loader import (
     list_builtin_blueprints,
     load_blueprint,
 )
+from synthorg.engine.workflow.enums import WorkflowNodeType
 
 
 @pytest.fixture(autouse=True)

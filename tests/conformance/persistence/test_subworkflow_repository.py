@@ -4,9 +4,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import WorkflowNodeType, WorkflowType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition, WorkflowNode
+from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration

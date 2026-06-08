@@ -9,9 +9,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.enums import DocType
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import DocMetadata
 from synthorg.persistence.docs_protocol import DocsFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend

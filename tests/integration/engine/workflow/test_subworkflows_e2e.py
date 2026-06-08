@@ -12,16 +12,16 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from synthorg.core.enums import (
-    WorkflowNodeType,
-    WorkflowType,
-    WorkflowValueType,
-)
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowIODeclaration,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowNodeType,
+    WorkflowType,
+    WorkflowValueType,
 )
 from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml

@@ -6,7 +6,7 @@ and verification edges (PASS/FAIL/REFER).
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType
+from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.validation_types import (
     _MIN_SPLIT_BRANCHES,
     ValidationErrorCode,

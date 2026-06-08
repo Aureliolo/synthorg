@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.enums import SourceStatus, SourceType
 from synthorg.core.persistence_errors import QueryError
+from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.models import KnowledgeSource
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.knowledge_source import (

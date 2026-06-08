@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     SubworkflowNotFoundError,
@@ -16,6 +15,11 @@ from synthorg.engine.workflow.definition import (
     WorkflowEdge,
     WorkflowIODeclaration,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
 )
 from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,

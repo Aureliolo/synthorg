@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.consolidation.config import RetentionConfig
 from synthorg.memory.consolidation.models import RetentionRule
 from synthorg.memory.consolidation.retention import RetentionEnforcer

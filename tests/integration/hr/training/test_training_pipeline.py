@@ -11,7 +11,8 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import AgentStatus, ApprovalStatus, MemoryCategory
+from synthorg.core.enums import AgentStatus, ApprovalStatus
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel

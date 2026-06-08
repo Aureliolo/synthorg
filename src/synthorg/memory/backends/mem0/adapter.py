@@ -13,7 +13,7 @@ import builtins
 from typing import TYPE_CHECKING, Any, Final, override
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.mem0.adapter_cost import Mem0AdapterCostMixin
 from synthorg.memory.backends.mem0.adapter_shared import Mem0AdapterSharedMixin

@@ -17,12 +17,13 @@ from typing import Any, override
 
 import pytest
 
-from synthorg.core.enums import DocType, GitBackendType
+from synthorg.core.enums import GitBackendType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
     DOCS_BRANCH_NAME,
     DOCS_WORKSPACE_SUBDIR,
 )
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.errors import DocIndexError, DocNotFoundError
 from synthorg.docs_engine.factory import build_docs_service
 from synthorg.docs_engine.models import (

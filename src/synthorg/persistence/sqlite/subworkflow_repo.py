@@ -18,7 +18,6 @@ from pydantic import ValidationError
 if TYPE_CHECKING:
     import aiosqlite
 
-from synthorg.core.enums import WorkflowNodeType, WorkflowType
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import (
@@ -27,6 +26,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
+from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
 from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,

@@ -18,8 +18,8 @@ from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 from typing import Protocol
 
-from synthorg.core.enums import ContentKind
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.enums import ContentKind
 from synthorg.knowledge.errors import (
     KnowledgeDependencyError,
     KnowledgeIngestError,

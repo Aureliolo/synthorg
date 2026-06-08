@@ -1,3 +1,4 @@
+# module-kind: service
 """Top-level service for the living-documentation engine.
 
 Composes the slug helper, chunker, indexer, writer, and the docs
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import DocType, MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
     DOCS_BRANCH_NAME,
@@ -29,6 +30,7 @@ from synthorg.docs_engine.constants import (
     DOCS_WORKSPACE_SUBDIR,
     SYSTEM_DOCS_AGENT_ID,
 )
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.errors import (
     DocCommitError,
     DocIndexError,

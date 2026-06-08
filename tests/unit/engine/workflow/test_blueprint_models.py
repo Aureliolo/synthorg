@@ -3,11 +3,15 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
 from synthorg.engine.workflow.blueprint_models import (
     BlueprintData,
     BlueprintEdgeData,
     BlueprintNodeData,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
 )
 
 # ── Helpers ──────────────────────────────────────────────────────

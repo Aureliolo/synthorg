@@ -9,7 +9,7 @@ import math
 from datetime import UTC, datetime
 from typing import Any
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.errors import (
     MemoryRetrievalError,

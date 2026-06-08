@@ -103,7 +103,7 @@ collections are tuples; derived values use `@computed_field`. Timestamps are
 All brain-specific enums (`BrainEntryKind`, `BrainEntryStatus`, `CitationKind`,
 and the per-kind enums such as `BlockerSeverity`, `RiskLevel`, `DependencyKind`)
 live in the feature package, not in `core/enums.py`. Only the single new
-`MemoryCategory.PROJECT_BRAIN` member is added to `core/enums.py`.
+`MemoryCategory.PROJECT_BRAIN` member is added to `core/memory_enums.py`.
 
 ### Envelope
 
@@ -345,7 +345,7 @@ orchestrates them.
 ## Retrieval and the PROJECT_BRAIN memory category
 
 A new `MemoryCategory.PROJECT_BRAIN = "project_brain"` is added to
-`core/enums.py`. Brain chunks are stored under the synthetic
+`core/memory_enums.py`. Brain chunks are stored under the synthetic
 `SYSTEM_BRAIN_AGENT_ID = "_system:brain"` agent id in a fixed namespace
 `project_brain`, with tags for scoping and idempotent re-index:
 
@@ -478,7 +478,7 @@ dashboard renders already-stored structured data.
 - **Ghost-wiring discipline (#1987)**: every boot-constructed symbol is listed
   ENFORCED in `scripts/_ghost_wiring_manifest.txt` in the same change.
 - **Module-size budget**: the unified envelope keeps each persistence aggregator
-  to a single added property; the one new `core/enums.py` member is added
+  to a single added property; the one new `core/memory_enums.py` member is added
   LOC-neutral.
 
 ## Acceptance

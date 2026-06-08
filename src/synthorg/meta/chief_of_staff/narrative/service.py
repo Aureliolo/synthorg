@@ -11,8 +11,8 @@ the latest narrative. A run with no recorded activity is a benign skip
 """
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import DocBlock, DocMetadata
 from synthorg.docs_engine.service import DocsService
 from synthorg.meta.chief_of_staff.narrative.assembler import assemble_blocks

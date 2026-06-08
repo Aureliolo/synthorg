@@ -10,7 +10,7 @@ beyond the constant's introduction.
 
 import pytest
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
     DOCS_MEMORY_NAMESPACE,

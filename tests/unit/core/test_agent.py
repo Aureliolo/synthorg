@@ -22,10 +22,9 @@ from synthorg.core.enums import (
     ConflictApproach,
     CreativityLevel,
     DecisionMakingStyle,
-    MemoryCategory,
-    MemoryLevel,
     RiskTolerance,
 )
+from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
 from synthorg.core.role import Authority, Skill
 from synthorg.hr.seniority import SeniorityLevel
 

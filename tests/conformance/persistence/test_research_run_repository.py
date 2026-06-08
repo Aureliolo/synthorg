@@ -11,15 +11,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.enums import (
-    ClaimType,
-    ResearchRunStatus,
-    ResearchSourceType,
-)
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.research_protocol import ResearchRunFilter
+from synthorg.research.enums import ClaimType, ResearchRunStatus, ResearchSourceType
 from synthorg.research.models import (
     ResearchBrief,
     ResearchCitation,

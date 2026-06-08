@@ -27,7 +27,7 @@ reports the deleted subset via ``removed_ids``.
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.models import (
     ArchivalModeAssignment,

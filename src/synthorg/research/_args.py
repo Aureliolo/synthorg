@@ -8,14 +8,11 @@ safe error rather than propagating into the pipeline.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import (
-    ClaimType,
-    ResearchSourceType,
-)
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.models import (
     TitleText,
 )
+from synthorg.research.enums import ClaimType, ResearchSourceType
 from synthorg.research.models import (
     AngleText,
     AuthorityLevel,

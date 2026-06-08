@@ -41,7 +41,7 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 
 _ARGS_CONFIG = ConfigDict(
@@ -150,7 +150,7 @@ class KnowledgeArchitectWriteArgs(BaseModel):
     """Args for ``memory.write``.
 
     ``category`` is typed as ``NotBlankStr`` (not the
-    :class:`~synthorg.core.enums.MemoryCategory` enum used by
+    :class:`~synthorg.core.memory_enums.MemoryCategory` enum used by
     :class:`~synthorg.memory.self_editing_args.ArchivalMemoryWriteArgs`)
     because org-fact categories are config-driven (the runtime
     allowlist comes from the architect's role config, not a static

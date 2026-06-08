@@ -9,18 +9,14 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import (
-    ContentKind,
-    MemoryCategory,
-    SourceStatus,
-    SourceType,
-)
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.constants import (
     KNOWLEDGE_GLOBAL_SCOPE_TAG,
     KNOWLEDGE_MEMORY_NAMESPACE,
     SYSTEM_KNOWLEDGE_AGENT_ID,
 )
+from synthorg.knowledge.enums import ContentKind, SourceStatus, SourceType
 from synthorg.knowledge.freshness import make_chunk_id
 from synthorg.knowledge.indexer import KnowledgeIndexer
 from synthorg.knowledge.models import KnowledgeChunk, KnowledgeSource, WebLocator

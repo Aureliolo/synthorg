@@ -5,7 +5,11 @@ from typing import Any
 import pytest
 import yaml
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
+)
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
 from tests.unit.engine.workflow.conftest import (
     make_edge as _edge,

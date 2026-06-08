@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.extractors.procedural import (
     ProceduralMemoryExtractor,

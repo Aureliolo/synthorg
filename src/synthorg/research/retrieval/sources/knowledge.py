@@ -8,9 +8,9 @@ cited :class:`~synthorg.knowledge.models.KnowledgeHit` into a
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import ResearchSourceType
 from synthorg.core.types import NotBlankStr
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
+from synthorg.research.enums import ResearchSourceType
 from synthorg.research.models import ResearchCitation, RetrievedItem
 from synthorg.research.retrieval.sources._shared import make_ref_id, truncate_snippet
 from synthorg.versioning.hashing import compute_text_hash

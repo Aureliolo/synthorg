@@ -18,13 +18,13 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.core.enums import (
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.enums import (
     WorkflowEdgeType,
     WorkflowNodeType,
     WorkflowType,
     WorkflowValueType,
 )
-from synthorg.core.types import NotBlankStr
 
 _DEFAULT_SEMVER = "1.0.0"
 

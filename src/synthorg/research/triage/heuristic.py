@@ -10,7 +10,6 @@ import re
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import SystemClock
-from synthorg.core.enums import ResearchSourceType
 from synthorg.research.constants import (
     RESEARCH_AUTHORITY_ACADEMIC,
     RESEARCH_AUTHORITY_CODE,
@@ -24,6 +23,7 @@ from synthorg.research.constants import (
     RESEARCH_HEURISTIC_RED_FLAG_PENALTY,
     RESEARCH_RECENCY_NEUTRAL_CREDIT,
 )
+from synthorg.research.enums import ResearchSourceType
 from synthorg.research.models import AcademicSourceLocator, SourceCredibility
 
 if TYPE_CHECKING:

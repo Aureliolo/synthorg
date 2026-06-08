@@ -7,7 +7,7 @@ connection management, health monitoring, and memory CRUD operations.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import (
     MemoryEntry,

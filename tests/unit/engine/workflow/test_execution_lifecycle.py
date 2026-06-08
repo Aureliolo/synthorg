@@ -8,12 +8,7 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.core.enums import (
-    TaskStatus,
-    WorkflowEdgeType,
-    WorkflowExecutionStatus,
-    WorkflowNodeExecutionStatus,
-)
+from synthorg.core.enums import TaskStatus
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
@@ -26,6 +21,11 @@ from synthorg.engine.errors import (
 )
 from synthorg.engine.task_engine_models import CreateTaskData, TaskStateChanged
 from synthorg.engine.workflow.definition import WorkflowDefinition
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowExecutionStatus,
+    WorkflowNodeExecutionStatus,
+)
 from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,

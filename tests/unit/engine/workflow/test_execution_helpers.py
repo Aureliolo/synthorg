@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import (
+from synthorg.engine.workflow.enums import (
     WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,

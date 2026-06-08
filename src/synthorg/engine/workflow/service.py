@@ -15,11 +15,11 @@ from synthorg.core.domain_errors import (
     NotFoundError,
     VersionConflictError,
 )
-from synthorg.core.enums import WorkflowType
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
+from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_CREATE_CONFLICT,

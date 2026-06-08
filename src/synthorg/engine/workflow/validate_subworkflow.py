@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import WorkflowNodeType, WorkflowValueType
+from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowValueType
 from synthorg.engine.workflow.validation_types import (
     ValidationErrorCode,
     WorkflowValidationError,

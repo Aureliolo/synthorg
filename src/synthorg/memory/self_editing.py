@@ -24,7 +24,7 @@ from typing import Any, Final, Self
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.formatter import format_memory_context_with_directive
 from synthorg.memory.injection import (

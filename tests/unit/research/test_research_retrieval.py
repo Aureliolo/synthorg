@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import ResearchSourceType
 from synthorg.knowledge.service import KnowledgeService
+from synthorg.research.enums import ResearchSourceType
 from synthorg.research.models import (
     AcademicSourceLocator,
     CodeSourceLocator,

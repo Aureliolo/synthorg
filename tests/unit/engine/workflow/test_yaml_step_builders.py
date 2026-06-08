@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType
+from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.yaml_step_builders import (
     STEP_BUILDERS,
     StepBuildContext,

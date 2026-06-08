@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.backends.inmemory import InMemoryBackend
 from synthorg.memory.errors import MemoryConnectionError, MemoryStoreError
 from synthorg.memory.models import (

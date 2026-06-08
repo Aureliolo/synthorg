@@ -14,12 +14,13 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import CompanyType, SkillPattern, WorkflowType
+from synthorg.core.enums import CompanyType, SkillPattern
 from synthorg.core.normalization import (
     normalize_ascii_lowercase,
     normalize_identifier,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.memory.config import EmbedderOverrideConfig

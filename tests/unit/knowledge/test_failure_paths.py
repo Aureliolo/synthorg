@@ -21,18 +21,14 @@ from typing import Any, override
 import pytest
 from typeguard import suppress_type_checks
 
-from synthorg.core.enums import (
-    ContentKind,
-    MemoryCategory,
-    SourceStatus,
-    SourceType,
-)
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.config import KnowledgeConfig
 from synthorg.knowledge.constants import (
     KNOWLEDGE_MEMORY_NAMESPACE,
     SYSTEM_KNOWLEDGE_AGENT_ID,
 )
+from synthorg.knowledge.enums import ContentKind, SourceStatus, SourceType
 from synthorg.knowledge.errors import (
     KnowledgeIngestError,
 )

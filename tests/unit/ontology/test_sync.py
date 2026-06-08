@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import OrgFactCategory
+from synthorg.memory.enums import OrgFactCategory
 from synthorg.ontology.config import OntologySyncConfig
 from synthorg.ontology.models import (
     EntityDefinition,
