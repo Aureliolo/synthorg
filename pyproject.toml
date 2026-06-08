@@ -776,6 +776,12 @@ ignore_names = [
     # Names referenced only inside ``cast("Name", ...)`` string forms, which
     # vulture cannot see; the TYPE_CHECKING import is genuinely required by mypy.
     "JSONObject",      # aiodocker container-create config (tools/sandbox)
+    # The in-sandbox browser executor imports these under TYPE_CHECKING and
+    # references them only via quoted signature annotations (the quotes are
+    # load-bearing for its sub-3.14 sandbox runtime), so vulture sees the
+    # import as unused even though mypy needs it.
+    "BrowserPayload",  # tools/browser/_executor.py (TYPE_CHECKING-only)
+    "Violation",       # tools/browser/_executor.py (TYPE_CHECKING-only)
 ]
 
 # ---------------------------------------------------------------------------

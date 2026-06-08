@@ -18538,7 +18538,7 @@
     },
     {
       "kind": "code",
-      "loc": 143,
+      "loc": 147,
       "loc_cap": 500,
       "module": "src/synthorg/tools/_dns_pinning.py",
       "owning_feature": "tools"
@@ -18706,7 +18706,7 @@
     },
     {
       "kind": "code",
-      "loc": 389,
+      "loc": 390,
       "loc_cap": 500,
       "module": "src/synthorg/tools/browser/_executor.py",
       "owning_feature": "tools"
@@ -18741,7 +18741,7 @@
     },
     {
       "kind": "code",
-      "loc": 137,
+      "loc": 136,
       "loc_cap": 500,
       "module": "src/synthorg/tools/browser/_ssim_differ.py",
       "owning_feature": "tools"
@@ -19140,7 +19140,7 @@
     },
     {
       "kind": "code",
-      "loc": 55,
+      "loc": 59,
       "loc_cap": 500,
       "module": "src/synthorg/tools/external_api/_url_guards.py",
       "owning_feature": "tools"
