@@ -534,7 +534,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 552,
+      "loc": 544,
       "loc_cap": 600,
       "module": "src/synthorg/api/controllers/_conversational_resume.py",
       "owning_feature": "api_core"
@@ -10509,7 +10509,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 191,
+      "loc": 192,
       "loc_cap": null,
       "module": "src/synthorg/meta/chief_of_staff/group_models.py",
       "owning_feature": "meta"
@@ -10523,7 +10523,7 @@
     },
     {
       "kind": "code",
-      "loc": 138,
+      "loc": 140,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/group_roster.py",
       "owning_feature": "meta"
@@ -14128,7 +14128,7 @@
     },
     {
       "kind": "code",
-      "loc": 161,
+      "loc": 162,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_conversation_marshalling.py",
       "owning_feature": "persistence"
@@ -15556,7 +15556,7 @@
     },
     {
       "kind": "code",
-      "loc": 330,
+      "loc": 328,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/conversation_participant_repo.py",
       "owning_feature": "persistence"

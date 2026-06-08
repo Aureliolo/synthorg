@@ -267,11 +267,16 @@ extra=forbid) and reuse the `_ArgsBase` / `PaginationFields` /
 
 Three rules apply on top of §8's frozen `ConfigDict`:
 
-* **`NotBlankStr` for identifier / name fields.** Import from
-  `synthorg.core.types` and use it for every identifier, name, or
-  required-non-empty string field, including the `NotBlankStr | None`
-  optional and `tuple[NotBlankStr, ...]` tuple variants. Replaces the
-  manual whitespace validators that several models used to carry.
+* **`UUID` for entity primary keys, `NotBlankStr` for names and string
+  references.** An entity's primary-key `.id` field is typed
+  `UUID = Field(default_factory=uuid4)`. Every name, string foreign-key
+  reference, or other required-non-empty string field uses `NotBlankStr`
+  (import from `synthorg.core.types`), including the `NotBlankStr | None`
+  optional and `tuple[NotBlankStr, ...]` tuple variants. `NotBlankStr`
+  replaces the manual whitespace validators that several models used to
+  carry. Repository lookup-key types stay `NotBlankStr` (callers pass
+  `str(entity.id)`); the persistence layer (de)serialises the `UUID`
+  against a `TEXT` id column via `str(uuid)` / `UUID(...)`.
 * **`@computed_field` for derived values.** Never store + validate a
   redundant field; let it derive. Canonical example:
   `TokenUsage.total_tokens` is a computed field over `prompt_tokens`

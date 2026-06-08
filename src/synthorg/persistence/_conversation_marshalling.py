@@ -9,6 +9,7 @@ timestamp coercer normalises ``TEXT`` / ``TIMESTAMPTZ`` alike.
 """
 
 from typing import Protocol, runtime_checkable
+from uuid import UUID
 
 from synthorg.core.enums import ConversationRole, ConversationStatus
 from synthorg.core.persistence_errors import QueryError
@@ -128,7 +129,7 @@ def row_to_participant(row: RowLike) -> ConversationParticipant:
     """
     try:
         return ConversationParticipant(
-            id=str(row["id"]),
+            id=UUID(str(row["id"])),
             conversation_id=str(row["conversation_id"]),
             agent_id=str(row["agent_id"]),
             agent_name=str(row["agent_name"]),

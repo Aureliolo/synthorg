@@ -115,7 +115,7 @@ class SQLiteConversationParticipantRepository:
             QueryError: On other database errors.
         """
         params = (
-            entity.id,
+            str(entity.id),
             entity.conversation_id,
             entity.agent_id,
             entity.agent_name,
@@ -324,8 +324,6 @@ class SQLiteConversationParticipantRepository:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()
             items = tuple(row_to_participant(r) for r in rows)
-        except QueryError:
-            raise
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query conversation participants"
             logger.warning(

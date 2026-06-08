@@ -10,6 +10,8 @@ boundary; ``AttributedContribution`` is one agent's attributed turn
 within a single round.
 """
 
+from uuid import UUID, uuid4
+
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
@@ -42,7 +44,7 @@ class ConversationParticipant(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr
+    id: UUID = Field(default_factory=uuid4)
     conversation_id: NotBlankStr
     agent_id: NotBlankStr
     agent_name: NotBlankStr

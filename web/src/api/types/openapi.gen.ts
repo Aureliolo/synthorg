@@ -8693,6 +8693,7 @@ export type components = {
             readonly agent_id: string;
             readonly agent_name: string;
             readonly conversation_id: string;
+            /** Format: uuid */
             readonly id: string;
             readonly participant_role: string;
             readonly status: components["schemas"]["ConversationParticipantStatus"];

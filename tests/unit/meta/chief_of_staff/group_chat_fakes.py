@@ -45,17 +45,17 @@ class FakeParticipantRepo:
         self.items: dict[str, ConversationParticipant] = {}
 
     async def save(self, entity: ConversationParticipant) -> None:
-        self.items[entity.id] = entity
+        self.items[str(entity.id)] = entity
 
-    async def get(self, entity_id: str) -> ConversationParticipant | None:
+    async def get(self, entity_id: NotBlankStr) -> ConversationParticipant | None:
         return self.items.get(entity_id)
 
-    async def delete(self, entity_id: str) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         return self.items.pop(entity_id, None) is not None
 
     async def transition_if(
         self,
-        entity_id: str,
+        entity_id: NotBlankStr,
         from_state: ConversationParticipantStatus,
         to_state: ConversationParticipantStatus,
         **updates: object,
