@@ -1,12 +1,11 @@
 """PolicyEngine protocol -- runtime policy evaluator interface."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.security.policy_engine.models import (
-        PolicyActionRequest,
-        PolicyDecision,
-    )
+from synthorg.security.policy_engine.models import (
+    PolicyActionRequest,
+    PolicyDecision,
+)
 
 
 @runtime_checkable

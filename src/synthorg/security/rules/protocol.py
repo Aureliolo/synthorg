@@ -1,9 +1,8 @@
 """SecurityRule protocol -- interface for synchronous rule evaluators."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.security.models import SecurityContext, SecurityVerdict
+from synthorg.security.models import SecurityContext, SecurityVerdict
 
 
 @runtime_checkable

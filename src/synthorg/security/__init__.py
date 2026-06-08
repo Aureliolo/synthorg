@@ -39,6 +39,7 @@ from synthorg.security.config import (
     VerdictReasonVisibility,
 )
 from synthorg.security.denial_tracker import DenialAction, DenialTracker
+from synthorg.security.information_stripper import InformationStripper
 from synthorg.security.models import (
     AuditEntry,
     EvaluationConfidence,
@@ -70,7 +71,6 @@ from synthorg.security.rules.custom_policy_rule import CustomPolicyRule
 from synthorg.security.rules.engine import RuleEngine
 from synthorg.security.rules.protocol import SecurityRule
 from synthorg.security.safety_classifier import (
-    InformationStripper,
     PermissionTier,
     SafetyClassification,
     SafetyClassifier,

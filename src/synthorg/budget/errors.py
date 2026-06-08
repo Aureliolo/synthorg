@@ -7,14 +7,13 @@ engine layer.
 """
 
 from typing import TYPE_CHECKING, ClassVar
+from uuid import UUID
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from synthorg.budget.quota import DegradationAction
 
 

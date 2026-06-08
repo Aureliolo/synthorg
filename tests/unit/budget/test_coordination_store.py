@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.budget.coordination_metrics import CoordinationMetrics
+from synthorg.budget.coordination_metric_models import CoordinationMetrics
 from synthorg.budget.coordination_store import (
     CoordinationMetricsRecord,
     CoordinationMetricsStore,

@@ -2207,6 +2207,13 @@
     },
     {
       "kind": "code",
+      "loc": 297,
+      "loc_cap": 500,
+      "module": "src/synthorg/budget/_optimizer_routing.py",
+      "owning_feature": "budget"
+    },
+    {
+      "kind": "code",
       "loc": 126,
       "loc_cap": 500,
       "module": "src/synthorg/budget/_tracker_helpers.py",
@@ -2214,7 +2221,7 @@
     },
     {
       "kind": "code",
-      "loc": 430,
+      "loc": 431,
       "loc_cap": 500,
       "module": "src/synthorg/budget/automated_reports.py",
       "owning_feature": "budget"
@@ -2319,7 +2326,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 776,
+      "loc": 778,
       "loc_cap": 1100,
       "module": "src/synthorg/budget/coordination_collector.py",
       "owning_feature": "budget"
@@ -2333,7 +2340,14 @@
     },
     {
       "kind": "code",
-      "loc": 580,
+      "loc": 334,
+      "loc_cap": 500,
+      "module": "src/synthorg/budget/coordination_metric_models.py",
+      "owning_feature": "budget"
+    },
+    {
+      "kind": "code",
+      "loc": 271,
       "loc_cap": 500,
       "module": "src/synthorg/budget/coordination_metrics.py",
       "owning_feature": "budget"
@@ -2445,7 +2459,7 @@
     },
     {
       "kind": "code",
-      "loc": 679,
+      "loc": 418,
       "loc_cap": 500,
       "module": "src/synthorg/budget/optimizer.py",
       "owning_feature": "budget"
@@ -2501,14 +2515,14 @@
     },
     {
       "kind": "code",
-      "loc": 460,
+      "loc": 459,
       "loc_cap": 500,
       "module": "src/synthorg/budget/quota_tracker.py",
       "owning_feature": "budget"
     },
     {
       "kind": "code",
-      "loc": 109,
+      "loc": 118,
       "loc_cap": 500,
       "module": "src/synthorg/budget/rebalance.py",
       "owning_feature": "budget"
@@ -2522,6 +2536,13 @@
     },
     {
       "kind": "code",
+      "loc": 225,
+      "loc_cap": 500,
+      "module": "src/synthorg/budget/report_models.py",
+      "owning_feature": "budget"
+    },
+    {
+      "kind": "code",
       "loc": 189,
       "loc_cap": 500,
       "module": "src/synthorg/budget/report_templates.py",
@@ -2529,7 +2550,7 @@
     },
     {
       "kind": "code",
-      "loc": 508,
+      "loc": 297,
       "loc_cap": 500,
       "module": "src/synthorg/budget/reports.py",
       "owning_feature": "budget"
@@ -17019,6 +17040,13 @@
     },
     {
       "kind": "code",
+      "loc": 256,
+      "loc_cap": 500,
+      "module": "src/synthorg/security/_llm_evaluator_support.py",
+      "owning_feature": "security"
+    },
+    {
+      "kind": "code",
       "loc": 32,
       "loc_cap": 500,
       "module": "src/synthorg/security/action_type_mapping.py",
@@ -17138,9 +17166,23 @@
     },
     {
       "kind": "code",
-      "loc": 549,
+      "loc": 273,
       "loc_cap": 500,
-      "module": "src/synthorg/security/config.py",
+      "module": "src/synthorg/security/config/__init__.py",
+      "owning_feature": "security"
+    },
+    {
+      "kind": "code",
+      "loc": 256,
+      "loc_cap": 500,
+      "module": "src/synthorg/security/config/_components.py",
+      "owning_feature": "security"
+    },
+    {
+      "kind": "code",
+      "loc": 83,
+      "loc_cap": 500,
+      "module": "src/synthorg/security/config/_enums.py",
       "owning_feature": "security"
     },
     {
@@ -17159,7 +17201,14 @@
     },
     {
       "kind": "code",
-      "loc": 639,
+      "loc": 86,
+      "loc_cap": 500,
+      "module": "src/synthorg/security/information_stripper.py",
+      "owning_feature": "security"
+    },
+    {
+      "kind": "code",
+      "loc": 415,
       "loc_cap": 500,
       "module": "src/synthorg/security/llm_evaluator.py",
       "owning_feature": "security"
@@ -17173,14 +17222,14 @@
     },
     {
       "kind": "code",
-      "loc": 235,
+      "loc": 233,
       "loc_cap": 500,
       "module": "src/synthorg/security/output_scan_policy.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 63,
+      "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/security/output_scan_policy_factory.py",
       "owning_feature": "security"
@@ -17222,14 +17271,14 @@
     },
     {
       "kind": "code",
-      "loc": 29,
+      "loc": 28,
       "loc_cap": 500,
       "module": "src/synthorg/security/policy_engine/protocol.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 42,
+      "loc": 41,
       "loc_cap": 500,
       "module": "src/synthorg/security/protocol.py",
       "owning_feature": "security"
@@ -17313,7 +17362,7 @@
     },
     {
       "kind": "code",
-      "loc": 42,
+      "loc": 41,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/grounding/protocol.py",
       "owning_feature": "security"
@@ -17355,7 +17404,7 @@
     },
     {
       "kind": "code",
-      "loc": 61,
+      "loc": 59,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/report_repo.py",
       "owning_feature": "security"
@@ -17474,7 +17523,7 @@
     },
     {
       "kind": "code",
-      "loc": 26,
+      "loc": 25,
       "loc_cap": 500,
       "module": "src/synthorg/security/rules/protocol.py",
       "owning_feature": "security"
@@ -17495,16 +17544,23 @@
     },
     {
       "kind": "code",
-      "loc": 549,
+      "loc": 497,
       "loc_cap": 500,
       "module": "src/synthorg/security/safety_classifier.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 560,
+      "loc": 451,
       "loc_cap": 500,
       "module": "src/synthorg/security/service.py",
+      "owning_feature": "security"
+    },
+    {
+      "kind": "code",
+      "loc": 137,
+      "loc_cap": 500,
+      "module": "src/synthorg/security/service_escalation.py",
       "owning_feature": "security"
     },
     {
@@ -17572,7 +17628,7 @@
     },
     {
       "kind": "code",
-      "loc": 47,
+      "loc": 45,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/operator_configurable.py",
       "owning_feature": "security"

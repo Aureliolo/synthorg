@@ -12,7 +12,7 @@ from synthorg.budget.coordination_collector import (
     CoordinationMetricsCollector,
 )
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
-from synthorg.budget.coordination_metrics import CoordinationMetrics
+from synthorg.budget.coordination_metric_models import CoordinationMetrics
 from synthorg.budget.tracker import CostTracker
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.providers.enums import FinishReason

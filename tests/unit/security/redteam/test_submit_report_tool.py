@@ -160,7 +160,7 @@ class TestToolExecute:
         self,
         tool: SubmitRedTeamReportTool,
     ) -> None:
-        first_args = {
+        first_args: dict[str, object] = {
             "execution_id": "exec-1",
             "task_id": "task-1",
             "summary": "first",

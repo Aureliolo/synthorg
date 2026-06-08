@@ -1,122 +1,33 @@
-"""Security configuration models.
+"""Sub-component configuration models for ``SecurityConfig``.
 
-Defines ``SecurityConfig`` (the top-level security configuration),
-``RuleEngineConfig``, ``SecurityPolicyRule``, and
-``OutputScanPolicyType`` for output scan response policy selection.
+Each model configures one security subsystem (LLM fallback, rule engine,
+safety classifier, uncertainty check, red-team gate, vision verifier, MCP
+self-consumer bridge). Assembled by :class:`SecurityConfig` in the package
+``__init__``.
 """
 
-from enum import StrEnum
-from typing import Any, ClassVar, Final, Literal, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.types import ModelTier, NotBlankStr
-from synthorg.security.autonomy.enums import ActionType
+from synthorg.security.config._enums import (
+    ArgumentTruncationStrategy,
+    LlmFallbackErrorPolicy,
+    McpSelfConsumerMode,
+    VerdictReasonVisibility,
+    VisionVerifierKind,
+)
 from synthorg.security.models import SecurityVerdictType
-from synthorg.security.policy_engine.config import SecurityPolicyConfig
 from synthorg.settings.definitions.security import (
-    AUDIT_RETENTION_TICK_DEFAULT_SECONDS,
-    AUDIT_RETENTION_TICK_MAX_SECONDS,
-    AUDIT_RETENTION_TICK_MIN_SECONDS,
     RED_TEAM_TIMEOUT_DEFAULT_SECONDS,
     RED_TEAM_TIMEOUT_MAX_SECONDS,
 )
-from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.mirrors import (
-    MirrorField,
-    apply_settings_mirrors,
-    parse_bool,
-    parse_float,
-    parse_int,
-)
 
-
-class SecurityEnforcementMode(StrEnum):
-    """Security enforcement mode for the SecOps service.
-
-    Controls whether security verdicts are enforced, logged only
-    (shadow mode for calibration), or fully disabled.
-
-    Members:
-        ACTIVE: Full enforcement -- verdicts are applied as-is.
-        SHADOW: Shadow mode -- full evaluation pipeline runs and
-            audit entries are recorded, but blocking verdicts (DENY,
-            ESCALATE) are converted to ALLOW.  Used for pre-deployment
-            calibration of risk budgets.
-        DISABLED: Security subsystem is disabled -- no evaluation,
-            always ALLOW.
-    """
-
-    ACTIVE = "active"
-    SHADOW = "shadow"
-    DISABLED = "disabled"
-
-
-class OutputScanPolicyType(StrEnum):
-    """Declarative output scan policy selection.
-
-    Used in ``SecurityConfig`` to select the output scan response
-    policy at config time.  Runtime constructor injection is also
-    supported for full flexibility.
-
-    Members:
-        REDACT: Return redacted content (scanner-level redaction).
-        WITHHOLD: Clear redacted content, forcing fail-closed.
-        LOG_ONLY: Log findings but pass output through.
-        AUTONOMY_TIERED: Delegate based on effective autonomy level
-            (default -- falls back to ``REDACT`` when no autonomy
-            is configured).
-    """
-
-    REDACT = "redact"
-    WITHHOLD = "withhold"
-    LOG_ONLY = "log_only"
-    AUTONOMY_TIERED = "autonomy_tiered"
-
-
-class VerdictReasonVisibility(StrEnum):
-    """Controls how much of the LLM evaluator's reason is visible to agents.
-
-    Attributes:
-        FULL: Return the full LLM reason to the agent.
-        GENERIC: Return a generic denial/escalation message.
-        CATEGORY: Return verdict type and risk level only.
-    """
-
-    FULL = "full"
-    GENERIC = "generic"
-    CATEGORY = "category"
-
-
-class ArgumentTruncationStrategy(StrEnum):
-    """How to truncate large tool arguments for the LLM security prompt.
-
-    Attributes:
-        WHOLE_STRING: Truncate the serialized JSON at a character limit.
-        PER_VALUE: Truncate each argument value individually before
-            serialization, preserving all key names.
-        KEYS_AND_VALUES: Include all keys with individually capped
-            values (explicit about key preservation).
-    """
-
-    WHOLE_STRING = "whole_string"
-    PER_VALUE = "per_value"
-    KEYS_AND_VALUES = "keys_and_values"
-
-
-class LlmFallbackErrorPolicy(StrEnum):
-    """What to do when the LLM security evaluation fails.
-
-    Attributes:
-        USE_RULE_VERDICT: Fall back to the original rule engine verdict.
-        ESCALATE: Send the action to the human approval queue.
-        DENY: Deny the action (fail-closed).
-    """
-
-    USE_RULE_VERDICT = "use_rule_verdict"
-    ESCALATE = "escalate"
-    DENY = "deny"
+VISION_TIMEOUT_DEFAULT_SECONDS: Final[float] = 60.0
+VISION_TIMEOUT_MAX_SECONDS: Final[float] = 600.0
+VISION_DEFAULT_COLOUR_TOLERANCE: Final[float] = 0.15
 
 
 class LlmFallbackConfig(BaseModel):
@@ -309,21 +220,6 @@ class UncertaintyCheckConfig(BaseModel):
     timeout_seconds: float = Field(default=15.0, gt=0.0)
 
 
-class McpSelfConsumerMode(StrEnum):
-    """Dispatch token for the agent -> SynthOrg-MCP self-consumer.
-
-    ``DISABLED`` (default, safe) wires no bridge: a running agent
-    cannot call SynthOrg's own MCP tools. ``TRUST_SCOPED`` exposes
-    the MCP surface to the agent's tool invoker, scoped by the
-    agent's earned trust level (ELEVATED gets the full capability
-    set; everything below is restricted to the explicit
-    ``read_tool_allowlist``).
-    """
-
-    DISABLED = "disabled"
-    TRUST_SCOPED = "trust_scoped"
-
-
 class RedTeamConfig(BaseModel):
     """Adversarial red-team gate configuration (opt-in subsystem).
 
@@ -352,19 +248,6 @@ class RedTeamConfig(BaseModel):
         le=RED_TEAM_TIMEOUT_MAX_SECONDS,
     )
     on_missing_deliverable: Literal["block", "skip"] = "block"
-
-
-VISION_TIMEOUT_DEFAULT_SECONDS: Final[float] = 60.0
-VISION_TIMEOUT_MAX_SECONDS: Final[float] = 600.0
-VISION_DEFAULT_COLOUR_TOLERANCE: Final[float] = 0.15
-
-
-class VisionVerifierKind(StrEnum):
-    """Discriminator selecting a concrete vision verifier strategy."""
-
-    NOOP = "noop"
-    HEURISTIC = "heuristic"
-    LLM_VISION = "llm_vision"
 
 
 class VisionVerifyConfig(BaseModel):
@@ -429,227 +312,3 @@ class McpSelfConsumerConfig(BaseModel):
     elevated_capabilities: tuple[NotBlankStr, ...] = ("*",)
     read_tool_allowlist: tuple[NotBlankStr, ...] = ()
     denied_tools: tuple[NotBlankStr, ...] = ()
-
-
-class SecurityConfig(BaseModel):
-    """Top-level security configuration.
-
-    Attributes:
-        enabled: Master switch for the security subsystem.
-        enforcement_mode: Security enforcement mode
-            (active/shadow/disabled).
-        rule_engine: Rule engine configuration.
-        llm_fallback: LLM-based fallback for uncertain evaluations.
-        audit_enabled: Whether to record audit entries.
-        post_tool_scanning_enabled: Scan tool output for secrets.
-        hard_deny_action_types: Action types always denied.
-        auto_approve_action_types: Action types always approved.
-        output_scan_policy_type: Output scan response policy
-            (default: ``AUTONOMY_TIERED``).
-        custom_policies: User-defined policy rules.
-        policy_engine: Runtime policy engine configuration
-            (Cedar-based pre-execution gate, opt-in).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
-        MirrorField(
-            field="enabled",
-            namespace=SettingNamespace.SECURITY,
-            key="enabled",
-            parse=parse_bool,
-        ),
-        MirrorField(
-            field="audit_enabled",
-            namespace=SettingNamespace.SECURITY,
-            key="audit_enabled",
-            parse=parse_bool,
-        ),
-        MirrorField(
-            field="post_tool_scanning_enabled",
-            namespace=SettingNamespace.SECURITY,
-            key="post_tool_scanning_enabled",
-            parse=parse_bool,
-        ),
-        MirrorField(
-            field="output_scan_policy_type",
-            namespace=SettingNamespace.SECURITY,
-            key="output_scan_policy_type",
-        ),
-        MirrorField(
-            field="audit_retention_days",
-            namespace=SettingNamespace.SECURITY,
-            key="audit_retention_days",
-            parse=parse_int,
-        ),
-        MirrorField(
-            field="audit_retention_loop_enabled",
-            namespace=SettingNamespace.SECURITY,
-            key="audit_retention_loop_enabled",
-            parse=parse_bool,
-        ),
-        MirrorField(
-            field="audit_retention_tick_seconds",
-            namespace=SettingNamespace.SECURITY,
-            key="audit_retention_tick_seconds",
-            parse=parse_float,
-        ),
-    )
-
-    enabled: bool = True
-    enforcement_mode: SecurityEnforcementMode = Field(
-        default=SecurityEnforcementMode.ACTIVE,
-        description="Security enforcement mode (active/shadow/disabled)",
-    )
-    rule_engine: RuleEngineConfig = Field(default_factory=RuleEngineConfig)
-    llm_fallback: LlmFallbackConfig = Field(default_factory=LlmFallbackConfig)
-    audit_enabled: bool = True
-    post_tool_scanning_enabled: bool = True
-    hard_deny_action_types: tuple[str, ...] = (
-        ActionType.DEPLOY_PRODUCTION,
-        ActionType.DB_ADMIN,
-        ActionType.ORG_FIRE,
-    )
-    auto_approve_action_types: tuple[str, ...] = (
-        ActionType.CODE_READ,
-        ActionType.DOCS_WRITE,
-    )
-    output_scan_policy_type: OutputScanPolicyType = OutputScanPolicyType.AUTONOMY_TIERED
-    custom_policies: tuple[SecurityPolicyRule, ...] = ()
-    safety_classifier: SafetyClassifierConfig = Field(
-        default_factory=SafetyClassifierConfig,
-    )
-    uncertainty_check: UncertaintyCheckConfig = Field(
-        default_factory=UncertaintyCheckConfig,
-    )
-    policy_engine: SecurityPolicyConfig = Field(
-        default_factory=SecurityPolicyConfig,
-        description="Runtime policy engine configuration",
-    )
-    mcp_self_consumer: McpSelfConsumerConfig = Field(
-        default_factory=McpSelfConsumerConfig,
-        description="Agent -> SynthOrg-MCP self-consumer bridge config",
-    )
-    red_team: RedTeamConfig = Field(
-        default_factory=RedTeamConfig,
-        description=("Adversarial red-team gate config (off by default; opt-in)."),
-    )
-    vision_verify: VisionVerifyConfig = Field(
-        default_factory=VisionVerifyConfig,
-        description=("Vision verifier gate config (off by default; opt-in)."),
-    )
-    audit_retention_days: int = Field(
-        default=730,
-        ge=0,
-        le=36_500,
-        description=(
-            "Days to retain audit_entries before automatic purge."
-            " 0 disables purging (unbounded). Default 730 (2 years)."
-        ),
-    )
-    audit_retention_loop_enabled: bool = Field(
-        default=True,
-        description=(
-            "Live kill-switch for the audit retention purge loop."
-            " When ``False`` the loop stays resident but every tick"
-            " short-circuits -- used during incident investigations"
-            " to preserve all records."
-        ),
-    )
-    audit_retention_tick_seconds: float = Field(
-        default=AUDIT_RETENTION_TICK_DEFAULT_SECONDS,
-        ge=AUDIT_RETENTION_TICK_MIN_SECONDS,
-        le=AUDIT_RETENTION_TICK_MAX_SECONDS,
-        description=(
-            "Wall-clock interval between audit retention purge ticks. Default 24h."
-        ),
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
-        """Overlay setting-namespace mirrors onto the raw input.
-
-        Returns:
-            The input data with mirrored settings applied.
-        """
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
-
-    @model_validator(mode="after")
-    def _check_disjoint_action_types(self) -> SecurityConfig:
-        """Reject overlapping hard-deny and auto-approve action types.
-
-        Returns:
-            The validated config.
-
-        Raises:
-            ValueError: If an action type is both hard-denied and
-                auto-approved.
-        """
-        deny_set = set(self.hard_deny_action_types)
-        approve_set = set(self.auto_approve_action_types)
-        overlap = deny_set & approve_set
-        if overlap:
-            msg = (
-                f"hard_deny_action_types and auto_approve_action_types "
-                f"must not overlap: {sorted(overlap)}"
-            )
-            raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _check_unique_custom_policy_names(self) -> SecurityConfig:
-        """Reject duplicate custom policy names.
-
-        Returns:
-            The validated config.
-
-        Raises:
-            ValueError: If two custom policies share a name.
-        """
-        seen: set[str] = set()
-        for policy in self.custom_policies:
-            if policy.name in seen:
-                msg = f"duplicate custom policy name {policy.name!r}"
-                raise ValueError(msg)
-            seen.add(policy.name)
-        return self
-
-    @model_validator(mode="after")
-    def _check_no_allow_or_escalate_bypass(self) -> SecurityConfig:
-        """Reject ALLOW/ESCALATE policies when bypass mode is enabled.
-
-        With ``custom_allow_bypasses_detectors=True``, custom policies
-        are placed before detectors.  Both ALLOW and ESCALATE verdicts
-        short-circuit the rule engine, so either would skip all
-        security detectors (credential, path traversal, etc.).  Only
-        DENY policies are safe in bypass position.
-
-        Returns:
-            The validated config.
-
-        Raises:
-            ValueError: If any enabled custom policy yields ALLOW or
-                ESCALATE while bypass mode is enabled.
-        """
-        if not self.rule_engine.custom_allow_bypasses_detectors:
-            return self
-        unsafe_verdicts = {
-            SecurityVerdictType.ALLOW,
-            SecurityVerdictType.ESCALATE,
-        }
-        unsafe_policies = [
-            p.name
-            for p in self.custom_policies
-            if p.enabled and p.verdict in unsafe_verdicts
-        ]
-        if unsafe_policies:
-            msg = (
-                "custom_allow_bypasses_detectors=True cannot be used "
-                "with ALLOW or ESCALATE custom policies (would skip "
-                "all security detectors): "
-                f"{sorted(unsafe_policies)}"
-            )
-            raise ValueError(msg)
-        return self

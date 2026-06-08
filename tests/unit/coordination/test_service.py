@@ -27,7 +27,7 @@ def _record(
     # frozen model accepts it. ``model_construct`` side-steps
     # constructor validators since we only need the record to match
     # the store's serialization contract.
-    from synthorg.budget.coordination_metrics import CoordinationMetrics
+    from synthorg.budget.coordination_metric_models import CoordinationMetrics
 
     metrics = CoordinationMetrics.model_construct()
     return CoordinationMetricsRecord(

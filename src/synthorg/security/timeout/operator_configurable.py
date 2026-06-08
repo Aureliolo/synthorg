@@ -5,15 +5,12 @@ action types fail safe to ``HIGH`` per ADR-0001 D19 -- an operator
 taxonomy gap must never silently downgrade an action's risk.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

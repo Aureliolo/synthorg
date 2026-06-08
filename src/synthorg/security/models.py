@@ -5,7 +5,7 @@ verdicts, evaluation contexts, audit entries, and output scan results.
 """
 
 from enum import StrEnum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import (
     AwareDatetime,
@@ -143,7 +143,7 @@ class SecurityContext(BaseModel):
     tool_name: NotBlankStr
     tool_category: ToolCategory
     action_type: str
-    arguments: dict[str, Any] = Field(default_factory=dict)
+    arguments: dict[str, object] = Field(default_factory=dict)
     agent_id: NotBlankStr | None = None
     task_id: NotBlankStr | None = None
     agent_provider_name: NotBlankStr | None = None

@@ -7,9 +7,9 @@ text-only model never silently drops the images.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 from synthorg.api.boundary import parse_typed
 from synthorg.budget.call_category import LLMCallCategory
@@ -56,7 +56,7 @@ _VERDICT_TOOL_DESCRIPTION: Final[str] = (
     "summary, and a list of findings for any mismatch between the running "
     "UI and the brief."
 )
-_VERDICT_TOOL_SCHEMA: Final[dict[str, Any]] = {
+_VERDICT_TOOL_SCHEMA: Final[dict[str, JsonValue]] = {
     "type": "object",
     "properties": {
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
@@ -240,7 +240,7 @@ class LLMVisionVerifier:
         self,
         messages: list[ChatMessage],
         review_input: VisionReviewInput,
-    ) -> dict[str, Any]:
+    ) -> dict[str, JsonValue]:
         """Invoke the provider with the verdict tool; return its arguments.
 
         Returns:
@@ -274,7 +274,7 @@ class LLMVisionVerifier:
 
     def _parse_report(
         self,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
         review_input: VisionReviewInput,
     ) -> VisionVerificationReport:
         """Map the model's tool arguments to a structured report.

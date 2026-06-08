@@ -13,7 +13,7 @@ prompt's brief block), so the same tool instance serves every red-team
 evaluation without per-evaluation construction overhead.
 """
 
-from typing import Any, ClassVar, Final, override
+from typing import ClassVar, Final, override
 
 from pydantic import BaseModel, ValidationError
 
@@ -93,7 +93,7 @@ class SubmitRedTeamReportTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Validate args, persist the :class:`RedTeamReport`, return ack.
 

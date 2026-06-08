@@ -611,10 +611,6 @@ module = [
 disallow_any_explicit = true
 
 [[tool.mypy.overrides]]
-module = "synthorg.budget.*"
-disallow_any_explicit = false
-
-[[tool.mypy.overrides]]
 module = "synthorg.communication.*"
 disallow_any_explicit = false
 
@@ -641,10 +637,6 @@ disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
 module = "synthorg.observability.*"
-disallow_any_explicit = false
-
-[[tool.mypy.overrides]]
-module = "synthorg.security.*"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
