@@ -422,7 +422,7 @@ class BrainChunk(BaseModel):
     """Indexer-ready chunk derived from a brain entry.
 
     The chunker yields chunks; the indexer forwards them to the memory backend
-    under :attr:`synthorg.core.enums.MemoryCategory.PROJECT_BRAIN`.
+    under :attr:`synthorg.core.memory_enums.MemoryCategory.PROJECT_BRAIN`.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

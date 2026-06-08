@@ -150,7 +150,7 @@ class KnowledgeArchitectWriteArgs(BaseModel):
     """Args for ``memory.write``.
 
     ``category`` is typed as ``NotBlankStr`` (not the
-    :class:`~synthorg.core.enums.MemoryCategory` enum used by
+    :class:`~synthorg.core.memory_enums.MemoryCategory` enum used by
     :class:`~synthorg.memory.self_editing_args.ArchivalMemoryWriteArgs`)
     because org-fact categories are config-driven (the runtime
     allowlist comes from the architect's role config, not a static

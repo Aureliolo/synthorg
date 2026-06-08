@@ -6,7 +6,7 @@ read-only outgoing-edge list in a frozen :class:`StepBuildContext` keeps
 the handler contract self-documenting: ``step`` is the mutable output
 slot, while ``config`` and ``outgoing_edges`` are read-only inputs.
 
-The registry covers every :class:`~synthorg.core.enums.WorkflowNodeType`
+The registry covers every :class:`~synthorg.engine.workflow.enums.WorkflowNodeType`
 member that reaches the builder pipeline; ``START`` and ``END`` are
 filtered upstream in ``yaml_export._generate_steps`` and are intentionally
 absent from the registry so a stray START/END node would surface as a
