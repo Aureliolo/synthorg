@@ -36,7 +36,7 @@ from typeguard import suppress_type_checks
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import (
     CollaborationCalibration,

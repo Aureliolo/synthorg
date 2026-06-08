@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.security.trust.enums import TrustChangeReason
 from synthorg.security.trust.models import (

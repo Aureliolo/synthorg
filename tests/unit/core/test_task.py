@@ -4,15 +4,9 @@ import pytest
 import structlog
 from pydantic import ValidationError
 
-from synthorg.core.artifact import ExpectedArtifact
-from synthorg.core.enums import (
-    ArtifactType,
-    Complexity,
-    Priority,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.observability.events.task import TASK_STATUS_CHANGED
 from tests._shared import as_uuid, sid
 

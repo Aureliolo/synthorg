@@ -6,9 +6,9 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import TaskType
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskType
 from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentCandidate,

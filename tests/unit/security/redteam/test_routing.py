@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.security.redteam.models import (
     RedTeamAttackSurface,
     RedTeamFinding,

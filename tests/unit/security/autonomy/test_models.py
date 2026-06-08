@@ -5,7 +5,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import AutonomyLevel, DowngradeReason
+from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.enums import DowngradeReason
 from synthorg.security.autonomy.models import (
     BUILTIN_PRESETS,
     AutonomyConfig,

@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.deliverable_receipts.builder import ReceiptBuilder
 from synthorg.deliverable_receipts.renderer import ReceiptRenderer
 from synthorg.deliverable_receipts.service import DeliverableReceiptService

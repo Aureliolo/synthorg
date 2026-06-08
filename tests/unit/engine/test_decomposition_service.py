@@ -2,8 +2,8 @@
 
 import pytest
 
-from synthorg.core.enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
 from synthorg.engine.decomposition.models import (
@@ -272,7 +272,7 @@ class TestDecompositionService:
     @pytest.mark.unit
     async def test_decompose_uses_subtask_complexity(self) -> None:
         """Child tasks use subtask's estimated_complexity, not parent's."""
-        from synthorg.core.enums import Complexity
+        from synthorg.core.task_enums import Complexity
 
         task = Task(
             id=as_uuid("task-svc-1"),

@@ -8,7 +8,8 @@ from typing import Any, override
 
 import pytest
 
-from synthorg.core.enums import ToolAccessLevel, ToolCategory
+from synthorg.core.enums import ToolCategory
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.providers.models import ToolCall
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker

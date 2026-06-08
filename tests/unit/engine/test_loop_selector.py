@@ -6,7 +6,7 @@ import pytest
 import structlog.testing
 from pydantic import ValidationError
 
-from synthorg.core.enums import Complexity
+from synthorg.core.task_enums import Complexity
 from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.loop_selector import (
     DEFAULT_AUTO_LOOP_RULES,

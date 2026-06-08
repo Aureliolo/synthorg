@@ -5,9 +5,9 @@ from datetime import date
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import TaskType
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskType
 from synthorg.engine.assignment.models import AssignmentRequest
 from synthorg.engine.assignment.pool_filters import IdentityPoolFilter
 from synthorg.engine.assignment.rankers import ScoreDescendingRanker

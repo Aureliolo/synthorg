@@ -11,7 +11,7 @@ from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
 )
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.run_result import AgentRunResult

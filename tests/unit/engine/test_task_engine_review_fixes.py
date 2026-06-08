@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import (
     TaskEngineNotRunningError,
     TaskMutationError,

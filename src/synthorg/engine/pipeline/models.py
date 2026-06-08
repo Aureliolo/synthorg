@@ -15,12 +15,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import (
-    Complexity,
-    Priority,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 
 

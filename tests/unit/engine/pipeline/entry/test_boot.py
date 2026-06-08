@@ -13,8 +13,8 @@ from typing import Any
 import pytest
 
 from synthorg.client.simulation_state import ClientSimulationState
-from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.engine.pipeline.entry.boot import (
     _project_uuid,
     wire_real_intake_entry,

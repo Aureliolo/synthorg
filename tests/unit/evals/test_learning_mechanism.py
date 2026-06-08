@@ -27,8 +27,8 @@ from typing import Final
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason

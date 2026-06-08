@@ -35,7 +35,7 @@ from synthorg.budget.trends import (
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.analytics import (

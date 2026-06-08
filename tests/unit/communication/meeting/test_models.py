@@ -19,7 +19,7 @@ from synthorg.communication.meeting.models import (
     MeetingMinutes,
     MeetingRecord,
 )
-from synthorg.core.enums import Priority
+from synthorg.core.task_enums import Priority
 
 _NOW = datetime(2026, 3, 8, 10, 0, tzinfo=UTC)
 _LATER = datetime(2026, 3, 8, 10, 30, tzinfo=UTC)

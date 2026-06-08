@@ -8,13 +8,13 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
     RecordNotFoundError,
 )
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import (
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,

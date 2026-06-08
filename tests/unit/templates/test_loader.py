@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.observability.events.template import TEMPLATE_BUILTIN_DEFECT
 from synthorg.templates.errors import (
     TemplateNotFoundError,

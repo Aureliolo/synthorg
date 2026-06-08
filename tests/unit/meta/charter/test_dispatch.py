@@ -9,9 +9,10 @@ import pytest
 
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
-from synthorg.core.enums import CharterStatus, ProjectStatus
+from synthorg.core.enums import CharterStatus
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.errors import WorkProjectNotFoundError
 from synthorg.engine.pipeline.models import WorkItem

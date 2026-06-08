@@ -18,8 +18,8 @@ from structlog.testing import capture_logs
 from evals.models.brief import Brief
 from evals.scoring.penalties import DEFAULT_PENALTY_TABLE
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.run_result import AgentRunResult

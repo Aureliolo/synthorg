@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.engine.workspace.git_backend import GitBackendConfig
 
 pytestmark = pytest.mark.unit

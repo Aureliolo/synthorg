@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from synthorg.client.models import ClientRequest, TaskRequirement
-from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.pipeline.entry.intake_adapter import IntakeEntryAdapter
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
 from synthorg.engine.pipeline.errors import WorkIntakeRejectedError

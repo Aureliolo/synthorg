@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import CoordinationTopology, TaskStatus, TaskStructure
+from synthorg.core.task_enums import CoordinationTopology, TaskStatus, TaskStructure
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.group_builder import build_execution_waves
 from synthorg.engine.routing.models import (

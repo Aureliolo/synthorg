@@ -37,14 +37,11 @@ from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.enums import (
     AgentStatus,
     ApprovalStatus,
-    Complexity,
     ConversationalProposalStatus,
     ConversationStatus,
-    Priority,
-    TaskStatus,
-    TaskType,
 )
 from synthorg.core.role import Authority, Skill
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
@@ -275,8 +272,8 @@ def _make_agent(name: str, skill: str, *, level: SeniorityLevel) -> AgentIdentit
 
 
 def _project(project_id: str) -> Any:
-    from synthorg.core.enums import ProjectStatus
     from synthorg.core.project import Project
+    from synthorg.core.project_enums import ProjectStatus
 
     return Project(
         id=as_uuid(project_id),

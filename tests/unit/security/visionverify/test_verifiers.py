@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.security.config import VisionVerifierKind, VisionVerifyConfig
 from synthorg.security.visionverify.errors import (
     VisionScreenshotError,

@@ -4,8 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.artifact import Artifact
-from synthorg.core.enums import ArtifactType
+from synthorg.core.artifact import Artifact, ArtifactType
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend

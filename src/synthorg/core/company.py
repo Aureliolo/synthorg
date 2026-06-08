@@ -8,7 +8,8 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
-from synthorg.core.enums import AutonomyLevel, CompanyType
+from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.enums import CompanyType
 from synthorg.core.middleware_config import MiddlewareConfig
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr
@@ -19,10 +20,7 @@ from synthorg.observability.events.company import (
 )
 from synthorg.ontology.decorator import ontology_entity
 from synthorg.security.autonomy.models import AutonomyConfig
-from synthorg.security.timeout.config import (
-    ApprovalTimeoutConfig,
-    WaitForeverConfig,
-)
+from synthorg.security.timeout.config import ApprovalTimeoutConfig, WaitForeverConfig
 
 logger = get_logger(__name__)
 

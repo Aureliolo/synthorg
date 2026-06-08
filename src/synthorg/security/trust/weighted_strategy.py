@@ -6,7 +6,7 @@ and promotes/demotes based on configurable thresholds.
 
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.trust import (
     TRUST_EVALUATE_COMPLETE,

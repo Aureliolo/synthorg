@@ -16,9 +16,9 @@ from synthorg.budget.coordination_store import (
     CoordinationMetricsStore,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import Stakes, TaskType
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Stakes, TaskType
 from synthorg.core.types import ModelTier
 from synthorg.engine.routing_policy import (
     FlatStrategy,

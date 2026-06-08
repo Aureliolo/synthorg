@@ -8,7 +8,7 @@ no-op behaviour for tests that exercise ``TrustService`` orchestration
 without driving real trust evaluation.
 """
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.security.trust.models import TrustEvaluationResult, TrustState

@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.security.trust.config import (
     CategoryTrustCriteria,
     MilestoneCriteria,

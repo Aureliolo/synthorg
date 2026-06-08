@@ -11,7 +11,8 @@ in a ``ToolRegistry``.
 import math
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import AutonomyLevel, ToolCategory
+from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.enums import ToolCategory
 from synthorg.core.validation import require_non_blank
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (

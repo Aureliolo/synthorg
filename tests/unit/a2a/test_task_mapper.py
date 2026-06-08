@@ -4,7 +4,7 @@ import pytest
 
 from synthorg.a2a.models import A2ATaskState
 from synthorg.a2a.task_mapper import from_a2a, to_a2a
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 
 
 class TestToA2A:

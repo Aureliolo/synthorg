@@ -5,8 +5,8 @@ from uuid import UUID
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import (
     TaskMutationError,
     TaskNotFoundError,
@@ -611,7 +611,7 @@ class TestListTasksPushDownPagination:
         ``CREATED`` status cannot carry an ``assigned_to`` (model invariant),
         so the filter is verified via status + project instead.
         """
-        from synthorg.core.enums import TaskStatus
+        from synthorg.core.task_enums import TaskStatus
 
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()

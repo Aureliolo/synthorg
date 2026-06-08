@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.intervention import NoOpSupersessionProposer, SteeringService
 from tests._shared import LoopAsyncClient

@@ -3,15 +3,15 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import (
+from synthorg.core.registry.errors import StrategyFactoryNotFoundError
+from synthorg.core.task import Task
+from synthorg.core.task_enums import (
     Complexity,
     Priority,
     Stakes,
     TaskType,
     compare_stakes,
 )
-from synthorg.core.registry.errors import StrategyFactoryNotFoundError
-from synthorg.core.task import Task
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.stakes import (
     DefaultStakesAssessor,

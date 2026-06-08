@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalRiskLevel, TaskStatus
+from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.task_engine_models import TransitionTaskMutation

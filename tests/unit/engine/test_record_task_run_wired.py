@@ -20,7 +20,7 @@ from types import MappingProxyType
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.task_engine_apply import _RECORDED_STATUS_OUTCOME
 
 pytestmark = pytest.mark.unit

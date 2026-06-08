@@ -134,8 +134,8 @@ class TestTaskMiddlewareOverride:
     """Task includes middleware_override field."""
 
     def test_default_none(self) -> None:
-        from synthorg.core.enums import Priority, TaskType
         from synthorg.core.task import Task
+        from synthorg.core.task_enums import Priority, TaskType
 
         task = Task(
             id=as_uuid("t-1"),
@@ -149,8 +149,8 @@ class TestTaskMiddlewareOverride:
         assert task.middleware_override is None
 
     def test_custom_override(self) -> None:
-        from synthorg.core.enums import Priority, TaskType
         from synthorg.core.task import Task
+        from synthorg.core.task_enums import Priority, TaskType
 
         task = Task(
             id=as_uuid("t-1"),

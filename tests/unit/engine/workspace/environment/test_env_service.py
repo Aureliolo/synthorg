@@ -8,7 +8,7 @@ from typing import override
 
 import pytest
 
-from synthorg.core.enums import EnvironmentType
+from synthorg.core.project_enums import EnvironmentType
 from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import EnvironmentConfigError, EnvironmentProvisionError

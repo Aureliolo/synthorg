@@ -18,7 +18,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import EnvironmentType
+from synthorg.core.project_enums import EnvironmentType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import EnvironmentConfigError, EnvironmentProvisionError
 from synthorg.engine.workspace.environment.protocol import (

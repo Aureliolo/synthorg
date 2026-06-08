@@ -14,7 +14,7 @@ from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import EnvironmentType
+from synthorg.core.project_enums import EnvironmentType
 from synthorg.core.types import NotBlankStr
 
 

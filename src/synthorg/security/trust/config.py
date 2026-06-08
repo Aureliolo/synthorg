@@ -8,7 +8,7 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.security.trust.enums import TrustStrategyType

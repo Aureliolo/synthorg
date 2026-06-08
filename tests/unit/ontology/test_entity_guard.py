@@ -9,8 +9,8 @@ from synthorg.communication.delegation.entity_guard import (
     EntityGuardOutcome,
 )
 from synthorg.communication.delegation.models import DelegationRequest
-from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskType
 from synthorg.ontology.config import DelegationGuardConfig, GuardMode
 from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 from tests._shared import as_uuid

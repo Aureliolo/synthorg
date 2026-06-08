@@ -14,8 +14,10 @@ from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.communication.message import (
     MessageMetadata,
 )
-from synthorg.core.enums import (
-    ArtifactType,
+from synthorg.core.artifact import ArtifactType
+from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
     Priority,
@@ -23,8 +25,6 @@ from synthorg.core.enums import (
     TaskStructure,
     TaskType,
 )
-from synthorg.core.persistence_errors import DuplicateRecordError
-from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.persistence.sqlite.cost_record_repo import (
     SQLiteCostRecordRepository,
 )

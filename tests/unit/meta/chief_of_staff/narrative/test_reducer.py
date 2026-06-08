@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import DecisionBlock
 from synthorg.meta.chief_of_staff.narrative.assembler import assemble_blocks

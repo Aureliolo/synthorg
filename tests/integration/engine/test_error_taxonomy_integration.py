@@ -18,8 +18,8 @@ from synthorg.budget.coordination_config import (
     ErrorTaxonomyConfig,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.classification.models import ErrorSeverity
 from synthorg.engine.classification.pipeline import classify_execution_errors
 from synthorg.engine.classification.sinks import (

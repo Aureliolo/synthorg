@@ -4,7 +4,7 @@ Provides canonical level ordering, rank lookup, and transition keys
 used consistently across all trust strategies and the trust service.
 """
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 
 # Canonical trust level ordering (lowest to highest).
 TRUST_LEVEL_ORDER: tuple[ToolAccessLevel, ...] = (

@@ -8,8 +8,8 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import Priority, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.coordination.models import CoordinationContext
 from synthorg.engine.middleware.coordination_protocol import (
     BaseCoordinationMiddleware,

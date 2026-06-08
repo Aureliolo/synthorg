@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.task_transitions import transition_path
 from synthorg.engine.coordination.models import (
     CoordinationContext,

@@ -19,7 +19,7 @@ from synthorg.core.agent import (
     AgentIdentity,
 )
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import (
     TaskMutationError,
     TaskNotFoundError,

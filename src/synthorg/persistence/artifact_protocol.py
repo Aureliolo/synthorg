@@ -4,8 +4,10 @@ from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.artifact import Artifact
-from synthorg.core.enums import ArtifactType  # noqa: TC001,RUF100
+from synthorg.core.artifact import (
+    Artifact,
+    ArtifactType,  # noqa: TC001,RUF100
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001,RUF100
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,

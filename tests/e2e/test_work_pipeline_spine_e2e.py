@@ -34,8 +34,9 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import AgentStatus, Complexity, Priority, TaskStatus, TaskType
+from synthorg.core.enums import AgentStatus
 from synthorg.core.role import Authority, Skill
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.models import (
@@ -325,8 +326,8 @@ async def test_work_item_flows_team_and_records_metrics_via_spine(
 
 
 def _project(project_id: str) -> Any:
-    from synthorg.core.enums import ProjectStatus
     from synthorg.core.project import Project
+    from synthorg.core.project_enums import ProjectStatus
     from tests._shared import as_uuid
 
     return Project(

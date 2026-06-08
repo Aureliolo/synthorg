@@ -3,8 +3,8 @@
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine._validation import validate_task_metadata
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.observability.events.execution import (

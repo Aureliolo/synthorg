@@ -4,8 +4,8 @@ from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,

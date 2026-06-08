@@ -15,7 +15,7 @@ from typing import Any, cast
 
 import pytest
 
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.factory import build_docs_service

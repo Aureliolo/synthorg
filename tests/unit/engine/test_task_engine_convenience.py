@@ -5,7 +5,7 @@ Split from ``test_task_engine_extended.py`` to keep files under 800 lines.
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import (
     TaskInternalError,
     TaskMutationError,

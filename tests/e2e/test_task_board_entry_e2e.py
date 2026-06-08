@@ -27,16 +27,11 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import (
-    AgentStatus,
-    Complexity,
-    Priority,
-    ProjectStatus,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.enums import AgentStatus
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.role import Authority, Skill
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.strategies import DirectIntake
 from synthorg.engine.pipeline.entry.task_board_adapter import (

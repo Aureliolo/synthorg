@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import GitBackendType
 from synthorg.core.project import Project
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend

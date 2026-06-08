@@ -30,7 +30,7 @@ from synthorg.communication.meeting.position_papers import (
 )
 from synthorg.communication.meeting.protocol import MeetingProtocol
 from synthorg.communication.meeting.round_robin import RoundRobinProtocol
-from synthorg.core.enums import Priority
+from synthorg.core.task_enums import Priority
 from tests.unit.communication.meeting.conftest import (
     make_mock_agent_caller,
 )

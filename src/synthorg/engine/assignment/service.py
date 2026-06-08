@@ -6,7 +6,7 @@ Orchestrates task assignment by delegating to a pluggable
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import TaskAssignmentError
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.task_assignment import (

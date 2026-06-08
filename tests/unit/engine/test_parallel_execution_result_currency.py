@@ -14,8 +14,8 @@ import pytest
 
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.parallel_models import (

@@ -4,7 +4,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from synthorg.core.enums import AutonomyLevel, compare_autonomy
+from synthorg.core.autonomy_enums import AutonomyLevel, compare_autonomy
 
 pytestmark = pytest.mark.unit
 

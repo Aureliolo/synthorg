@@ -1,7 +1,7 @@
 """Per-subtask stakes assessment for stakes-aware model routing.
 
 A :class:`StakesAssessor` classifies how consequential a subtask or task
-is (:class:`~synthorg.core.enums.Stakes`). The routing layer
+is (:class:`~synthorg.core.task_enums.Stakes`). The routing layer
 (:mod:`synthorg.engine.routing_policy`) consumes the result to pick a
 cheap model for low-stakes work and a strong model plus a red-team
 review for high-stakes work.

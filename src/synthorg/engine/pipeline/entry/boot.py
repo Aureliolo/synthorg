@@ -32,9 +32,9 @@ from synthorg.client.state import (
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import ProjectStatus
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.engine.pipeline.entry.factory import (
     build_brownfield_entry_adapter,
     build_work_entry_adapter,

@@ -9,7 +9,8 @@ from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import AgentConfig, RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import AgentStatus, Complexity, TaskType
+from synthorg.core.enums import AgentStatus
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService

@@ -21,7 +21,7 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.ws_models import WsEventType
-from synthorg.core.artifact import Artifact
+from synthorg.core.artifact import Artifact, ArtifactType
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ArtifactRejectedTooLargeError,
@@ -29,7 +29,6 @@ from synthorg.core.domain_errors import (
     NotFoundError,
     ValidationError,
 )
-from synthorg.core.enums import ArtifactType
 from synthorg.core.persistence_errors import (
     ArtifactStorageFullError,
     ArtifactTooLargeError,

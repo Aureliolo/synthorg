@@ -2,8 +2,8 @@
 
 import pytest
 
-from synthorg.core.enums import Priority, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
 from synthorg.engine.decomposition.models import (
     DecompositionContext,

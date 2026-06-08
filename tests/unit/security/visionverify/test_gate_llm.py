@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 from PIL import Image
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (

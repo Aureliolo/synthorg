@@ -40,8 +40,8 @@ if TYPE_CHECKING:
     from synthorg.api.config import ApiConfig
     from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
     from synthorg.config.schema import AgentConfig, ProviderConfig, RootConfig
+    from synthorg.core.autonomy_enums import AutonomyLevel
     from synthorg.core.company import Department
-    from synthorg.core.enums import AutonomyLevel
     from synthorg.engine.coordination.config import CoordinationConfig
     from synthorg.settings.bridge_configs import (
         A2ABridgeConfig,
@@ -287,7 +287,7 @@ class ConfigResolver:
             ValueError: If the stored value does not match any
                 ``AutonomyLevel`` member.
         """
-        from synthorg.core.enums import AutonomyLevel  # noqa: PLC0415
+        from synthorg.core.autonomy_enums import AutonomyLevel  # noqa: PLC0415
 
         return await self.get_enum("company", "autonomy_level", AutonomyLevel)
 

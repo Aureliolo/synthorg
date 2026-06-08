@@ -12,8 +12,8 @@ from typing import Final, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 
 MutationType = Literal["create", "update", "transition", "delete", "cancel"]

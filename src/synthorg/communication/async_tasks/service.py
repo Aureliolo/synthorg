@@ -15,8 +15,8 @@ from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.communication.message import Message, TextPart
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.observability import get_logger, safe_error_description

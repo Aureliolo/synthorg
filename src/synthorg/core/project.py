@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import ProjectStatus
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.ontology.decorator import ontology_entity
 

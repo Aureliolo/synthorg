@@ -16,7 +16,7 @@ import pytest
 from synthorg.client.config import SimulationRunnerConfig
 from synthorg.client.models import ClientFeedback, TaskRequirement
 from synthorg.client.runner import SimulationRunner
-from synthorg.core.enums import Complexity, Priority, TaskType
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 

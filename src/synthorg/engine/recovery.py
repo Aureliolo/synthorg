@@ -21,7 +21,8 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import FailureCategory, TaskStatus
+from synthorg.core.enums import FailureCategory
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr, validate_unique_strings
 from synthorg.engine.context import AgentContext
 from synthorg.engine.context_snapshot import AgentContextSnapshot

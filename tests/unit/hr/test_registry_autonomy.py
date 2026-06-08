@@ -15,11 +15,8 @@ import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import (
-    ApprovalRiskLevel,
-    ApprovalStatus,
-    AutonomyLevel,
-)
+from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService

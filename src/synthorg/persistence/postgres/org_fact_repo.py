@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Literal
 
 from psycopg.rows import TupleRow, dict_row
 
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory

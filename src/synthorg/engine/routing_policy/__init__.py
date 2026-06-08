@@ -1,6 +1,6 @@
 """Stakes-aware model routing.
 
-Given a task's :class:`~synthorg.core.enums.Stakes` and an agent's
+Given a task's :class:`~synthorg.core.task_enums.Stakes` and an agent's
 configured model, the routing layer picks a model tier matched to the
 stakes: the cheapest tier that clears a benchmark-derived quality floor
 for low/normal-stakes work, and a strong tier (plus a red-team review

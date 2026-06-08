@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.session import Session, SessionEvent
 from synthorg.observability.events.execution import (
     EXECUTION_CONTEXT_CREATED,

@@ -63,8 +63,8 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.core.enums import TaskStatus
     from synthorg.core.task import Task
+    from synthorg.core.task_enums import TaskStatus
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)

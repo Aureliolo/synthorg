@@ -14,8 +14,9 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, ToolPermissions
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.domain_errors import NotFoundError
-from synthorg.core.enums import AutonomyLevel, ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult, ExecutedToolCall
 from synthorg.engine.loop_protocol import TerminationReason

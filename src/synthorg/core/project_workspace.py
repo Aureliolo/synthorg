@@ -13,7 +13,7 @@ from typing import Final
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.types import NotBlankStr
 
 _DEFAULT_BRANCH: Final[str] = "main"

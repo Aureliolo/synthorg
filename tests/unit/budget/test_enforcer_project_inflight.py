@@ -5,8 +5,8 @@ import pytest
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.tracker import CostTracker
-from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskType
 from synthorg.engine.context import AgentContext
 from synthorg.providers.models import TokenUsage
 from tests._shared import as_uuid

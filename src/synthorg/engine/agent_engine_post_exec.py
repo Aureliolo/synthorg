@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.budget.coordination_collector import CollectionInputs
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     make_loop_with_callback,

@@ -10,7 +10,7 @@ from hypothesis import strategies as st
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.api.config import RateLimitTimeUnit
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingNotFoundError

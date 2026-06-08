@@ -3,7 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ToolAccessLevel, ToolCategory
+from synthorg.core.enums import ToolCategory
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.tools.desktop._models import (
     InputResult,
     LaunchResult,

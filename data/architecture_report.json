@@ -56,8 +56,8 @@
     },
     "src/synthorg/api/controllers/agents.py": {
       "cap": 500,
-      "loc": 547,
-      "ratio": 1.094,
+      "loc": 548,
+      "ratio": 1.096,
       "tier": "code"
     },
     "src/synthorg/api/controllers/analytics.py": {
@@ -68,8 +68,8 @@
     },
     "src/synthorg/api/controllers/artifacts.py": {
       "cap": 500,
-      "loc": 498,
-      "ratio": 0.996,
+      "loc": 497,
+      "ratio": 0.994,
       "tier": "code"
     },
     "src/synthorg/api/controllers/clients.py": {
@@ -194,8 +194,8 @@
     },
     "src/synthorg/api/dto.py": {
       "cap": 500,
-      "loc": 693,
-      "ratio": 1.386,
+      "loc": 688,
+      "ratio": 1.376,
       "tier": "code"
     },
     "src/synthorg/api/etag.py": {
@@ -350,8 +350,8 @@
     },
     "src/synthorg/config/schema.py": {
       "cap": 500,
-      "loc": 759,
-      "ratio": 1.518,
+      "loc": 758,
+      "ratio": 1.516,
       "tier": "code"
     },
     "src/synthorg/coordination/ceremony_policy/policy_resolver.py": {
@@ -362,14 +362,14 @@
     },
     "src/synthorg/core/agent.py": {
       "cap": 500,
-      "loc": 487,
-      "ratio": 0.974,
+      "loc": 486,
+      "ratio": 0.972,
       "tier": "code"
     },
     "src/synthorg/core/company.py": {
       "cap": 500,
-      "loc": 639,
-      "ratio": 1.278,
+      "loc": 637,
+      "ratio": 1.274,
       "tier": "code"
     },
     "src/synthorg/core/role_catalog.py": {
@@ -446,8 +446,8 @@
     },
     "src/synthorg/engine/decomposition/llm_prompt.py": {
       "cap": 500,
-      "loc": 442,
-      "ratio": 0.884,
+      "loc": 438,
+      "ratio": 0.876,
       "tier": "code"
     },
     "src/synthorg/engine/errors.py": {
@@ -806,8 +806,8 @@
     },
     "src/synthorg/memory/tools/knowledge_architect.py": {
       "cap": 500,
-      "loc": 504,
-      "ratio": 1.008,
+      "loc": 505,
+      "ratio": 1.01,
       "tier": "code"
     },
     "src/synthorg/meta/appliers/_architecture_validators.py": {
@@ -830,8 +830,8 @@
     },
     "src/synthorg/meta/chief_of_staff/models.py": {
       "cap": 500,
-      "loc": 481,
-      "ratio": 0.962,
+      "loc": 479,
+      "ratio": 0.958,
       "tier": "code"
     },
     "src/synthorg/meta/chief_of_staff/propose.py": {
@@ -1214,8 +1214,8 @@
     },
     "src/synthorg/security/service.py": {
       "cap": 500,
-      "loc": 561,
-      "ratio": 1.122,
+      "loc": 560,
+      "ratio": 1.12,
       "tier": "code"
     },
     "src/synthorg/settings/bridge_configs.py": {
@@ -1250,8 +1250,8 @@
     },
     "src/synthorg/templates/loader.py": {
       "cap": 500,
-      "loc": 498,
-      "ratio": 0.996,
+      "loc": 499,
+      "ratio": 0.998,
       "tier": "code"
     },
     "src/synthorg/templates/model_matcher.py": {
@@ -1374,16 +1374,19 @@
     "synthorg.core.approval": 35,
     "synthorg.core.auth.models": 27,
     "synthorg.core.auth.roles": 25,
+    "synthorg.core.autonomy_enums": 34,
     "synthorg.core.clock": 154,
     "synthorg.core.critical_errors": 471,
     "synthorg.core.domain_errors": 176,
-    "synthorg.core.enums": 340,
+    "synthorg.core.enums": 206,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 47,
     "synthorg.core.normalization": 72,
     "synthorg.core.persistence_errors": 190,
+    "synthorg.core.project_enums": 28,
     "synthorg.core.registry": 27,
     "synthorg.core.task": 91,
+    "synthorg.core.task_enums": 85,
     "synthorg.core.types": 1055,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,

@@ -4,7 +4,7 @@ import pytest
 
 from synthorg.communication.delegation.hierarchy import HierarchyResolver
 from synthorg.core.company import Company, Department, Team
-from synthorg.core.enums import Complexity
+from synthorg.core.task_enums import Complexity
 from synthorg.engine.assignment.models import AssignmentRequest
 from synthorg.engine.assignment.pool_filters import HierarchicalPoolFilter
 from synthorg.engine.assignment.rankers import ScoreDescendingRanker

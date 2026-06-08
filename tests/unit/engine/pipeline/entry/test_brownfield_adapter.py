@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import TaskStatus, TaskType
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.brownfield.models import (
     CodebaseImportResult,

@@ -7,7 +7,7 @@ parsing used by ``WorkflowExecutionService.activate()``.
 from collections import deque
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import Complexity, Priority, TaskType
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.engine.errors import WorkflowConditionEvalError
 from synthorg.engine.quality.verification import VerificationVerdict
 from synthorg.engine.task_engine_models import CreateTaskData

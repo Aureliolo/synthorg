@@ -8,8 +8,7 @@ actually mutate.
 import pytest
 import structlog
 
-from synthorg.core.artifact import Artifact
-from synthorg.core.enums import ArtifactType
+from synthorg.core.artifact import Artifact, ArtifactType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.service import ArtifactService
 from synthorg.observability.events.api import (

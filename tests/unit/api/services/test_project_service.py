@@ -10,9 +10,9 @@ import pytest
 import structlog
 
 from synthorg.api.services.project_service import ProjectService
-from synthorg.core.enums import ProjectStatus
 from synthorg.core.persistence_errors import DuplicateRecordError, RecordNotFoundError
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.api import (
     API_PROJECT_CREATED,

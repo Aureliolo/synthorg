@@ -12,7 +12,7 @@ accuracy by up to 63% on complex reasoning tasks.
 import re
 from typing import Final
 
-from synthorg.core.enums import Complexity
+from synthorg.core.task_enums import Complexity
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)

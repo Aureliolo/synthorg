@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.deliverable_receipts.builder import ReceiptBuilder
 from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.models import KnowledgeSource

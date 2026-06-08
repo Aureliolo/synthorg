@@ -7,8 +7,8 @@ import pytest
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.communication.message import FilePart, Message, TextPart
-from synthorg.core.enums import TaskStatus
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.task_enums import TaskStatus
 from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import as_uuid, sid

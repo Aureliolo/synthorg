@@ -3,7 +3,7 @@
 import pytest
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import CoordinationTopology
+from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.routing.models import (
     AutoTopologyConfig,
     RoutingCandidate,

@@ -363,7 +363,7 @@ class TestBuildUserMessageContentSummaries:
         from datetime import UTC, datetime
 
         from synthorg.budget.currency import DEFAULT_CURRENCY
-        from synthorg.core.enums import Complexity, TaskType
+        from synthorg.core.task_enums import Complexity, TaskType
         from synthorg.hr.performance.models import TaskMetricRecord
 
         return TaskMetricRecord(

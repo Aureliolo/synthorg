@@ -17,7 +17,7 @@ from synthorg.budget.coordination_collector import CollectionInputs
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import CoordinationTopology
+from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.attribution import (
     AgentContribution,
     CoordinationResultWithAttribution,

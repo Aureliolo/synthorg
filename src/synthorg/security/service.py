@@ -12,8 +12,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, AutonomyLevel
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.autonomy import (
     AUTONOMY_ACTION_AUTO_APPROVED,
@@ -49,9 +50,7 @@ from synthorg.security.models import (
     SecurityVerdict,
     SecurityVerdictType,
 )
-from synthorg.security.output_scan_policy import (
-    OutputScanResponsePolicy,
-)
+from synthorg.security.output_scan_policy import OutputScanResponsePolicy
 from synthorg.security.output_scan_policy_factory import (
     build_output_scan_policy,
 )

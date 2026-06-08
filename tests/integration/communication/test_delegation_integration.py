@@ -32,9 +32,9 @@ from synthorg.core.company import (
     Department,
     Team,
 )
-from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.role import Authority
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import coerce_id, sid
 

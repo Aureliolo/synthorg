@@ -12,8 +12,8 @@ from synthorg.client.config import IntakeConfig
 from synthorg.client.factory import UnknownStrategyError, build_intake_strategy
 from synthorg.client.models import ClientRequest, TaskRequirement
 from synthorg.client.simulation_state import ClientSimulationState
-from synthorg.core.enums import Priority, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.intake.strategies import AgentIntake, DirectIntake
 from synthorg.engine.review.stages.internal import InternalReviewStage
 from synthorg.engine.task_engine import TaskEngine

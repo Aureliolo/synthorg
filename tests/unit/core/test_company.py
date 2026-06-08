@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.company import (
     Company,
     CompanyConfig,
@@ -15,7 +16,7 @@ from synthorg.core.company import (
     WorkflowHandoff,
     _identity_key,
 )
-from synthorg.core.enums import AutonomyLevel, CompanyType
+from synthorg.core.enums import CompanyType
 from synthorg.security.timeout.config import (
     DenyOnTimeoutConfig,
     WaitForeverConfig,

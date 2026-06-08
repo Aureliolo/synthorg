@@ -16,7 +16,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import Complexity, Stakes
+from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.core.types import NotBlankStr
 
 

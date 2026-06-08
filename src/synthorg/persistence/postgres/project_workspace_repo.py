@@ -6,8 +6,8 @@ import psycopg
 from psycopg.rows import DictRow, dict_row
 from pydantic import ValidationError
 
-from synthorg.core.enums import GitBackendType
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description

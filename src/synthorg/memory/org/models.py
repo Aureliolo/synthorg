@@ -11,7 +11,7 @@ from typing import Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory

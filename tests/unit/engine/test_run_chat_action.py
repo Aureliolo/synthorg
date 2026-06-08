@@ -26,7 +26,7 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig, ToolPermissions
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.context import AgentContext

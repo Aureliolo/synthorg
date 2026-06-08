@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import CoordinationTopology, TaskStatus
+from synthorg.core.task_enums import CoordinationTopology, TaskStatus
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.models import (
     CoordinationContext,

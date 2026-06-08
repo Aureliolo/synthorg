@@ -15,7 +15,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.models import TokenUsage
 

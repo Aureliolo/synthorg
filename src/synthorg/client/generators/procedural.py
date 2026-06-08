@@ -8,7 +8,7 @@ from synthorg.client.models import (
     GenerationContext,
     TaskRequirement,
 )
-from synthorg.core.enums import Complexity, Priority, TaskType
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import CLIENT_REQUIREMENT_GENERATED
 

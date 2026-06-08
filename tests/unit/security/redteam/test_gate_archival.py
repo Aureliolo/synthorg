@@ -10,7 +10,7 @@ no-op.
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.observability.events.red_team import (
     RED_TEAM_REPORT_ALREADY_ARCHIVED,

@@ -1,6 +1,6 @@
 """Pluggable per-project environment config + deps bundle.
 
-The :class:`~synthorg.core.enums.EnvironmentType` discriminator selects
+The :class:`~synthorg.core.project_enums.EnvironmentType` discriminator selects
 one of three strategies.  The safe default is ``MANIFEST`` (a
 backend-agnostic bootstrap manifest committed in the workspace, runnable
 in both sandboxes and on a fresh clone).  ``DEVCONTAINER`` and ``NIX``
@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import EnvironmentType
+from synthorg.core.project_enums import EnvironmentType
 
 if TYPE_CHECKING:
     from synthorg.core.clock import Clock

@@ -6,8 +6,8 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.session import (
     EventReader,

@@ -3,7 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import FailureCategory, TaskStatus
+from synthorg.core.enums import FailureCategory
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.recovery import (
     RecoveryResult,

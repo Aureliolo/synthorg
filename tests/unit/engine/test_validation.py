@@ -3,8 +3,9 @@
 import pytest
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import AgentStatus, TaskStatus
+from synthorg.core.enums import AgentStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine._validation import (
     validate_agent,
     validate_run_inputs,

@@ -2,8 +2,8 @@
 
 import pytest
 
-from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention.proposer import (
     LLMSupersessionProposer,

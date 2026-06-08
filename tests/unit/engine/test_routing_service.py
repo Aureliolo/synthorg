@@ -6,9 +6,10 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import AgentStatus, Complexity, Priority, TaskType
+from synthorg.core.enums import AgentStatus
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,

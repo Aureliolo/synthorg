@@ -17,7 +17,7 @@ observability events.
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.observability.events.red_team import (
     RED_TEAM_AGENT_FAILED,
     RED_TEAM_AGENT_INVOKED,

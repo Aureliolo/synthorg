@@ -7,8 +7,8 @@ requiring a live NATS container.
 
 import pytest
 
-from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.settings.bridge_configs import WorkersBridgeConfig
 from synthorg.workers.claim import TaskClaim

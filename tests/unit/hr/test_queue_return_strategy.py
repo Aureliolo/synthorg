@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.queue_return_strategy import QueueReturnStrategy
 from tests.unit.hr.conftest import make_task

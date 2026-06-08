@@ -1,12 +1,19 @@
 """Artifact domain models for task outputs and expected deliverables."""
 
+from enum import StrEnum
+
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import (
-    ArtifactType,
-)
 from synthorg.core.types import NotBlankStr
 from synthorg.ontology.decorator import ontology_entity
+
+
+class ArtifactType(StrEnum):
+    """Type of produced artifact."""
+
+    CODE = "code"
+    TESTS = "tests"
+    DOCUMENTATION = "documentation"
 
 
 class ExpectedArtifact(BaseModel):

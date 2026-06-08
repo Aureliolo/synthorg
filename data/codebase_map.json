@@ -597,7 +597,7 @@
     },
     {
       "kind": "code",
-      "loc": 547,
+      "loc": 548,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/agents.py",
       "owning_feature": "api_core"
@@ -646,7 +646,7 @@
     },
     {
       "kind": "code",
-      "loc": 498,
+      "loc": 497,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/artifacts.py",
       "owning_feature": "api_core"
@@ -730,7 +730,7 @@
     },
     {
       "kind": "code",
-      "loc": 221,
+      "loc": 222,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/cockpit.py",
       "owning_feature": "api_core"
@@ -1199,7 +1199,7 @@
     },
     {
       "kind": "code",
-      "loc": 365,
+      "loc": 366,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/setup_models.py",
       "owning_feature": "api_core"
@@ -1388,7 +1388,7 @@
     },
     {
       "kind": "code",
-      "loc": 693,
+      "loc": 688,
       "loc_cap": 500,
       "module": "src/synthorg/api/dto.py",
       "owning_feature": "api_core"
@@ -3621,7 +3621,7 @@
     },
     {
       "kind": "code",
-      "loc": 759,
+      "loc": 758,
       "loc_cap": 500,
       "module": "src/synthorg/config/schema.py",
       "owning_feature": null
@@ -3712,7 +3712,7 @@
     },
     {
       "kind": "code",
-      "loc": 487,
+      "loc": 486,
       "loc_cap": 500,
       "module": "src/synthorg/core/agent.py",
       "owning_feature": null
@@ -3726,7 +3726,7 @@
     },
     {
       "kind": "code",
-      "loc": 69,
+      "loc": 72,
       "loc_cap": 500,
       "module": "src/synthorg/core/artifact.py",
       "owning_feature": null
@@ -3775,6 +3775,13 @@
     },
     {
       "kind": "code",
+      "loc": 32,
+      "loc_cap": 500,
+      "module": "src/synthorg/core/autonomy_enums.py",
+      "owning_feature": null
+    },
+    {
+      "kind": "code",
       "loc": 86,
       "loc_cap": 500,
       "module": "src/synthorg/core/clock.py",
@@ -3796,7 +3803,7 @@
     },
     {
       "kind": "code",
-      "loc": 639,
+      "loc": 637,
       "loc_cap": 500,
       "module": "src/synthorg/core/company.py",
       "owning_feature": null
@@ -3831,7 +3838,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 517,
+      "loc": 324,
       "loc_cap": null,
       "module": "src/synthorg/core/enums.py",
       "owning_feature": null
@@ -3918,6 +3925,13 @@
       "loc": 95,
       "loc_cap": 500,
       "module": "src/synthorg/core/project.py",
+      "owning_feature": null
+    },
+    {
+      "kind": "code",
+      "loc": 34,
+      "loc_cap": 500,
+      "module": "src/synthorg/core/project_enums.py",
       "owning_feature": null
     },
     {
@@ -4013,6 +4027,13 @@
     },
     {
       "kind": "code",
+      "loc": 117,
+      "loc_cap": 500,
+      "module": "src/synthorg/core/task_enums.py",
+      "owning_feature": null
+    },
+    {
+      "kind": "code",
       "loc": 104,
       "loc_cap": 500,
       "module": "src/synthorg/core/task_transitions.py",
@@ -4027,7 +4048,7 @@
     },
     {
       "kind": "code",
-      "loc": 216,
+      "loc": 238,
       "loc_cap": 500,
       "module": "src/synthorg/core/tool_constraints.py",
       "owning_feature": null
@@ -4335,7 +4356,7 @@
     },
     {
       "kind": "code",
-      "loc": 170,
+      "loc": 171,
       "loc_cap": 500,
       "module": "src/synthorg/engine/_validation.py",
       "owning_feature": "engine"
@@ -4426,7 +4447,7 @@
     },
     {
       "kind": "code",
-      "loc": 202,
+      "loc": 201,
       "loc_cap": 500,
       "module": "src/synthorg/engine/artifacts/service.py",
       "owning_feature": "engine"
@@ -5007,7 +5028,7 @@
     },
     {
       "kind": "code",
-      "loc": 442,
+      "loc": 438,
       "loc_cap": 500,
       "module": "src/synthorg/engine/decomposition/llm_prompt.py",
       "owning_feature": "engine"
@@ -5518,7 +5539,7 @@
     },
     {
       "kind": "service",
-      "loc": 396,
+      "loc": 397,
       "loc_cap": 600,
       "module": "src/synthorg/engine/intervention/service.py",
       "owning_feature": "engine"
@@ -5567,7 +5588,7 @@
     },
     {
       "kind": "code",
-      "loc": 123,
+      "loc": 124,
       "loc_cap": 500,
       "module": "src/synthorg/engine/mcp_self_consumer.py",
       "owning_feature": "engine"
@@ -5812,7 +5833,7 @@
     },
     {
       "kind": "code",
-      "loc": 192,
+      "loc": 187,
       "loc_cap": 500,
       "module": "src/synthorg/engine/pipeline/models.py",
       "owning_feature": "engine"
@@ -6120,7 +6141,7 @@
     },
     {
       "kind": "code",
-      "loc": 382,
+      "loc": 383,
       "loc_cap": 500,
       "module": "src/synthorg/engine/recovery.py",
       "owning_feature": "engine"
@@ -6225,7 +6246,7 @@
     },
     {
       "kind": "code",
-      "loc": 286,
+      "loc": 287,
       "loc_cap": 500,
       "module": "src/synthorg/engine/routing/scorer.py",
       "owning_feature": "engine"
@@ -6603,7 +6624,7 @@
     },
     {
       "kind": "code",
-      "loc": 331,
+      "loc": 332,
       "loc_cap": 500,
       "module": "src/synthorg/engine/task_sync.py",
       "owning_feature": "engine"
@@ -7786,7 +7807,7 @@
     },
     {
       "kind": "code",
-      "loc": 308,
+      "loc": 309,
       "loc_cap": 500,
       "module": "src/synthorg/hr/offboarding_service.py",
       "owning_feature": "hr"
@@ -8066,7 +8087,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 691,
+      "loc": 692,
       "loc_cap": 1100,
       "module": "src/synthorg/hr/registry.py",
       "owning_feature": "hr"
@@ -10208,7 +10229,7 @@
     },
     {
       "kind": "code",
-      "loc": 504,
+      "loc": 505,
       "loc_cap": 500,
       "module": "src/synthorg/memory/tools/knowledge_architect.py",
       "owning_feature": "memory"
@@ -10411,7 +10432,7 @@
     },
     {
       "kind": "code",
-      "loc": 389,
+      "loc": 384,
       "loc_cap": 500,
       "module": "src/synthorg/meta/charter/dispatch.py",
       "owning_feature": "charter"
@@ -10579,7 +10600,7 @@
     },
     {
       "kind": "code",
-      "loc": 481,
+      "loc": 479,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/models.py",
       "owning_feature": "meta"
@@ -11160,7 +11181,7 @@
     },
     {
       "kind": "code",
-      "loc": 194,
+      "loc": 196,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/agents_autonomy.py",
       "owning_feature": "meta"
@@ -11216,7 +11237,7 @@
     },
     {
       "kind": "code",
-      "loc": 361,
+      "loc": 362,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/cockpit.py",
       "owning_feature": "meta"
@@ -14275,7 +14296,7 @@
     },
     {
       "kind": "code",
-      "loc": 148,
+      "loc": 150,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/artifact_protocol.py",
       "owning_feature": "persistence"
@@ -14506,7 +14527,7 @@
     },
     {
       "kind": "code",
-      "loc": 200,
+      "loc": 198,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/flight_recorder_protocol.py",
       "owning_feature": "persistence"
@@ -15493,7 +15514,7 @@
     },
     {
       "kind": "code",
-      "loc": 389,
+      "loc": 388,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/artifact_repo.py",
       "owning_feature": "persistence"
@@ -16984,7 +17005,7 @@
     },
     {
       "kind": "code",
-      "loc": 55,
+      "loc": 56,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/_base_delegate.py",
       "owning_feature": "security"
@@ -16998,7 +17019,7 @@
     },
     {
       "kind": "code",
-      "loc": 138,
+      "loc": 139,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/change_strategy.py",
       "owning_feature": "security"
@@ -17033,7 +17054,7 @@
     },
     {
       "kind": "code",
-      "loc": 354,
+      "loc": 355,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/models.py",
       "owning_feature": "security"
@@ -17047,7 +17068,7 @@
     },
     {
       "kind": "code",
-      "loc": 52,
+      "loc": 53,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/protocol.py",
       "owning_feature": "security"
@@ -17432,7 +17453,7 @@
     },
     {
       "kind": "code",
-      "loc": 561,
+      "loc": 560,
       "loc_cap": 500,
       "module": "src/synthorg/security/service.py",
       "owning_feature": "security"
@@ -17656,7 +17677,7 @@
     },
     {
       "kind": "code",
-      "loc": 364,
+      "loc": 365,
       "loc_cap": 500,
       "module": "src/synthorg/security/trust/service.py",
       "owning_feature": "security"
@@ -18356,7 +18377,7 @@
     },
     {
       "kind": "code",
-      "loc": 498,
+      "loc": 499,
       "loc_cap": 500,
       "module": "src/synthorg/templates/loader.py",
       "owning_feature": null
@@ -19077,7 +19098,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 829,
+      "loc": 830,
       "loc_cap": 1100,
       "module": "src/synthorg/tools/factory.py",
       "owning_feature": "tools"
@@ -19336,7 +19357,7 @@
     },
     {
       "kind": "code",
-      "loc": 259,
+      "loc": 263,
       "loc_cap": 500,
       "module": "src/synthorg/tools/permissions.py",
       "owning_feature": "tools"

@@ -11,8 +11,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import AutonomyLevel, Priority, TaskStatus, TaskType
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,

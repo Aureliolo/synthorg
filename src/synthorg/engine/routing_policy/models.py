@@ -3,7 +3,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.agent import ModelConfig
-from synthorg.core.enums import Stakes
+from synthorg.core.task_enums import Stakes
 from synthorg.core.types import NotBlankStr
 
 

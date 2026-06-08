@@ -21,7 +21,6 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.sub_constraint import SUB_CONSTRAINT_RESOLVED
@@ -30,6 +29,26 @@ logger = get_logger(__name__)
 
 
 # ── Constraint dimension enums ─────────────────────────────────
+
+
+class ToolAccessLevel(StrEnum):
+    """Access level for tool permissions.
+
+    Determines which tool categories an agent can use.
+    Levels ``SANDBOXED`` through ``ELEVATED`` form a hierarchy
+    where each includes all categories from lower levels.
+    ``CUSTOM`` uses only explicit allow/deny lists, ignoring
+    the hierarchy.
+
+    The concrete category sets for each level are defined in
+    ``ToolPermissionChecker._LEVEL_CATEGORIES``.
+    """
+
+    SANDBOXED = "sandboxed"
+    RESTRICTED = "restricted"
+    STANDARD = "standard"
+    ELEVATED = "elevated"
+    CUSTOM = "custom"
 
 
 class FileSystemScope(StrEnum):
@@ -190,6 +209,19 @@ _LEVEL_SUB_CONSTRAINTS: Final[MappingProxyType[ToolAccessLevel, ToolSubConstrain
         }
     )
 )
+
+# CUSTOM is intentionally absent (its missing entry is the sentinel that forces
+# an explicit custom_constraints in get_sub_constraints). Fail loudly at import
+# if any other access level lacks a default, rather than as a deferred runtime
+# ValueError on the first resolution for that level.
+_levels_without_defaults = (
+    set(ToolAccessLevel) - {ToolAccessLevel.CUSTOM} - set(_LEVEL_SUB_CONSTRAINTS)
+)
+if _levels_without_defaults:
+    _missing_levels_msg = (
+        f"_LEVEL_SUB_CONSTRAINTS missing non-CUSTOM levels: {_levels_without_defaults}"
+    )
+    raise RuntimeError(_missing_levels_msg)
 
 
 # ── Resolution ─────────────────────────────────────────────────

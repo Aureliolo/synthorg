@@ -6,7 +6,7 @@ Translates decomposition results and routing decisions into
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.decomposition.dag import DependencyGraph
 from synthorg.engine.errors import CoordinationError
 from synthorg.engine.parallel_models import (

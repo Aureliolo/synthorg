@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,

@@ -7,7 +7,7 @@ plus the ``has_completion_gates`` query and the background-task drain.
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from synthorg.core.enums import Stakes
+from synthorg.core.task_enums import Stakes
 
 if TYPE_CHECKING:
     # Deferred to break a genuine import cycle: these collaborators live in

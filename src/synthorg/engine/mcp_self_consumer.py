@@ -16,7 +16,8 @@ surface exposed to agents.
 
 from typing import TYPE_CHECKING, Any, Protocol, cast, override
 
-from synthorg.core.enums import ToolAccessLevel, ToolCategory
+from synthorg.core.enums import ToolCategory
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.security.config import McpSelfConsumerConfig, McpSelfConsumerMode
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 

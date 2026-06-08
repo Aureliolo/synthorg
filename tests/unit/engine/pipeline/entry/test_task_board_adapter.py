@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.pipeline.entry.task_board_adapter import (
     TaskBoardEntryAdapter,
     TaskBoardFiling,

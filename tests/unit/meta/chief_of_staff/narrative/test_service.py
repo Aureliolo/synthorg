@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import DocMetadata, DocSummary

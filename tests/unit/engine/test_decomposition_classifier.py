@@ -2,14 +2,9 @@
 
 import pytest
 
-from synthorg.core.artifact import ExpectedArtifact
-from synthorg.core.enums import (
-    ArtifactType,
-    Priority,
-    TaskStructure,
-    TaskType,
-)
+from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import Priority, TaskStructure, TaskType
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from tests._shared import as_uuid
 

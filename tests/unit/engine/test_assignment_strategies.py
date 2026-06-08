@@ -2,7 +2,8 @@
 
 import pytest
 
-from synthorg.core.enums import AgentStatus, Complexity
+from synthorg.core.enums import AgentStatus
+from synthorg.core.task_enums import Complexity
 from synthorg.engine.assignment.manual import ManualAssignmentStrategy
 from synthorg.engine.assignment.models import (
     AgentWorkload,

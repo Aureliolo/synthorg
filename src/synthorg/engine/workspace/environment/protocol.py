@@ -3,7 +3,7 @@
 A :class:`EnvironmentStrategy` reads a declaration committed in the
 project workspace (a bootstrap manifest, a ``devcontainer.json``, or a
 ``flake.nix``), and provisions a reproducible environment from it.  The
-:class:`~synthorg.core.enums.EnvironmentType` discriminator selects one
+:class:`~synthorg.core.project_enums.EnvironmentType` discriminator selects one
 of three strategies; the safe default is ``MANIFEST`` (backend-agnostic,
 runs in both the subprocess and Docker sandboxes).
 
@@ -21,7 +21,7 @@ from typing import Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import EnvironmentType
+from synthorg.core.project_enums import EnvironmentType
 from synthorg.core.types import NotBlankStr
 
 

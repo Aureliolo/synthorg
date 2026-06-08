@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.decomposition.rollup import StatusRollup
 
 

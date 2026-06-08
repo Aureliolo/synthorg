@@ -15,7 +15,7 @@ from typing import Literal, cast
 
 from pydantic import ValidationError
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory

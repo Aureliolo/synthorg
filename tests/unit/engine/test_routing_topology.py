@@ -2,15 +2,14 @@
 
 import pytest
 
-from synthorg.core.artifact import ExpectedArtifact
-from synthorg.core.enums import (
-    ArtifactType,
+from synthorg.core.artifact import ArtifactType, ExpectedArtifact
+from synthorg.core.task import Task
+from synthorg.core.task_enums import (
     CoordinationTopology,
     Priority,
     TaskStructure,
     TaskType,
 )
-from synthorg.core.task import Task
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     SubtaskDefinition,

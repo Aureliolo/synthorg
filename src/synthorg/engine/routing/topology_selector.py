@@ -6,7 +6,7 @@ for coordination topologies.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import CoordinationTopology, TaskStructure
+from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.engine.routing.models import AutoTopologyConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_routing import (

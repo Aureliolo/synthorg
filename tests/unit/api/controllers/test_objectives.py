@@ -23,7 +23,7 @@ from synthorg.api.controllers.objectives import (
     SubmitObjectivePayload,
     submit_objective_impl,
 )
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.pipeline.entry.objective_adapter import (
     ObjectiveEntryAdapter,
     ObjectiveSubmission,

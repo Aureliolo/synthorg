@@ -7,7 +7,7 @@ based on the Engine design page.
 import re
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import TaskStructure
+from synthorg.core.task_enums import TaskStructure
 from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_STRUCTURE_CLASSIFIED,

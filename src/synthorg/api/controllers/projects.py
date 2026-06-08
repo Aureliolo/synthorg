@@ -26,8 +26,8 @@ from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.project_service import ProjectService
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.domain_errors import NotFoundError, ValidationError
-from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (

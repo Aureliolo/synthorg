@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from synthorg.core.enums import InterventionKind, TaskStatus
+from synthorg.core.enums import InterventionKind
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
 from synthorg.engine.intervention.models import ActiveSteeringDirective

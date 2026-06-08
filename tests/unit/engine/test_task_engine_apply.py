@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 from typeguard import suppress_type_checks
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.task_engine_apply import (
     apply_cancel,
     apply_create,

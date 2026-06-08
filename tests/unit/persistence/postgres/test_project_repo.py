@@ -13,9 +13,9 @@ from typing import Any
 import psycopg
 import pytest
 
-from synthorg.core.enums import ProjectStatus
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.persistence.postgres.project_repo import PostgresProjectRepository
 from synthorg.persistence.project_protocol import ProjectFilterSpec
 from tests._shared import as_uuid, sid

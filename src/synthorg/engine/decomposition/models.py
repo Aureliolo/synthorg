@@ -9,14 +9,14 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import (
+from synthorg.core.task import Task
+from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
     Stakes,
     TaskStatus,
     TaskStructure,
 )
-from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 
 

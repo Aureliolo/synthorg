@@ -14,8 +14,8 @@ from synthorg.a2a.models import (
     JSONRPC_METHOD_NOT_FOUND,
 )
 from synthorg.a2a.rpc_params import A2AMessageSendParams
-from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from tests._shared import as_uuid, make_app_state, mock_of, sid
 
@@ -506,7 +506,7 @@ class TestHandleMessageSend:
     async def test_creates_task_and_returns_state(self) -> None:
         """Creates the task through ``create_task`` and maps its status."""
         from synthorg.a2a.gateway import _handle_message_send
-        from synthorg.core.enums import TaskStatus
+        from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.task_engine import TaskEngine
 
         task = _make_task("task-1", TaskStatus.IN_PROGRESS)
@@ -558,7 +558,7 @@ class TestHandleMessageSend:
             _handle_message_send,
             _resolve_max_message_parts,
         )
-        from synthorg.core.enums import TaskStatus
+        from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.task_engine import TaskEngine
 
         engine = mock_of[TaskEngine]()
@@ -580,7 +580,7 @@ class TestHandleTasksGet:
         """Maps an existing task's status to the A2A state."""
         from synthorg.a2a.gateway import _handle_tasks_get
         from synthorg.a2a.rpc_params import A2ATaskGetParams
-        from synthorg.core.enums import TaskStatus
+        from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.task_engine import TaskEngine
 
         task = _make_task("task-9", TaskStatus.COMPLETED)
@@ -627,7 +627,7 @@ class TestHandleTasksCancel:
         """Cancels a cancellable task and returns the updated state."""
         from synthorg.a2a.gateway import _handle_tasks_cancel
         from synthorg.a2a.rpc_params import A2ATaskCancelParams
-        from synthorg.core.enums import TaskStatus
+        from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.task_engine import TaskEngine
 
         active = _make_task("task-2", TaskStatus.IN_PROGRESS)
@@ -676,7 +676,7 @@ class TestHandleTasksCancel:
         from synthorg.a2a.gateway import _A2AMethodError, _handle_tasks_cancel
         from synthorg.a2a.models import A2A_TASK_NOT_CANCELABLE
         from synthorg.a2a.rpc_params import A2ATaskCancelParams
-        from synthorg.core.enums import TaskStatus
+        from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.task_engine import TaskEngine
 
         done = _make_task("task-3", TaskStatus.COMPLETED)
@@ -716,7 +716,7 @@ class TestDispatchEngineErrors:
         from synthorg.a2a import gateway as gw
         from synthorg.a2a.gateway import _dispatch_method
         from synthorg.a2a.models import JsonRpcRequest
-        from synthorg.core.enums import TaskStatus
+        from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.task_engine import TaskEngine
 
         error_cls = getattr(gw, error_name)

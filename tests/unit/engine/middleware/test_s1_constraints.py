@@ -6,12 +6,12 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import Priority, TaskType
 from synthorg.core.middleware_config import (
     AuthorityDeferenceConfig,
     ClarificationGateConfig,
 )
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.context import AgentContext
 from synthorg.engine.coordination.models import CoordinationContext
 from synthorg.engine.middleware.coordination_protocol import (

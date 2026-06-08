@@ -7,13 +7,13 @@ from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
-from synthorg.core.enums import ProjectStatus
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     QueryError,
     RecordNotFoundError,
 )
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.project import (

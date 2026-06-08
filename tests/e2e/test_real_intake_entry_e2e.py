@@ -30,9 +30,11 @@ from synthorg.client.models import ClientRequest, RequestStatus, TaskRequirement
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import AgentStatus, ProjectStatus, TaskStatus
+from synthorg.core.enums import AgentStatus
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.role import Authority, Skill
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.strategies import DirectIntake
 from synthorg.engine.pipeline.entry.boot import _project_uuid

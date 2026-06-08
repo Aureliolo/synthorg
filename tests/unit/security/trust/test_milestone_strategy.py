@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.security.trust.config import (
     MilestoneCriteria,

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import TaskType
+from synthorg.core.task_enums import TaskType
 from synthorg.memory.procedural.models import (
     FailureAnalysisPayload,
     ProceduralMemoryConfig,

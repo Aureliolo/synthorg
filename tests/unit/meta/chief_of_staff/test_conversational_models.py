@@ -6,14 +6,12 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.enums import (
-    Complexity,
     ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
     InterventionKind,
-    Priority,
-    TaskType,
 )
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
     ConversationalProposal,

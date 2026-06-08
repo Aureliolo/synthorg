@@ -15,7 +15,7 @@ import pytest
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.tracker import CostTracker
-from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.activity_service import ActivityFeedService
 from synthorg.hr.performance.models import TaskMetricRecord

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 

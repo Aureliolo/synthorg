@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from synthorg.core.enums import (
+from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
     Priority,

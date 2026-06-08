@@ -16,14 +16,10 @@ from synthorg.core.agent import (
     PersonalityConfig,
     ToolPermissions,
 )
-from synthorg.core.enums import (
-    Priority,
-    TaskStatus,
-    TaskType,
-    ToolAccessLevel,
-    ToolCategory,
-)
+from synthorg.core.enums import ToolCategory
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.hr.seniority import SeniorityLevel

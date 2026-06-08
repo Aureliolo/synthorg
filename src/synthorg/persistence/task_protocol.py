@@ -4,8 +4,8 @@ from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,

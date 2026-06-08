@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
-from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent

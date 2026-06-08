@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.enums import TrendDirection
 from synthorg.hr.performance.inflection_protocol import (
     InflectionSink,

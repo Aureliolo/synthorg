@@ -1,6 +1,6 @@
 """Deterministic heuristic stakes assessor.
 
-Combines three signals into a single :class:`~synthorg.core.enums.Stakes`
+Combines three signals into a single :class:`~synthorg.core.task_enums.Stakes`
 level: a base level from task complexity, a conservative bump for
 critical-priority work, and keyword signals over the title/description
 that elevate stakes for consequential or irreversible work. The result
@@ -9,7 +9,7 @@ is the highest level any signal produces (fail-safe upward bias).
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import Complexity, Priority, Stakes, compare_stakes
+from synthorg.core.task_enums import Complexity, Priority, Stakes, compare_stakes
 from synthorg.engine.stakes.config import StakesAssessmentConfig
 
 if TYPE_CHECKING:

@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection
 from synthorg.hr.performance.models import (

@@ -25,8 +25,9 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import PathId
 from synthorg.api.state import AppState
-from synthorg.core.enums import InterventionKind, TaskStatus
+from synthorg.core.enums import InterventionKind
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit import LiveActivitySnapshot
 from synthorg.engine.cockpit.state import CockpitStateSlice

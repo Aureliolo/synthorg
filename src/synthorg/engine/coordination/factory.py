@@ -28,8 +28,8 @@ if TYPE_CHECKING:
         CoordinationMetricsCollector,
     )
     from synthorg.config.schema import TaskAssignmentConfig
-    from synthorg.core.enums import CoordinationTopology
     from synthorg.core.task import Task
+    from synthorg.core.task_enums import CoordinationTopology
     from synthorg.engine.agent_engine import AgentEngine
     from synthorg.engine.coordination.section_config import (
         CoordinationSectionConfig,

@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import CoordinationTopology
+from synthorg.core.task_enums import CoordinationTopology
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.routing.models import AutoTopologyConfig

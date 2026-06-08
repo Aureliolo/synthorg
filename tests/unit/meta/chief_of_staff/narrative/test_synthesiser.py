@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig

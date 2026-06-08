@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import Complexity
+from synthorg.core.task_enums import Complexity
 from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentRequest,

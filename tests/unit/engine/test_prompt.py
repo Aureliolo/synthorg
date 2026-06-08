@@ -9,8 +9,8 @@ import structlog.testing
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.enums import (
-    AutonomyLevel,
     CollaborationPreference,
     CommunicationVerbosity,
     ConflictApproach,
@@ -781,8 +781,8 @@ class TestDefaultAgentPrompt:
 
     def test_task_with_zero_budget_and_no_deadline(self) -> None:
         """Task with zero budget and no deadline omits those sections."""
-        from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
         from synthorg.core.task import Task
+        from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 
         task = Task(
             id=as_uuid("task-zero-001"),

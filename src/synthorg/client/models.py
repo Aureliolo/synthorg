@@ -19,8 +19,8 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import Complexity, Priority, TaskType
 from synthorg.core.state_machine import StateMachine
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import (

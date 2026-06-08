@@ -15,7 +15,7 @@ from synthorg.api.state import AppState
 from synthorg.client.models import ClientRequest, RequestStatus, TaskRequirement
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.pipeline.errors import (
     WorkIntakeRejectedError,
     WorkProjectNotFoundError,

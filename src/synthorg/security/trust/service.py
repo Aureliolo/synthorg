@@ -9,7 +9,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolAccessLevel
+from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.trust import (

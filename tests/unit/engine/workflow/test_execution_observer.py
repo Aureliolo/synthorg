@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.engine.workflow.execution_observer import (

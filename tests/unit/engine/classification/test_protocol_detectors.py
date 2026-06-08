@@ -11,8 +11,8 @@ from synthorg.budget.coordination_config import (
 )
 from synthorg.communication.delegation.models import DelegationRequest
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.classification.models import ErrorSeverity
 from synthorg.engine.classification.protocol import (
     DetectionContext,

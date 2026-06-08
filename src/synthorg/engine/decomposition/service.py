@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.decomposition.dag import DependencyGraph
 from synthorg.engine.decomposition.models import (
     DecompositionResult,

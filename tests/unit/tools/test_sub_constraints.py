@@ -2,7 +2,6 @@
 
 import pytest
 
-from synthorg.core.enums import ToolAccessLevel
 from synthorg.core.tool_constraints import (
     _LEVEL_SUB_CONSTRAINTS,
     CodeExecutionIsolation,
@@ -10,6 +9,7 @@ from synthorg.core.tool_constraints import (
     GitAccess,
     NetworkMode,
     TerminalAccess,
+    ToolAccessLevel,
     ToolSubConstraints,
     get_sub_constraints,
 )

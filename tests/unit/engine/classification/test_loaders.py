@@ -8,8 +8,8 @@ import pytest
 
 from synthorg.budget.coordination_config import DetectionScope
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.classification.loaders import SameTaskLoader, TaskTreeLoader
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (

@@ -7,7 +7,7 @@ configurable threshold.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import Complexity
+from synthorg.core.task_enums import Complexity
 from synthorg.engine.compaction.epistemic import (
     extract_marker_sentences,
     should_preserve_message,

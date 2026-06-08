@@ -8,7 +8,7 @@ import pytest
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.communication.delegation.models import DelegationRecord
-from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr import activity_service as activity_service_module
 from synthorg.hr.activity_service import ActivityFeedService

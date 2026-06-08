@@ -14,7 +14,7 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 
 _RGB_MIN: Final[int] = 0

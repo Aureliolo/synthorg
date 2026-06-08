@@ -6,7 +6,7 @@ import pytest
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.communication.delegation.models import DelegationRecord
-from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.activity import (
     ActivityEvent,
     _cost_record_to_activity,

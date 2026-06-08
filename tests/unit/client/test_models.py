@@ -18,7 +18,7 @@ from synthorg.client.models import (
     TaskRequirement,
     validate_request_transition,
 )
-from synthorg.core.enums import Complexity, Priority, TaskType
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 
 pytestmark = pytest.mark.unit
 

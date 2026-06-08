@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.engine.errors import GitBackendConfigError
 from synthorg.engine.workspace.git_backend import (
     EmbeddedGitBackend,

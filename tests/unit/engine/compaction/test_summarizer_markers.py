@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from synthorg.core.enums import Complexity
+from synthorg.core.task_enums import Complexity
 from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.engine.compaction.summarizer import _build_summary, force_compaction
 from synthorg.engine.context import AgentContext

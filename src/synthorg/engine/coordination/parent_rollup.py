@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 from uuid import uuid4
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.task_transitions import transition_path
 from synthorg.engine.coordination.models import CoordinationPhaseResult
 from synthorg.engine.task_engine_models import TransitionTaskMutation
