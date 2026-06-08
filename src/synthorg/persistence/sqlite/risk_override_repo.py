@@ -8,7 +8,6 @@ import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.approval.enums import ApprovalRiskLevel
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import DuplicateRecordError, PersistenceError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.risk_override import (
@@ -61,11 +60,10 @@ class SQLiteRiskOverrideRepository:
         self._write_context = write_context
 
     async def _rollback_quietly(self) -> None:
-        """Roll back the current transaction, swallowing errors."""
+        """Roll back the current transaction, swallowing driver errors."""
         try:
             await self._db.rollback()
-        except Exception as exc:
-            reraise_critical(exc)
+        except sqlite3.Error, aiosqlite.Error:
             logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
                 error="rollback failed",

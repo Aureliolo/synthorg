@@ -322,15 +322,8 @@ class EncryptedSqliteSecretBackend:
         """
         try:
             await self.delete(new_id)
-        except Exception as rb_exc:
-            reraise_critical(rb_exc)
-            # Wrap the scrub so a broken ``__str__`` on the rollback
-            # error cannot crash the rotation path silently.
-            try:
-                scrubbed = safe_error_description(rb_exc)
-            except Exception as scrub_exc:  # pragma: no cover - defensive
-                reraise_critical(scrub_exc)
-                scrubbed = type(rb_exc).__name__
+        except SecretStorageError as rb_exc:
+            scrubbed = safe_error_description(rb_exc)
             logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 new_id=new_id,

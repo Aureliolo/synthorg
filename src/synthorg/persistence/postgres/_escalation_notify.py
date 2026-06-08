@@ -87,7 +87,7 @@ async def subscribe(
         finally:
             try:
                 await conn.execute(f'UNLISTEN "{channel}"')
-            except Exception as exc:
+            except psycopg.Error as exc:
                 session_tainted = True
                 logger.warning(
                     API_REQUEST_ERROR,
@@ -97,7 +97,7 @@ async def subscribe(
                 )
             try:
                 await conn.set_autocommit(bool(original_autocommit))
-            except Exception as exc:
+            except psycopg.Error as exc:
                 session_tainted = True
                 logger.warning(
                     API_REQUEST_ERROR,

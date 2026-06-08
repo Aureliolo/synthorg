@@ -5,7 +5,6 @@ import sqlite3
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.circuit_breaker import (
@@ -48,11 +47,10 @@ class SQLiteCircuitBreakerStateRepository:
         self._write_context = write_context
 
     async def _rollback_quietly(self, event: str) -> None:
-        """Roll back the current transaction, swallowing errors."""
+        """Roll back the current transaction, swallowing driver errors."""
         try:
             await self._db.rollback()
-        except Exception as exc:
-            reraise_critical(exc)
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             logger.warning(
                 event,
                 error_type=type(exc).__name__,

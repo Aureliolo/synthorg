@@ -20,7 +20,6 @@ from uuid import uuid4
 import psycopg
 from cryptography.fernet import Fernet, InvalidToken
 
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.config import EncryptedPostgresConfig
 from synthorg.integrations.errors import (
@@ -365,17 +364,7 @@ class EncryptedPostgresSecretBackend:
         try:
             await self.delete(new_id)
         except SecretStorageError as rb_exc:
-            # Wrap the scrub + return-string construction so a
-            # broken ``__str__`` on the rollback error cannot crash
-            # the rotation path silently. Re-raise catastrophic
-            # interpreter state (``MemoryError`` /
-            # ``RecursionError``) so the process surfaces the
-            # failure.
-            try:
-                scrubbed = safe_error_description(rb_exc)
-            except Exception as exc:  # pragma: no cover - defensive
-                reraise_critical(exc)
-                scrubbed = type(rb_exc).__name__
+            scrubbed = safe_error_description(rb_exc)
             logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 new_id=new_id,

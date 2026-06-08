@@ -8,7 +8,7 @@ ciphertext bytes, no connection URIs with credentials.
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import structlog.testing
@@ -161,3 +161,33 @@ class TestEncryptedSqliteLogRedaction:
         _leak_free(events, (sentinel_cipher,))
         for event in events:
             assert "exc_info" not in event
+
+    async def test_rotation_rollback_failure_is_scrubbed(
+        self,
+        backend: EncryptedSqliteSecretBackend,
+    ) -> None:
+        """A failed rollback during rotation logs a scrubbed error, no crash.
+
+        ``_rollback_new`` is narrowed to ``SecretStorageError`` (what
+        ``delete`` raises) and calls ``safe_error_description`` directly
+        (the helper is already total, so the former inner scrub guard was
+        a no-op). A leaky rollback-error message must still be scrubbed.
+        """
+        leaky = "rollback boom: postgres://user:hunter2@host/db"
+        with (
+            patch.object(
+                backend,
+                "delete",
+                new=AsyncMock(
+                    spec=EncryptedSqliteSecretBackend.delete,
+                    side_effect=SecretStorageError(leaky),
+                ),
+            ),
+            structlog.testing.capture_logs() as events,
+        ):
+            note = await backend._rollback_new(NotBlankStr("new-1"))
+        assert "also failed" in note
+        _leak_free(events, ("hunter2",))
+        for event in events:
+            assert "exc_info" not in event
+        assert any(e.get("error_type") == "SecretStorageError" for e in events), events
