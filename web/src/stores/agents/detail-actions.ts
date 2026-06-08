@@ -1,6 +1,7 @@
 import {
   getAgent,
   getAgentActivity,
+  getAgentHealth,
   getAgentHistory,
   getAgentPerformance,
 } from '@/api/endpoints/agents'
@@ -19,6 +20,7 @@ import type {
   AgentConfig,
 } from '@/api/types/agents'
 import type {
+  AgentHealthResponse,
   AgentPerformanceSummary,
   CareerEvent,
   Task,
@@ -37,6 +39,7 @@ const log = createLogger('agents')
 interface DetailFetchResult {
   agentResult: PromiseSettledResult<AgentConfig>
   perfResult: PromiseSettledResult<AgentPerformanceSummary>
+  healthResult: PromiseSettledResult<AgentHealthResponse>
   tasksResult: PromiseSettledResult<{ data: Task[] }>
   activityResult: PromiseSettledResult<PaginatedResult<AgentActivityEvent>>
   historyResult: PromiseSettledResult<readonly CareerEvent[]>
@@ -45,17 +48,25 @@ interface DetailFetchResult {
 async function fetchAllDetailEndpoints(
   agentId: string,
 ): Promise<DetailFetchResult> {
-  const [agentResult, perfResult, tasksResult, activityResult, historyResult] =
-    await Promise.allSettled([
-      getAgent(agentId),
-      getAgentPerformance(agentId),
-      listTasks({ assigned_to: agentId, limit: 50 }),
-      getAgentActivity(agentId, { limit: 20 }),
-      getAgentHistory(agentId),
-    ])
+  const [
+    agentResult,
+    perfResult,
+    healthResult,
+    tasksResult,
+    activityResult,
+    historyResult,
+  ] = await Promise.allSettled([
+    getAgent(agentId),
+    getAgentPerformance(agentId),
+    getAgentHealth(agentId),
+    listTasks({ assigned_to: agentId, limit: 50 }),
+    getAgentActivity(agentId, { limit: 20 }),
+    getAgentHistory(agentId),
+  ])
   return {
     agentResult,
     perfResult,
+    healthResult,
     tasksResult,
     activityResult,
     historyResult,
@@ -65,6 +76,7 @@ async function fetchAllDetailEndpoints(
 function collectPartialErrors(results: DetailFetchResult): string[] {
   const out: string[] = []
   if (results.perfResult.status === 'rejected') out.push('performance metrics')
+  if (results.healthResult.status === 'rejected') out.push('health')
   if (results.tasksResult.status === 'rejected') out.push('task history')
   if (results.activityResult.status === 'rejected') out.push('activity')
   if (results.historyResult.status === 'rejected') out.push('career history')
@@ -111,6 +123,7 @@ function buildDetailPatch(
   return {
     selectedAgent: agent,
     performance: valueOrFallback(results.perfResult, null),
+    health: valueOrFallback(results.healthResult, null),
     agentTasks: results.tasksResult.status === 'fulfilled'
       ? results.tasksResult.value.data
       : [],
@@ -147,6 +160,7 @@ async function fetchAgentDetailImpl(
       set({
         selectedAgent: null,
         performance: null,
+        health: null,
         agentTasks: [],
         activity: [],
         activityTotal: 0,
@@ -233,6 +247,7 @@ function clearDetailImpl(set: AgentsSet): void {
   set({
     selectedAgent: null,
     performance: null,
+    health: null,
     agentTasks: [],
     activity: [],
     activityTotal: 0,

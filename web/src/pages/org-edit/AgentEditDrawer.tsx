@@ -161,11 +161,6 @@ function AgentEditBody({ agent, saving, form, onClose }: AgentEditBodyProps) {
         onChange={(v) => form.setForm((prev) => ({ ...prev, level: v as SeniorityLevel }))}
       />
 
-      <div className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Status</p>
-        <StatusBadge status={toRuntimeStatus(agent.status ?? 'active')} />
-      </div>
-
       <div className="border-t border-border pt-4 space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Model</p>
         {form.modelDisplay && (

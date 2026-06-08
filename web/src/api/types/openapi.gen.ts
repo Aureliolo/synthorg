@@ -5245,7 +5245,7 @@ export type components = {
             readonly department: string;
             /**
              * Format: uuid
-             * @description Stable agent id, derived from name by _derive_stable_id.
+             * @description Stable agent id, derived deterministically from the name.
              */
             readonly id: string;
             readonly level: components["schemas"]["SeniorityLevel"];

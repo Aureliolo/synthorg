@@ -89,7 +89,7 @@ class TestAgentController:
         assert resp.status_code == 400
 
 
-@pytest.mark.integration
+@pytest.mark.unit
 class TestAgentControllerDbOverride:
     """Test that DB-stored settings override YAML agents."""
 
@@ -152,7 +152,10 @@ class TestAgentControllerDbOverride:
 
 _NOW = datetime(2026, 3, 24, 12, 0, 0, tzinfo=UTC)
 _AGENT_NAME = "test-agent"
-_AGENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+# Derive the id the same way production does, so the sub-resource routes
+# (addressed by id) exercise the real name->id derivation rather than an
+# arbitrary literal that happens to match the registered identity.
+_AGENT_ID = str(stable_agent_id(_AGENT_NAME))
 
 
 def _make_identity(
@@ -270,18 +273,13 @@ class TestAgentPerformance:
         assert resp.status_code == 404
         assert resp.json()["success"] is False
 
-    # NOTE: the former "returns 503 when no agent registry is configured"
-    # trio of HTTP-level tests was removed after ``create_app`` began
-    # auto-wiring ``AgentRegistryService``.  The controller's 503 branch is
-    # defensive code for callers that build ``AppState`` directly without a
-    # registry; its underlying behaviour is covered by
-    # ``tests/unit/api/test_state.py``, which asserts that
-    # ``AppState.agent_registry`` raises ``ServiceUnavailableError`` when
-    # the registry is ``None``.  Litestar maps that exception to HTTP 503
-    # automatically.  An HTTP-level re-test would require constructing a
-    # second full app with ``agent_registry=None`` just to exercise one
-    # branch; the property-level coverage is sufficient given the simple
-    # one-line path from property access to 503 response.
+    # The controller's "no agent registry -> 503" branch is defensive code
+    # for callers that build ``AppState`` directly without a registry. It is
+    # covered at the property level in ``tests/unit/api/test_state.py``, which
+    # asserts ``AppState.agent_registry`` raises ``ServiceUnavailableError``
+    # when the registry is ``None``; Litestar maps that to HTTP 503. An
+    # HTTP-level test would need a second full app with ``agent_registry=None``
+    # just to exercise one branch, so the property-level coverage suffices.
 
 
 # ── Activity endpoint tests ───────────────────────────────────

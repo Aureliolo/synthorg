@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw'
 import type {
   getAgent,
   getAgentActivity,
+  getAgentHealth,
   getAgentHistory,
   getAgentPerformance,
   getAutonomy,
@@ -9,6 +10,7 @@ import type {
   listAgents,
   setAutonomy,
 } from '@/api/endpoints/agents'
+import type { AgentHealthResponse } from '@/api/types'
 import type { AgentConfig, AgentPerformanceSummary } from '@/api/types/agents'
 import type { AutonomyLevel } from '@/api/types/enums'
 import { apiError, emptyPage, paginatedFor, successFor } from './helpers'
@@ -83,6 +85,17 @@ export function buildAgent(
   }
 }
 
+function buildHealth(agentId: string): AgentHealthResponse {
+  return {
+    agent_id: agentId,
+    agent_name: 'default-agent',
+    last_active_at: null,
+    lifecycle_status: 'active',
+    performance: null,
+    trust: null,
+  }
+}
+
 function buildPerformance(name: string): AgentPerformanceSummary {
   return {
     agent_name: name,
@@ -152,5 +165,10 @@ export const agentsHandlers = [
   ),
   http.get('/api/v1/agents/:agentId/history', () =>
     HttpResponse.json(successFor<typeof getAgentHistory>([])),
+  ),
+  http.get('/api/v1/agents/:agentId/health', ({ params }) =>
+    HttpResponse.json(
+      successFor<typeof getAgentHealth>(buildHealth(String(params.agentId))),
+    ),
   ),
 ]

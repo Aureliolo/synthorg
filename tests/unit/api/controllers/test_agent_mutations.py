@@ -1,11 +1,17 @@
 """Tests for agent mutation endpoints (POST, PATCH, DELETE agents)."""
 
+import uuid
+
 import pytest
 import structlog.testing
 
 from synthorg.core.types import stable_agent_id
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
+
+# The async_test_client fixture authenticates as the ``ceo`` role, whose
+# id is derived the same way make_auth_headers derives it.
+_CEO_ACTOR = str(uuid.uuid5(uuid.NAMESPACE_DNS, "test-ceo"))
 
 
 @pytest.mark.unit
@@ -121,6 +127,45 @@ class TestUpdateAgent:
         assert resp.status_code == 200
         assert resp.json()["data"]["level"] == "senior"
 
+    async def test_rename_restamps_stable_id(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """Renaming an agent re-derives its stable id.
+
+        ``model_copy`` bypasses the before-validator that derives ``id``
+        from ``name``, so the controller must re-stamp it; otherwise the
+        200 body and the agent's new address would disagree.
+        """
+        await async_test_client.post("/api/v1/departments", json={"name": "eng"})
+        await async_test_client.post(
+            "/api/v1/agents",
+            json={
+                "name": "alice",
+                "role": "dev",
+                "department": "eng",
+                "level": "mid",
+            },
+        )
+        resp = await async_test_client.patch(
+            f"/api/v1/agents/{stable_agent_id('alice')}",
+            json={"name": "alice-renamed"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["name"] == "alice-renamed"
+        assert data["id"] == str(stable_agent_id("alice-renamed"))
+
+        # The agent is now addressable at its new id, not the old one.
+        new_resp = await async_test_client.get(
+            f"/api/v1/agents/{stable_agent_id('alice-renamed')}"
+        )
+        assert new_resp.status_code == 200
+        old_resp = await async_test_client.get(
+            f"/api/v1/agents/{stable_agent_id('alice')}"
+        )
+        assert old_resp.status_code == 404
+
     async def test_update_agent_not_found(
         self,
         async_test_client: LoopAsyncClient,
@@ -164,7 +209,7 @@ class TestUpdateAgent:
         entry = identity_events[0]
         assert entry["agent_name"] == "alice"
         assert "level" in entry["fields_changed"]
-        assert entry["actor"]  # non-empty
+        assert entry["actor"] == _CEO_ACTOR
 
 
 @pytest.mark.unit
@@ -245,7 +290,7 @@ class TestDeleteAgent:
         # timestamps.
         for entry in audit_events:
             assert entry["agent_name"] == "alice"
-            assert entry["actor"]
+            assert entry["actor"] == _CEO_ACTOR
 
     async def test_delete_c_suite_agent_409(
         self,

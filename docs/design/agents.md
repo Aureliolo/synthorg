@@ -22,6 +22,12 @@ Runtime state (mutable-via-copy)
     agent operation. Represented as Pydantic models using `model_copy(update=...)` for state
     transitions, never mutated in place.
 
+The agent `id` is a stable UUID derived deterministically from the agent name
+(`stable_agent_id(name)` = `uuid5(namespace, name)` in `core.types`). The config layer and the
+runtime registry derive the same id independently from the name, so a config-sourced agent and
+its registered `AgentIdentity` share one id without coordination. REST routes address agents by
+this id (`/agents/{agent_id}`), matching the UUID that group chat addresses participants by.
+
 ### Personality Dimensions
 
 Personality is split into two tiers:
@@ -144,7 +150,8 @@ management wrapping `TaskEngine` (see [Async Delegation](communication-events.md
     ```yaml
     # --- Config layer -- AgentIdentity (frozen) ---
     agent:
-      id: "uuid"
+      # id is derived deterministically from name (uuid5); not user-set.
+      id: "<derived-from-name>"
       name: "Sarah Chen"
       role: "Senior Backend Developer"
       department: "Engineering"

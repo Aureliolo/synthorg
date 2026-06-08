@@ -474,7 +474,17 @@ describe('useCompanyStore', () => {
           return HttpResponse.json(apiSuccess(mockConfig))
         }),
       )
-      useCompanyStore.setState({ config: mockConfig })
+      // reorderAgents takes ids; seed agents so the ids resolve to names
+      // for the reorder body (the store now rejects unknown ids).
+      useCompanyStore.setState({
+        config: {
+          ...mockConfig,
+          agents: [
+            makeAgent('a-1', { id: 'a-1' }),
+            makeAgent('a-2', { id: 'a-2' }),
+          ],
+        },
+      })
 
       await useCompanyStore
         .getState()
@@ -490,7 +500,15 @@ describe('useCompanyStore', () => {
           HttpResponse.json(apiError('Reorder failed'), { status: 400 }),
         ),
       )
-      useCompanyStore.setState({ config: mockConfig })
+      useCompanyStore.setState({
+        config: {
+          ...mockConfig,
+          agents: [
+            makeAgent('a-1', { id: 'a-1' }),
+            makeAgent('a-2', { id: 'a-2' }),
+          ],
+        },
+      })
 
       const result = await useCompanyStore
         .getState()

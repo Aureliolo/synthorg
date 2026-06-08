@@ -104,10 +104,17 @@ function resolveAgentNamesFromIds(
   orderedIds: readonly string[],
 ): string[] {
   // Callers pass agent ids, but the reorder endpoint takes agent
-  // names in its body. Resolve each id back to its name so the
-  // payload is always correct.
+  // names in its body. Resolve each id back to its name; throw on an
+  // unresolved id rather than forwarding a UUID where a name is
+  // expected (the store's catch turns this into an error toast).
   const idToName = new Map(agents.map((a) => [a.id, a.name]))
-  return orderedIds.map((id) => idToName.get(id) ?? id)
+  return orderedIds.map((id) => {
+    const name = idToName.get(id)
+    if (name === undefined) {
+      throw new Error(`Cannot reorder agents: unknown agent id ${id}`)
+    }
+    return name
+  })
 }
 
 async function reorderAgentsImpl(

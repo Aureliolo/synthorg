@@ -23,7 +23,10 @@ describe('AgentEditDrawer', () => {
     )
   }
 
-  beforeEach(() => vi.resetAllMocks())
+  // clearAllMocks (not resetAllMocks) so the describe-scope
+  // mockResolvedValue implementations survive between tests; reset wipes
+  // them, leaving mockOnUpdate returning undefined from the second test on.
+  beforeEach(() => vi.clearAllMocks())
 
   it('renders agent info when open', () => {
     renderDrawer()

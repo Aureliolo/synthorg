@@ -17,7 +17,7 @@ import {
 } from '@/api/endpoints/training'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { useToastStore } from '@/stores/toast'
 
 const log = createLogger('training')
@@ -190,7 +190,7 @@ async function createPlanImpl(
     )
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to create training plan',
+      ...getCrudErrorTitle(err, 'Failed to create training plan'),
       description: getErrorMessage(err),
     })
     return null
@@ -241,7 +241,7 @@ async function executePlanImpl(
     )
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Training execution failed',
+      ...getCrudErrorTitle(err, 'Training execution failed'),
       description: getErrorMessage(err),
     })
     return null
@@ -260,7 +260,7 @@ async function previewPlanImpl(
     )
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Training preview failed',
+      ...getCrudErrorTitle(err, 'Training preview failed'),
       description: getErrorMessage(err),
     })
     return null
@@ -298,7 +298,7 @@ async function updateOverridesImpl(
     )
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to save overrides',
+      ...getCrudErrorTitle(err, 'Failed to save overrides'),
       description: getErrorMessage(err),
     })
     return null

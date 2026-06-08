@@ -33,9 +33,8 @@ export {
  * ``hiring_date`` is surfaced by the dashboard's projection but is not
  * part of the wire ``AgentConfig``.
  *
- * The wire's required-vs-optional shape is now correct out of the
- * generator, so this type only ADDS optional extras: it is NOT an
- * ``Omit<Wire, ...> & { ... }`` tightening overlay.
+ * This type only ADDS optional dashboard extras; it does not tighten or
+ * omit any wire field (it is not an ``Omit<Wire, ...> & { ... }`` overlay).
  */
 export type AgentConfig = WireAgentConfig & {
   status?: AgentStatus
@@ -43,7 +42,7 @@ export type AgentConfig = WireAgentConfig & {
 }
 
 /**
- * Alias retained for call sites that want to mark the dashboard view
- * explicitly. New code should prefer ``AgentConfig`` directly.
+ * Semantic alias for call sites that want to name the dashboard-context
+ * usage of ``AgentConfig`` explicitly.
  */
 export type DashboardAgentConfig = AgentConfig

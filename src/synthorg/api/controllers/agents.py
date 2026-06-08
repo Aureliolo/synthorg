@@ -50,7 +50,7 @@ from synthorg.hr.performance.summary import (
     extract_performance_summary,
 )
 from synthorg.hr.state import agent_registry_of, performance_tracker_of
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     AGENT_DELETED_AUDIT,
     AGENT_DELETION_REQUESTED,
@@ -118,9 +118,12 @@ async def _config_agent_by_id(
     Raises:
         NotFoundError: If no configured agent has *agent_id*.
     """
+    # str(agent.id) is canonical lowercase, so lowercase the path segment to
+    # resolve case variants; a non-matching (or malformed) id falls through.
+    target = agent_id.lower()
     agents = await config_resolver_of(app_state).get_agents()
     for agent in agents:
-        if str(agent.id) == agent_id:
+        if str(agent.id) == target:
             return agent
     msg = "Agent not found"
     logger.warning(API_RESOURCE_NOT_FOUND, resource="agent", agent_id=agent_id)
@@ -474,7 +477,6 @@ class AgentController(Controller):
         app_state: AppState = state.app_state
         identity = await _require_registered_identity(app_state, agent_id)
         agent_name = identity.name
-
         lifecycle_events = await persistence_of(app_state).lifecycle_events.list_events(
             agent_id=agent_id,
             limit=_MAX_LIFECYCLE_EVENTS,
@@ -482,16 +484,17 @@ class AgentController(Controller):
         task_metrics = performance_tracker_of(app_state).get_task_metrics(
             agent_id=agent_id,
         )
-
         try:
             budget_cfg = await config_resolver_of(app_state).get_budget_config()
             currency = budget_cfg.currency
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 API_REQUEST_ERROR,
                 endpoint="agents.activity",
                 agent_name=agent_name,
                 detail="budget config unavailable, using default currency",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             currency = DEFAULT_CURRENCY
         timeline = merge_activity_timeline(

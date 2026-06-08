@@ -9,6 +9,7 @@ import type {
   AgentPerformanceSummary,
   CareerEvent,
 } from '@/api/types/agents'
+import type { AgentHealthResponse } from '@/api/types'
 import type { Task } from '@/api/types/tasks'
 import type { WsChannel } from '@/api/types/websocket'
 import type { MetricCardProps } from '@/components/ui/metric-card'
@@ -22,6 +23,7 @@ const EMPTY_BINDINGS: ChannelBinding[] = []
 const EMPTY_RETURN: UseAgentDetailDataReturn = {
   agent: null,
   performance: null,
+  health: null,
   performanceCards: [],
   insights: [],
   agentTasks: [],
@@ -38,6 +40,7 @@ const EMPTY_RETURN: UseAgentDetailDataReturn = {
 export interface UseAgentDetailDataReturn {
   agent: AgentConfig | null
   performance: AgentPerformanceSummary | null
+  health: AgentHealthResponse | null
   performanceCards: Omit<MetricCardProps, 'className'>[]
   insights: string[]
   agentTasks: readonly Task[]
@@ -54,6 +57,7 @@ export interface UseAgentDetailDataReturn {
 interface DetailStoreSlice {
   readonly agent: AgentConfig | null
   readonly performance: AgentPerformanceSummary | null
+  readonly health: AgentHealthResponse | null
   readonly agentTasks: readonly Task[]
   readonly activity: readonly AgentActivityEvent[]
   readonly activityTotal: number
@@ -66,6 +70,7 @@ function useDetailStoreSlice(): DetailStoreSlice {
   return {
     agent: useAgentsStore((s) => s.selectedAgent),
     performance: useAgentsStore((s) => s.performance),
+    health: useAgentsStore((s) => s.health),
     agentTasks: useAgentsStore((s) => s.agentTasks),
     activity: useAgentsStore((s) => s.activity),
     activityTotal: useAgentsStore((s) => s.activityTotal),

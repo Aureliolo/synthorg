@@ -1,5 +1,5 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
-import type { ActiveAgentSummary } from '../types'
+import type { ActiveAgentSummary, AgentHealthResponse } from '../types'
 import type {
   AgentActivityEvent,
   AgentPerformanceSummary,
@@ -63,6 +63,13 @@ export async function getAgentActivity(
 export async function getAgentHistory(agentId: string): Promise<readonly CareerEvent[]> {
   const response = await apiClient.get<ApiResponse<readonly CareerEvent[]>>(
     `/agents/${encodeURIComponent(agentId)}/history`,
+  )
+  return unwrap(response)
+}
+
+export async function getAgentHealth(agentId: string): Promise<AgentHealthResponse> {
+  const response = await apiClient.get<ApiResponse<AgentHealthResponse>>(
+    `/agents/${encodeURIComponent(agentId)}/health`,
   )
   return unwrap(response)
 }

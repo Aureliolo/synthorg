@@ -10,6 +10,7 @@ import type {
   AgentConfig,
 } from '@/api/types/agents'
 import type {
+  AgentHealthResponse,
   AgentPerformanceSummary,
   AgentStatus,
   CareerEvent,
@@ -42,6 +43,7 @@ export interface AgentsState {
   // Detail page
   selectedAgent: AgentConfig | null
   performance: AgentPerformanceSummary | null
+  health: AgentHealthResponse | null
   agentTasks: readonly Task[]
   activity: readonly AgentActivityEvent[]
   activityTotal: number

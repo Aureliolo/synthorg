@@ -66,7 +66,7 @@ function TrainingMetricsRow({ metrics }: TrainingMetricsRowProps) {
 interface TrainingPlanSectionProps {
   loading: boolean
   rows: ReturnType<typeof useTrainingPageController>['rows']
-  onExecute: (agentName: string) => void
+  onExecute: (agentId: string) => void
 }
 
 function TrainingPlanSection({ loading, rows, onExecute }: TrainingPlanSectionProps) {

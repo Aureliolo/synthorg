@@ -23,7 +23,7 @@ export interface TrainingPageController {
     executed: number
     totalItems: number
   }
-  handleExecute: (agentName: string) => void
+  handleExecute: (agentId: string) => void
 }
 
 export function useTrainingPageController(): TrainingPageController {
@@ -46,15 +46,16 @@ export function useTrainingPageController(): TrainingPageController {
   const rows = useMemo<readonly TrainingPlanRow[]>(
     () =>
       agents.map((agent) => ({
+        agentId: agent.id,
         agentName: agent.name,
-        plan: plansByAgent[agent.name] ?? null,
-        result: resultsByAgent[agent.name] ?? null,
+        plan: plansByAgent[agent.id] ?? null,
+        result: resultsByAgent[agent.id] ?? null,
       })),
     [agents, plansByAgent, resultsByAgent],
   )
 
   const handleExecute = useCallback(
-    (agentName: string) => void executePlan(agentName),
+    (agentId: string) => void executePlan(agentId),
     [executePlan],
   )
 
@@ -94,7 +95,8 @@ function loadAgentRoster(
 }
 
 function logRosterError(err: unknown): void {
-  // SEC-1: sanitize dynamic error fields before they reach the log pipeline.
+  // Sanitize dynamic error fields before they reach the log pipeline; an
+  // attacker-influenced message must not carry control bytes into the sink.
   // Pass the structured fields the operator actually needs to diagnose:
   // status code (404 vs 5xx vs network), error class name, and a
   // length-bounded message.
@@ -109,7 +111,7 @@ function logRosterError(err: unknown): void {
 
 function hydrateAgentsInBatches(
   agents: readonly AgentConfig[],
-  hydrateForAgent: (name: string) => Promise<unknown>,
+  hydrateForAgent: (agentId: string) => Promise<unknown>,
 ): () => void {
   // Hydrate plan + result for each agent in bounded batches so a large
   // roster does not fan out 200 concurrent requests at once. Best-effort:
@@ -121,7 +123,7 @@ function hydrateAgentsInBatches(
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup between batches; CFA cannot see the closure mutation
       if (cancelled) return
       const batch = agents.slice(i, i + HYDRATE_BATCH_SIZE)
-      await Promise.all(batch.map((agent) => hydrateForAgent(agent.name)))
+      await Promise.all(batch.map((agent) => hydrateForAgent(agent.id)))
     }
   })()
   return () => {

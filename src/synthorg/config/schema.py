@@ -188,9 +188,13 @@ class AgentConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    # The before-validator overwrites this with stable_agent_id(name) on
+    # every name-bearing construction, so the uuid4 factory is a vestigial
+    # placeholder that keeps the field non-required for mypy; it is not a
+    # real fallback in normal operation.
     id: UUID = Field(
         default_factory=uuid4,
-        description="Stable agent id, derived from name by _derive_stable_id.",
+        description="Stable agent id, derived deterministically from the name.",
     )
     name: NotBlankStr = Field(description="Agent display name")
     role: NotBlankStr = Field(description="Role name")

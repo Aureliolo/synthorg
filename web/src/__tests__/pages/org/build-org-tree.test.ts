@@ -52,7 +52,7 @@ function makeAgent(overrides: Partial<AgentConfig> & { name: string; id?: string
       verbosity: 'balanced',
       conflict_approach: 'collaborate',
     },
-    model: { provider: 'test', model_id: 'test-001', temperature: 0.7, max_tokens: 4096, fallback_model: null },
+    model: { provider: 'test-provider', model_id: 'test-small-001', temperature: 0.7, max_tokens: 4096, fallback_model: null },
     memory: { type: 'session', retention_days: null },
     tools: { access_level: 'standard', allowed: [], denied: [] },
     authority: {},

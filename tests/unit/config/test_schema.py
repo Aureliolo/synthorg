@@ -1,5 +1,7 @@
 """Tests for config schema models."""
 
+from uuid import uuid4
+
 import pytest
 from pydantic import JsonValue, ValidationError
 
@@ -13,6 +15,7 @@ from synthorg.config.schema import (
     TaskAssignmentConfig,
 )
 from synthorg.core.enums import CompanyType
+from synthorg.core.types import stable_agent_id
 from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import (
@@ -287,6 +290,37 @@ class TestAgentConfig:
     def test_blank_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
             AgentConfig(name="", role="dev", department="eng")
+
+    def test_id_derived_from_name(self) -> None:
+        a = AgentConfig(name="Alice", role="dev", department="eng")
+        assert a.id == stable_agent_id("Alice")
+
+    def test_explicit_id_is_overwritten(self) -> None:
+        """A caller-supplied ``id`` is replaced by the name-derived value;
+        the field is fully determined by ``name``, never set externally."""
+        a = AgentConfig(name="Alice", role="dev", department="eng", id=uuid4())
+        assert a.id == stable_agent_id("Alice")
+
+    def test_id_round_trips_under_extra_forbid(self) -> None:
+        """The id survives the settings ``model_dump`` -> ``model_validate``
+        cycle and re-derives to the same value (the reason it is a declared
+        field, not a ``@computed_field``)."""
+        a = AgentConfig(name="Alice", role="dev", department="eng")
+        b = AgentConfig.model_validate(a.model_dump(mode="json"))
+        assert b.id == a.id == stable_agent_id("Alice")
+
+    def test_stale_stored_id_is_repaired(self) -> None:
+        """A stored id that does not match the name is re-derived on validate
+        (repairs records written before the id was name-derived)."""
+        a = AgentConfig.model_validate(
+            {
+                "name": "Alice",
+                "role": "dev",
+                "department": "eng",
+                "id": "00000000-0000-0000-0000-000000000000",
+            }
+        )
+        assert a.id == stable_agent_id("Alice")
 
     def test_whitespace_name_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):

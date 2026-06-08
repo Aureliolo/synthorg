@@ -58,9 +58,7 @@ function buildResult(
 
 export const trainingHandlers = [
   http.post('/api/v1/agents/:agentId/training/plan', () =>
-    HttpResponse.json(successFor<typeof createTrainingPlan>(buildPlan()), {
-      status: 201,
-    }),
+    HttpResponse.json(successFor<typeof createTrainingPlan>(buildPlan())),
   ),
   http.post('/api/v1/agents/:agentId/training/execute', () =>
     HttpResponse.json(successFor<typeof executeTrainingPlan>(buildResult())),

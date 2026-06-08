@@ -56,8 +56,8 @@
     },
     "src/synthorg/api/controllers/agents.py": {
       "cap": 500,
-      "loc": 543,
-      "ratio": 1.086,
+      "loc": 546,
+      "ratio": 1.092,
       "tier": "code"
     },
     "src/synthorg/api/controllers/analytics.py": {
@@ -638,8 +638,8 @@
     },
     "src/synthorg/hr/hiring_service.py": {
       "cap": 500,
-      "loc": 461,
-      "ratio": 0.922,
+      "loc": 494,
+      "ratio": 0.988,
       "tier": "code"
     },
     "src/synthorg/hr/performance/models.py": {

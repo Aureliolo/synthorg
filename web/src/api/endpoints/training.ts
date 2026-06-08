@@ -51,6 +51,8 @@ export interface TrainingResultResponse {
 export interface TrainingOverridesRequest {
   override_sources?: string[]
   custom_caps?: Partial<Record<ContentType, number>>
+  content_types?: ContentType[]
+  skip_training?: boolean
 }
 
 // -- Endpoints -------------------------------------------------------
