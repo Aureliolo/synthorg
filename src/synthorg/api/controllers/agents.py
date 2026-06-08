@@ -593,9 +593,7 @@ class AgentController(Controller):
         # the same record the registry matched, even for case variants.
         agent_id = str(identity.id)
 
-        snapshot = await performance_tracker_of(app_state).get_snapshot(
-            agent_id,
-        )
+        snapshot = await performance_tracker_of(app_state).get_snapshot(agent_id)
         trend = _extract_quality_trend(snapshot)
         perf = PerformanceSummary(
             quality_score=snapshot.overall_quality_score,
@@ -606,9 +604,7 @@ class AgentController(Controller):
         trust: TrustSummary | None = None
         trust_service = app_state.slice(SecurityStateSlice).trust_service
         if trust_service is not None:
-            trust_state = trust_service.get_trust_state(
-                agent_id,
-            )
+            trust_state = trust_service.get_trust_state(agent_id)
             if trust_state is not None:
                 trust = TrustSummary(
                     level=trust_state.global_level,

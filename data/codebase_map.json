@@ -597,7 +597,7 @@
     },
     {
       "kind": "code",
-      "loc": 551,
+      "loc": 547,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/agents.py",
       "owning_feature": "api_core"
@@ -7758,7 +7758,7 @@
     },
     {
       "kind": "code",
-      "loc": 504,
+      "loc": 494,
       "loc_cap": 500,
       "module": "src/synthorg/hr/hiring_service.py",
       "owning_feature": "hr"
