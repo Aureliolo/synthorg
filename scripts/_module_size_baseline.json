@@ -58,10 +58,6 @@
     "src/synthorg/settings/resolver.py": 1152,
     "src/synthorg/templates/presets.py": 558,
     "src/synthorg/templates/renderer.py": 658,
-    "src/synthorg/tools/_git_base.py": 539,
-    "src/synthorg/tools/external_api/external_api_tool.py": 533,
-    "src/synthorg/tools/git_tools.py": 535,
-    "src/synthorg/tools/sandbox/subprocess_sandbox.py": 663,
     "src/synthorg/workers/claim.py": 639,
     "src/synthorg/workers/runtime_builder.py": 836
   }
