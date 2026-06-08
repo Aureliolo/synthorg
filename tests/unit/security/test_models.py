@@ -5,7 +5,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.models import (
     AuditEntry,
     OutputScanResult,

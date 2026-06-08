@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta, timezone
 import pytest
 import structlog
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     MalformedRowError,
@@ -23,6 +23,7 @@ from synthorg.persistence._shared.audit import (
     classify_audit_save_error,
     row_to_audit_entry,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.models import AuditEntry
 
 

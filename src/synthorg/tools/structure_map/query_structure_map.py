@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, ClassVar, override
 from pydantic import BaseModel
 
 from synthorg.api.boundary import parse_typed
-from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.core.persistence_errors import QueryError
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import (
@@ -24,6 +23,7 @@ from synthorg.observability import (
 from synthorg.observability.events.brownfield import (
     BROWNFIELD_STRUCTURE_QUERY_FAILED,
 )
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.structure_map._args import (
     QueryStructureMapArgs,

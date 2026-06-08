@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, ClassVar, override
 from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.ontology import (
     ONTOLOGY_INJECTION_PREPARED,
@@ -19,6 +18,7 @@ from synthorg.observability.events.ontology import (
 from synthorg.ontology.errors import OntologyNotFoundError
 from synthorg.ontology.injection._tool_args import LookupEntityArgs
 from synthorg.ontology.injection.prompt import format_entity
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 if TYPE_CHECKING:

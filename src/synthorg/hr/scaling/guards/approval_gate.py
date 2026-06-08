@@ -10,9 +10,9 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType
 from synthorg.observability import get_logger, log_exception_redacted

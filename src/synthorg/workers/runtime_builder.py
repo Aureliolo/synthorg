@@ -36,7 +36,6 @@ from synthorg.client.state import client_simulation_state_of, has_simulation_run
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ToolCategory
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.factory import build_coordinator
 from synthorg.engine.flight_recording import FlightRecorderSink
@@ -66,6 +65,7 @@ from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import code_execution_records_of, persistence_of
 from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.security.action_types import ActionTypeRegistry
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.autonomy.resolver import AutonomyResolver
 from synthorg.security.redteam.builder import (
     RedTeamRuntime,

@@ -16,7 +16,7 @@ from synthorg.api.dto import (
     PaginatedResponse,
     PaginationMeta,
 )
-from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.error_taxonomy import (
     ErrorCategory,
     ErrorCode,

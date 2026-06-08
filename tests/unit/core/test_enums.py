@@ -4,7 +4,6 @@ import pytest
 
 from synthorg.core.artifact import ArtifactType
 from synthorg.core.enums import (
-    ActionType,
     AgentStatus,
     CollaborationPreference,
     CommunicationVerbosity,
@@ -22,6 +21,7 @@ from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.memory.enums import ConsolidationInterval
+from synthorg.security.autonomy.enums import ActionType
 
 # ── Member Counts ──────────────────────────────────────────────────
 

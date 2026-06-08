@@ -17,16 +17,10 @@ from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import (
-    ActionType,
-    ApprovalRiskLevel,
-    ApprovalSource,
-    ApprovalStatus,
-    ToolCategory,
-)
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.integrations.errors import (
     ConnectionRateLimitError,
@@ -45,6 +39,7 @@ from synthorg.observability.events.external_api import (
     EXTERNAL_API_SIGNATURE_MISMATCH,
 )
 from synthorg.providers.url_utils import redact_url
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.external_api._args import ExternalApiArgs
 from synthorg.tools.external_api._credentials import build_auth_headers

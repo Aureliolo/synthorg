@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 from pydantic import BaseModel, JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMM_TOOL_EMAIL_SEND_FAILED,
@@ -23,6 +22,7 @@ from synthorg.observability.events.communication import (
     COMM_TOOL_EMAIL_SEND_SUCCESS,
     COMM_TOOL_EMAIL_VALIDATION_FAILED,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.communication._args import EmailSenderArgs
 from synthorg.tools.communication.base_communication_tool import (

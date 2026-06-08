@@ -3,7 +3,6 @@
 from datetime import UTC, datetime
 
 from synthorg.core.autonomy_enums import AutonomyLevel, compare_autonomy
-from synthorg.core.enums import DowngradeReason
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
@@ -12,6 +11,7 @@ from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_PROMOTION_REQUESTED,
     SECURITY_AUTONOMY_RECOVERY_REQUESTED,
 )
+from synthorg.security.autonomy.enums import DowngradeReason
 from synthorg.security.autonomy.models import AutonomyOverride
 
 logger = get_logger(__name__)

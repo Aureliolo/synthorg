@@ -9,12 +9,12 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_ACTION_TYPE_INVALID,
     SECURITY_CONFIG_LOADED,
 )
+from synthorg.security.autonomy.enums import ActionType
 
 logger = get_logger(__name__)
 

@@ -14,9 +14,9 @@ from contextlib import nullcontext
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.models import EscalationInfo
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_INTERCEPTOR_ERROR,

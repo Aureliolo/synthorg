@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.git import (
     GIT_CLONE_DNS_PINNED,
@@ -20,6 +19,7 @@ from synthorg.observability.events.git import (
     GIT_CLONE_URL_REJECTED,
     GIT_COMMAND_START,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools._git_args import (
     GitBranchArgs,
     GitCloneArgs,

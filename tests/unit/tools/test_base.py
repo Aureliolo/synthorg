@@ -6,8 +6,8 @@ from typing import Any, cast, override
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ToolCategory
 from synthorg.providers.models import ToolDefinition
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 # ── ToolExecutionResult ──────────────────────────────────────────

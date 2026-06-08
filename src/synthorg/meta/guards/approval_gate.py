@@ -12,9 +12,9 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
-from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     GuardResult,

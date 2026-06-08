@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import ToolCategory
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.react_loop import ReactLoop
@@ -19,6 +18,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry

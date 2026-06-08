@@ -3,9 +3,10 @@
 from types import MappingProxyType
 from typing import Final
 
-from synthorg.core.enums import ActionType, ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import SECURITY_RISK_FALLBACK
+from synthorg.security.autonomy.enums import ActionType
 
 logger = get_logger(__name__)
 

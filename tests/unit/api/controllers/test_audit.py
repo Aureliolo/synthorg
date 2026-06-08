@@ -4,9 +4,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.persistence._shared import parse_iso_utc
 from synthorg.security.audit import AuditLog
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers

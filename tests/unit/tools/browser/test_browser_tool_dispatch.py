@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import ToolCategory
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.browser._models import ScreenshotDiffResult
 from synthorg.tools.browser._protocols import ScreenshotDiffer
 from synthorg.tools.browser.browser_tool import BrowserTool

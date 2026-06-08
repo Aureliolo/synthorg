@@ -9,7 +9,7 @@ explicitly set.  Categories not present in the map fall back to
 from types import MappingProxyType
 from typing import Final
 
-from synthorg.core.enums import ActionType, ToolCategory
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 
 DEFAULT_CATEGORY_ACTION_MAP: Final[MappingProxyType[ToolCategory, ActionType]] = (
     MappingProxyType(

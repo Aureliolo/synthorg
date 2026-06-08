@@ -16,9 +16,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.persistence.jsonb_capability import JsonbQueryCapability
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.models import AuditEntry
 
 

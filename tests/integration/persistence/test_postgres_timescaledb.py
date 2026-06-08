@@ -15,11 +15,12 @@ from typing import Any, cast
 
 import pytest
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.budget.cost_record import CostRecord
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.jsonb_capability import JsonbQueryCapability
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.models import AuditEntry
 from tests._shared import sid
 from tests.unit.persistence.conftest import make_task

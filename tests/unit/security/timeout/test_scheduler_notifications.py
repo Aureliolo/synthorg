@@ -14,14 +14,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import structlog
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, TimeoutActionType
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability.events.notification import (
     NOTIFICATION_ESCALATION_SEND,
     NOTIFICATION_SEND_FAILED,
 )
+from synthorg.security.timeout.enums import TimeoutActionType
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.security.timeout.timeout_checker import TimeoutChecker

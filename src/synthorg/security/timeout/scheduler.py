@@ -12,9 +12,9 @@ import contextlib
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.actor_context import ActorIdentity, actor_scope
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalStatus, TimeoutActionType
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
@@ -27,6 +27,7 @@ from synthorg.observability.events.timeout import (
     TIMEOUT_SCHEDULER_STOPPED,
     TIMEOUT_SCHEDULER_TICK,
 )
+from synthorg.security.timeout.enums import TimeoutActionType
 from synthorg.security.timeout.timeout_checker import TIMEOUT_POLICY_DECIDER
 
 if TYPE_CHECKING:

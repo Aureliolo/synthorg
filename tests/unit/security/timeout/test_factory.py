@@ -2,7 +2,6 @@
 
 import pytest
 
-from synthorg.core.enums import TimeoutActionType
 from synthorg.security.timeout.config import (
     DenyOnTimeoutConfig,
     EscalationChainConfig,
@@ -10,6 +9,7 @@ from synthorg.security.timeout.config import (
     TieredTimeoutConfig,
     WaitForeverConfig,
 )
+from synthorg.security.timeout.enums import TimeoutActionType
 from synthorg.security.timeout.factory import create_timeout_policy
 from synthorg.security.timeout.policies import (
     DenyOnTimeoutPolicy,

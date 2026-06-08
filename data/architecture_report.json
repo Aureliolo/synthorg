@@ -14,8 +14,8 @@
     },
     "src/synthorg/api/approval_store.py": {
       "cap": 500,
-      "loc": 564,
-      "ratio": 1.128,
+      "loc": 561,
+      "ratio": 1.122,
       "tier": "code"
     },
     "src/synthorg/api/auth/middleware.py": {
@@ -638,8 +638,8 @@
     },
     "src/synthorg/hr/hiring_service.py": {
       "cap": 500,
-      "loc": 494,
-      "ratio": 0.988,
+      "loc": 496,
+      "ratio": 0.992,
       "tier": "code"
     },
     "src/synthorg/hr/performance/models.py": {
@@ -1196,8 +1196,8 @@
     },
     "src/synthorg/security/config.py": {
       "cap": 500,
-      "loc": 552,
-      "ratio": 1.104,
+      "loc": 551,
+      "ratio": 1.102,
       "tier": "code"
     },
     "src/synthorg/security/llm_evaluator.py": {
@@ -1286,8 +1286,8 @@
     },
     "src/synthorg/tools/external_api/external_api_tool.py": {
       "cap": 500,
-      "loc": 533,
-      "ratio": 1.066,
+      "loc": 528,
+      "ratio": 1.056,
       "tier": "code"
     },
     "src/synthorg/tools/git_tools.py": {
@@ -1353,6 +1353,7 @@
     "synthorg.api.rate_limits": 55,
     "synthorg.api.state": 147,
     "synthorg.api.state_slices": 30,
+    "synthorg.approval.enums": 67,
     "synthorg.approval.protocol": 39,
     "synthorg.approval.state": 21,
     "synthorg.budget.call_category": 43,
@@ -1378,7 +1379,7 @@
     "synthorg.core.clock": 154,
     "synthorg.core.critical_errors": 471,
     "synthorg.core.domain_errors": 176,
-    "synthorg.core.enums": 206,
+    "synthorg.core.enums": 76,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 47,
     "synthorg.core.normalization": 72,
@@ -1465,6 +1466,7 @@
     "synthorg.providers.registry": 29,
     "synthorg.providers.state": 25,
     "synthorg.research.models": 22,
+    "synthorg.security.autonomy.enums": 72,
     "synthorg.security.autonomy.models": 31,
     "synthorg.security.models": 24,
     "synthorg.settings.enums": 109,

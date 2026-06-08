@@ -12,7 +12,7 @@ import psycopg
 from psycopg.rows import DictRow, dict_row
 from pydantic import ValidationError
 
-from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description

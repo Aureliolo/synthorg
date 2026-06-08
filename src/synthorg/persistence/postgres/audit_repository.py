@@ -25,7 +25,7 @@ from synthorg.security.models import AuditVerdictStr
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
-    from synthorg.core.enums import ApprovalRiskLevel
+    from synthorg.approval.enums import ApprovalRiskLevel
     from synthorg.core.types import NotBlankStr
     from synthorg.persistence.audit_protocol import AuditFilterSpec
     from synthorg.security.models import AuditEntry

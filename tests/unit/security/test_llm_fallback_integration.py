@@ -5,9 +5,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.security.audit import AuditLog
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.security.config import LlmFallbackConfig, SecurityConfig
 from synthorg.security.llm_evaluator import LlmSecurityEvaluator

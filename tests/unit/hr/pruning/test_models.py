@@ -5,7 +5,7 @@ from datetime import timedelta
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ApprovalStatus
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.pruning.models import (
     PruningEvaluation,

@@ -12,11 +12,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from synthorg.core.autonomy_enums import AutonomyLevel
-    from synthorg.core.enums import DowngradeReason
     from synthorg.core.types import NotBlankStr
     from synthorg.security.autonomy.change_strategy import (
         HumanOnlyPromotionStrategy,
     )
+    from synthorg.security.autonomy.enums import DowngradeReason
     from synthorg.security.autonomy.models import AutonomyOverride
 
 

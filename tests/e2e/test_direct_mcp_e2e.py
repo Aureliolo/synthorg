@@ -31,8 +31,8 @@ from pydantic import JsonValue
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._approval_review_gate import signal_resume_intent
 from synthorg.api.state import AppState
+from synthorg.approval.enums import ApprovalSource
 from synthorg.core.agent import AgentIdentity, ToolPermissions
-from synthorg.core.enums import ApprovalSource
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason

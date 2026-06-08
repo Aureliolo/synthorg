@@ -6,11 +6,11 @@ from typing import Any, ClassVar, Final, Self
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.autonomy_enums import AutonomyLevel, compare_autonomy
-from synthorg.core.enums import DowngradeReason
 from synthorg.core.types import NotBlankStr
 from synthorg.security.autonomy.change_strategy_config import (
     AutonomyStrategyConfig,
 )
+from synthorg.security.autonomy.enums import DowngradeReason
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors
 

@@ -8,7 +8,6 @@ from typing import Any, override
 
 from pydantic import JsonValue
 
-from synthorg.core.enums import ToolCategory
 from synthorg.engine.context import AgentContext
 from synthorg.engine.plan_models import ExecutionPlan, PlanStep
 from synthorg.providers.enums import FinishReason, MessageRole
@@ -18,6 +17,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry

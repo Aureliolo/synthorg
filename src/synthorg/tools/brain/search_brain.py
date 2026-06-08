@@ -12,7 +12,6 @@ from pydantic import BaseModel, JsonValue
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.engine.prompt_safety import TAG_BRAIN_STATE, wrap_untrusted
 from synthorg.observability import (
     get_logger,
@@ -24,6 +23,7 @@ from synthorg.observability.events.project_brain import (
     BRAIN_SEARCH_FAILED,
     BRAIN_SEARCH_START,
 )
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.brain._args import SearchBrainArgs
 

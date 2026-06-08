@@ -4,7 +4,7 @@ from typing import Any, cast
 
 import pytest
 
-from synthorg.core.enums import ToolCategory
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.analytics.config import AnalyticsToolsConfig
 from synthorg.tools.analytics.metric_collector import (
     MetricCollectorTool,

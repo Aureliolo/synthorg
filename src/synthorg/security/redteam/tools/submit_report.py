@@ -18,13 +18,13 @@ from typing import Any, ClassVar, Final, override
 from pydantic import BaseModel, ValidationError
 
 from synthorg.api.boundary import parse_typed
-from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_FINDING_FILED,
     RED_TEAM_REPORT_RECEIVED,
     RED_TEAM_REPORT_VALIDATION_FAILED,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.redteam.errors import (
     RedTeamReportAlreadyExistsError,
     RedTeamReportValidationError,

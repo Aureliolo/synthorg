@@ -27,8 +27,8 @@ Design notes:
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import ProposalAltitude
 from synthorg.observability import get_logger

@@ -15,8 +15,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 
 pytestmark = pytest.mark.unit

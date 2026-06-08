@@ -11,7 +11,6 @@ from typing import Any, cast
 
 import pytest
 
-from synthorg.core.enums import ActionType
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.config import KnowledgeConfig
 from synthorg.knowledge.enums import SourceType
@@ -20,6 +19,7 @@ from synthorg.knowledge.retrieval import KnowledgeRetriever
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.tool_factory import KnowledgeToolFactory
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.knowledge.ingest_knowledge import IngestKnowledgeTool
 from synthorg.tools.knowledge.search_knowledge import SearchKnowledgeTool
 from tests._shared import FakeClock

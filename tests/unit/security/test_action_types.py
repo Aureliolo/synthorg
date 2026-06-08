@@ -2,8 +2,8 @@
 
 import pytest
 
-from synthorg.core.enums import ActionType
 from synthorg.security.action_types import ActionTypeCategory, ActionTypeRegistry
+from synthorg.security.autonomy.enums import ActionType
 
 # -- ActionTypeCategory enum --------------------------------------------------
 

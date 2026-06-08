@@ -21,9 +21,9 @@ internals.
 import uuid
 from typing import TYPE_CHECKING
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED,

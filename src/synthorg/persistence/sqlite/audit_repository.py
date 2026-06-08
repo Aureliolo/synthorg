@@ -23,7 +23,7 @@ from synthorg.persistence._shared.audit import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import ApprovalRiskLevel
+    from synthorg.approval.enums import ApprovalRiskLevel
     from synthorg.core.types import NotBlankStr
     from synthorg.persistence.audit_protocol import AuditFilterSpec
     from synthorg.security.models import AuditEntry, AuditVerdictStr

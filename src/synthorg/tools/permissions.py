@@ -15,7 +15,6 @@ access, requires_approval) against the tool invocation.
 from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Self
 
-from synthorg.core.enums import ToolCategory
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.tool_constraints import (
     ToolAccessLevel,
@@ -28,6 +27,7 @@ from synthorg.observability.events.tool import (
     TOOL_PERMISSION_DENIED,
     TOOL_PERMISSION_FILTERED,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.sub_constraint_enforcer import (
     SubConstraintEnforcer,
     SubConstraintViolation,

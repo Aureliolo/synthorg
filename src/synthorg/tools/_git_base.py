@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING, Final
 
 from pydantic import JsonValue
 
-from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.git import (
     GIT_COMMAND_FAILED,
@@ -39,6 +38,7 @@ from synthorg.observability.events.git import (
     GIT_REF_INJECTION_BLOCKED,
     GIT_WORKSPACE_VIOLATION,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._process_cleanup import close_subprocess_transport
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError

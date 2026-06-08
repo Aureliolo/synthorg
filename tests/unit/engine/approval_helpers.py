@@ -7,8 +7,8 @@ so each suite stays DRY without copy-pasting the same builder.
 
 from typing import Any
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.models import EscalationInfo
-from synthorg.core.enums import ApprovalRiskLevel
 
 
 def make_escalation(**overrides: Any) -> EscalationInfo:

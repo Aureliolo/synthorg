@@ -9,7 +9,7 @@ from uuid import NAMESPACE_URL, uuid5
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.core.enums import ApprovalStatus
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (

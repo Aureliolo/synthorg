@@ -11,7 +11,6 @@ from typing import ClassVar, Final, Protocol, override, runtime_checkable
 from pydantic import BaseModel, ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ActionType
 from synthorg.notifications.models import (
     Notification,
     NotificationCategory,
@@ -23,6 +22,7 @@ from synthorg.observability.events.communication import (
     COMM_TOOL_NOTIFICATION_SEND_START,
     COMM_TOOL_NOTIFICATION_SEND_SUCCESS,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.communication._args import NotificationSenderArgs
 from synthorg.tools.communication.base_communication_tool import (

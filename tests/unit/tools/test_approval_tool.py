@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 from synthorg.tools.approval_tool import RequestHumanApprovalTool
 

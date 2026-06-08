@@ -5,7 +5,6 @@ from typing import cast
 import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import DowngradeReason
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.security.autonomy._base_delegate import BaseDelegatingStrategy
 from synthorg.security.autonomy.change_strategy import (
@@ -19,6 +18,7 @@ from synthorg.security.autonomy.change_strategy_config import (
 from synthorg.security.autonomy.change_strategy_factory import (
     build_autonomy_change_strategy,
 )
+from synthorg.security.autonomy.enums import DowngradeReason
 from synthorg.security.autonomy.errors import AutonomyStrategyConfigError
 from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
 

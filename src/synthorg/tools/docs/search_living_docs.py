@@ -13,10 +13,6 @@ from pydantic import BaseModel, JsonValue
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import (
-    ActionType,
-    ToolCategory,
-)
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -27,6 +23,7 @@ from synthorg.observability.events.docs import (
     DOC_SEARCH_FAILED,
     DOC_SEARCH_START,
 )
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.docs._args import SearchLivingDocsArgs
 

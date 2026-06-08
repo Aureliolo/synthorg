@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from synthorg.core.enums import ToolCategory
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.file_system.read_file import MAX_FILE_SIZE_BYTES, ReadFileTool
 
 if TYPE_CHECKING:

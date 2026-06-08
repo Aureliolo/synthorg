@@ -2,7 +2,8 @@
 
 import pytest
 
-from synthorg.core.enums import ActionType, ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.security.rules.risk_classifier import RiskClassifier
 
 # ── CRITICAL risk level ──────────────────────────────────────────────

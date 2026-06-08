@@ -11,10 +11,6 @@ from typing import TYPE_CHECKING, ClassVar, override
 from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import (
-    ActionType,
-    ToolCategory,
-)
 from synthorg.core.execution_identity import current_execution_identity
 from synthorg.observability import (
     get_logger,
@@ -25,6 +21,7 @@ from synthorg.observability.events.docs import (
     DOC_WRITE_FAILED,
     DOC_WRITTEN,
 )
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.docs._args import (
     WriteLivingDocArgs,

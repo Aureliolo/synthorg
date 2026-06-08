@@ -3,8 +3,8 @@
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import DowngradeReason
 from synthorg.core.types import NotBlankStr
+from synthorg.security.autonomy.enums import DowngradeReason
 
 
 # HumanOnlyPromotionStrategy impl in autonomy/change_strategy.py;

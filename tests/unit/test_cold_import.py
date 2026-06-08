@@ -47,7 +47,11 @@ _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
 # importing cold on its own; ``config.schema`` importing cold already proves
 # the ``config.schema`` <-> ``communication.config`` edge is broken. Add a new
 # leaf here whenever a new dependency-free ``core.*`` / ``execution.*`` module
-# is introduced, so its cold-import safety is pinned from the start.
+# is introduced, so its cold-import safety is pinned from the start. The same
+# applies to a dependency-free enum leaf placed inside a feature package whose
+# ``__init__`` is heavy (``approval.enums`` / ``security.autonomy.enums`` /
+# ``security.timeout.enums``): every consumer of those enums now forces the
+# package ``__init__`` to run, so the cold path through that init must be pinned.
 COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.providers.enums",
     "synthorg.core.agent",
@@ -59,6 +63,9 @@ COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.execution.efficiency",
     "synthorg.execution.view",
     "synthorg.budget.coordination_collector",
+    "synthorg.approval.enums",
+    "synthorg.security.autonomy.enums",
+    "synthorg.security.timeout.enums",
 )
 
 

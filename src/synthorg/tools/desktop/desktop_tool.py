@@ -37,7 +37,6 @@ from pydantic import ValidationError as PydanticValidationError
 from synthorg.api.boundary import parse_typed
 from synthorg.core.clock import SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.desktop import (
     DESKTOP_ARGS_VALIDATION_FAILED,
@@ -51,6 +50,7 @@ from synthorg.observability.events.desktop import (
     DESKTOP_SCREENSHOT_START,
     DESKTOP_SCREENSHOT_SUCCESS,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.desktop._args import DesktopToolArgs
 from synthorg.tools.desktop._constants import (

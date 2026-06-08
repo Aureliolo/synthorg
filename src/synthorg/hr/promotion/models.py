@@ -16,7 +16,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import ApprovalStatus
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import PromotionDirection
 from synthorg.hr.seniority import SeniorityLevel, compare_seniority

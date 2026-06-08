@@ -16,7 +16,6 @@ from typing import ClassVar, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel
 
-from synthorg.core.enums import ToolCategory
 from synthorg.core.tool_disclosure import (
     ToolL1Metadata,
     ToolL2Body,
@@ -27,6 +26,7 @@ from synthorg.observability.events.tool import (
     TOOL_DISCLOSURE_MANAGER_BOUND,
     TOOL_DISCLOSURE_MANAGER_NOT_BOUND,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._misc_args import (
     ListToolsArgs,
     LoadToolArgs,

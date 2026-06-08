@@ -13,7 +13,6 @@ from pydantic import BaseModel
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ToolCategory
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -24,6 +23,7 @@ from synthorg.observability.events.project_brain import (
     BRAIN_ENTRY_APPENDED,
 )
 from synthorg.project_brain.constants import BRAIN_WRITE_ACTION_TYPE
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.brain._args import WriteBrainEntryArgs
 

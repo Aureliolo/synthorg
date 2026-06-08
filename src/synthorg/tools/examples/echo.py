@@ -14,7 +14,7 @@ from typing import ClassVar, cast, override
 
 from pydantic import BaseModel
 
-from synthorg.core.enums import ToolCategory
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._misc_args import EchoArgs
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 

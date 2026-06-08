@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from synthorg.core.enums import ToolCategory
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._git_base import _sanitize_command
 
 # GitCloneTool is still in _ALL_GIT_TOOL_CLASSES for property tests.

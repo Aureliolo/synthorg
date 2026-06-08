@@ -11,13 +11,13 @@ from typing import ClassVar, Final, cast, override
 from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
     WEB_PARSE_FAILED,
     WEB_PARSE_START,
     WEB_PARSE_SUCCESS,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.web._args import HtmlParserArgs
 from synthorg.tools.web.base_web_tool import BaseWebTool

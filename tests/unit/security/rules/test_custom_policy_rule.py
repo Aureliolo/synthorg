@@ -4,7 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import ActionType, ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.security.config import SecurityPolicyRule
 from synthorg.security.models import (
     EvaluationConfidence,

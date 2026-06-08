@@ -293,10 +293,10 @@ class AgentEngineErrorsMixin:
             and the halt context was stamped on the forecast, ``False``
             on any failure (no gate, persistence error, missing repo).
         """
+        from synthorg.approval.enums import ApprovalRiskLevel  # noqa: PLC0415
         from synthorg.approval.models import (  # noqa: PLC0415
             EscalationInfo,
         )
-        from synthorg.core.enums import ApprovalRiskLevel  # noqa: PLC0415
 
         gate: Any = getattr(self, "_approval_gate", None)
         if gate is None:

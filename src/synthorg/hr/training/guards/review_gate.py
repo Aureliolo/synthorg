@@ -9,8 +9,8 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
 from uuid import UUID, uuid4
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.hr.training.models import (
     ContentType,
     TrainingGuardDecision,

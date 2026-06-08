@@ -25,6 +25,7 @@ from synthorg.api.controllers._approval_review_gate import (
 )
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import require_actor
 from synthorg.core.approval import ApprovalItem
@@ -34,7 +35,6 @@ from synthorg.core.domain_errors import (
     ConflictError,
     UnauthorizedError,
 )
-from synthorg.core.enums import ApprovalStatus
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APPROVAL_CONFLICT,

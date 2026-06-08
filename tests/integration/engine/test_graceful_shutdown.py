@@ -267,7 +267,7 @@ class TestGracefulShutdownFlow:
             ) -> Any:
                 return {m: await self.get_model_capabilities(m) for m in models}
 
-        from synthorg.core.enums import ToolCategory
+        from synthorg.security.autonomy.enums import ToolCategory
         from synthorg.tools.base import BaseTool, ToolExecutionResult
         from synthorg.tools.registry import ToolRegistry
 

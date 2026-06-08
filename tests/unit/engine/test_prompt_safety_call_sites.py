@@ -265,7 +265,7 @@ class TestSafetyClassifierWraps:
 
     def test_build_messages_wraps_description(self) -> None:
         """The description appears inside a ``<task-data>`` fence."""
-        from synthorg.core.enums import ApprovalRiskLevel
+        from synthorg.approval.enums import ApprovalRiskLevel
         from synthorg.providers.registry import ProviderRegistry
         from synthorg.security.config import SafetyClassifierConfig
         from synthorg.security.safety_classifier import SafetyClassifier
@@ -297,7 +297,7 @@ class TestSafetyClassifierWraps:
 
     def test_build_messages_escapes_closing_tag_breakout(self) -> None:
         """An attacker-controlled ``</task-data>`` is rewritten."""
-        from synthorg.core.enums import ApprovalRiskLevel
+        from synthorg.approval.enums import ApprovalRiskLevel
         from synthorg.providers.registry import ProviderRegistry
         from synthorg.security.config import SafetyClassifierConfig
         from synthorg.security.safety_classifier import SafetyClassifier

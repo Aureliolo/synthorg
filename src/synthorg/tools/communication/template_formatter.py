@@ -11,7 +11,6 @@ from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_TOOL_TEMPLATE_RENDER_FAILED,
@@ -19,6 +18,7 @@ from synthorg.observability.events.communication import (
     COMM_TOOL_TEMPLATE_RENDER_START,
     COMM_TOOL_TEMPLATE_RENDER_SUCCESS,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.communication._args import TemplateFormatterArgs
 from synthorg.tools.communication.base_communication_tool import (

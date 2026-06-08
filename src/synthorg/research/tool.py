@@ -18,7 +18,6 @@ from pydantic import (
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import (
@@ -31,6 +30,7 @@ from synthorg.research.constants import (
 )
 from synthorg.research.errors import ResearchError
 from synthorg.research.models import QuestionText, ResearchBrief, ResearchReport
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.versioning.hashing import compute_text_hash
 

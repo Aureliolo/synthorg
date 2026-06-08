@@ -4,9 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, TimeoutActionType
 from synthorg.security.timeout.config import EscalationStep, TierConfig
+from synthorg.security.timeout.enums import TimeoutActionType
 from synthorg.security.timeout.policies import (
     DenyOnTimeoutPolicy,
     EscalationChainPolicy,

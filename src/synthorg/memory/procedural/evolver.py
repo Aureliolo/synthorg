@@ -12,9 +12,9 @@ from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from uuid import uuid4
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.memory.procedural.evolver_config import EvolverConfig
 from synthorg.memory.procedural.evolver_report import EvolverReport
 from synthorg.memory.procedural.models import (

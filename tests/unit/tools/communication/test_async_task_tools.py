@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.communication.async_tasks.models import AsyncTaskStatus
-from synthorg.core.enums import ToolCategory
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.communication.async_task_tools import (
     CancelAsyncTaskTool,
     CheckAsyncTaskTool,

@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import ToolCategory
 from synthorg.core.role_catalog import get_builtin_role
 from synthorg.memory.consolidation.wiki_export import WikiExporter
 from synthorg.memory.tools import (
@@ -16,6 +15,7 @@ from synthorg.memory.tools import (
     KnowledgeArchitectWriteTool,
 )
 from synthorg.persistence.memory_protocol import OrgFactRepository
+from synthorg.security.autonomy.enums import ToolCategory
 from tests._shared import mock_of
 
 

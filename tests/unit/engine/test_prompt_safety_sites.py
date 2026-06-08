@@ -363,8 +363,8 @@ class TestLlmEvaluatorToolArgumentsFence:
     def test_args_wrapped_and_system_prompt_has_directive(self) -> None:
         from unittest.mock import MagicMock
 
-        from synthorg.core.enums import ToolCategory
         from synthorg.providers.enums import MessageRole
+        from synthorg.security.autonomy.enums import ToolCategory
         from synthorg.security.config import LlmFallbackConfig
         from synthorg.security.llm_evaluator import (
             _SYSTEM_PROMPT,

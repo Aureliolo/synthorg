@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from synthorg.communication.async_tasks.models import TaskSpec
 from synthorg.communication.async_tasks.service import AsyncTaskService
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.async_task import (
     ASYNC_TASK_TOOL_CANCEL_FAILED,
@@ -20,6 +19,7 @@ from synthorg.observability.events.async_task import (
     ASYNC_TASK_TOOL_START_FAILED,
     ASYNC_TASK_TOOL_UPDATE_FAILED,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.communication._args import (
     CancelAsyncTaskArgs,

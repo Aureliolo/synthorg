@@ -2,7 +2,8 @@
 
 import pytest
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.models import SecurityContext, SecurityVerdictType
 from synthorg.security.rules.path_traversal_detector import (
     PathTraversalDetector,

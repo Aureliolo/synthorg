@@ -123,7 +123,7 @@ async def _load_conversational_proposal(
     Returns:
         The ``tuple[bool, object]`` value when present, ``None`` otherwise.
     """
-    from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
+    from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
     from synthorg.persistence.conversational_proposal_protocol import (  # noqa: PLC0415
         ConversationalProposalFilterSpec,
     )
@@ -381,7 +381,7 @@ async def _load_conversation_invite(
     Returns:
         The ``(owns_decision, invite)`` pair.
     """
-    from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
+    from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
     from synthorg.persistence.conversation_invite_protocol import (  # noqa: PLC0415
         ConversationInviteFilterSpec,
     )

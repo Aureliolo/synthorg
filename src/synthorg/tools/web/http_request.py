@@ -11,7 +11,6 @@ from typing import ClassVar, Final, cast, override
 import httpx
 from pydantic import BaseModel
 
-from synthorg.core.enums import ActionType
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
@@ -21,6 +20,7 @@ from synthorg.observability.events.web import (
     WEB_REQUEST_TIMEOUT,
 )
 from synthorg.providers.url_utils import redact_url
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.network_validator import (
     DnsValidationOk,

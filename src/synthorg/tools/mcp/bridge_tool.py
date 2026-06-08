@@ -7,7 +7,6 @@ tool system.
 
 from typing import TYPE_CHECKING, override
 
-from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_CACHE_HIT,
@@ -16,6 +15,7 @@ from synthorg.observability.events.mcp import (
     MCP_INVOKE_FAILED,
     MCP_INVOKE_START,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.mcp.errors import MCPError
 from synthorg.tools.mcp.result_mapper import map_call_tool_result

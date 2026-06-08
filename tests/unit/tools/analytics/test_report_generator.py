@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import pytest
 
-from synthorg.core.enums import ActionType, ToolCategory
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.analytics.report_generator import ReportGeneratorTool
 
 from .conftest import MockAnalyticsProvider

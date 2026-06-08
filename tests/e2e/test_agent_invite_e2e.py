@@ -30,8 +30,8 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._approval_review_gate import signal_resume_intent
 from synthorg.api.state import AppState
+from synthorg.approval.enums import ApprovalSource
 from synthorg.communication.meeting.agent_caller import build_meeting_agent_caller
-from synthorg.core.enums import ApprovalSource
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.hr.registry import AgentRegistryService

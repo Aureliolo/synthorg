@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import ToolCategory
+    from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.core.tool_disclosure import ToolL1Metadata, ToolL2Body, ToolL3Resource
 from synthorg.observability.events.tool import TOOL_BASE_INVALID_NAME
 from synthorg.providers.models import ToolDefinition

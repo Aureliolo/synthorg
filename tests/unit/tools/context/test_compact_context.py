@@ -4,8 +4,8 @@ from typing import Any, cast
 
 import pytest
 
-from synthorg.core.enums import ToolCategory
 from synthorg.providers.models import ToolDefinition
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.context.compact_context import CompactContextTool
 
 

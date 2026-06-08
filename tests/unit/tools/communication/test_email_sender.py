@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from synthorg.core.enums import ActionType, ToolCategory
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.communication.config import CommunicationToolsConfig, EmailConfig
 from synthorg.tools.communication.email_sender import EmailSenderTool
 

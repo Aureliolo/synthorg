@@ -9,7 +9,7 @@ on the types without forming an import cycle.
 
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 
 

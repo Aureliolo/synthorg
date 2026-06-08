@@ -10,7 +10,6 @@ from typing import ClassVar, Final, override
 
 from pydantic import BaseModel, JsonValue
 
-from synthorg.core.enums import ActionType
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger
 from synthorg.observability.events.design import (
@@ -21,6 +20,7 @@ from synthorg.observability.events.design import (
     DESIGN_ASSET_STORED,
     DESIGN_ASSET_VALIDATION_FAILED,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.design._args import AssetManagerArgs
 from synthorg.tools.design.base_design_tool import BaseDesignTool

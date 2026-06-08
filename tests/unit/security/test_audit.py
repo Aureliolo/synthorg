@@ -4,8 +4,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.security.audit import AuditLog
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 
 # ── Helpers ───────────────────────────────────────────────────────

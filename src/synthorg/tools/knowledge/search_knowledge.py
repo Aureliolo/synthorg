@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, ClassVar, override
 from pydantic import BaseModel, JsonValue
 
 from synthorg.api.boundary import parse_typed
-from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY, wrap_untrusted
 from synthorg.knowledge.errors import KnowledgeError
 from synthorg.observability import (
@@ -24,6 +23,7 @@ from synthorg.observability.events.knowledge import (
     KNOWLEDGE_SEARCH_FAILED,
     KNOWLEDGE_SEARCHED,
 )
+from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.knowledge._args import SearchKnowledgeArgs
 

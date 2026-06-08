@@ -12,7 +12,6 @@ from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
 from pydantic import BaseModel, JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (
     ANALYTICS_TOOL_PROVIDER_NOT_CONFIGURED,
@@ -20,6 +19,7 @@ from synthorg.observability.events.analytics import (
     ANALYTICS_TOOL_QUERY_START,
     ANALYTICS_TOOL_QUERY_SUCCESS,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.analytics._args import DataAggregatorArgs
 from synthorg.tools.analytics.base_analytics_tool import BaseAnalyticsTool
 from synthorg.tools.analytics.config import AnalyticsToolsConfig

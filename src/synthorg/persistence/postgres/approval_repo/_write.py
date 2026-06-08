@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 
 import psycopg
 
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description

@@ -15,9 +15,9 @@ import pytest
 import structlog.testing
 
 from synthorg.api.state import AppState
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.meta.mcp.handlers.approvals import APPROVAL_HANDLERS
 from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,

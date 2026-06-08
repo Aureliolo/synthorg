@@ -16,6 +16,7 @@ from synthorg.api.controllers.approvals._notify import (
     _resolve_decision,
     _signal_resume_intent,
 )
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import (
@@ -26,7 +27,6 @@ from synthorg.core.domain_errors import (
     ServiceUnavailableError,
     UnauthorizedError,
 )
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.errors import (
     SelfReviewError,

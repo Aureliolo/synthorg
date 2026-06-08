@@ -12,7 +12,6 @@ from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.design import (
     DESIGN_IMAGE_GENERATION_FAILED,
@@ -21,6 +20,7 @@ from synthorg.observability.events.design import (
     DESIGN_IMAGE_GENERATION_TIMEOUT,
     DESIGN_PROVIDER_NOT_CONFIGURED,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.design._args import ImageGeneratorArgs
 from synthorg.tools.design.base_design_tool import BaseDesignTool

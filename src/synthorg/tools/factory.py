@@ -12,7 +12,6 @@ import math
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.enums import ToolCategory
 from synthorg.core.validation import require_non_blank
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
@@ -20,6 +19,7 @@ from synthorg.observability.events.tool import (
     TOOL_FACTORY_CONFIG_ENTRY,
     TOOL_FACTORY_ERROR,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.file_system import (
     DeleteFileTool,
     EditFileTool,

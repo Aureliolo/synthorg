@@ -10,13 +10,13 @@ from typing import ClassVar, Final, cast, override
 from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.design import (
     DESIGN_DIAGRAM_GENERATION_FAILED,
     DESIGN_DIAGRAM_GENERATION_START,
     DESIGN_DIAGRAM_GENERATION_SUCCESS,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.design._args import DiagramGeneratorArgs
 from synthorg.tools.design.base_design_tool import BaseDesignTool

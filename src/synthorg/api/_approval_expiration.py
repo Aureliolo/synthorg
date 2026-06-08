@@ -13,9 +13,9 @@ declares that surface so ``mypy`` type-checks the mixin in isolation.
 
 from typing import TYPE_CHECKING
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import (
     API_APPROVAL_EXPIRE_CALLBACK_FAILED,

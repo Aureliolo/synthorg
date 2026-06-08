@@ -21,7 +21,6 @@ from typing import ClassVar, Final, cast, override
 import aiosqlite
 from pydantic import BaseModel, JsonValue
 
-from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.database import (
     DB_QUERY_FAILED,
@@ -30,6 +29,7 @@ from synthorg.observability.events.database import (
     DB_QUERY_TIMEOUT,
     DB_WRITE_BLOCKED,
 )
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.database._args import SqlBindValue, SqlQueryArgs
 from synthorg.tools.database.base_db_tool import BaseDatabaseTool

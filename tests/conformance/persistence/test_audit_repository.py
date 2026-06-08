@@ -18,10 +18,11 @@ from typing import Literal
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.persistence.audit_protocol import AuditFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.models import (
     AuditEntry,
     AuditVerdictStr,

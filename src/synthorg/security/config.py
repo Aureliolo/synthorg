@@ -10,8 +10,9 @@ from typing import Any, ClassVar, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import ActionType, ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.security.models import SecurityVerdictType
 from synthorg.security.policy_engine.config import SecurityPolicyConfig
 from synthorg.settings.definitions.security import (
@@ -501,9 +502,7 @@ class SecurityConfig(BaseModel):
         default=SecurityEnforcementMode.ACTIVE,
         description="Security enforcement mode (active/shadow/disabled)",
     )
-    rule_engine: RuleEngineConfig = Field(
-        default_factory=RuleEngineConfig,
-    )
+    rule_engine: RuleEngineConfig = Field(default_factory=RuleEngineConfig)
     llm_fallback: LlmFallbackConfig = Field(
         default_factory=LlmFallbackConfig,
     )

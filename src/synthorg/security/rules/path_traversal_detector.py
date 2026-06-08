@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime
 from typing import Final
 
-from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import SECURITY_PATH_TRAVERSAL_DETECTED
 from synthorg.security.models import (

@@ -2,9 +2,9 @@
 
 from datetime import UTC, datetime
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.security import (
     SECURITY_EVALUATE_COMPLETE,

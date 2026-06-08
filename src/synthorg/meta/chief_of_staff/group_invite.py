@@ -19,11 +19,11 @@ splits park (``propose.py``) from resume (the resume module).
 import uuid
 from typing import TYPE_CHECKING
 
+from synthorg.approval.enums import ApprovalSource, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalSource, ApprovalStatus
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
