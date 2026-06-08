@@ -21,7 +21,7 @@ class AgentStateRepository(
     """
 
     @override
-    async def save(self, entity: AgentRuntimeState) -> None:
+    async def save(self, entity: AgentRuntimeState, /) -> None:
         """Upsert an agent runtime state by ``agent_id``.
 
         Args:
@@ -33,7 +33,7 @@ class AgentStateRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> AgentRuntimeState | None:
+    async def get(self, entity_id: NotBlankStr, /) -> AgentRuntimeState | None:
         """Retrieve an agent runtime state by agent ID.
 
         Args:
@@ -96,7 +96,7 @@ class AgentStateRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete an agent runtime state by agent ID.
 
         Args:

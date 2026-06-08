@@ -62,7 +62,7 @@ class TrackedContainerRepository(
     """
 
     @override
-    async def save(self, entity: TrackedContainerRecord) -> None:
+    async def save(self, entity: TrackedContainerRecord, /) -> None:
         """Insert or replace the tracking row for one container.
 
         Args:
@@ -74,7 +74,7 @@ class TrackedContainerRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> TrackedContainerRecord | None:
+    async def get(self, entity_id: NotBlankStr, /) -> TrackedContainerRecord | None:
         """Read the tracking row for one container, or ``None`` if absent.
 
         Args:
@@ -89,7 +89,7 @@ class TrackedContainerRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete the tracking row for one container.
 
         Args:

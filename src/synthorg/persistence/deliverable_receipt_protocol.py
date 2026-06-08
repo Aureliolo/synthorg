@@ -64,7 +64,7 @@ class DeliverableReceiptRepository(
     """
 
     @override
-    async def save(self, entity: DeliverableReceipt) -> None:
+    async def save(self, entity: DeliverableReceipt, /) -> None:
         """Persist a receipt via upsert keyed on ``task_id``.
 
         Args:
@@ -77,7 +77,7 @@ class DeliverableReceiptRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> DeliverableReceipt | None:
+    async def get(self, entity_id: NotBlankStr, /) -> DeliverableReceipt | None:
         """Retrieve a receipt by ``receipt_id``.
 
         Args:
@@ -113,7 +113,7 @@ class DeliverableReceiptRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a receipt by ``receipt_id``.
 
         Args:

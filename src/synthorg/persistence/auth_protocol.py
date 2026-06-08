@@ -72,7 +72,7 @@ class SessionRepository(
         ...
 
     @override
-    async def save(self, entity: Session) -> None:
+    async def save(self, entity: Session, /) -> None:
         """Persist a session (insert or update by session_id).
 
         Args:
@@ -84,7 +84,7 @@ class SessionRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> Session | None:
+    async def get(self, entity_id: NotBlankStr, /) -> Session | None:
         """Retrieve a session by session_id.
 
         Args:
@@ -164,7 +164,7 @@ class SessionRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a session by session_id.
 
         Args:

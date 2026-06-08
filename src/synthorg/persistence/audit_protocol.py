@@ -85,7 +85,7 @@ class AuditRepository(
     """
 
     @override
-    async def append(self, entry: AuditEntry) -> None:
+    async def append(self, entry: AuditEntry, /) -> None:
         """Persist an audit entry (append-only).
 
         Args:
@@ -124,7 +124,7 @@ class AuditRepository(
         ...
 
     @override
-    async def purge_before(self, cutoff: datetime) -> int:
+    async def purge_before(self, cutoff: datetime, /) -> int:
         """Delete audit entries older than *cutoff* (CFG-1 audit).
 
         This is the one exception to the append-only rule: it powers

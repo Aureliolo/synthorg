@@ -130,8 +130,7 @@ class CodeExecutionRecordRepository(
 
     @override
     async def append(  # pyright: ignore[reportIncompatibleMethodOverride] -- domain-specific param name
-        self,
-        record: CodeExecutionRecord,
+        self, record: CodeExecutionRecord, /
     ) -> None:
         """Persist one execution record (append-only; duplicate id is a violation)."""
         ...
@@ -148,7 +147,7 @@ class CodeExecutionRecordRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Delete records with ``executed_at < threshold``. Returns rows removed.
 
         ``threshold`` must be timezone-aware; a naive datetime is rejected

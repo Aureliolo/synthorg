@@ -40,7 +40,7 @@ class MessageRepository(
     """
 
     @override
-    async def append(self, message: Message) -> None:
+    async def append(self, message: Message, /) -> None:
         """Persist a message (append-only).
 
         Args:
@@ -76,7 +76,7 @@ class MessageRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Delete messages with ``timestamp < threshold``.
 
         Returns:
@@ -131,7 +131,7 @@ class MessageRepository(
         """
         ...
 
-    async def delete(self, message_id: NotBlankStr) -> bool:
+    async def delete(self, message_id: NotBlankStr, /) -> bool:
         """Delete a message by id (moderation / redaction).
 
         Args:

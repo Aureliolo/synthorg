@@ -22,7 +22,7 @@ class ParkedContextRepository(
     """
 
     @override
-    async def save(self, entity: ParkedContext) -> None:
+    async def save(self, entity: ParkedContext, /) -> None:
         """Persist a parked context.
 
         Args:
@@ -34,7 +34,7 @@ class ParkedContextRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> ParkedContext | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ParkedContext | None:
         """Retrieve a parked context by ID.
 
         Args:
@@ -110,7 +110,7 @@ class ParkedContextRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a parked context by ID.
 
         Args:

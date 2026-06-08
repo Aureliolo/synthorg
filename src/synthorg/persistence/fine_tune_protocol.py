@@ -32,7 +32,7 @@ class FineTuneRunRepository(
     """
 
     @override
-    async def save(self, entity: FineTuneRun) -> None:
+    async def save(self, entity: FineTuneRun, /) -> None:
         """Upsert a run by ``id`` (idempotent semantics).
 
         Args:
@@ -44,7 +44,7 @@ class FineTuneRunRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> FineTuneRun | None:
+    async def get(self, entity_id: NotBlankStr, /) -> FineTuneRun | None:
         """Retrieve a run by ID.
 
         Args:
@@ -59,7 +59,7 @@ class FineTuneRunRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a run by ID.
 
         Args:
@@ -179,7 +179,7 @@ class FineTuneCheckpointRepository(
     """
 
     @override
-    async def save(self, entity: CheckpointRecord) -> None:
+    async def save(self, entity: CheckpointRecord, /) -> None:
         """Upsert a checkpoint by ``id`` (idempotent semantics).
 
         Args:
@@ -191,7 +191,7 @@ class FineTuneCheckpointRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> CheckpointRecord | None:
+    async def get(self, entity_id: NotBlankStr, /) -> CheckpointRecord | None:
         """Retrieve a checkpoint by ID.
 
         Args:
@@ -206,7 +206,7 @@ class FineTuneCheckpointRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a checkpoint by ID.
 
         Raises when deleting the active checkpoint (domain invariant).

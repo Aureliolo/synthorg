@@ -63,7 +63,7 @@ class ConversationInviteRepository(
     """
 
     @override
-    async def save(self, entity: ConversationInvite) -> None:
+    async def save(self, entity: ConversationInvite, /) -> None:
         """Upsert a conversation invite.
 
         Raises:
@@ -74,7 +74,7 @@ class ConversationInviteRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> ConversationInvite | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ConversationInvite | None:
         """Retrieve an invite by id, or ``None`` when absent.
 
         Raises:
@@ -83,7 +83,7 @@ class ConversationInviteRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete an invite by id. ``True`` iff a row existed.
 
         Raises:
@@ -108,6 +108,7 @@ class ConversationInviteRepository(
     @override
     async def transition_if(
         self,
+        /,
         entity_id: NotBlankStr,
         from_state: ConversationInviteStatus,
         to_state: ConversationInviteStatus,

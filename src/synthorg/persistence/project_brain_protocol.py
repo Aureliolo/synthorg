@@ -186,7 +186,7 @@ class ProjectBrainRepository(
         """
         ...
 
-    async def get(self, entity_id: BrainEntryRevisionKey) -> BrainEntry | None:
+    async def get(self, entity_id: BrainEntryRevisionKey, /) -> BrainEntry | None:
         """Return one exact revision, or ``None`` if absent.
 
         Args:
@@ -268,7 +268,7 @@ class ProjectBrainRepository(
         ...
 
     @override
-    async def append(self, event: BrainEntry) -> None:
+    async def append(self, event: BrainEntry, /) -> None:
         """Append a brain entry revision with a precomputed revision.
 
         Normally callers use :meth:`append_with_next_revision`, which assigns
@@ -313,7 +313,7 @@ class ProjectBrainRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Purge superseded historical revisions older than ``threshold``.
 
         Guarded retention: this purges only non-current revisions (those that

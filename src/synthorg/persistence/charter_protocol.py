@@ -57,7 +57,7 @@ class CharterRepository(
     """
 
     @override
-    async def save(self, entity: ProjectCharter) -> None:
+    async def save(self, entity: ProjectCharter, /) -> None:
         """Upsert a charter row keyed by ``id``.
 
         Raises:
@@ -67,7 +67,7 @@ class CharterRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> ProjectCharter | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ProjectCharter | None:
         """Retrieve a charter by ``id``, or ``None`` when absent.
 
         Raises:
@@ -76,7 +76,7 @@ class CharterRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a charter by id. ``True`` iff a row existed.
 
         Raises:
@@ -101,6 +101,7 @@ class CharterRepository(
     @override
     async def transition_if(
         self,
+        /,
         entity_id: NotBlankStr,
         from_state: CharterStatus,
         to_state: CharterStatus,

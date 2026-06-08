@@ -84,7 +84,7 @@ class DynamicToolRepository(
     """
 
     @override
-    async def save(self, entity: ToolBlueprint) -> None:
+    async def save(self, entity: ToolBlueprint, /) -> None:
         """Upsert a blueprint.
 
         Raises:
@@ -94,7 +94,7 @@ class DynamicToolRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> ToolBlueprint | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ToolBlueprint | None:
         """Retrieve a blueprint by id, or ``None`` if absent.
 
         Raises:
@@ -103,7 +103,7 @@ class DynamicToolRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a blueprint by id; ``True`` iff a row existed.
 
         Raises:
@@ -153,6 +153,7 @@ class DynamicToolRepository(
     @override
     async def transition_if(
         self,
+        /,
         entity_id: NotBlankStr,
         from_state: ToolBlueprintState,
         to_state: ToolBlueprintState,

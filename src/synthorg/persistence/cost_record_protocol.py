@@ -42,7 +42,7 @@ class CostRecordRepository(
     """
 
     @override
-    async def append(self, event: CostRecord) -> None:
+    async def append(self, event: CostRecord, /) -> None:
         """Persist a cost record (append-only).
 
         Args:
@@ -77,7 +77,7 @@ class CostRecordRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Delete cost records with timestamp before threshold (retention).
 
         Args:

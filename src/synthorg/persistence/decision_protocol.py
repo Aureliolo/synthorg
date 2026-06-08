@@ -119,7 +119,7 @@ class DecisionRepository(
         ...
 
     @override
-    async def append(self, event: DecisionRecord) -> None:
+    async def append(self, event: DecisionRecord, /) -> None:
         """Append a decision record via precomputed version.
 
         Normally callers use ``append_with_next_version`` which
@@ -171,7 +171,7 @@ class DecisionRepository(
         """
         ...
 
-    async def get(self, record_id: NotBlankStr) -> DecisionRecord | None:
+    async def get(self, record_id: NotBlankStr, /) -> DecisionRecord | None:
         """Retrieve a decision record by ID.
 
         Args:
@@ -236,7 +236,7 @@ class DecisionRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Delete decision records older than threshold (retention).
 
         Args:

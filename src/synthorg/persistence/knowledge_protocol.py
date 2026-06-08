@@ -123,17 +123,17 @@ class KnowledgeSourceRepository(
     """
 
     @override
-    async def save(self, entity: KnowledgeSource) -> None:
+    async def save(self, entity: KnowledgeSource, /) -> None:
         """Persist a source row via upsert (PK ``source_id``)."""
         ...
 
     @override
-    async def get(self, entity_id: KnowledgeSourceKey) -> KnowledgeSource | None:
+    async def get(self, entity_id: KnowledgeSourceKey, /) -> KnowledgeSource | None:
         """Retrieve a source by ``source_id``, or ``None`` when absent."""
         ...
 
     @override
-    async def delete(self, entity_id: KnowledgeSourceKey) -> bool:
+    async def delete(self, entity_id: KnowledgeSourceKey, /) -> bool:
         """Delete a source by ``source_id``. ``True`` iff a row existed."""
         ...
 
@@ -188,17 +188,17 @@ class ChunkProvenanceRepository(
     """
 
     @override
-    async def save(self, entity: ChunkProvenanceRow) -> None:
+    async def save(self, entity: ChunkProvenanceRow, /) -> None:
         """Persist a provenance row via upsert (PK ``chunk_id``)."""
         ...
 
     @override
-    async def get(self, entity_id: ChunkProvenanceKey) -> ChunkProvenanceRow | None:
+    async def get(self, entity_id: ChunkProvenanceKey, /) -> ChunkProvenanceRow | None:
         """Retrieve a provenance row by ``chunk_id``, or ``None``."""
         ...
 
     @override
-    async def delete(self, entity_id: ChunkProvenanceKey) -> bool:
+    async def delete(self, entity_id: ChunkProvenanceKey, /) -> bool:
         """Delete a provenance row by ``chunk_id``. ``True`` iff existed."""
         ...
 

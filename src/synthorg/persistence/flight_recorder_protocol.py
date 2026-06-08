@@ -174,7 +174,7 @@ class FlightRecorderFrameRepository(
 
     @override
     async def append(  # pyright: ignore[reportIncompatibleMethodOverride] -- domain-specific param name
-        self, frame: FlightRecorderFrame
+        self, frame: FlightRecorderFrame, /
     ) -> None:
         """Persist one frame (append-only; a duplicate id is a violation)."""
         ...
@@ -218,7 +218,7 @@ class FlightRecorderFrameRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Delete frames with ``timestamp < threshold``. Returns rows removed.
 
         ``threshold`` must be timezone-aware; passing a naive value is a

@@ -49,7 +49,7 @@ class CheckpointRepository(
     """
 
     @override
-    async def append(self, checkpoint: Checkpoint) -> None:
+    async def append(self, checkpoint: Checkpoint, /) -> None:
         """Persist a checkpoint row (append-only).
 
         Args:
@@ -72,7 +72,7 @@ class CheckpointRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Delete checkpoints with ``saved_at < threshold``.
 
         ``threshold`` must be timezone-aware UTC; the plain ``datetime``
@@ -135,7 +135,7 @@ class HeartbeatRepository(Protocol):
     awareness across two surfaces.
     """
 
-    async def save(self, heartbeat: Heartbeat) -> None:
+    async def save(self, heartbeat: Heartbeat, /) -> None:
         """Persist a heartbeat (upsert by execution_id).
 
         Args:
@@ -146,7 +146,7 @@ class HeartbeatRepository(Protocol):
         """
         ...
 
-    async def get(self, execution_id: NotBlankStr) -> Heartbeat | None:
+    async def get(self, execution_id: NotBlankStr, /) -> Heartbeat | None:
         """Retrieve a heartbeat by execution ID.
 
         Args:
@@ -187,7 +187,7 @@ class HeartbeatRepository(Protocol):
         """
         ...
 
-    async def delete(self, execution_id: NotBlankStr) -> bool:
+    async def delete(self, execution_id: NotBlankStr, /) -> bool:
         """Delete a heartbeat by execution ID.
 
         Args:

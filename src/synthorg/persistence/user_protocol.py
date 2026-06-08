@@ -60,7 +60,7 @@ class UserRepository(
     """
 
     @override
-    async def save(self, entity: User) -> None:
+    async def save(self, entity: User, /) -> None:
         """Persist a user (insert or update by id).
 
         Args:
@@ -72,7 +72,7 @@ class UserRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> User | None:
+    async def get(self, entity_id: NotBlankStr, /) -> User | None:
         """Retrieve a user by its ID.
 
         Args:
@@ -200,7 +200,7 @@ class UserRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a user by ID.
 
         Args:
@@ -229,7 +229,7 @@ class ApiKeyRepository(
     """
 
     @override
-    async def save(self, entity: ApiKey) -> None:
+    async def save(self, entity: ApiKey, /) -> None:
         """Persist an API key (insert or update by id).
 
         Args:
@@ -241,7 +241,7 @@ class ApiKeyRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> ApiKey | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ApiKey | None:
         """Retrieve an API key by its ID.
 
         Args:
@@ -329,7 +329,7 @@ class ApiKeyRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete an API key by ID.
 
         Args:

@@ -25,15 +25,12 @@ class McpInstallationRepository(
     """
 
     @override
-    async def save(self, entity: McpInstallation) -> None:
+    async def save(self, entity: McpInstallation, /) -> None:
         """Upsert an installation (idempotent on catalog_entry_id)."""
         ...
 
     @override
-    async def get(
-        self,
-        entity_id: NotBlankStr,
-    ) -> McpInstallation | None:
+    async def get(self, entity_id: NotBlankStr, /) -> McpInstallation | None:
         """Fetch an installation by catalog entry id."""
         ...
 
@@ -54,6 +51,6 @@ class McpInstallationRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete an installation.  Return ``True`` if a row was deleted."""
         ...

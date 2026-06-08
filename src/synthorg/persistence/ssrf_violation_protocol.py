@@ -25,7 +25,7 @@ class SsrfViolationRepository(Protocol):
     correlated columns.
     """
 
-    async def save(self, entity: SsrfViolation) -> None:
+    async def save(self, entity: SsrfViolation, /) -> None:
         """Persist a new SSRF violation (insert-only).
 
         Args:
@@ -36,10 +36,7 @@ class SsrfViolationRepository(Protocol):
         """
         ...
 
-    async def get(
-        self,
-        entity_id: NotBlankStr,
-    ) -> SsrfViolation | None:
+    async def get(self, entity_id: NotBlankStr, /) -> SsrfViolation | None:
         """Retrieve a violation by ID.
 
         Args:

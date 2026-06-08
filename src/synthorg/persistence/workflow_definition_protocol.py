@@ -42,7 +42,7 @@ class WorkflowDefinitionRepository(
     """
 
     @override
-    async def save(self, entity: WorkflowDefinition) -> None:
+    async def save(self, entity: WorkflowDefinition, /) -> None:
         """Persist a workflow definition (insert or update).
 
         Args:
@@ -103,7 +103,7 @@ class WorkflowDefinitionRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> WorkflowDefinition | None:
+    async def get(self, entity_id: NotBlankStr, /) -> WorkflowDefinition | None:
         """Retrieve a workflow definition by its ID.
 
         Args:
@@ -164,7 +164,7 @@ class WorkflowDefinitionRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a workflow definition by ID.
 
         Args:

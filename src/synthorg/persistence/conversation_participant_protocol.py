@@ -60,7 +60,7 @@ class ConversationParticipantRepository(
     """
 
     @override
-    async def save(self, entity: ConversationParticipant) -> None:
+    async def save(self, entity: ConversationParticipant, /) -> None:
         """Upsert a participant row keyed by ``id``.
 
         Raises:
@@ -71,7 +71,7 @@ class ConversationParticipantRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> ConversationParticipant | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ConversationParticipant | None:
         """Retrieve a participant by ``id``, or ``None`` when absent.
 
         Raises:
@@ -80,7 +80,7 @@ class ConversationParticipantRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a participant by id. ``True`` iff a row existed.
 
         Raises:
@@ -91,6 +91,7 @@ class ConversationParticipantRepository(
     @override
     async def transition_if(
         self,
+        /,
         entity_id: NotBlankStr,
         from_state: ConversationParticipantStatus,
         to_state: ConversationParticipantStatus,

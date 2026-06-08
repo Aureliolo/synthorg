@@ -61,7 +61,7 @@ class ConversationalProposalRepository(
     """
 
     @override
-    async def save(self, entity: ConversationalProposal) -> None:
+    async def save(self, entity: ConversationalProposal, /) -> None:
         """Upsert a conversational proposal.
 
         Raises:
@@ -71,7 +71,7 @@ class ConversationalProposalRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> ConversationalProposal | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ConversationalProposal | None:
         """Retrieve a proposal by id, or ``None`` when absent.
 
         Raises:
@@ -80,7 +80,7 @@ class ConversationalProposalRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a proposal by id. ``True`` iff a row existed.
 
         Raises:
@@ -105,6 +105,7 @@ class ConversationalProposalRepository(
     @override
     async def transition_if(
         self,
+        /,
         entity_id: NotBlankStr,
         from_state: ConversationalProposalStatus,
         to_state: ConversationalProposalStatus,

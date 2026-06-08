@@ -84,7 +84,7 @@ class SingletonRepository(Protocol[T]):
         """Read the singleton, or ``None`` when uninitialised."""
         ...
 
-    async def upsert(self, value: T) -> None:
+    async def upsert(self, value: T, /) -> None:
         """Insert or replace the singleton row."""
         ...
 
@@ -106,16 +106,25 @@ class IdKeyedRepository(Protocol[T, ID_contra]):
     desynchronise their view from the storage layer.
     """
 
-    async def save(self, entity: T) -> None:
+    async def save(self, entity: T, /) -> None:
         """Insert or update an entity (idempotent upsert)."""
         ...
 
-    async def get(self, entity_id: ID_contra) -> T | None:
-        """Retrieve an entity by id, or ``None`` when absent."""
+    async def get(self, entity_id: ID_contra, /) -> T | None:
+        """Retrieve an entity by id, or ``None`` when absent.
+
+        ``entity_id`` is positional-only: concrete repos name it after
+        their own entity (``task_id``, ``approval_id``, ...) for
+        readability, and protocol conformance must not hinge on that
+        per-repo argument name.
+        """
         ...
 
-    async def delete(self, entity_id: ID_contra) -> bool:
-        """Delete an entity by id. Return ``True`` iff a row existed."""
+    async def delete(self, entity_id: ID_contra, /) -> bool:
+        """Delete an entity by id. Return ``True`` iff a row existed.
+
+        ``entity_id`` is positional-only (see :meth:`get`).
+        """
         ...
 
     async def list_items(
@@ -177,7 +186,7 @@ class AppendOnlyRepository(Protocol[Event, FilterSpec_contra]):
     historical records cannot be retroactively mutated by callers.
     """
 
-    async def append(self, event: Event) -> None:
+    async def append(self, event: Event, /) -> None:
         """Append one event (write-only; events are immutable once written)."""
         ...
 
@@ -200,7 +209,7 @@ class AppendOnlyRepository(Protocol[Event, FilterSpec_contra]):
         """
         ...
 
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Delete events older than ``threshold``. Returns rows removed."""
         ...
 
@@ -223,20 +232,21 @@ class StatefulRepository(Protocol[T, ID_contra, State_contra]):
     canonical example.
     """
 
-    async def save(self, entity: T) -> None:
+    async def save(self, entity: T, /) -> None:
         """Insert or update an entity."""
         ...
 
-    async def get(self, entity_id: ID_contra) -> T | None:
+    async def get(self, entity_id: ID_contra, /) -> T | None:
         """Retrieve an entity by id."""
         ...
 
-    async def delete(self, entity_id: ID_contra) -> bool:
+    async def delete(self, entity_id: ID_contra, /) -> bool:
         """Delete an entity by id. Return ``True`` iff a row existed."""
         ...
 
     async def transition_if(
         self,
+        /,
         entity_id: ID_contra,
         from_state: State_contra,
         to_state: State_contra,
@@ -266,7 +276,7 @@ class MVCCRepository(Protocol[T_co, ID_contra, Op]):
     pattern is reusable for any auditable knowledge store.
     """
 
-    async def append_op(self, op: Op) -> None:
+    async def append_op(self, op: Op, /) -> None:
         """Append one operation (immutable log entry)."""
         ...
 
@@ -274,15 +284,15 @@ class MVCCRepository(Protocol[T_co, ID_contra, Op]):
         """Return entity state as of ``timestamp``."""
         ...
 
-    async def get(self, entity_id: ID_contra) -> T_co | None:
+    async def get(self, entity_id: ID_contra, /) -> T_co | None:
         """Return the current (latest) state of an entity by id."""
         ...
 
-    async def retract(self, entity_id: ID_contra, reason: str) -> None:
+    async def retract(self, entity_id: ID_contra, /, reason: str) -> None:
         """Non-destructive delete: append a tombstone op with ``reason``."""
         ...
 
-    async def get_operation_log(self, entity_id: ID_contra) -> tuple[Op, ...]:
+    async def get_operation_log(self, entity_id: ID_contra, /) -> tuple[Op, ...]:
         """Return the full op history for one entity.
 
         Ordering: rows are returned by ascending append order

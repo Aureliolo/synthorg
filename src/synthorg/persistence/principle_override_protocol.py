@@ -49,7 +49,7 @@ class PrincipleOverrideRepository(
     """
 
     @override
-    async def save(self, entity: PrincipleOverride) -> None:
+    async def save(self, entity: PrincipleOverride, /) -> None:
         """Insert or update the override at ``scope``.
 
         Args:
@@ -61,7 +61,7 @@ class PrincipleOverrideRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> PrincipleOverride | None:
+    async def get(self, entity_id: NotBlankStr, /) -> PrincipleOverride | None:
         """Retrieve the override at ``scope``.
 
         Args:
@@ -73,7 +73,7 @@ class PrincipleOverrideRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Remove the override at ``scope``.
 
         Args:

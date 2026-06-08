@@ -66,7 +66,7 @@ class ApprovalRepository(
     """
 
     @override
-    async def save(self, entity: ApprovalItem) -> None:
+    async def save(self, entity: ApprovalItem, /) -> None:
         """Upsert an approval item.
 
         Args:
@@ -97,6 +97,7 @@ class ApprovalRepository(
     @override
     async def transition_if(
         self,
+        /,
         entity_id: NotBlankStr,
         from_state: ApprovalStatus,
         to_state: ApprovalStatus,
@@ -181,7 +182,7 @@ class ApprovalRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> ApprovalItem | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ApprovalItem | None:
         """Retrieve an approval item by ID.
 
         Args:
@@ -280,7 +281,7 @@ class ApprovalRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete an approval item by ID.
 
         Args:

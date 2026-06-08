@@ -68,7 +68,7 @@ class PersonalityPresetRepository(
     """
 
     @override
-    async def save(self, entity: Preset) -> None:
+    async def save(self, entity: Preset, /) -> None:
         """Persist a custom preset (insert or update by name).
 
         Args:
@@ -80,7 +80,7 @@ class PersonalityPresetRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> Preset | None:
+    async def get(self, entity_id: NotBlankStr, /) -> Preset | None:
         """Retrieve a custom preset by name.
 
         Args:
@@ -154,7 +154,7 @@ class PersonalityPresetRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a custom preset by name.
 
         Args:

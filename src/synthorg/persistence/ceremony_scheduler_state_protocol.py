@@ -77,7 +77,7 @@ class CeremonySchedulerStateRepository(
     """
 
     @override
-    async def save(self, entity: CeremonySchedulerStateRecord) -> None:
+    async def save(self, entity: CeremonySchedulerStateRecord, /) -> None:
         """Persist a state snapshot for one sprint (upsert by sprint_id).
 
         Args:
@@ -90,7 +90,9 @@ class CeremonySchedulerStateRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> CeremonySchedulerStateRecord | None:
+    async def get(
+        self, entity_id: NotBlankStr, /
+    ) -> CeremonySchedulerStateRecord | None:
         """Load the snapshot for one sprint, or ``None`` if absent.
 
         Args:
@@ -105,7 +107,7 @@ class CeremonySchedulerStateRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete the snapshot for one sprint.
 
         Args:

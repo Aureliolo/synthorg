@@ -46,7 +46,7 @@ class SettingsRepository(
     """
 
     @override
-    async def save(self, entity: SettingRow) -> None:
+    async def save(self, entity: SettingRow, /) -> None:
         """Persist a setting (upsert by composite key).
 
         Args:
@@ -58,7 +58,7 @@ class SettingsRepository(
         ...
 
     @override
-    async def get(self, entity_id: SettingRowKey) -> SettingRow | None:
+    async def get(self, entity_id: SettingRowKey, /) -> SettingRow | None:
         """Retrieve a setting by composite key.
 
         Args:
@@ -94,7 +94,7 @@ class SettingsRepository(
         ...
 
     @override
-    async def delete(self, entity_id: SettingRowKey) -> bool:
+    async def delete(self, entity_id: SettingRowKey, /) -> bool:
         """Delete a setting by composite key.
 
         Args:

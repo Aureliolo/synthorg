@@ -26,7 +26,7 @@ class ProjectWorkspaceRepository(
     """
 
     @override
-    async def save(self, entity: ProjectWorkspace) -> None:
+    async def save(self, entity: ProjectWorkspace, /) -> None:
         """Persist a project workspace via upsert (insert or update).
 
         Args:
@@ -39,7 +39,7 @@ class ProjectWorkspaceRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> ProjectWorkspace | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ProjectWorkspace | None:
         """Retrieve a project workspace by owning project id.
 
         Args:
@@ -76,7 +76,7 @@ class ProjectWorkspaceRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a project workspace by owning project id.
 
         Args:

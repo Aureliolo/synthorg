@@ -81,7 +81,7 @@ class ProviderAuditRepo(
     """
 
     @override
-    async def append(self, event: ProviderAuditEvent) -> None:
+    async def append(self, event: ProviderAuditEvent, /) -> None:
         """Persist one audit event (append-only).
 
         The ``id`` field on the input event is ignored; the persistence
@@ -172,7 +172,7 @@ class ProviderAuditRepo(
         ...
 
     @override
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Delete events older than ``threshold`` by occurred_at.
 
         Generic surface. Slower than :meth:`purge_before_id` when the
