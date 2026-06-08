@@ -10,9 +10,10 @@ description: |
   whose only job is downloading the tarball, so the same 502 retries
   cleanly here instead of poisoning a multi-minute test run.
 
-  Matches the project standard for transient downloads documented in
-  the curl ``--retry 5 --retry-delay 5 --retry-all-errors`` pattern
-  (see .github/workflows/pages-preview.yml lines 161-180).
+  Matches the project standard for transient downloads: the curl
+  ``--connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300``
+  pattern (exponential backoff, bounded retry window), as used in
+  .github/actions/setup-apko/action.yml.
 
 runs:
   using: composite

@@ -287,11 +287,20 @@ jobs:
 
           Run: ${RUN_URL}
 
-          Likely cause: a Wolfi package was renamed/removed, an apko CLI
-          breaking change, or the App-token + \`createCommitOnBranch\` +
-          \`gh pr create\` flow could not push (synthorg-repo-bot
-          App token mint failure, GraphQL permission denial, or
-          \`apko-lock\` env branch-policy drift).
+          Read the failing step's logs FIRST before assuming a cause:
+          \`gh run view ${GITHUB_RUN_ID} --log-failed\`. Candidate causes,
+          roughly by likelihood:
+          - Transient GitHub releases-CDN download failure (HTTP 5xx) in
+            the apko binary setup step. These normally clear on a re-run;
+            the download already uses bounded exponential-backoff retry.
+          - A Wolfi package was renamed/removed (the \`apko lock\` step
+            itself fails): update the relevant \`docker/*/apko.yaml\`
+            package list and let the workflow regenerate the lockfiles.
+          - An apko CLI breaking change after a version bump.
+          - The App-token + \`createCommitOnBranch\` + \`gh pr create\` push
+            flow could not push (synthorg-repo-bot token mint failure,
+            GraphQL permission denial, or \`apko-lock\` env branch-policy
+            drift).
           When this stays red for >1 weekly cycle, base images go stale.
           EOF
             echo 'TRACKING_ISSUE_BODY_EOF'
