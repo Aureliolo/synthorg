@@ -17103,7 +17103,7 @@
     },
     {
       "kind": "code",
-      "loc": 551,
+      "loc": 549,
       "loc_cap": 500,
       "module": "src/synthorg/security/config.py",
       "owning_feature": "security"

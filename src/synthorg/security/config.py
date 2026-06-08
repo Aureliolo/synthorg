@@ -503,9 +503,7 @@ class SecurityConfig(BaseModel):
         description="Security enforcement mode (active/shadow/disabled)",
     )
     rule_engine: RuleEngineConfig = Field(default_factory=RuleEngineConfig)
-    llm_fallback: LlmFallbackConfig = Field(
-        default_factory=LlmFallbackConfig,
-    )
+    llm_fallback: LlmFallbackConfig = Field(default_factory=LlmFallbackConfig)
     audit_enabled: bool = True
     post_tool_scanning_enabled: bool = True
     hard_deny_action_types: tuple[str, ...] = (
