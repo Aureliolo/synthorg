@@ -110,7 +110,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 type HandlerResult = Response | Promise<Response>
 type Fixture = Partial<{
   agentList: () => HandlerResult
-  agent: (name: string) => HandlerResult
+  agent: (agentId: string) => HandlerResult
   performance: () => HandlerResult
   activity: () => HandlerResult
   history: () => HandlerResult
@@ -264,7 +264,7 @@ describe('fetchAgentDetail', () => {
       agent: () => HttpResponse.json(apiSuccess(agent)),
     })
 
-    await useAgentsStore.getState().fetchAgentDetail('Alice Smith')
+    await useAgentsStore.getState().fetchAgentDetail('agent-001')
 
     const state = useAgentsStore.getState()
     expect(state.selectedAgent).toEqual(agent)
@@ -278,7 +278,7 @@ describe('fetchAgentDetail', () => {
       performance: () => HttpResponse.json(apiError('fail')),
     })
 
-    await useAgentsStore.getState().fetchAgentDetail('Alice Smith')
+    await useAgentsStore.getState().fetchAgentDetail('agent-001')
 
     const state = useAgentsStore.getState()
     expect(state.selectedAgent).not.toBeNull()
@@ -294,7 +294,7 @@ describe('fetchAgentDetail', () => {
       history: () => HttpResponse.json(apiError('history fail')),
     })
 
-    await useAgentsStore.getState().fetchAgentDetail('Alice Smith')
+    await useAgentsStore.getState().fetchAgentDetail('agent-001')
 
     const state = useAgentsStore.getState()
     expect(state.selectedAgent).not.toBeNull()
@@ -315,7 +315,7 @@ describe('fetchAgentDetail', () => {
       history: () => HttpResponse.json(apiError('fail')),
     })
 
-    await useAgentsStore.getState().fetchAgentDetail('Unknown')
+    await useAgentsStore.getState().fetchAgentDetail('agent-unknown')
 
     const state = useAgentsStore.getState()
     expect(state.selectedAgent).toBeNull()
@@ -331,8 +331,8 @@ describe('fetchAgentDetail', () => {
       releaseA = resolve
     })
     installAgentHandlers({
-      agent: async (name: string) => {
-        if (name === 'Alice Smith') {
+      agent: async (agentId: string) => {
+        if (agentId === 'agent-001') {
           await gateA
           return HttpResponse.json(apiSuccess(agentA))
         }
@@ -340,8 +340,8 @@ describe('fetchAgentDetail', () => {
       },
     })
 
-    const promiseA = useAgentsStore.getState().fetchAgentDetail('Alice Smith')
-    const promiseB = useAgentsStore.getState().fetchAgentDetail('Bob Jones')
+    const promiseA = useAgentsStore.getState().fetchAgentDetail('agent-001')
+    const promiseB = useAgentsStore.getState().fetchAgentDetail('agent-002')
 
     await promiseB
     expect(useAgentsStore.getState().selectedAgent?.name).toBe('Bob Jones')
