@@ -20,8 +20,9 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.auth.config import AuthConfig
-from synthorg.core.enums import AgentStatus, CoordinationTopology
+from synthorg.core.enums import AgentStatus
 from synthorg.core.role import Authority, Skill
+from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.hr.registry import AgentRegistryService
@@ -186,8 +187,8 @@ class TestBuildCoordinatorFactory:
         )
 
         # Decomposition should fail since no provider was given
-        from synthorg.core.enums import Priority, TaskType
         from synthorg.core.task import Task
+        from synthorg.core.task_enums import Priority, TaskType
         from synthorg.engine.decomposition.models import (
             DecompositionContext,
         )

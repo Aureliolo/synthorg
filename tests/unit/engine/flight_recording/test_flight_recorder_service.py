@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.flight_recording import FlightRecorderService
 from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame

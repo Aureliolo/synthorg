@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
 from pydantic import ValidationError as PydanticValidationError
 
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import TaskVersionConflictError
 from synthorg.engine.task_engine_apply_helpers import (
     compute_task_duration_sec,

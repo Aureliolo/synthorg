@@ -1,6 +1,6 @@
 """Bidirectional task state mapping between SynthOrg and A2A.
 
-Maps ``synthorg.core.enums.TaskStatus`` to/from
+Maps ``synthorg.core.task_enums.TaskStatus`` to/from
 ``synthorg.a2a.models.A2ATaskState``.  The mapping is lossy in
 one direction: multiple internal states map to the same A2A state
 (e.g. ASSIGNED + IN_PROGRESS + IN_REVIEW all map to ``working``).
@@ -9,7 +9,7 @@ one direction: multiple internal states map to the same A2A state
 from types import MappingProxyType
 
 from synthorg.a2a.models import A2ATaskState
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 
 # Internal -> A2A (many-to-one)
 _TO_A2A: MappingProxyType[TaskStatus, A2ATaskState] = MappingProxyType(

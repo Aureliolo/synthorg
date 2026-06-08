@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import Priority, Stakes, TaskStatus, TaskType
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
 from synthorg.engine._review_completion_gates import run_completion_gates
 from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
 from synthorg.observability.events.approval_gate import (

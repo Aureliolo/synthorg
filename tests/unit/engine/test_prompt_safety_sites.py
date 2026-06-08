@@ -13,8 +13,8 @@ from typing import Any
 import pytest
 from typeguard import suppress_type_checks
 
-from synthorg.core.enums import Priority, TaskType
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import Priority, TaskType
 from tests._shared import as_uuid
 
 

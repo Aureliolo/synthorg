@@ -14,7 +14,7 @@ import asyncio
 from pathlib import Path
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     GitBackendConfigError,

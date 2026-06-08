@@ -5,14 +5,14 @@ from datetime import date
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from synthorg.core.enums import (
+from synthorg.core.task import Task
+from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
     Priority,
     TaskStatus,
     TaskType,
 )
-from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
 from synthorg.engine.coordination.attribution import build_agent_contributions

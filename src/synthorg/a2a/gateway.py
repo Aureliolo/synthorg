@@ -841,7 +841,7 @@ async def _handle_message_send(
 
     task_engine = _require_task_engine(app_state)
 
-    from synthorg.core.enums import Priority, TaskType  # noqa: PLC0415
+    from synthorg.core.task_enums import Priority, TaskType  # noqa: PLC0415
     from synthorg.engine.task_engine_models import CreateTaskData  # noqa: PLC0415
 
     task_data = CreateTaskData(
@@ -936,7 +936,7 @@ async def _handle_tasks_cancel(
 
     _validate_task_ownership(task, peer_name)
 
-    from synthorg.core.enums import TaskStatus  # noqa: PLC0415
+    from synthorg.core.task_enums import TaskStatus  # noqa: PLC0415
 
     terminal = {
         TaskStatus.COMPLETED,

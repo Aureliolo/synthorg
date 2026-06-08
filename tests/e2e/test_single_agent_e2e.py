@@ -16,7 +16,8 @@ if TYPE_CHECKING:
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.agent import ModelConfig, ToolPermissions
-from synthorg.core.enums import TaskStatus, ToolAccessLevel
+from synthorg.core.task_enums import TaskStatus
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.providers.drivers.litellm_driver import LiteLLMDriver

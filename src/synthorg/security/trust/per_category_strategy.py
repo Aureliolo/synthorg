@@ -7,7 +7,7 @@ file operations but sandboxed for deployment.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.trust import (
     TRUST_EVALUATE_COMPLETE,

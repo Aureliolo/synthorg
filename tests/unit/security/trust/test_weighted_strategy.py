@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.security.trust.models import TrustState
 from synthorg.security.trust.weighted_strategy import WeightedTrustStrategy

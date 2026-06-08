@@ -10,7 +10,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import CoordinationTopology
+from synthorg.core.task_enums import CoordinationTopology
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_routing import (

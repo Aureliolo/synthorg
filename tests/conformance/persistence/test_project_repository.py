@@ -2,13 +2,13 @@
 
 import pytest
 
-from synthorg.core.enums import ProjectStatus
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     QueryError,
     RecordNotFoundError,
 )
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend

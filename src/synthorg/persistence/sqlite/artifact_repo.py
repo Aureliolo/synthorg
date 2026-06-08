@@ -6,8 +6,7 @@ from datetime import UTC, datetime
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.artifact import Artifact
-from synthorg.core.enums import ArtifactType
+from synthorg.core.artifact import Artifact, ArtifactType
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description

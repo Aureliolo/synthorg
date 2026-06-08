@@ -3,7 +3,7 @@
 import pytest
 import structlog
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.task_transitions import (
     VALID_TRANSITIONS,
     transition_path,

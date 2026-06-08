@@ -18,7 +18,7 @@ from pydantic import (
 )
 
 from synthorg.budget.currency import CurrencyCode
-from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection
 from synthorg.observability import get_logger

@@ -15,8 +15,8 @@ from typing import Any
 
 import pytest
 
-from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.errors import SubworkflowDepthExceededError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,

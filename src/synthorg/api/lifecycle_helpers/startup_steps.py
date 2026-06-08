@@ -19,8 +19,8 @@ from synthorg.api._benchmark_wiring import seed_benchmark_scores
 from synthorg.api.app_helpers import resolve_agent_workspace_root_env
 from synthorg.api.middleware import set_docs_csp_origins
 from synthorg.api.state import AppState
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import AutonomyLevel
 from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.review_gate_inputs import AutonomyProvider

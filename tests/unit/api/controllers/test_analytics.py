@@ -8,7 +8,7 @@ import pytest
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
-from synthorg.core.enums import Complexity, TaskStatus, TaskType
+from synthorg.core.task_enums import Complexity, TaskStatus, TaskType
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.settings.registry import get_registry

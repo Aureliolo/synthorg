@@ -16,7 +16,7 @@ from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
     MeetingStatus,
 )
-from synthorg.core.enums import Priority
+from synthorg.core.task_enums import Priority
 from synthorg.core.types import NotBlankStr, validate_unique_strings
 from synthorg.ontology.decorator import ontology_entity
 

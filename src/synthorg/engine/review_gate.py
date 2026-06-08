@@ -17,7 +17,7 @@ or a broadcast WebSocket event behind.
 from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.actor_context import resolve_decided_by
-from synthorg.core.enums import Stakes, TaskStatus, compare_stakes
+from synthorg.core.task_enums import Stakes, TaskStatus, compare_stakes
 from synthorg.engine._review_completion_gates import (
     map_pipeline_verdict,
     run_completion_gates,

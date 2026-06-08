@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
-from synthorg.core.enums import EnvironmentType
 from synthorg.core.project import Project
+from synthorg.core.project_enums import EnvironmentType
 from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.project_environment_protocol import (

@@ -19,8 +19,8 @@ from synthorg.communication.async_tasks.models import (
 from synthorg.communication.async_tasks.service import AsyncTaskService
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.citation.manager import CitationManager
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.task_engine import TaskEngine
 
 

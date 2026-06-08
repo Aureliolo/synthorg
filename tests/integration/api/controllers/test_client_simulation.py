@@ -15,7 +15,7 @@ from synthorg.client.adapters import DirectAdapter
 from synthorg.client.pool import RoundRobinStrategy
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.models import (

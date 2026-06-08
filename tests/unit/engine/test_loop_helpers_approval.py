@@ -67,7 +67,7 @@ class TestParkedConversationShape:
     """
 
     async def test_parked_context_last_message_is_tool_result(self) -> None:
-        from synthorg.core.enums import TaskStatus
+        from synthorg.core.task_enums import TaskStatus
         from synthorg.engine.context import AgentContext
         from synthorg.providers.enums import MessageRole
 

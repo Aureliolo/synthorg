@@ -37,7 +37,7 @@ class TestTaskController:
         async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
-        from synthorg.core.enums import TaskStatus
+        from synthorg.core.task_enums import TaskStatus
 
         t1 = make_task(task_id="t1")
         t2 = make_task(

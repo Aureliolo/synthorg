@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.security.trust.enums import TrustChangeReason
 from synthorg.security.trust.errors import TrustEvaluationError

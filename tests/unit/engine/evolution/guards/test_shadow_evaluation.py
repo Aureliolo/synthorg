@@ -9,8 +9,8 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import TaskType
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import TaskType
 from synthorg.engine.evolution.config import ShadowEvaluationConfig
 from synthorg.engine.evolution.guards.shadow_evaluation import (
     ShadowEvaluationGuard,

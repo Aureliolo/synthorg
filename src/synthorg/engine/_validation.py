@@ -7,7 +7,8 @@ the main orchestrator under the 800-line limit.
 import re
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import AgentStatus, TaskStatus
+from synthorg.core.enums import AgentStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (

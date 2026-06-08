@@ -17,14 +17,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import (
-    AutonomyLevel,
-    Priority,
-    Stakes,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
 from synthorg.engine.review import (
     ReviewPipeline,
     ReviewStageResult,

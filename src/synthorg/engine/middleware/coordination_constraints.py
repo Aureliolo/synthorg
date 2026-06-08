@@ -12,8 +12,8 @@ Concrete middleware for the coordination pipeline:
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final, Protocol, override, runtime_checkable
 
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import AutonomyLevel
 from synthorg.engine.middleware.coordination_protocol import (
     BaseCoordinationMiddleware,
     CoordinationMiddlewareContext,

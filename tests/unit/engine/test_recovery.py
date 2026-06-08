@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.context import AgentContext
 from tests._shared import as_uuid
 

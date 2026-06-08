@@ -21,7 +21,7 @@ from pydantic import (
 )
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.narrative.constants import DECISION_TEXT_MAX
 from synthorg.project_brain.models import (

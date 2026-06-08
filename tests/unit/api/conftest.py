@@ -36,12 +36,9 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import User
 from synthorg.core.auth.roles import HumanRole
-from synthorg.core.enums import (
-    ApprovalRiskLevel,
-    ApprovalStatus,
-    TaskStatus,
-)
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.task_engine import TaskEngine
@@ -1009,7 +1006,7 @@ def make_task(  # noqa: PLR0913
     assigned_to: str | None = None,
 ) -> Task:
     """Build a Task with sensible defaults."""
-    from synthorg.core.enums import TaskType
+    from synthorg.core.task_enums import TaskType
 
     if assigned_to is None and status in {
         TaskStatus.ASSIGNED,

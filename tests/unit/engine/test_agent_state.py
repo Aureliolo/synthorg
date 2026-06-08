@@ -57,8 +57,8 @@ def _make_context(
     from uuid import UUID
 
     from synthorg.core.agent import AgentIdentity, ModelConfig
-    from synthorg.core.enums import TaskType
     from synthorg.core.task import Task
+    from synthorg.core.task_enums import TaskType
     from synthorg.engine.context import AgentContext
     from synthorg.engine.task_execution import TaskExecution
     from synthorg.providers.models import ZERO_TOKEN_USAGE, TokenUsage

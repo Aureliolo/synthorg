@@ -8,13 +8,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from synthorg.core.enums import (
-    Complexity,
-    Priority,
-    TaskStatus,
-    TaskType,
-)
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task_transitions import VALID_TRANSITIONS
 from tests._shared import as_uuid
 

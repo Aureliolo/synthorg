@@ -16,7 +16,7 @@ service. Each gate returns the (possibly rerouted) transition tuple
 
 from typing import TYPE_CHECKING, Literal
 
-from synthorg.core.enums import Stakes, TaskStatus, compare_stakes
+from synthorg.core.task_enums import Stakes, TaskStatus, compare_stakes
 from synthorg.engine.review.models import PipelineResult, ReviewVerdict
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (

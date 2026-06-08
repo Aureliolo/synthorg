@@ -10,8 +10,8 @@ from synthorg.client import (
 )
 from synthorg.client.feedback import BinaryFeedback
 from synthorg.client.generators import ProceduralGenerator
-from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.review import (
     ClientReviewStage,
     InternalReviewStage,

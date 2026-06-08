@@ -7,10 +7,10 @@ from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
     NotFoundError,
 )
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import (
     Task,
 )
+from synthorg.core.task_enums import TaskStatus
 from synthorg.observability import (
     get_logger,
 )

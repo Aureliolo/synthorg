@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog
 
-from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.narrative.errors import (
     NarrativeSourceUnavailableError,

@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import CoordinationTopology
+from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.centralized_dispatcher import CentralizedDispatcher
 from synthorg.engine.coordination.context_dependent_dispatcher import (
     ContextDependentDispatcher,

@@ -3,8 +3,8 @@
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import Stakes
     from synthorg.core.task import Task
+    from synthorg.core.task_enums import Stakes
     from synthorg.engine.decomposition.models import SubtaskDefinition
 
 

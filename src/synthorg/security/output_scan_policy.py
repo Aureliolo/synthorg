@@ -9,7 +9,7 @@ autonomy level.
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_OUTPUT_SCAN_POLICY_APPLIED,

@@ -4,7 +4,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.task_transitions import VALID_TRANSITIONS, validate_transition
 
 pytestmark = pytest.mark.unit

@@ -15,10 +15,10 @@ from typing import Final
 
 import pytest
 
-from synthorg.core.artifact import Artifact
-from synthorg.core.enums import ArtifactType, TaskStatus, TaskType
+from synthorg.core.artifact import Artifact, ArtifactType
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.memory.consolidation.distillation import DISTILLATION_TAG

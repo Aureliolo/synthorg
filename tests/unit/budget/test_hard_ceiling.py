@@ -28,8 +28,8 @@ from synthorg.budget.errors import (
     RunHardCeilingExceededError,
 )
 from synthorg.budget.tracker import CostTracker
-from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskType
 from synthorg.engine.context import AgentContext
 from tests._shared import as_uuid, sid
 

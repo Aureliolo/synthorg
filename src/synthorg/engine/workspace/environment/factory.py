@@ -1,6 +1,6 @@
 """Environment-strategy factory.
 
-Maps :class:`~synthorg.core.enums.EnvironmentType` to a concrete
+Maps :class:`~synthorg.core.project_enums.EnvironmentType` to a concrete
 :class:`EnvironmentStrategy` via the ``StrEnum``-keyed
 :class:`~synthorg.core.registry.StrategyRegistry`, mirroring
 ``build_git_backend``.  The ``MANIFEST`` default needs no external
@@ -10,7 +10,7 @@ dependency; ``DEVCONTAINER`` falls back to the default
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import EnvironmentType
+from synthorg.core.project_enums import EnvironmentType
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.workspace.environment.devcontainer import (
     DevcontainerEnvironmentStrategy,

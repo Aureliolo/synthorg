@@ -11,7 +11,8 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg._core.features import require_service
-from synthorg.core.enums import InterventionKind, TaskStatus
+from synthorg.core.enums import InterventionKind
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.intervention import SupersedeMode

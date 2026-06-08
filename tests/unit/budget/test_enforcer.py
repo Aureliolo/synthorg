@@ -20,8 +20,8 @@ from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.errors import BudgetExhaustedError, DailyLimitExceededError
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.context import AgentContext
 from synthorg.observability.events.budget import BUDGET_ALERT_THRESHOLD_CROSSED
 from synthorg.providers.models import TokenUsage

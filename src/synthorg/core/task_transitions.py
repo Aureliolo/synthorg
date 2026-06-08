@@ -25,8 +25,8 @@ non-terminal (can be reassigned).  AUTH_REQUIRED is non-terminal
 
 from typing import Final
 
-from synthorg.core.enums import TaskStatus
 from synthorg.core.state_machine import StateMachine
+from synthorg.core.task_enums import TaskStatus
 from synthorg.observability.events.task import (
     TASK_TRANSITION,
     TASK_TRANSITION_CONFIG_ERROR,

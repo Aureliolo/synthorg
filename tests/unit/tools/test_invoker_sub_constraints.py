@@ -4,10 +4,11 @@ from typing import Any, override
 
 import pytest
 
-from synthorg.core.enums import ActionType, ToolAccessLevel, ToolCategory
+from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.core.tool_constraints import (
     NetworkMode,
     TerminalAccess,
+    ToolAccessLevel,
     ToolSubConstraints,
 )
 from synthorg.providers.models import ToolCall

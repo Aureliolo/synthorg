@@ -15,11 +15,7 @@ from synthorg.budget.coordination_collector import (
     CoordinationMetricsCollector,
 )
 from synthorg.budget.coordination_metrics import CoordinationMetrics
-from synthorg.core.enums import (
-    CoordinationTopology,
-    TaskStatus,
-    TaskStructure,
-)
+from synthorg.core.task_enums import CoordinationTopology, TaskStatus, TaskStructure
 from synthorg.core.task_transitions import transition_path
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.models import (

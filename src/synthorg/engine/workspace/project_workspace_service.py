@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import GitBackendConfigError

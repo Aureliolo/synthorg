@@ -19,14 +19,12 @@ from pydantic import (
 )
 
 from synthorg.core.enums import (
-    Complexity,
     ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
     InterventionKind,
-    Priority,
-    TaskType,
 )
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention.models import STEERABLE_KINDS
 from synthorg.meta.chief_of_staff.enums import ConversationKind

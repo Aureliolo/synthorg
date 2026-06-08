@@ -13,7 +13,7 @@ indexed structure map + analysis.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import TaskType
+from synthorg.core.task_enums import TaskType
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.observability import get_logger
 from synthorg.observability.events.brownfield import BROWNFIELD_IMPORT_COMPLETED

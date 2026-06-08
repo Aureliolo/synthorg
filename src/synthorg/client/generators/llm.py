@@ -7,8 +7,8 @@ from pydantic import JsonValue, ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.client.models import GenerationContext, TaskRequirement
-from synthorg.core.enums import Complexity, Priority, TaskType
 from synthorg.core.json_parsing import extract_json_array_from_llm_response
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,

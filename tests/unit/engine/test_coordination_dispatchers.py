@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import CoordinationTopology, TaskStructure
+from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.engine.coordination.centralized_dispatcher import CentralizedDispatcher
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.context_dependent_dispatcher import (

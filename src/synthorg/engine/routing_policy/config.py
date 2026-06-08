@@ -15,7 +15,7 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import Stakes
+from synthorg.core.task_enums import Stakes
 from synthorg.core.types import NotBlankStr
 
 # Per-stakes benchmark quality floors (0 to 100). A model tier is a

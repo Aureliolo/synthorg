@@ -5,13 +5,13 @@ from typing import Any
 
 import pytest
 
-from synthorg.core.enums import (
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import (
     CoordinationTopology,
     Priority,
     TaskStructure,
     TaskType,
 )
-from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.engine.decomposition.llm import (
     LlmDecompositionConfig,
     LlmDecompositionStrategy,

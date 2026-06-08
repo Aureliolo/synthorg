@@ -7,7 +7,7 @@ FailureAttribution validation.
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import CoordinationTopology
+from synthorg.core.task_enums import CoordinationTopology
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.attribution import (
     AgentContribution,

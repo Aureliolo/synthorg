@@ -5,7 +5,7 @@ Protocol + three strategies (embedded / local-path / external-remote)
 backend is a config change only; ``EMBEDDED`` is the safe default.
 """
 
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.engine.workspace.git_backend.config import (
     GitBackendConfig,
     GitBackendDeps,

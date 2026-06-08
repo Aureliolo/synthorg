@@ -14,8 +14,8 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import resolve_decided_by
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.domain_errors import ForbiddenError, NotFoundError
-from synthorg.core.enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger

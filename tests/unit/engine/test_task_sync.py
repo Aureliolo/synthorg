@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from synthorg.core.enums import ApprovalStatus, TaskStatus
+from synthorg.core.enums import ApprovalStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import (

@@ -9,8 +9,8 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
-from synthorg.core.enums import TaskStatus
 from synthorg.core.state_machine import StateMachine
+from synthorg.core.task_enums import TaskStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     KANBAN_COLUMN_TRANSITION,

@@ -6,7 +6,7 @@ to another agent by the task routing system.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.hr.errors import TaskReassignmentError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (

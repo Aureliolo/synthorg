@@ -30,7 +30,7 @@ from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
-    from synthorg.core.enums import AutonomyLevel
+    from synthorg.core.autonomy_enums import AutonomyLevel
 
 logger = get_logger(__name__)
 
@@ -114,7 +114,9 @@ async def autonomy_update(
         return err(exc)
 
     # Local imports keep the agents handler module light at import time.
-    from synthorg.core.enums import AutonomyLevel as _AutonomyLevel  # noqa: PLC0415
+    from synthorg.core.autonomy_enums import (  # noqa: PLC0415
+        AutonomyLevel as _AutonomyLevel,
+    )
     from synthorg.security.autonomy.models import (  # noqa: PLC0415
         AutonomyUpdate as _AutonomyUpdate,
     )

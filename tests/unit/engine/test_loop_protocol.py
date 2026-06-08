@@ -4,8 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionLoop,

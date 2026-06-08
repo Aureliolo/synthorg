@@ -84,8 +84,8 @@ class TestBuildShadowGuard:
         *,
         task_provider: str = "configured",
     ) -> EvolutionConfig:
-        from synthorg.core.enums import TaskType
         from synthorg.core.task import AcceptanceCriterion, Task
+        from synthorg.core.task_enums import TaskType
         from synthorg.engine.evolution.config import (
             GuardConfig,
             ShadowEvaluationConfig,

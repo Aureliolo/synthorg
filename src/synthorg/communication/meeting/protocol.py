@@ -14,7 +14,7 @@ from synthorg.communication.meeting.models import (
     MeetingAgenda,
     MeetingMinutes,
 )
-from synthorg.core.enums import Priority
+from synthorg.core.task_enums import Priority
 
 AgentCaller = Callable[[str, str, int, str], Awaitable[AgentResponse]]
 """Callback to invoke an agent during a meeting.

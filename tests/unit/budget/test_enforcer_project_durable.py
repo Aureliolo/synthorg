@@ -11,8 +11,8 @@ from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.errors import ProjectBudgetExhaustedError
 from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
 from synthorg.budget.tracker import CostTracker
-from synthorg.core.enums import Priority, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskType
 from tests._shared import as_uuid
 
 from .conftest import make_cost_record

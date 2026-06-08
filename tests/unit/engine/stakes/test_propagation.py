@@ -2,8 +2,8 @@
 
 import pytest
 
-from synthorg.core.enums import Complexity, Stakes, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Stakes, TaskType
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.models import (
     DecompositionContext,

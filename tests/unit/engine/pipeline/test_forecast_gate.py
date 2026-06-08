@@ -19,8 +19,8 @@ from synthorg.budget.forecast_roles import (
     RoleSkeletonProvider,
 )
 from synthorg.budget.forecaster import CostForecaster, compute_brief_hash
-from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.persistence_errors import ConstraintViolationError
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.pipeline.forecast_gate import ForecastGate, _signal_from_work_item
 from synthorg.engine.pipeline.models import (
     ExecutionPath,

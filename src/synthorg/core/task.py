@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.artifact import ExpectedArtifact
-from synthorg.core.enums import (
+from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
     Priority,

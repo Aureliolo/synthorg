@@ -14,7 +14,7 @@ from pydantic import (
     computed_field,
 )
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.security.trust.enums import TrustChangeReason
 

@@ -5,13 +5,13 @@ from unittest.mock import patch
 import aiosqlite
 import pytest
 
-from synthorg.core.enums import ProjectStatus
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     QueryError,
     RecordNotFoundError,
 )
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.sqlite.project_repo import SQLiteProjectRepository
 from tests._shared import as_uuid, sid

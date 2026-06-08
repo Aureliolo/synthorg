@@ -8,7 +8,7 @@ from typing import Any, override
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.shutdown import (
     CooperativeTimeoutStrategy,
@@ -110,8 +110,8 @@ class TestGracefulShutdownFlow:
         from uuid import uuid4
 
         from synthorg.core.agent import AgentIdentity, ModelConfig
-        from synthorg.core.enums import Complexity, Priority, TaskType
         from synthorg.core.task import Task
+        from synthorg.core.task_enums import Complexity, Priority, TaskType
         from synthorg.hr.seniority import SeniorityLevel
 
         identity = AgentIdentity(
@@ -169,8 +169,8 @@ class TestGracefulShutdownFlow:
         from uuid import uuid4
 
         from synthorg.core.agent import AgentIdentity, ModelConfig
-        from synthorg.core.enums import Complexity, Priority, TaskType
         from synthorg.core.task import Task
+        from synthorg.core.task_enums import Complexity, Priority, TaskType
         from synthorg.hr.seniority import SeniorityLevel
 
         identity = AgentIdentity(

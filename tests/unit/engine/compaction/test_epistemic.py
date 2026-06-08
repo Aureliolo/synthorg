@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import Complexity
+from synthorg.core.task_enums import Complexity
 from synthorg.engine.compaction.epistemic import (
     count_epistemic_markers,
     extract_marker_sentences,

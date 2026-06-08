@@ -1,6 +1,6 @@
 """Git-backend factory.
 
-Maps :class:`~synthorg.core.enums.GitBackendType` to a concrete
+Maps :class:`~synthorg.core.project_enums.GitBackendType` to a concrete
 :class:`GitBackend` via the ``StrEnum``-keyed
 :class:`~synthorg.core.registry.StrategyRegistry`.  A kind whose
 required dependency is absent raises :class:`GitBackendConfigError` at
@@ -9,7 +9,7 @@ construction (fail fast), exactly like the autonomy strategy factory.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.errors import GitBackendConfigError
 from synthorg.engine.workspace.git_backend.embedded import EmbeddedGitBackend

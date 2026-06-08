@@ -17,7 +17,7 @@ from typing import Any, override
 
 import pytest
 
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
     DOCS_BRANCH_NAME,

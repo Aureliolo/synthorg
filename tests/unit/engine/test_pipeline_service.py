@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.project import Project
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult

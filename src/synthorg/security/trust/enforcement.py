@@ -14,7 +14,7 @@ from synthorg.security.trust.levels import TRUST_LEVEL_RANK
 
 if TYPE_CHECKING:
     from synthorg.core.agent import ToolPermissions
-    from synthorg.core.enums import ToolAccessLevel
+    from synthorg.core.tool_constraints import ToolAccessLevel
 
 
 class EffectiveToolPermissions(NamedTuple):

@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.narrative.models import (
     AgentContribution,

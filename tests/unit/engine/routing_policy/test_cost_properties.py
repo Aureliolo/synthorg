@@ -13,8 +13,8 @@ from hypothesis import strategies as st
 
 from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import Stakes, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Stakes, TaskType
 from synthorg.core.types import ModelTier
 from synthorg.engine.routing_policy import StakesAwareStrategy
 from synthorg.providers.routing.models import ResolvedModel

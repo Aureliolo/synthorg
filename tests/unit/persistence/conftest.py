@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 
 from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.communication.message import Message, MessageMetadata, TextPart
-from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from tests._shared import as_uuid
 
 if TYPE_CHECKING:

@@ -1,6 +1,6 @@
 """Pluggable git-backend plugin config + deps bundle.
 
-The :class:`~synthorg.core.enums.GitBackendType` discriminator selects
+The :class:`~synthorg.core.project_enums.GitBackendType` discriminator selects
 one of three strategies.  The safe default is ``EMBEDDED`` (a bare repo
 self-hosted on the persistent volume, no external dependency).
 ``LOCAL_PATH`` and ``EXTERNAL_REMOTE`` ship so that switching the git
@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 
 if TYPE_CHECKING:
     from pathlib import Path

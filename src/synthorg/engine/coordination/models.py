@@ -9,8 +9,8 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import CoordinationTopology
 from synthorg.core.task import Task
+from synthorg.core.task_enums import CoordinationTopology
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.decomposition.models import (

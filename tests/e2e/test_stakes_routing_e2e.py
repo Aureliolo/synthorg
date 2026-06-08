@@ -34,8 +34,9 @@ from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import AgentStatus, Complexity, Priority, TaskType
+from synthorg.core.enums import AgentStatus
 from synthorg.core.role import Authority, Skill
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import ModelTier
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
@@ -229,8 +230,8 @@ def _large_tier_agent(name: str, skill: str) -> AgentIdentity:
 
 
 def _project(project_id: str) -> Any:
-    from synthorg.core.enums import ProjectStatus
     from synthorg.core.project import Project
+    from synthorg.core.project_enums import ProjectStatus
 
     return Project(
         id=as_uuid(project_id),

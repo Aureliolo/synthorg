@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import EnvironmentType
+from synthorg.core.project_enums import EnvironmentType
 from synthorg.engine.workspace.environment.config import (
     EnvironmentConfig,
     EnvironmentDeps,

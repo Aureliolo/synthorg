@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.environment.committer import GitWorkspaceCommitter

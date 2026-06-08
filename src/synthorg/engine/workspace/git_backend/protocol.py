@@ -3,7 +3,7 @@
 A :class:`GitBackend` owns "where git lives" for a project: it
 provisions the repository, and serialised pushes/fetches flow through
 it.  Implementations are interchangeable behind the
-:class:`~synthorg.core.enums.GitBackendType` discriminator so switching
+:class:`~synthorg.core.project_enums.GitBackendType` discriminator so switching
 storage is a config change only.
 """
 
@@ -13,7 +13,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.types import NotBlankStr
 
 

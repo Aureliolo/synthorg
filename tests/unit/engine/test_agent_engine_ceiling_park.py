@@ -26,8 +26,8 @@ from synthorg.budget.errors import (
 )
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskType
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.loop_protocol import TerminationReason
 from tests._shared import as_uuid, sid

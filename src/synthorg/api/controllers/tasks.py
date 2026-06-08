@@ -37,8 +37,8 @@ from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.client.state import client_simulation_state_of
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import AgentRuntimeNotConfiguredError
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import TaskNotFoundError
 from synthorg.engine.pipeline.entry.task_board_adapter import (
     TaskBoardEntryAdapter,

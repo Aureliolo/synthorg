@@ -13,8 +13,10 @@ from typing import Any, override
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ToolPermissions
-from synthorg.core.enums import Priority, TaskType, ToolAccessLevel, ToolCategory
+from synthorg.core.enums import ToolCategory
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskType
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.project_brain.service import ProjectBrainService
 from synthorg.project_brain.tool_factory import ProjectBrainToolFactory

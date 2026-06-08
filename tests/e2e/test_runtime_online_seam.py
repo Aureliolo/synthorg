@@ -24,13 +24,10 @@ from structlog.testing import capture_logs
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import ToolPermissions
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.clock import SystemClock
-from synthorg.core.enums import (
-    AutonomyLevel,
-    TaskStatus,
-    TaskType,
-    ToolAccessLevel,
-)
+from synthorg.core.task_enums import TaskStatus, TaskType
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData

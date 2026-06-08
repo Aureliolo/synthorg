@@ -1,6 +1,6 @@
 """Company namespace setting definitions."""
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_DEFAULT_DRIFT
 from synthorg.security.autonomy.models import AutonomyConfig

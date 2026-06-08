@@ -90,7 +90,7 @@ def make_engine_task_fail_handler(engine: Any) -> TaskFailHandler:
         A ``TaskFailHandler`` that fails a task via the engine and maps
         the outcome to a ``DeadLetterOutcome``.
     """
-    from synthorg.core.enums import TaskStatus  # noqa: PLC0415
+    from synthorg.core.task_enums import TaskStatus  # noqa: PLC0415
     from synthorg.engine.errors import (  # noqa: PLC0415
         TaskEngineNotRunningError,
         TaskEngineQueueFullError,

@@ -16,7 +16,8 @@ from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import InterventionKind, TaskStatus
+from synthorg.core.enums import InterventionKind
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention.errors import (
     SteeringDirectiveFieldError,

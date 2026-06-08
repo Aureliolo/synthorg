@@ -27,7 +27,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (

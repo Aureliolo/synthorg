@@ -3,7 +3,7 @@
 import pytest
 from typeguard import suppress_type_checks
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.security.config import OutputScanPolicyType
 from synthorg.security.output_scan_policy import (

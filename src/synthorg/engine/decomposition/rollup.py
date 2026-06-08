@@ -5,7 +5,7 @@ Pure function for aggregating subtask statuses into a parent status.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.decomposition.models import SubtaskStatusRollup
 from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (

@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.security.config import McpSelfConsumerConfig, McpSelfConsumerMode
 from synthorg.tools.base import BaseTool, ToolExecutionResult

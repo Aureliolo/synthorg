@@ -11,8 +11,8 @@ from synthorg.communication.async_tasks.models import (
 from synthorg.communication.async_tasks.service import AsyncTaskService
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.enums import MessageType
-from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.task_engine import TaskEngine
 from tests._shared import coerce_id, sid
 

@@ -8,7 +8,7 @@ artifact count does not exceed the configured threshold is a leaf
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import TaskStructure
+from synthorg.core.task_enums import TaskStructure
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.pipeline.models import RoutingVerdict
 from synthorg.observability import get_logger

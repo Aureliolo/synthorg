@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import EnvironmentType
+from synthorg.core.project_enums import EnvironmentType
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (

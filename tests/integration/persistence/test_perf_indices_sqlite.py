@@ -20,8 +20,9 @@ import pytest
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import CurrencyCode
-from synthorg.core.enums import DecisionOutcome, TaskType
+from synthorg.core.enums import DecisionOutcome
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from tests._shared import as_uuid, sid

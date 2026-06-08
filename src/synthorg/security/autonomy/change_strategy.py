@@ -2,7 +2,8 @@
 
 from datetime import UTC, datetime
 
-from synthorg.core.enums import AutonomyLevel, DowngradeReason, compare_autonomy
+from synthorg.core.autonomy_enums import AutonomyLevel, compare_autonomy
+from synthorg.core.enums import DowngradeReason
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (

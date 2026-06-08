@@ -9,7 +9,8 @@ from pydantic import ValidationError
 
 from synthorg.config.schema import AgentConfig, RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import Complexity, TaskType, ToolAccessLevel
+from synthorg.core.task_enums import Complexity, TaskType
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import stable_agent_id
 from synthorg.hr.enums import LifecycleEventType, TrendDirection
 from synthorg.hr.models import AgentLifecycleEvent

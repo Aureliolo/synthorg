@@ -29,8 +29,8 @@ from synthorg.communication.loop_prevention.guard import (
 )
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.delegation import (
     DELEGATION_CREATED,

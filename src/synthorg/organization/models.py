@@ -14,8 +14,8 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.company import Team
-from synthorg.core.enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
 from synthorg.hr.seniority import SeniorityLevel

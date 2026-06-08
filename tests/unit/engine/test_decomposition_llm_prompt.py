@@ -6,14 +6,14 @@ from uuid import UUID
 
 import pytest
 
-from synthorg.core.enums import (
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
     Priority,
     TaskStructure,
     TaskType,
 )
-from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.engine.decomposition.llm_prompt import (
     build_decomposition_tool,
     build_retry_message,

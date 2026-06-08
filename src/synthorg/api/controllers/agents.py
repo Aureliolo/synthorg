@@ -36,7 +36,8 @@ from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.config.schema import AgentConfig
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.domain_errors import NotFoundError
-from synthorg.core.enums import AgentStatus, ToolAccessLevel
+from synthorg.core.enums import AgentStatus
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.activity import (
     ActivityEvent,

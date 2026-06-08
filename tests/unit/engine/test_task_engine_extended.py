@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import (
     TaskInternalError,
     TaskMutationError,

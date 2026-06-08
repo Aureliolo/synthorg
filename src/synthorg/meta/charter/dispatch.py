@@ -22,16 +22,11 @@ from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.forecaster import BriefSignal, compute_brief_hash
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import (
-    CharterStatus,
-    Complexity,
-    ConversationStatus,
-    Priority,
-    ProjectStatus,
-    TaskType,
-)
+from synthorg.core.enums import CharterStatus, ConversationStatus
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.errors import WorkProjectNotFoundError
 from synthorg.engine.pipeline.models import WorkItem, WorkSource

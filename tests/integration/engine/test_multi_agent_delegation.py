@@ -31,9 +31,9 @@ from synthorg.core.company import (
     Department,
     Team,
 )
-from synthorg.core.enums import Complexity, TaskStatus, TaskStructure, TaskType
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, TaskStatus, TaskStructure, TaskType
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.assignment.models import (
     AgentWorkload,

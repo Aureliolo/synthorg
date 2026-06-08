@@ -5,9 +5,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.core.enums import FailureCategory, TaskStatus, TaskType
+from synthorg.core.enums import FailureCategory
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.checkpoint.models import Checkpoint, CheckpointConfig
 from synthorg.engine.checkpoint.strategy import CheckpointRecoveryStrategy
 from synthorg.engine.context import AgentContext

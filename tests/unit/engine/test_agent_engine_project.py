@@ -8,8 +8,8 @@ import pytest
 from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.tracker import CostTracker
-from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.errors import (
     ProjectAgentNotMemberError,

@@ -19,7 +19,7 @@ from typing import override
 
 import pytest
 
-from synthorg.core.enums import GitBackendType
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.retrieval_facade import ProjectAwareMemoryFacade
 from synthorg.engine.prompt_safety import TAG_BRAIN_STATE

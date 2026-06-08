@@ -21,7 +21,6 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.sub_constraint import SUB_CONSTRAINT_RESOLVED
@@ -30,6 +29,26 @@ logger = get_logger(__name__)
 
 
 # ── Constraint dimension enums ─────────────────────────────────
+
+
+class ToolAccessLevel(StrEnum):
+    """Access level for tool permissions.
+
+    Determines which tool categories an agent can use.
+    Levels ``SANDBOXED`` through ``ELEVATED`` form a hierarchy
+    where each includes all categories from lower levels.
+    ``CUSTOM`` uses only explicit allow/deny lists, ignoring
+    the hierarchy.
+
+    The concrete category sets for each level are defined in
+    ``ToolPermissionChecker._LEVEL_CATEGORIES``.
+    """
+
+    SANDBOXED = "sandboxed"
+    RESTRICTED = "restricted"
+    STANDARD = "standard"
+    ELEVATED = "elevated"
+    CUSTOM = "custom"
 
 
 class FileSystemScope(StrEnum):

@@ -25,7 +25,7 @@ import structlog.testing
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workflow.execution_service import WorkflowExecutionService

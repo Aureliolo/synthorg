@@ -4,8 +4,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.enums import InterventionKind, TaskStatus
+from synthorg.core.enums import InterventionKind
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,

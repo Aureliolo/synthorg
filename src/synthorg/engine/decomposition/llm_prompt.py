@@ -9,11 +9,7 @@ import re
 from typing import TYPE_CHECKING, Any, Final
 from uuid import uuid4
 
-from synthorg.core.enums import (
-    Complexity,
-    CoordinationTopology,
-    TaskStructure,
-)
+from synthorg.core.task_enums import Complexity, CoordinationTopology, TaskStructure
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     SubtaskDefinition,

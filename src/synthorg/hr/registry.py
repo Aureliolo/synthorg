@@ -22,7 +22,8 @@ reaching into ``_agents`` directly.
 import asyncio
 from typing import TYPE_CHECKING, Any, Final
 
-from synthorg.core.enums import AgentStatus, AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.enums import AgentStatus
 from synthorg.core.normalization import (
     compare_ci,
     find_by_name_ci,

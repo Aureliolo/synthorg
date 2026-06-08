@@ -6,8 +6,8 @@ import pytest
 import structlog.testing
 from pydantic import ValidationError
 
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.task_execution import StatusTransition, TaskExecution
 from synthorg.observability.events.execution import (

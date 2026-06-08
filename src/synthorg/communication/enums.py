@@ -26,7 +26,7 @@ class MessageType(StrEnum):
 class MessagePriority(StrEnum):
     """Priority level for messages.
 
-    Separate from :class:`synthorg.core.enums.Priority` which uses
+    Separate from :class:`synthorg.core.task_enums.Priority` which uses
     ``"medium"``; message priority uses ``"normal"`` per the Communication design page.
     """
 

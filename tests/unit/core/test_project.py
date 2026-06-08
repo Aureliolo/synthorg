@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from tests._shared import as_uuid, sid
 from tests.unit.core.conftest import ProjectFactory
 

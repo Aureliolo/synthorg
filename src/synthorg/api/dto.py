@@ -18,15 +18,10 @@ from pydantic import (
 )
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
-from synthorg.core.enums import (
-    ApprovalRiskLevel,
-    ArtifactType,
-    Complexity,
-    Priority,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.artifact import ArtifactType
+from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.core.validation import is_valid_action_type
 

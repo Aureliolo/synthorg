@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import TaskType
+from synthorg.core.task_enums import TaskType
 from synthorg.memory.procedural.models import (
     FailureAnalysisPayload,
     ProceduralMemoryConfig,

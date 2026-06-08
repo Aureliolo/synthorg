@@ -21,8 +21,8 @@ from synthorg.communication.async_tasks.models import (
     AsyncTaskStateChannel,
 )
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.compaction.models import CompressionMetadata
 from synthorg.engine.context_snapshot import AgentContextSnapshot

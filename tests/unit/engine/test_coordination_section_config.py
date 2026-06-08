@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import CoordinationTopology
+from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.section_config import (
     CoordinationSectionConfig,

@@ -15,19 +15,21 @@ from synthorg.core.agent import (
 from synthorg.core.company import Company, CompanyConfig, Department
 from synthorg.core.enums import (
     AgentStatus,
-    Complexity,
     ConflictEscalation,
-    CoordinationTopology,
     CreativityLevel,
     DepartmentName,
-    Priority,
     RiskTolerance,
+)
+from synthorg.core.role import Authority, Role, Skill
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import (
+    Complexity,
+    CoordinationTopology,
+    Priority,
     TaskStatus,
     TaskStructure,
     TaskType,
 )
-from synthorg.core.role import Authority, Role, Skill
-from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,

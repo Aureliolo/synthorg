@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
+from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.pipeline.entry.objective_adapter import (
     ObjectiveEntryAdapter,
     ObjectiveSubmission,

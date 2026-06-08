@@ -4,8 +4,8 @@ import pytest
 
 from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import Stakes, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Stakes, TaskType
 from synthorg.core.types import ModelTier
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.routing_policy import StakesRoutingConfig, build_stakes_router

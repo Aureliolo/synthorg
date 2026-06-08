@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
     WindowMetrics,

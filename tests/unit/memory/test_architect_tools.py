@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import AutonomyLevel, ToolCategory
+from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.enums import ToolCategory
 from synthorg.core.role_catalog import get_builtin_role
 from synthorg.memory.consolidation.wiki_export import WikiExporter
 from synthorg.memory.tools import (

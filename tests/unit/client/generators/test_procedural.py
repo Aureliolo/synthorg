@@ -5,7 +5,7 @@ import pytest
 from synthorg.client.generators import ProceduralGenerator
 from synthorg.client.models import GenerationContext
 from synthorg.client.protocols import RequirementGenerator
-from synthorg.core.enums import Complexity
+from synthorg.core.task_enums import Complexity
 
 pytestmark = pytest.mark.unit
 

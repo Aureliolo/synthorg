@@ -3,7 +3,7 @@
 import pytest
 
 from synthorg.core.agent import ToolPermissions
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.security.trust.enforcement import (
     resolve_effective_tool_permissions,
 )

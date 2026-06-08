@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.core.enums import TaskType
+from synthorg.core.task_enums import TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.recovery import RecoveryResult

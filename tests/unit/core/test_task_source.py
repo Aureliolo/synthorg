@@ -4,8 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.communication.delegation.service import DelegationService
-from synthorg.core.enums import TaskSource, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskSource, TaskStatus, TaskType
 from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit

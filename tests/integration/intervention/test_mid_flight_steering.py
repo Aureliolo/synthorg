@@ -16,14 +16,10 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.core.enums import (
-    GitBackendType,
-    InterventionKind,
-    Priority,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.enums import InterventionKind
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
 from synthorg.engine.intervention import (

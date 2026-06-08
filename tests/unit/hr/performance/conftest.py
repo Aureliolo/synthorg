@@ -2,8 +2,8 @@
 
 from datetime import UTC, datetime
 
-from synthorg.core.enums import Complexity, TaskType
 from synthorg.core.task import AcceptanceCriterion
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import (
     CollaborationMetricRecord,

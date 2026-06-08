@@ -8,7 +8,7 @@ tags must be present.
 
 import pytest
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     TAG_UNTRUSTED_ARTIFACT,

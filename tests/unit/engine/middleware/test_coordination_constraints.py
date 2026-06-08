@@ -6,8 +6,9 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import AutonomyLevel, Priority, TaskType
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.models import (
     CoordinationContext,

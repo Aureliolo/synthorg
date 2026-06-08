@@ -6,7 +6,7 @@ from uuid import UUID
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import TaskEngineQueueFullError
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_config import TaskEngineConfig

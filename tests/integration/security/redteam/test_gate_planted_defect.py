@@ -17,7 +17,7 @@ ReviewGateService will route as IN_PROGRESS rework.
 
 import pytest
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_BLOCKED,
     RED_TEAM_GATE_STARTED,

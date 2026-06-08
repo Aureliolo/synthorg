@@ -10,8 +10,8 @@ from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import Complexity, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, TaskStatus, TaskType
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_loop import HybridLoop

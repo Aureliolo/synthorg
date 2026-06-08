@@ -2,7 +2,8 @@
 
 import pytest
 
-from synthorg.core.enums import AutonomyLevel, DowngradeReason
+from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.enums import DowngradeReason
 from synthorg.security.autonomy.change_strategy import HumanOnlyPromotionStrategy
 
 

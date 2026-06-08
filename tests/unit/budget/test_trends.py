@@ -18,7 +18,7 @@ from synthorg.budget.trends import (
     project_daily_spend,
     resolve_bucket_size,
 )
-from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.performance.models import TaskMetricRecord
 
 # ── Helpers ────────────────────────────────────────────────────

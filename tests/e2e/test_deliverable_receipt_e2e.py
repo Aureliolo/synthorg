@@ -38,8 +38,9 @@ import pytest
 
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import ToolPermissions
-from synthorg.core.enums import GitBackendType, TaskStatus
+from synthorg.core.project_enums import GitBackendType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.deliverable_receipts.factory import build_deliverable_receipt_service
 from synthorg.docs_engine.factory import build_docs_service
 from synthorg.docs_engine.service import DocsService

@@ -7,8 +7,8 @@ import pytest
 
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (

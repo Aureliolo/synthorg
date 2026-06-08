@@ -202,7 +202,7 @@ class TestBootstrapAgents:
     ) -> None:
         """Per-agent autonomy_level is forwarded from config."""
         from synthorg.api.bootstrap import bootstrap_agents
-        from synthorg.core.enums import AutonomyLevel
+        from synthorg.core.autonomy_enums import AutonomyLevel
 
         config = AgentConfig(
             name="autonomous-agent",

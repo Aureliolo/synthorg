@@ -13,8 +13,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import InterventionKind, TaskStatus, TaskType
+from synthorg.core.enums import InterventionKind
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit import CockpitService
 from synthorg.engine.flight_recording import (

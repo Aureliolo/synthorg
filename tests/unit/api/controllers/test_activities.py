@@ -14,7 +14,7 @@ from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,
 )
 from synthorg.config.schema import RootConfig
-from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord

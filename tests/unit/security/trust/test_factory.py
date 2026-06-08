@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.security.trust.config import (
     MilestoneCriteria,
     TrustConfig,

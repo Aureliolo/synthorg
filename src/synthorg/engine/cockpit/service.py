@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Final
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.cockpit import (

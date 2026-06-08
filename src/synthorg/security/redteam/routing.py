@@ -26,7 +26,7 @@ controlled by :data:`AUTONOMY_LEVELS_THAT_BLOCK_MEDIUM`.
 
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.security.redteam.models import (
     RedTeamFinding,
     RedTeamSeverity,

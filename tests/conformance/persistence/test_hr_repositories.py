@@ -9,8 +9,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import Complexity, TaskType
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (

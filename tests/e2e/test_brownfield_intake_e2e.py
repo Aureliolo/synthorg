@@ -34,9 +34,10 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import AgentStatus, TaskStatus, TaskType
+from synthorg.core.enums import AgentStatus
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.brownfield.models import CodebaseImportSubmission
 from synthorg.engine.brownfield.scanner import build_structure_map_scanners

@@ -5,8 +5,7 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
-from synthorg.core.artifact import Artifact
-from synthorg.core.enums import ArtifactType
+from synthorg.core.artifact import Artifact, ArtifactType
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.sqlite.artifact_repo import SQLiteArtifactRepository
 from tests._shared.persistence import make_private_write_context

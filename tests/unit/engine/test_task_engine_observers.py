@@ -5,8 +5,8 @@ from collections.abc import AsyncGenerator
 
 import pytest
 
-from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import (
     CreateTaskData,

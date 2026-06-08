@@ -18,13 +18,14 @@ from synthorg.config.provider_schema import (
     ProviderConfig,
     ProviderModelConfig,
 )
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.company import (
     CompanyConfig,
     Department,
     EscalationPath,
     WorkflowHandoff,
 )
-from synthorg.core.enums import AutonomyLevel, CompanyType
+from synthorg.core.enums import CompanyType
 from synthorg.core.role import CustomRole
 from synthorg.core.types import NotBlankStr, stable_agent_id
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
@@ -43,9 +44,7 @@ from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.notifications.config import NotificationConfig
 from synthorg.observability import get_logger
 from synthorg.observability.config import LogConfig
-from synthorg.observability.events.config import (
-    CONFIG_VALIDATION_FAILED,
-)
+from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.ontology.config import OntologyConfig
 from synthorg.persistence.config import PersistenceConfig
 from synthorg.security.config import SecurityConfig

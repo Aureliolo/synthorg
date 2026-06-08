@@ -8,7 +8,7 @@ from synthorg.core.task import Task
 from synthorg.engine.task_engine_models import CreateTaskData
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import TaskStatus
+    from synthorg.core.task_enums import TaskStatus
 
 # ── Fakes ─────────────────────────────────────────────────────
 
@@ -161,7 +161,7 @@ class FailingMessageBus(FakeMessageBus):
 
 def make_create_data(**overrides: object) -> CreateTaskData:
     """Build a CreateTaskData with sensible defaults."""
-    from synthorg.core.enums import TaskType
+    from synthorg.core.task_enums import TaskType
 
     defaults: dict[str, object] = {
         "title": "Test task",

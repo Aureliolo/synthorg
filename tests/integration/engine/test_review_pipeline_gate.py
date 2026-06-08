@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.errors import SelfReviewError
 from synthorg.engine.review import (
     InternalReviewStage,

@@ -8,7 +8,8 @@ from uuid import UUID
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.core.enums import ApprovalStatus, AutonomyLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.enums import ApprovalStatus
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     AuthMethod,
