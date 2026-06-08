@@ -7,7 +7,7 @@ is not wired; ``_subworkflows_delete`` enforces the admin guardrail
 triple and emits ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -55,6 +55,7 @@ from synthorg.observability.events.mcp import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -68,7 +69,7 @@ _WHY_SUBWORKFLOW_SERVICE = (
 )
 
 
-def _subworkflow_service(app_state: Any) -> SubworkflowService | None:
+def _subworkflow_service(app_state: AppState) -> SubworkflowService | None:
     """Return the wired subworkflow service, or ``None`` to trigger gap.
 
     Gates on ``has_subworkflow_service`` first because the
@@ -87,8 +88,8 @@ def _subworkflow_service(app_state: Any) -> SubworkflowService | None:
 
 async def _subworkflows_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_subworkflows_list`` MCP tool.
@@ -129,8 +130,8 @@ async def _subworkflows_list(
 
 async def _subworkflows_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_subworkflows_get`` MCP tool.
@@ -171,8 +172,8 @@ async def _subworkflows_get(
 
 async def _subworkflows_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_subworkflows_create`` MCP tool.
@@ -216,8 +217,8 @@ async def _subworkflows_create(
 
 async def _subworkflows_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_subworkflows_delete`` MCP tool.

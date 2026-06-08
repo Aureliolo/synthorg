@@ -14,7 +14,6 @@ router by passing the full ``adapters`` dict at construction time.
 import asyncio
 from collections.abc import Awaitable, Callable
 from types import MappingProxyType
-from typing import Any
 
 from synthorg.meta.errors import (
     RollbackMutationDeniedError,
@@ -28,7 +27,7 @@ logger = get_logger(__name__)
 
 # An adapter takes the parsed target tail (after the ``<type>:`` prefix)
 # and the previous value to restore.
-ArchitectureAdapter = Callable[[str, Any], Awaitable[None]]
+ArchitectureAdapter = Callable[[str, object], Awaitable[None]]
 
 
 class RoutedArchitectureMutator:
@@ -51,7 +50,7 @@ class RoutedArchitectureMutator:
             dict(adapters or {})
         )
 
-    async def restore(self, *, target: str, previous_value: Any) -> None:
+    async def restore(self, *, target: str, previous_value: object) -> None:
         """Parse ``target`` and dispatch to the registered adapter.
 
         Raises:

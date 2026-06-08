@@ -9,7 +9,7 @@ payload, then routes through the service.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
@@ -43,6 +43,7 @@ from synthorg.project_brain.state import ProjectBrainStateSlice
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
     from synthorg.project_brain.service import ProjectBrainService
 
@@ -61,7 +62,7 @@ _ARG_PAYLOAD = "payload"
 _CREATE_REQUIRED = "title, rationale, status, and payload (create)"
 
 
-def _require_brain_service(app_state: Any) -> ProjectBrainService:
+def _require_brain_service(app_state: AppState) -> ProjectBrainService:
     """Return the project-brain service or raise when unavailable.
 
     Returns:
@@ -74,7 +75,7 @@ def _require_brain_service(app_state: Any) -> ProjectBrainService:
     if svc is None:
         msg = "project brain service is not wired on app_state in this deployment"
         raise ServiceUnavailableError(msg)
-    return cast("ProjectBrainService", svc)
+    return svc
 
 
 async def _append_entry(svc: ProjectBrainService, args: BrainAppendArgs) -> BrainEntry:
@@ -127,8 +128,8 @@ async def _append_entry(svc: ProjectBrainService, args: BrainAppendArgs) -> Brai
 
 async def _brain_append(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return the created or revised brain entry envelope (admin)."""
@@ -156,8 +157,8 @@ async def _brain_append(
 
 async def _brain_resolve(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return the resolved-entry envelope for a question or dependency (admin)."""
@@ -187,8 +188,8 @@ async def _brain_resolve(
 
 async def _brain_supersede(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return the superseded decision or plan-revision envelope (admin)."""
@@ -218,8 +219,8 @@ async def _brain_supersede(
 
 async def _brain_clear_blocker(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return the cleared-blocker envelope (admin)."""
@@ -249,8 +250,8 @@ async def _brain_clear_blocker(
 
 async def _brain_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return one brain entry envelope, latest or at an exact revision (read)."""
@@ -275,8 +276,8 @@ async def _brain_get(
 
 async def _brain_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the current-state projection envelope for a project (read)."""
@@ -303,8 +304,8 @@ async def _brain_list(
 
 async def _brain_query(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return semantic-search hits across a project's indexed brain (read)."""
@@ -326,8 +327,8 @@ async def _brain_query(
 
 async def _brain_history(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the structured revision-chain envelope of one brain entry (read)."""

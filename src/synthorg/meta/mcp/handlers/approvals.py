@@ -20,11 +20,11 @@ import copy
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
-from synthorg.approval.state import ApprovalStateSlice
+from synthorg.approval.state import approval_store_of
 from synthorg.core.agent import (
     AgentIdentity,
 )
@@ -60,6 +60,9 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -100,7 +103,7 @@ _ARG_ACTION_TYPE = "action_type"
 _ARG_RISK_LEVEL = "risk_level"
 
 
-def _coerce_status(raw: Any) -> ApprovalStatus | None:
+def _coerce_status(raw: object) -> ApprovalStatus | None:
     """Map a string argument to ``ApprovalStatus`` or raise.
 
     Returns:
@@ -119,7 +122,7 @@ def _coerce_status(raw: Any) -> ApprovalStatus | None:
         raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS) from exc
 
 
-def _coerce_risk(raw: Any, *, field: str = "risk_level") -> ApprovalRiskLevel | None:
+def _coerce_risk(raw: object, *, field: str = "risk_level") -> ApprovalRiskLevel | None:
     """Map a string argument to ``ApprovalRiskLevel`` or raise.
 
     Returns:
@@ -143,8 +146,8 @@ def _coerce_risk(raw: Any, *, field: str = "risk_level") -> ApprovalRiskLevel | 
 
 async def _list_approvals(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handler: ``synthorg_approvals_list``.
@@ -176,7 +179,7 @@ async def _list_approvals(
     # validation is already complete above, so any failure here is a
     # service-layer problem -- a single ``except Exception`` is enough.
     try:
-        items = await app_state.slice(ApprovalStateSlice).store.list_items(
+        items = await approval_store_of(app_state).list_items(
             status=status,
             risk_level=risk,
             action_type=action_type,
@@ -192,8 +195,8 @@ async def _list_approvals(
 
 async def _get_approval(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handler: ``synthorg_approvals_get``.
@@ -210,7 +213,7 @@ async def _get_approval(
         return err(exc)
 
     try:
-        item = await app_state.slice(ApprovalStateSlice).store.get(approval_id)
+        item = await approval_store_of(app_state).get(approval_id)
     except Exception as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -226,8 +229,8 @@ async def _get_approval(
 
 async def _create_approval(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handler: ``synthorg_approvals_create``.
@@ -269,7 +272,7 @@ async def _create_approval(
         created_at=now,
     )
     try:
-        await app_state.slice(ApprovalStateSlice).store.add(item)
+        await approval_store_of(app_state).add(item)
     except ConflictError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
@@ -283,9 +286,9 @@ async def _create_approval(
 
 async def _decide(
     *,
-    app_state: Any,
+    app_state: AppState,
     approval_id: str,
-    actor: Any,
+    actor: AgentIdentity | None,
     target: ApprovalStatus,
     reason: str | None,
 ) -> ApprovalItem:
@@ -308,7 +311,7 @@ async def _decide(
         ``ApprovalItem`` instance.
     """
     decided_by = require_actor_id(actor)
-    store = app_state.slice(ApprovalStateSlice).store
+    store = approval_store_of(app_state)
     existing = await store.get(approval_id)
     if existing is None:
         msg = f"Approval {approval_id!r} not found"
@@ -343,8 +346,8 @@ async def _decide(
 
 async def _approve(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handler: ``synthorg_approvals_approve``.
@@ -393,8 +396,8 @@ async def _approve(
 
 async def _reject(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handler: ``synthorg_approvals_reject`` (destructive).

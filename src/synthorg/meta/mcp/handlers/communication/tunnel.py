@@ -1,7 +1,7 @@
 """Sandbox-tunnel MCP handlers (communication sub-domain)."""
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.integrations.state import tunnel_service_of
 from synthorg.meta.mcp.errors import (
@@ -22,6 +22,7 @@ from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -29,8 +30,8 @@ logger = get_logger(__name__)
 
 async def _tunnel_get_status(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the current tunnel service status.
@@ -48,8 +49,8 @@ async def _tunnel_get_status(
 
 async def _tunnel_connect(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Trigger a tunnel reconnect attempt (admin op; enforces guardrails).

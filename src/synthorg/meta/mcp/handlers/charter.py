@@ -8,7 +8,7 @@ guardrail here.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
@@ -33,7 +33,10 @@ from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
+    from synthorg.meta.charter.dispatch import CharterDispatcher
+    from synthorg.meta.charter.service import CharterInterviewService
 
 logger = get_logger(__name__)
 
@@ -71,7 +74,7 @@ def _actor_id(actor: AgentIdentity | None) -> NotBlankStr:
     return NotBlankStr(str(actor.id))
 
 
-def _require_charter_service(app_state: Any) -> Any:
+def _require_charter_service(app_state: AppState) -> CharterInterviewService:
     """Return the charter service or raise when unavailable.
 
     Raises:
@@ -84,7 +87,7 @@ def _require_charter_service(app_state: Any) -> Any:
     return svc
 
 
-def _require_charter_dispatcher(app_state: Any) -> Any:
+def _require_charter_dispatcher(app_state: AppState) -> CharterDispatcher:
     """Return the charter dispatcher or raise when unavailable.
 
     Raises:
@@ -97,7 +100,7 @@ def _require_charter_dispatcher(app_state: Any) -> Any:
     return dispatcher
 
 
-def _opt_nonblank(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
+def _opt_nonblank(arguments: dict[str, object], key: str) -> NotBlankStr | None:
     """Return opt nonblank.
 
     Raises:
@@ -111,7 +114,7 @@ def _opt_nonblank(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
     return NotBlankStr(raw)
 
 
-def _parse_status(arguments: dict[str, Any]) -> CharterStatus | None:
+def _parse_status(arguments: dict[str, object]) -> CharterStatus | None:
     """Return parse status.
 
     Raises:
@@ -128,7 +131,9 @@ def _parse_status(arguments: dict[str, Any]) -> CharterStatus | None:
         raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS) from exc
 
 
-def _parse_int(arguments: dict[str, Any], key: str, *, default: int, floor: int) -> int:
+def _parse_int(
+    arguments: dict[str, object], key: str, *, default: int, floor: int
+) -> int:
     """Return parse int.
 
     Raises:
@@ -145,8 +150,8 @@ def _parse_int(arguments: dict[str, Any], key: str, *, default: int, floor: int)
 
 async def _charter_interview(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return charter interview."""
@@ -174,8 +179,8 @@ async def _charter_interview(
 
 async def _charter_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return charter list."""
@@ -206,8 +211,8 @@ async def _charter_list(
 
 async def _charter_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return charter get."""
@@ -228,8 +233,8 @@ async def _charter_get(
 
 async def _charter_cancel(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return charter cancel."""
@@ -260,8 +265,8 @@ async def _charter_cancel(
 
 async def _charter_approve(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return charter approve."""

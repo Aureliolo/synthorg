@@ -1,7 +1,7 @@
 """Message MCP handlers (communication sub-domain)."""
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -40,6 +40,7 @@ from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -50,7 +51,7 @@ _ARG_MESSAGE = "message"
 _TY_MESSAGE_OBJ = "Message object"
 
 
-def _parse_message(arguments: dict[str, Any]) -> Message:
+def _parse_message(arguments: dict[str, object]) -> Message:
     """Decode the ``message`` argument into a validated :class:`Message`.
 
     Returns:
@@ -70,8 +71,8 @@ def _parse_message(arguments: dict[str, Any]) -> Message:
 
 async def _messages_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List messages on a channel (paginated).
@@ -99,8 +100,8 @@ async def _messages_list(
 
 async def _messages_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single message by channel + message ID.
@@ -131,8 +132,8 @@ async def _messages_get(
 
 async def _messages_send(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Publish a new message on a channel (non-destructive write).
@@ -157,8 +158,8 @@ async def _messages_send(
 
 async def _messages_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Delete a single message by id.

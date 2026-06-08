@@ -6,7 +6,7 @@ that flow through the CoS learning and monitoring pipelines.
 """
 
 from copy import deepcopy
-from typing import Any, Literal, Self
+from typing import Literal, Self
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -196,11 +196,11 @@ class Alert(BaseModel):
     alert_type: Literal["inflection", "threshold", "trend"]
     description: NotBlankStr
     affected_domains: tuple[NotBlankStr, ...]
-    signal_context: dict[str, Any] = Field(default_factory=dict)
+    signal_context: dict[str, object] = Field(default_factory=dict)
     recommended_action: NotBlankStr | None = None
     emitted_at: AwareDatetime
 
-    def __init__(self, **data: Any) -> None:
+    def __init__(self, **data: object) -> None:
         if "signal_context" in data:
             data["signal_context"] = deepcopy(data["signal_context"])
         super().__init__(**data)

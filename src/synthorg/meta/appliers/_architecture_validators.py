@@ -8,7 +8,8 @@ lists of human-readable error strings; no state is mutated outside the
 supplied ``_PendingChanges``.
 """
 
-from typing import TYPE_CHECKING, Any, Final
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Final
 
 from synthorg.meta.appliers._validation import validate_payload_keys
 from synthorg.meta.models import ArchitectureChange
@@ -242,7 +243,7 @@ def _validate_create_role(
     return errors
 
 
-def _validate_role_description(description: Any) -> list[str]:
+def _validate_role_description(description: object) -> list[str]:
     """Validate the ``description`` field for a new role.
 
     ``description`` is the only required key in the create_role
@@ -269,7 +270,7 @@ def _validate_role_description(description: Any) -> list[str]:
 
 
 def _validate_role_department(
-    dept: Any,
+    dept: object,
     *,
     context: ArchitectureApplierContext,
     pending: _PendingChanges,
@@ -292,7 +293,7 @@ def _validate_role_department(
     return []
 
 
-def _validate_skill_list(skills: list[Any] | tuple[Any, ...]) -> list[str]:
+def _validate_skill_list(skills: Sequence[object]) -> list[str]:
     """Validate each entry in ``required_skills`` (type, length, count).
 
     Returns:
@@ -317,7 +318,7 @@ def _validate_skill_list(skills: list[Any] | tuple[Any, ...]) -> list[str]:
     return errors
 
 
-def _validate_authority_level(value: Any) -> list[str]:
+def _validate_authority_level(value: object) -> list[str]:
     """Validate the optional ``authority_level`` free-text field.
 
     Returns:
@@ -337,7 +338,7 @@ def _validate_authority_level(value: Any) -> list[str]:
     return []
 
 
-def _validate_tool_access(value: Any) -> list[str]:
+def _validate_tool_access(value: object) -> list[str]:
     """Validate the optional ``tool_access`` list of tool identifiers.
 
     Returns:
@@ -366,7 +367,7 @@ def _validate_tool_access(value: Any) -> list[str]:
     return errors
 
 
-def _validate_dept_policies(value: Any) -> list[str]:
+def _validate_dept_policies(value: object) -> list[str]:
     """Validate the optional ``policies`` list for a new department.
 
     Returns:
@@ -395,7 +396,7 @@ def _validate_dept_policies(value: Any) -> list[str]:
     return errors
 
 
-def _validate_dept_head(value: Any) -> list[str]:
+def _validate_dept_head(value: object) -> list[str]:
     """Validate the optional ``head`` reference on a new department.
 
     Returns:

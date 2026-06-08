@@ -1,7 +1,7 @@
 """API-user MCP handlers (infrastructure sub-domain)."""
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.infrastructure.state import user_facade_service_of
@@ -28,6 +28,7 @@ from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -35,8 +36,8 @@ logger = get_logger(__name__)
 
 async def _users_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List registered API users.
@@ -60,8 +61,8 @@ async def _users_list(
 
 async def _users_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single API user by ID.
@@ -91,8 +92,8 @@ async def _users_get(
 
 async def _users_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Create a new API user (admin op; enforces guardrails).
@@ -135,8 +136,8 @@ async def _users_create(
 
 async def _users_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Update an existing API user (admin op; partial patch).
@@ -179,8 +180,8 @@ async def _users_update(
 
 async def _users_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Delete an API user (destructive; enforces guardrails).

@@ -6,7 +6,7 @@ definitions, routed through the ``workflow_service`` facade on
 and emits ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -48,6 +48,7 @@ from synthorg.observability.events.mcp import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -55,7 +56,7 @@ logger = get_logger(__name__)
 _ARG_DEF_ID = "workflow_id"
 
 
-def _service(app_state: Any) -> WorkflowService:
+def _service(app_state: AppState) -> WorkflowService:
     """Return the workflow service facade.
 
     Handlers must route through the injected ``workflow_service`` slot
@@ -90,8 +91,8 @@ def _service(app_state: Any) -> WorkflowService:
 
 async def _workflows_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_workflows_list`` MCP tool.
@@ -122,8 +123,8 @@ async def _workflows_list(
 
 async def _workflows_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_workflows_get`` MCP tool.
@@ -155,8 +156,8 @@ async def _workflows_get(
 
 async def _workflows_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_workflows_create`` MCP tool.
@@ -200,8 +201,8 @@ async def _workflows_create(
 
 async def _workflows_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_workflows_update`` MCP tool.
@@ -248,8 +249,8 @@ async def _workflows_update(
 
 async def _workflows_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_workflows_delete`` MCP tool.
@@ -292,8 +293,8 @@ async def _workflows_delete(
 
 async def _workflows_validate(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_workflows_validate`` MCP tool.

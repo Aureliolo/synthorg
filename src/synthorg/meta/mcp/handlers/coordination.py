@@ -17,7 +17,7 @@ services in the application bootstrap.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING
 
 from synthorg.coordination.state import (
     CoordinationStateSlice,
@@ -56,6 +56,9 @@ from synthorg.meta.mcp.handlers.common_logging import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
+
 logger = get_logger(__name__)
 
 
@@ -80,8 +83,8 @@ _WHY_CEREMONY_NOT_WIRED = (
 
 async def _coordination_get_task_metrics(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_coordination_get_task_metrics`` MCP tool.
@@ -117,8 +120,8 @@ async def _coordination_get_task_metrics(
 
 async def _coordination_metrics_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_coordination_metrics_list`` MCP tool.
@@ -153,8 +156,8 @@ async def _coordination_metrics_list(
 
 async def _scaling_list_decisions(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_scaling_list_decisions`` MCP tool.
@@ -186,8 +189,8 @@ async def _scaling_list_decisions(
 
 async def _scaling_get_decision(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_scaling_get_decision`` MCP tool.
@@ -221,8 +224,8 @@ async def _scaling_get_decision(
 
 async def _scaling_get_config(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_scaling_get_config`` MCP tool.
@@ -245,8 +248,8 @@ async def _scaling_get_config(
 
 async def _scaling_trigger(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_scaling_trigger`` MCP tool.
@@ -288,8 +291,8 @@ async def _scaling_trigger(
 
 async def _ceremony_policy_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_ceremony_policy_get`` MCP tool.
@@ -312,8 +315,8 @@ async def _ceremony_policy_get(
 
 async def _ceremony_policy_get_resolved(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_ceremony_policy_get_resolved`` MCP tool.
@@ -354,8 +357,8 @@ async def _ceremony_policy_get_resolved(
 
 async def _ceremony_policy_get_active_strategy(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_ceremony_policy_get_active_strategy`` MCP tool.

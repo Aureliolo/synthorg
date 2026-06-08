@@ -12,7 +12,7 @@ domain, bounds, unit, nullability).
 import operator as _operator
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal, cast
 from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
@@ -351,10 +351,10 @@ def resolve_metric(
     Raises:
         AttributeError: If the path does not exist on the snapshot.
     """
-    obj: Any = snapshot
+    obj: object = snapshot
     for part in path.split("."):
         obj = getattr(obj, part)
-    return obj  # type: ignore[no-any-return]
+    return cast("float | int | None", obj)
 
 
 # ── CustomRuleDefinition ─────────────────────────────────────────

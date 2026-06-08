@@ -9,7 +9,7 @@ pushed the parent module past budget.
 """
 
 import copy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.errors import (
@@ -52,6 +52,7 @@ from synthorg.observability.events.mcp import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -65,7 +66,7 @@ _WHY_EXECUTION_SERVICE = (
 )
 
 
-def _execution_service(app_state: Any) -> WorkflowExecutionService | None:
+def _execution_service(app_state: AppState) -> WorkflowExecutionService | None:
     # The concrete ``AppState.workflow_execution_service`` property
     # raises ``ServiceUnavailableError`` when the slot is empty, so we
     # gate on the ``has_<service>`` predicate first instead of relying
@@ -79,8 +80,8 @@ def _execution_service(app_state: Any) -> WorkflowExecutionService | None:
 
 
 def _parse_start_args(
-    arguments: dict[str, Any],
-) -> tuple[str, str, dict[str, Any]]:
+    arguments: dict[str, object],
+) -> tuple[str, str, dict[str, object]]:
     """Validate and extract args for ``synthorg_workflow_executions_start``.
 
     Extracted so :func:`workflow_executions_start` itself stays under the
@@ -121,8 +122,8 @@ def _parse_start_args(
 
 async def workflow_executions_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List executions for a workflow definition.
@@ -156,8 +157,8 @@ async def workflow_executions_list(
 
 async def workflow_executions_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single workflow execution by id.
@@ -192,8 +193,8 @@ async def workflow_executions_get(
 
 async def workflow_executions_start(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Activate a workflow definition (alias: start an execution).
@@ -237,8 +238,8 @@ async def workflow_executions_start(
 
 async def workflow_executions_cancel(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Cancel a running workflow execution (destructive).

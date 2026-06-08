@@ -7,7 +7,7 @@ facade on :class:`AppState`; capability gaps surface as typed
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
@@ -42,6 +42,7 @@ from synthorg.observability.events.mcp import MCP_HANDLER_CAPABILITY_GAP
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -51,7 +52,7 @@ _TY_UUID = "UUID string"
 _TY_OPTIONAL_STRING = "string or null"
 
 
-def _get_optional_str(arguments: dict[str, Any], key: str) -> str | None:
+def _get_optional_str(arguments: dict[str, object], key: str) -> str | None:
     """Return ``arguments[key]`` as ``str`` / ``None``, rejecting other types.
 
     An absent key and an explicit ``null`` are both returned as ``None``.
@@ -92,7 +93,7 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
     return err(exc, domain_code=exc.domain_code)
 
 
-def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
+def _require_str(arguments: dict[str, object], key: str) -> NotBlankStr:
     """Extract a required non-blank string or raise ``ArgumentValidationError``.
 
     Returns:
@@ -107,7 +108,7 @@ def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
     return value
 
 
-def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
+def _require_uuid(arguments: dict[str, object], key: str) -> NotBlankStr:
     """Extract a required UUID-shaped string or raise ``ArgumentValidationError``.
 
     Returns:
@@ -124,11 +125,11 @@ def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
     return NotBlankStr(value)
 
 
-def _to_jsonable(value: Any) -> Any:
+def _to_jsonable(value: object) -> object:
     """Coerce a Pydantic / ``to_dict`` value into a JSON-serialisable form.
 
     Returns:
-        ``Any`` instance.
+        JSON-serialisable representation of ``value``.
     """
     dump_fn = getattr(value, "model_dump", None)
     if callable(dump_fn):
@@ -144,8 +145,8 @@ def _to_jsonable(value: Any) -> Any:
 
 async def _quality_get_summary(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the org-wide quality summary.
@@ -169,8 +170,8 @@ async def _quality_get_summary(
 
 async def _quality_get_agent_quality(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the quality profile for a single agent.
@@ -197,8 +198,8 @@ async def _quality_get_agent_quality(
 
 async def _quality_list_scores(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List individual quality scores (paginated).
@@ -232,8 +233,8 @@ async def _quality_list_scores(
 
 async def _reviews_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List queued review records (paginated).
@@ -260,8 +261,8 @@ async def _reviews_list(
 
 async def _reviews_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single review by ID.
@@ -289,8 +290,8 @@ async def _reviews_get(
 
 async def _reviews_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Create a new review record (non-destructive write).
@@ -320,8 +321,8 @@ async def _reviews_create(
 
 async def _reviews_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Update verdict / comments on an existing review.
@@ -359,8 +360,8 @@ async def _reviews_update(
 
 async def _evaluation_versions_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List evaluation-config version snapshots.
@@ -382,8 +383,8 @@ async def _evaluation_versions_list(
 
 async def _evaluation_versions_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single evaluation-config version by ID.

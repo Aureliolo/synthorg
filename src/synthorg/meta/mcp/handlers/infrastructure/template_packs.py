@@ -1,7 +1,7 @@
 """Template-pack MCP handlers (infrastructure sub-domain)."""
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.infrastructure.state import template_pack_facade_service_of
 from synthorg.meta.mcp.errors import (
@@ -31,6 +31,7 @@ from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -38,8 +39,8 @@ logger = get_logger(__name__)
 
 async def _template_packs_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List installed template packs.
@@ -66,8 +67,8 @@ async def _template_packs_list(
 
 async def _template_packs_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single template-pack record by ID.
@@ -95,8 +96,8 @@ async def _template_packs_get(
 
 async def _template_packs_install(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Install a new template pack (admin op; enforces guardrails).
@@ -137,8 +138,8 @@ async def _template_packs_install(
 
 async def _template_packs_uninstall(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Uninstall a template pack (destructive; enforces guardrails).

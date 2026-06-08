@@ -8,7 +8,7 @@ prompt, architecture, and code services.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -56,7 +56,7 @@ class RollbackHandler(Protocol):
 class ConfigMutator(Protocol):
     """Writes a value at a dotted config path."""
 
-    async def set(self, *, path: str, value: Any) -> None:
+    async def set(self, *, path: str, value: object) -> None:
         """Restore the config leaf at ``path`` to ``value``."""
         ...
 
@@ -74,7 +74,7 @@ class PromptMutator(Protocol):
 class ArchitectureMutator(Protocol):
     """Restores an org-structure entity (role, department, workflow)."""
 
-    async def restore(self, *, target: str, previous_value: Any) -> None:
+    async def restore(self, *, target: str, previous_value: object) -> None:
         """Restore entity ``target`` to ``previous_value``."""
         ...
 

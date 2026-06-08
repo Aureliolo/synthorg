@@ -5,7 +5,7 @@ communication sub-domain handler modules (messages, meetings,
 connections, webhooks, tunnel).
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.meta.mcp.errors import ArgumentValidationError
@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 _TY_STRING = "non-blank string"
 
 
-def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
+def _require_str(arguments: dict[str, object], key: str) -> NotBlankStr:
     """Extract a required non-blank string or raise ``ArgumentValidationError``.
 
     Returns:
@@ -37,7 +37,7 @@ def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
     return value
 
 
-def _get_dict(arguments: dict[str, Any], key: str) -> dict[str, str] | None:
+def _get_dict(arguments: dict[str, object], key: str) -> dict[str, str] | None:
     """Extract an optional ``dict[str, str]`` argument; ``None`` when absent.
 
     Returns:

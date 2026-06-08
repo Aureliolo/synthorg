@@ -8,7 +8,7 @@ OAuth provider configuration (list / configure / remove) through
 ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.critical_errors import reraise_critical
@@ -47,6 +47,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -54,8 +55,8 @@ logger = get_logger(__name__)
 
 async def _oauth_list_providers(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List configured OAuth providers.
@@ -80,8 +81,8 @@ async def _oauth_list_providers(
 
 async def _oauth_configure_provider(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
     # lint-allow: mcp-admin-guardrail -- creds shape varies; remove path is guardrailed
 ) -> str:
@@ -119,8 +120,8 @@ async def _oauth_configure_provider(
 
 async def _oauth_remove_provider(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Remove an OAuth provider (destructive; enforces guardrails).
@@ -164,8 +165,8 @@ async def _oauth_remove_provider(
 
 async def _clients_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List registered client applications.
@@ -195,8 +196,8 @@ async def _clients_list(
 
 async def _clients_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single client by ID.
@@ -225,8 +226,8 @@ async def _clients_get(
 
 async def _clients_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
     # lint-allow: mcp-admin-guardrail -- non-destructive client registration
 ) -> str:
@@ -260,8 +261,8 @@ async def _clients_create(
 
 async def _clients_deactivate(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Deactivate a client (destructive; enforces guardrails).
@@ -305,8 +306,8 @@ async def _clients_deactivate(
 
 async def _clients_get_satisfaction(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the client satisfaction score (roll-up over recent interactions).

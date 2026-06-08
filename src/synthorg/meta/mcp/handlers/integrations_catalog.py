@@ -6,7 +6,7 @@ Each handler shims through :func:`mcp_catalog_facade_service_of`;
 emitting ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.critical_errors import reraise_critical
@@ -39,6 +39,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -46,8 +47,8 @@ logger = get_logger(__name__)
 
 async def _mcp_catalog_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List available MCP catalog entries (paginated).
@@ -80,8 +81,8 @@ async def _mcp_catalog_list(
 
 async def _mcp_catalog_search(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Search MCP catalog entries by query string.
@@ -107,8 +108,8 @@ async def _mcp_catalog_search(
 
 async def _mcp_catalog_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single MCP catalog entry by ID.
@@ -141,8 +142,8 @@ async def _mcp_catalog_get(
 
 async def _mcp_catalog_install(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
     # lint-allow: mcp-admin-guardrail -- install records new entry; no state mutated
 ) -> str:
@@ -172,8 +173,8 @@ async def _mcp_catalog_install(
 
 async def _mcp_catalog_uninstall(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Uninstall an MCP catalog entry (destructive; enforces guardrails).

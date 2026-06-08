@@ -5,7 +5,7 @@ the ``workflow_version_service`` facade on ``AppState``. Each handler
 degrades to a ``capability_gap`` envelope when the service is not wired.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -35,6 +35,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -48,7 +49,7 @@ _WHY_VERSION_SERVICE = (
 )
 
 
-def _version_service(app_state: Any) -> WorkflowVersionService | None:
+def _version_service(app_state: AppState) -> WorkflowVersionService | None:
     """Return the wired version service, or ``None`` to trigger gap.
 
     The same ``has_<service>`` predicate guards the call site so the
@@ -64,7 +65,7 @@ def _version_service(app_state: Any) -> WorkflowVersionService | None:
 
 
 def _require_int(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     key: str,
     *,
     positive: bool = False,
@@ -94,8 +95,8 @@ def _require_int(
 
 async def _workflow_versions_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_workflow_versions_list`` MCP tool.
@@ -130,8 +131,8 @@ async def _workflow_versions_list(
 
 async def _workflow_versions_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_workflow_versions_get`` MCP tool.

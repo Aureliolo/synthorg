@@ -7,7 +7,7 @@ destructive and enforces the admin guardrail triple (confirm + reason +
 actor), emitting ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.critical_errors import reraise_critical
@@ -44,6 +44,7 @@ from synthorg.organization.services import UNSET, UnsetType
 from synthorg.organization.state import role_version_service_of, team_service_of
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -51,8 +52,8 @@ logger = get_logger(__name__)
 
 async def _teams_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return a paginated slice of teams.
@@ -80,8 +81,8 @@ async def _teams_list(
 
 async def _teams_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single team by UUID.
@@ -110,8 +111,8 @@ async def _teams_get(
 
 async def _teams_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Create a new team record (non-destructive write).
@@ -140,8 +141,8 @@ async def _teams_create(
 
 async def _teams_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Update name / department on an existing team (partial patch).
@@ -183,8 +184,8 @@ async def _teams_update(
 
 async def _teams_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Delete a team (destructive; enforces confirm + reason + actor).
@@ -226,8 +227,8 @@ async def _teams_delete(
 
 async def _role_versions_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List role-version snapshots, optionally filtered by role name.
@@ -255,8 +256,8 @@ async def _role_versions_list(
 
 async def _role_versions_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single role-version snapshot by ID.

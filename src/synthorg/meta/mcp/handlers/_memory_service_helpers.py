@@ -6,7 +6,7 @@ fine-tune-required variant and a deletion-only variant. Shared by the
 fine-tune, checkpoint, and entry handler modules.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
@@ -14,6 +14,9 @@ from synthorg.memory.service import MemoryService
 from synthorg.memory.state import MemoryStateSlice, memory_service_of
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.settings.state import SettingsStateSlice
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 _TY_NON_BLANK = "non-blank string"
 _ARG_CHECKPOINT_ID = "checkpoint_id"
@@ -35,7 +38,7 @@ _WHY_BACKEND_NO_FINE_TUNE = (
 )
 
 
-def _service(app_state: Any) -> MemoryService:
+def _service(app_state: AppState) -> MemoryService:
     """Return the injected :class:`MemoryService` facade.
 
     Handlers route through ``app_state.memory_service`` exclusively
@@ -105,7 +108,7 @@ def _service(app_state: Any) -> MemoryService:
     )
 
 
-def _delete_entry_service(app_state: Any) -> MemoryService:
+def _delete_entry_service(app_state: AppState) -> MemoryService:
     """Return a :class:`MemoryService` suitable for memory-entry deletion.
 
     Sibling of :func:`_service` that does **not** require fine-tune

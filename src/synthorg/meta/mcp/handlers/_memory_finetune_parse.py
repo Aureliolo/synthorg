@@ -7,8 +7,6 @@ offending field name so the handler can return an ``invalid_argument``
 envelope. Carries no handler or service state.
 """
 
-from typing import Any
-
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
     FineTuneDataSourceType,
@@ -39,8 +37,8 @@ _TY_EXECUTION_SHAPE = "valid FineTuneExecutionConfig shape"
 
 
 def _collect_optional_strings(
-    arguments: dict[str, Any],
-    payload: dict[str, Any],
+    arguments: dict[str, object],
+    payload: dict[str, object],
 ) -> None:
     """Handle collect optional strings.
 
@@ -63,8 +61,8 @@ def _collect_optional_strings(
 
 
 def _collect_optional_ints(
-    arguments: dict[str, Any],
-    payload: dict[str, Any],
+    arguments: dict[str, object],
+    payload: dict[str, object],
 ) -> None:
     """Handle collect optional ints.
 
@@ -81,8 +79,8 @@ def _collect_optional_ints(
 
 
 def _collect_optional_floats(
-    arguments: dict[str, Any],
-    payload: dict[str, Any],
+    arguments: dict[str, object],
+    payload: dict[str, object],
 ) -> None:
     """Handle collect optional floats.
 
@@ -99,8 +97,8 @@ def _collect_optional_floats(
 
 
 def _collect_optional_execution(
-    arguments: dict[str, Any],
-    payload: dict[str, Any],
+    arguments: dict[str, object],
+    payload: dict[str, object],
 ) -> None:
     """Translate the optional ``execution`` object into a typed sub-model.
 
@@ -130,8 +128,8 @@ def _collect_optional_execution(
 
 
 def _resolve_data_source(
-    arguments: dict[str, Any],
-    payload: dict[str, Any],
+    arguments: dict[str, object],
+    payload: dict[str, object],
 ) -> FineTuneDataSourceType:
     """Resolve the optional ``data_source`` selector (defaults to directory).
 
@@ -160,8 +158,8 @@ def _resolve_data_source(
 
 
 def _collect_source_dir(
-    arguments: dict[str, Any],
-    payload: dict[str, Any],
+    arguments: dict[str, object],
+    payload: dict[str, object],
     data_source: FineTuneDataSourceType,
 ) -> None:
     """Collect ``source_dir`` -- mandatory in directory mode, optional otherwise.
@@ -185,7 +183,7 @@ def _collect_source_dir(
     payload[_ARG_SOURCE_DIR] = NotBlankStr(raw.strip())
 
 
-def parse_fine_tune_plan(arguments: dict[str, Any]) -> FineTunePlan:
+def parse_fine_tune_plan(arguments: dict[str, object]) -> FineTunePlan:
     """Build a :class:`FineTunePlan` from MCP arguments with typed errors.
 
     Returns:
@@ -196,7 +194,7 @@ def parse_fine_tune_plan(arguments: dict[str, Any]) -> FineTunePlan:
         MemoryError: Re-raised unwrapped; a system error must not be masked.
         RecursionError: Re-raised unwrapped; a system error must not be masked.
     """
-    payload: dict[str, Any] = {}
+    payload: dict[str, object] = {}
     data_source = _resolve_data_source(arguments, payload)
     _collect_source_dir(arguments, payload, data_source)
     _collect_optional_strings(arguments, payload)
@@ -204,7 +202,7 @@ def parse_fine_tune_plan(arguments: dict[str, Any]) -> FineTunePlan:
     _collect_optional_floats(arguments, payload)
     _collect_optional_execution(arguments, payload)
     try:
-        return FineTunePlan(**payload)
+        return FineTunePlan.model_validate(payload)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:

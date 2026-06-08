@@ -1,10 +1,12 @@
 """Unit tests for MCP tool handlers."""
 
 import json
+from typing import cast
 
 import pytest
 import structlog.testing
 
+from synthorg.api.state import AppState
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.meta.mcp.handlers.common import (
@@ -29,7 +31,7 @@ class TestPlaceholderHandler:
 
     async def test_returns_not_supported_envelope(self) -> None:
         handler = make_placeholder_handler("synthorg_test_get")
-        result = await handler(app_state=None, arguments={})
+        result = await handler(app_state=cast("AppState", None), arguments={})
         body = json.loads(result)
         assert body["status"] == "error"
         assert body["domain_code"] == "not_supported"
@@ -42,7 +44,7 @@ class TestPlaceholderHandler:
         """
         handler = make_placeholder_handler("synthorg_test_get")
         with structlog.testing.capture_logs() as logs:
-            await handler(app_state=None, arguments={})
+            await handler(app_state=cast("AppState", None), arguments={})
         events = [e for e in logs if e.get("event") == MCP_HANDLER_NOT_IMPLEMENTED]
         assert len(events) == 1
         assert events[0]["log_level"] == "warning"
@@ -52,7 +54,7 @@ class TestPlaceholderHandler:
         """Handler protocol now includes ``actor``; placeholder ignores it."""
         handler = make_placeholder_handler("synthorg_test_get")
         result = await handler(
-            app_state=None,
+            app_state=cast("AppState", None),
             arguments={},
             actor=None,
         )
@@ -73,7 +75,9 @@ class TestMakeHandlersForTools:
 
     async def test_all_handlers_are_callable(self) -> None:
         handlers = make_handlers_for_tools(("tool_a",))
-        result = await handlers["tool_a"](app_state=None, arguments={})
+        result = await handlers["tool_a"](
+            app_state=cast("AppState", None), arguments={}
+        )
         body = json.loads(result)
         assert body["status"] == "error"
         assert body["domain_code"] == "not_supported"
@@ -141,7 +145,7 @@ class TestEndToEndInvocation:
         result = await invoker.invoke(
             "synthorg_synth_placeholder",
             {"offset": 0, "limit": 10},
-            app_state=None,
+            app_state=cast("AppState", None),
         )
         assert result.is_error is False
         body = json.loads(result.content)
@@ -157,6 +161,6 @@ class TestEndToEndInvocation:
         result = await invoker.invoke(
             "synthorg_nonexistent_tool",
             {},
-            app_state=None,
+            app_state=cast("AppState", None),
         )
         assert result.is_error is True

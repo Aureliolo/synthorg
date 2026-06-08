@@ -28,10 +28,11 @@ import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.config import SelfImprovementConfig
@@ -231,7 +232,7 @@ class TestSelfExtensionE2E:
         result = await invoker.invoke(
             "synthorg_textkit_slugify",
             {"text": "Hello Brave World"},
-            app_state=None,
+            app_state=cast("AppState", None),
         )
         assert result.is_error is False
         envelope = json.loads(result.content)

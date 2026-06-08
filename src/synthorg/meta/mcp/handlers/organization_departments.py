@@ -7,7 +7,7 @@ the admin guardrail triple (confirm + reason + actor), emitting
 ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.errors import (
@@ -39,6 +39,7 @@ from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 from synthorg.organization.state import department_service_of
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -46,8 +47,8 @@ logger = get_logger(__name__)
 
 async def _departments_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return a paginated slice of departments.
@@ -75,8 +76,8 @@ async def _departments_list(
 
 async def _departments_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single department by UUID.
@@ -105,8 +106,8 @@ async def _departments_get(
 
 async def _departments_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Create a new department record (non-destructive write).
@@ -135,8 +136,8 @@ async def _departments_create(
 
 async def _departments_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Update name / description on an existing department (partial patch).
@@ -172,8 +173,8 @@ async def _departments_update(
 
 async def _departments_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Delete a department (destructive; enforces confirm + reason + actor).
@@ -215,8 +216,8 @@ async def _departments_delete(
 
 async def _departments_get_health(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return a lightweight health summary for a single department.

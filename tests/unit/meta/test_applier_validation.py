@@ -46,22 +46,22 @@ class TestParseDottedPath:
 
 class TestApplyDiffToDict:
     def test_sets_leaf(self) -> None:
-        data = {"a": {"b": 1}}
+        data: dict[str, object] = {"a": {"b": 1}}
         apply_diff_to_dict(data, path=("a", "b"), new_value=2)
         assert data == {"a": {"b": 2}}
 
     def test_unknown_leaf_rejected(self) -> None:
-        data = {"a": {"b": 1}}
+        data: dict[str, object] = {"a": {"b": 1}}
         with pytest.raises(DottedPathError, match="unknown"):
             apply_diff_to_dict(data, path=("a", "c"), new_value=2)
 
     def test_unknown_parent_rejected(self) -> None:
-        data = {"a": {"b": 1}}
+        data: dict[str, object] = {"a": {"b": 1}}
         with pytest.raises(DottedPathError, match="unknown"):
             apply_diff_to_dict(data, path=("x", "b"), new_value=2)
 
     def test_descend_into_non_dict_rejected(self) -> None:
-        data = {"a": [1, 2, 3]}
+        data: dict[str, object] = {"a": [1, 2, 3]}
         with pytest.raises(DottedPathError, match="non-dict"):
             apply_diff_to_dict(data, path=("a", "0"), new_value=9)
 

@@ -1,7 +1,7 @@
 """Audit-log + event-stream MCP handlers (infrastructure sub-domain)."""
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.infrastructure.state import (
@@ -25,6 +25,7 @@ from synthorg.observability import get_logger
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -32,8 +33,8 @@ logger = get_logger(__name__)
 
 async def _audit_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return recent audit log entries (paginated).
@@ -62,8 +63,8 @@ async def _audit_list(
 
 async def _events_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return recent events from the event-stream hub.

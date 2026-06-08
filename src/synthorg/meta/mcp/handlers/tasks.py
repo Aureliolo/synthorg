@@ -11,7 +11,7 @@ Shims the 8 task tools onto ``task_engine_of(app_state)``
 import copy
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -60,6 +60,9 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
+
 logger = get_logger(__name__)
 
 
@@ -76,7 +79,7 @@ _ARG_ACTOR = "actor"
 
 
 def _coerce_status(
-    raw: Any,
+    raw: object,
     *,
     arg_name: str = _ARG_STATUS,
 ) -> TaskStatus | None:
@@ -107,8 +110,8 @@ def _coerce_status(
 
 async def _tasks_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_tasks_list`` MCP tool.
@@ -154,8 +157,8 @@ async def _tasks_list(
 
 async def _tasks_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_tasks_get`` MCP tool.
@@ -184,8 +187,8 @@ async def _tasks_get(
 
 async def _tasks_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_tasks_create`` MCP tool.
@@ -233,8 +236,8 @@ async def _tasks_create(
 
 async def _tasks_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_tasks_update`` MCP tool.
@@ -277,8 +280,8 @@ async def _tasks_update(
 
 async def _tasks_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_tasks_delete`` MCP tool.
@@ -324,8 +327,8 @@ async def _tasks_delete(
 
 async def _tasks_transition(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_tasks_transition`` MCP tool.
@@ -371,8 +374,8 @@ async def _tasks_transition(
 
 async def _tasks_cancel(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_tasks_cancel`` MCP tool.
@@ -425,7 +428,7 @@ _WHY_ACTIVITY = (
 
 
 def _parse_activities_args(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
 ) -> tuple[int, int, str | None, str | None, int | None]:
     """Validate and extract ``synthorg_activities_list`` arguments.
 
@@ -471,8 +474,8 @@ def _parse_activities_args(
 
 async def _activities_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_activities_list`` MCP tool.
@@ -490,18 +493,23 @@ async def _activities_list(
         return err(exc)
     if app_state.slice(HrStateSlice).activity_feed_service is None:
         return capability_gap(tool, _WHY_ACTIVITY)
-    list_kwargs: dict[str, Any] = {
-        "project": project,
-        "task_id": task_id,
-        "offset": offset,
-        "limit": limit,
-    }
-    if window_hours is not None:
-        list_kwargs["window_hours"] = window_hours
+    feed = activity_feed_service_of(app_state)
     try:
-        events, total = await activity_feed_service_of(app_state).list_recent_activity(
-            **list_kwargs,
-        )
+        if window_hours is not None:
+            events, total = await feed.list_recent_activity(
+                project=project,
+                task_id=task_id,
+                offset=offset,
+                limit=limit,
+                window_hours=window_hours,
+            )
+        else:
+            events, total = await feed.list_recent_activity(
+                project=project,
+                task_id=task_id,
+                offset=offset,
+                limit=limit,
+            )
     except Exception as exc:
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)

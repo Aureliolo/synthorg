@@ -15,7 +15,7 @@ Authored-script contract:
 """
 
 import json
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.handlers.common import err, ok
@@ -27,6 +27,7 @@ from synthorg.observability.events.toolsmith import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
     from synthorg.meta.mcp.handler_protocol import ToolHandler
     from synthorg.meta.toolsmith.models import ToolBlueprint
@@ -61,8 +62,8 @@ class _DynamicToolHandler:
     async def __call__(
         self,
         *,
-        app_state: Any,
-        arguments: dict[str, Any],
+        app_state: AppState,
+        arguments: dict[str, object],
         actor: AgentIdentity | None = None,
     ) -> str:
         """Run the authored script and return an MCP envelope.
@@ -93,7 +94,7 @@ class _DynamicToolHandler:
         logger.debug(TOOLSMITH_TOOL_INVOKED, tool_name=name)
         return ok(data=payload)
 
-    async def _run(self, arguments: dict[str, Any]) -> Any:
+    async def _run(self, arguments: dict[str, object]) -> object:
         """Execute the script in the sandbox and parse its JSON stdout.
 
         Returns:

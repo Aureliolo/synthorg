@@ -1,7 +1,7 @@
 """Settings MCP handlers (infrastructure sub-domain)."""
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.meta.mcp.errors import (
@@ -27,6 +27,7 @@ from synthorg.settings.state import settings_read_service_of
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -34,8 +35,8 @@ logger = get_logger(__name__)
 
 async def _settings_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List runtime settings via the settings-read facade.
@@ -59,8 +60,8 @@ async def _settings_list(
 
 async def _settings_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single setting by key.
@@ -85,8 +86,8 @@ async def _settings_get(
 
 async def _settings_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Update or create a setting value (admin op; enforces guardrails).
@@ -128,8 +129,8 @@ async def _settings_update(
 
 async def _settings_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Delete a setting key (destructive; enforces guardrails).

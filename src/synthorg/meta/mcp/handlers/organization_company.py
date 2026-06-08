@@ -6,7 +6,7 @@ through :func:`company_read_service_of`; capability gaps surface as the
 typed ``not_supported`` envelope via :func:`_map_capability`.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.critical_errors import reraise_critical
@@ -26,13 +26,14 @@ from synthorg.meta.mcp.handlers.common_logging import (
 from synthorg.organization.state import company_read_service_of
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 
 async def _company_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the current company record.
@@ -57,8 +58,8 @@ async def _company_get(
 
 async def _company_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Apply a payload patch to the company record (non-destructive write).
@@ -87,8 +88,8 @@ async def _company_update(
 
 async def _company_list_departments(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List every department attached to the company.
@@ -113,8 +114,8 @@ async def _company_list_departments(
 
 async def _company_reorder_departments(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Replace the department display order with the supplied sequence.
@@ -143,8 +144,8 @@ async def _company_reorder_departments(
 
 async def _company_versions_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List every snapshot in the company version history.
@@ -169,8 +170,8 @@ async def _company_versions_list(
 
 async def _company_versions_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single company version snapshot by ID.

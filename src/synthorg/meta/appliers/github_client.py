@@ -7,7 +7,7 @@ making this safe to run inside Docker containers.
 
 import base64
 import re
-from typing import Any, ClassVar, Final, Self
+from typing import ClassVar, Final, Self
 
 import httpx
 
@@ -303,7 +303,7 @@ class HttpGitHubClient:
         modify: bool,
     ) -> None:
         """Create or update a file on a branch."""
-        payload: dict[str, Any] = {
+        payload: dict[str, object] = {
             "message": message,
             "content": base64.b64encode(
                 content.encode("utf-8"),

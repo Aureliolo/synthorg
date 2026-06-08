@@ -6,8 +6,9 @@ patterns and rule context.
 """
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -421,7 +422,7 @@ class CodeModificationStrategy:
 def _parse_json_array(
     response: str,
     rule_name: str,
-) -> list[Any] | None:
+) -> list[object] | None:
     """Parse and validate the LLM response as a JSON array.
 
     Args:
@@ -452,7 +453,7 @@ def _parse_json_array(
 
 
 def _parse_items(
-    data: list[Any],
+    data: list[object],
     rule_name: str,
 ) -> list[CodeChange]:
     """Parse individual items from the JSON array into CodeChange models.
@@ -540,7 +541,7 @@ def _build_file_manifest(
     return "\n".join(lines)
 
 
-def _summarize_context(ctx: dict[str, Any]) -> str:
+def _summarize_context(ctx: Mapping[str, object]) -> str:
     """Build a one-line signal summary from context dict.
 
     Args:

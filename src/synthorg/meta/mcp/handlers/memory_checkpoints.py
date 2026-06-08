@@ -6,7 +6,7 @@ rollback / delete enforce the admin guardrail triple and emit
 forwards to the ``not_supported`` envelope.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
@@ -49,6 +49,7 @@ from synthorg.observability.events.mcp import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -56,8 +57,8 @@ logger = get_logger(__name__)
 
 async def _memory_list_checkpoints(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_memory_list_checkpoints`` MCP tool.
@@ -91,8 +92,8 @@ async def _memory_list_checkpoints(
 
 async def _memory_deploy_checkpoint(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_memory_deploy_checkpoint`` MCP tool.
@@ -142,8 +143,8 @@ async def _memory_deploy_checkpoint(
 
 async def _memory_rollback_checkpoint(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_memory_rollback_checkpoint`` MCP tool.
@@ -191,8 +192,8 @@ async def _memory_rollback_checkpoint(
 
 async def _memory_delete_checkpoint(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_memory_delete_checkpoint`` MCP tool.

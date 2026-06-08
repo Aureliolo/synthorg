@@ -8,7 +8,7 @@ blueprint from ``VALIDATED`` to ``ACTIVE``.
 import itertools
 import re
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final, Self
+from typing import TYPE_CHECKING, Final, Self
 
 from pydantic import (
     AwareDatetime,
@@ -192,7 +192,7 @@ class ToolBlueprint(BaseModel):
     name: NotBlankStr
     description: NotBlankStr
     capability: NotBlankStr
-    parameters_schema: dict[str, Any]
+    parameters_schema: dict[str, object]
     script_body: NotBlankStr = Field(max_length=_MAX_SCRIPT_BODY_CHARS)
     sandbox_backend: ToolSandboxBackend = ToolSandboxBackend.DOCKER
     requires_network: bool = False

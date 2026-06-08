@@ -1,7 +1,7 @@
 """Simulation-scenario MCP handlers (infrastructure sub-domain)."""
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.infrastructure.state import simulation_facade_service_of
@@ -23,6 +23,7 @@ from synthorg.observability import get_logger
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -30,8 +31,8 @@ logger = get_logger(__name__)
 
 async def _simulations_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List simulation scenarios loaded at start-up.
@@ -58,8 +59,8 @@ async def _simulations_list(
 
 async def _simulations_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single simulation scenario by ID.
@@ -87,8 +88,8 @@ async def _simulations_get(
 
 async def _simulations_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Capability gap: simulation scenarios are config-driven.

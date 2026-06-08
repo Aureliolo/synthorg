@@ -1,7 +1,7 @@
 """Integration-health MCP handlers (infrastructure sub-domain)."""
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.infrastructure.state import integration_health_facade_service_of
 from synthorg.meta.mcp.errors import ArgumentValidationError
@@ -20,6 +20,7 @@ from synthorg.observability import get_logger
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -27,8 +28,8 @@ logger = get_logger(__name__)
 
 async def _integration_health_get_all(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return health roll-ups for every integration.
@@ -50,8 +51,8 @@ async def _integration_health_get_all(
 
 async def _integration_health_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the health roll-up for a single integration.

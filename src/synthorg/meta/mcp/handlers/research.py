@@ -6,7 +6,7 @@ read the run record. All three are standard (non-admin) operations.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ValidationError
 
@@ -37,8 +37,12 @@ from synthorg.research.tool import build_research_brief, derive_research_ids
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from datetime import datetime
 
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
+    from synthorg.core.clock import Clock
+    from synthorg.research.service import ResearchService
 
 logger = get_logger(__name__)
 
@@ -51,7 +55,7 @@ _ARG_ARGUMENTS = "arguments"
 
 
 def _typed_args[ArgsT: BaseModel](
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     model: type[ArgsT],
 ) -> ArgsT:
     """Validate a raw MCP argument dict into its typed args model.
@@ -69,7 +73,7 @@ def _typed_args[ArgsT: BaseModel](
         raise ArgumentValidationError(_ARG_ARGUMENTS, expected) from exc
 
 
-def _require_service(app_state: Any) -> Any:
+def _require_service(app_state: AppState) -> ResearchService:
     """Return the service or raise when unavailable.
 
     Raises:
@@ -87,7 +91,7 @@ def _created_by(actor: AgentIdentity | None) -> NotBlankStr:
     return NotBlankStr(str(actor.id)) if actor is not None else _OPERATOR
 
 
-def _now(app_state: Any) -> Any:
+def _now(app_state: AppState) -> datetime:
     """Read the wall clock through the app-state Clock seam.
 
     Falls back to a fresh ``SystemClock`` when the seam is absent so the
@@ -96,14 +100,14 @@ def _now(app_state: Any) -> Any:
     Returns:
         ``Any`` instance.
     """
-    clock = getattr(app_state, "clock", None)
+    clock: Clock | None = getattr(app_state, "clock", None)
     return (clock or SystemClock()).now()
 
 
 async def _research_run(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return research run."""
@@ -131,8 +135,8 @@ async def _research_run(
 
 async def _research_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return research get."""
@@ -158,8 +162,8 @@ async def _research_get(
 
 async def _research_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return research list."""

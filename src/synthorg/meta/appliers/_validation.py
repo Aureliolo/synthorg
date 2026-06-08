@@ -7,7 +7,7 @@ free so they can be shared by the real ``apply()`` path when it
 lands.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -59,10 +59,10 @@ def parse_dotted_path(path: str) -> tuple[str, ...]:
 
 
 def apply_diff_to_dict(
-    data: dict[str, Any],
+    data: dict[str, object],
     *,
     path: tuple[str, ...],
-    new_value: Any,
+    new_value: object,
 ) -> None:
     """Apply ``new_value`` to ``data`` at the dotted ``path``.
 
@@ -82,7 +82,7 @@ def apply_diff_to_dict(
     if not path:
         msg = "path must not be empty"
         raise DottedPathError(msg)
-    cursor: Any = data
+    cursor: object = data
     for depth, key in enumerate(path[:-1]):
         if not isinstance(cursor, dict):
             msg = (
@@ -135,7 +135,7 @@ def format_validation_errors(
 
 
 def validate_payload_keys(
-    payload: Mapping[str, Any],
+    payload: Mapping[str, object],
     *,
     required: frozenset[str],
     allowed: frozenset[str],

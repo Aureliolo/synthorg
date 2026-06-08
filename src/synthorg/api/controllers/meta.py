@@ -188,7 +188,8 @@ class MetaController(Controller):
         """
         tools = get_tool_definitions()
         entries = tuple(
-            {"name": t["name"], "description": t["description"]} for t in tools
+            {"name": str(t["name"]), "description": str(t["description"])}
+            for t in tools
         )
         page, meta = paginate_cursor(
             entries,

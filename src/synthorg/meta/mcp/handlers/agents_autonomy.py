@@ -6,7 +6,7 @@ the same ``app_state`` services and returns the standard envelope; the
 file only contains the four handlers and their argument helpers.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -29,6 +29,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.autonomy_enums import AutonomyLevel
 
@@ -39,8 +40,8 @@ _ARG_AGENT_ID = "agent_id"
 
 async def autonomy_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Read the agent's effective autonomy level.
@@ -77,7 +78,7 @@ async def autonomy_get(
 
 
 def _parse_autonomy_update_args(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
 ) -> tuple[str, str, str]:
     """Validate the autonomy_update args and return ``(agent_id, level, reason)``.
 
@@ -96,8 +97,8 @@ def _parse_autonomy_update_args(
 
 async def autonomy_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
     # lint-allow: mcp-admin-guardrail -- routes through approval queue, no mutation
 ) -> str:
@@ -158,8 +159,8 @@ async def autonomy_update(
 
 async def collaboration_get_score(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the agent's current collaboration score.
@@ -195,8 +196,8 @@ async def collaboration_get_score(
 
 async def collaboration_get_calibration(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the curated calibration readout for the agent's score.

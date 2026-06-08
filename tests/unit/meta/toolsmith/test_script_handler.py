@@ -4,10 +4,11 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.meta.toolsmith.models import ToolBlueprint
 from synthorg.meta.toolsmith.script_handler import make_dynamic_tool_handler
 from synthorg.tools.sandbox.result import SandboxResult
@@ -72,7 +73,9 @@ class TestDynamicToolHandler:
         )
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
 
-        raw = await handler(app_state=None, arguments={"text": "Hello World"})
+        raw = await handler(
+            app_state=cast("AppState", None), arguments={"text": "Hello World"}
+        )
         envelope = json.loads(raw)
         assert envelope["status"] == "ok"
         assert envelope["data"] == {"slug": "hello-world"}
@@ -83,7 +86,7 @@ class TestDynamicToolHandler:
         )
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
 
-        await handler(app_state=None, arguments={"text": "hi"})
+        await handler(app_state=cast("AppState", None), arguments={"text": "hi"})
         assert sandbox.last_call is not None
         assert sandbox.last_call["command"] == "python"
         env = sandbox.last_call["env_overrides"]
@@ -93,7 +96,9 @@ class TestDynamicToolHandler:
         sandbox = _FakeSandbox(SandboxResult(stdout="", stderr="boom", returncode=1))
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
 
-        envelope = json.loads(await handler(app_state=None, arguments={"text": "x"}))
+        envelope = json.loads(
+            await handler(app_state=cast("AppState", None), arguments={"text": "x"})
+        )
         assert envelope["status"] == "error"
         assert envelope["domain_code"] == "dynamic_tool_failed"
 
@@ -103,7 +108,9 @@ class TestDynamicToolHandler:
         )
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
 
-        envelope = json.loads(await handler(app_state=None, arguments={"text": "x"}))
+        envelope = json.loads(
+            await handler(app_state=cast("AppState", None), arguments={"text": "x"})
+        )
         assert envelope["status"] == "error"
 
     async def test_non_json_stdout_returns_error_envelope(self) -> None:
@@ -112,5 +119,7 @@ class TestDynamicToolHandler:
         )
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
 
-        envelope = json.loads(await handler(app_state=None, arguments={"text": "x"}))
+        envelope = json.loads(
+            await handler(app_state=cast("AppState", None), arguments={"text": "x"})
+        )
         assert envelope["status"] == "error"

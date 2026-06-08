@@ -8,7 +8,7 @@ path enforces the admin guardrail triple and emits
 ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.critical_errors import reraise_critical
@@ -46,6 +46,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -53,8 +54,8 @@ logger = get_logger(__name__)
 
 async def _artifacts_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List recorded artifacts (paginated).
@@ -84,8 +85,8 @@ async def _artifacts_list(
 
 async def _artifacts_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single artifact by ID.
@@ -114,8 +115,8 @@ async def _artifacts_get(
 
 async def _artifacts_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Record a new artifact (non-destructive write).
@@ -150,8 +151,8 @@ async def _artifacts_create(
 
 async def _artifacts_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Delete an artifact (destructive; enforces guardrails).
@@ -195,8 +196,8 @@ async def _artifacts_delete(
 
 async def _ontology_list_entities(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List known ontology entity types.
@@ -221,8 +222,8 @@ async def _ontology_list_entities(
 
 async def _ontology_get_entity(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single ontology entity by ID.
@@ -253,8 +254,8 @@ async def _ontology_get_entity(
 
 async def _ontology_get_relationships(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the relationship graph for a single ontology entity.
@@ -282,8 +283,8 @@ async def _ontology_get_relationships(
 
 async def _ontology_search(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Search ontology entities by query string.

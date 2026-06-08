@@ -7,15 +7,13 @@ the capability-gap mapper, and the JSON-coercion helper live in
 :mod:`synthorg.meta.mcp.handlers._mcp_handler_common`.
 """
 
-from typing import Any
-
 from synthorg.meta.mcp.errors import ArgumentValidationError
 
 _TY_LIST = "sequence of strings"
 _TY_INT = "non-negative int"
 
 
-def _get_list_str(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
+def _get_list_str(arguments: dict[str, object], key: str) -> tuple[str, ...]:
     """Extract an optional sequence of strings; returns ``()`` when absent.
 
     Returns:
@@ -35,7 +33,7 @@ def _get_list_str(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
     return tuple(raw)
 
 
-def _require_int(arguments: dict[str, Any], key: str) -> int:
+def _require_int(arguments: dict[str, object], key: str) -> int:
     """Extract a required non-negative int (rejects bool) or raise.
 
     Returns:

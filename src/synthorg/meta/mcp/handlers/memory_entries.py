@@ -6,7 +6,7 @@ triple and emits ``MCP_ADMIN_OP_EXECUTED`` on success. Routes through
 fine-tune repositories), so memory-only deployments retain deletion.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
@@ -41,6 +41,7 @@ from synthorg.observability.events.mcp import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
@@ -48,8 +49,8 @@ logger = get_logger(__name__)
 
 async def _memory_delete_entry(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Delete a single memory entry owned by an agent.

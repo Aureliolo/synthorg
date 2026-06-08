@@ -13,12 +13,13 @@ covered without per-handler boilerplate.
 
 import json
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import structlog.testing
 from typeguard import suppress_type_checks
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.observability.events.mcp import (
@@ -223,7 +224,7 @@ class TestEveryHandlerHandlesFailureCleanly:
     ) -> None:
         handler = _HANDLER_MAP[tool_name]
         result = await handler(
-            app_state=_UniversalFailingAppState(),
+            app_state=cast("AppState", _UniversalFailingAppState()),
             arguments=dict(_BASE_ARGS),  # copy so handler mutations don't leak
             actor=actor,
         )
@@ -308,7 +309,7 @@ class TestEveryHandlerEmitsCentralizedLogEvent:
         handler = _HANDLER_MAP[tool_name]
         with structlog.testing.capture_logs() as logs:
             result = await handler(
-                app_state=_UniversalFailingAppState(),
+                app_state=cast("AppState", _UniversalFailingAppState()),
                 arguments=dict(_BASE_ARGS),
                 actor=actor,
             )
@@ -377,7 +378,7 @@ class TestDestructiveHandlersExerciseGuardrailBranch:
         args = {k: v for k, v in _BASE_ARGS.items() if k not in {"confirm", "reason"}}
         with structlog.testing.capture_logs() as logs:
             result = await handler(
-                app_state=_UniversalFailingAppState(),
+                app_state=cast("AppState", _UniversalFailingAppState()),
                 arguments=args,
                 actor=actor,
             )

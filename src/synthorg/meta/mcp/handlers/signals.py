@@ -13,11 +13,10 @@ through :func:`require_admin_guardrails`.
 """
 
 from collections.abc import (
-    Callable,
     Mapping,
 )
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -54,6 +53,9 @@ from synthorg.meta.state import signals_service_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
+
 logger = get_logger(__name__)
 
 _ARG_STATUS = "status"
@@ -63,7 +65,7 @@ _TY_PROPOSAL_OBJ = "ImprovementProposal object"
 _TY_PROPOSAL_SCHEMA = "valid ImprovementProposal schema"
 
 
-def _parse_status(arguments: dict[str, Any]) -> ApprovalStatus | None:
+def _parse_status(arguments: dict[str, object]) -> ApprovalStatus | None:
     """Extract and validate the optional ``status`` filter.
 
     Returns:
@@ -83,7 +85,7 @@ def _parse_status(arguments: dict[str, Any]) -> ApprovalStatus | None:
         raise ArgumentValidationError(_ARG_STATUS, _TY_APPROVAL_STATUS) from exc
 
 
-def _parse_proposal(arguments: dict[str, Any]) -> ImprovementProposal:
+def _parse_proposal(arguments: dict[str, object]) -> ImprovementProposal:
     """Decode the ``proposal`` argument into a validated model.
 
     Returns:
@@ -103,8 +105,8 @@ def _parse_proposal(arguments: dict[str, Any]) -> ImprovementProposal:
 
 async def _snapshot(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return snapshot."""
@@ -136,14 +138,14 @@ def _make_window_handler(
 
     async def handler(
         *,
-        app_state: Any,
-        arguments: dict[str, Any],
+        app_state: AppState,
+        arguments: dict[str, object],
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
         """Return handler."""
         try:
             since, until = parse_time_window(arguments, until_required=False)
-            fn: Callable[..., Any] = getattr(signals_service_of(app_state), method_name)
+            fn = getattr(signals_service_of(app_state), method_name)
             result = await fn(since=since, until=until)
             return ok(result.model_dump(mode="json"))
         except ArgumentValidationError as exc:
@@ -158,8 +160,8 @@ def _make_window_handler(
 
 async def _list_proposals(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return list proposals."""
@@ -183,8 +185,8 @@ async def _list_proposals(
 
 async def _submit_proposal(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return submit proposal."""

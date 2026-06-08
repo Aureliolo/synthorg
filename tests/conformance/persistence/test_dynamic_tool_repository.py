@@ -37,7 +37,7 @@ from synthorg.persistence.tool_blueprint_protocol import (
 pytestmark = pytest.mark.integration
 
 _NOW = datetime(2026, 5, 21, 12, 0, tzinfo=UTC)
-_SCHEMA = {
+_SCHEMA: dict[str, object] = {
     "type": "object",
     "properties": {"text": {"type": "string"}},
     "required": ["text"],

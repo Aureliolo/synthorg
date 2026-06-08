@@ -20,7 +20,7 @@ import keyword
 import re
 from collections.abc import Callable, Iterator, Mapping
 from types import MappingProxyType
-from typing import Any, override
+from typing import override
 
 from pydantic import BaseModel, ConfigDict, create_model
 
@@ -38,7 +38,7 @@ from synthorg.observability.events.toolsmith import (
 
 logger = get_logger(__name__)
 
-_JSON_TYPE_TO_PYTHON: Mapping[str, Any] = {
+_JSON_TYPE_TO_PYTHON: Mapping[str, type] = {
     "string": str,
     "integer": int,
     "number": float,
@@ -50,22 +50,24 @@ _JSON_TYPE_TO_PYTHON: Mapping[str, Any] = {
 _MODEL_NAME_RE = re.compile(r"[^0-9a-zA-Z_]")
 
 
-def _python_type_for(prop_schema: object) -> Any | None:
+def _python_type_for(prop_schema: object) -> type | None:
     """Map a JSON Schema property to a Python type for ``create_model``.
 
-    Returns ``Any`` for an untyped property (valid JSON Schema) and the
+    Returns the unconstrained ``object`` type for an untyped property
+    (valid JSON Schema, accepts any value like the former ``Any``) and the
     mapped Python type for a known type. Returns ``None`` for an explicit
     but unknown/unsupported ``type`` so the caller rejects the blueprint
     rather than silently accepting any value for that field.
 
     Returns:
-        The ``Any`` value when present, ``None`` otherwise.
+        The mapped type (``object`` for an untyped property) when
+        resolvable, ``None`` otherwise.
     """
     if not isinstance(prop_schema, dict):
-        return Any
+        return object
     json_type = prop_schema.get("type")
     if json_type is None:
-        return Any
+        return object
     if isinstance(json_type, str):
         return _JSON_TYPE_TO_PYTHON.get(json_type)
     return None
@@ -109,7 +111,7 @@ def build_args_model(blueprint: ToolBlueprint) -> type[BaseModel]:
         raise ToolRegistrationError(msg)
     required_raw = schema.get("required") or ()
     required = set(required_raw) if isinstance(required_raw, (list, tuple)) else set()
-    field_defs: dict[str, Any] = {}
+    field_defs: dict[str, tuple[object, object]] = {}
     for prop_name, prop_schema in properties.items():
         py_type = _python_type_for(prop_schema)
         if py_type is None:
@@ -127,7 +129,12 @@ def build_args_model(blueprint: ToolBlueprint) -> type[BaseModel]:
     # them in the domain-specific ToolRegistrationError so callers receive
     # the contract the docstring documents.
     try:
-        return create_model(
+        # ``create_model``'s field-definition kwargs are typed ``**Any`` in
+        # the pydantic stub, so an honestly-typed ``dict[str, tuple[...]]``
+        # cannot be spread through ``**`` without colliding with the named
+        # ``__doc__`` / ``__base__`` overloads. The runtime contract is
+        # sound; only the static spread is unrepresentable.
+        model: type[BaseModel] = create_model(  # type: ignore[call-overload]
             _model_class_name(blueprint.name),
             __config__=ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False),
             **field_defs,
@@ -139,6 +146,7 @@ def build_args_model(blueprint: ToolBlueprint) -> type[BaseModel]:
             f"{type(exc).__name__}"
         )
         raise ToolRegistrationError(msg) from exc
+    return model
 
 
 def blueprint_to_mcp_def(blueprint: ToolBlueprint) -> MCPToolDef:

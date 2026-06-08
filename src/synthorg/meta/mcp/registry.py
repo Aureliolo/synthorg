@@ -6,9 +6,10 @@ with freeze-on-read semantics.
 """
 
 import re
+from collections.abc import Iterable
 from copy import deepcopy
 from types import MappingProxyType
-from typing import Any, Protocol, Self, runtime_checkable
+from typing import Protocol, Self, cast, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -70,7 +71,7 @@ class MCPToolDef(BaseModel):
 
     name: NotBlankStr = Field(description="Tool name (synthorg_{domain}_{action})")
     description: NotBlankStr = Field(description="Human-readable description")
-    parameters: dict[str, Any] = Field(description="JSON Schema for parameters")
+    parameters: dict[str, object] = Field(description="JSON Schema for parameters")
     capability: NotBlankStr = Field(description="Capability tag (domain:action)")
     handler_key: NotBlankStr = Field(description="Handler registry key")
     args_model: type[BaseModel] | None = Field(
@@ -172,7 +173,7 @@ class MCPToolDef(BaseModel):
         # one side accepts payloads the other rejects.  ``FieldInfo.is_required()``
         # is True when the field has no default (positional-style required).
         wire_required_raw = self.parameters.get("required") or ()
-        wire_required: set[str] = set(wire_required_raw)
+        wire_required: set[str] = set(cast("Iterable[str]", wire_required_raw))
         model_required = {
             field_name
             for field_name, field_info in self.args_model.model_fields.items()
@@ -326,7 +327,7 @@ class DomainToolRegistry:
             for t in sorted(self._tools.values(), key=lambda t: t.name)
         )
 
-    def get_tool_definitions(self) -> tuple[dict[str, Any], ...]:
+    def get_tool_definitions(self) -> tuple[dict[str, object], ...]:
         """Return all tools as plain dicts (for MCP protocol serialization).
 
         Each dict contains ``name``, ``description``, and ``parameters``

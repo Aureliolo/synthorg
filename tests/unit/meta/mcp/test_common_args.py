@@ -18,7 +18,7 @@ that stayed in ``common.py`` (``ok``, ``err``, ``paginate_sequence``,
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 from uuid import UUID
 
@@ -219,7 +219,7 @@ class TestRequireDict:
         result = require_dict(original, "k")
         # Mutating the returned dict's nested mutables must not affect
         # the original input.
-        result["nested"].append(3)
+        cast("list[int]", result["nested"]).append(3)
         assert original["k"]["nested"] == [1, 2]
 
     def test_deep_copy_disabled_shares_nested_mutables(self) -> None:
@@ -236,7 +236,7 @@ class TestRequireDict:
         result["new_key"] = "x"
         assert "new_key" not in original["k"]
         # Mutating nested mutable: DOES leak (shared reference).
-        result["nested"].append(99)
+        cast("list[int]", result["nested"]).append(99)
         assert original["k"]["nested"] == [1, 2, 99]
 
 

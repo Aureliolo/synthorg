@@ -10,7 +10,7 @@ an authored tool cannot widen its own isolation.
 """
 
 import json
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -279,7 +279,7 @@ class _AuthoredBlueprintArgs(BaseModel):
     description: NotBlankStr
     action_type: NotBlankStr
     script_body: NotBlankStr
-    parameters_schema: dict[str, Any]
+    parameters_schema: dict[str, object]
 
 
 __all__ = ["LLMToolBlueprintGenerator"]

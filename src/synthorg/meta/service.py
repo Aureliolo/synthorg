@@ -6,7 +6,7 @@ and Chief of Staff confidence learning.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -353,7 +353,7 @@ class SelfImprovementService(
 
         return results
 
-    def get_config(self) -> dict[str, Any]:
+    def get_config(self) -> dict[str, object]:
         """Return the active self-improvement config with secrets redacted.
 
         The dump preserves the exact field structure of
