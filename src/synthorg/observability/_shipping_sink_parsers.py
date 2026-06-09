@@ -7,7 +7,7 @@ them via ``sink_config_builder`` dispatch, not directly.
 """
 
 from collections.abc import Callable
-from typing import Protocol
+from typing import Final, Protocol
 
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import (
@@ -19,6 +19,7 @@ from synthorg.observability.enums import (
 
 _SYSLOG_FACILITY_MAP: dict[str, SyslogFacility] = {f.value: f for f in SyslogFacility}
 _SYSLOG_PROTOCOL_MAP: dict[str, SyslogProtocol] = {p.value: p for p in SyslogProtocol}
+_DEFAULT_SYSLOG_PORT: Final[int] = 514
 
 
 class _EnumParser(Protocol):
@@ -75,7 +76,11 @@ def _parse_syslog_optional_fields(
         A ``(port, facility, protocol)`` tuple, using the syslog defaults
         (514, USER, UDP) for any key absent from the entry.
     """
-    port = parse_int(entry, "syslog_port", ctx) if "syslog_port" in entry else 514
+    port = (
+        parse_int(entry, "syslog_port", ctx)
+        if "syslog_port" in entry
+        else _DEFAULT_SYSLOG_PORT
+    )
     facility = (
         parse_enum(
             entry,

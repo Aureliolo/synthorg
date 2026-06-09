@@ -1,3 +1,4 @@
+# module-kind: code
 """Pagination and window validation for the activity feed service.
 
 Extracted from ``activity_service`` so the service module stays within

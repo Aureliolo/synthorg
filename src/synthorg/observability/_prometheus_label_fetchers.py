@@ -1,3 +1,4 @@
+# module-kind: code
 """Registry-fetch helpers for the Prometheus label snapshot.
 
 Extracted from ``prometheus_collector`` so the collector stays within

@@ -1,3 +1,4 @@
+# module-kind: code
 """OTLP endpoint SSRF / transport-safety validation.
 
 Extracted from ``config`` so these security-sensitive checks live in a
@@ -60,9 +61,10 @@ def validate_otlp_endpoint_safety(
     try:
         addrs = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
     except socket.gaierror:
-        # DNS resolution failed -- skip check (hostname may be valid
-        # at runtime even if not resolvable at config-load time).
-        return
+        # DNS resolution failed -- skip the resolved-IP check (hostname may
+        # be valid at runtime even if not resolvable at config-load time),
+        # but fall through so the plaintext-HTTP warning below still fires.
+        addrs = ()
     for _family, _type, _proto, _canonname, sockaddr in addrs:
         resolved_ip = str(sockaddr[0])
         if is_private_ip(resolved_ip):

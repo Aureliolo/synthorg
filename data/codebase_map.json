@@ -12504,7 +12504,7 @@
     },
     {
       "kind": "code",
-      "loc": 203,
+      "loc": 208,
       "loc_cap": 500,
       "module": "src/synthorg/observability/_shipping_sink_parsers.py",
       "owning_feature": "observability"
