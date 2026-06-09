@@ -1500,7 +1500,7 @@
     },
     {
       "kind": "code",
-      "loc": 219,
+      "loc": 218,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/webhooks/_retry_helpers.py",
       "owning_feature": "api_core"
@@ -2214,7 +2214,7 @@
     },
     {
       "kind": "code",
-      "loc": 171,
+      "loc": 170,
       "loc_cap": 500,
       "module": "src/synthorg/api/ws_models.py",
       "owning_feature": "api_core"
