@@ -52,6 +52,7 @@ from synthorg.meta.charter.strategy import LLMCharterInterviewer
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.persistence.charter_protocol import CharterFilterSpec
 from synthorg.persistence.conversation_protocol import ConversationTurnFilterSpec
+from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
@@ -272,6 +273,48 @@ class _FakeForecastRepo:
 
     async def get(self, entity_id: object) -> Forecast | None:
         return self.items.get(str(entity_id))
+
+    async def delete(self, entity_id: object) -> bool:
+        return self.items.pop(str(entity_id), None) is not None
+
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[Forecast, ...]:
+        rows = tuple(self.items.values())
+        return rows[offset : offset + limit]
+
+    async def transition_if(
+        self,
+        entity_id: object,
+        from_state: ForecastDecision,
+        to_state: ForecastDecision,
+        **updates: object,
+    ) -> bool:
+        cur = self.items.get(str(entity_id))
+        if cur is None or cur.decision is not from_state:
+            return False
+        self.items[str(entity_id)] = cur.model_copy(update={"decision": to_state})
+        return True
+
+    async def query(
+        self,
+        filter_spec: CostForecastFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Forecast, ...]:
+        rows = [
+            f
+            for f in self.items.values()
+            if (
+                filter_spec.brief_hash is None or f.brief_hash == filter_spec.brief_hash
+            )
+            and (filter_spec.decision is None or f.decision is filter_spec.decision)
+        ]
+        return tuple(rows[offset : offset + limit])
+
+    async def count(self, filter_spec: CostForecastFilterSpec) -> int:
+        return len(await self.query(filter_spec, limit=len(self.items) or 1))
 
 
 def _make_agent(name: str, skill: str, *, level: SeniorityLevel) -> AgentIdentity:
