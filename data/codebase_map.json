@@ -3047,7 +3047,7 @@
     },
     {
       "kind": "code",
-      "loc": 181,
+      "loc": 183,
       "loc_cap": 500,
       "module": "src/synthorg/communication/citation/manager.py",
       "owning_feature": "communication"
@@ -3446,7 +3446,7 @@
     },
     {
       "kind": "code",
-      "loc": 93,
+      "loc": 104,
       "loc_cap": 500,
       "module": "src/synthorg/communication/meeting/_meeting_utils.py",
       "owning_feature": "communication"
@@ -3460,7 +3460,7 @@
     },
     {
       "kind": "code",
-      "loc": 439,
+      "loc": 438,
       "loc_cap": 500,
       "module": "src/synthorg/communication/meeting/_phase_runners.py",
       "owning_feature": "communication"
@@ -8689,7 +8689,7 @@
     },
     {
       "kind": "code",
-      "loc": 86,
+      "loc": 94,
       "loc_cap": 500,
       "module": "src/synthorg/integrations/connections/_cache.py",
       "owning_feature": "integrations"
@@ -8962,7 +8962,7 @@
     },
     {
       "kind": "code",
-      "loc": 134,
+      "loc": 138,
       "loc_cap": 500,
       "module": "src/synthorg/integrations/mcp_facades/_catalog.py",
       "owning_feature": "integrations"
@@ -12840,7 +12840,7 @@
     },
     {
       "kind": "code",
-      "loc": 7,
+      "loc": 8,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/citation.py",
       "owning_feature": "observability"
@@ -16571,14 +16571,14 @@
     },
     {
       "kind": "code",
-      "loc": 62,
+      "loc": 64,
       "loc_cap": 500,
       "module": "src/synthorg/providers/_cost.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 113,
+      "loc": 115,
       "loc_cap": 500,
       "module": "src/synthorg/providers/_preset_audit.py",
       "owning_feature": "providers"
@@ -16725,7 +16725,7 @@
     },
     {
       "kind": "code",
-      "loc": 271,
+      "loc": 272,
       "loc_cap": 500,
       "module": "src/synthorg/providers/drivers/mappers.py",
       "owning_feature": "providers"
@@ -16802,7 +16802,7 @@
     },
     {
       "kind": "code",
-      "loc": 93,
+      "loc": 88,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/_freeze.py",
       "owning_feature": "providers"
@@ -16977,7 +16977,7 @@
     },
     {
       "kind": "code",
-      "loc": 165,
+      "loc": 164,
       "loc_cap": 500,
       "module": "src/synthorg/providers/routing/_smart_strategy.py",
       "owning_feature": "providers"

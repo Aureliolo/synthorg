@@ -326,8 +326,8 @@
     },
     "src/synthorg/communication/meeting/_phase_runners.py": {
       "cap": 500,
-      "loc": 439,
-      "ratio": 0.878,
+      "loc": 438,
+      "ratio": 0.876,
       "tier": "code"
     },
     "src/synthorg/communication/meeting/orchestrator.py": {
@@ -1379,7 +1379,7 @@
     "synthorg.hr.training.models": 23,
     "synthorg.integrations.connections.catalog": 21,
     "synthorg.integrations.connections.models": 57,
-    "synthorg.integrations.errors": 35,
+    "synthorg.integrations.errors": 36,
     "synthorg.integrations.state": 22,
     "synthorg.knowledge.models": 24,
     "synthorg.memory.errors": 20,

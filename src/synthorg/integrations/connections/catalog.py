@@ -173,7 +173,7 @@ class ConnectionCatalog(
                 connection,
                 secret_id=secret_id,
             )
-            self._invalidate_cache()
+            await self._invalidate_cache()
             logger.info(
                 CONNECTION_CREATED,
                 connection_name=name,
@@ -421,7 +421,7 @@ class ConnectionCatalog(
                     error=safe_error_description(exc),
                 )
                 raise
-            self._invalidate_cache()
+            await self._invalidate_cache()
             logger.info(CONNECTION_UPDATED, connection_name=name)
             return updated
 
@@ -452,7 +452,7 @@ class ConnectionCatalog(
                 },
             )
             await self._repo.save(updated)
-            self._invalidate_cache()
+            await self._invalidate_cache()
             # Log the transition only when it actually changed, so a
             # quiet health prober cycling the same status does not
             # flood the log stream.
@@ -507,5 +507,5 @@ class ConnectionCatalog(
                         error_type=type(exc).__name__,
                         error=safe_error_description(exc),
                     )
-            self._invalidate_cache()
+            await self._invalidate_cache()
             logger.info(CONNECTION_DELETED, connection_name=name)

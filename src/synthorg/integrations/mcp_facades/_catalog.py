@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.errors import CatalogEntryNotFoundError
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     MCP_CATALOG_INSTALLED_VIA_MCP,
@@ -45,13 +46,13 @@ class MCPCatalogFacadeService:
 
         Raises:
             CapabilityNotSupportedError: If the backing ``CatalogService``
-                does not expose ``list_entries``.
+                does not expose ``browse``.
         """
-        fn = getattr(self._catalog, "list_entries", None)
+        fn = getattr(self._catalog, "browse", None)
         if not callable(fn):
             raise CapabilityNotSupportedError(
                 "mcp_catalog_list",
-                "CatalogService does not expose list_entries",
+                "CatalogService does not expose browse",
             )
         return tuple(await fn())
 
@@ -96,7 +97,12 @@ class MCPCatalogFacadeService:
                 "mcp_catalog_get",
                 "CatalogService does not expose get_entry",
             )
-        return cast("object | None", await fn(entry_id))
+        # ``CatalogService.get_entry`` raises on a miss; the facade
+        # contract is None-on-miss, so translate the domain error.
+        try:
+            return cast("object | None", await fn(entry_id))
+        except CatalogEntryNotFoundError:
+            return None
 
     async def install_catalog_entry(
         self,

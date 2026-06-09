@@ -18,6 +18,7 @@ from synthorg.observability.events.citation import (
     CITATION_ADDED,
     CITATION_DEDUPLICATED,
     CITATION_HANDOFF_DESERIALIZED,
+    CITATION_HANDOFF_INVALID,
     CITATION_HANDOFF_SERIALIZED,
     CITATION_MANAGER_CREATED,
 )
@@ -178,6 +179,11 @@ class CitationManager(BaseModel):
         """
         raw_list = data.get("citations", [])
         if not isinstance(raw_list, list):
+            logger.warning(
+                CITATION_HANDOFF_INVALID,
+                error="handoff payload 'citations' must be a list",
+                received_type=type(raw_list).__name__,
+            )
             msg = "handoff payload 'citations' must be a list"
             raise TypeError(msg)
 
@@ -185,18 +191,18 @@ class CitationManager(BaseModel):
         url_map: dict[str, int] = {}
         for raw in raw_list:
             if not isinstance(raw, Mapping):
+                logger.warning(
+                    CITATION_HANDOFF_INVALID,
+                    error="handoff citation entry must be a mapping",
+                    received_type=type(raw).__name__,
+                )
                 msg = "handoff citation entry must be a mapping"
                 raise TypeError(msg)
-            citation = Citation.model_validate(
-                {
-                    "number": raw["number"],
-                    "url": raw["url"],
-                    "title": raw["title"],
-                    "first_seen_at": raw["first_seen_at"],
-                    "first_seen_by_agent_id": raw["first_seen_by_agent_id"],
-                    "accessed_via": raw["accessed_via"],
-                },
-            )
+            # Validate the whole entry: ``to_handoff_payload`` emits
+            # exactly the model's fields, so ``extra="forbid"`` is safe
+            # and a malformed entry yields a field-level
+            # ``ValidationError`` instead of a bare ``KeyError``.
+            citation = Citation.model_validate(dict(raw))
             citations.append(citation)
             url_map[normalize_url(str(citation.url))] = citation.number
 

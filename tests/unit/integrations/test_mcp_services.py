@@ -15,6 +15,7 @@ import pytest
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.errors import CatalogEntryNotFoundError
 from synthorg.integrations.mcp_facades import (
     ArtifactFacadeService,
     MCPCatalogFacadeService,
@@ -36,7 +37,7 @@ def _catalog_facade() -> MCPCatalogFacadeService:
 
 
 async def test_list_catalog_without_capability_raises() -> None:
-    """``list_catalog`` raises when the catalog lacks ``list_entries``."""
+    """``list_catalog`` raises when the catalog lacks ``browse``."""
     with pytest.raises(CapabilityNotSupportedError):
         await _catalog_facade().list_catalog()
 
@@ -51,6 +52,24 @@ async def test_get_catalog_entry_without_capability_raises() -> None:
     """``get_catalog_entry`` raises when the catalog lacks ``get_entry``."""
     with pytest.raises(CapabilityNotSupportedError):
         await _catalog_facade().get_catalog_entry(NotBlankStr("entry-1"))
+
+
+async def test_get_catalog_entry_returns_none_on_miss() -> None:
+    """``get_catalog_entry`` maps the service miss-error to ``None``.
+
+    ``CatalogService.get_entry`` raises ``CatalogEntryNotFoundError`` on
+    an unknown id; the facade's documented contract is None-on-miss.
+    """
+
+    async def _raise_missing(entry_id: str) -> object:
+        msg = f"no catalog entry {entry_id!r}"
+        raise CatalogEntryNotFoundError(msg)
+
+    facade = MCPCatalogFacadeService(
+        catalog=SimpleNamespace(get_entry=_raise_missing),  # type: ignore[arg-type]
+        installations=SimpleNamespace(),  # type: ignore[arg-type]
+    )
+    assert await facade.get_catalog_entry(NotBlankStr("missing")) is None
 
 
 async def test_install_catalog_entry_without_capability_raises() -> None:

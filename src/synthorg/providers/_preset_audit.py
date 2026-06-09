@@ -1,9 +1,9 @@
 # module-kind: code
 """Cross-cutting preset invariant audits run at module load.
 
-Extracted from ``presets.py``. Each audit takes the merged preset tuple
-as an argument and raises ``ValueError`` on a violation so a
-misconfiguration fails the import rather than reaching runtime.
+Each audit takes the merged preset tuple as an argument and raises
+``ValueError`` on a violation so a misconfiguration fails the import
+rather than reaching runtime.
 """
 
 from synthorg.observability import get_logger
@@ -84,6 +84,13 @@ def _audit_namespace_collisions(
                 error=msg,
             )
             raise ValueError(msg)
+        # A LocalPreset sharing the namespace is allowed; promote a
+        # CloudPreset into ``seen`` so a later CloudPreset is compared
+        # against the cloud entry, not the local one it would otherwise
+        # mask -- without this a Cloud-vs-Cloud collision after a
+        # leading LocalPreset would slip through.
+        if isinstance(preset, CloudPreset) and not isinstance(other, CloudPreset):
+            seen[preset.litellm_provider] = preset
 
 
 def _audit_featured_order(

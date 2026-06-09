@@ -1,8 +1,7 @@
 """SmartStrategy -- priority-based signal merging for model routing.
 
-Extracted from ``strategies.py`` (the largest single strategy). Merges
-override / task-type / role / seniority / cheapest / global-chain signals
-in priority order.
+Merges override / task-type / role / seniority / cheapest / global-chain
+signals in priority order.
 """
 
 from typing import TYPE_CHECKING, NoReturn

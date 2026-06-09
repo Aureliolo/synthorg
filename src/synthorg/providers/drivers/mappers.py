@@ -7,6 +7,7 @@ consume.  Reusable by future native SDK drivers.
 
 import copy
 import json
+from collections.abc import Mapping
 
 from pydantic import JsonValue
 
@@ -33,10 +34,10 @@ def extract_retry_after(exc: Exception) -> float | None:
 
     Returns:
         The ``retry-after`` seconds as a ``float``, or ``None`` when
-        the header is absent, not a dict, or unparseable.
+        the header is absent, not a mapping, or unparseable.
     """
     headers = getattr(exc, "headers", None)
-    if not isinstance(headers, dict):
+    if not isinstance(headers, Mapping):
         return None
     # Case-insensitive lookup per HTTP semantics
     raw: str | None = None

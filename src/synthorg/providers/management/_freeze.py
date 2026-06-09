@@ -6,6 +6,7 @@ that keeps audit payloads deterministic on disk, plus the UTC-offset
 guard used by the ``UTCDatetime`` annotated type.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Annotated
@@ -71,13 +72,10 @@ def _recursively_freeze(value: object) -> object:
             "use a sorted tuple instead"
         )
         raise TypeError(msg)
-    if isinstance(value, MappingProxyType):
-        # Re-freeze recursively so nested values inserted prior to
-        # wrapping still get the same treatment.
-        return MappingProxyType(
-            {k: _recursively_freeze(v) for k, v in value.items()},
-        )
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
+        # ``Mapping`` covers ``dict`` and already-frozen
+        # ``MappingProxyType`` alike; re-freeze recursively so nested
+        # values inserted prior to wrapping get the same treatment.
         return MappingProxyType(
             {k: _recursively_freeze(v) for k, v in value.items()},
         )
@@ -111,9 +109,7 @@ def _recursively_thaw(value: object) -> object:
             "use a sorted tuple instead"
         )
         raise TypeError(msg)
-    if isinstance(value, MappingProxyType):
-        return {k: _recursively_thaw(v) for k, v in value.items()}
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {k: _recursively_thaw(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_recursively_thaw(item) for item in value]

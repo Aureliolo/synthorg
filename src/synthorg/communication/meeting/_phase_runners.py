@@ -1,9 +1,8 @@
 # module-kind: code
 """Phase-execution mixin for the structured-phases meeting protocol.
 
-Holds the four ``_run_*`` phase coroutines extracted from
-``structured_phases.py``. ``StructuredPhasesProtocol`` inherits this
-mixin so the protocol class itself stays a thin coordinator
+Holds the four ``_run_*`` phase coroutines. ``StructuredPhasesProtocol``
+inherits this mixin so the protocol class itself stays a thin coordinator
 (``__init__`` / ``get_protocol_type`` / ``run``). The mixin reads
 ``self._config`` and ``self._conflict_detector``, which the concrete
 protocol owns via ``__slots__``.

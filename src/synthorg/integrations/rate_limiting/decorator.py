@@ -61,8 +61,8 @@ def with_connection_rate_limit(
     *,
     config: RateLimiterConfig | None = None,
 ) -> Callable[
-    [Callable[P, Coroutine[object, object, T]]],
-    Callable[P, Coroutine[object, object, T]],
+    [Callable[P, Coroutine[None, None, T]]],
+    Callable[P, Coroutine[None, None, T]],
 ]:
     """Decorator that applies connection-level rate limiting to a tool.
 
@@ -88,8 +88,8 @@ def with_connection_rate_limit(
     config_was_explicit = config is not None
 
     def decorator(
-        fn: Callable[P, Coroutine[object, object, T]],
-    ) -> Callable[P, Coroutine[object, object, T]]:
+        fn: Callable[P, Coroutine[None, None, T]],
+    ) -> Callable[P, Coroutine[None, None, T]]:
 
         @functools.wraps(fn)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:

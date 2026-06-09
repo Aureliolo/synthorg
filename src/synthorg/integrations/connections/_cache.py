@@ -74,9 +74,18 @@ class ConnectionCacheMixin:
                 self._cache = {c.name: c for c in collected}
                 self._cache_valid = True
 
-    def _invalidate_cache(self) -> None:
-        """Mark the cached connection snapshot stale (forces a reload)."""
-        self._cache_valid = False
+    async def _invalidate_cache(self) -> None:
+        """Mark the cached connection snapshot stale (forces a reload).
+
+        Acquires ``_cache_lock`` so the invalidation is serialised
+        against ``_ensure_cache``: without it, a mutation that
+        invalidates while a concurrent ``_ensure_cache`` is mid-reload
+        (holding the lock, awaiting the repository read) would be
+        clobbered by that reload's trailing ``_cache_valid = True``,
+        leaving the stale snapshot marked fresh.
+        """
+        async with self._cache_lock:
+            self._cache_valid = False
 
     def get_cached(self, name: str) -> Connection | None:
         """Return the cached connection for ``name`` without populating.

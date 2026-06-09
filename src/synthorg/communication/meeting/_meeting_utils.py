@@ -2,6 +2,7 @@
 """Shared helpers for the meeting subpackage."""
 
 from collections import Counter
+from typing import NoReturn
 
 from synthorg.communication.meeting.errors import MeetingParticipantError
 from synthorg.observability import get_logger, safe_error_description
@@ -10,26 +11,62 @@ from synthorg.observability.events.meeting import MEETING_VALIDATION_FAILED
 logger = get_logger(__name__)
 
 
+def _fail_participant(
+    meeting_id: str,
+    error: str,
+    msg: str,
+    **context: object,
+) -> NoReturn:
+    """Log a participant-validation failure and raise.
+
+    Args:
+        meeting_id: The meeting being validated.
+        error: Short structured-log reason.
+        msg: Human-readable exception message.
+        **context: Extra fields surfaced in BOTH the log event and the
+            raised error's ``context`` (e.g. ``duplicates`` / ``leader_id``).
+
+    Raises:
+        MeetingParticipantError: Always.
+    """
+    logger.warning(
+        MEETING_VALIDATION_FAILED,
+        meeting_id=meeting_id,
+        error=error,
+        **context,
+    )
+    raise MeetingParticipantError(
+        msg,
+        context={"meeting_id": meeting_id, **context},
+    )
+
+
 def format_exception(exc: BaseException) -> str:
     """Format an exception for error messages.
 
-    Flattens ``ExceptionGroup`` (produced by ``asyncio.TaskGroup``
+    Flattens ``BaseExceptionGroup`` (produced by ``asyncio.TaskGroup``
     when multiple concurrent tasks fail) into a single human-readable
     string.  Handles nested groups recursively.  Non-group exceptions
     are returned via ``safe_error_description()`` so callers never
     embed unredacted ``str(exc)`` into log/UI fields.
 
+    ``BaseExceptionGroup`` is checked rather than ``ExceptionGroup`` so
+    a group mixing ``Exception`` and ``BaseException`` (e.g. a
+    ``CancelledError`` alongside a failure) still flattens correctly:
+    ``TaskGroup`` raises a bare ``BaseExceptionGroup`` in that case, and
+    ``ExceptionGroup`` is a subclass so plain groups are still caught.
+
     Args:
-        exc: The exception to format, possibly an ``ExceptionGroup``.
+        exc: The exception to format, possibly a ``BaseExceptionGroup``.
 
     Returns:
         A flattened, scrubbed, human-readable description of the
-        exception (recursing into ``ExceptionGroup``s).
+        exception (recursing into ``BaseExceptionGroup``s).
     """
-    if isinstance(exc, ExceptionGroup):
+    if isinstance(exc, BaseExceptionGroup):
         parts: list[str] = []
         for sub in exc.exceptions:
-            if isinstance(sub, ExceptionGroup):
+            if isinstance(sub, BaseExceptionGroup):
                 parts.append(format_exception(sub))
             else:
                 parts.append(safe_error_description(sub))
@@ -60,47 +97,26 @@ def validate_meeting_inputs(
         raise ValueError(msg)
 
     if not participant_ids:
-        logger.warning(
-            MEETING_VALIDATION_FAILED,
-            meeting_id=meeting_id,
-            error="at least one participant is required",
-        )
-        msg = "At least one participant is required"
-        raise MeetingParticipantError(
-            msg,
-            context={"meeting_id": meeting_id},
+        _fail_participant(
+            meeting_id,
+            "at least one participant is required",
+            "At least one participant is required",
         )
     if len(participant_ids) != len(set(participant_ids)):
         dupes = sorted(v for v, c in Counter(participant_ids).items() if c > 1)
-        logger.warning(
-            MEETING_VALIDATION_FAILED,
-            meeting_id=meeting_id,
-            error="duplicate participant_ids",
+        _fail_participant(
+            meeting_id,
+            "duplicate participant_ids",
+            f"Duplicate participant IDs: {dupes}",
             duplicates=dupes,
         )
-        msg = f"Duplicate participant IDs: {dupes}"
-        raise MeetingParticipantError(
-            msg,
-            context={
-                "meeting_id": meeting_id,
-                "duplicates": dupes,
-            },
-        )
     if leader_id in participant_ids:
-        logger.warning(
-            MEETING_VALIDATION_FAILED,
-            meeting_id=meeting_id,
-            error="leader in participant_ids",
+        _fail_participant(
+            meeting_id,
+            "leader in participant_ids",
+            (
+                f"Leader {leader_id!r} must not be in participant_ids "
+                f"(leader participates implicitly)"
+            ),
             leader_id=leader_id,
-        )
-        msg = (
-            f"Leader {leader_id!r} must not be in participant_ids "
-            f"(leader participates implicitly)"
-        )
-        raise MeetingParticipantError(
-            msg,
-            context={
-                "meeting_id": meeting_id,
-                "leader_id": leader_id,
-            },
         )

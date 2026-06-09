@@ -1,17 +1,22 @@
 # module-kind: code
 """Token-cost computation for completion providers.
 
-Stateless helper extracted from ``BaseCompletionProvider`` so the base
-class holds only retry / rate-limit orchestration. Drivers call
-``compute_token_cost`` to build a ``TokenUsage`` from raw counts.
+Stateless helper so ``BaseCompletionProvider`` holds only retry /
+rate-limit orchestration. Drivers call ``compute_token_cost`` to build a
+``TokenUsage`` from raw counts.
 """
 
 import math
+from typing import Final
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 
 from .errors import InvalidRequestError
 from .models import TokenUsage
+
+# Provider rates are quoted per 1,000 tokens, so raw counts divide by
+# this before multiplying by the per-1k rate.
+_TOKENS_PER_1K: Final[int] = 1000
 
 
 def compute_token_cost(
@@ -62,8 +67,8 @@ def compute_token_cost(
             msg,
             context={"cost_per_1k_output": cost_per_1k_output},
         )
-    cost = (input_tokens / 1000) * cost_per_1k_input + (
-        output_tokens / 1000
+    cost = (input_tokens / _TOKENS_PER_1K) * cost_per_1k_input + (
+        output_tokens / _TOKENS_PER_1K
     ) * cost_per_1k_output
     return TokenUsage(
         input_tokens=input_tokens,

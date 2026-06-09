@@ -69,7 +69,7 @@ class OAuthRotationMixin:
             """Write a secret blob to the backend (provided by the host class)."""
             ...
 
-        def _invalidate_cache(self) -> None:
+        async def _invalidate_cache(self) -> None:
             """Drop the cached connection snapshot (provided by the host class)."""
             ...
 
@@ -113,7 +113,7 @@ class OAuthRotationMixin:
                 merged,
             )
             await self._persist_oauth_rotation(updated, new_secret_id, name)
-            self._invalidate_cache()
+            await self._invalidate_cache()
             await self._cleanup_stale_oauth_secrets(conn.secret_refs, name)
             logger.info(
                 OAUTH_TOKEN_EXCHANGED,
