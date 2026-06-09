@@ -64,7 +64,7 @@ def validate_otlp_endpoint_safety(
         # DNS resolution failed -- skip the resolved-IP check (hostname may
         # be valid at runtime even if not resolvable at config-load time),
         # but fall through so the plaintext-HTTP warning below still fires.
-        addrs = ()
+        addrs = []
     for _family, _type, _proto, _canonname, sockaddr in addrs:
         resolved_ip = str(sockaddr[0])
         if is_private_ip(resolved_ip):
