@@ -5728,7 +5728,7 @@
     },
     {
       "kind": "code",
-      "loc": 341,
+      "loc": 343,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/s1_constraints.py",
       "owning_feature": "engine"
