@@ -270,7 +270,7 @@ class FineTuneCheckpointRepository(
         """
         ...
 
-    async def set_active(self, checkpoint_id: NotBlankStr) -> None:
+    async def set_active(self, checkpoint_id: NotBlankStr, /) -> None:
         """Deactivate all checkpoints and atomically activate the given one.
 
         Bespoke D7: domain invariant enforcement. Raises when

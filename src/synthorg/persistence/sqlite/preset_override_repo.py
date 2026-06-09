@@ -271,9 +271,6 @@ class SQLitePresetOverrideRepo:
         Raises:
             QueryError: If the database query fails.
         """
-        from synthorg.config.schema import (  # noqa: PLC0415
-            ProviderModelConfig as _ProviderModelConfig,
-        )
 
         def _decode_json_list(raw: object) -> list[object] | None:
             if raw is None:
@@ -302,7 +299,7 @@ class SQLitePresetOverrideRepo:
 
         models_raw = _decode_json_list(row["default_models"])
         models: tuple[ProviderModelConfig, ...] | None = (
-            tuple(_ProviderModelConfig.model_validate(m) for m in models_raw)
+            tuple(ProviderModelConfig.model_validate(m) for m in models_raw)
             if models_raw is not None
             else None
         )
