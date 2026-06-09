@@ -13,7 +13,9 @@ their own manifests.
 from collections.abc import Mapping
 
 from synthorg._core.features import FeatureManifest, FeatureModule
-from synthorg.api.controllers.analytics import AnalyticsController
+from synthorg.api.controllers.analytics.forecast import AnalyticsForecastController
+from synthorg.api.controllers.analytics.overview import AnalyticsOverviewController
+from synthorg.api.controllers.analytics.trends import AnalyticsTrendsController
 from synthorg.api.controllers.conversational import ConversationalController
 from synthorg.api.controllers.custom_rules import CustomRuleController
 from synthorg.api.controllers.experiments import ExperimentsController
@@ -69,7 +71,9 @@ FEATURE: FeatureModule = FeatureManifest(
         MetaController,
         ConversationalController,
         MetaAnalyticsController,
-        AnalyticsController,
+        AnalyticsOverviewController,
+        AnalyticsTrendsController,
+        AnalyticsForecastController,
         ExperimentsController,
         CustomRuleController,
         LearningController,
