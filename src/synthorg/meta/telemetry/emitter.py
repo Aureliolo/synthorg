@@ -35,6 +35,7 @@ from synthorg.observability.events.cross_deployment import (
     XDEPLOY_EMITTER_INITIALIZED,
     XDEPLOY_EVENT_EMIT_FAILED,
     XDEPLOY_EVENT_QUEUED,
+    XDEPLOY_RESPONSE_BODY_UNREADABLE,
 )
 
 logger = get_logger(__name__)
@@ -496,7 +497,14 @@ def _safe_response_text(response: httpx.Response) -> str:
     """
     try:
         text = response.text
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
+        logger.warning(
+            XDEPLOY_RESPONSE_BODY_UNREADABLE,
+            status_code=response.status_code,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return "(unable to read response body)"
     if len(text) > _LOG_BODY_MAX_LEN:
         return text[: _LOG_BODY_MAX_LEN - 3] + "..."

@@ -200,10 +200,21 @@ class Alert(BaseModel):
     recommended_action: NotBlankStr | None = None
     emitted_at: AwareDatetime
 
-    def __init__(self, **data: object) -> None:
-        if "signal_context" in data:
-            data["signal_context"] = deepcopy(data["signal_context"])
-        super().__init__(**data)
+    @model_validator(mode="before")
+    @classmethod
+    def _deepcopy_signal_context(cls, data: object) -> object:
+        """Deep-copy ``signal_context`` so callers cannot alias internals.
+
+        Runs on every construction path (``Alert(...)`` and
+        ``model_validate``) and copies rather than mutating the caller's
+        input, which a fragile ``__init__`` override could not guarantee.
+
+        Returns:
+            The input data with ``signal_context`` deep-copied when present.
+        """
+        if isinstance(data, dict) and "signal_context" in data:
+            return {**data, "signal_context": deepcopy(data["signal_context"])}
+        return data
 
 
 # ── Chat interface ────────────────────────────────────────────────

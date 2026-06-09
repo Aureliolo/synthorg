@@ -17,6 +17,8 @@ when the brief passes and ``require_golden_delta`` is set.
 from copy import deepcopy
 from typing import TYPE_CHECKING, Final, cast
 
+from pydantic import JsonValue
+
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.toolsmith.config import ToolsmithConfig
@@ -59,7 +61,7 @@ _PROBE_VALUES: Mapping[str, object] = {
 }
 
 
-def _synthesize_probe(parameters_schema: dict[str, object]) -> dict[str, object]:
+def _synthesize_probe(parameters_schema: dict[str, JsonValue]) -> dict[str, object]:
     """Build a minimal valid argument payload from required schema fields.
 
     Honours the schema keywords that fully determine a valid value --

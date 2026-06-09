@@ -14,7 +14,12 @@ overlap.
 
 from typing import ClassVar, Literal
 
-from synthorg.core.domain_errors import ForbiddenError, ValidationError
+from synthorg.core.domain_errors import (
+    ConflictError,
+    ForbiddenError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 
 GuardrailCode = Literal["missing_confirm", "missing_reason", "missing_actor"]
 
@@ -78,3 +83,35 @@ class GuardrailViolationError(ForbiddenError):
         """
         super().__init__(message)
         self.violation = violation
+
+
+class ToolRegistryFrozenError(ConflictError):
+    """Raised on an attempt to register a tool after the registry froze.
+
+    The domain registry freezes on its first read so the tool surface
+    cannot drift mid-run; registering afterwards is an internal wiring
+    bug, surfaced as a conflict rather than a bare ``RuntimeError``.
+    """
+
+
+class HandlerServiceNotWiredError(ServiceUnavailableError):
+    """Raised when an MCP handler's backing service is absent post-bootstrap.
+
+    The service is expected to be wired on ``app_state`` once startup
+    completes; its absence is a misconfiguration surfaced as a 503 so the
+    operator can see which dependency failed to wire, rather than an
+    opaque ``RuntimeError``.
+
+    Attributes:
+        service: Name of the service that was not wired.
+    """
+
+    def __init__(self, service: str) -> None:
+        """Initialise with the name of the unwired service.
+
+        Args:
+            service: Identifier of the service missing from ``app_state``.
+        """
+        message = f"{service} not wired on app_state"
+        super().__init__(message)
+        self.service = service

@@ -22,6 +22,9 @@ XDEPLOY_BATCH_FLUSHED: Final[str] = "cross_deployment.batch.flushed"
 XDEPLOY_BATCH_FLUSH_FAILED: Final[str] = "cross_deployment.batch.flush_failed"
 XDEPLOY_BATCH_FLUSH_RETRYING: Final[str] = "cross_deployment.batch.flush_retrying"
 XDEPLOY_BATCH_DROPPED: Final[str] = "cross_deployment.batch.dropped"
+XDEPLOY_RESPONSE_BODY_UNREADABLE: Final[str] = (
+    "cross_deployment.response.body_unreadable"
+)
 
 # -- Collector -------------------------------------------------------------
 

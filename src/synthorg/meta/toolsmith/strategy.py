@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from typing import Final
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from synthorg.api.boundary import parse_typed
 from synthorg.budget.call_category import LLMCallCategory
@@ -276,7 +276,7 @@ class _AuthoredBlueprintArgs(BaseModel):
     description: NotBlankStr
     action_type: NotBlankStr
     script_body: NotBlankStr
-    parameters_schema: dict[str, object]
+    parameters_schema: dict[str, JsonValue]
 
 
 __all__ = ["LLMToolBlueprintGenerator"]

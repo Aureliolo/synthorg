@@ -139,7 +139,7 @@ class KeywordRoleRule(BaseModel):
         role: Role name resolved against the active roster.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     keywords: tuple[NotBlankStr, ...] = Field(min_length=1)
     role: NotBlankStr

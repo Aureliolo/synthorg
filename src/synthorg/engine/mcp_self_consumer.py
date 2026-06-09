@@ -66,7 +66,7 @@ class _SynthOrgMCPToolAdapter(BaseTool):
         super().__init__(
             name=mcp_def.name,
             description=mcp_def.description,
-            parameters_schema=cast("dict[str, JsonValue]", mcp_def.parameters),
+            parameters_schema=mcp_def.parameters,
             category=ToolCategory.MCP,
         )
         self._mcp_def = mcp_def

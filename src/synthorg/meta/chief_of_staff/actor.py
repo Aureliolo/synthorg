@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 class ConversationalActArgs(BaseModel):
     """Typed request for a direct chat-driven MCP action."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     instruction: NotBlankStr = Field(description="The human instruction to act on")
     agent: NotBlankStr = Field(
@@ -55,7 +55,7 @@ class ConversationalActArgs(BaseModel):
 class ConversationalActResult(BaseModel):
     """Outcome of a direct chat-driven action, with acting-agent attribution."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr = Field(description="Id of the agent that acted")
     agent_name: NotBlankStr = Field(description="Name of the agent that acted")

@@ -110,8 +110,8 @@
     },
     "src/synthorg/api/controllers/meta.py": {
       "cap": 500,
-      "loc": 432,
-      "ratio": 0.864,
+      "loc": 431,
+      "ratio": 0.862,
       "tier": "code"
     },
     "src/synthorg/api/controllers/ontology.py": {
@@ -824,8 +824,8 @@
     },
     "src/synthorg/meta/chief_of_staff/models.py": {
       "cap": 500,
-      "loc": 479,
-      "ratio": 0.958,
+      "loc": 488,
+      "ratio": 0.976,
       "tier": "code"
     },
     "src/synthorg/meta/chief_of_staff/propose.py": {
@@ -866,8 +866,8 @@
     },
     "src/synthorg/meta/rules/custom.py": {
       "cap": 500,
-      "loc": 463,
-      "ratio": 0.926,
+      "loc": 472,
+      "ratio": 0.944,
       "tier": "code"
     },
     "src/synthorg/meta/strategies/code_modification.py": {
@@ -878,8 +878,8 @@
     },
     "src/synthorg/meta/telemetry/emitter.py": {
       "cap": 500,
-      "loc": 410,
-      "ratio": 0.82,
+      "loc": 418,
+      "ratio": 0.836,
       "tier": "code"
     },
     "src/synthorg/observability/audit_chain/tsa_client.py": {
@@ -1387,7 +1387,7 @@
     "synthorg.memory.protocol": 63,
     "synthorg.meta.chief_of_staff.models": 30,
     "synthorg.meta.config": 20,
-    "synthorg.meta.mcp.errors": 55,
+    "synthorg.meta.mcp.errors": 56,
     "synthorg.meta.mcp.handler_protocol": 45,
     "synthorg.meta.mcp.handlers.common": 53,
     "synthorg.meta.mcp.handlers.common_args": 47,

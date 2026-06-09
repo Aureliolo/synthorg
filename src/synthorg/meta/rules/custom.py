@@ -13,7 +13,7 @@ import operator as _operator
 from collections.abc import Callable
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -349,11 +349,20 @@ def resolve_metric(
 
     Raises:
         AttributeError: If the path does not exist on the snapshot.
+        TypeError: If the path resolves to a non-numeric, non-None value
+            (callers perform arithmetic on the result, so a clear error
+            here beats a ``TypeError`` raised deep in the operator layer).
     """
     obj: object = snapshot
     for part in path.split("."):
         obj = getattr(obj, part)
-    return cast("float | int | None", obj)
+    if obj is None or isinstance(obj, (int, float)):
+        return obj
+    msg = (
+        f"Metric path '{path}' resolved to a non-numeric "
+        f"{type(obj).__name__}; expected float, int, or None."
+    )
+    raise TypeError(msg)
 
 
 # ── CustomRuleDefinition ─────────────────────────────────────────

@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.integrations.connections.models import ConnectionType
@@ -134,7 +134,7 @@ async def _connections_create(
         name = _require_str(arguments, _ARG_NAME)
         connection_type = _parse_connection_type(arguments)
         auth_method = _require_str(arguments, _ARG_AUTH_METHOD)
-        credentials = cast("dict[str, str]", require_dict(arguments, _ARG_CREDENTIALS))
+        credentials = require_dict(arguments, _ARG_CREDENTIALS, value_type=str)
         base_url = get_optional_str(arguments, _ARG_BASE_URL)
         metadata = _get_dict(arguments, _ARG_METADATA)
         actor_id = require_actor_id(resolved_actor)

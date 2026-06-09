@@ -7,7 +7,7 @@ type, enforcing the ``synthorg_{domain}_{action}`` naming convention.
 
 from collections.abc import Mapping
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.meta.mcp.registry import MCPToolDef
 from synthorg.observability import get_logger
@@ -15,7 +15,7 @@ from synthorg.observability.events.mcp import MCP_TOOL_BUILDER_INVALID_REQUIRED
 
 logger = get_logger(__name__)
 
-PAGINATION_PROPERTIES: dict[str, object] = {
+PAGINATION_PROPERTIES: dict[str, JsonValue] = {
     "offset": {
         "type": "integer",
         "description": "Pagination offset",
@@ -33,7 +33,7 @@ PAGINATION_PROPERTIES: dict[str, object] = {
 """Shared pagination schema with bounds for all domain list tools."""
 
 
-ADMIN_GUARDRAIL_PROPERTIES: dict[str, object] = {
+ADMIN_GUARDRAIL_PROPERTIES: dict[str, JsonValue] = {
     "reason": {
         "type": "string",
         "description": "Reason for the admin action (non-blank)",
@@ -65,10 +65,10 @@ ADMIN_GUARDRAIL_REQUIRED: tuple[str, ...] = ("reason", "confirm")
 
 
 def _make_parameters(
-    properties: Mapping[str, object] | None = None,
+    properties: Mapping[str, JsonValue] | None = None,
     *,
     required: tuple[str, ...] = (),
-) -> dict[str, object]:
+) -> dict[str, JsonValue]:
     """Build a JSON Schema ``object`` for tool parameters.
 
     Args:
@@ -95,12 +95,12 @@ def _make_parameters(
                 properties=sorted(resolved),
             )
             raise ValueError(msg)
-    schema: dict[str, object] = {
+    schema: dict[str, JsonValue] = {
         "type": "object",
-        "properties": resolved,
+        "properties": dict(resolved),
     }
     if required:
-        schema["required"] = list(required)
+        schema["required"] = list[JsonValue](required)
     return schema
 
 
@@ -108,7 +108,7 @@ def tool_def(  # noqa: PLR0913
     domain: str,
     action: str,
     description: str,
-    properties: Mapping[str, object] | None = None,
+    properties: Mapping[str, JsonValue] | None = None,
     *,
     required: tuple[str, ...] = (),
     capability_action: str = "read",
@@ -149,7 +149,7 @@ def read_tool(  # noqa: PLR0913
     domain: str,
     action: str,
     description: str,
-    properties: Mapping[str, object] | None = None,
+    properties: Mapping[str, JsonValue] | None = None,
     *,
     required: tuple[str, ...] = (),
     args_model: type[BaseModel] | None = None,
@@ -184,7 +184,7 @@ def write_tool(  # noqa: PLR0913
     domain: str,
     action: str,
     description: str,
-    properties: Mapping[str, object] | None = None,
+    properties: Mapping[str, JsonValue] | None = None,
     *,
     required: tuple[str, ...] = (),
     args_model: type[BaseModel] | None = None,
@@ -219,7 +219,7 @@ def admin_tool(  # noqa: PLR0913
     domain: str,
     action: str,
     description: str,
-    properties: Mapping[str, object] | None = None,
+    properties: Mapping[str, JsonValue] | None = None,
     *,
     required: tuple[str, ...] = (),
     args_model: type[BaseModel] | None = None,

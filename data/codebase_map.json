@@ -919,7 +919,7 @@
     },
     {
       "kind": "code",
-      "loc": 432,
+      "loc": 431,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/meta.py",
       "owning_feature": "api_core"
@@ -5658,7 +5658,7 @@
     },
     {
       "kind": "code",
-      "loc": 125,
+      "loc": 124,
       "loc_cap": 500,
       "module": "src/synthorg/engine/mcp_self_consumer.py",
       "owning_feature": "engine"
@@ -10845,7 +10845,7 @@
     },
     {
       "kind": "code",
-      "loc": 479,
+      "loc": 488,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/models.py",
       "owning_feature": "meta"
@@ -11209,7 +11209,7 @@
     },
     {
       "kind": "code",
-      "loc": 242,
+      "loc": 245,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/agents.py",
       "owning_feature": "meta"
@@ -11230,7 +11230,7 @@
     },
     {
       "kind": "code",
-      "loc": 203,
+      "loc": 204,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/brain.py",
       "owning_feature": "meta"
@@ -11251,7 +11251,7 @@
     },
     {
       "kind": "code",
-      "loc": 140,
+      "loc": 141,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/cockpit.py",
       "owning_feature": "meta"
@@ -11272,7 +11272,7 @@
     },
     {
       "kind": "code",
-      "loc": 151,
+      "loc": 152,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/docs.py",
       "owning_feature": "meta"
@@ -11293,14 +11293,14 @@
     },
     {
       "kind": "code",
-      "loc": 105,
+      "loc": 106,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/knowledge.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 268,
+      "loc": 269,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/memory.py",
       "owning_feature": "meta"
@@ -11356,7 +11356,7 @@
     },
     {
       "kind": "code",
-      "loc": 61,
+      "loc": 89,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/errors.py",
       "owning_feature": "meta"
@@ -11811,7 +11811,7 @@
     },
     {
       "kind": "code",
-      "loc": 280,
+      "loc": 282,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/workflows_definitions.py",
       "owning_feature": "meta"
@@ -11839,7 +11839,7 @@
     },
     {
       "kind": "code",
-      "loc": 302,
+      "loc": 303,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/registry.py",
       "owning_feature": "meta"
@@ -11867,7 +11867,7 @@
     },
     {
       "kind": "code",
-      "loc": 150,
+      "loc": 161,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/tools.py",
       "owning_feature": "meta"
@@ -12084,7 +12084,7 @@
     },
     {
       "kind": "code",
-      "loc": 463,
+      "loc": 472,
       "loc_cap": 500,
       "module": "src/synthorg/meta/rules/custom.py",
       "owning_feature": "meta"
@@ -12280,7 +12280,7 @@
     },
     {
       "kind": "code",
-      "loc": 410,
+      "loc": 418,
       "loc_cap": 500,
       "module": "src/synthorg/meta/telemetry/emitter.py",
       "owning_feature": "meta"
@@ -12385,7 +12385,7 @@
     },
     {
       "kind": "code",
-      "loc": 253,
+      "loc": 254,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/models.py",
       "owning_feature": "toolsmith"
@@ -12434,7 +12434,7 @@
     },
     {
       "kind": "code",
-      "loc": 220,
+      "loc": 221,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/validation_gate.py",
       "owning_feature": "toolsmith"
@@ -12945,7 +12945,7 @@
     },
     {
       "kind": "code",
-      "loc": 19,
+      "loc": 22,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/cross_deployment.py",
       "owning_feature": "observability"

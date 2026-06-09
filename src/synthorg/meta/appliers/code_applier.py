@@ -470,7 +470,13 @@ class CodeApplier:
                 _apply_single_change(change, file_path)
             except MemoryError, RecursionError:
                 raise
-            except (OSError, RuntimeError) as exc:
+            except (OSError, RuntimeError, UnicodeDecodeError) as exc:
+                # ``UnicodeDecodeError`` (a ``ValueError`` subclass) is raised
+                # when a change targets a non-UTF-8 file via ``read_text``;
+                # without it here the decode failure escapes the per-change
+                # guard and the partial-write revert never fires, leaving the
+                # workspace dirty.
+                #
                 # Without this, the ``msg`` and chained-exception
                 # paths leak raw ``str(exc)`` into the
                 # PartialWriteError that the caller logs via

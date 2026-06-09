@@ -17,7 +17,7 @@ from synthorg.meta.toolsmith.service import ToolsmithService
 class ToolsmithStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the toolsmith feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     service: ToolsmithService | None = None
     cycle_scheduler: ToolsmithCycleScheduler | None = None

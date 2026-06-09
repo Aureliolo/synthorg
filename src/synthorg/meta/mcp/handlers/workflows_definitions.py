@@ -22,6 +22,7 @@ from synthorg.engine.workflow.service import (
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
+    HandlerServiceNotWiredError,
 )
 from synthorg.meta.mcp.handlers.common import (
     dump_many,
@@ -69,7 +70,8 @@ def _service(app_state: AppState) -> WorkflowService:
         ``WorkflowService`` instance.
 
     Raises:
-        RuntimeError: Raised on the corresponding failure path.
+        HandlerServiceNotWiredError: If the workflow service is absent
+            from ``AppState`` post-bootstrap.
     """
     cached: WorkflowService | None = app_state.slice(EngineStateSlice).workflow_service
     if cached is None:
@@ -84,8 +86,8 @@ def _service(app_state: AppState) -> WorkflowService:
             service="workflow_service",
             reason="workflow_service_of(app_state) not wired",
         )
-        msg = "workflow_service not wired on app_state"
-        raise RuntimeError(msg)
+        service = "workflow_service"
+        raise HandlerServiceNotWiredError(service)
     return cached
 
 

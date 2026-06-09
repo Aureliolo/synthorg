@@ -5,6 +5,8 @@ Covers memory admin controller (fine-tuning, checkpoints, embedder).
 
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
+
 from synthorg.meta.mcp.domains._remaining_args import (
     MemoryCancelFineTuneArgs,
     MemoryDeleteCheckpointArgs,
@@ -42,7 +44,7 @@ if TYPE_CHECKING:
 # where the MCP caller can correct its input.
 _NON_BLANK_STRING_PATTERN: str = r".*\S.*"
 
-_FINE_TUNE_PLAN_PROPERTIES: dict[str, object] = {
+_FINE_TUNE_PLAN_PROPERTIES: dict[str, JsonValue] = {
     "data_source": {
         "type": "string",
         "enum": ["directory", "trajectory"],

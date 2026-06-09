@@ -5,6 +5,8 @@ Covers agents, personalities, and training controllers.
 
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
+
 from synthorg.meta.mcp.domains._agents_args import (
     AgentsCreateArgs,
     AgentsDeleteArgs,
@@ -37,7 +39,9 @@ from synthorg.meta.mcp.tool_builder import (
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
 
-_AGENT_NAME = {"agent_name": {"type": "string", "description": "Agent name"}}
+_AGENT_NAME: dict[str, JsonValue] = {
+    "agent_name": {"type": "string", "description": "Agent name"}
+}
 
 AGENT_TOOLS: tuple[MCPToolDef, ...] = (
     # --- Agent CRUD ---

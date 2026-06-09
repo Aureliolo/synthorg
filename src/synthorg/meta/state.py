@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 class MetaStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the meta feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     signals_service: SignalsService | None = None
     experiment_service: ExperimentService | None = None

@@ -16,6 +16,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     model_validator,
 )
 
@@ -190,7 +191,7 @@ class ToolBlueprint(BaseModel):
     name: NotBlankStr
     description: NotBlankStr
     capability: NotBlankStr
-    parameters_schema: dict[str, object]
+    parameters_schema: dict[str, JsonValue]
     script_body: NotBlankStr = Field(max_length=_MAX_SCRIPT_BODY_CHARS)
     sandbox_backend: ToolSandboxBackend = ToolSandboxBackend.DOCKER
     requires_network: bool = False

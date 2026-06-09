@@ -11,9 +11,10 @@ from copy import deepcopy
 from types import MappingProxyType
 from typing import Protocol, Self, cast, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.mcp.errors import ToolRegistryFrozenError
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_REGISTRY_DUPLICATE,
@@ -71,7 +72,7 @@ class MCPToolDef(BaseModel):
 
     name: NotBlankStr = Field(description="Tool name (synthorg_{domain}_{action})")
     description: NotBlankStr = Field(description="Human-readable description")
-    parameters: dict[str, object] = Field(description="JSON Schema for parameters")
+    parameters: dict[str, JsonValue] = Field(description="JSON Schema for parameters")
     capability: NotBlankStr = Field(description="Capability tag (domain:action)")
     handler_key: NotBlankStr = Field(description="Handler registry key")
     args_model: type[BaseModel] | None = Field(
@@ -241,7 +242,7 @@ class DomainToolRegistry:
             tool: Tool definition to register.
 
         Raises:
-            RuntimeError: If the registry is frozen.
+            ToolRegistryFrozenError: If the registry is frozen.
             ValueError: If a tool with the same name is already registered.
         """
         if self._frozen:
@@ -251,7 +252,7 @@ class DomainToolRegistry:
                 tool_name=tool.name,
                 error=msg,
             )
-            raise RuntimeError(msg)
+            raise ToolRegistryFrozenError(msg)
         if tool.name in self._tools:
             logger.warning(
                 MCP_REGISTRY_DUPLICATE,
