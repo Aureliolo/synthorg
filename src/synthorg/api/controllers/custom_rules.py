@@ -11,8 +11,15 @@ from typing import Final
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_204_NO_CONTENT
-from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.api.controllers._custom_rules_helpers import (
+    CreateCustomRuleRequest,
+    PreviewRuleRequest,
+    UpdateCustomRuleRequest,
+    _build_preview_snapshot,
+    _metric_to_dict,
+    rule_to_dict,
+)
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
@@ -26,24 +33,11 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.models import (
-    OrgBudgetSummary,
-    OrgCoordinationSummary,
-    OrgErrorSummary,
-    OrgEvolutionSummary,
-    OrgPerformanceSummary,
-    OrgScalingSummary,
-    OrgSignalSnapshot,
-    OrgTelemetrySummary,
-    ProposalAltitude,
-    RuleSeverity,
-)
+from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import (
     METRIC_REGISTRY,
-    Comparator,
     CustomRuleDefinition,
     DeclarativeRule,
-    MetricDescriptor,
 )
 from synthorg.meta.rules.service import CustomRulesService
 from synthorg.observability import get_logger, safe_error_description
@@ -70,137 +64,6 @@ def _service(state: State) -> CustomRulesService:
         ``CustomRulesService`` instance.
     """
     return CustomRulesService(repo=persistence_of(state.app_state).custom_rules)
-
-
-# ── Request DTOs ──────────────────────────────────────────────────
-
-
-class CreateCustomRuleRequest(BaseModel):
-    """Request body for creating a custom signal rule.
-
-    Attributes:
-        name: Human-readable rule name (unique).
-        description: What pattern this rule detects.
-        metric_path: Dot-notation path into OrgSignalSnapshot.
-        comparator: Comparison operator.
-        threshold: Threshold value.
-        severity: Match severity.
-        target_altitudes: Which strategies to trigger.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    name: NotBlankStr = Field(
-        description="Human-readable rule name (unique per organization).",
-    )
-    description: NotBlankStr = Field(
-        description="What pattern this rule detects and why it matters.",
-    )
-    metric_path: NotBlankStr = Field(
-        description=(
-            "Dot-notation path into `OrgSignalSnapshot` identifying the metric "
-            "to evaluate (e.g. `budget.used_percent`)."
-        ),
-    )
-    comparator: Comparator = Field(
-        description="Comparison operator (gt, gte, lt, lte, eq, ne).",
-    )
-    threshold: float = Field(
-        description="Threshold value compared against the resolved metric.",
-    )
-    severity: RuleSeverity = Field(
-        description="Severity assigned to matches for downstream routing.",
-    )
-    target_altitudes: tuple[ProposalAltitude, ...] = Field(
-        min_length=1,
-        description="Strategies to trigger when the rule matches.",
-    )
-
-
-class UpdateCustomRuleRequest(BaseModel):
-    """Request body for updating a custom signal rule.
-
-    All fields are optional (partial update).
-
-    Attributes:
-        name: New rule name.
-        description: New description.
-        metric_path: New metric path.
-        comparator: New comparator.
-        threshold: New threshold.
-        severity: New severity.
-        target_altitudes: New target altitudes.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    name: NotBlankStr | None = None
-    description: NotBlankStr | None = None
-    metric_path: NotBlankStr | None = None
-    comparator: Comparator | None = None
-    threshold: float | None = None
-    severity: RuleSeverity | None = None
-    target_altitudes: tuple[ProposalAltitude, ...] | None = None
-
-
-class PreviewRuleRequest(BaseModel):
-    """Request body for dry-run rule evaluation.
-
-    Attributes:
-        metric_path: Metric to evaluate.
-        comparator: Comparison operator.
-        threshold: Threshold value.
-        sample_value: Metric value to test against.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    metric_path: NotBlankStr
-    comparator: Comparator
-    threshold: float
-    sample_value: float
-
-
-# ── Helpers ───────────────────────────────────────────────────────
-
-
-def rule_to_dict(rule: CustomRuleDefinition) -> dict[str, object]:
-    """Serialize a CustomRuleDefinition for API response.
-
-    Returns:
-        Mapping with the declared key/value types.
-    """
-    return {
-        "id": str(rule.id),
-        "name": rule.name,
-        "description": rule.description,
-        "metric_path": rule.metric_path,
-        "comparator": rule.comparator.value,
-        "threshold": rule.threshold,
-        "severity": rule.severity.value,
-        "target_altitudes": [a.value for a in rule.target_altitudes],
-        "enabled": rule.enabled,
-        "created_at": rule.created_at.isoformat(),
-        "updated_at": rule.updated_at.isoformat(),
-    }
-
-
-def _metric_to_dict(metric: MetricDescriptor) -> dict[str, object]:
-    """Serialize a MetricDescriptor for API response.
-
-    Returns:
-        Mapping with the declared key/value types.
-    """
-    return {
-        "path": metric.path,
-        "label": metric.label,
-        "domain": metric.domain,
-        "value_type": metric.value_type,
-        "min_value": metric.min_value,
-        "max_value": metric.max_value,
-        "unit": metric.unit,
-        "nullable": metric.nullable,
-    }
 
 
 # ── Controller ────────────────────────────────────────────────────
@@ -531,78 +394,3 @@ class CustomRuleController(Controller):
                 "signal_context": match.signal_context,
             }
         return ApiResponse[dict[str, object]](data=result)
-
-
-def _build_preview_snapshot(
-    metric_path: str,
-    sample_value: float,
-) -> OrgSignalSnapshot:
-    """Build a minimal OrgSignalSnapshot with one metric set.
-
-    All other fields use safe defaults (zeros/empty).
-
-    Returns:
-        ``OrgSignalSnapshot`` instance.
-
-    Raises:
-        ValueError: Raised on the corresponding failure path.
-    """
-    domain, field = metric_path.split(".", maxsplit=1)
-
-    # Convert to int for integer-typed metrics so the injected sample
-    # matches the target field's declared type.
-    registry_entry = next(
-        (m for m in METRIC_REGISTRY if m.path == metric_path),
-        None,
-    )
-    value: float = (
-        int(sample_value)
-        if registry_entry is not None and registry_entry.value_type == "int"
-        else sample_value
-    )
-
-    # Build every summary with safe defaults, then inject the sample into
-    # the target domain via a validated copy.
-    snapshot = OrgSignalSnapshot(
-        performance=OrgPerformanceSummary(
-            avg_quality_score=0.0,
-            avg_success_rate=0.0,
-            avg_collaboration_score=0.0,
-            agent_count=0,
-        ),
-        budget=OrgBudgetSummary(
-            total_spend=0.0,
-            productive_ratio=0.0,
-            coordination_ratio=0.0,
-            system_ratio=0.0,
-            forecast_confidence=0.0,
-            orchestration_overhead=0.0,
-        ),
-        coordination=OrgCoordinationSummary(),
-        scaling=OrgScalingSummary(),
-        errors=OrgErrorSummary(),
-        evolution=OrgEvolutionSummary(),
-        telemetry=OrgTelemetrySummary(),
-    )
-    summaries: dict[str, BaseModel] = {
-        "performance": snapshot.performance,
-        "budget": snapshot.budget,
-        "coordination": snapshot.coordination,
-        "scaling": snapshot.scaling,
-        "errors": snapshot.errors,
-        "evolution": snapshot.evolution,
-        "telemetry": snapshot.telemetry,
-    }
-    target = summaries.get(domain)
-    if target is None:
-        msg = (
-            f"Internal error: metric domain '{domain}' "
-            "not handled in preview snapshot builder"
-        )
-        raise ValueError(msg)
-    # model_copy(update=...) bypasses validation, so re-validate the whole
-    # snapshot to preserve the field's range constraints (parity with the
-    # previous construct-and-validate path).
-    updated_target = target.model_copy(update={field: value})
-    injected = snapshot.model_copy(update={domain: updated_target})
-    return OrgSignalSnapshot.model_validate(injected.model_dump())

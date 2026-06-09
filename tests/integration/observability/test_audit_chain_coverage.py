@@ -22,16 +22,16 @@ from uuid import uuid4
 
 import pytest
 
+from synthorg.api.controllers._custom_rules_helpers import (
+    CreateCustomRuleRequest,
+    UpdateCustomRuleRequest,
+)
 from synthorg.api.controllers.connections import (
     ConnectionsController,
     CreateConnectionRequest,
     UpdateConnectionRequest,
 )
-from synthorg.api.controllers.custom_rules import (
-    CreateCustomRuleRequest,
-    CustomRuleController,
-    UpdateCustomRuleRequest,
-)
+from synthorg.api.controllers.custom_rules import CustomRuleController
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (

@@ -8,7 +8,7 @@ from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
-from synthorg.api.controllers.custom_rules import rule_to_dict
+from synthorg.api.controllers._custom_rules_helpers import rule_to_dict
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.pagination import (
