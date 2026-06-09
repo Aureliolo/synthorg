@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.communication.citation.models import Citation
 from synthorg.communication.citation.normalizer import normalize_url
@@ -176,6 +176,7 @@ class CitationManager(BaseModel):
         Raises:
             TypeError: If the payload's ``citations`` is not a list of
                 mappings.
+            ValidationError: If a citation entry fails model validation.
         """
         raw_list = data.get("citations", [])
         if not isinstance(raw_list, list):
@@ -202,7 +203,15 @@ class CitationManager(BaseModel):
             # exactly the model's fields, so ``extra="forbid"`` is safe
             # and a malformed entry yields a field-level
             # ``ValidationError`` instead of a bare ``KeyError``.
-            citation = Citation.model_validate(dict(raw))
+            try:
+                citation = Citation.model_validate(dict(raw))
+            except ValidationError as exc:
+                logger.warning(
+                    CITATION_HANDOFF_INVALID,
+                    error="handoff citation entry failed validation",
+                    error_type=type(exc).__name__,
+                )
+                raise
             citations.append(citation)
             url_map[normalize_url(str(citation.url))] = citation.number
 

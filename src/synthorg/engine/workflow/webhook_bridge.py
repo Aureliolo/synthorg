@@ -10,9 +10,13 @@ import contextlib
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Final
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from synthorg.api.boundary import parse_typed
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.message import DataPart
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.engine.workflow.strategies.external_trigger import (
     ExternalTriggerStrategy,
@@ -44,6 +48,21 @@ _POLL_TIMEOUT: Final[float] = 1.0
 """Fallback poll timeout used when no resolver is wired in."""
 _MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 """Fallback error budget used when no resolver is wired in."""
+
+
+class _WebhookEvent(BaseModel):  # lint-allow: frozen-extra-forbid -- bus metadata
+    """Typed view of a ``#webhooks`` ``DataPart`` payload.
+
+    The bus part carries the dispatching ``connection_name`` and other
+    transport metadata alongside the event fields, so unrelated keys are
+    ignored rather than rejected.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    event_type: NotBlankStr
+    payload: Mapping[str, object] = Field(default_factory=dict)
+    connection_name: str | None = None
 
 
 class WebhookEventBridge:
@@ -420,21 +439,20 @@ class WebhookEventBridge:
         for part in message.parts:
             if not isinstance(part, DataPart):
                 continue
-            data = dict(part.data)
-            event_type = data.get("event_type", "")
-            if not isinstance(event_type, str) or not event_type:
+            try:
+                event = parse_typed("workflow.webhook", part.data, _WebhookEvent)
+            except ValidationError:
+                # Skip a structurally-malformed part but keep forwarding
+                # the rest of the message; ``parse_typed`` already logged
+                # the validation failure with the boundary context.
                 continue
-            raw_payload = data.get("payload", {})
-            payload: Mapping[str, object] = (
-                raw_payload if isinstance(raw_payload, Mapping) else {}
-            )
             await strategy.on_external_event(
                 sprint,
-                event_type,
-                payload,
+                event.event_type,
+                event.payload,
             )
             logger.debug(
                 WEBHOOK_BRIDGE_EVENT_FORWARDED,
-                event_type=event_type,
-                connection_name=data.get("connection_name"),
+                event_type=event.event_type,
+                connection_name=event.connection_name,
             )

@@ -7,6 +7,7 @@ consume.  Reusable by future native SDK drivers.
 
 import copy
 import json
+import math
 from collections.abc import Mapping
 
 from pydantic import JsonValue
@@ -48,13 +49,22 @@ def extract_retry_after(exc: Exception) -> float | None:
     if raw is None:
         return None
     try:
-        return float(raw)
+        parsed = float(raw)
     except ValueError, TypeError:
         logger.debug(
             PROVIDER_RETRY_AFTER_PARSE_FAILED,
             raw_value=repr(raw),
         )
         return None
+    # ``float`` accepts ``"inf"`` / ``"nan"`` and signed values; a
+    # retry-after delay must be a finite, non-negative number of seconds.
+    if not math.isfinite(parsed) or parsed < 0:
+        logger.debug(
+            PROVIDER_RETRY_AFTER_PARSE_FAILED,
+            raw_value=repr(raw),
+        )
+        return None
+    return parsed
 
 
 def messages_to_dicts(messages: list[ChatMessage]) -> list[dict[str, object]]:

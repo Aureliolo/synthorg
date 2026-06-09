@@ -1,10 +1,9 @@
 # module-kind: code
 """Pure builders for human-escalation notifications and terminal resolutions.
 
-Extracted from ``human_strategy.py`` so the resolver class holds only the
-stateful await/cleanup orchestration; these helpers are side-effect-free
-(apart from the escalation-outcome metric) and depend solely on their
-arguments.
+The resolver class holds the stateful await/cleanup orchestration; these
+helpers are side-effect-free (apart from the escalation-outcome metric)
+and depend solely on their arguments.
 """
 
 from datetime import UTC, datetime
@@ -15,6 +14,7 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictResolution,
     ConflictResolutionOutcome,
 )
+from synthorg.core.clock import Clock
 from synthorg.notifications.models import (
     Notification,
     NotificationCategory,
@@ -63,11 +63,17 @@ def build_escalation_notification(
     )
 
 
-def timeout_resolution(conflict: Conflict) -> ConflictResolution:
+def timeout_resolution(
+    conflict: Conflict,
+    *,
+    clock: Clock | None = None,
+) -> ConflictResolution:
     """Resolution returned when no decision arrives in time.
 
     Args:
         conflict: The conflict that timed out.
+        clock: Optional injectable time source for the ``resolved_at``
+            stamp; defaults to system wall-clock time.
 
     Returns:
         An ESCALATED_TO_HUMAN resolution carrying the timeout reason.
@@ -85,15 +91,21 @@ def timeout_resolution(conflict: Conflict) -> ConflictResolution:
         winning_position=None,
         decided_by="human",
         reasoning=reason,
-        resolved_at=datetime.now(UTC),
+        resolved_at=clock.now() if clock is not None else datetime.now(UTC),
     )
 
 
-def cancelled_resolution(conflict: Conflict) -> ConflictResolution:
+def cancelled_resolution(
+    conflict: Conflict,
+    *,
+    clock: Clock | None = None,
+) -> ConflictResolution:
     """Resolution returned when the resolver coroutine is cancelled.
 
     Args:
         conflict: The conflict whose resolver was cancelled.
+        clock: Optional injectable time source for the ``resolved_at``
+            stamp; defaults to system wall-clock time.
 
     Returns:
         An ESCALATED_TO_HUMAN resolution carrying the cancellation reason.
@@ -109,5 +121,5 @@ def cancelled_resolution(conflict: Conflict) -> ConflictResolution:
         winning_position=None,
         decided_by="human",
         reasoning=reason,
-        resolved_at=datetime.now(UTC),
+        resolved_at=clock.now() if clock is not None else datetime.now(UTC),
     )

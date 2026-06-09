@@ -3047,7 +3047,7 @@
     },
     {
       "kind": "code",
-      "loc": 183,
+      "loc": 192,
       "loc_cap": 500,
       "module": "src/synthorg/communication/citation/manager.py",
       "owning_feature": "communication"
@@ -3082,7 +3082,7 @@
     },
     {
       "kind": "code",
-      "loc": 97,
+      "loc": 109,
       "loc_cap": 500,
       "module": "src/synthorg/communication/conflict_resolution/_escalation_builders.py",
       "owning_feature": "communication"
@@ -7198,7 +7198,7 @@
     },
     {
       "kind": "code",
-      "loc": 354,
+      "loc": 363,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workflow/webhook_bridge.py",
       "owning_feature": "engine"
@@ -13666,7 +13666,7 @@
     },
     {
       "kind": "code",
-      "loc": 128,
+      "loc": 129,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/provider.py",
       "owning_feature": "observability"
@@ -16571,7 +16571,7 @@
     },
     {
       "kind": "code",
-      "loc": 64,
+      "loc": 77,
       "loc_cap": 500,
       "module": "src/synthorg/providers/_cost.py",
       "owning_feature": "providers"
@@ -16725,7 +16725,7 @@
     },
     {
       "kind": "code",
-      "loc": 272,
+      "loc": 280,
       "loc_cap": 500,
       "module": "src/synthorg/providers/drivers/mappers.py",
       "owning_feature": "providers"

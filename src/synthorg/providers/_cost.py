@@ -10,9 +10,13 @@ import math
 from typing import Final
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.observability import get_logger
+from synthorg.observability.events.provider import PROVIDER_COST_INVALID
 
 from .errors import InvalidRequestError
 from .models import TokenUsage
+
+logger = get_logger(__name__)
 
 # Provider rates are quoted per 1,000 tokens, so raw counts divide by
 # this before multiplying by the per-1k rate.
@@ -45,24 +49,34 @@ def compute_token_cost(
     """
     if input_tokens < 0:
         msg = "input_tokens must be non-negative"
+        logger.warning(PROVIDER_COST_INVALID, field="input_tokens", value=input_tokens)
         raise InvalidRequestError(
             msg,
             context={"input_tokens": input_tokens},
         )
     if output_tokens < 0:
         msg = "output_tokens must be non-negative"
+        logger.warning(
+            PROVIDER_COST_INVALID, field="output_tokens", value=output_tokens
+        )
         raise InvalidRequestError(
             msg,
             context={"output_tokens": output_tokens},
         )
     if cost_per_1k_input < 0 or not math.isfinite(cost_per_1k_input):
         msg = "cost_per_1k_input must be a finite non-negative number"
+        logger.warning(
+            PROVIDER_COST_INVALID, field="cost_per_1k_input", value=cost_per_1k_input
+        )
         raise InvalidRequestError(
             msg,
             context={"cost_per_1k_input": cost_per_1k_input},
         )
     if cost_per_1k_output < 0 or not math.isfinite(cost_per_1k_output):
         msg = "cost_per_1k_output must be a finite non-negative number"
+        logger.warning(
+            PROVIDER_COST_INVALID, field="cost_per_1k_output", value=cost_per_1k_output
+        )
         raise InvalidRequestError(
             msg,
             context={"cost_per_1k_output": cost_per_1k_output},
