@@ -9,21 +9,23 @@ produced by executing a :class:`MeetingProtocol` via the engine, not
 by ad-hoc record insertion.
 """
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.communication.meeting.enums import MeetingStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMMUNICATION_MEETING_DELETED,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.communication.meeting.enums import MeetingStatus
+    # MeetingRecord is the get_meeting / list return type; tests mock the
+    # store to return sentinels, so a runtime import would make typeguard
+    # reject the mocked return at this boundary.
     from synthorg.communication.meeting.models import MeetingRecord
     from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

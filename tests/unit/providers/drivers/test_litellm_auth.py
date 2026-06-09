@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for LiteLLM driver multi-auth support."""
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -27,7 +25,7 @@ def _make_config(
     base_url: str | None = None,
     custom_header_name: str | None = None,
     custom_header_value: str | None = None,
-    **kwargs: Any,
+    **kwargs: object,
 ) -> ProviderConfig:
     """Build a ProviderConfig with auth fields for testing."""
     return ProviderConfig(
@@ -45,7 +43,7 @@ def _make_config(
         ),
         retry=RetryConfig(max_retries=0),
         rate_limiter=RateLimiterConfig(),
-        **kwargs,
+        **kwargs,  # type: ignore[arg-type]
     )
 
 

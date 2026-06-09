@@ -7,10 +7,11 @@ pending interrupts with async resolution signaling.
 
 import asyncio
 import copy
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, Self
+from typing import Final, Self
 
 from pydantic import (
     AwareDatetime,
@@ -19,9 +20,6 @@ from pydantic import (
     Field,
     model_validator,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger

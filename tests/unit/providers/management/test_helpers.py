@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for provider management helper functions."""
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -26,7 +24,7 @@ def _make_config(
     auth_type: AuthType = AuthType.API_KEY,
     api_key: str | None = None,
     base_url: str | None = None,
-    **kwargs: Any,
+    **kwargs: object,
 ) -> ProviderConfig:
     """Build a ProviderConfig with sensible defaults for testing."""
     return ProviderConfig(
@@ -42,7 +40,7 @@ def _make_config(
         ),
         retry=RetryConfig(max_retries=0),
         rate_limiter=RateLimiterConfig(),
-        **kwargs,
+        **kwargs,  # type: ignore[arg-type]
     )
 
 
@@ -75,7 +73,7 @@ class TestBuildDiscoveryHeaders:
 class TestApplyCredentialUpdates:
     def test_switch_from_subscription_to_api_key_clears_fields(self) -> None:
         """Switching from subscription to api_key clears token and tos."""
-        updates: dict[str, Any] = {}
+        updates: dict[str, object] = {}
         request = UpdateProviderRequest(
             auth_type=AuthType.API_KEY,
             api_key=SecretStr("sk-new"),
@@ -87,7 +85,7 @@ class TestApplyCredentialUpdates:
 
     def test_switch_to_subscription_sets_token(self) -> None:
         """Switching to subscription sets subscription_token when provided."""
-        updates: dict[str, Any] = {}
+        updates: dict[str, object] = {}
         request = UpdateProviderRequest(
             subscription_token=SecretStr("test-subscription-token"),
         )
@@ -96,7 +94,7 @@ class TestApplyCredentialUpdates:
 
     def test_tos_accepted_stamps_timestamp(self) -> None:
         """Setting tos_accepted=True stamps tos_accepted_at."""
-        updates: dict[str, Any] = {}
+        updates: dict[str, object] = {}
         request = UpdateProviderRequest(tos_accepted=True)
         frozen = datetime(2026, 3, 27, 12, 0, 0, tzinfo=UTC)
         with patch(
@@ -109,7 +107,7 @@ class TestApplyCredentialUpdates:
 
     def test_clear_subscription_token(self) -> None:
         """Setting clear_subscription_token=True clears the token."""
-        updates: dict[str, Any] = {}
+        updates: dict[str, object] = {}
         request = UpdateProviderRequest(clear_subscription_token=True)
         _apply_credential_updates(updates, request, AuthType.SUBSCRIPTION)
         assert updates["subscription_token"] is None
@@ -209,7 +207,7 @@ class TestCoerceCost:
             _coerce_cost(value)  # type: ignore[arg-type]
 
 
-def _fake_model_cost() -> dict[str, Any]:
+def _fake_model_cost() -> dict[str, object]:
     """Build a realistic litellm.model_cost subset for testing."""
     return {
         "test-provider/test-large-001": {
@@ -351,12 +349,12 @@ class TestModelsFromLitellm:
 
         def mock_import(
             name: str,
-            *args: Any,
-            **kwargs: Any,
-        ) -> Any:
+            *args: object,
+            **kwargs: object,
+        ) -> object:
             if name == "litellm":
                 raise ImportError(name)
-            return original_import(name, *args, **kwargs)
+            return original_import(name, *args, **kwargs)  # type: ignore[arg-type]
 
         try:
             with patch("builtins.__import__", side_effect=mock_import):

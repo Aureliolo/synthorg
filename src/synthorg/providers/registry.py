@@ -5,6 +5,7 @@ instances.  Built from config via ``from_config``, which reads each
 provider's ``driver`` field to select the appropriate factory.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
@@ -23,19 +24,18 @@ from synthorg.observability.events.provider import (
 )
 
 from .base import BaseCompletionProvider
+from .cassette import CassetteConfig, CassetteSession
 from .errors import (
     DriverFactoryNotFoundError,
     DriverNotRegisteredError,
 )
 
-logger = get_logger(__name__)
-
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
+    # config.schema transitively re-imports providers/__init__ (this
+    # module is in its eager chain); a runtime import forms a cycle.
     from synthorg.config.schema import ProviderConfig
 
-    from .cassette import CassetteConfig, CassetteSession
+logger = get_logger(__name__)
 
 
 class ProviderRegistry:

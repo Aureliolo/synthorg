@@ -14,12 +14,15 @@ the durable receipt log.
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.domain_errors import ValidationError
+from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import WEBHOOK_ACTIVITY_LISTED
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.integrations.connections.models import WebhookReceipt
+    # WebhookReceiptRepository is a runtime_checkable protocol injected via a
+    # duck-typed stub in API-layer tests; a runtime import would make typeguard
+    # reject the incomplete stub.
     from synthorg.persistence.connection_protocol import WebhookReceiptRepository
 
 logger = get_logger(__name__)

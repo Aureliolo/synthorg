@@ -159,7 +159,8 @@ class TestCreateFromPresetLocalSkipsLitellm:
 
     The static LiteLLM database returns stale/wrong models for local
     providers.  Ollama gets stale Ollama entries; LM Studio and vLLM
-    get OpenAI cloud models (their litellm_provider is "openai").
+    get hosted cloud-provider models (their ``litellm_provider`` points
+    at a remote backend) instead of the locally-served models.
     """
 
     @pytest.mark.parametrize(

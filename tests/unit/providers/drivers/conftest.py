@@ -1,7 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Shared fixtures and mock factories for driver tests."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
@@ -60,7 +59,7 @@ def make_provider_config(  # noqa: PLR0913
 def make_mock_response(  # noqa: PLR0913
     *,
     content: str | None = "Hello! How can I help?",
-    tool_calls: list[Any] | None = None,
+    tool_calls: list[MagicMock] | None = None,
     finish_reason: str = "stop",
     prompt_tokens: int = 100,
     completion_tokens: int = 50,
@@ -115,7 +114,7 @@ def make_mock_tool_call(
 def make_stream_chunk(
     *,
     content: str | None = None,
-    tool_calls: list[Any] | None = None,
+    tool_calls: list[MagicMock] | None = None,
     finish_reason: str | None = None,
     prompt_tokens: int | None = None,
     completion_tokens: int | None = None,

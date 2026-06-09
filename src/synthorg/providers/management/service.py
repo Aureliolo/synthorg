@@ -19,12 +19,19 @@ core.
 
 import asyncio
 import json
+from collections.abc import AsyncIterator, Mapping
 from typing import TYPE_CHECKING
 
 from pydantic import JsonValue
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.budget.tracker import CostTracker
+from synthorg.config.schema import (
+    LocalModelParams,
+    ProviderConfig,
+    ProviderModelConfig,
+    RootConfig,
+)
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -73,6 +80,7 @@ from synthorg.providers.management._helpers import (
     serialize_providers,
 )
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
+from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.capability_dtos import (
     ProviderAuditActor,
 )
@@ -83,6 +91,10 @@ from synthorg.providers.management.dtos import (
     TestConnectionResponse,
     UpdateProviderRequest,
 )
+from synthorg.providers.management.local_models import (
+    LocalModelManager,
+    PullProgressEvent,
+)
 from synthorg.providers.models import ChatMessage
 from synthorg.providers.presets import (
     CloudPreset,
@@ -91,21 +103,15 @@ from synthorg.providers.presets import (
     get_preset,
 )
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.routing.router import ModelRouter
+from synthorg.providers.routing.selector import ModelCandidateSelector
 from synthorg.providers.url_utils import is_self_url, redact_url
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Mapping
-
+    # AppState (api.*) is a genuine import cycle; ConfigResolver /
+    # SettingsService are concrete classes injected via mocks in tests
+    # (a runtime import would make typeguard reject the mock).
     from synthorg.api.state import AppState
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.config.schema import LocalModelParams, RootConfig
-    from synthorg.providers.management.audit_service import ProviderAuditService
-    from synthorg.providers.management.local_models import (
-        LocalModelManager,
-        PullProgressEvent,
-    )
-    from synthorg.providers.routing.router import ModelRouter
-    from synthorg.providers.routing.selector import ModelCandidateSelector
     from synthorg.settings.resolver import ConfigResolver
     from synthorg.settings.service import SettingsService
 

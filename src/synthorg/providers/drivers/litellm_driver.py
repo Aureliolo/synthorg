@@ -7,6 +7,7 @@ API.
 """
 
 from collections.abc import (
+    AsyncGenerator,
     AsyncIterator,  # runtime: isinstance guard on the stream result
     Mapping,  # runtime annotation on driver method
 )
@@ -48,7 +49,6 @@ from pydantic import JsonValue
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.normalization import compare_ci
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -58,11 +58,11 @@ from synthorg.observability.events.provider import (
     PROVIDER_CONNECTION_ERROR,
     PROVIDER_MODEL_NOT_FOUND,
     PROVIDER_RATE_LIMITED,
-    PROVIDER_RETRY_AFTER_PARSE_FAILED,
     PROVIDER_STREAM_CHUNK_NO_DELTA,
     PROVIDER_STREAM_DONE,
 )
 from synthorg.providers import errors
+from synthorg.providers._cost import compute_token_cost
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_kwargs import (
@@ -80,13 +80,17 @@ from synthorg.providers.drivers.litellm_tool_accumulator import (
 )
 from synthorg.providers.enums import AuthType, StreamEventType
 from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
     CompletionResponse,
     StreamChunk,
+    ToolDefinition,
 )
 from synthorg.providers.resilience.rate_limiter import RateLimiter
 from synthorg.providers.resilience.retry import RetryHandler
 
 from .mappers import (
+    extract_retry_after,
     extract_tool_calls,
     map_finish_reason,
     messages_to_dicts,
@@ -94,14 +98,9 @@ from .mappers import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-
+    # config.schema imports api.config, which transitively re-imports
+    # providers/__init__ (this driver); a runtime import forms a cycle.
     from synthorg.config.schema import ProviderConfig, ProviderModelConfig
-    from synthorg.providers.models import (
-        ChatMessage,
-        CompletionConfig,
-        ToolDefinition,
-    )
 
 logger = get_logger(__name__)
 
@@ -626,7 +625,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         usage_obj = getattr(response, "usage", None)
         input_tok = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
         output_tok = int(getattr(usage_obj, "completion_tokens", 0) or 0)
-        usage = self.compute_cost(
+        usage = compute_token_cost(
             input_tok,
             output_tok,
             cost_per_1k_input=model_config.cost_per_1k_input,
@@ -754,7 +753,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         """
         input_tok = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
         output_tok = int(getattr(usage_obj, "completion_tokens", 0) or 0)
-        usage = self.compute_cost(
+        usage = compute_token_cost(
             input_tok,
             output_tok,
             cost_per_1k_input=model_config.cost_per_1k_input,
@@ -793,7 +792,7 @@ class LiteLLMDriver(BaseCompletionProvider):
                     )
                     return errors.RateLimitError(
                         safe_error_description(exc),
-                        retry_after=self._extract_retry_after(exc),
+                        retry_after=extract_retry_after(exc),
                         context=ctx,
                     )
                 if our_type is errors.AuthenticationError:
@@ -820,34 +819,6 @@ class LiteLLMDriver(BaseCompletionProvider):
             f"Unexpected error from provider {self._provider_name}",
             context={**ctx, "detail": safe_error_description(exc)},
         )
-
-    @staticmethod
-    def _extract_retry_after(exc: Exception) -> float | None:
-        """Extract ``retry-after`` seconds from exception headers.
-
-        Returns:
-            The ``retry-after`` seconds as a ``float``, or ``None`` when
-            the header is absent, not a dict, or unparseable.
-        """
-        headers = getattr(exc, "headers", None)
-        if not isinstance(headers, dict):
-            return None
-        # Case-insensitive lookup per HTTP semantics
-        raw: str | None = None
-        for key, value in headers.items():
-            if isinstance(key, str) and compare_ci(key, "retry-after"):
-                raw = value
-                break
-        if raw is None:
-            return None
-        try:
-            return float(raw)
-        except ValueError, TypeError:
-            logger.debug(
-                PROVIDER_RETRY_AFTER_PARSE_FAILED,
-                raw_value=repr(raw),
-            )
-            return None
 
 
 # ── Module-level helpers ─────────────────────────────────────────

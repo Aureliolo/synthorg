@@ -7,13 +7,11 @@ into health summaries for the API layer.
 import asyncio
 import math
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, Self
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from typing import Final, Self
 
 from pydantic import (
     AwareDatetime,

@@ -29,6 +29,8 @@ from .models import ResolvedModel
 from .selector import ModelCandidateSelector, QuotaAwareSelector
 
 if TYPE_CHECKING:
+    # config.schema transitively re-imports providers/__init__ (the routing
+    # package is in its eager chain); a runtime import forms a cycle.
     from synthorg.config.schema import ProviderConfig
 
 logger = get_logger(__name__)

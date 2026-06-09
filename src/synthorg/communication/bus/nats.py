@@ -51,6 +51,8 @@ from synthorg.observability.events.communication import (
 from synthorg.settings.enums import SettingNamespace
 
 if TYPE_CHECKING:
+    # ConfigResolver is concrete and injected via mocks in tests; a runtime
+    # import would make typeguard reject the fake.
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)

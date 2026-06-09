@@ -6,7 +6,7 @@ channel definitions so they are discoverable across processes.
 
 import asyncio
 import json
-from typing import Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.bus._nats_state import _NatsState
 from synthorg.communication.bus._nats_utils import decode_token, encode_token
@@ -19,6 +19,14 @@ from synthorg.observability.events.communication import (
     COMM_BUS_KV_READ_FAILED,
     COMM_BUS_KV_WRITE_FAILED,
 )
+
+if TYPE_CHECKING:
+    # nats-py is an optional dependency, so these stay guarded for clean import
+    # when it is absent. Entry is a nested class on KeyValue (not a module-level
+    # export), so it cannot be imported directly.
+    from nats.js.kv import KeyValue
+
+    KvEntry = KeyValue.Entry
 
 logger = get_logger(__name__)
 
@@ -115,7 +123,7 @@ async def load_channel_from_kv(
 async def fetch_kv_entry(
     state: _NatsState,
     channel_name: str,
-) -> Any | None:
+) -> KvEntry | None:
     """Fetch a raw KV entry.
 
     Returns:
@@ -151,7 +159,7 @@ async def fetch_kv_entry(
 
 def decode_kv_channel(
     channel_name: str,
-    entry: Any,
+    entry: KvEntry,
 ) -> Channel:
     """Decode a KV entry into a Channel.
 
@@ -159,9 +167,13 @@ def decode_kv_channel(
         The decoded ``Channel``.
 
     Raises:
-        BusStreamError: If the entry contains invalid JSON, fails
-            schema validation, or has a mismatched channel name.
+        BusStreamError: If the entry has no value, contains invalid
+            JSON, fails schema validation, or has a mismatched channel
+            name.
     """
+    if entry.value is None:
+        msg = f"KV entry for channel {channel_name!r} has no value"
+        raise BusStreamError(msg, context={"channel": channel_name})
     try:
         data = json.loads(entry.value.decode("utf-8"))
         channel = Channel.model_validate(data)
@@ -245,6 +257,11 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
     )
     channels: list[Channel] = []
     for (_, decoded_name), entry in zip(decoded_keys, entries, strict=True):
+        if isinstance(entry, BaseException) and not isinstance(entry, Exception):
+            # CancelledError (and KeyboardInterrupt / SystemExit) must propagate,
+            # not be swallowed: gather(return_exceptions=True) captures
+            # cancellation as a result entry.
+            raise entry
         if isinstance(entry, Exception) or entry is None:
             continue  # Transport/decode errors already logged inside helpers.
         try:

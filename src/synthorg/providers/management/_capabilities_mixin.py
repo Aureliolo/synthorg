@@ -37,6 +37,7 @@ from synthorg.providers.management._capability_helpers import (
     SYSTEM_ACTOR,
     credentials_update_fields,
 )
+from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.capability_dtos import (
     AddModelRequest,
     CredentialsRotateRequest,
@@ -49,7 +50,8 @@ from synthorg.providers.management.capability_dtos import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.providers.management.audit_service import ProviderAuditService
+    # ConfigResolver is concrete and injected via ``AsyncMock(spec=...)``
+    # in tests; a runtime import would make typeguard reject the mock.
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)

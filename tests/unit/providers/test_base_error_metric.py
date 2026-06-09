@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for provider-error metric emission in ``BaseCompletionProvider``.
 
 When an underlying driver raises, the base class must classify the
@@ -8,13 +7,14 @@ see a per-class error rate even when the caller only catches the
 re-raised exception.
 """
 
-from collections.abc import AsyncIterator
-from typing import Any, override
+from collections.abc import AsyncIterator, Callable
+from typing import override
 from unittest.mock import MagicMock
 
 import pytest
 
 from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.errors import (
     AuthenticationError,
@@ -73,7 +73,7 @@ class _ErroringProvider(BaseCompletionProvider):
     async def _do_get_model_capabilities(
         self,
         model: str,
-    ) -> Any:
+    ) -> ModelCapabilities:
         raise self._exc
 
 
@@ -119,7 +119,7 @@ class _SuccessProvider(BaseCompletionProvider):
         return _gen()
 
     @override
-    async def _do_get_model_capabilities(self, model: str) -> Any:
+    async def _do_get_model_capabilities(self, model: str) -> ModelCapabilities:
         msg = "not implemented"
         raise NotImplementedError(msg)
 
@@ -200,13 +200,20 @@ def test_provider_label_defaults_to_class_name() -> None:
 
     class _Unbranded(BaseCompletionProvider):
         @override
-        async def _do_complete(self, *a: Any, **kw: Any) -> Any: ...
+        async def _do_complete(self, *a: object, **kw: object) -> CompletionResponse:
+            raise NotImplementedError
 
         @override
-        async def _do_stream(self, *a: Any, **kw: Any) -> Any: ...
+        async def _do_stream(
+            self,
+            *a: object,
+            **kw: object,
+        ) -> AsyncIterator[StreamChunk]:
+            raise NotImplementedError
 
         @override
-        async def _do_get_model_capabilities(self, model: str) -> Any: ...
+        async def _do_get_model_capabilities(self, model: str) -> ModelCapabilities:
+            raise NotImplementedError
 
     p = _Unbranded()
     assert p._provider_label() == "_Unbranded"
@@ -234,7 +241,7 @@ def test_provider_label_defaults_to_class_name() -> None:
     ],
 )
 def test_classify_provider_error_maps_every_canonical_subclass(
-    exc_factory: Any,
+    exc_factory: Callable[[], Exception],
     expected_label: str,
 ) -> None:
     """Each canonical ``ProviderError`` subclass maps to its bounded label."""

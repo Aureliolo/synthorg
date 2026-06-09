@@ -1,9 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for InterruptStore."""
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -18,8 +16,8 @@ from synthorg.communication.event_stream.interrupt import (
 _TS = datetime(2026, 4, 13, tzinfo=UTC)
 
 
-def _make_interrupt(**overrides: Any) -> Interrupt:
-    defaults: dict[str, Any] = {
+def _make_interrupt(**overrides: object) -> Interrupt:
+    defaults: dict[str, object] = {
         "id": "int-001",
         "type": InterruptType.TOOL_APPROVAL,
         "session_id": "session-abc",
@@ -29,21 +27,21 @@ def _make_interrupt(**overrides: Any) -> Interrupt:
         "tool_name": "deploy_service",
     }
     defaults.update(overrides)
-    return Interrupt(**defaults)
+    return Interrupt(**defaults)  # type: ignore[arg-type]
 
 
 def _make_resolution(
     interrupt_id: str = "int-001",
-    **overrides: Any,
+    **overrides: object,
 ) -> InterruptResolution:
-    defaults: dict[str, Any] = {
+    defaults: dict[str, object] = {
         "interrupt_id": interrupt_id,
         "decision": ResumeDecision.APPROVE,
         "resolved_at": datetime(2026, 4, 13, 0, 5, tzinfo=UTC),
         "resolved_by": "admin-user",
     }
     defaults.update(overrides)
-    return InterruptResolution(**defaults)
+    return InterruptResolution(**defaults)  # type: ignore[arg-type]
 
 
 @pytest.mark.unit

@@ -1,11 +1,9 @@
 """Message domain models (see Communication design page)."""
 
 from collections import Counter
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, override
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from typing import Annotated, Literal, Self, override
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -74,7 +72,7 @@ class DataPart(BaseModel):
         default="data",
         description="Part type discriminator",
     )
-    data: MappingProxyType[str, Any] = Field(
+    data: MappingProxyType[str, object] = Field(
         description="Structured JSON content (read-only)",
     )
 
@@ -98,9 +96,9 @@ class DataPart(BaseModel):
     @classmethod
     def _serialize_data(
         cls,
-        value: MappingProxyType[str, Any],
+        value: MappingProxyType[str, object],
         _info: object,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Serialize ``MappingProxyType`` back to a plain ``dict``.
 
         Recursively thaws nested ``MappingProxyType`` instances and
@@ -124,7 +122,7 @@ class DataPart(BaseModel):
     def model_copy(
         self,
         *,
-        update: Mapping[str, Any] | None = None,
+        update: Mapping[str, object] | None = None,
         deep: bool = False,
     ) -> Self:
         """Override to re-freeze data when model_copy updates it.

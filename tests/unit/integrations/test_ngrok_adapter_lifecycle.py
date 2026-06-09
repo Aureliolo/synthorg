@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Lifecycle tests for ``NgrokAdapter``.
 
 Verifies the adapter holds its lifecycle lock across both ``start``
@@ -7,7 +6,6 @@ tunnels under the single-tunnel invariant.
 """
 
 import asyncio
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,13 +21,13 @@ class _FakeTunnel:
         self.public_url = public_url
 
 
-def _fake_connect(_port: int, _proto: str, **_kwargs: Any) -> _FakeTunnel:
+def _fake_connect(_port: int, _proto: str, **_kwargs: object) -> _FakeTunnel:
     # The real ngrok.connect now receives ``pyngrok_config=`` as a
     # keyword arg from the adapter; accept and ignore it in the fake.
     return _FakeTunnel()
 
 
-def _fake_disconnect(_url: Any) -> None:
+def _fake_disconnect(_url: object) -> None:
     return None
 
 
@@ -41,9 +39,9 @@ class TestNgrokAdapterLifecycle:
         adapter = NgrokAdapter()
         connect_calls: list[int] = []
 
-        def _counting_connect(*args: Any, **kwargs: Any) -> _FakeTunnel:
+        def _counting_connect(*args: object, **kwargs: object) -> _FakeTunnel:
             connect_calls.append(1)
-            return _fake_connect(*args, **kwargs)
+            return _fake_connect(*args, **kwargs)  # type: ignore[arg-type]
 
         with (
             patch(
@@ -70,9 +68,9 @@ class TestNgrokAdapterLifecycle:
         adapter = NgrokAdapter()
         connect_calls: list[int] = []
 
-        def _counting_connect(*args: Any, **kwargs: Any) -> _FakeTunnel:
+        def _counting_connect(*args: object, **kwargs: object) -> _FakeTunnel:
             connect_calls.append(1)
-            return _fake_connect(*args, **kwargs)
+            return _fake_connect(*args, **kwargs)  # type: ignore[arg-type]
 
         with (
             patch(

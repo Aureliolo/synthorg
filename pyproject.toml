@@ -611,7 +611,7 @@ module = [
 disallow_any_explicit = true
 
 [[tool.mypy.overrides]]
-module = "synthorg.communication.*"
+module = "synthorg.budget.*"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
@@ -623,7 +623,7 @@ module = "synthorg.engine.*"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
-module = "synthorg.integrations.*"
+module = "synthorg.memory.*"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
@@ -674,6 +674,17 @@ disallow_any_explicit = false
 disable_error_code = [
     "unused-ignore",         # holding pen; closes alongside the above
 ]
+
+# The communication / providers / integrations test subtrees are drained
+# of explicit ``Any`` ahead of the wider tests.* cleanup, so they re-enable
+# the strict bar locally (a more-specific override wins over tests.* above).
+[[tool.mypy.overrides]]
+module = [
+    "tests.unit.communication.*",
+    "tests.unit.providers.*",
+    "tests.unit.integrations.*",
+]
+disallow_any_explicit = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

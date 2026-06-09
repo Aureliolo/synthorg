@@ -6,11 +6,10 @@ delegates to this protocol; the in-memory implementation is the
 default for dev/test and can be swapped for a durable backend later.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.integrations.webhooks.models import WebhookDefinition
+from synthorg.core.types import NotBlankStr
+from synthorg.integrations.webhooks.models import WebhookDefinition
 
 
 @runtime_checkable

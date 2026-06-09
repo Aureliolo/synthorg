@@ -5,8 +5,9 @@ structured metadata, following the same pattern as ``ToolError``.
 """
 
 import copy
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any, ClassVar, override
+from typing import ClassVar, override
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -24,6 +25,9 @@ class CommunicationError(DomainError):
         error_code: ``COMMUNICATION_ERROR``.
         error_category: ``INTERNAL``.
         retryable: ``False``.
+        is_retryable: ``False`` (instance-checkable alias of ``retryable``,
+            matching the provider / integration error hierarchies so a
+            retry-decision site can read ``exc.is_retryable`` uniformly).
         default_message: Generic 5xx-safe message.
     """
 
@@ -31,13 +35,14 @@ class CommunicationError(DomainError):
     error_code: ClassVar[ErrorCode] = ErrorCode.COMMUNICATION_ERROR
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     retryable: ClassVar[bool] = False
+    is_retryable: ClassVar[bool] = False
     default_message: ClassVar[str] = "Communication error"
 
     def __init__(
         self,
         message: str,
         *,
-        context: dict[str, Any] | None = None,
+        context: Mapping[str, object] | None = None,
     ) -> None:
         """Initialize a communication error.
 
@@ -47,7 +52,7 @@ class CommunicationError(DomainError):
                 immutable mapping; defaults to empty if not provided.
         """
         self.message = message
-        self.context: MappingProxyType[str, Any] = MappingProxyType(
+        self.context: MappingProxyType[str, object] = MappingProxyType(
             copy.deepcopy(context) if context else {},
         )
         super().__init__(message)

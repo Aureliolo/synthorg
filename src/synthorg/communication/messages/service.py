@@ -7,8 +7,10 @@ forwards the call and emits an audit-grade
 :data:`COMMUNICATION_MESSAGE_DELETED` event on success.
 """
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+from synthorg.communication.channel import Channel
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
@@ -17,10 +19,10 @@ from synthorg.observability.events.communication import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
+    # Message is the get_message / list_messages return type; tests mock the
+    # store to return sentinels, so a runtime import would make typeguard
+    # reject the mocked return at this boundary.
     from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.communication.channel import Channel
     from synthorg.communication.message import Message
     from synthorg.persistence.protocol import PersistenceBackend
 

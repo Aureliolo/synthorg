@@ -141,6 +141,7 @@ PROVIDER_HEALTH_CLEARED: Final[str] = "provider.health.cleared"
 PROVIDER_COST_RECORDED: Final[str] = "provider.cost.recorded"
 PROVIDER_COST_SKIPPED: Final[str] = "provider.cost.skipped"
 PROVIDER_COST_FAILED: Final[str] = "provider.cost.failed"
+PROVIDER_COST_INVALID: Final[str] = "provider.cost.invalid"
 
 # ── Provider cassette record / replay ────────────────────────
 PROVIDER_CASSETTE_DRIVER_WRAPPED: Final[str] = "provider.cassette.driver_wrapped"

@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for InMemoryMessageBus."""
 
 import asyncio

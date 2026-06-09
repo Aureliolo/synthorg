@@ -34,6 +34,9 @@ from synthorg.observability.events.integrations import (
 )
 
 if TYPE_CHECKING:
+    # ConnectionCatalog is a concrete collaborator injected via a
+    # ``FakeConnectionCatalog`` in tests; a runtime import would make
+    # typeguard reject the fake.
     from synthorg.integrations.connections.catalog import ConnectionCatalog
 
 logger = get_logger(__name__)

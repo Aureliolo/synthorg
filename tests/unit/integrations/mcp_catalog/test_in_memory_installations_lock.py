@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Race coverage: ``InMemoryMcpInstallationRepository._store`` is lock-guarded.
 
 The four async methods (`save`, `get`, `list_items`, `delete`) all

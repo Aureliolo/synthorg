@@ -1,3 +1,4 @@
+# module-kind: adapter
 """The cassette provider wrapper.
 
 ``CassetteCompletionProvider`` decorates an inner driver and overrides
@@ -30,6 +31,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_CASSETTE_RECORDED,
     PROVIDER_CASSETTE_REPLAYED,
 )
+from synthorg.providers._validation import validate_messages, validate_model
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import (
     ModelCapabilities,
@@ -158,8 +160,8 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             ProviderError: If the inner driver raises in record mode
                 (the error is recorded, then re-raised).
         """
-        self._validate_messages(messages)
-        self._validate_model(model)
+        validate_messages(messages)
+        validate_model(model)
         msgs = tuple(messages)
         tls = tuple(tools or ())
         digest = request_hash(
@@ -273,8 +275,8 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             An async iterator of ``StreamChunk`` objects, from the inner
             driver (record mode) or from recorded chunks (replay mode).
         """
-        self._validate_messages(messages)
-        self._validate_model(model)
+        validate_messages(messages)
+        validate_model(model)
         msgs = tuple(messages)
         tls = tuple(tools or ())
         digest = request_hash(
@@ -438,7 +440,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             CassetteFormatError: If the replay outcome kind is neither
                 ``ERROR`` nor ``CAPABILITIES``.
         """
-        self._validate_model(model)
+        validate_model(model)
         digest = request_hash(
             method=CassetteMethod.CAPABILITIES,
             provider=self._provider_name,

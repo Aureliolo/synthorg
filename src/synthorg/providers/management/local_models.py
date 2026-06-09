@@ -6,10 +6,8 @@ on local LLM providers, plus a concrete implementation for Ollama.
 
 import json
 import re
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Final, Protocol, runtime_checkable
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, model_validator

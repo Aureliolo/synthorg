@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Leak-sentinel tests for ``EncryptedSqliteSecretBackend``.
 
 All error paths on the secret backend must log only scrubbed, safe
@@ -6,8 +5,8 @@ metadata -- no raw exception strings, no tracebacks, no Fernet
 ciphertext bytes, no connection URIs with credentials.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -60,7 +59,7 @@ async def backend(
     return EncryptedSqliteSecretBackend(db_path)
 
 
-def _leak_free(events: list[Any], sentinels: tuple[str, ...]) -> None:
+def _leak_free(events: Sequence[object], sentinels: tuple[str, ...]) -> None:
     blob = repr(events)
     for sentinel in sentinels:
         assert sentinel not in blob, f"sentinel {sentinel!r} leaked into log events"

@@ -12,20 +12,18 @@ audit rows secret-free.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import JsonValue
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
 from synthorg.providers.management.capability_dtos import (
     ProviderAuditActor,
     ProviderAuditEvent,
     ProviderAuditEventType,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50

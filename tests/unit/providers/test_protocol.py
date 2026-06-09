@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,empty-body"
+# mypy: disable-error-code="empty-body"
 """Tests for CompletionProvider protocol and BaseCompletionProvider ABC."""
 
 from collections.abc import AsyncIterator
@@ -9,6 +9,7 @@ import pytest
 from typeguard import suppress_type_checks
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.providers._cost import compute_token_cost
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import FinishReason, MessageRole, StreamEventType
@@ -209,7 +210,7 @@ class TestBaseCompletionProvider:
             await provider.stream([], "test-model")
 
     def test_compute_cost_basic(self) -> None:
-        usage = BaseCompletionProvider.compute_cost(
+        usage = compute_token_cost(
             1000,
             500,
             cost_per_1k_input=0.003,
@@ -223,7 +224,7 @@ class TestBaseCompletionProvider:
         assert abs(usage.cost - expected) < 1e-9
 
     def test_compute_cost_zero(self) -> None:
-        usage = BaseCompletionProvider.compute_cost(
+        usage = compute_token_cost(
             0,
             0,
             cost_per_1k_input=0.003,
@@ -233,7 +234,7 @@ class TestBaseCompletionProvider:
         assert usage.total_tokens == 0
 
     def test_compute_cost_large_tokens(self) -> None:
-        usage = BaseCompletionProvider.compute_cost(
+        usage = compute_token_cost(
             200_000,
             8_192,
             cost_per_1k_input=0.003,
@@ -317,7 +318,7 @@ class TestBaseCompletionProvider:
 
     def test_compute_cost_negative_input_tokens(self) -> None:
         with pytest.raises(InvalidRequestError, match="input_tokens"):
-            BaseCompletionProvider.compute_cost(
+            compute_token_cost(
                 -1,
                 100,
                 cost_per_1k_input=0.003,
@@ -326,7 +327,7 @@ class TestBaseCompletionProvider:
 
     def test_compute_cost_negative_output_tokens(self) -> None:
         with pytest.raises(InvalidRequestError, match="output_tokens"):
-            BaseCompletionProvider.compute_cost(
+            compute_token_cost(
                 100,
                 -1,
                 cost_per_1k_input=0.003,
@@ -335,7 +336,7 @@ class TestBaseCompletionProvider:
 
     def test_compute_cost_negative_input_rate(self) -> None:
         with pytest.raises(InvalidRequestError, match="cost_per_1k_input"):
-            BaseCompletionProvider.compute_cost(
+            compute_token_cost(
                 100,
                 100,
                 cost_per_1k_input=-0.003,
@@ -344,7 +345,7 @@ class TestBaseCompletionProvider:
 
     def test_compute_cost_negative_output_rate(self) -> None:
         with pytest.raises(InvalidRequestError, match="cost_per_1k_output"):
-            BaseCompletionProvider.compute_cost(
+            compute_token_cost(
                 100,
                 100,
                 cost_per_1k_input=0.003,
@@ -352,7 +353,7 @@ class TestBaseCompletionProvider:
             )
 
     def test_compute_cost_rounding_precision(self) -> None:
-        usage = BaseCompletionProvider.compute_cost(
+        usage = compute_token_cost(
             333,
             777,
             cost_per_1k_input=0.003,
@@ -366,7 +367,7 @@ class TestBaseCompletionProvider:
 
     def test_compute_cost_inf_input_rate_rejected(self) -> None:
         with pytest.raises(InvalidRequestError, match="finite"):
-            BaseCompletionProvider.compute_cost(
+            compute_token_cost(
                 100,
                 100,
                 cost_per_1k_input=float("inf"),
@@ -375,7 +376,7 @@ class TestBaseCompletionProvider:
 
     def test_compute_cost_nan_output_rate_rejected(self) -> None:
         with pytest.raises(InvalidRequestError, match="finite"):
-            BaseCompletionProvider.compute_cost(
+            compute_token_cost(
                 100,
                 100,
                 cost_per_1k_input=0.003,

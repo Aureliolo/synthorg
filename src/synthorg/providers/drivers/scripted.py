@@ -22,7 +22,8 @@ protocol.  Three strategies ship:
 
 import hashlib
 import threading
-from typing import TYPE_CHECKING, Final, Protocol, override, runtime_checkable
+from collections.abc import AsyncIterator, Mapping
+from typing import Final, Protocol, override, runtime_checkable
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.observability import get_logger
@@ -40,9 +41,6 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Mapping
 
 logger = get_logger(__name__)
 

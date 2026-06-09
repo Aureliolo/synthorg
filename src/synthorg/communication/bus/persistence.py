@@ -12,21 +12,18 @@ dependency; the JetStream accessor can be smoke-tested without a
 full bus instance).
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from collections import deque
+from collections.abc import Mapping
+from typing import Protocol, runtime_checkable
 
 from synthorg.communication.errors import ChannelNotFoundError
+from synthorg.communication.message import Message
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     BUS_HISTORY_CHANNEL_NOT_FOUND,
 )
 
 logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from collections import deque
-    from collections.abc import Mapping
-
-    from synthorg.communication.message import Message
 
 
 @runtime_checkable

@@ -6,12 +6,9 @@ event constants remain the canonical source.  AG-UI is the
 external-facing projection only.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 from uuid import uuid4
 
 from synthorg.communication.event_stream.types import (

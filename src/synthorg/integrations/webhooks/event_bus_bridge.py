@@ -7,7 +7,6 @@ so that ``ExternalTriggerStrategy`` and other consumers can react.
 import copy
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Any
 
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.channel import Channel
@@ -30,7 +29,7 @@ async def publish_webhook_event(
     bus: MessageBus,
     connection_name: str,
     event_type: str,
-    payload: dict[str, Any],
+    payload: dict[str, object],
 ) -> None:
     """Publish a verified webhook event to the message bus.
 

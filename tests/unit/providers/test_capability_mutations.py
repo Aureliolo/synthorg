@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the new ``ProviderManagementService`` mutations.
 
 Covers rate-limits update, credentials rotation, manual model add,
@@ -7,7 +6,6 @@ state transition and the audit-row emission.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -28,6 +26,7 @@ from synthorg.api.dto_provider_capabilities import (
 from synthorg.api.state import AppState
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig, RootConfig
 from synthorg.core.resilience_config import RateLimiterConfig
+from synthorg.persistence.provider_audit_protocol import ProviderAuditFilterSpec
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
@@ -59,7 +58,7 @@ class _FakeAuditRepo:
     async def list(
         self,
         *,
-        provider_name: Any,
+        provider_name: str,
         after_id: int | None = None,
         limit: int = 50,
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
@@ -67,14 +66,14 @@ class _FakeAuditRepo:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: ProviderAuditFilterSpec,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
         offset: int = 0,
     ) -> tuple[ProviderAuditEvent, ...]:
         return ()
 
-    async def purge_before(self, threshold: Any) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         return 0
 
     async def purge_before_id(self, *, before_id: int) -> int:
@@ -85,13 +84,13 @@ class _FakeOverrideRepo:
     def __init__(self) -> None:
         self.store: dict[str, PresetOverride] = {}
 
-    async def get(self, preset_name: Any) -> PresetOverride | None:
+    async def get(self, preset_name: str) -> PresetOverride | None:
         return self.store.get(preset_name)
 
     async def save(self, override: PresetOverride) -> None:
         self.store[override.preset_name] = override
 
-    async def delete(self, preset_name: Any) -> bool:
+    async def delete(self, preset_name: str) -> bool:
         return self.store.pop(preset_name, None) is not None
 
     async def list_items(
@@ -643,14 +642,14 @@ class TestAuditFailureIsolation:
 
             async def query(
                 self,
-                filter_spec: Any,
+                filter_spec: ProviderAuditFilterSpec,
                 *,
                 limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
                 offset: int = 0,
             ) -> tuple[ProviderAuditEvent, ...]:
                 return ()
 
-            async def purge_before(self, threshold: Any) -> int:
+            async def purge_before(self, threshold: datetime) -> int:
                 return 0
 
             async def purge_before_id(

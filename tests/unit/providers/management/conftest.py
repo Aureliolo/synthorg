@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Shared fixtures for provider management tests."""
 
 from collections.abc import AsyncIterator
-from typing import Any
 
 import pytest
 
@@ -109,7 +107,7 @@ def make_create_request(
     name: str = "test-provider",
     auth_type: AuthType = AuthType.NONE,
     models: tuple[ProviderModelConfig, ...] | None = None,
-    **kwargs: Any,
+    **kwargs: object,
 ) -> CreateProviderRequest:
     """Build a ``CreateProviderRequest`` with sensible defaults."""
     if models is None:
@@ -124,5 +122,5 @@ def make_create_request(
         driver="litellm",
         auth_type=auth_type,
         models=models,
-        **kwargs,
+        **kwargs,  # type: ignore[arg-type]
     )

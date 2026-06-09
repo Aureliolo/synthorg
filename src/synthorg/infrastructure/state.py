@@ -34,7 +34,7 @@ from synthorg.infrastructure.services import (
     TemplatePackFacadeService,
     UserFacadeService,
 )
-from synthorg.integrations.mcp_services import (
+from synthorg.integrations.mcp_facades import (
     ArtifactFacadeService,
     ClientFacadeService,
     MCPCatalogFacadeService,

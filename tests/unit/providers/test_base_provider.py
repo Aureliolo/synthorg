@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for BaseCompletionProvider logging."""
 
 import asyncio

@@ -2,10 +2,12 @@
 
 import asyncio
 import random
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.resilience_config import RetryConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CALL_ERROR,
@@ -16,11 +18,6 @@ from synthorg.observability.events.provider import (
 from synthorg.providers.errors import ProviderError, RateLimitError
 
 from .errors import RetryExhaustedError
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-
-    from synthorg.core.resilience_config import RetryConfig
 
 logger = get_logger(__name__)
 

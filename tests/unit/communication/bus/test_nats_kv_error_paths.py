@@ -7,7 +7,6 @@ and never absorb an interpreter-critical exception.
 
 from collections.abc import Iterator
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 from typeguard import suppress_type_checks
@@ -40,7 +39,7 @@ def _suppress_typeguard_for_nats_state_doubles() -> Iterator[None]:
         yield
 
 
-async def _boom(*_args: Any, **_kwargs: Any) -> Any:
+async def _boom(*_args: object, **_kwargs: object) -> object:
     """Async KV operation that always fails with a non-critical error."""
     msg = "kv transport boom"
     raise RuntimeError(msg)
@@ -80,7 +79,7 @@ async def test_scan_kv_keys_failure_wraps_bus_stream_error() -> None:
 
 
 async def test_scan_kv_skips_undecodable_keys() -> None:
-    async def _keys_with_bad_token(*_args: Any, **_kwargs: Any) -> list[str]:
+    async def _keys_with_bad_token(*_args: object, **_kwargs: object) -> list[str]:
         return ["####not-a-valid-token####"]
 
     kv = _failing_kv()

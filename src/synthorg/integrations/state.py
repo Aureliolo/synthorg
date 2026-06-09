@@ -41,6 +41,7 @@ from synthorg.integrations.tunnel.protocol import TunnelProvider
 from synthorg.integrations.webhooks.service import WebhookService
 
 if TYPE_CHECKING:
+    # api.state_slices imports this feature slice; a runtime import here cycles.
     from synthorg.api.state_slices import AppStateSliceMixin
 
 

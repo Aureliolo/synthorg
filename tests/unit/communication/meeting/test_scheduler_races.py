@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """TOCTOU race tests for MeetingScheduler.start.
 
 ``MeetingScheduler.start()`` at ``communication/meeting/scheduler.py``

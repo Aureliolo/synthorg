@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 from synthorg.integrations.state import IntegrationsStateSlice
 
 if TYPE_CHECKING:
+    # api.* eagerly imports the integrations slice this module wires; a
+    # runtime import of api.construction_wiring / api.state forms a cycle.
     from synthorg.api.construction_wiring import ConstructionDeps
     from synthorg.api.state import AppState
 

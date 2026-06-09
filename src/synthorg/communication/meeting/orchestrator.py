@@ -6,12 +6,15 @@ configured protocol, executes the meeting, optionally creates tasks
 from action items, and records audit trail entries.
 """
 
-from collections import Counter
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
+from synthorg.communication.meeting._meeting_utils import (
+    format_exception,
+    validate_meeting_inputs,
+)
 from synthorg.communication.meeting.config import MeetingProtocolConfig
 from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
@@ -19,7 +22,6 @@ from synthorg.communication.meeting.enums import (
 )
 from synthorg.communication.meeting.errors import (
     MeetingBudgetExhaustedError,
-    MeetingParticipantError,
     MeetingProtocolNotFoundError,
 )
 from synthorg.communication.meeting.models import (
@@ -36,7 +38,6 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
-    safe_error_description,
 )
 from synthorg.observability.events.meeting import (
     MEETING_ACTION_ITEM_EXTRACTED,
@@ -51,38 +52,45 @@ from synthorg.observability.events.meeting import (
     MEETING_TASK_CREATED,
     MEETING_TASK_CREATION_FAILED,
     MEETING_TASKS_CAPPED,
-    MEETING_VALIDATION_FAILED,
 )
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
 
 if TYPE_CHECKING:
+    # ConfigResolver is concrete and injected via mocks in tests; a runtime
+    # import would make typeguard reject the fake.
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
 
-def _format_exception(exc: BaseException) -> str:
-    """Format an exception for error messages.
+class _LensStrategyConfig(Protocol):
+    """Minimal view of the lens-strategy config.
 
-    Flattens ``ExceptionGroup`` (produced by ``asyncio.TaskGroup``
-    when multiple concurrent tasks fail) into a single human-readable
-    string.  Handles nested groups recursively.  Non-group exceptions
-    are returned via ``safe_error_description()`` so callers never
-    embed unredacted ``str(exc)`` into log/UI fields.
-
-    Returns:
-        A flattened, scrubbed, human-readable description of the
-        exception (recursing into ``ExceptionGroup``s).
+    Typed structurally here (rather than importing the concrete config)
+    to avoid an import cycle between the meeting orchestrator and the
+    lens-strategy package.
     """
-    if isinstance(exc, ExceptionGroup):
-        parts: list[str] = []
-        for sub in exc.exceptions:
-            if isinstance(sub, ExceptionGroup):
-                parts.append(_format_exception(sub))
-            else:
-                parts.append(safe_error_description(sub))
-        return f"Multiple errors: {'; '.join(parts)}"
-    return safe_error_description(exc)
+
+    @property
+    def default_lenses(self) -> object:
+        """The configured default lens collection."""
+        ...
+
+
+class _LensAssigner(Protocol):
+    """Minimal view of the lens assigner.
+
+    Typed structurally here to avoid the same import cycle as
+    :class:`_LensStrategyConfig`.
+    """
+
+    def assign(
+        self,
+        participant_ids: tuple[str, ...],
+        lenses: object,
+    ) -> dict[str, str]:
+        """Assign a lens to each participant."""
+        ...
 
 
 class MeetingOrchestrator:
@@ -116,8 +124,8 @@ class MeetingOrchestrator:
         protocol_registry: Mapping[MeetingProtocolType, MeetingProtocol],
         agent_caller: AgentCaller,
         task_creator: TaskCreator | None = None,
-        strategy_config: Any = None,  # typed as Any to avoid circular import
-        lens_assigner: Any = None,  # typed as Any to avoid circular import
+        strategy_config: _LensStrategyConfig | None = None,
+        lens_assigner: _LensAssigner | None = None,
         config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._protocol_registry: MappingProxyType[
@@ -183,7 +191,7 @@ class MeetingOrchestrator:
         # divergent error semantics across kill-switch state, and
         # constructing the cancellation ``MeetingRecord`` below would
         # otherwise hit pydantic validation on ``token_budget`` (gt=0).
-        self._validate_inputs(
+        validate_meeting_inputs(
             meeting_id,
             leader_id,
             participant_ids,
@@ -201,32 +209,78 @@ class MeetingOrchestrator:
             fallback=True,
         )
         if not meetings_enabled:
-            cancelled_record = MeetingRecord(
+            return self._record_cancellation(
                 meeting_id=meeting_id,
                 meeting_type_name=meeting_type_name,
                 protocol_type=protocol_type,
-                status=MeetingStatus.CANCELLED,
                 token_budget=token_budget,
             )
-            # Persist the cancellation in ``self._records`` so
-            # ``get_records()`` reports it alongside successful and
-            # protocol-failed runs; an audit trail that silently drops
-            # kill-switch cancellations would mislead operators
-            # reconstructing what happened during a paused window.
-            self._append_record(cancelled_record)
-            # ``MEETING_CANCELLED`` (not ``MEETING_FAILED``): operator
-            # cancellations should not skew failure metrics or trip
-            # alerts wired to ``meeting.lifecycle.failed``. Logged
-            # AFTER the record append per the post-persist contract
-            # (CLAUDE.md state-transition rule).
-            logger.info(
-                MEETING_CANCELLED,
-                meeting_id=meeting_id,
-                meeting_type=meeting_type_name,
-                reason="meetings_disabled_by_setting",
-            )
-            return cancelled_record
 
+        return await self._run_and_record(
+            meeting_id=meeting_id,
+            meeting_type_name=meeting_type_name,
+            protocol_config=protocol_config,
+            agenda=agenda,
+            leader_id=leader_id,
+            participant_ids=participant_ids,
+            token_budget=token_budget,
+        )
+
+    def _record_cancellation(
+        self,
+        *,
+        meeting_id: str,
+        meeting_type_name: str,
+        protocol_type: MeetingProtocolType,
+        token_budget: int,
+    ) -> MeetingRecord:
+        """Record a kill-switch CANCELLED meeting (no protocol run).
+
+        Returns:
+            The stored CANCELLED ``MeetingRecord``.
+        """
+        cancelled_record = MeetingRecord(
+            meeting_id=meeting_id,
+            meeting_type_name=meeting_type_name,
+            protocol_type=protocol_type,
+            status=MeetingStatus.CANCELLED,
+            token_budget=token_budget,
+        )
+        # Persist the cancellation in ``self._records`` so ``get_records()``
+        # reports it alongside successful and protocol-failed runs; an audit
+        # trail that silently drops kill-switch cancellations would mislead
+        # operators reconstructing what happened during a paused window.
+        self._append_record(cancelled_record)
+        # ``MEETING_CANCELLED`` (not ``MEETING_FAILED``): operator cancellations
+        # should not skew failure metrics or trip alerts wired to
+        # ``meeting.lifecycle.failed``. Logged AFTER the record append per the
+        # post-persist contract (CLAUDE.md state-transition rule).
+        logger.info(
+            MEETING_CANCELLED,
+            meeting_id=meeting_id,
+            meeting_type=meeting_type_name,
+            reason="meetings_disabled_by_setting",
+        )
+        return cancelled_record
+
+    async def _run_and_record(  # noqa: PLR0913
+        self,
+        *,
+        meeting_id: str,
+        meeting_type_name: str,
+        protocol_config: MeetingProtocolConfig,
+        agenda: MeetingAgenda,
+        leader_id: str,
+        participant_ids: tuple[str, ...],
+        token_budget: int,
+    ) -> MeetingRecord:
+        """Resolve the protocol, execute it, and record the outcome.
+
+        Returns:
+            The terminal ``MeetingRecord`` (protocol result, a recorded
+            success, or FAILED / BUDGET_EXHAUSTED on a caught error).
+        """
+        protocol_type = protocol_config.protocol
         protocol = self._resolve_protocol(meeting_id, protocol_type)
 
         logger.info(
@@ -432,7 +486,7 @@ class MeetingOrchestrator:
         Returns:
             The stored failure ``MeetingRecord``.
         """
-        error_msg = _format_exception(exc)
+        error_msg = format_exception(exc)
         record = MeetingRecord(
             meeting_id=meeting_id,
             meeting_type_name=meeting_type_name,
@@ -606,75 +660,6 @@ class MeetingOrchestrator:
             return None
 
         return dict(result)
-
-    def _validate_inputs(
-        self,
-        meeting_id: str,
-        leader_id: str,
-        participant_ids: tuple[str, ...],
-        token_budget: int,
-    ) -> None:
-        """Validate meeting inputs.
-
-        Raises:
-            MeetingParticipantError: If participants are empty, contain
-                duplicates, or leader is in participants.
-            ValueError: If token_budget is not positive.
-        """
-        if token_budget <= 0:
-            logger.warning(
-                MEETING_VALIDATION_FAILED,
-                meeting_id=meeting_id,
-                error=f"token_budget must be positive, got {token_budget}",
-            )
-            msg = f"token_budget must be positive, got {token_budget}"
-            raise ValueError(msg)
-
-        if not participant_ids:
-            logger.warning(
-                MEETING_VALIDATION_FAILED,
-                meeting_id=meeting_id,
-                error="at least one participant is required",
-            )
-            msg = "At least one participant is required"
-            raise MeetingParticipantError(
-                msg,
-                context={"meeting_id": meeting_id},
-            )
-        if len(participant_ids) != len(set(participant_ids)):
-            dupes = sorted(v for v, c in Counter(participant_ids).items() if c > 1)
-            logger.warning(
-                MEETING_VALIDATION_FAILED,
-                meeting_id=meeting_id,
-                error="duplicate participant_ids",
-                duplicates=dupes,
-            )
-            msg = f"Duplicate participant IDs: {dupes}"
-            raise MeetingParticipantError(
-                msg,
-                context={
-                    "meeting_id": meeting_id,
-                    "duplicates": dupes,
-                },
-            )
-        if leader_id in participant_ids:
-            logger.warning(
-                MEETING_VALIDATION_FAILED,
-                meeting_id=meeting_id,
-                error="leader in participant_ids",
-                leader_id=leader_id,
-            )
-            msg = (
-                f"Leader {leader_id!r} must not be in participant_ids "
-                f"(leader participates implicitly)"
-            )
-            raise MeetingParticipantError(
-                msg,
-                context={
-                    "meeting_id": meeting_id,
-                    "leader_id": leader_id,
-                },
-            )
 
     def _resolve_protocol(
         self,

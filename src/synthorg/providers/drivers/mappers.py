@@ -7,12 +7,16 @@ consume.  Reusable by future native SDK drivers.
 
 import copy
 import json
+import math
+from collections.abc import Mapping
 
 from pydantic import JsonValue
 
+from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_FINISH_REASON_UNKNOWN,
+    PROVIDER_RETRY_AFTER_PARSE_FAILED,
     PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
     PROVIDER_TOOL_CALL_INCOMPLETE,
     PROVIDER_TOOL_CALL_MISSING_FUNCTION,
@@ -21,6 +25,46 @@ from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage, ToolCall, ToolDefinition
 
 logger = get_logger(__name__)
+
+
+def extract_retry_after(exc: Exception) -> float | None:
+    """Extract ``retry-after`` seconds from exception headers.
+
+    Args:
+        exc: The provider exception, which may carry HTTP ``headers``.
+
+    Returns:
+        The ``retry-after`` seconds as a ``float``, or ``None`` when
+        the header is absent, not a mapping, or unparseable.
+    """
+    headers = getattr(exc, "headers", None)
+    if not isinstance(headers, Mapping):
+        return None
+    # Case-insensitive lookup per HTTP semantics
+    raw: str | None = None
+    for key, value in headers.items():
+        if isinstance(key, str) and compare_ci(key, "retry-after"):
+            raw = value
+            break
+    if raw is None:
+        return None
+    try:
+        parsed = float(raw)
+    except ValueError, TypeError:
+        logger.debug(
+            PROVIDER_RETRY_AFTER_PARSE_FAILED,
+            raw_value=repr(raw),
+        )
+        return None
+    # ``float`` accepts ``"inf"`` / ``"nan"`` and signed values; a
+    # retry-after delay must be a finite, non-negative number of seconds.
+    if not math.isfinite(parsed) or parsed < 0:
+        logger.debug(
+            PROVIDER_RETRY_AFTER_PARSE_FAILED,
+            raw_value=repr(raw),
+        )
+        return None
+    return parsed
 
 
 def messages_to_dicts(messages: list[ChatMessage]) -> list[dict[str, object]]:

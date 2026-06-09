@@ -7,7 +7,7 @@ handling timeouts, building delivery envelopes, and acking messages.
 import asyncio
 import contextlib
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.bus._nats_channels import resolve_channel_or_raise
 from synthorg.communication.bus._nats_consumers import create_pull_consumer
@@ -33,6 +33,16 @@ from synthorg.observability.events.communication import (
     COMM_RECEIVE_SHUTDOWN,
     COMM_SUBSCRIBER_QUEUE_OVERFLOW,
 )
+
+if TYPE_CHECKING:
+    # nats-py is an optional dependency, so these stay guarded for clean import
+    # when it is absent.
+    from nats.aio.msg import Msg
+    from nats.js import JetStreamContext
+
+    # PullSubscription is a nested class on JetStreamContext, not a
+    # module-level export, so it cannot be imported directly.
+    PullSubscription = JetStreamContext.PullSubscription
 
 _OVERFLOW_LOG_INTERVAL_SECONDS: float = 60.0
 """Minimum seconds between per-subscriber overflow emissions.
@@ -60,7 +70,7 @@ async def resolve_consumer(
     state: _NatsState,
     channel_name: str,
     subscriber_id: str,
-) -> Any:
+) -> PullSubscription:
     """Validate preconditions and return the durable pull consumer.
 
     Creates the consumer lazily for BROADCAST subscribers.
@@ -94,7 +104,7 @@ async def resolve_consumer(
 
 async def _maybe_log_overflow(
     state: _NatsState,
-    sub: Any,
+    sub: PullSubscription,
     *,
     channel_name: str,
     subscriber_id: str,
@@ -150,8 +160,8 @@ async def _maybe_log_overflow(
     # probe_timeout budget. If ``state.shutdown_event`` fires first we
     # short-circuit through the same non-emission path as a probe
     # failure; otherwise we use the consumer_info() result.
-    probe_task: asyncio.Task[Any] = asyncio.create_task(sub.consumer_info())
-    shutdown_task: asyncio.Task[Any] = asyncio.create_task(
+    probe_task: asyncio.Task[object] = asyncio.create_task(sub.consumer_info())
+    shutdown_task: asyncio.Task[bool] = asyncio.create_task(
         state.shutdown_event.wait(),
     )
     try:
@@ -220,12 +230,12 @@ async def _maybe_log_overflow(
 
 async def fetch_with_shutdown(
     state: _NatsState,
-    sub: Any,
+    sub: PullSubscription,
     timeout: float,  # noqa: ASYNC109
     *,
     channel_name: str,
     subscriber_id: str,
-) -> list[Any] | None:
+) -> list[Msg] | None:
     """Fetch at most one message, racing against the shutdown event.
 
     Returns:
@@ -235,10 +245,10 @@ async def fetch_with_shutdown(
     """
     from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
 
-    fetch_task: asyncio.Task[Any] = asyncio.create_task(
+    fetch_task: asyncio.Task[list[Msg]] = asyncio.create_task(
         sub.fetch(batch=1, timeout=timeout),
     )
-    shutdown_task: asyncio.Task[Any] = asyncio.create_task(
+    shutdown_task: asyncio.Task[bool] = asyncio.create_task(
         state.shutdown_event.wait(),
     )
     state.in_flight_fetches.add(fetch_task)
@@ -269,7 +279,7 @@ async def fetch_with_shutdown(
         return None
 
     try:
-        result: list[Any] = fetch_task.result()
+        result: list[Msg] = fetch_task.result()
     except NatsTimeoutError:
         return []
     except asyncio.CancelledError:
@@ -288,7 +298,7 @@ async def fetch_with_shutdown(
 
 
 async def try_ack(
-    msg: Any,
+    msg: Msg,
     *,
     channel_name: str,
     subscriber_id: str,
@@ -315,7 +325,7 @@ async def try_ack(
 
 
 async def build_envelope(
-    msgs: list[Any] | None,
+    msgs: list[Msg] | None,
     *,
     channel_name: str,
     subscriber_id: str,
@@ -413,7 +423,7 @@ async def receive_blocking(
     state: _NatsState,
     channel_name: str,
     subscriber_id: str,
-    sub: Any,
+    sub: PullSubscription,
 ) -> DeliveryEnvelope | None:
     """Block on a fetch loop until a message arrives or the bus stops.
 
@@ -456,7 +466,7 @@ async def receive_with_timeout(
     state: _NatsState,
     channel_name: str,
     subscriber_id: str,
-    sub: Any,
+    sub: PullSubscription,
     timeout: float,  # noqa: ASYNC109
 ) -> DeliveryEnvelope | None:
     """Wait up to ``timeout`` seconds across one or more fetch polls.

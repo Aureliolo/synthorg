@@ -1,8 +1,8 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for local model management (pull, delete, factory)."""
 
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager
+from typing import Protocol
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -18,6 +18,16 @@ from synthorg.providers.management.local_models import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+class _StreamCMFactory(Protocol):
+    """A ``client.stream``-shaped callable yielding a recorded response."""
+
+    def __call__(
+        self,
+        *args: object,
+        **kwargs: object,
+    ) -> AbstractAsyncContextManager[AsyncMock]: ...
 
 
 class TestPullProgressEvent:
@@ -204,7 +214,7 @@ class TestOllamaModelManagerPull:
     @staticmethod
     def _make_stream_cm(
         response: AsyncMock,
-    ) -> Callable[..., AbstractAsyncContextManager[AsyncMock]]:
+    ) -> _StreamCMFactory:
         """Create a context manager that yields the given response."""
         from contextlib import asynccontextmanager
 

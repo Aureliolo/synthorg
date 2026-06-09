@@ -42,6 +42,7 @@ from synthorg.communication.meetings.service import MeetingService
 from synthorg.communication.messages.service import MessageService
 
 if TYPE_CHECKING:
+    # api.state_slices imports this feature slice; a runtime import here cycles.
     from synthorg.api.state_slices import AppStateSliceMixin
 
 

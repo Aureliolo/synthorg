@@ -5,18 +5,15 @@ best candidate from the list.  Selectors are synchronous and
 constructed with their context (e.g. quota snapshot) already bound.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.routing import ROUTING_CANDIDATE_SELECTED
 
 from .errors import ModelResolutionError
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from .models import ResolvedModel
+from .models import ResolvedModel
 
 logger = get_logger(__name__)
 

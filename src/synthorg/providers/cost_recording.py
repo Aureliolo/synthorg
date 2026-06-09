@@ -18,11 +18,12 @@ import asyncio
 import math
 from collections.abc import (
     AsyncIterator,
+    Mapping,
 )
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -47,9 +48,6 @@ from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

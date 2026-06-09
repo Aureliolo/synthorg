@@ -16,14 +16,12 @@ import asyncio
 import ipaddress
 import json
 import socket
-from typing import TYPE_CHECKING, Final, NamedTuple
+from collections.abc import Awaitable, Callable
+from typing import Final, NamedTuple
 from urllib.parse import urlparse, urlunparse
 
 import httpx
 from pydantic import JsonValue
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.critical_errors import reraise_critical

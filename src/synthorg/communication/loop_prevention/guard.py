@@ -23,6 +23,8 @@ from synthorg.observability.events.delegation import (
 )
 
 if TYPE_CHECKING:
+    # runtime_checkable protocol injected via a duck-typed fake in tests; a
+    # runtime import would make typeguard reject the stub.
     from synthorg.persistence.circuit_breaker_protocol import (
         CircuitBreakerStateRepository,
     )

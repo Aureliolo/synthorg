@@ -5,7 +5,7 @@ Uses ephemeral pull consumers with ``DeliverPolicy.ALL`` and
 durable consumer state.
 """
 
-from typing import Any, Final
+from typing import TYPE_CHECKING, Final
 
 from synthorg.communication.bus._nats_channels import (
     resolve_channel_or_raise,
@@ -23,6 +23,16 @@ from synthorg.observability.events.communication import (
     COMM_HISTORY_QUERIED,
 )
 
+if TYPE_CHECKING:
+    # nats-py is an optional dependency, so these stay guarded for clean import
+    # when it is absent.
+    from nats.aio.msg import Msg
+    from nats.js import JetStreamContext
+
+    # PullSubscription is a nested class on JetStreamContext, not a
+    # module-level export, so it cannot be imported directly.
+    PullSubscription = JetStreamContext.PullSubscription
+
 logger = get_logger(__name__)
 
 _DEFAULT_BATCH_SIZE: Final[int] = 100
@@ -30,10 +40,10 @@ _DEFAULT_FETCH_TIMEOUT_SECONDS: Final[float] = 0.5
 
 
 async def create_history_scan_consumer(
-    js: Any,
+    js: JetStreamContext,
     subject: str,
     stream_name: str,
-) -> Any | None:
+) -> PullSubscription | None:
     """Create the ephemeral pull consumer used by history scans.
 
     Returns:
@@ -81,7 +91,7 @@ async def create_history_scan_consumer(
 
 
 async def collect_history_batches(
-    psub: Any,
+    psub: PullSubscription,
     subject: str,
     stream_name: str,
     *,
@@ -138,7 +148,7 @@ async def collect_history_batches(
 
 
 async def unsubscribe_history_consumer(
-    psub: Any,
+    psub: PullSubscription,
     subject: str,
     stream_name: str,
 ) -> None:
@@ -157,7 +167,7 @@ async def unsubscribe_history_consumer(
         )
 
 
-def try_parse_matching(raw: Any, subject: str) -> Message | None:
+def try_parse_matching(raw: Msg, subject: str) -> Message | None:
     """Parse the raw message if it matches the target subject.
 
     Returns:
@@ -180,7 +190,7 @@ def try_parse_matching(raw: Any, subject: str) -> Message | None:
 
 async def scan_stream_for_subject(  # noqa: PLR0913
     state: _NatsState,
-    js: Any,
+    js: JetStreamContext | None,
     *,
     subject: str,
     max_to_return: int,

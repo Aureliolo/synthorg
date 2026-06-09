@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for ``CassetteCompletionProvider``.
 
 The wrapper is the seam that makes "byte-identical replay with zero

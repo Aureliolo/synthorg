@@ -19,7 +19,7 @@ papers, structured phases) are responsible for sequencing turns; this
 module only runs a single agent's inference.
 """
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
 from synthorg.budget.call_category import LLMCallCategory
 
@@ -32,6 +32,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
 from synthorg.communication.meeting.models import AgentResponse
 from synthorg.communication.meeting.protocol import AgentCaller
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError, NotFoundError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -48,9 +49,6 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.registry import ProviderRegistry
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

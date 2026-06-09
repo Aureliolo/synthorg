@@ -6,21 +6,17 @@ dispatch/wrap.  All mutations are audit-logged on the facade (single
 owner of audit logging, per the persistence-boundary convention).
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
 
+from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.models import Connection, ConnectionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMMUNICATION_CONNECTION_CREATED,
     COMMUNICATION_CONNECTION_DELETED,
     COMMUNICATION_CONNECTION_HEALTH_CHECKED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
-    from synthorg.integrations.connections.models import Connection, ConnectionType
 
 logger = get_logger(__name__)
 

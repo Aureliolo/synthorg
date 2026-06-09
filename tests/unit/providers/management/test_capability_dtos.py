@@ -1,10 +1,10 @@
-"""Tests for the audit-payload freeze/thaw helpers in ``capability_dtos``."""
+"""Tests for the audit-payload freeze/thaw helpers."""
 
 from types import MappingProxyType
 
 import pytest
 
-from synthorg.providers.management.capability_dtos import (
+from synthorg.providers.management._freeze import (
     _recursively_freeze,
     _recursively_thaw,
 )

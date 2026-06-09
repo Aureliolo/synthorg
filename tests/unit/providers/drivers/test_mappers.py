@@ -3,6 +3,7 @@
 import pytest
 
 from synthorg.providers.drivers.mappers import (
+    extract_retry_after,
     extract_tool_calls,
     map_finish_reason,
     messages_to_dicts,
@@ -358,3 +359,48 @@ class TestExtractToolCalls:
         result = extract_tool_calls(raw)
 
         assert result == ()
+
+
+# ── extract_retry_after ──────────────────────────────────────────
+
+
+class _HeaderError(Exception):
+    """Exception carrying HTTP headers for retry-after extraction tests."""
+
+    def __init__(self, headers: object) -> None:
+        super().__init__("rate limited")
+        self.headers = headers
+
+
+@pytest.mark.unit
+class TestExtractRetryAfter:
+    """Tests for ``extract_retry_after`` header parsing."""
+
+    def test_valid_seconds_parsed(self) -> None:
+        """A finite non-negative numeric header parses to a float."""
+        assert extract_retry_after(_HeaderError({"Retry-After": "30"})) == 30.0
+
+    def test_case_insensitive_header(self) -> None:
+        """The lookup matches the header name case-insensitively."""
+        assert extract_retry_after(_HeaderError({"retry-after": "5.5"})) == 5.5
+
+    def test_no_headers_returns_none(self) -> None:
+        """An exception without a mapping ``headers`` yields ``None``."""
+        assert extract_retry_after(_HeaderError(None)) is None
+
+    def test_missing_header_returns_none(self) -> None:
+        """A headers mapping lacking retry-after yields ``None``."""
+        assert extract_retry_after(_HeaderError({"X-Other": "1"})) is None
+
+    def test_unparseable_value_returns_none(self) -> None:
+        """A non-numeric header value yields ``None``."""
+        assert extract_retry_after(_HeaderError({"Retry-After": "soon"})) is None
+
+    @pytest.mark.parametrize("raw", ["inf", "-inf", "nan"])
+    def test_non_finite_value_returns_none(self, raw: str) -> None:
+        """``inf`` / ``nan`` parse as floats but are rejected as delays."""
+        assert extract_retry_after(_HeaderError({"Retry-After": raw})) is None
+
+    def test_negative_value_returns_none(self) -> None:
+        """A negative retry-after delay is rejected."""
+        assert extract_retry_after(_HeaderError({"Retry-After": "-5"})) is None

@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Regression: ``BaseCompletionProvider.complete`` opens a child span.
 
 The span carries ``provider.{name,model,message_count,tool_count}``
@@ -15,39 +14,47 @@ span object is a lightweight stand-in that records every method call
 so we can assert the attributes and absence of forbidden calls.
 """
 
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import contextmanager
-from typing import Any, override
+from typing import cast, override
 from unittest.mock import patch
 
 import pytest
 
 import synthorg.providers.base as _base
 from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.errors import ProviderInternalError
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
+    StreamChunk,
     TokenUsage,
     ToolDefinition,
 )
 
 pytestmark = pytest.mark.unit
 
+_Completer = Callable[
+    [list[ChatMessage], str, list[ToolDefinition] | None, CompletionConfig | None],
+    Awaitable[CompletionResponse],
+]
+
 
 class _RecordingSpan:
     """Stand-in OTel span that records every method call."""
 
     def __init__(self) -> None:
-        self.attributes: dict[str, Any] = {}
+        self.attributes: dict[str, object] = {}
         self.recorded_exceptions: list[BaseException] = []
-        self.statuses: list[Any] = []
+        self.statuses: list[object] = []
 
-    def set_attribute(self, key: str, value: Any) -> None:
+    def set_attribute(self, key: str, value: object) -> None:
         self.attributes[key] = value
 
-    def set_status(self, status: Any) -> None:
+    def set_status(self, status: object) -> None:
         self.statuses.append(status)
 
     def record_exception(self, exc: BaseException) -> None:  # pragma: no cover
@@ -58,7 +65,7 @@ class _RecordingTracer:
     """Stand-in OTel tracer that captures every start_as_current_span call."""
 
     def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
+        self.calls: list[dict[str, object]] = []
         self.spans: list[_RecordingSpan] = []
 
     @contextmanager
@@ -66,10 +73,10 @@ class _RecordingTracer:
         self,
         name: str,
         *,
-        attributes: dict[str, Any] | None = None,
+        attributes: dict[str, object] | None = None,
         record_exception: bool = True,
         set_status_on_exception: bool = True,
-    ) -> Any:
+    ) -> Iterator[_RecordingSpan]:
         span = _RecordingSpan()
         if attributes:
             span.attributes.update(attributes)
@@ -91,7 +98,7 @@ class _StubProvider(BaseCompletionProvider):
     def __init__(
         self,
         *,
-        completer: Any,
+        completer: _Completer,
         provider_label: str = "stub-provider",
     ) -> None:
         super().__init__()
@@ -124,15 +131,16 @@ class _StubProvider(BaseCompletionProvider):
         *,
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
-    ) -> Any:  # pragma: no cover
-        # Stub never streams; satisfy the abstract signature with a
-        # bare async generator that yields nothing and then exits.
-        return
-        yield None
+    ) -> AsyncIterator[StreamChunk]:  # pragma: no cover
+        # Stub never streams; satisfy the abstract signature.
+        raise NotImplementedError
 
     @override
-    async def _do_get_model_capabilities(self, model: str) -> Any:  # pragma: no cover
-        return None
+    async def _do_get_model_capabilities(
+        self,
+        model: str,
+    ) -> ModelCapabilities:  # pragma: no cover
+        raise NotImplementedError
 
 
 def _ok_response() -> CompletionResponse:
@@ -168,7 +176,7 @@ class TestProviderCompleteSpan:
         assert call["record_exception"] is False
         assert call["set_status_on_exception"] is False
         # Attributes set at span open.
-        attrs = call["attributes"]
+        attrs = cast("dict[str, object]", call["attributes"])
         assert attrs["provider.name"] == "stub-provider"
         assert attrs["provider.model"] == "example-medium-001"
         assert attrs["provider.message_count"] == 1
@@ -176,7 +184,7 @@ class TestProviderCompleteSpan:
         # Latency is set on the span's attributes dict by ``set_attribute``.
         span = tracer.spans[0]
         assert "provider.latency_ms" in span.attributes
-        assert span.attributes["provider.latency_ms"] >= 0.0
+        assert span.attributes["provider.latency_ms"] >= 0.0  # type: ignore[operator]
         # No exception was recorded via the SDK's auto-handler.
         assert not span.recorded_exceptions
 
@@ -201,7 +209,7 @@ class TestProviderCompleteSpan:
         span = tracer.spans[0]
         # Exception fields set via set_attribute, NOT record_exception.
         assert span.attributes["exception.type"] == "ProviderInternalError"
-        assert "synthetic provider outage" in span.attributes["exception.message"]
+        assert "synthetic provider outage" in span.attributes["exception.message"]  # type: ignore[operator]
         # Latency was still set on the error path.
         assert "provider.latency_ms" in span.attributes
         # record_exception MUST NOT have been called (SEC: traceback
@@ -215,4 +223,4 @@ class TestProviderCompleteSpan:
         from opentelemetry.trace import StatusCode
 
         assert span.statuses, "expected span.set_status to be called on error"
-        assert span.statuses[-1].status_code == StatusCode.ERROR
+        assert span.statuses[-1].status_code == StatusCode.ERROR  # type: ignore[attr-defined]

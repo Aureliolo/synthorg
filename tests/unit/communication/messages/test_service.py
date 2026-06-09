@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for :class:`MessageService`.
 
 Covers the rewritten ``delete_message`` path: routes through the
@@ -7,8 +6,7 @@ audit-grade ``COMMUNICATION_MESSAGE_DELETED`` event on success only.
 """
 
 from types import SimpleNamespace
-from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 import structlog.testing
@@ -25,7 +23,7 @@ from tests._shared import mock_of
 pytestmark = pytest.mark.unit
 
 
-def _make_service(*, deleted: bool) -> tuple[MessageService, Any]:
+def _make_service(*, deleted: bool) -> tuple[MessageService, Mock]:
     repo = mock_of[MessageRepository]()
     repo.delete.return_value = deleted
     persistence = SimpleNamespace(messages=repo)

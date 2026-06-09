@@ -71,4 +71,4 @@ class TestMeetingErrorContext:
         original = {"nested": {"key": "value"}}
         err = MeetingError("test", context=original)
         original["nested"]["key"] = "mutated"
-        assert err.context["nested"]["key"] == "value"
+        assert err.context["nested"]["key"] == "value"  # type: ignore[index]
