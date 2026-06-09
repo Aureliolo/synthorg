@@ -72,11 +72,7 @@ def validate_otlp_endpoint_safety(
             )
             raise ValueError(msg)
 
-    if (
-        endpoint.startswith("http://")
-        and hostname not in ("localhost", "127.0.0.1", "::1")
-        and has_headers
-    ):
+    if endpoint.startswith("http://") and has_headers:
         import warnings  # noqa: PLC0415
 
         warnings.warn(

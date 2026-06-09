@@ -5,10 +5,12 @@ together in the full guard chain.
 """
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
+from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.scaling.config import GuardConfig, ScalingConfig
 from synthorg.hr.scaling.context import ScalingContextBuilder
 from synthorg.hr.scaling.enums import ScalingActionType
@@ -18,15 +20,9 @@ from synthorg.hr.scaling.factory import (
 )
 from synthorg.hr.scaling.service import ScalingService
 from synthorg.hr.scaling.signals.workload import WorkloadSignalSource
+from tests._shared import mock_of
 
 from .conftest import AGENT_IDS
-
-
-class _StubHiringService:
-    """Minimal hiring service stub that just returns a canned request."""
-
-    async def create_request(self, **kwargs: object) -> object:
-        return SimpleNamespace(id=uuid4())
 
 
 @pytest.mark.integration
@@ -50,7 +46,11 @@ class TestGuardChain:
             guard=guard,
             context_builder=builder,
             config=config,
-            hiring_service=_StubHiringService(),  # type: ignore[arg-type]
+            hiring_service=mock_of[HiringService](
+                create_request=AsyncMock(
+                    return_value=SimpleNamespace(id=uuid4()),
+                ),
+            ),
         )
 
         from synthorg.engine.assignment.models import AgentWorkload
@@ -97,7 +97,11 @@ class TestGuardChain:
             guard=guard,
             context_builder=builder,
             config=config,
-            hiring_service=_StubHiringService(),  # type: ignore[arg-type]
+            hiring_service=mock_of[HiringService](
+                create_request=AsyncMock(
+                    return_value=SimpleNamespace(id=uuid4()),
+                ),
+            ),
         )
 
         from synthorg.engine.assignment.models import AgentWorkload

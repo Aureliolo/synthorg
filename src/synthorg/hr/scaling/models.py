@@ -69,7 +69,7 @@ class ScalingContext(BaseModel):
         evaluated_at: When the context was built.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_ids: tuple[NotBlankStr, ...] = Field(
         default=(),

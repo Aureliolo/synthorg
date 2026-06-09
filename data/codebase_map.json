@@ -12483,7 +12483,7 @@
     },
     {
       "kind": "code",
-      "loc": 66,
+      "loc": 62,
       "loc_cap": 500,
       "module": "src/synthorg/observability/_endpoint_safety.py",
       "owning_feature": "observability"
@@ -12567,7 +12567,7 @@
     },
     {
       "kind": "adapter",
-      "loc": 517,
+      "loc": 528,
       "loc_cap": 700,
       "module": "src/synthorg/observability/audit_chain/tsa_client.py",
       "owning_feature": "observability"

@@ -435,7 +435,18 @@ def _check_pki_status(
         TsaProtocolError: If the PKI status is not ``GRANTED`` or
             ``GRANTED_WITH_MODS``.
     """
-    status = _rfc_tsp.PKIStatus(response.status)
+    try:
+        status = _rfc_tsp.PKIStatus(response.status)
+    except ValueError as exc:
+        status_string = getattr(response, "status_string", None)
+        logger.warning(
+            SECURITY_TIMESTAMP_REJECTED,
+            tsa_url=tsa_url,
+            pki_status=f"unknown({response.status!r})",
+            status_string=status_string,
+        )
+        msg = f"TSA rejected request: unknown PKI status {response.status!r}"
+        raise TsaProtocolError(msg) from exc
     if status in {
         _rfc_tsp.PKIStatus.GRANTED,
         _rfc_tsp.PKIStatus.GRANTED_WITH_MODS,
