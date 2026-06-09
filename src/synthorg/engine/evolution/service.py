@@ -388,10 +388,6 @@ class EvolutionService:
         Raises:
             ValueError: If ``agent_id`` is not in the identity store.
         """
-        from synthorg.engine.evolution.protocols import (  # noqa: PLC0415
-            EvolutionContext,
-        )
-
         identity = await self._identity_store.get_current(agent_id)
         if identity is None:
             msg = f"Agent {agent_id!r} not found in identity store"

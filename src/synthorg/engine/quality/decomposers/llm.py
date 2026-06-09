@@ -676,7 +676,7 @@ class LLMCriteriaDecomposer:
                 agent_id=agent_id,
                 reason=reason,
                 index=raw.get("source_criterion_index")
-                if isinstance(raw, dict)
+                if isinstance(raw, Mapping)
                 else None,
             )
             return None
