@@ -587,10 +587,6 @@ disallow_any_explicit = false
 module = "synthorg.settings.*"
 disallow_any_explicit = false
 
-[[tool.mypy.overrides]]
-module = "synthorg.workers.*"
-disallow_any_explicit = false
-
 # Test code carries the residual strict++ exemptions still lifted on the
 # tests.* surface. ``disallow_any_generics`` is already enforced across
 # tests/, with the bulk of test files explicitly typed under the full

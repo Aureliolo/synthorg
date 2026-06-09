@@ -20,7 +20,7 @@ import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import Any, Final
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -43,6 +43,17 @@ from synthorg.observability.events.workers import (
 from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim
 from synthorg.workers.config import QueueConfig
+
+if TYPE_CHECKING:
+    # nats-py is an optional dependency, so the raw-message type stays
+    # guarded for clean import when it is absent; tests also drive the
+    # consumer with duck-typed message fakes.
+    from nats.aio.msg import Msg
+
+    # TaskEngine is named for signatures only: this module must stay
+    # importable without the engine package, and tests inject
+    # duck-typed engine fakes.
+    from synthorg.engine.task_engine import TaskEngine
 
 logger = get_logger(__name__)
 
@@ -76,7 +87,7 @@ tests inject a fake.
 """
 
 
-def make_engine_task_fail_handler(engine: Any) -> TaskFailHandler:
+def make_engine_task_fail_handler(engine: TaskEngine) -> TaskFailHandler:
     """Build a :data:`TaskFailHandler` backed by a ``TaskEngine``.
 
     Maps engine exceptions onto :class:`DeadLetterOutcome` so the
@@ -220,7 +231,7 @@ class DeadLetterConsumer:
                 )
                 continue
 
-    async def _handle(self, claim: TaskClaim, raw: Any) -> None:
+    async def _handle(self, claim: TaskClaim, raw: Msg) -> None:
         """Drive one dead claim to FAILED, idempotently.
 
         Raises:
@@ -263,7 +274,7 @@ class DeadLetterConsumer:
         await self._mark_handled(claim)
         await JetStreamTaskQueue.ack(raw)
 
-    async def _handle_retryable(self, claim: TaskClaim, raw: Any) -> None:
+    async def _handle_retryable(self, claim: TaskClaim, raw: Msg) -> None:
         """Nack a retryable dead claim, or fail loudly when exhausted.
 
         If the engine is transiently unavailable, redeliver. If the

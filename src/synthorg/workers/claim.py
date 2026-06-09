@@ -12,7 +12,7 @@ API behind a small ``publish_claim`` / ``next_claim`` / ``ack`` /
 import asyncio
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -39,6 +39,20 @@ from synthorg.observability.events.workers import (
 from synthorg.workers.config import QueueConfig
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    # nats-py is an optional dependency, so these stay guarded for
+    # clean import when it is absent; tests also drive the queue with
+    # duck-typed client and message fakes.
+    from nats.aio.client import Client as NatsClient
+    from nats.aio.msg import Msg
+    from nats.aio.subscription import Subscription
+    from nats.js import JetStreamContext
+
+    # PullSubscription is a nested class on JetStreamContext, not a
+    # module-level export, so it cannot be imported directly.
+    PullSubscription = JetStreamContext.PullSubscription
+
     # Cycle breaker: ``communication.config`` sits on the eager-init
     # config chain; importing it at runtime would re-create the
     # cold-import cycle the import-layering contracts cut.
@@ -150,13 +164,13 @@ class JetStreamTaskQueue:
         self._queue_config = queue_config
         self._nats_config = nats_config
         self._durable_name = durable_name
-        self._client: Any = None
-        self._js: Any = None
-        self._sub: Any = None
+        self._client: NatsClient | None = None
+        self._js: JetStreamContext | None = None
+        self._sub: PullSubscription | None = None
         # Lazily created on first ``next_dead`` so worker processes
         # (which never consume the dead subject) don't register an
         # unused durable consumer.
-        self._dead_sub: Any = None
+        self._dead_sub: PullSubscription | None = None
         self._running = False
         # Per docs/reference/lifecycle-sync.md: serialize start/stop +
         # _running check-and-set under a dedicated lifecycle lock so a
@@ -497,8 +511,8 @@ class JetStreamTaskQueue:
     async def core_subscribe(
         self,
         subject: str,
-        cb: Any,
-    ) -> Any:
+        cb: Callable[[Msg], Awaitable[None]],
+    ) -> Subscription:
         """Subscribe on the core NATS connection (NOT JetStream).
 
         Companion to :meth:`core_publish`: used by the backend's
@@ -528,7 +542,7 @@ class JetStreamTaskQueue:
     async def next_claim(
         self,
         timeout: float,  # noqa: ASYNC109
-    ) -> tuple[TaskClaim, Any] | None:
+    ) -> tuple[TaskClaim, Msg] | None:
         """Fetch the next claim from the work queue.
 
         Returns:
@@ -594,19 +608,22 @@ class JetStreamTaskQueue:
             return None
         return claim, raw
 
-    async def _ensure_dead_consumer(self) -> None:
+    async def _ensure_dead_consumer(self) -> PullSubscription:
         """Lazily create the durable pull consumer for the dead subject.
 
         Separate durable name + filter subject from the ready consumer
         so dead-letter delivery does not contend with normal claims.
         Idempotent: a second call is a no-op once ``_dead_sub`` exists.
 
+        Returns:
+            The live dead-subject pull subscription.
+
         Raises:
             BusStreamError: When JetStream is uninitialised or the dead
                 consumer cannot be created.
         """
         if self._dead_sub is not None:
-            return
+            return self._dead_sub
         from nats.errors import Error as NatsError  # noqa: PLC0415
         from nats.js.api import ConsumerConfig  # noqa: PLC0415
 
@@ -624,7 +641,7 @@ class JetStreamTaskQueue:
             filter_subject=subject,
         )
         try:
-            self._dead_sub = await self._js.pull_subscribe(
+            dead_sub = await self._js.pull_subscribe(
                 subject=subject,
                 durable=durable,
                 stream=self._queue_config.stream_name,
@@ -642,11 +659,13 @@ class JetStreamTaskQueue:
                     "consumer": durable,
                 },
             ) from exc
+        self._dead_sub = dead_sub
+        return dead_sub
 
     async def next_dead(
         self,
         timeout: float,  # noqa: ASYNC109
-    ) -> tuple[TaskClaim, Any] | None:
+    ) -> tuple[TaskClaim, Msg] | None:
         """Fetch the next dead-lettered claim, or ``None`` on timeout.
 
         Mirrors :meth:`next_claim` (oversize / malformed payloads are
@@ -659,9 +678,9 @@ class JetStreamTaskQueue:
         """
         from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
 
-        await self._ensure_dead_consumer()
+        dead_sub = await self._ensure_dead_consumer()
         try:
-            msgs = await self._dead_sub.fetch(batch=1, timeout=timeout)
+            msgs = await dead_sub.fetch(batch=1, timeout=timeout)
         except NatsTimeoutError:
             return None
         if not msgs:
@@ -689,7 +708,7 @@ class JetStreamTaskQueue:
         return claim, raw
 
     @staticmethod
-    async def _safe_unsubscribe(sub: Any) -> None:
+    async def _safe_unsubscribe(sub: PullSubscription | None) -> None:
         """Unsubscribe *sub* if present; log (never raise) on failure.
 
         Shared by ``stop()`` (ready + dead consumers) and
@@ -709,7 +728,7 @@ class JetStreamTaskQueue:
             )
 
     @staticmethod
-    async def _safe_ack_poison(raw: Any) -> None:
+    async def _safe_ack_poison(raw: Msg) -> None:
         """Terminally ack an unparseable message; log if the ack fails."""
         try:
             await raw.ack()
@@ -722,12 +741,12 @@ class JetStreamTaskQueue:
             )
 
     @staticmethod
-    async def ack(raw: Any) -> None:
+    async def ack(raw: Msg) -> None:
         """Acknowledge successful processing of a claim."""
         await raw.ack()
 
     @staticmethod
-    async def nack(raw: Any, delay_seconds: float = 0.0) -> None:
+    async def nack(raw: Msg, delay_seconds: float = 0.0) -> None:
         """Negative-ack a claim, triggering redelivery after the delay."""
         if delay_seconds > 0:
             await raw.nak(delay=delay_seconds)
@@ -735,7 +754,7 @@ class JetStreamTaskQueue:
             await raw.nak()
 
     @staticmethod
-    async def in_progress(raw: Any) -> None:
+    async def in_progress(raw: Msg) -> None:
         """Send a working-ack, resetting the JetStream ack deadline.
 
         The worker calls this periodically while the executor runs so a

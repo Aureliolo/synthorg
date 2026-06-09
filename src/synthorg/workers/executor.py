@@ -28,7 +28,7 @@ Auth: the executor uses a Bearer token whose source is documented in
 once at construction.
 """
 
-from typing import Any, Final
+from typing import Final
 from urllib.parse import quote
 
 import httpx
@@ -261,7 +261,7 @@ class TaskExecutionExecutor:
         return TaskClaimStatus.RETRY
 
     @staticmethod
-    def _safe_json(response: httpx.Response) -> dict[str, Any]:
+    def _safe_json(response: httpx.Response) -> dict[str, object]:
         """Return the JSON body, or an empty dict if it cannot be parsed.
 
         The execute endpoint always returns a typed envelope on
@@ -277,7 +277,7 @@ class TaskExecutionExecutor:
         return {}
 
     @staticmethod
-    def _extract_terminal_status(payload: dict[str, Any]) -> str | None:
+    def _extract_terminal_status(payload: dict[str, object]) -> str | None:
         """Return the task's terminal status if the envelope reports one.
 
         The envelope shape is ``{"data": {"status": "<value>", ...}}``

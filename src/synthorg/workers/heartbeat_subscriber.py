@@ -16,7 +16,7 @@ broker blip degrades to "no signal", never to task loss.
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -35,6 +35,12 @@ from synthorg.workers.heartbeat_models import (
 )
 
 if TYPE_CHECKING:
+    # nats-py is an optional dependency, so these stay guarded for
+    # clean import when it is absent; tests also drive the subscriber
+    # with duck-typed message and subscription fakes.
+    from nats.aio.msg import Msg
+    from nats.aio.subscription import Subscription
+
     # Concrete-faked collaborator: tests inject FakeJetStreamTaskQueue,
     # so a runtime import would make typeguard reject the fake.
     from synthorg.workers.claim import JetStreamTaskQueue
@@ -82,7 +88,7 @@ class WorkerHeartbeatSubscriber:
         self._running = False
         self._stop_event = asyncio.Event()  # lint-allow: loop-bound-init -- see Worker
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- ctx
-        self._subscription: Any = None
+        self._subscription: Subscription | None = None
         self._sweep_task: asyncio.Task[None] | None = None
 
     @property
@@ -144,7 +150,7 @@ class WorkerHeartbeatSubscriber:
             self._sweep_task = None
             logger.info(WORKERS_HEARTBEAT_SUBSCRIBER_STOPPED)
 
-    async def _on_message(self, msg: Any) -> None:
+    async def _on_message(self, msg: Msg) -> None:
         """Record one observed beat. Malformed payloads are dropped."""
         try:
             beat = WorkerHeartbeat.model_validate_json(

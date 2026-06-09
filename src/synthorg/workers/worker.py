@@ -18,7 +18,7 @@ follow-up PR).
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
-from typing import Any, Final
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -56,6 +56,12 @@ from synthorg.workers.heartbeat_models import (
     HEARTBEAT_SUBJECT_PREFIX,
     WorkerHeartbeat,
 )
+
+if TYPE_CHECKING:
+    # nats-py is an optional dependency, so the raw-message type stays
+    # guarded for clean import when it is absent; tests also drive the
+    # worker with duck-typed message fakes.
+    from nats.aio.msg import Msg
 
 logger = get_logger(__name__)
 
@@ -255,7 +261,7 @@ class Worker:
             return
         await self._finalize_claim(raw, status)
 
-    def _is_final_delivery(self, raw: Any) -> bool:
+    def _is_final_delivery(self, raw: Msg) -> bool:
         """Return ``True`` when this is the last allowed delivery.
 
         ``raw.metadata.num_delivered`` is the 1-based delivery count
@@ -268,7 +274,7 @@ class Worker:
         num_delivered = getattr(metadata, "num_delivered", 0)
         return int(num_delivered) >= self._queue_config.max_deliver
 
-    async def _dead_letter(self, claim: TaskClaim, raw: Any) -> None:
+    async def _dead_letter(self, claim: TaskClaim, raw: Msg) -> None:
         """Republish an exhausted claim to the DLQ, then terminal-ack.
 
         Publish-then-ack ordering: if ``publish_dead`` fails the claim
@@ -364,7 +370,7 @@ class Worker:
     async def _execute_claim(
         self,
         claim: TaskClaim,
-        raw: Any,
+        raw: Msg,
     ) -> TaskClaimStatus:
         """Invoke the executor with a concurrent ack-extension loop.
 
@@ -412,7 +418,7 @@ class Worker:
             )
             return TaskClaimStatus.RETRY
 
-    async def _extend_ack_loop(self, raw: Any) -> None:
+    async def _extend_ack_loop(self, raw: Msg) -> None:
         """Working-ack *raw* every ack-extend interval until cancelled.
 
         Sleep-first: the first extension lands one interval in. The
@@ -483,7 +489,7 @@ class Worker:
 
     async def _finalize_claim(
         self,
-        raw: Any,
+        raw: Msg,
         status: TaskClaimStatus,
     ) -> None:
         """Ack or nack the JetStream message based on outcome.

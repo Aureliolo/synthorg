@@ -18,7 +18,7 @@ connected). Stop order is reversed and best-effort so one slow
 component cannot strand the others.
 """
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
@@ -37,6 +37,11 @@ from synthorg.workers.heartbeat_subscriber import WorkerHeartbeatSubscriber
 from synthorg.workers.seen_claims_pruner import SeenClaimsPruner
 
 if TYPE_CHECKING:
+    # TaskEngine is named for signatures only: the engine package must
+    # not load when the distributed path is unused, and tests inject
+    # duck-typed engine fakes.
+    from synthorg.engine.task_engine import TaskEngine
+
     # Concrete-faked collaborator: tests inject duck-typed queue stubs,
     # so a runtime import would make typeguard reject the fakes.
     from synthorg.workers.claim import JetStreamTaskQueue
@@ -132,7 +137,7 @@ class DistributedBackendServices:
 def build_distributed_backend_services(
     *,
     task_queue: JetStreamTaskQueue,
-    engine: Any,
+    engine: TaskEngine,
     queue_config: QueueConfig,
     seen_claims: SeenClaimsRepository,
     clock: Clock | None = None,
