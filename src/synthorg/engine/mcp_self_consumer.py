@@ -14,7 +14,7 @@ default: ``McpSelfConsumerMode.DISABLED`` -> no provider, no MCP
 surface exposed to agents.
 """
 
-from typing import TYPE_CHECKING, Protocol, cast, override
+from typing import TYPE_CHECKING, Protocol, override
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.tool_constraints import ToolAccessLevel
@@ -24,8 +24,6 @@ from synthorg.security.config import McpSelfConsumerConfig, McpSelfConsumerMode
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 if TYPE_CHECKING:
-    from pydantic import JsonValue
-
     from synthorg.api.state import AppState
     from synthorg.meta.mcp.invoker import MCPToolInvoker
 
