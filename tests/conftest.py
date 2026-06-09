@@ -83,6 +83,7 @@ Cross-worker coordination rule (read before adding a new fixture):
 # of escaping as a raw NameError. It imports only ``typeguard`` (no
 # ``synthorg``), so registering it here pulls no synthorg module into the
 # interpreter ahead of instrumentation.
+import os as _os
 import warnings as _warnings
 
 import typeguard
@@ -91,7 +92,17 @@ from tests._typeguard_checker import register_policy_honoring_checker
 
 _warnings.filterwarnings("ignore", category=typeguard.InstrumentationWarning)
 register_policy_honoring_checker()
-typeguard.install_import_hook(["synthorg"])
+# The CodSpeed benchmark job (.github/workflows/codspeed.yml) sets
+# SYNTHORG_BENCH_NO_TYPEGUARD and overrides ``--typeguard-packages=`` so the
+# perf suite measures the real production code path. typeguard is a test-only
+# instrument that never runs in production; leaving it active makes CodSpeed
+# count its per-call argument/return type-check overhead (the recursive
+# ``Sequence[tuple[...]]`` argument check alone is ~30% of a tiny benchmark)
+# instead of the function under test, so every typeguard-hoist change would
+# surface as a phantom regression. Both the hook here and the redundant plugin
+# install must be off for the perf suite to see un-instrumented bytecode.
+if not _os.environ.get("SYNTHORG_BENCH_NO_TYPEGUARD"):
+    typeguard.install_import_hook(["synthorg"])
 
 import asyncio  # noqa: E402
 import contextlib  # noqa: E402

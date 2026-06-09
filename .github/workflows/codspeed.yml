@@ -104,11 +104,20 @@ jobs:
 
       - name: Run CodSpeed Python benchmarks
         uses: CodSpeedHQ/action@9d332c4d90b43981c3e55ae8e38e68709996240f # v4.17.0
+        env:
+          # Measure the real production code path, not test-harness overhead:
+          # typeguard is a test-only instrument (never runs in production). This
+          # flag makes tests/conftest.py skip its install_import_hook; the empty
+          # --typeguard-packages= below disables the redundant plugin install.
+          # Both are required -- either one left active re-instruments synthorg.
+          SYNTHORG_BENCH_NO_TYPEGUARD: "1"
         with:
           mode: simulation
           # -n0 overrides the project-wide -n=8 in pyproject.toml addopts;
           # pytest-codspeed must run serial for deterministic measurements.
-          run: uv run python -m pytest tests/benchmarks/ --codspeed -n0
+          # --typeguard-packages= overrides the addopts default so the typeguard
+          # plugin instruments nothing (see SYNTHORG_BENCH_NO_TYPEGUARD above).
+          run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
 
   # ── Shard 2: React dashboard benchmarks ──
   codspeed-web:
