@@ -29,6 +29,7 @@
         "AuthIdentityController",
         "AuthSessionsController",
         "UserController",
+        "UserOrgRolesController",
         "SetupStatusController",
         "SetupCompanyController",
         "SetupAgentsController",
@@ -407,6 +408,8 @@
         "ProjectController",
         "TaskController",
         "WorkflowController",
+        "WorkflowBlueprintController",
+        "WorkflowValidationController",
         "WorkflowVersionController",
         "WorkflowExecutionController",
         "SubworkflowController",
@@ -571,7 +574,8 @@
     },
     {
       "controllers": [
-        "AgentController",
+        "AgentCrudController",
+        "AgentObservabilityController",
         "AgentRosterController",
         "AgentIdentityVersionController",
         "ActivityController",
@@ -767,7 +771,9 @@
         "MetaController",
         "ConversationalController",
         "MetaAnalyticsController",
-        "AnalyticsController",
+        "AnalyticsOverviewController",
+        "AnalyticsTrendsController",
+        "AnalyticsForecastController",
         "ExperimentsController",
         "CustomRuleController",
         "LearningController"
@@ -852,7 +858,10 @@
     },
     {
       "controllers": [
-        "OntologyController"
+        "OntologyController",
+        "OntologyVersionsController",
+        "OntologyDriftController",
+        "OntologyAdminController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/ontology",
@@ -875,6 +884,8 @@
         "CompanyController",
         "CompanyVersionController",
         "DepartmentController",
+        "DepartmentHealthController",
+        "DepartmentCeremonyPolicyController",
         "TeamController",
         "RoleVersionController",
         "TemplatePackController"
@@ -1199,6 +1210,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-09T17:37:44.516553Z",
+  "generated_at": "2026-06-09T11:15:24.560402Z",
   "schema_version": 1
 }
