@@ -36,9 +36,11 @@ from synthorg.api.controllers.setup.company_helpers import (
 from synthorg.api.controllers.setup.company_helpers import (
     check_setup_not_complete as _check_setup_not_complete,
 )
+from synthorg.api.controllers.setup_agent_validation import (
+    validate_persisted_agents_against_providers,
+)
 from synthorg.api.controllers.setup_agents import (
     get_existing_agents,
-    validate_persisted_agents_against_providers,
 )
 from synthorg.api.controllers.setup_models import (
     SetupCompleteResponse,

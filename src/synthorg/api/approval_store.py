@@ -1,3 +1,4 @@
+# module-kind: service
 """Approval store with optional durable persistence.
 
 Provides async CRUD operations for ``ApprovalItem`` instances.

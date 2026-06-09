@@ -1,42 +1,30 @@
-"""Org-wide activity feed controller."""
+"""Data-source fetchers and timeline assembly for the activity feed.
+
+Pure helper module backing ``ActivityController``: the concurrent
+cost/tool/delegation fetchers (each with graceful per-source
+degradation), the performance-tracker and currency resolvers, the
+exception-group spine walkers used to surface a real cause from a
+``TaskGroup`` failure, and ``_build_timeline`` which merges every
+source into a single chronological timeline. The controller imports
+these as ``from synthorg.api.controllers.activities._shared import ...``.
+"""
 
 import asyncio
-from datetime import datetime, timedelta
-from enum import IntEnum
-from typing import TYPE_CHECKING, Annotated, Final
+from datetime import datetime
+from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from collections.abc import Awaitable
-
-    from synthorg.hr.models import AgentLifecycleEvent
-
-from litestar import Controller, Request, get
-from litestar.datastructures import State
-from litestar.params import QueryParameter
-
-from synthorg.api.dto import PaginatedResponse
-from synthorg.api.guards import has_write_role, require_read_access
-from synthorg.api.pagination import (
-    CursorLimit,
-    CursorParam,
-    cursor_secret_of,
-    paginate_cursor,
-)
 from synthorg.api.state import AppState
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.communication.state import CommunicationStateSlice
-from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.hr.activity import (
     ActivityEvent,
     merge_activity_timeline,
-    redact_cost_events,
 )
-from synthorg.hr.enums import ActivityEventType
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.state import performance_tracker_of
 from synthorg.observability import (
@@ -45,16 +33,18 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import (
-    API_ACTIVITY_FEED_QUERIED,
     API_REQUEST_ERROR,
 )
-from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.invocation_record import ToolInvocationRecord
 from synthorg.tools.state import ToolsStateSlice
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
+    from synthorg.hr.models import AgentLifecycleEvent
+
 logger = get_logger(__name__)
-_DEFAULT_LIMIT: Final[int] = 50
 
 
 # Degraded source names -- used in responses and tests.
@@ -97,14 +87,6 @@ def _leaf_exception_count(eg: BaseExceptionGroup[BaseException]) -> int:
         else:
             count += 1
     return count
-
-
-class ActivityWindowHours(IntEnum):
-    """Allowed time windows for the activity feed."""
-
-    DAY = 24
-    TWO_DAYS = 48
-    WEEK = 168
 
 
 def _extract_task_result[T](
@@ -342,114 +324,6 @@ async def _build_timeline(
         currency=currency,
     )
     return timeline, list(dedupe_preserving_order(degraded))
-
-
-class ActivityController(Controller):
-    """Org-wide activity feed (REST fallback for WebSocket)."""
-
-    path = "/activities"
-    tags = ("activities",)
-    guards = [require_read_access]  # noqa: RUF012
-
-    @get()
-    async def list_activities(  # noqa: PLR0913
-        self,
-        request: Request[object, object, State],
-        state: State,
-        cursor: CursorParam = None,
-        limit: CursorLimit = _DEFAULT_LIMIT,
-        event_type: Annotated[
-            ActivityEventType | None,
-            QueryParameter(
-                name="type",
-                description="Filter by event_type",
-            ),
-        ] = None,
-        agent_id: Annotated[
-            str | None,
-            QueryParameter(
-                max_length=128,
-                description="Filter by agent_id",
-            ),
-        ] = None,
-        last_n_hours: Annotated[
-            ActivityWindowHours,
-            QueryParameter(description="Time window (24, 48, or 168 hours)"),
-        ] = ActivityWindowHours.DAY,
-    ) -> PaginatedResponse[ActivityEvent]:
-        """Return a paginated org-wide activity feed.
-
-        Merges lifecycle events, task metrics, cost records, tool
-        invocations, and delegation records into a unified
-        chronological timeline, most recent first.  Non-lifecycle
-        data sources degrade gracefully when unavailable.
-
-        Args:
-            request: Incoming HTTP request (used for role-based redaction).
-            state: Application state.
-            cursor: Opaque pagination cursor from the previous page.
-            limit: Page size.
-            event_type: Filter by ``ActivityEventType`` (e.g. ``"hired"``).
-                Invalid values are rejected with 400.
-            agent_id: Filter events for a specific agent.
-            last_n_hours: Time window in hours (24, 48, or 168).
-
-        Returns:
-            Paginated activity events.  The ``degraded_sources`` field
-            lists any data sources that failed gracefully.
-        """
-        app_state: AppState = state.app_state
-        now = app_state.clock.now()
-        since = now - timedelta(hours=last_n_hours)
-        lifecycle_cap = app_state.api_bridge_config.max_lifecycle_events_per_query
-
-        lifecycle_events = await persistence_of(app_state).lifecycle_events.list_events(
-            agent_id=agent_id,
-            since=since,
-            limit=lifecycle_cap,
-        )
-
-        timeline, degraded = await _build_timeline(
-            app_state,
-            lifecycle_events,
-            agent_id,
-            since,
-            now,
-        )
-
-        if event_type is not None:
-            timeline = tuple(e for e in timeline if e.event_type == event_type)
-
-        # Redact cost details unless the user has a write role.
-        # Fail-closed: redact by default if auth identity is missing
-        # (e.g. misconfigured excluded path, test stub without scope["user"]).
-        auth_user = request.scope.get("user")
-        if not (
-            isinstance(auth_user, AuthenticatedUser) and has_write_role(auth_user.role)
-        ):
-            timeline = redact_cost_events(timeline)
-
-        page, meta = paginate_cursor(
-            timeline,
-            limit=limit,
-            cursor=cursor,
-            secret=cursor_secret_of(app_state),
-        )
-
-        logger.debug(
-            API_ACTIVITY_FEED_QUERIED,
-            returned_events=len(page),
-            has_more=meta.has_more,
-            type_filter=event_type,
-            agent_id_filter=agent_id,
-            last_n_hours=last_n_hours,
-        )
-
-        return PaginatedResponse(
-            data=page,
-            pagination=meta,
-            degraded_sources=tuple(degraded),
-        )
 
 
 # ── Data source fetchers (graceful degradation) ──────────────────

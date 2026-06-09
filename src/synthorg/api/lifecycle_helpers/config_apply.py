@@ -1,3 +1,4 @@
+# module-kind: orchestrator
 """Apply operator-tuned bridge config at startup.
 
 Snapshots ``ApiBridgeConfig`` onto ``AppState``, validates cross-

@@ -1,3 +1,4 @@
+# module-kind: service
 """Message bus → Litestar channels bridge.
 
 Subscribes to internal ``MessageBus`` channels and forwards

@@ -19,7 +19,7 @@ import structlog
 from structlog.testing import capture_logs
 from typeguard import suppress_type_checks
 
-from synthorg.api.controllers import activities
+from synthorg.api.controllers.activities import _shared as activities
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from tests._shared import make_app_state
 

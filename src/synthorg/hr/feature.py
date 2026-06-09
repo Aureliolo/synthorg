@@ -12,7 +12,7 @@ MCP domains mounted by the composition root.
 from collections.abc import Mapping
 
 from synthorg._core.features import FeatureManifest, FeatureModule
-from synthorg.api.controllers.activities import ActivityController
+from synthorg.api.controllers.activities.feed import ActivityController
 from synthorg.api.controllers.agent_identity_versions import (
     AgentIdentityVersionController,
 )

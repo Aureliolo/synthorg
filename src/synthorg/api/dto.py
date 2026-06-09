@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Request/response DTOs and envelope models.
 
 Response envelopes wrap all API responses in a consistent structure.

@@ -28,13 +28,15 @@ from synthorg.api.controllers.setup.company_helpers import (
 from synthorg.api.controllers.setup.company_helpers import (
     read_name_locales as _read_name_locales,
 )
+from synthorg.api.controllers.setup_agent_validation import (
+    validate_model_assignment,
+    validate_provider_and_model,
+)
 from synthorg.api.controllers.setup_agents import (
     agent_dict_to_summary,
     agents_to_summaries,
     build_agent_config,
     get_existing_agents,
-    validate_model_assignment,
-    validate_provider_and_model,
 )
 from synthorg.api.controllers.setup_models import (
     SetupAgentRequest,

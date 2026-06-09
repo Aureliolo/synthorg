@@ -9,7 +9,7 @@ from synthorg.api.auth.controllers.credentials import AuthCredentialsController
 from synthorg.api.auth.controllers.identity import AuthIdentityController
 from synthorg.api.auth.controllers.session import AuthSessionController
 from synthorg.api.auth.controllers.sessions_mgmt import AuthSessionsController
-from synthorg.api.controllers.activities import ActivityController
+from synthorg.api.controllers.activities.feed import ActivityController
 from synthorg.api.controllers.agent_identity_versions import (
     AgentIdentityVersionController,
 )
