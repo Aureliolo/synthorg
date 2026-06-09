@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.persistence.protocol import PersistenceBackend
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 
 logger = get_logger(__name__)
 
@@ -188,8 +188,6 @@ async def _retry_publish_and_transition(
             failed, so a cancelled retry never sticks in ``retrying``.
         Exception: Raised on the corresponding failure path.
     """
-    from datetime import UTC, datetime  # noqa: PLC0415
-
     await _transition_webhook_receipt_status(
         persistence,
         receipt,

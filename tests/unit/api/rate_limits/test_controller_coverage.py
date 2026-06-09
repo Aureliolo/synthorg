@@ -24,8 +24,13 @@ _AUTH_IDENTITY_FILE = _AUTH_CONTROLLERS_DIR / "identity.py"
 
 
 def _controller_files() -> list[Path]:
-    """Every ``*.py`` directly inside ``src/synthorg/api/controllers``."""
-    return sorted(p for p in _CONTROLLERS_DIR.glob("*.py") if p.name != "__init__.py")
+    """Every ``*.py`` under ``src/synthorg/api/controllers`` (recursive).
+
+    Descends into ADR-0008 controller sub-packages (e.g. ``events/``,
+    ``analytics/``) so the AST-wide coverage assertions below still scan
+    decomposed controllers, not just the flat top-level modules.
+    """
+    return sorted(p for p in _CONTROLLERS_DIR.rglob("*.py") if p.name != "__init__.py")
 
 
 def _auth_controller_files() -> list[Path]:
@@ -137,17 +142,17 @@ _GUARDED_ENDPOINTS: tuple[tuple[Path, str, str], ...] = (
         "artifacts.create",
     ),
     (
-        _CONTROLLERS_DIR / "events.py",
+        _CONTROLLERS_DIR / "events" / "stream.py",
         "resume_interrupt",
         "interrupts.resume",
     ),
     (
-        _CONTROLLERS_DIR / "events.py",
+        _CONTROLLERS_DIR / "events" / "interrupts.py",
         "resume",
         "interrupts.resume",
     ),
     (
-        _CONTROLLERS_DIR / "events.py",
+        _CONTROLLERS_DIR / "events" / "stream.py",
         "stream",
         "events.stream",
     ),
@@ -207,17 +212,17 @@ _GUARDED_ENDPOINTS: tuple[tuple[Path, str, str], ...] = (
         "admin.backup_delete",
     ),
     (
-        _CONTROLLERS_DIR / "analytics.py",
+        _CONTROLLERS_DIR / "analytics" / "overview.py",
         "get_overview",
         "analytics.overview",
     ),
     (
-        _CONTROLLERS_DIR / "analytics.py",
+        _CONTROLLERS_DIR / "analytics" / "trends.py",
         "get_trends",
         "analytics.trends",
     ),
     (
-        _CONTROLLERS_DIR / "analytics.py",
+        _CONTROLLERS_DIR / "analytics" / "forecast.py",
         "get_forecast",
         "analytics.forecast",
     ),

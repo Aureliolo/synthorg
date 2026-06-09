@@ -35,8 +35,6 @@ def _get_payload_adapter() -> TypeAdapter[object]:
     """
     global _PAYLOAD_ADAPTER  # noqa: PLW0603 -- module-level cache by design
     if _PAYLOAD_ADAPTER is None:
-        from pydantic import TypeAdapter  # noqa: PLC0415 -- lazy
-
         from synthorg.api.ws_payloads import WsEventPayload  # noqa: PLC0415 -- lazy
 
         _PAYLOAD_ADAPTER = TypeAdapter(WsEventPayload)
