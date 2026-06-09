@@ -60,6 +60,21 @@ class _FakeSandbox:
     async def cleanup(self) -> None:
         return None
 
+    def get_backend_type(self) -> NotBlankStr:
+        return NotBlankStr("subprocess")
+
+    async def release_owner(
+        self,
+        owner_id: Any,
+        *,
+        project_id: Any = None,
+        image_override: str | None = None,
+    ) -> None:
+        del owner_id, project_id, image_override
+
+    async def health_check(self) -> bool:
+        return True
+
 
 class _FakeScorecard:
     def __init__(self, baseline: int, candidate: int) -> None:
