@@ -256,6 +256,23 @@ class TestScoredPointsToEntries:
         assert len(entries) == 1
         assert entries[0].id == "mem-001"
 
+    def test_non_mapping_metadata_does_not_crash(self) -> None:
+        # Corrupt payload where "metadata" is a list rather than a
+        # mapping must not raise AttributeError; the point still maps
+        # using metadata defaults.
+        point = ScoredPoint(
+            id="mem-003",
+            version=0,
+            score=0.6,
+            payload={"data": "salvageable content", "metadata": ["unexpected"]},
+        )
+
+        entries = scored_points_to_entries([point], NotBlankStr("agent-1"))
+
+        assert len(entries) == 1
+        assert entries[0].id == "mem-003"
+        assert entries[0].content == "salvageable content"
+
 
 # -- Adapter integration ---------------------------------------------------
 

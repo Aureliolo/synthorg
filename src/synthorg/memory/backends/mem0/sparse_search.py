@@ -332,6 +332,8 @@ def _point_to_entry(point: ScoredPoint, agent_id: NotBlankStr) -> MemoryEntry:
     payload = point.payload or {}
     point_id_str = str(getattr(point, "id", "unknown"))
     metadata_raw = payload.get("metadata", {})
+    if not isinstance(metadata_raw, Mapping):
+        metadata_raw = {}
 
     category, confidence, source, tags = _extract_metadata(
         metadata_raw,

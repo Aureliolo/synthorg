@@ -522,7 +522,7 @@ class TestApplyPostFilters:
         entries = (_make_entry(memory_id="m1", created_at=past, expires_at=fixed_now),)
         query = MemoryQuery()
         with patch(
-            "synthorg.memory.backends.mem0.mappers.datetime",
+            "synthorg.memory.backends.mem0.mappers_filters.datetime",
         ) as mock_dt:
             mock_dt.now.return_value = fixed_now
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)  # noqa: DTZ001, PLW0108

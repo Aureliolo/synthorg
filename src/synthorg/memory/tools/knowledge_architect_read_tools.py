@@ -178,9 +178,9 @@ class KnowledgeArchitectReadTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        args = KnowledgeArchitectReadArgs.model_validate(arguments)
-        entry_id = args.entry_id
         try:
+            args = KnowledgeArchitectReadArgs.model_validate(arguments)
+            entry_id = args.entry_id
             query = OrgMemoryQuery(
                 context=entry_id,
                 limit=_READ_BY_ID_SCAN_LIMIT,
@@ -195,7 +195,7 @@ class KnowledgeArchitectReadTool(BaseTool):
             safe_error = safe_error_description(exc)
             logger.warning(
                 KNOWLEDGE_ARCHITECT_READ_FAILED,
-                entry_id=entry_id,
+                entry_id=arguments.get("entry_id"),
                 error_type=type(exc).__name__,
                 error=safe_error,
             )
@@ -254,7 +254,7 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        include_raw = bool(arguments.get("include_raw", False))
+        args = KnowledgeArchitectBrowseWikiArgs.model_validate(arguments)
         if self._wiki_exporter is None:
             return ToolExecutionResult(
                 content="Wiki export is not configured.",
@@ -276,7 +276,7 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
                 is_error=True,
             )
         lines = ["Wiki exported:"]
-        if include_raw:
+        if args.include_raw:
             lines.append(f"- Raw entries: {result.raw_count}")
         lines.append(f"- Compressed entries: {result.compressed_count}")
         lines.append(f"- Location: {result.export_root}")

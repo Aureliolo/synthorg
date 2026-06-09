@@ -9459,7 +9459,7 @@
     },
     {
       "kind": "code",
-      "loc": 461,
+      "loc": 463,
       "loc_cap": 500,
       "module": "src/synthorg/memory/backends/mem0/sparse_search.py",
       "owning_feature": "memory"

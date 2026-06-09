@@ -53,14 +53,14 @@ def resolve_publisher(item: Mapping[str, object]) -> str:
 def extract_publisher(raw: Mapping[str, object]) -> NotBlankStr | None:
     """Extract the publisher agent ID from a shared memory dict.
 
-    Returns ``None`` if the publisher key is missing, non-dict
+    Returns ``None`` if the publisher key is missing, non-mapping
     metadata, or the value is blank after coercion and stripping.
 
     Returns:
         The resulting ``NotBlankStr``, or ``None`` when unavailable.
     """
     metadata = raw.get("metadata", {})
-    if not metadata or not isinstance(metadata, dict):
+    if not metadata or not isinstance(metadata, Mapping):
         return None
     value = metadata.get(PUBLISHER_KEY)
     if value is None:

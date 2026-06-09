@@ -258,9 +258,9 @@ class KnowledgeArchitectDeleteTool(BaseTool):
                 content="Delete not available: fact store not configured",
                 is_error=True,
             )
-        args = KnowledgeArchitectDeleteArgs.model_validate(arguments)
-        entry_id = args.entry_id
         try:
+            args = KnowledgeArchitectDeleteArgs.model_validate(arguments)
+            entry_id = args.entry_id
             author = OrgFactAuthor(
                 agent_id=self._agent_id,
                 seniority=SeniorityLevel.SENIOR,
@@ -276,7 +276,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
             logger.warning(
                 KNOWLEDGE_ARCHITECT_DELETE_FAILED,
                 agent_id=self._agent_id,
-                entry_id=entry_id,
+                entry_id=arguments.get("entry_id"),
                 error_type=type(exc).__name__,
                 error=safe_error,
             )
