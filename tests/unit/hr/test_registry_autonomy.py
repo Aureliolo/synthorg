@@ -56,7 +56,7 @@ class _RecordingApprovalStore:
 
     async def delete(self, approval_id: NotBlankStr) -> bool:
         before = len(self.added)
-        self.added = [item for item in self.added if item.id != approval_id]
+        self.added = [item for item in self.added if str(item.id) != str(approval_id)]
         return len(self.added) < before
 
     async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
