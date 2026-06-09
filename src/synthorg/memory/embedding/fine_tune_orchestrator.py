@@ -1,3 +1,4 @@
+# module-kind: orchestrator
 """Fine-tuning pipeline orchestrator.
 
 Manages background execution of the five-stage pipeline with state

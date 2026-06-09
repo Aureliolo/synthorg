@@ -9661,9 +9661,9 @@
       "owning_feature": "memory"
     },
     {
-      "kind": "code",
+      "kind": "orchestrator",
       "loc": 483,
-      "loc_cap": 500,
+      "loc_cap": 600,
       "module": "src/synthorg/memory/embedding/fine_tune_orchestrator.py",
       "owning_feature": "memory"
     },

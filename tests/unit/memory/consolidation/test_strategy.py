@@ -144,7 +144,7 @@ class TestSimpleComposite:
         )
         await strategy.consolidate(long_entries, agent_id=_AGENT_ID)
 
-        store_call = cast(AsyncMock, backend.store).call_args
+        store_call = cast("AsyncMock", backend.store).call_args
         summary_content = store_call[0][1].content
         assert "..." in summary_content
 

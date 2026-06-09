@@ -757,10 +757,10 @@
       "tier": "code"
     },
     "src/synthorg/memory/embedding/fine_tune_orchestrator.py": {
-      "cap": 500,
+      "cap": 600,
       "loc": 483,
-      "ratio": 0.966,
-      "tier": "code"
+      "ratio": 0.805,
+      "tier": "orchestrator"
     },
     "src/synthorg/memory/retrieval/hierarchical/workers.py": {
       "cap": 500,
@@ -1513,6 +1513,10 @@
     "synthorg.memory.backends.mem0.adapter:Mem0MemoryBackend": {
       "lcom4": 7,
       "loc": 653
+    },
+    "synthorg.memory.embedding.fine_tune_orchestrator:FineTuneOrchestrator": {
+      "lcom4": 1,
+      "loc": 432
     },
     "synthorg.memory.service:MemoryService": {
       "lcom4": 5,
