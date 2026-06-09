@@ -9,11 +9,24 @@ import asyncio
 import builtins
 import copy
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final
+from typing import Final
+
+from pydantic import JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.errors import MemoryError as DomainMemoryError
+from synthorg.memory.filter import MemoryFilterStrategy
+from synthorg.memory.injection import TokenEstimator
+from synthorg.memory.models import MemoryEntry
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.memory.reformulation import (
+    QueryReformulator,
+    SufficiencyChecker,
+)
+from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.memory.tool_retriever_helpers import (
     _format_entries,
     _parse_search_args,
@@ -31,16 +44,6 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, ToolDefinition
-
-if TYPE_CHECKING:
-    from synthorg.core.memory_enums import MemoryCategory
-    from synthorg.memory.models import MemoryEntry
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.memory.reformulation import (
-        QueryReformulator,
-        SufficiencyChecker,
-    )
-    from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 logger = get_logger(__name__)
 
@@ -65,7 +68,7 @@ _INSTRUCTION = (
     "information. Use recall_memory to fetch a specific memory by ID."
 )
 
-SEARCH_MEMORY_SCHEMA: Final[MappingProxyType[str, Any]] = MappingProxyType(
+SEARCH_MEMORY_SCHEMA: Final[MappingProxyType[str, JsonValue]] = MappingProxyType(
     {
         "type": "object",
         "properties": {
@@ -95,7 +98,7 @@ SEARCH_MEMORY_SCHEMA: Final[MappingProxyType[str, Any]] = MappingProxyType(
 
 _MAX_MEMORY_ID_LEN: Final[int] = 256
 
-RECALL_MEMORY_SCHEMA: Final[MappingProxyType[str, Any]] = MappingProxyType(
+RECALL_MEMORY_SCHEMA: Final[MappingProxyType[str, JsonValue]] = MappingProxyType(
     {
         "type": "object",
         "properties": {
@@ -173,9 +176,9 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
         *,
         backend: MemoryBackend,
         config: MemoryRetrievalConfig,
-        shared_store: Any | None = None,
-        token_estimator: Any | None = None,  # noqa: ARG002
-        memory_filter: Any | None = None,  # noqa: ARG002
+        shared_store: SharedKnowledgeStore | None = None,
+        token_estimator: TokenEstimator | None = None,  # noqa: ARG002
+        memory_filter: MemoryFilterStrategy | None = None,  # noqa: ARG002
         reformulator: QueryReformulator | None = None,
         sufficiency_checker: SufficiencyChecker | None = None,
     ) -> None:
@@ -254,7 +257,7 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
     async def handle_tool_call(
         self,
         tool_name: str,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
         agent_id: str,
     ) -> str:
         """Dispatch a tool call to the appropriate handler.
@@ -286,7 +289,7 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
 
     async def _handle_search(
         self,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
         agent_id: str,
     ) -> str:
         """Handle a search_memory tool call.
@@ -392,7 +395,7 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
 
     async def _handle_recall(
         self,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
         agent_id: str,
     ) -> str:
         """Handle a recall_memory tool call.

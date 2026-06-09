@@ -28,9 +28,11 @@ import math
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from types import ModuleType
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.training_writer import split_and_write_pairs
 from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.observability import get_logger
@@ -45,9 +47,6 @@ from synthorg.observability.events.memory import (
 )
 
 if TYPE_CHECKING:
-    from types import ModuleType
-
-    from synthorg.memory.embedding.cancellation import CancellationToken
     from synthorg.memory.embedding.fine_tune_models import EvalMetrics
 
 logger = get_logger(__name__)
@@ -610,13 +609,13 @@ async def _select_hard_negatives(  # noqa: PLR0913
     return triples
 
 
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+def _read_jsonl(path: Path) -> list[dict[str, object]]:
     """Read a JSONL file into a list of dicts.
 
     Returns:
-        List of ``dict[str, Any]``.
+        List of ``dict[str, object]``.
     """
-    records: list[dict[str, Any]] = []
+    records: list[dict[str, object]] = []
     with path.open(encoding="utf-8") as f:
         for raw_line in f:
             stripped = raw_line.strip()
@@ -627,7 +626,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def _write_jsonl_any(
     path: Path,
-    records: list[dict[str, Any]],
+    records: list[dict[str, object]],
 ) -> None:
     """Write records as JSONL."""
     with path.open("w", encoding="utf-8") as f:
@@ -761,7 +760,7 @@ async def contrastive_fine_tune(  # noqa: PLR0913
 
 def _build_training_examples(
     st: ModuleType,
-    triples: list[dict[str, Any]],
+    triples: list[dict[str, object]],
 ) -> list[object]:
     """Build sentence-transformers InputExample from triples.
 

@@ -6,10 +6,9 @@ comments) plus the content hash of the whole source, which lets the
 service short-circuit a re-ingest when nothing changed.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.knowledge.models import KnowledgeSource, RawDocument
+from synthorg.knowledge.models import KnowledgeSource, RawDocument
 
 
 @runtime_checkable

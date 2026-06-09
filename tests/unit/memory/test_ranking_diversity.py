@@ -1,7 +1,6 @@
 """Tests for memory ranking diversity utilities.
 
-Split from ``test_ranking.py`` to keep each file under the 800-line
-convention.  Covers word-bigram Jaccard similarity and the MMR-based
+Covers word-bigram Jaccard similarity and the MMR-based
 ``apply_diversity_penalty`` re-ranker.
 """
 
@@ -11,11 +10,8 @@ import pytest
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
-from synthorg.memory.ranking import (
-    ScoredMemory,
-    apply_diversity_penalty,
-    bigram_jaccard,
-)
+from synthorg.memory.ranking import ScoredMemory
+from synthorg.memory.ranking_mmr import apply_diversity_penalty, bigram_jaccard
 
 
 def _make_entry(

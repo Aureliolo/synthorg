@@ -6,14 +6,14 @@ stays thin.
 """
 
 import math
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.backends.mem0.mappers_shared import _PREFIX
 from synthorg.memory.errors import (
     MemoryRetrievalError,
-    MemoryStoreError,
 )
 from synthorg.memory.models import (
     MemoryEntry,
@@ -23,29 +23,13 @@ from synthorg.memory.models import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
-    MEMORY_ENTRY_DELETE_FAILED,
-    MEMORY_ENTRY_RETRIEVAL_FAILED,
-    MEMORY_ENTRY_STORE_FAILED,
-    MEMORY_FILTER_APPLIED,
     MEMORY_MODEL_INVALID,
 )
 
 logger = get_logger(__name__)
 
-# Metadata prefix avoids collisions with Mem0's own keys.
-_PREFIX = "_synthorg_"
 
-# Metadata key to track who published a shared memory.
-# Public because the adapter module needs it for ownership tracking.
-PUBLISHER_KEY: str = f"{_PREFIX}publisher"
-
-# Reserved user_id for the shared knowledge namespace.
-# All shared memories are stored under this Mem0 ``user_id`` so they
-# are isolated from per-agent memories and can be queried centrally.
-SHARED_NAMESPACE: str = "__synthorg_shared__"
-
-
-def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, Any]:
+def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, object]:
     """Serialize a store request's metadata into Mem0-compatible dict.
 
     Args:
@@ -54,7 +38,7 @@ def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, Any]:
     Returns:
         Dict of prefixed metadata fields for Mem0.
     """
-    meta: dict[str, Any] = {
+    meta: dict[str, object] = {
         f"{_PREFIX}category": request.category.value,
         f"{_PREFIX}namespace": request.namespace,
         f"{_PREFIX}confidence": request.metadata.confidence,
@@ -68,7 +52,7 @@ def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, Any]:
     return meta
 
 
-def parse_mem0_datetime(raw: str | None) -> datetime | None:
+def parse_mem0_datetime(raw: object) -> datetime | None:
     """Parse a datetime string from Mem0 into an aware datetime.
 
     Mem0 stores timestamps as ISO 8601 strings.  Naive datetimes
@@ -82,9 +66,17 @@ def parse_mem0_datetime(raw: str | None) -> datetime | None:
     """
     if not raw:
         return None
+    if not isinstance(raw, str):
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="datetime",
+            raw_value=raw,
+            reason="malformed ISO 8601 datetime, returning None",
+        )
+        return None
     try:
         dt = datetime.fromisoformat(raw)
-    except ValueError, TypeError:
+    except ValueError:
         logger.warning(
             MEMORY_MODEL_INVALID,
             field="datetime",
@@ -97,7 +89,7 @@ def parse_mem0_datetime(raw: str | None) -> datetime | None:
     return dt
 
 
-def normalize_relevance_score(score: Any) -> float | None:
+def normalize_relevance_score(score: object) -> float | None:
     """Coerce and clamp a relevance score to [0.0, 1.0].
 
     Args:
@@ -109,6 +101,14 @@ def normalize_relevance_score(score: Any) -> float | None:
         cannot be converted to a float.
     """
     if score is None:
+        return None
+    if not isinstance(score, (int, float, str)):
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="score",
+            raw_value=score,
+            reason="non-numeric relevance score, returning None",
+        )
         return None
     try:
         numeric = float(score)
@@ -131,7 +131,7 @@ def normalize_relevance_score(score: Any) -> float | None:
     return max(0.0, min(1.0, numeric))
 
 
-def _coerce_confidence(raw_metadata: dict[str, Any]) -> float:
+def coerce_confidence(raw_metadata: Mapping[str, object]) -> float:
     """Extract and clamp confidence from Mem0 metadata.
 
     Returns a float in [0.0, 1.0].  Defaults to 1.0 when the key is
@@ -143,6 +143,14 @@ def _coerce_confidence(raw_metadata: dict[str, Any]) -> float:
         Result of type ``float``.
     """
     raw = raw_metadata.get(f"{_PREFIX}confidence", 1.0)
+    if not isinstance(raw, (int, float, str)):
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="confidence",
+            raw_value=raw,
+            reason="non-numeric confidence, defaulting to 0.5",
+        )
+        return 0.5
     try:
         value = float(raw)
     except ValueError, TypeError:
@@ -164,7 +172,7 @@ def _coerce_confidence(raw_metadata: dict[str, Any]) -> float:
     return max(0.0, min(1.0, value))
 
 
-def _coerce_source(raw_metadata: dict[str, Any]) -> str | None:
+def _coerce_source(raw_metadata: Mapping[str, object]) -> str | None:
     """Extract and sanitize the source field from Mem0 metadata.
 
     Returns ``None`` if the value is missing, non-string, or blank.
@@ -188,7 +196,7 @@ def _coerce_source(raw_metadata: dict[str, Any]) -> str | None:
 
 
 def _normalize_tags(
-    raw_metadata: dict[str, Any],
+    raw_metadata: Mapping[str, object],
 ) -> tuple[NotBlankStr, ...]:
     """Extract and normalize tags from Mem0 metadata.
 
@@ -224,7 +232,7 @@ def _normalize_tags(
 
 
 def parse_mem0_metadata(
-    raw_metadata: dict[str, Any] | None,
+    raw_metadata: object,
 ) -> tuple[MemoryCategory, MemoryMetadata, datetime | None]:
     """Deserialize Mem0 metadata dict into domain objects.
 
@@ -253,7 +261,7 @@ def parse_mem0_metadata(
     # Delegate to extract_category for consistent fallback logic.
     category = extract_category({"metadata": raw_metadata})
 
-    confidence = _coerce_confidence(raw_metadata)
+    confidence = coerce_confidence(raw_metadata)
     source = _coerce_source(raw_metadata)
     tags = _normalize_tags(raw_metadata)
     expires_at = parse_mem0_datetime(
@@ -269,7 +277,7 @@ def parse_mem0_metadata(
 
 
 def _resolve_created_at(
-    raw: dict[str, Any],
+    raw: Mapping[str, object],
     *,
     updated_at: datetime | None,
     expires_at: datetime | None,
@@ -311,7 +319,7 @@ def _resolve_created_at(
 
 
 def _extract_namespace(
-    raw_metadata: dict[str, Any] | None,
+    raw_metadata: object,
 ) -> NotBlankStr:
     """Extract the storage namespace from Mem0 metadata.
 
@@ -331,7 +339,7 @@ def _extract_namespace(
 
 
 def mem0_result_to_entry(
-    raw: dict[str, Any],
+    raw: Mapping[str, object],
     agent_id: NotBlankStr,
 ) -> MemoryEntry:
     """Convert a single Mem0 result dict to a ``MemoryEntry``.
@@ -405,7 +413,7 @@ def mem0_result_to_entry(
 def query_to_mem0_search_args(
     agent_id: NotBlankStr,
     query: MemoryQuery,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Convert a ``MemoryQuery`` to ``Memory.search()`` kwargs.
 
     Args:
@@ -442,7 +450,7 @@ def query_to_mem0_search_args(
 def query_to_mem0_getall_args(
     agent_id: NotBlankStr,
     query: MemoryQuery,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Convert a ``MemoryQuery`` to ``Memory.get_all()`` kwargs.
 
     Args:
@@ -458,146 +466,10 @@ def query_to_mem0_getall_args(
     }
 
 
-def _is_expired(entry: MemoryEntry, now: datetime) -> bool:
-    """Return True if *entry* has expired.
-
-    Returns:
-        ``True`` when the predicate holds, ``False`` otherwise.
-    """
-    return entry.expires_at is not None and entry.expires_at <= now
-
-
-def _matches_metadata(entry: MemoryEntry, query: MemoryQuery) -> bool:
-    """Check namespace, category, and tag filters.
-
-    Returns:
-        ``True`` if the operation succeeds, ``False`` otherwise.
-    """
-    if query.namespaces and entry.namespace not in query.namespaces:
-        return False
-    if query.categories and entry.category not in query.categories:
-        return False
-    return not (
-        query.tags and not all(tag in entry.metadata.tags for tag in query.tags)
-    )
-
-
-def _matches_filters(
-    entry: MemoryEntry,
-    query: MemoryQuery,
-    now: datetime,
-) -> bool:
-    """Return True if *entry* passes all query filters.
-
-    Returns:
-        ``True`` if the operation succeeds, ``False`` otherwise.
-    """
-    if _is_expired(entry, now):
-        return False
-    if not _matches_metadata(entry, query):
-        return False
-    if query.since is not None and entry.created_at < query.since:
-        return False
-    if query.until is not None and entry.created_at >= query.until:
-        return False
-    return not (
-        query.min_relevance > 0.0
-        and entry.relevance_score is not None
-        and entry.relevance_score < query.min_relevance
-    )
-
-
-def apply_post_filters(
-    entries: tuple[MemoryEntry, ...],
-    query: MemoryQuery,
-) -> tuple[MemoryEntry, ...]:
-    """Apply post-retrieval filters that Mem0 cannot handle natively.
-
-    Filters expired entries, then applies category, tags, time range,
-    and minimum relevance filters.  Entries with
-    ``relevance_score=None`` (e.g. from ``get_all``) are never
-    excluded by ``min_relevance`` -- the filter only applies when a
-    score is present.
-
-    Time range uses a half-open interval: entries with
-    ``created_at >= since`` and ``created_at < until`` are included.
-
-    Args:
-        entries: Raw entries from Mem0.
-        query: Original query with filter criteria.
-
-    Returns:
-        Filtered entries (order preserved).
-    """
-    now = datetime.now(UTC)
-    pre_count = len(entries)
-    result = [e for e in entries if _matches_filters(e, query, now)]
-    post_count = len(result)
-    if pre_count > 0 and post_count == 0:
-        logger.warning(
-            MEMORY_FILTER_APPLIED,
-            field="post_filter",
-            reason="all entries filtered out by post-filters",
-            pre_filter_count=pre_count,
-        )
-    elif pre_count != post_count:
-        logger.debug(
-            MEMORY_FILTER_APPLIED,
-            field="post_filter",
-            pre_filter_count=pre_count,
-            post_filter_count=post_count,
-            reason="entries filtered by post-filters",
-        )
-    return tuple(result)
-
-
 # ── Adapter helpers ──────────────────────────────────────────────────
 
 
-def validate_add_result(result: Any, *, context: str) -> NotBlankStr:
-    """Extract and validate the memory ID from a Mem0 ``add`` result.
-
-    Args:
-        result: Raw result from ``Memory.add()`` (expected dict).
-        context: Human-readable context for error messages
-            (e.g. ``"store"`` or ``"shared publish"``).
-
-    Returns:
-        The backend-assigned memory ID.
-
-    Raises:
-        MemoryStoreError: If the result is missing or malformed.
-    """
-    if not isinstance(result, dict):
-        msg = (
-            f"Mem0 add returned unexpected type for {context}: {type(result).__name__}"
-        )
-        logger.warning(MEMORY_ENTRY_STORE_FAILED, context=context, error=msg)
-        raise MemoryStoreError(msg)
-    results_list = result.get("results")
-    if not isinstance(results_list, list) or not results_list:
-        msg = f"Mem0 add returned no results for {context}"
-        logger.warning(MEMORY_ENTRY_STORE_FAILED, context=context, error=msg)
-        raise MemoryStoreError(msg)
-    first = results_list[0]
-    if not isinstance(first, dict):
-        msg = (
-            f"Mem0 add result item is not a dict for {context}: {type(first).__name__}"
-        )
-        logger.warning(MEMORY_ENTRY_STORE_FAILED, context=context, error=msg)
-        raise MemoryStoreError(msg)
-    raw_id = first.get("id")
-    if raw_id is None or not str(raw_id).strip():
-        msg = (
-            f"Mem0 add result has missing or blank 'id' for {context}: "
-            f"keys={list(first.keys())}"
-        )
-        logger.warning(MEMORY_ENTRY_STORE_FAILED, context=context, error=msg)
-        raise MemoryStoreError(msg)
-    return NotBlankStr(str(raw_id))
-
-
-def extract_category(raw: dict[str, Any]) -> MemoryCategory:
+def extract_category(raw: Mapping[str, object]) -> MemoryCategory:
     """Extract the memory category from a Mem0 result dict.
 
     Returns ``MemoryCategory.WORKING`` if the category is missing
@@ -634,145 +506,3 @@ def extract_category(raw: dict[str, Any]) -> MemoryCategory:
         reason="category key absent from metadata, defaulting to WORKING",
     )
     return MemoryCategory.WORKING
-
-
-def validate_mem0_result(
-    raw_result: Any,
-    *,
-    context: str,
-) -> list[dict[str, Any]]:
-    """Validate and extract the results list from a Mem0 response.
-
-    Args:
-        raw_result: Raw return value from a Mem0 SDK call.
-        context: Human-readable context for error messages.
-
-    Returns:
-        The ``"results"`` list from the response.
-
-    Raises:
-        MemoryRetrievalError: If the response is not a dict or
-            ``"results"`` is not a list.
-    """
-    if not isinstance(raw_result, dict):
-        msg = (
-            f"Unexpected Mem0 response type for {context}: "
-            f"{type(raw_result).__name__}, expected dict"
-        )
-        logger.warning(
-            MEMORY_ENTRY_RETRIEVAL_FAILED,
-            context=context,
-            error=msg,
-        )
-        raise MemoryRetrievalError(msg)
-    if "results" not in raw_result:
-        msg = (
-            f"Mem0 response missing 'results' key for {context}: "
-            f"keys={list(raw_result.keys())}"
-        )
-        logger.warning(
-            MEMORY_ENTRY_RETRIEVAL_FAILED,
-            context=context,
-            error=msg,
-        )
-        raise MemoryRetrievalError(msg)
-    raw_list = raw_result["results"]
-    if not isinstance(raw_list, list):
-        msg = (
-            f"Unexpected Mem0 results type for {context}: "
-            f"{type(raw_list).__name__}, expected list"
-        )
-        logger.warning(
-            MEMORY_ENTRY_RETRIEVAL_FAILED,
-            context=context,
-            error=msg,
-        )
-        raise MemoryRetrievalError(msg)
-    return raw_list
-
-
-def resolve_publisher(item: dict[str, Any]) -> str:
-    """Extract publisher from a shared memory, defaulting to namespace.
-
-    Logs at DEBUG when publisher metadata is missing.
-
-    Returns:
-        Result of type ``str``.
-    """
-    publisher = extract_publisher(item)
-    if publisher is None:
-        logger.debug(
-            MEMORY_MODEL_INVALID,
-            memory_id=item.get("id", "?"),
-            reason="no publisher metadata -- attributing to shared namespace",
-        )
-        return SHARED_NAMESPACE
-    return publisher
-
-
-def extract_publisher(raw: dict[str, Any]) -> NotBlankStr | None:
-    """Extract the publisher agent ID from a shared memory dict.
-
-    Returns ``None`` if the publisher key is missing, non-dict
-    metadata, or the value is blank after coercion and stripping.
-
-    Returns:
-        The resulting ``NotBlankStr``, or ``None`` when unavailable.
-    """
-    metadata = raw.get("metadata", {})
-    if not metadata or not isinstance(metadata, dict):
-        return None
-    value = metadata.get(PUBLISHER_KEY)
-    if value is None:
-        return None
-    coerced = str(value).strip()
-    return NotBlankStr(coerced) if coerced else None
-
-
-def check_delete_ownership(
-    existing: dict[str, Any],
-    agent_id: NotBlankStr,
-    memory_id: NotBlankStr,
-) -> None:
-    """Verify the caller owns this private memory entry.
-
-    Raises:
-        MemoryStoreError: If ownership cannot be verified
-            (missing user_id, shared namespace entry, or
-            ownership mismatch).
-    """
-    owner = existing.get("user_id")
-    if owner is None:
-        msg = (
-            f"Memory {memory_id} has no user_id -- ownership "
-            f"unverifiable, refusing deletion"
-        )
-        logger.warning(
-            MEMORY_ENTRY_DELETE_FAILED,
-            agent_id=agent_id,
-            memory_id=memory_id,
-            reason="unverifiable_ownership",
-        )
-        raise MemoryStoreError(msg)
-    if str(owner) == SHARED_NAMESPACE:
-        msg = (
-            f"Memory {memory_id} belongs to the shared namespace -- "
-            f"use retract() to remove shared entries"
-        )
-        logger.warning(
-            MEMORY_ENTRY_DELETE_FAILED,
-            agent_id=agent_id,
-            memory_id=memory_id,
-            reason="shared namespace entry",
-        )
-        raise MemoryStoreError(msg)
-    if str(owner) != str(agent_id):
-        msg = f"Agent {agent_id} cannot delete memory {memory_id} owned by {owner}"
-        logger.warning(
-            MEMORY_ENTRY_DELETE_FAILED,
-            agent_id=agent_id,
-            memory_id=memory_id,
-            reason="ownership mismatch",
-            actual_owner=str(owner),
-        )
-        raise MemoryStoreError(msg)

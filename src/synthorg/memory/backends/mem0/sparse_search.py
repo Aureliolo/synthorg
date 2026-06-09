@@ -12,15 +12,19 @@ sync Qdrant functions for use by ``Mem0MemoryBackend``.
 
 import asyncio
 import builtins
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.backends.mem0.mappers import coerce_confidence
 from synthorg.memory.errors import (
     MemoryRetrievalError,
 )
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
+from synthorg.memory.sparse import BM25Tokenizer, SparseVector
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_SYSTEM_ERROR,
@@ -36,7 +40,8 @@ from synthorg.observability.events.memory import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.memory.sparse import BM25Tokenizer, SparseVector
+    from qdrant_client import QdrantClient
+    from qdrant_client.models import ScoredPoint
 
 logger = get_logger(__name__)
 
@@ -45,7 +50,7 @@ _SYNTHORG_PREFIX = "_synthorg_"
 
 
 def ensure_sparse_field(
-    client: Any,
+    client: QdrantClient,
     collection_name: str,
     field_name: str = _DEFAULT_FIELD_NAME,
 ) -> None:
@@ -89,7 +94,7 @@ def ensure_sparse_field(
 
 
 def upsert_sparse_vector(
-    client: Any,
+    client: QdrantClient,
     collection_name: str,
     point_id: str,
     sparse_vector: SparseVector,
@@ -135,14 +140,14 @@ def upsert_sparse_vector(
 
 
 def search_sparse(  # noqa: PLR0913
-    client: Any,
+    client: QdrantClient,
     collection_name: str,
     query_vector: SparseVector,
     *,
     user_id_filter: str,
     limit: int,
     field_name: str = _DEFAULT_FIELD_NAME,
-) -> list[Any]:
+) -> list[ScoredPoint]:
     """Query the sparse vector field for BM25 matches.
 
     Args:
@@ -190,7 +195,7 @@ def search_sparse(  # noqa: PLR0913
 
 
 def scored_points_to_entries(
-    points: list[Any],
+    points: list[ScoredPoint],
     agent_id: NotBlankStr,
 ) -> tuple[MemoryEntry, ...]:
     """Map Qdrant ``ScoredPoint`` objects to ``MemoryEntry`` instances.
@@ -244,19 +249,17 @@ def scored_points_to_entries(
 
 
 def _extract_metadata(
-    metadata_raw: dict[str, Any],
+    metadata_raw: Mapping[str, object],
     point_id_str: str,
-) -> tuple[Any, float, str | None, tuple[NotBlankStr, ...]]:
+) -> tuple[MemoryCategory, float, str | None, tuple[NotBlankStr, ...]]:
     """Extract category, confidence, source, tags from payload metadata.
 
     Returns:
         Tuple of (category, confidence, source, tags).
     """
-    from synthorg.core.memory_enums import MemoryCategory  # noqa: PLC0415
-
     category_str = metadata_raw.get(f"{_SYNTHORG_PREFIX}category", "episodic")
     try:
-        category = MemoryCategory(category_str)
+        category = MemoryCategory(str(category_str))
     except ValueError:
         logger.info(
             MEMORY_SPARSE_POINT_FIELD_DEFAULTED,
@@ -267,8 +270,7 @@ def _extract_metadata(
         )
         category = MemoryCategory.EPISODIC
 
-    confidence_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}confidence")
-    confidence = confidence_raw if confidence_raw is not None else 1.0
+    confidence = coerce_confidence(metadata_raw)
     source_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}source")
     source = source_raw.strip() or None if isinstance(source_raw, str) else None
     tags_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}tags")
@@ -283,7 +285,7 @@ def _extract_metadata(
 
 
 def _parse_created_at(
-    payload: dict[str, Any],
+    payload: Mapping[str, object],
     point_id_str: str,
 ) -> datetime:
     """Parse created_at from payload with fallback to epoch sentinel.
@@ -318,7 +320,7 @@ def _parse_created_at(
     return parsed
 
 
-def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
+def _point_to_entry(point: ScoredPoint, agent_id: NotBlankStr) -> MemoryEntry:
     """Convert a single Qdrant point to a MemoryEntry.
 
     Returns:
@@ -327,9 +329,11 @@ def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
     Raises:
         ValueError: If the point has no usable content.
     """
-    payload = point.payload
+    payload = point.payload or {}
     point_id_str = str(getattr(point, "id", "unknown"))
     metadata_raw = payload.get("metadata", {})
+    if not isinstance(metadata_raw, Mapping):
+        metadata_raw = {}
 
     category, confidence, source, tags = _extract_metadata(
         metadata_raw,
@@ -381,7 +385,7 @@ def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
 
 
 async def async_init_sparse_field(
-    qdrant_client: Any,
+    qdrant_client: QdrantClient,
     collection_name: str,
 ) -> None:
     """Initialize sparse vector field (async wrapper).
@@ -415,7 +419,7 @@ async def async_init_sparse_field(
 
 async def async_try_sparse_upsert(  # noqa: PLR0913
     encoder: BM25Tokenizer,
-    qdrant_client: Any,
+    qdrant_client: QdrantClient,
     collection_name: str,
     agent_id: NotBlankStr,
     memory_id: NotBlankStr,
@@ -465,7 +469,7 @@ async def async_try_sparse_upsert(  # noqa: PLR0913
 
 async def async_retrieve_sparse(
     encoder: BM25Tokenizer,
-    qdrant_client: Any,
+    qdrant_client: QdrantClient,
     collection_name: str,
     agent_id: NotBlankStr,
     query: MemoryQuery,
@@ -504,7 +508,7 @@ async def async_retrieve_sparse(
             user_id_filter=str(agent_id),
             limit=query.limit,
         )
-        from synthorg.memory.backends.mem0.mappers import (  # noqa: PLC0415
+        from synthorg.memory.backends.mem0.mappers_filters import (  # noqa: PLC0415
             apply_post_filters,
         )
 

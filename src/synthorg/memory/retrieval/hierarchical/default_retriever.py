@@ -5,16 +5,22 @@ Implements the 4-phase pipeline: Route -> Execute -> Merge -> Retry.
 
 import asyncio
 import builtins
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.memory.retrieval.hierarchical.supervisor import (
+    SupervisorRouter,
+)
 from synthorg.memory.retrieval.models import (
     FinalRetrievalResult,
     RetrievalCandidate,
+    RetrievalQuery,
     RetrievalResult,
 )
+from synthorg.memory.retrieval.protocol import RetrievalWorker
+from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_HIERARCHICAL_COMPLETE,
@@ -22,16 +28,6 @@ from synthorg.observability.events.memory import (
     MEMORY_HIERARCHICAL_RETRY,
     MEMORY_HIERARCHICAL_WORKER_FAILED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.memory.retrieval.hierarchical.supervisor import (
-        SupervisorRouter,
-    )
-    from synthorg.memory.retrieval.models import RetrievalQuery
-    from synthorg.memory.retrieval.protocol import RetrievalWorker
-    from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 logger = get_logger(__name__)
 

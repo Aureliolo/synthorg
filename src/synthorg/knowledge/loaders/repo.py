@@ -10,21 +10,18 @@ corpus stays meaningful and chunk ids stay stable across re-ingests.
 import asyncio
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.enums import ContentKind
 from synthorg.knowledge.errors import KnowledgeSourceUnavailableError
-from synthorg.knowledge.models import CodeLocator, RawDocument, RawUnit
+from synthorg.knowledge.models import CodeLocator, KnowledgeSource, RawDocument, RawUnit
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_SOURCE_FILE_SKIPPED,
     KNOWLEDGE_SOURCE_LOADED,
 )
 from synthorg.versioning.hashing import compute_text_hash
-
-if TYPE_CHECKING:
-    from synthorg.knowledge.models import KnowledgeSource
 
 logger = get_logger(__name__)
 

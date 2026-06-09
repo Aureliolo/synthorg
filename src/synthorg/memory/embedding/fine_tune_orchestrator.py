@@ -1,3 +1,4 @@
+# module-kind: orchestrator
 """Fine-tuning pipeline orchestrator.
 
 Manages background execution of the five-stage pipeline with state
@@ -6,10 +7,10 @@ of failed runs from the last completed stage.
 """
 
 import asyncio
-import json
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final, Protocol
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -17,11 +18,20 @@ from synthorg.core.domain_errors import FineTuneRunActiveError
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
+    FineTuneRequest,
     FineTuneRun,
     FineTuneStatus,
 )
 from synthorg.memory.embedding.fine_tune_pipeline import run_fine_tune_stages
-from synthorg.memory.embedding.fine_tune_run_helpers import build_config
+from synthorg.memory.embedding.fine_tune_run_helpers import (
+    build_config,
+    to_failed,
+)
+from synthorg.memory.embedding.fine_tune_ws import (
+    ChannelsPlugin,
+    publish_ws_event,
+)
+from synthorg.memory.embedding.training_sources import TrainingDataSource
 from synthorg.memory.errors import FineTuneCancelledError
 from synthorg.observability import (
     get_logger,
@@ -35,18 +45,11 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_PROGRESS,
     MEMORY_FINE_TUNE_STAGE_ENTERED,
     MEMORY_FINE_TUNE_STARTED,
-    MEMORY_FINE_TUNE_WS_EMIT_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.embedding.fine_tune_models import (
-        FineTuneRequest,
-    )
-    from synthorg.memory.embedding.training_sources import TrainingDataSource
-    from synthorg.persistence.fine_tune_protocol import (
-        FineTuneCheckpointRepository,
-        FineTuneRunRepository,
-    )
+from synthorg.persistence.fine_tune_protocol import (
+    FineTuneCheckpointRepository,
+    FineTuneRunRepository,
+)
 
 logger = get_logger(__name__)
 
@@ -55,14 +58,6 @@ _PROGRESS_THROTTLE_SEC: Final[float] = 1.0
 # How long ``cancel`` waits for the in-flight pipeline task to stop before
 # returning anyway (recovery marks any still-active run FAILED on next boot).
 _CANCEL_TIMEOUT_SEC: Final[float] = 30.0
-
-
-class ChannelsPlugin(Protocol):
-    """Protocol for WebSocket channel publishing."""
-
-    def publish(self, data: str, *, channels: list[str]) -> None:
-        """Publish data to the given channels."""
-        ...
 
 
 class FineTuneOrchestrator:
@@ -327,16 +322,11 @@ class FineTuneOrchestrator:
                 # mid-pipeline does not regress ``stages_completed`` or
                 # the current stage if a later stage already updated
                 # the in-memory snapshot.
-                now = datetime.now(UTC)
                 base = self._current_run or run
-                self._current_run = base.model_copy(
-                    update={
-                        "stage": FineTuneStage.FAILED,
-                        "error": "cancelled by user",
-                        "progress": None,
-                        "updated_at": now,
-                        "completed_at": now,
-                    },
+                self._current_run = to_failed(
+                    base,
+                    "cancelled by user",
+                    now=datetime.now(UTC),
                 )
                 logger.warning(
                     MEMORY_FINE_TUNE_FAILED,
@@ -383,15 +373,7 @@ class FineTuneOrchestrator:
                     underlying_error=safe_error,
                 )
                 base = self._current_run or run
-                self._current_run = base.model_copy(
-                    update={
-                        "stage": FineTuneStage.FAILED,
-                        "progress": None,
-                        "error": safe_error,
-                        "updated_at": now,
-                        "completed_at": now,
-                    },
-                )
+                self._current_run = to_failed(base, safe_error, now=now)
             self._schedule_ws(
                 "memory.fine_tune.failed",
                 self._current_run or run,
@@ -492,16 +474,7 @@ class FineTuneOrchestrator:
         error: str,
     ) -> None:
         """Mark the run as failed."""
-        now = datetime.now(UTC)
-        run = run.model_copy(
-            update={
-                "stage": FineTuneStage.FAILED,
-                "progress": None,
-                "error": error,
-                "updated_at": now,
-                "completed_at": now,
-            },
-        )
+        run = to_failed(run, error, now=datetime.now(UTC))
         await self._run_repo.save(run)
         self._current_run = run
 
@@ -510,7 +483,7 @@ class FineTuneOrchestrator:
     def _make_progress_cb(
         self,
         run: FineTuneRun,
-    ) -> Any:
+    ) -> Callable[[float], None]:
         """Create a throttled progress callback for a stage.
 
         The callback is safe to call from worker threads: it schedules
@@ -518,7 +491,7 @@ class FineTuneOrchestrator:
         ``call_soon_threadsafe``.
 
         Returns:
-            Result of type ``Any``.
+            A throttled callback accepting a 0.0-1.0 progress fraction.
         """
         run_id = run.id
         run_stage = run.stage
@@ -597,33 +570,7 @@ class FineTuneOrchestrator:
         run: FineTuneRun,
     ) -> None:
         """Best-effort emit a WebSocket event."""
-        if self._channels_plugin is None:
-            return
-        try:
-            payload = json.dumps(
-                {
-                    "event_type": event_type,
-                    "channel": "system",
-                    "payload": {
-                        "run_id": run.id,
-                        "stage": run.stage.value,
-                        "progress": run.progress,
-                    },
-                },
-            )
-            self._channels_plugin.publish(
-                payload,
-                channels=["system"],
-            )
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                MEMORY_FINE_TUNE_WS_EMIT_FAILED,
-                event_type=event_type,
-                run_id=run.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+        publish_ws_event(self._channels_plugin, event_type, run)
 
     @staticmethod
     def _on_task_done(task: asyncio.Task[None]) -> None:

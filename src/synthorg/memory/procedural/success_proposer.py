@@ -8,13 +8,14 @@ but optimized for success outcomes with a lighter system prompt.
 
 import json
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     untrusted_content_directive,
@@ -65,7 +66,7 @@ _JSON_FENCE_PATTERN = re.compile(
 )
 
 
-def _extract_json(text: str) -> dict[str, Any] | None:
+def _extract_json(text: str) -> dict[str, object] | None:
     """Extract a JSON object from LLM response text.
 
     Handles plain JSON and markdown-fenced JSON blocks.
@@ -97,7 +98,7 @@ def _extract_json(text: str) -> dict[str, Any] | None:
     return parsed
 
 
-def _build_user_message(execution_result: Any) -> str:
+def _build_user_message(execution_result: ExecutionResult) -> str:
     """Format execution context into a user message for the proposer LLM.
 
     The execution context (turn count, tool names, outcome) is wrapped
@@ -110,7 +111,7 @@ def _build_user_message(execution_result: Any) -> str:
         Result of type ``str``.
     """
     # Collect all unique tools used across all turns
-    all_tools = set()
+    all_tools: set[str] = set()
     for turn in execution_result.turns:
         all_tools.update(turn.tool_calls_made)
     tools_str = ", ".join(sorted(all_tools)) if all_tools else "none"
@@ -159,7 +160,7 @@ class SuccessMemoryProposer:
 
     async def propose(
         self,
-        execution_result: Any,
+        execution_result: ExecutionResult,
     ) -> ProceduralMemoryProposal | None:
         """Analyse success and propose a procedural memory entry.
 
@@ -246,7 +247,7 @@ class SuccessMemoryProposer:
             return None
 
         try:
-            proposal = ProceduralMemoryProposal(**data)
+            proposal = ProceduralMemoryProposal.model_validate(data)
         except ValidationError as exc:
             logger.warning(
                 PROCEDURAL_MEMORY_SKIPPED,

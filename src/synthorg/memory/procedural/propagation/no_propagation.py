@@ -3,15 +3,11 @@
 Memory entries are not shared across agents.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.memory.models import MemoryEntry
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.memory.models import MemoryEntry
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 

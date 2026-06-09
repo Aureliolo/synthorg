@@ -7,22 +7,17 @@ dispatches each loaded unit to its chunker and assembles the pieces into
 freshness diffing stays stable across re-ingests.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.knowledge.chunking.code import CodeChunker
 from synthorg.knowledge.chunking.document import OffsetChunker
+from synthorg.knowledge.chunking.protocol import (
+    ChunkPiece,
+    StructureAwareChunker,
+)
+from synthorg.knowledge.config import KnowledgeConfig
 from synthorg.knowledge.enums import ContentKind
 from synthorg.knowledge.freshness import make_chunk_id
-from synthorg.knowledge.models import KnowledgeChunk
+from synthorg.knowledge.models import KnowledgeChunk, RawDocument
 from synthorg.versioning.hashing import compute_text_hash
-
-if TYPE_CHECKING:
-    from synthorg.knowledge.chunking.protocol import (
-        ChunkPiece,
-        StructureAwareChunker,
-    )
-    from synthorg.knowledge.config import KnowledgeConfig
-    from synthorg.knowledge.models import RawDocument
 
 
 def build_chunker(

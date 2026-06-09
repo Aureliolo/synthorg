@@ -7,10 +7,13 @@ protocol.
 """
 
 import re
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.text_similarity import tokenize_words, word_overlap
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.models import MemoryEntry, MemoryQuery, MemoryStoreRequest
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.ontology import (
     ONTOLOGY_MEMORY_DRIFT_WARNED,
@@ -19,14 +22,8 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_MEMORY_MANIFEST_FAILED,
     ONTOLOGY_MEMORY_TAGGED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.memory_enums import MemoryCategory
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.models import MemoryEntry, MemoryQuery, MemoryStoreRequest
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.ontology.config import OntologyMemoryConfig
-    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
+from synthorg.ontology.config import OntologyMemoryConfig
+from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 
@@ -119,7 +116,8 @@ class OntologyAwareMemoryBackend:
                 found = self._detect_entities(request.content)
             else:
                 found = ()
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ONTOLOGY_MEMORY_ENRICHMENT_FAILED,
                 agent_id=agent_id,
@@ -176,7 +174,8 @@ class OntologyAwareMemoryBackend:
 
         try:
             manifest = await self._ontology.get_version_manifest()
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ONTOLOGY_MEMORY_MANIFEST_FAILED,
                 agent_id=agent_id,

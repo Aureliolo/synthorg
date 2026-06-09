@@ -627,10 +627,6 @@ module = "synthorg.integrations.*"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
-module = "synthorg.memory.*"
-disallow_any_explicit = false
-
-[[tool.mypy.overrides]]
 module = "synthorg.meta.*"
 disallow_any_explicit = false
 

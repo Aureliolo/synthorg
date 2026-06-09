@@ -11,6 +11,7 @@ from synthorg.memory.tools import (
     KnowledgeArchitectBrowseWikiTool,
     KnowledgeArchitectDeleteTool,
     KnowledgeArchitectGuideTool,
+    KnowledgeArchitectReadTool,
     KnowledgeArchitectSearchTool,
     KnowledgeArchitectWriteTool,
 )
@@ -190,6 +191,42 @@ class TestKnowledgeArchitectWriteTool:
         assert result.is_error
 
 
+class TestKnowledgeArchitectReadTool:
+    """Tests for memory.read tool."""
+
+    @pytest.mark.unit
+    async def test_read_entry_not_found(self) -> None:
+        backend = _mock_org_backend()
+        tool = KnowledgeArchitectReadTool(org_backend=backend)
+        result = await tool.execute(
+            arguments={"entry_id": "fact-missing"},
+        )
+        assert result.is_error
+        assert "not found" in result.content.lower()
+
+    @pytest.mark.unit
+    async def test_read_malformed_arguments_returns_error(self) -> None:
+        backend = _mock_org_backend()
+        tool = KnowledgeArchitectReadTool(org_backend=backend)
+        result = await tool.execute(arguments={})
+        assert result.is_error
+        assert "failed" in result.content.lower()
+        backend.query.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_read_on_backend_error(self) -> None:
+        backend = _mock_org_backend()
+        backend.query = AsyncMock(
+            side_effect=RuntimeError("backend down"),
+        )
+        tool = KnowledgeArchitectReadTool(org_backend=backend)
+        result = await tool.execute(
+            arguments={"entry_id": "fact-1"},
+        )
+        assert result.is_error
+        assert "failed" in result.content.lower()
+
+
 class TestKnowledgeArchitectDeleteTool:
     """Tests for memory.delete tool with autonomy gating."""
 
@@ -230,6 +267,23 @@ class TestKnowledgeArchitectDeleteTool:
         assert not result.is_error
         assert "fact-1" in result.content
         fact_store.delete.assert_awaited_once()
+
+    @pytest.mark.unit
+    async def test_delete_malformed_arguments_returns_error(self) -> None:
+        backend = _mock_org_backend()
+        fact_store = mock_of[OrgFactRepository](
+            delete=AsyncMock(return_value=True),
+        )
+        tool = KnowledgeArchitectDeleteTool(
+            org_backend=backend,
+            fact_store=fact_store,
+            agent_id="agent-1",
+            autonomy_level=AutonomyLevel.SUPERVISED,
+        )
+        result = await tool.execute(arguments={})
+        assert result.is_error
+        assert "failed" in result.content.lower()
+        fact_store.delete.assert_not_awaited()
 
 
 class TestKnowledgeArchitectBrowseWikiTool:

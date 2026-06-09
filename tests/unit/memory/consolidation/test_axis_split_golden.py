@@ -2,10 +2,9 @@
 
 Pins the exact ``ConsolidationResult`` and stored-summary content for
 the Simple / DualMode / LLM composites on fixed inputs, against
-EXPLICIT expected values (derived from the pre-split monolith
-behaviour and refactor-stable components like ``ExtractivePreserver``).
-These were validated to match the monoliths before the monoliths were
-deleted; they now guard the composites.
+EXPLICIT expected values (refactor-stable components like
+``ExtractivePreserver`` produce them deterministically). They guard the
+composites against silent output regressions.
 
 The LLM truncation case pins the single point where the selector/op
 split could silently regress: entries dropped by the
@@ -14,15 +13,18 @@ in the backend for the next pass).
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import override
 
 import pytest
 
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
 from synthorg.memory.consolidation.composite import (
     CompositeConsolidationStrategy,
 )
 from synthorg.memory.consolidation.config import LLMConsolidationConfig
-from synthorg.memory.consolidation.density import ContentDensity
+from synthorg.memory.consolidation.density import ContentDensity, DensityClassifier
 from synthorg.memory.consolidation.extractive import ExtractivePreserver
 from synthorg.memory.consolidation.llm_op import LLMSynthesisOp
 from synthorg.memory.consolidation.models import ArchivalMode
@@ -60,19 +62,48 @@ class _RecordingBackend:
         self.deleted: list[str] = []
         self._n = 0
 
-    async def store(self, agent_id: str, request: MemoryStoreRequest) -> str:
-        self._n += 1
-        self.stored.append((agent_id, request))
-        return f"sum-{self._n}"
+    async def connect(self) -> None:
+        return None
 
-    async def delete(self, agent_id: str, entry_id: str) -> bool:
-        self.deleted.append(entry_id)
+    async def disconnect(self) -> None:
+        return None
+
+    async def health_check(self) -> bool:
         return True
 
+    @property
+    def is_connected(self) -> bool:
+        return True
+
+    @property
+    def backend_name(self) -> NotBlankStr:
+        return NotBlankStr("recording")
+
+    async def store(
+        self, agent_id: NotBlankStr, request: MemoryStoreRequest
+    ) -> NotBlankStr:
+        self._n += 1
+        self.stored.append((agent_id, request))
+        return NotBlankStr(f"sum-{self._n}")
+
     async def retrieve(
-        self, agent_id: str, query: MemoryQuery
+        self, agent_id: NotBlankStr, query: MemoryQuery
     ) -> tuple[MemoryEntry, ...]:
         return ()
+
+    async def get(
+        self, agent_id: NotBlankStr, memory_id: NotBlankStr
+    ) -> MemoryEntry | None:
+        return None
+
+    async def delete(self, agent_id: NotBlankStr, memory_id: NotBlankStr) -> bool:
+        self.deleted.append(memory_id)
+        return True
+
+    async def count(
+        self, agent_id: NotBlankStr, *, category: MemoryCategory | None = None
+    ) -> int:
+        return len(self.stored)
 
 
 def _entry(
@@ -132,7 +163,7 @@ async def test_simple_golden() -> None:
     )
     strategy = CompositeConsolidationStrategy(
         selector=HighestRelevanceSelector(group_threshold=3),
-        op=ConcatenationOp(backend=backend),  # type: ignore[arg-type]
+        op=ConcatenationOp(backend=backend),
     )
 
     result = await strategy.consolidate(entries, agent_id=_AGENT)
@@ -160,14 +191,21 @@ async def test_dual_mode_golden() -> None:
     backend = _RecordingBackend()
     extractor = ExtractivePreserver()
 
-    class _AllDenseClassifier:
+    class _AllDenseClassifier(DensityClassifier):
+        @override
         def classify_batch(
             self, entries: tuple[MemoryEntry, ...]
         ) -> tuple[tuple[MemoryEntry, ContentDensity], ...]:
             return tuple((e, ContentDensity.DENSE) for e in entries)
 
-    class _UnusedSummarizer:
-        async def summarize(self, content: str, *, agent_id: str) -> str:
+    class _UnusedSummarizer(AbstractiveSummarizer):
+        def __init__(self) -> None:
+            """Skip the real provider/model wiring; this double never runs."""
+
+        @override
+        async def summarize(
+            self, content: str, *, agent_id: NotBlankStr | None = None
+        ) -> str:
             msg = "abstractive path must not run for dense content"
             raise AssertionError(msg)
 
@@ -178,10 +216,10 @@ async def test_dual_mode_golden() -> None:
     strategy = CompositeConsolidationStrategy(
         selector=HighestRelevanceSelector(group_threshold=3),
         op=DensityRoutingOp(
-            backend=backend,  # type: ignore[arg-type]
-            classifier=_AllDenseClassifier(),  # type: ignore[arg-type]
+            backend=backend,
+            classifier=_AllDenseClassifier(),
             extractor=extractor,
-            summarizer=_UnusedSummarizer(),  # type: ignore[arg-type]
+            summarizer=_UnusedSummarizer(),
         ),
     )
 
@@ -215,8 +253,8 @@ async def test_llm_golden() -> None:
     strategy = CompositeConsolidationStrategy(
         selector=HighestRelevanceSelector(group_threshold=3),
         op=LLMSynthesisOp(
-            backend=backend,  # type: ignore[arg-type]
-            provider=provider,  # type: ignore[arg-type]
+            backend=backend,
+            provider=provider,
             model="test-model",
             config=config,
         ),
@@ -260,8 +298,8 @@ async def test_llm_truncation_keeps_dropped_entries() -> None:
     strategy = CompositeConsolidationStrategy(
         selector=HighestRelevanceSelector(group_threshold=3),
         op=LLMSynthesisOp(
-            backend=backend,  # type: ignore[arg-type]
-            provider=provider,  # type: ignore[arg-type]
+            backend=backend,
+            provider=provider,
             model="test-model",
             config=config,
         ),

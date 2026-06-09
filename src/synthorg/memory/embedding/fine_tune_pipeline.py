@@ -15,7 +15,6 @@ import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING
 
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import (
@@ -35,16 +34,14 @@ from synthorg.memory.embedding.fine_tune_run_helpers import (
     generate_run_training_data,
 )
 from synthorg.memory.embedding.promotion import should_promote_checkpoint
+from synthorg.memory.embedding.training_sources import TrainingDataSource
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_CHECKPOINT_REJECTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.embedding.training_sources import TrainingDataSource
-    from synthorg.persistence.fine_tune_protocol import (
-        FineTuneCheckpointRepository,
-    )
+from synthorg.persistence.fine_tune_protocol import (
+    FineTuneCheckpointRepository,
+)
 
 logger = get_logger(__name__)
 

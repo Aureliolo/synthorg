@@ -17,6 +17,8 @@ injection system into the standard tool dispatch pipeline
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.self_editing import SelfEditingMemoryStrategy
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from synthorg.memory.tools._shared import _is_error_response
@@ -25,12 +27,14 @@ from synthorg.memory.tools.archival import (
     ArchivalMemoryWriteTool,
 )
 from synthorg.memory.tools.core import CoreMemoryReadTool, CoreMemoryWriteTool
-from synthorg.memory.tools.knowledge_architect import (
+from synthorg.memory.tools.knowledge_architect_read_tools import (
     KnowledgeArchitectBrowseWikiTool,
-    KnowledgeArchitectDeleteTool,
     KnowledgeArchitectGuideTool,
     KnowledgeArchitectReadTool,
     KnowledgeArchitectSearchTool,
+)
+from synthorg.memory.tools.knowledge_architect_write_tools import (
+    KnowledgeArchitectDeleteTool,
     KnowledgeArchitectWriteTool,
 )
 from synthorg.memory.tools.recall import RecallMemoryReadTool, RecallMemoryWriteTool
@@ -42,12 +46,8 @@ from synthorg.observability.events.tool import (
     TOOL_MEMORY_AUGMENTATION_FAILED,
     TOOL_REGISTRY_BUILT,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.injection import MemoryInjectionStrategy
-    from synthorg.tools.base import BaseTool
-    from synthorg.tools.registry import ToolRegistry
+from synthorg.tools.base import BaseTool
+from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
 

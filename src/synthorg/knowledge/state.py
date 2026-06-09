@@ -6,18 +6,14 @@ connected persistence backend and a memory backend); the knowledge
 controllers and MCP handlers raise 503 on a ``None`` field.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.tool_factory import (
     KnowledgeToolFactory,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 
 class KnowledgeStateSlice(BaseFeatureStateSlice):

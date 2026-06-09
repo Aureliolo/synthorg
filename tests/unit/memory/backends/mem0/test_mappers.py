@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for Mem0 mapping functions."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -10,22 +8,24 @@ from typeguard import suppress_type_checks
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.backends.mem0.mappers import (
-    _PREFIX,
-    PUBLISHER_KEY,
-    _coerce_confidence,
     _normalize_tags,
-    apply_post_filters,
     build_mem0_metadata,
+    coerce_confidence,
     extract_category,
-    extract_publisher,
     mem0_result_to_entry,
     normalize_relevance_score,
     parse_mem0_datetime,
     parse_mem0_metadata,
     query_to_mem0_getall_args,
     query_to_mem0_search_args,
-    validate_add_result,
 )
+from synthorg.memory.backends.mem0.mappers_filters import apply_post_filters
+from synthorg.memory.backends.mem0.mappers_shared import (
+    _PREFIX,
+    PUBLISHER_KEY,
+    extract_publisher,
+)
+from synthorg.memory.backends.mem0.mappers_validate import validate_add_result
 from synthorg.memory.errors import MemoryRetrievalError, MemoryStoreError
 from synthorg.memory.models import (
     MemoryEntry,
@@ -522,7 +522,7 @@ class TestApplyPostFilters:
         entries = (_make_entry(memory_id="m1", created_at=past, expires_at=fixed_now),)
         query = MemoryQuery()
         with patch(
-            "synthorg.memory.backends.mem0.mappers.datetime",
+            "synthorg.memory.backends.mem0.mappers_filters.datetime",
         ) as mock_dt:
             mock_dt.now.return_value = fixed_now
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)  # noqa: DTZ001, PLW0108
@@ -578,7 +578,7 @@ class TestValidateAddResult:
     )
     def test_malformed_result_raises(
         self,
-        result: Any,
+        result: object,
         expected_match: str,
     ) -> None:
         with pytest.raises(MemoryStoreError, match=expected_match):
@@ -601,19 +601,19 @@ class TestExtractCategory:
         assert extract_category(raw) == MemoryCategory.WORKING
 
     def test_empty_metadata(self) -> None:
-        raw: dict[str, Any] = {"metadata": {}}
+        raw: dict[str, object] = {"metadata": {}}
         assert extract_category(raw) == MemoryCategory.WORKING
 
     def test_none_metadata(self) -> None:
-        raw: dict[str, Any] = {"metadata": None}
+        raw: dict[str, object] = {"metadata": None}
         assert extract_category(raw) == MemoryCategory.WORKING
 
     def test_list_metadata_defaults(self) -> None:
-        raw: dict[str, Any] = {"metadata": ["not", "a", "dict"]}
+        raw: dict[str, object] = {"metadata": ["not", "a", "dict"]}
         assert extract_category(raw) == MemoryCategory.WORKING
 
     def test_string_metadata_defaults(self) -> None:
-        raw: dict[str, Any] = {"metadata": "oops"}
+        raw: dict[str, object] = {"metadata": "oops"}
         assert extract_category(raw) == MemoryCategory.WORKING
 
     def test_invalid_category_defaults(self) -> None:
@@ -628,7 +628,7 @@ class TestExtractCategory:
 @pytest.mark.unit
 class TestExtractPublisher:
     def test_valid_publisher(self) -> None:
-        from synthorg.memory.backends.mem0.mappers import PUBLISHER_KEY
+        from synthorg.memory.backends.mem0.mappers_shared import PUBLISHER_KEY
 
         raw = {"metadata": {PUBLISHER_KEY: "test-agent-001"}}
         assert extract_publisher(raw) == "test-agent-001"
@@ -638,7 +638,7 @@ class TestExtractPublisher:
         assert extract_publisher(raw) is None
 
     def test_empty_metadata(self) -> None:
-        raw: dict[str, Any] = {"metadata": {}}
+        raw: dict[str, object] = {"metadata": {}}
         assert extract_publisher(raw) is None
 
     def test_none_metadata(self) -> None:
@@ -650,19 +650,19 @@ class TestExtractPublisher:
         assert extract_publisher(raw) is None
 
     def test_list_metadata_returns_none(self) -> None:
-        raw: dict[str, Any] = {"metadata": ["not", "a", "dict"]}
+        raw: dict[str, object] = {"metadata": ["not", "a", "dict"]}
         assert extract_publisher(raw) is None
 
     def test_string_metadata_returns_none(self) -> None:
-        raw: dict[str, Any] = {"metadata": "oops"}
+        raw: dict[str, object] = {"metadata": "oops"}
         assert extract_publisher(raw) is None
 
     def test_numeric_publisher_coerced_to_string(self) -> None:
-        raw: dict[str, Any] = {"metadata": {PUBLISHER_KEY: 42}}
+        raw: dict[str, object] = {"metadata": {PUBLISHER_KEY: 42}}
         assert extract_publisher(raw) == "42"
 
     def test_blank_publisher_returns_none(self) -> None:
-        raw: dict[str, Any] = {"metadata": {PUBLISHER_KEY: "   "}}
+        raw: dict[str, object] = {"metadata": {PUBLISHER_KEY: "   "}}
         assert extract_publisher(raw) is None
 
 
@@ -670,32 +670,32 @@ class TestExtractPublisher:
 class TestCoerceConfidence:
     def test_default_when_absent(self) -> None:
         """Missing key returns 1.0."""
-        assert _coerce_confidence({}) == 1.0
+        assert coerce_confidence({}) == 1.0
 
     def test_numeric_value(self) -> None:
-        assert _coerce_confidence({f"{_PREFIX}confidence": 0.7}) == 0.7
+        assert coerce_confidence({f"{_PREFIX}confidence": 0.7}) == 0.7
 
     def test_non_numeric_returns_half(self) -> None:
         """Non-numeric confidence defaults to 0.5."""
-        assert _coerce_confidence({f"{_PREFIX}confidence": "not-a-number"}) == 0.5
+        assert coerce_confidence({f"{_PREFIX}confidence": "not-a-number"}) == 0.5
 
     def test_above_one_clamped(self) -> None:
-        assert _coerce_confidence({f"{_PREFIX}confidence": 1.5}) == 1.0
+        assert coerce_confidence({f"{_PREFIX}confidence": 1.5}) == 1.0
 
     def test_below_zero_clamped(self) -> None:
-        assert _coerce_confidence({f"{_PREFIX}confidence": -0.5}) == 0.0
+        assert coerce_confidence({f"{_PREFIX}confidence": -0.5}) == 0.0
 
     def test_object_type_returns_half(self) -> None:
         """Object type that can't convert to float defaults to 0.5."""
-        assert _coerce_confidence({f"{_PREFIX}confidence": object()}) == 0.5
+        assert coerce_confidence({f"{_PREFIX}confidence": object()}) == 0.5
 
     def test_nan_returns_half(self) -> None:
         """NaN confidence defaults to 0.5."""
-        assert _coerce_confidence({f"{_PREFIX}confidence": float("nan")}) == 0.5
+        assert coerce_confidence({f"{_PREFIX}confidence": float("nan")}) == 0.5
 
     def test_inf_returns_half(self) -> None:
         """Inf confidence defaults to 0.5."""
-        assert _coerce_confidence({f"{_PREFIX}confidence": float("inf")}) == 0.5
+        assert coerce_confidence({f"{_PREFIX}confidence": float("inf")}) == 0.5
 
 
 @pytest.mark.unit

@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for the procedural memory proposer (LLM-based analysis)."""
 
 import json
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -33,8 +31,8 @@ from synthorg.providers.models import CompletionResponse, TokenUsage, ToolCall
 from synthorg.providers.protocol import CompletionProvider
 
 
-def _make_payload(**overrides: Any) -> FailureAnalysisPayload:
-    defaults: dict[str, Any] = {
+def _make_payload(**overrides: object) -> FailureAnalysisPayload:
+    defaults: dict[str, object] = {
         "task_id": "task-001",
         "task_title": "Implement auth module",
         "task_description": "Create JWT authentication.",
@@ -49,7 +47,7 @@ def _make_payload(**overrides: Any) -> FailureAnalysisPayload:
         "can_reassign": True,
     }
     defaults.update(overrides)
-    return FailureAnalysisPayload(**defaults)
+    return FailureAnalysisPayload.model_validate(defaults)
 
 
 _VALID_PROPOSAL_JSON = json.dumps(

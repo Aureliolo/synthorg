@@ -5,11 +5,12 @@ retrieve entity definitions.  No prompt injection -- agents
 discover entities through the tool interface.
 """
 
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.ontology import (
     ONTOLOGY_INJECTION_PREPARED,
@@ -18,13 +19,10 @@ from synthorg.observability.events.ontology import (
 from synthorg.ontology.errors import OntologyNotFoundError
 from synthorg.ontology.injection._tool_args import LookupEntityArgs
 from synthorg.ontology.injection.prompt import format_entity
+from synthorg.persistence.ontology_protocol import OntologyEntityRepository
+from synthorg.providers.models import ChatMessage, ToolDefinition
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
-    from synthorg.providers.models import ChatMessage, ToolDefinition
 
 logger = get_logger(__name__)
 

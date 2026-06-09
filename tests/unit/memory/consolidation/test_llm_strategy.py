@@ -1,9 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for LLM consolidation strategy."""
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -64,7 +62,7 @@ def _make_strategy(
     provider: AsyncMock | None = None,
     backend: AsyncMock | None = None,
     config: LLMConsolidationConfig | None = None,
-    **config_overrides: Any,
+    **config_overrides: object,
 ) -> CompositeConsolidationStrategy:
     """Build the LLM composite (selector + LLMSynthesisOp) with mocks.
 
@@ -87,7 +85,7 @@ def _make_strategy(
         provider = AsyncMock(spec=CompletionProvider)
         provider.complete = AsyncMock(return_value=_make_response())
     if config is None:
-        config = LLMConsolidationConfig(**config_overrides)
+        config = LLMConsolidationConfig.model_validate(config_overrides)
     return CompositeConsolidationStrategy(
         selector=HighestRelevanceSelector(group_threshold=config.group_threshold),
         op=LLMSynthesisOp(

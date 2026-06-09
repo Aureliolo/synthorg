@@ -6,11 +6,15 @@ Domain-specific dispatch keyed by ``CompanyMemoryConfig.backend``.  Mirrors
 ``synthorg.memory.factory`` and ``CompositeBackend`` child wiring.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import Protocol
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
+from synthorg.memory.backends.mem0.config import Mem0EmbedderConfig
+from synthorg.memory.config import CompanyMemoryConfig
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
 from synthorg.observability.events.registry import (
     REGISTRY_BUILT,
@@ -20,15 +24,18 @@ from synthorg.observability.events.registry import (
 )
 from synthorg.observability.redaction import safe_error_description
 
-if TYPE_CHECKING:
-    from synthorg.memory.backends.mem0.config import Mem0EmbedderConfig
-    from synthorg.memory.config import CompanyMemoryConfig
-    from synthorg.memory.protocol import MemoryBackend
-
 logger = get_logger(__name__)
 
 
-type _MemoryFactory = Callable[..., "MemoryBackend"]
+class _MemoryFactory(Protocol):
+    """Structural signature shared by every registered memory-backend factory."""
+
+    def __call__(
+        self,
+        config: CompanyMemoryConfig,
+        *,
+        embedder: Mem0EmbedderConfig | None,
+    ) -> MemoryBackend: ...
 
 
 class MemoryBackendRegistry:
@@ -104,6 +111,7 @@ class MemoryBackendRegistry:
         try:
             backend = factory(config, embedder=embedder)
         except Exception as exc:
+            reraise_critical(exc)
             # Memory factories may close over an embedder containing
             # API credentials. Use ``logger.warning`` +
             # ``safe_error_description`` to avoid frame-local capture

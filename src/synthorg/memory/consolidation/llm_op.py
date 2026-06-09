@@ -1,20 +1,17 @@
 """LLM synthesis consolidation op for the axis split (ADR-0005).
 
-Extracted verbatim (behaviour-preserving) from
-``LLMConsolidationStrategy``: per-group synthesis with trajectory
-context, prompt-cap truncation accounting, concatenation fallback,
-and the best-effort per-delete loop. The cross-group
-``asyncio.TaskGroup`` fan-out + ``except*`` unwrap that the monolith
-did in ``_run_groups`` now lives in
+Per-group synthesis with trajectory context, prompt-cap truncation
+accounting, concatenation fallback, and a best-effort per-delete loop.
+Trajectory context is fetched once per run via
+:meth:`LLMSynthesisOp.prepare`; cross-group ``asyncio.TaskGroup``
+fan-out + ``except*`` unwrap is owned by
 :class:`~synthorg.memory.consolidation.composite.CompositeConsolidationStrategy`
-(constructed with ``parallel=True`` for LLM). Trajectory context is
-fetched once per run via :meth:`LLMSynthesisOp.prepare`, exactly as
-the monolith fetched it before its group loop.
+(constructed with ``parallel=True`` for LLM).
 """
 
 import asyncio
+import builtins
 from enum import StrEnum
-from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
@@ -23,7 +20,6 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_MEMORY_ENTRY,
-    untrusted_content_directive,
     wrap_untrusted,
 )
 from synthorg.memory.consolidation.axis import (
@@ -32,12 +28,18 @@ from synthorg.memory.consolidation.axis import (
     SelectionGroup,
 )
 from synthorg.memory.consolidation.config import LLMConsolidationConfig
+from synthorg.memory.consolidation.llm_op_prompts import (
+    BASE_SYSTEM_PROMPT,
+    fallback_summary,
+)
+from synthorg.memory.consolidation.provider_port import CompletionPort
 from synthorg.memory.models import (
     MemoryEntry,
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
 )
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -53,10 +55,6 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.resilience.errors import RetryExhaustedError
-
-if TYPE_CHECKING:
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 
@@ -78,21 +76,6 @@ _DISTILLATION_TAG: NotBlankStr = "distillation"
 _LLM_SYNTHESIZED_TAG: NotBlankStr = "llm-synthesized"
 _CONCAT_FALLBACK_TAG: NotBlankStr = "concat-fallback"
 
-_BASE_SYSTEM_PROMPT = (
-    "You are a memory consolidation assistant. You will receive "
-    f"multiple memory entries from the same category, each enclosed "
-    f"in <{TAG_MEMORY_ENTRY}>...</{TAG_MEMORY_ENTRY}> tags. Your task "
-    "is to:\n"
-    "1. Identify duplicate or overlapping information across entries\n"
-    "2. Merge semantically related facts into concise statements\n"
-    "3. Preserve ALL unique information: specific details, IDs, dates, "
-    "names, decisions, and outcomes\n"
-    "4. Return a single synthesized summary that is shorter than the "
-    "combined input but retains all distinct facts\n\n"
-    "Respond with ONLY the synthesized summary, nothing else.\n\n"
-    + untrusted_content_directive((TAG_MEMORY_ENTRY,))
-)
-
 
 class LLMSynthesisOp:
     """LLM synthesis op -- ``LLMConsolidationStrategy`` per-group logic.
@@ -110,7 +93,7 @@ class LLMSynthesisOp:
         self,
         *,
         backend: MemoryBackend,
-        provider: CompletionProvider,
+        provider: CompletionPort,
         model: NotBlankStr,
         config: LLMConsolidationConfig | None = None,
         cost_tracker: CostTracker | None = None,
@@ -132,10 +115,9 @@ class LLMSynthesisOp:
     ) -> ConsolidationContext:
         """Fetch distillation trajectory context once per run.
 
-        Byte-identical with ``LLMConsolidationStrategy``'s pre-group
-        ``_fetch_trajectory_context``: best-effort, degrades to empty
-        context on non-system failure (logged WARNING), propagates
-        ``MemoryError`` / ``RecursionError``.
+        Best-effort: degrades to empty context on non-system failure
+        (logged WARNING), propagates ``MemoryError`` /
+        ``RecursionError``.
 
         Returns:
             Result of type ``ConsolidationContext``.
@@ -153,10 +135,9 @@ class LLMSynthesisOp:
     ) -> OpResult:
         """Synthesize + store + best-effort delete (LLM semantics).
 
-        Mirrors ``LLMConsolidationStrategy._process_group``: synthesize
-        and store the summary FIRST, then delete the originals, so a
-        synthesis/store failure loses no data. Only entries the prompt
-        cap admitted are eligible for deletion.
+        Synthesize and store the summary FIRST, then delete the
+        originals, so a synthesis/store failure loses no data. Only
+        entries the prompt cap admitted are eligible for deletion.
 
         Returns:
             Result of type ``OpResult``.
@@ -194,7 +175,7 @@ class LLMSynthesisOp:
         self,
         agent_id: NotBlankStr,
     ) -> tuple[MemoryEntry, ...]:
-        """Verbatim ``LLMConsolidationStrategy._fetch_trajectory_context``.
+        """Retrieve recent distillation entries as disambiguation context.
 
         Returns:
             Tuple of ``MemoryEntry``.
@@ -218,7 +199,7 @@ class LLMSynthesisOp:
                 reverse=True,
             )
             return tuple(by_recency[: self._config.max_trajectory_context_entries])
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             logger.error(
                 LLM_STRATEGY_ERROR,
                 agent_id=agent_id,
@@ -247,7 +228,7 @@ class LLMSynthesisOp:
         agent_id: NotBlankStr,
         outcome: SynthesisOutcome,
     ) -> NotBlankStr:
-        """Verbatim ``LLMConsolidationStrategy._store_summary``.
+        """Store the synthesized summary, tagged by synthesis outcome.
 
         Returns:
             Result of type ``NotBlankStr``.
@@ -274,7 +255,7 @@ class LLMSynthesisOp:
         agent_id: NotBlankStr,
         category: MemoryCategory,
     ) -> list[NotBlankStr]:
-        """Verbatim ``LLMConsolidationStrategy._delete_consolidated``.
+        """Best-effort delete of the consolidated originals, one per entry.
 
         Returns:
             List of ``NotBlankStr``.
@@ -288,7 +269,7 @@ class LLMSynthesisOp:
         for entry in to_remove:
             try:
                 await self._backend.delete(agent_id, entry.id)
-            except MemoryError, RecursionError:
+            except builtins.MemoryError, RecursionError:
                 logger.error(
                     LLM_STRATEGY_ERROR,
                     agent_id=agent_id,
@@ -323,7 +304,7 @@ class LLMSynthesisOp:
         category: MemoryCategory,
         trajectory_context: tuple[MemoryEntry, ...],
     ) -> tuple[str, SynthesisOutcome, tuple[MemoryEntry, ...]]:
-        """Verbatim ``LLMConsolidationStrategy._synthesize``.
+        """Build prompts, call the LLM, and fall back to concatenation.
 
         Returns:
             Tuple ``(str, SynthesisOutcome, tuple[MemoryEntry, ...])``.
@@ -339,7 +320,10 @@ class LLMSynthesisOp:
         )
         if response_content is not None:
             return response_content, SynthesisOutcome.LLM_SYNTHESIZED, summarized
-        fallback = self._fallback_summary(entries)
+        fallback = fallback_summary(
+            entries,
+            truncate_length=self._config.fallback_truncate_length,
+        )
         return fallback, SynthesisOutcome.CONCAT_FALLBACK, entries
 
     def _build_user_prompt(
@@ -348,7 +332,7 @@ class LLMSynthesisOp:
         agent_id: NotBlankStr,
         category: MemoryCategory,
     ) -> tuple[str, tuple[MemoryEntry, ...]]:
-        """Verbatim ``LLMConsolidationStrategy._build_user_prompt``.
+        """Build the fenced user prompt, dropping entries past the char cap.
 
         Returns:
             Tuple ``(str, tuple[MemoryEntry, ...])``.
@@ -387,7 +371,7 @@ class LLMSynthesisOp:
         category: MemoryCategory,
         entry_count: int,
     ) -> str | None:
-        """Verbatim ``LLMConsolidationStrategy._call_llm``.
+        """Call the provider under a cost-recording scope; ``None`` on failure.
 
         Returns:
             The resulting ``str``, or ``None`` when unavailable.
@@ -413,7 +397,7 @@ class LLMSynthesisOp:
                     self._model,
                     config=self._completion_config,
                 )
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             logger.error(
                 LLM_STRATEGY_ERROR,
                 agent_id=agent_id,
@@ -477,7 +461,7 @@ class LLMSynthesisOp:
         category: MemoryCategory,
         entry_count: int,
     ) -> str | None:
-        """Verbatim ``LLMConsolidationStrategy._handle_provider_error``.
+        """Fall back on retryable provider errors; re-raise non-retryable.
 
         Returns:
             The resulting ``str``, or ``None`` when unavailable.
@@ -513,35 +497,17 @@ class LLMSynthesisOp:
         self,
         trajectory_context: tuple[MemoryEntry, ...],
     ) -> str:
-        """Verbatim ``LLMConsolidationStrategy._build_system_prompt``.
+        """Build the system prompt, appending fenced trajectory context.
 
         Returns:
             Result of type ``str``.
         """
         if not trajectory_context:
-            return _BASE_SYSTEM_PROMPT
+            return BASE_SYSTEM_PROMPT
         context_lines = ["\nRecent trajectory context (for disambiguation only):"]
         for entry in trajectory_context:
             snippet = entry.content[: self._config.max_trajectory_chars_per_entry]
             context_lines.append(
                 "- " + wrap_untrusted(TAG_MEMORY_ENTRY, snippet),
             )
-        return _BASE_SYSTEM_PROMPT + "\n" + "\n".join(context_lines)
-
-    def _fallback_summary(self, entries: tuple[MemoryEntry, ...]) -> str:
-        """Verbatim ``LLMConsolidationStrategy._fallback_summary``.
-
-        Returns:
-            Result of type ``str``.
-        """
-        if not entries:
-            return ""
-        lines = [f"Consolidated {entries[0].category.value} memories:"]
-        for entry in entries:
-            truncated = (
-                entry.content[: self._config.fallback_truncate_length] + "..."
-                if len(entry.content) > self._config.fallback_truncate_length
-                else entry.content
-            )
-            lines.append(f"- {truncated}")
-        return "\n".join(lines)
+        return BASE_SYSTEM_PROMPT + "\n" + "\n".join(context_lines)

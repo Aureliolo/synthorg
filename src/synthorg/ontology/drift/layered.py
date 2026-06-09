@@ -4,17 +4,12 @@ Applies different sub-strategies per entity tier: active detection
 for CORE entities, passive monitoring for USER entities.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import ONTOLOGY_DRIFT_CHECK_COMPLETED
-from synthorg.ontology.models import EntityTier
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.ontology.drift.protocol import DriftDetectionStrategy
-    from synthorg.ontology.models import DriftReport
-    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
+from synthorg.ontology.drift.protocol import DriftDetectionStrategy
+from synthorg.ontology.models import DriftReport, EntityTier
+from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 

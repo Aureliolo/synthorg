@@ -4,14 +4,12 @@ Defines the interface for pluggable propagation strategies that
 determine how learned procedural memories are shared between agents.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.memory.models import MemoryEntry
-
-if TYPE_CHECKING:
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.memory.protocol import MemoryBackend
+from synthorg.memory.protocol import MemoryBackend
 
 
 # propagation/factory.py with 3 impls (No/RoleScoped/DepartmentScoped

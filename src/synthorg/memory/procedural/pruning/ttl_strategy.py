@@ -4,13 +4,11 @@ Removes procedural memory entries that have exceeded a maximum age.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.models import MemoryEntry
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.models import MemoryEntry
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_AGE_DAYS: Final[int] = 90

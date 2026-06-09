@@ -1,23 +1,21 @@
-# mypy: disable-error-code="explicit-any"
 """Integration tests for ``ContextInjectionStrategy`` diversity re-ranking.
 
 Verifies that the retrieval pipeline actually wires
 ``apply_diversity_penalty`` into ``_execute_pipeline`` when
 ``diversity_penalty_enabled=True``.  Uses ``monkeypatch`` to stub the
 diversity function directly so the test does not depend on the
-tie-breaking details of the real MMR algorithm.  Kept in a dedicated
-file (split from ``test_retriever.py``) to avoid growing the
-already-over-800-line main file.
+tie-breaking details of the real MMR algorithm.
 """
 
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.ranking import ScoredMemory
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 
@@ -82,11 +80,11 @@ class TestDiversityPenaltyPipelineIntegration:
         calls: list[tuple[int, float]] = []
 
         def _stub_diversity_penalty(
-            scored: Any,
+            scored: tuple[ScoredMemory, ...],
             *,
             diversity_lambda: float,
-            similarity_fn: Any = None,
-        ) -> Any:
+            similarity_fn: Callable[[str, str], float] | None = None,
+        ) -> tuple[ScoredMemory, ...]:
             del similarity_fn  # intentionally unused in the stub
             calls.append((len(scored), diversity_lambda))
             return tuple(reversed(scored))
@@ -145,7 +143,7 @@ class TestDiversityPenaltyPipelineIntegration:
             "diversity_penalty_enabled=False"
         )
 
-        def _boom(*args: Any, **kwargs: Any) -> Any:
+        def _boom(*args: object, **kwargs: object) -> tuple[ScoredMemory, ...]:
             del args, kwargs  # intentionally unused
             raise AssertionError(_disabled_mmr_msg)
 

@@ -6,8 +6,6 @@ proposal.  Follows the ``AbstractiveSummarizer`` error-handling
 pattern from ``memory.consolidation.abstractive``.
 """
 
-from typing import Any
-
 from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -65,11 +63,11 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _extract_json(text: str) -> dict[str, Any] | None:
+def _extract_json(text: str) -> dict[str, object] | None:
     """Extract a JSON object from LLM response text via the shared helper.
 
     Returns:
-        The resulting ``dict[str, Any]``, or ``None`` when unavailable.
+        The resulting ``dict[str, object]``, or ``None`` when unavailable.
     """
 
     def _log_parse_failure(detail: str) -> None:
@@ -250,7 +248,7 @@ class ProceduralMemoryProposer:
             return None
 
         try:
-            proposal = ProceduralMemoryProposal(**data)
+            proposal = ProceduralMemoryProposal.model_validate(data)
         except ValidationError as exc:
             logger.warning(
                 PROCEDURAL_MEMORY_SKIPPED,

@@ -6,14 +6,10 @@ existing ``ContextInjectionStrategy`` memory retrieval pipeline.
 No direct ontology injection or tool exposure.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import ONTOLOGY_INJECTION_PREPARED
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.providers.models import ChatMessage, ToolDefinition
+from synthorg.providers.models import ChatMessage, ToolDefinition
 
 logger = get_logger(__name__)
 

@@ -10,14 +10,15 @@ records lifecycle status on the source row.
 
 import asyncio
 import builtins
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import current_execution_identity
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.chunking import chunk_raw_document
+from synthorg.knowledge.config import KnowledgeConfig
 from synthorg.knowledge.constants import (
     KNOWLEDGE_LIST_DEFAULT_LIMIT,
     KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
@@ -27,8 +28,12 @@ from synthorg.knowledge.errors import (
     KnowledgeError,
     KnowledgeSourceNotFoundError,
 )
+from synthorg.knowledge.indexer import KnowledgeIndexer
 from synthorg.knowledge.loaders import build_source_loader
+from synthorg.knowledge.loaders.ticket import TicketFetcher
+from synthorg.knowledge.loaders.web import HtmlFetcher
 from synthorg.knowledge.models import KnowledgeHit, KnowledgeSource
+from synthorg.knowledge.retrieval import KnowledgeRetriever
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable_receipts import (
     KNOWLEDGE_USAGE_RECORD_FAILED,
@@ -44,22 +49,15 @@ from synthorg.observability.events.knowledge import (
     KNOWLEDGE_SOURCE_NOT_FOUND,
     KNOWLEDGE_SOURCE_UNCHANGED,
 )
-from synthorg.persistence.knowledge_protocol import KnowledgeSourceFilter
-from synthorg.persistence.knowledge_usage_protocol import KnowledgeUsageRecord
+from synthorg.persistence.knowledge_protocol import (
+    KnowledgeSourceFilter,
+    KnowledgeSourceRepository,
+)
+from synthorg.persistence.knowledge_usage_protocol import (
+    KnowledgeUsageRecord,
+    KnowledgeUsageRecordRepository,
+)
 from synthorg.versioning.hashing import compute_text_hash
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
-    from synthorg.knowledge.config import KnowledgeConfig
-    from synthorg.knowledge.indexer import KnowledgeIndexer
-    from synthorg.knowledge.loaders.ticket import TicketFetcher
-    from synthorg.knowledge.loaders.web import HtmlFetcher
-    from synthorg.knowledge.retrieval import KnowledgeRetriever
-    from synthorg.persistence.knowledge_protocol import KnowledgeSourceRepository
-    from synthorg.persistence.knowledge_usage_protocol import (
-        KnowledgeUsageRecordRepository,
-    )
 
 logger = get_logger(__name__)
 

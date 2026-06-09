@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from qdrant_client.models import ScoredPoint
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
@@ -41,21 +42,22 @@ def _make_scored_point(  # noqa: PLR0913
     memory: str = "test content",
     category: str = "episodic",
     created_at: str = "2026-03-12T10:00:00+00:00",
-) -> MagicMock:
-    """Build a mock Qdrant ScoredPoint."""
-    point = MagicMock()
-    point.id = point_id
-    point.score = score
-    point.payload = {
-        "user_id": user_id,
-        "data": memory,
-        "metadata": {
-            "_synthorg_category": category,
-            "_synthorg_confidence": 1.0,
+) -> ScoredPoint:
+    """Build a Qdrant ScoredPoint for sparse-search tests."""
+    return ScoredPoint(
+        id=point_id,
+        version=0,
+        score=score,
+        payload={
+            "user_id": user_id,
+            "data": memory,
+            "metadata": {
+                "_synthorg_category": category,
+                "_synthorg_confidence": 1.0,
+            },
+            "created_at": created_at,
         },
-        "created_at": created_at,
-    }
-    return point
+    )
 
 
 # -- ensure_sparse_field ---------------------------------------------------
@@ -244,17 +246,32 @@ class TestScoredPointsToEntries:
 
     def test_skips_malformed_points(self) -> None:
         good = _make_scored_point(point_id="mem-001")
-        bad = MagicMock()
-        bad.id = "mem-002"
-        bad.score = 0.5
-        # Payload that triggers an exception in _point_to_entry
-        bad.payload = None
+        # payload=None triggers an exception in _point_to_entry, so the
+        # point is skipped rather than mapped to an entry.
+        bad = ScoredPoint(id="mem-002", version=0, score=0.5, payload=None)
 
         entries = scored_points_to_entries([good, bad], NotBlankStr("agent-1"))
 
         # Should skip the bad point and return only the good one
         assert len(entries) == 1
         assert entries[0].id == "mem-001"
+
+    def test_non_mapping_metadata_does_not_crash(self) -> None:
+        # Corrupt payload where "metadata" is a list rather than a
+        # mapping must not raise AttributeError; the point still maps
+        # using metadata defaults.
+        point = ScoredPoint(
+            id="mem-003",
+            version=0,
+            score=0.6,
+            payload={"data": "salvageable content", "metadata": ["unexpected"]},
+        )
+
+        entries = scored_points_to_entries([point], NotBlankStr("agent-1"))
+
+        assert len(entries) == 1
+        assert entries[0].id == "mem-003"
+        assert entries[0].content == "salvageable content"
 
 
 # -- Adapter integration ---------------------------------------------------

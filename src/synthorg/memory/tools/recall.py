@@ -1,24 +1,22 @@
 """Recall memory tools (read/write) for ToolRegistry integration."""
 
-from typing import TYPE_CHECKING, Any, ClassVar, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel
 
-from synthorg.memory.self_editing import (
-    RECALL_MEMORY_READ_TOOL,
-    RECALL_MEMORY_WRITE_TOOL,
-    SelfEditingMemoryStrategy,
-)
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.self_editing import SelfEditingMemoryStrategy
 from synthorg.memory.self_editing_args import (
     RecallMemoryReadArgs,
     RecallMemoryWriteArgs,
 )
+from synthorg.memory.self_editing_models import (
+    RECALL_MEMORY_READ_TOOL,
+    RECALL_MEMORY_WRITE_TOOL,
+)
 from synthorg.memory.tools._shared import _is_error_response
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 
 class RecallMemoryReadTool(BaseTool):
@@ -50,7 +48,7 @@ class RecallMemoryReadTool(BaseTool):
         self._agent_id = agent_id
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         """Execute a recall memory read via the self-editing strategy.
 
         Args:
@@ -94,7 +92,7 @@ class RecallMemoryWriteTool(BaseTool):
         self._agent_id = agent_id
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         """Execute a recall memory write via the self-editing strategy.
 
         Args:

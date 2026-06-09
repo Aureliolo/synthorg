@@ -6,17 +6,14 @@ Binds the calling task's ``project_id`` to fresh ``search_knowledge`` and
 tool-loader calls :meth:`build_tools` with the task's project scope.
 """
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Iterable
+from typing import Final
 
+from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.service import KnowledgeService
+from synthorg.tools.base import BaseTool
 from synthorg.tools.knowledge.ingest_knowledge import IngestKnowledgeTool
 from synthorg.tools.knowledge.search_knowledge import SearchKnowledgeTool
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.knowledge.service import KnowledgeService
-    from synthorg.tools.base import BaseTool
 
 KNOWLEDGE_TOOL_NAMES: Final[tuple[str, ...]] = (
     "search_knowledge",

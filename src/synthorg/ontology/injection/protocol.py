@@ -6,11 +6,10 @@ execution.  Mirrors the ``MemoryInjectionStrategy`` protocol from
 ``synthorg.memory.injection``.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.providers.models import ChatMessage, ToolDefinition
+from synthorg.core.types import NotBlankStr
+from synthorg.providers.models import ChatMessage, ToolDefinition
 
 
 # injection/factory.py dispatch (prompt/tool/hybrid/memory) +

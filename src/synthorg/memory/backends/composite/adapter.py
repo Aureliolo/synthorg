@@ -8,7 +8,6 @@ with the backend name (``"mem0:abc123"``) so that ``get()`` and
 
 import asyncio
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
@@ -26,6 +25,7 @@ from synthorg.memory.models import (
     MemoryQuery,
     MemoryStoreRequest,
 )
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_CONNECTED,
@@ -40,9 +40,6 @@ from synthorg.observability.events.memory import (
     MEMORY_COMPOSITE_ID_RESOLVED,
     MEMORY_COMPOSITE_ROUTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 

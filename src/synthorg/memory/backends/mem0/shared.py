@@ -3,26 +3,27 @@
 Standalone async functions that implement the ``SharedKnowledgeStore``
 protocol methods.  The ``Mem0MemoryBackend`` class delegates to these
 functions after performing connection and agent-ID validation.
-
-Separated from ``adapter.py`` to keep individual modules under the
-800-line guideline while maintaining a single cohesive backend package.
 """
 
 import asyncio
 import builtins
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.mem0.client_protocol import Mem0Client
 from synthorg.memory.backends.mem0.mappers import (
+    build_mem0_metadata,
+    mem0_result_to_entry,
+)
+from synthorg.memory.backends.mem0.mappers_filters import apply_post_filters
+from synthorg.memory.backends.mem0.mappers_shared import (
     PUBLISHER_KEY,
     SHARED_NAMESPACE,
-    apply_post_filters,
-    build_mem0_metadata,
     extract_publisher,
-    mem0_result_to_entry,
     resolve_publisher,
+)
+from synthorg.memory.backends.mem0.mappers_validate import (
     validate_add_result,
     validate_mem0_result,
 )
@@ -30,6 +31,7 @@ from synthorg.memory.errors import (
     MemoryRetrievalError,
     MemoryStoreError,
 )
+from synthorg.memory.models import MemoryEntry, MemoryQuery, MemoryStoreRequest
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -46,15 +48,11 @@ from synthorg.observability.events.memory import (
     MEMORY_SHARED_SEARCHED,
 )
 
-if TYPE_CHECKING:
-    from synthorg.memory.models import MemoryEntry, MemoryQuery, MemoryStoreRequest
-
-
 logger = get_logger(__name__)
 
 
 def _check_retract_ownership(
-    raw: dict[str, Any],
+    raw: Mapping[str, object],
     agent_id: NotBlankStr,
     memory_id: NotBlankStr,
 ) -> None:

@@ -1,24 +1,22 @@
 """Archival memory tools (search/write) for ToolRegistry integration."""
 
-from typing import TYPE_CHECKING, Any, ClassVar, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel
 
-from synthorg.memory.self_editing import (
-    ARCHIVAL_MEMORY_SEARCH_TOOL,
-    ARCHIVAL_MEMORY_WRITE_TOOL,
-    SelfEditingMemoryStrategy,
-)
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.self_editing import SelfEditingMemoryStrategy
 from synthorg.memory.self_editing_args import (
     ArchivalMemorySearchArgs,
     ArchivalMemoryWriteArgs,
 )
+from synthorg.memory.self_editing_models import (
+    ARCHIVAL_MEMORY_SEARCH_TOOL,
+    ARCHIVAL_MEMORY_WRITE_TOOL,
+)
 from synthorg.memory.tools._shared import _is_error_response
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 
 class ArchivalMemorySearchTool(BaseTool):
@@ -51,7 +49,7 @@ class ArchivalMemorySearchTool(BaseTool):
         self._agent_id = agent_id
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         """Execute an archival memory search via the self-editing strategy.
 
         Args:
@@ -95,7 +93,7 @@ class ArchivalMemoryWriteTool(BaseTool):
         self._agent_id = agent_id
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         """Execute an archival memory write via the self-editing strategy.
 
         Args:

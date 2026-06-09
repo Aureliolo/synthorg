@@ -6,7 +6,7 @@ The ``build_mem0_config_dict`` function produces the dict that Mem0's
 """
 
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Self
+from typing import Self, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -374,7 +374,36 @@ def _resolve_effective_model(embedder: Mem0EmbedderConfig) -> str:
     return embedder.model
 
 
-def build_mem0_config_dict(config: Mem0BackendConfig) -> dict[str, Any]:
+class _Mem0VectorStoreInner(TypedDict):
+    collection_name: str
+    embedding_model_dims: int
+    path: str
+
+
+class _Mem0VectorStore(TypedDict):
+    provider: str
+    config: _Mem0VectorStoreInner
+
+
+class _Mem0EmbedderInner(TypedDict):
+    model: str
+
+
+class _Mem0Embedder(TypedDict):
+    provider: str
+    config: _Mem0EmbedderInner
+
+
+class Mem0ConfigDict(TypedDict):
+    """Shape of the config dict ``Memory.from_config()`` expects."""
+
+    vector_store: _Mem0VectorStore
+    embedder: _Mem0Embedder
+    history_db_path: str
+    version: str
+
+
+def build_mem0_config_dict(config: Mem0BackendConfig) -> Mem0ConfigDict:
     """Build the dict that ``Memory.from_config()`` expects.
 
     When fine-tuning is enabled, the checkpoint path is used as the

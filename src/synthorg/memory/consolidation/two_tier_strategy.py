@@ -8,12 +8,25 @@ Compresses raw ``DetailedExperience`` entries into
 import asyncio
 import builtins
 import json
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.consolidation.compressor import (
+    ExperienceCompressor,
+)
+from synthorg.memory.consolidation.config import (
+    ExperienceCompressorConfig,
+)
 from synthorg.memory.consolidation.models import ConsolidationResult
-from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
+from synthorg.memory.models import (
+    MemoryEntry,
+    MemoryMetadata,
+    MemoryQuery,
+    MemoryStoreRequest,
+)
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     EXPERIENCE_COMPRESSED,
@@ -21,17 +34,6 @@ from synthorg.observability.events.consolidation import (
     TWO_TIER_COMPRESSION_FAILED,
     TWO_TIER_COMPRESSION_START,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.consolidation.compressor import (
-        ExperienceCompressor,
-    )
-    from synthorg.memory.consolidation.config import (
-        ExperienceCompressorConfig,
-    )
-    from synthorg.memory.models import MemoryEntry
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 

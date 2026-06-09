@@ -10,28 +10,25 @@ Entity definitions are derived lazily (on first access via
 import inspect
 import textwrap
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, NamedTuple, overload
+from typing import Final, NamedTuple, overload
+
+from pydantic import BaseModel
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_ENTITY_DECORATOR_REGISTERED,
 )
 from synthorg.ontology.errors import OntologyDuplicateError
+from synthorg.ontology.models import (
+    EntityDefinition,
+    EntitySource,
+    EntityTier,
+)
 
 logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from pydantic import BaseModel
-
-    from synthorg.ontology.models import (
-        EntityDefinition,
-        EntitySource,
-        EntityTier,
-    )
 
 
 class _RegistryEntry(NamedTuple):

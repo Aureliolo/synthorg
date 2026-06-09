@@ -8,16 +8,14 @@ is a no-op for backward compatibility and testing.
 Both satisfy the ``MemoryFilterStrategy`` runtime-checkable protocol.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
+from synthorg.memory.ranking import ScoredMemory
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_FILTER_APPLIED,
     MEMORY_FILTER_INIT,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.ranking import ScoredMemory
 
 logger = get_logger(__name__)
 

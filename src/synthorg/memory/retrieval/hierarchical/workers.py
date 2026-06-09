@@ -6,23 +6,27 @@ and scoring.  Workers implement the ``RetrievalWorker`` protocol.
 
 import builtins
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory import errors as memory_errors
-from synthorg.memory.models import MemoryQuery
+from synthorg.memory.models import MemoryEntry, MemoryQuery
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.ranking import (
     FusionStrategy,
     ScoredMemory,
-    fuse_ranked_lists,
     rank_memories,
 )
+from synthorg.memory.ranking_rrf import fuse_ranked_lists
 from synthorg.memory.retrieval.models import (
     RetrievalCandidate,
+    RetrievalQuery,
     RetrievalResult,
 )
+from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_HIERARCHICAL_WORKER_COMPLETE,
@@ -30,13 +34,6 @@ from synthorg.observability.events.memory import (
     MEMORY_HIERARCHICAL_WORKER_FAILED,
     MEMORY_HIERARCHICAL_WORKER_START,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.models import MemoryEntry
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.memory.retrieval.models import RetrievalQuery
-    from synthorg.memory.retrieval_config import MemoryRetrievalConfig
-    from synthorg.memory.shared import SharedKnowledgeStore
 
 logger = get_logger(__name__)
 

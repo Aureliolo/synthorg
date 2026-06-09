@@ -704,26 +704,26 @@
     },
     "src/synthorg/memory/backends/composite/adapter.py": {
       "cap": 500,
-      "loc": 417,
-      "ratio": 0.834,
+      "loc": 415,
+      "ratio": 0.83,
       "tier": "code"
     },
     "src/synthorg/memory/backends/mem0/config.py": {
       "cap": 500,
-      "loc": 405,
-      "ratio": 0.81,
+      "loc": 423,
+      "ratio": 0.846,
       "tier": "code"
     },
     "src/synthorg/memory/backends/mem0/mappers.py": {
       "cap": 500,
-      "loc": 657,
-      "ratio": 1.314,
+      "loc": 432,
+      "ratio": 0.864,
       "tier": "code"
     },
     "src/synthorg/memory/backends/mem0/sparse_search.py": {
       "cap": 500,
-      "loc": 458,
-      "ratio": 0.916,
+      "loc": 463,
+      "ratio": 0.926,
       "tier": "code"
     },
     "src/synthorg/memory/consolidation/config.py": {
@@ -734,14 +734,14 @@
     },
     "src/synthorg/memory/consolidation/llm_op.py": {
       "cap": 500,
-      "loc": 501,
-      "ratio": 1.002,
+      "loc": 471,
+      "ratio": 0.942,
       "tier": "code"
     },
     "src/synthorg/memory/consolidation/service.py": {
       "cap": 500,
-      "loc": 422,
-      "ratio": 0.844,
+      "loc": 424,
+      "ratio": 0.848,
       "tier": "code"
     },
     "src/synthorg/memory/embedding/fine_tune.py": {
@@ -757,21 +757,15 @@
       "tier": "code"
     },
     "src/synthorg/memory/embedding/fine_tune_orchestrator.py": {
-      "cap": 500,
-      "loc": 533,
-      "ratio": 1.066,
-      "tier": "code"
-    },
-    "src/synthorg/memory/ranking.py": {
-      "cap": 500,
-      "loc": 515,
-      "ratio": 1.03,
-      "tier": "code"
+      "cap": 600,
+      "loc": 483,
+      "ratio": 0.805,
+      "tier": "orchestrator"
     },
     "src/synthorg/memory/retrieval/hierarchical/workers.py": {
       "cap": 500,
-      "loc": 483,
-      "ratio": 0.966,
+      "loc": 481,
+      "ratio": 0.962,
       "tier": "code"
     },
     "src/synthorg/memory/retrieval_config.py": {
@@ -782,26 +776,20 @@
     },
     "src/synthorg/memory/retriever.py": {
       "cap": 500,
-      "loc": 662,
-      "ratio": 1.324,
+      "loc": 459,
+      "ratio": 0.918,
       "tier": "code"
     },
     "src/synthorg/memory/self_editing.py": {
       "cap": 500,
-      "loc": 697,
-      "ratio": 1.394,
+      "loc": 461,
+      "ratio": 0.922,
       "tier": "code"
     },
     "src/synthorg/memory/tool_retriever.py": {
       "cap": 500,
-      "loc": 425,
-      "ratio": 0.85,
-      "tier": "code"
-    },
-    "src/synthorg/memory/tools/knowledge_architect.py": {
-      "cap": 500,
-      "loc": 505,
-      "ratio": 1.01,
+      "loc": 428,
+      "ratio": 0.856,
       "tier": "code"
     },
     "src/synthorg/meta/appliers/_architecture_validators.py": {
@@ -1348,22 +1336,22 @@
     "synthorg.core.auth.roles": 25,
     "synthorg.core.autonomy_enums": 34,
     "synthorg.core.clock": 154,
-    "synthorg.core.critical_errors": 464,
+    "synthorg.core.critical_errors": 469,
     "synthorg.core.domain_errors": 176,
     "synthorg.core.error_taxonomy": 60,
-    "synthorg.core.memory_enums": 47,
+    "synthorg.core.memory_enums": 48,
     "synthorg.core.normalization": 72,
     "synthorg.core.persistence_errors": 192,
     "synthorg.core.project_enums": 28,
     "synthorg.core.registry": 27,
     "synthorg.core.task": 91,
     "synthorg.core.task_enums": 85,
-    "synthorg.core.types": 1055,
+    "synthorg.core.types": 1061,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 80,
-    "synthorg.engine.loop_protocol": 45,
-    "synthorg.engine.prompt_safety": 66,
+    "synthorg.engine.loop_protocol": 46,
+    "synthorg.engine.prompt_safety": 67,
     "synthorg.engine.state": 36,
     "synthorg.engine.task_engine": 33,
     "synthorg.engine.workflow.definition": 37,
@@ -1382,9 +1370,9 @@
     "synthorg.integrations.errors": 33,
     "synthorg.integrations.state": 22,
     "synthorg.knowledge.models": 24,
-    "synthorg.memory.errors": 20,
-    "synthorg.memory.models": 67,
-    "synthorg.memory.protocol": 63,
+    "synthorg.memory.errors": 23,
+    "synthorg.memory.models": 72,
+    "synthorg.memory.protocol": 65,
     "synthorg.meta.chief_of_staff.models": 30,
     "synthorg.meta.config": 20,
     "synthorg.meta.mcp.errors": 55,
@@ -1395,7 +1383,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 63,
-    "synthorg.observability": 1484,
+    "synthorg.observability": 1492,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 149,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1407,7 +1395,7 @@
     "synthorg.observability.events.hr": 36,
     "synthorg.observability.events.integrations": 55,
     "synthorg.observability.events.mcp": 60,
-    "synthorg.observability.events.memory": 46,
+    "synthorg.observability.events.memory": 54,
     "synthorg.observability.events.meta": 55,
     "synthorg.observability.events.ontology": 20,
     "synthorg.observability.events.provider": 26,
@@ -1431,23 +1419,23 @@
     "synthorg.providers.cost_recording": 36,
     "synthorg.providers.enums": 80,
     "synthorg.providers.errors": 34,
-    "synthorg.providers.models": 109,
-    "synthorg.providers.protocol": 63,
+    "synthorg.providers.models": 111,
+    "synthorg.providers.protocol": 62,
     "synthorg.providers.registry": 30,
     "synthorg.providers.state": 25,
     "synthorg.research.models": 22,
-    "synthorg.security.autonomy.enums": 73,
+    "synthorg.security.autonomy.enums": 74,
     "synthorg.security.autonomy.models": 31,
     "synthorg.security.models": 27,
     "synthorg.settings.enums": 109,
     "synthorg.settings.errors": 24,
     "synthorg.settings.mirrors": 21,
-    "synthorg.settings.models": 33,
+    "synthorg.settings.models": 34,
     "synthorg.settings.registry": 36,
     "synthorg.settings.resolver": 33,
-    "synthorg.settings.service": 30,
+    "synthorg.settings.service": 29,
     "synthorg.settings.state": 71,
-    "synthorg.tools.base": 76
+    "synthorg.tools.base": 77
   },
   "lcom": {
     "synthorg.budget.coordination_collector:CoordinationMetricsCollector": {
@@ -1526,9 +1514,13 @@
       "lcom4": 7,
       "loc": 653
     },
+    "synthorg.memory.embedding.fine_tune_orchestrator:FineTuneOrchestrator": {
+      "lcom4": 1,
+      "loc": 432
+    },
     "synthorg.memory.service:MemoryService": {
       "lcom4": 5,
-      "loc": 631
+      "loc": 632
     },
     "synthorg.meta.chief_of_staff.group_chat:GroupChatService": {
       "lcom4": 1,

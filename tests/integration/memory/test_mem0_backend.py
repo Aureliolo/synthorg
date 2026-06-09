@@ -16,7 +16,10 @@ from synthorg.memory.backends.mem0.config import (
     Mem0BackendConfig,
     Mem0EmbedderConfig,
 )
-from synthorg.memory.backends.mem0.mappers import PUBLISHER_KEY, SHARED_NAMESPACE
+from synthorg.memory.backends.mem0.mappers_shared import (
+    PUBLISHER_KEY,
+    SHARED_NAMESPACE,
+)
 from synthorg.memory.models import MemoryQuery, MemoryStoreRequest
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy

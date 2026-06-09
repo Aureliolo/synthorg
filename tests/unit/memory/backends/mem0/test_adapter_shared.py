@@ -6,7 +6,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from synthorg.memory.backends.mem0.adapter import Mem0MemoryBackend
-from synthorg.memory.backends.mem0.mappers import PUBLISHER_KEY, SHARED_NAMESPACE
+from synthorg.memory.backends.mem0.mappers_shared import (
+    PUBLISHER_KEY,
+    SHARED_NAMESPACE,
+)
 from synthorg.memory.errors import (
     MemoryRetrievalError,
     MemoryStoreError,

@@ -15,17 +15,17 @@ Tools wired to consume these models:
   -> :class:`RecallMemoryReadArgs`
 * :class:`~synthorg.memory.tools.recall.RecallMemoryWriteTool`
   -> :class:`RecallMemoryWriteArgs`
-* :class:`~synthorg.memory.tools.knowledge_architect.KnowledgeArchitectGuideTool`
+* :class:`~synthorg.memory.tools.KnowledgeArchitectGuideTool`
   -> :class:`KnowledgeArchitectGuideArgs`
-* :class:`~synthorg.memory.tools.knowledge_architect.KnowledgeArchitectSearchTool`
+* :class:`~synthorg.memory.tools.KnowledgeArchitectSearchTool`
   -> :class:`KnowledgeArchitectSearchArgs`
-* :class:`~synthorg.memory.tools.knowledge_architect.KnowledgeArchitectReadTool`
+* :class:`~synthorg.memory.tools.KnowledgeArchitectReadTool`
   -> :class:`KnowledgeArchitectReadArgs`
-* :class:`~synthorg.memory.tools.knowledge_architect.KnowledgeArchitectWriteTool`
+* :class:`~synthorg.memory.tools.KnowledgeArchitectWriteTool`
   -> :class:`KnowledgeArchitectWriteArgs`
-* :class:`~synthorg.memory.tools.knowledge_architect.KnowledgeArchitectDeleteTool`
+* :class:`~synthorg.memory.tools.KnowledgeArchitectDeleteTool`
   -> :class:`KnowledgeArchitectDeleteArgs`
-* :class:`~synthorg.memory.tools.knowledge_architect.KnowledgeArchitectBrowseWikiTool`
+* :class:`~synthorg.memory.tools.KnowledgeArchitectBrowseWikiTool`
   -> :class:`KnowledgeArchitectBrowseWikiArgs`
 
 Note: the four ``Core/Archival/Recall*`` tool wrappers

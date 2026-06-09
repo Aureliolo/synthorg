@@ -11,7 +11,7 @@ so editing one section of a large document leaves every other chunk's
 id and hash stable and only the touched chunk is re-embedded.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,9 +19,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.models import (
     KnowledgeChunk,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 
 def make_chunk_id(source_id: NotBlankStr, chunk_index: int) -> NotBlankStr:

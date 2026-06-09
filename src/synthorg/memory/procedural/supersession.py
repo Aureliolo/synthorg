@@ -6,8 +6,8 @@ partially overlaps the existing one.
 """
 
 import re
-from collections.abc import Callable
 from enum import StrEnum
+from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -108,10 +108,16 @@ def _similarity(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(union)
 
 
+class _LogFn(Protocol):
+    """Structured-logging callable (e.g. ``logger.warning`` / ``logger.info``)."""
+
+    def __call__(self, event: str, /, **kwargs: object) -> object: ...
+
+
 def _emit_result(  # noqa: PLR0913
     verdict: SupersessionVerdict,
     event: str,
-    log_fn: Callable[..., object],
+    log_fn: _LogFn,
     candidate_id: NotBlankStr,
     existing_id: NotBlankStr,
     reason: str,

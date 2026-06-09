@@ -1,9 +1,9 @@
 """Drift detection background service."""
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_CHECK_COMPLETED,
@@ -13,16 +13,13 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
     ONTOLOGY_DRIFT_STORE_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.ontology.config import DriftDetectionConfig
-    from synthorg.ontology.drift.protocol import DriftDetectionStrategy
-    from synthorg.ontology.models import DriftReport
-    from synthorg.persistence.ontology_protocol import (
-        OntologyDriftReportRepository,
-        OntologyEntityRepository,
-    )
+from synthorg.ontology.config import DriftDetectionConfig
+from synthorg.ontology.drift.protocol import DriftDetectionStrategy
+from synthorg.ontology.models import DriftReport
+from synthorg.persistence.ontology_protocol import (
+    OntologyDriftReportRepository,
+    OntologyEntityRepository,
+)
 
 logger = get_logger(__name__)
 

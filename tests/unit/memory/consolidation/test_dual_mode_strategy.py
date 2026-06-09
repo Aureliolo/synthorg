@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for DualModeConsolidationStrategy."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -79,36 +77,27 @@ def _make_dense_entry(
 
 
 def _make_strategy(
-    backend: AsyncMock | None = None,
+    backend: MemoryBackend | None = None,
     classifier: DensityClassifier | None = None,
-    summarizer: AsyncMock | None = None,
-    extractor: AsyncMock | None = None,
+    summarizer: AbstractiveSummarizer | None = None,
+    extractor: ExtractivePreserver | None = None,
     group_threshold: int = 3,
 ) -> CompositeConsolidationStrategy:
     if backend is None:
-        backend = cast(
-            Any,
-            mock_of[MemoryBackend](
-                store=AsyncMock(return_value="summary-1"),
-                delete=AsyncMock(return_value=True),
-            ),
+        backend = mock_of[MemoryBackend](
+            store=AsyncMock(return_value="summary-1"),
+            delete=AsyncMock(return_value=True),
         )
     if classifier is None:
         classifier = DensityClassifier()
     if summarizer is None:
-        summarizer = cast(
-            Any,
-            mock_of[AbstractiveSummarizer](
-                summarize=AsyncMock(return_value="LLM summary text."),
-            ),
+        summarizer = mock_of[AbstractiveSummarizer](
+            summarize=AsyncMock(return_value="LLM summary text."),
         )
     if extractor is None:
-        extractor = cast(
-            Any,
-            mock_of[ExtractivePreserver](
-                extract=MagicMock(
-                    return_value="[Extractive preservation]\nKey facts: id-1",
-                ),
+        extractor = mock_of[ExtractivePreserver](
+            extract=MagicMock(
+                return_value="[Extractive preservation]\nKey facts: id-1",
             ),
         )
     return CompositeConsolidationStrategy(
