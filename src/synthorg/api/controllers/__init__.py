@@ -109,7 +109,7 @@ from synthorg.api.controllers.providers.models import ProviderModelsController
 from synthorg.api.controllers.providers.presets import ProviderPresetsController
 from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.reports import ReportsController
-from synthorg.api.controllers.requests import RequestController
+from synthorg.api.controllers.requests.lifecycle import RequestController
 from synthorg.api.controllers.reviews import ReviewController
 from synthorg.api.controllers.role_versions import RoleVersionController
 from synthorg.api.controllers.scaling import ScalingController
