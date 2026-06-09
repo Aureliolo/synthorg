@@ -1,8 +1,7 @@
 """Guard-chain runner for the training pipeline.
 
-Extracted from ``service`` so the orchestrator stays within its size
-budget. Applies the configured training guards sequentially per content
-type; the service supplies its guard chain and curated items.
+Applies the configured training guards sequentially per content type;
+the service supplies its guard chain and curated items.
 """
 
 from typing import TYPE_CHECKING

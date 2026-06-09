@@ -2,9 +2,8 @@
 # for a consistent public API contract (callers use `except ValueError`).
 """Field/JSON/level/rotation parsers for the sink config builder.
 
-Extracted from ``sink_config_builder`` so the main module stays within
-its size budget. These are internal helpers shared by the builder and
-the shipping-sink builders; import them via ``sink_config_builder``.
+Internal helpers shared by the builder and the shipping-sink builders;
+import them via ``sink_config_builder``.
 """
 
 import json

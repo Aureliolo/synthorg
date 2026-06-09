@@ -1,10 +1,9 @@
 # module-kind: code
 """OTLP endpoint SSRF / transport-safety validation.
 
-Extracted from ``config`` so these security-sensitive checks live in a
-ceiling-bound, directly-tested module rather than a declarative schema
-file. ``SinkConfig`` calls :func:`validate_otlp_endpoint_safety` from its
-OTLP field validator.
+These security-sensitive checks live in a standalone module so they are
+unit-testable in isolation. ``SinkConfig`` calls
+:func:`validate_otlp_endpoint_safety` from its OTLP field validator.
 """
 
 

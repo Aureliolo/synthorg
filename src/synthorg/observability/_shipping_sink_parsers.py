@@ -1,9 +1,8 @@
 # ruff: noqa: TRY004 -- consistent ValueError API with sink_config_builder
 """Syslog and HTTP custom sink parsers for the sink config builder.
 
-Extracted from ``sink_config_builder`` to keep the main module under
-the 800-line limit.  These functions are internal helpers -- import
-them via ``sink_config_builder`` dispatch, not directly.
+Internal helpers -- import them via ``sink_config_builder`` dispatch,
+not directly.
 """
 
 from collections.abc import Callable

@@ -6,7 +6,6 @@ together in the full guard chain.
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import uuid4
 
 import pytest
 
@@ -20,7 +19,7 @@ from synthorg.hr.scaling.factory import (
 )
 from synthorg.hr.scaling.service import ScalingService
 from synthorg.hr.scaling.signals.workload import WorkloadSignalSource
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of
 
 from .conftest import AGENT_IDS
 
@@ -48,7 +47,9 @@ class TestGuardChain:
             config=config,
             hiring_service=mock_of[HiringService](
                 create_request=AsyncMock(
-                    return_value=SimpleNamespace(id=uuid4()),
+                    return_value=SimpleNamespace(
+                        id=as_uuid("integration-scaling-rate-limit-hire-request")
+                    ),
                 ),
             ),
         )
@@ -99,7 +100,9 @@ class TestGuardChain:
             config=config,
             hiring_service=mock_of[HiringService](
                 create_request=AsyncMock(
-                    return_value=SimpleNamespace(id=uuid4()),
+                    return_value=SimpleNamespace(
+                        id=as_uuid("integration-scaling-cooldown-hire-request")
+                    ),
                 ),
             ),
         )

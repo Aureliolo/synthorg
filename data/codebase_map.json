@@ -7604,7 +7604,7 @@
     },
     {
       "kind": "code",
-      "loc": 79,
+      "loc": 77,
       "loc_cap": 500,
       "module": "src/synthorg/hr/_activity_validation.py",
       "owning_feature": "hr"
@@ -8402,7 +8402,7 @@
     },
     {
       "kind": "code",
-      "loc": 132,
+      "loc": 131,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/_guards_runner.py",
       "owning_feature": "hr"
@@ -12483,7 +12483,7 @@
     },
     {
       "kind": "code",
-      "loc": 62,
+      "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/observability/_endpoint_safety.py",
       "owning_feature": "observability"
@@ -12497,21 +12497,21 @@
     },
     {
       "kind": "code",
-      "loc": 126,
+      "loc": 125,
       "loc_cap": 500,
       "module": "src/synthorg/observability/_prometheus_label_fetchers.py",
       "owning_feature": "observability"
     },
     {
       "kind": "code",
-      "loc": 208,
+      "loc": 207,
       "loc_cap": 500,
       "module": "src/synthorg/observability/_shipping_sink_parsers.py",
       "owning_feature": "observability"
     },
     {
       "kind": "code",
-      "loc": 204,
+      "loc": 203,
       "loc_cap": 500,
       "module": "src/synthorg/observability/_sink_config_parsers.py",
       "owning_feature": "observability"

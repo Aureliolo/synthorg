@@ -1,10 +1,9 @@
 # module-kind: code
 """Registry-fetch helpers for the Prometheus label snapshot.
 
-Extracted from ``prometheus_collector`` so the collector stays within
-its size budget. Each fetcher returns ``frozenset()`` when its service
-is not wired, the live id/name set on success, or ``None`` on a fetch
-exception so the snapshot merge preserves the previous allowlist.
+Each fetcher returns ``frozenset()`` when its service is not wired, the
+live id/name set on success, or ``None`` on a fetch exception so the
+snapshot merge preserves the previous allowlist.
 """
 
 from typing import TYPE_CHECKING

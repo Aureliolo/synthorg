@@ -1,10 +1,8 @@
 # module-kind: code
 """Pagination and window validation for the activity feed service.
 
-Extracted from ``activity_service`` so the service module stays within
-its size budget. Service-layer error paths log at WARNING with context
-before raising so bad MCP requests are visible in the audit trail (per
-CLAUDE.md ``## Logging``).
+Service-layer error paths log at WARNING with context before raising so
+bad MCP requests are visible in the audit trail.
 """
 
 from synthorg.observability import get_logger
@@ -87,7 +85,7 @@ def validate_request(
 
     Delegates to :func:`validate_pagination` and :func:`validate_window`
     with the ``agent_id`` threaded through so each WARNING carries the
-    agent context (per CLAUDE.md ``## Logging``).
+    agent context.
 
     Raises:
         ValueError: If an argument fails domain validation.
