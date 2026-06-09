@@ -7,7 +7,7 @@ decision injected, so the agent picks the original work back up
 exactly where it left off (design D21 / Park-Resume).
 """
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import BudgetExhaustedError
@@ -243,18 +243,15 @@ class AgentEngineResumeMixin:
                 provider=self._provider,
             )
         except BudgetExhaustedError as exc:
-            return cast(
-                "AgentRunResult",
-                self._handle_budget_error(
-                    exc=exc,
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    duration_seconds=self._clock.monotonic() - start,
-                    ctx=ctx,
-                    system_prompt=system_prompt,
-                ),
+            return await self._handle_budget_error(
+                exc=exc,
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                duration_seconds=self._clock.monotonic() - start,
+                ctx=ctx,
+                system_prompt=system_prompt,
             )
         except Exception as exc:
             reraise_critical(exc)

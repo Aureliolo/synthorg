@@ -4482,7 +4482,7 @@
     },
     {
       "kind": "code",
-      "loc": 260,
+      "loc": 257,
       "loc_cap": 500,
       "module": "src/synthorg/engine/agent_engine_resume.py",
       "owning_feature": "engine"

@@ -278,7 +278,7 @@ def test_live_manifest_and_src_pass() -> None:
     """The shipped manifest + src keep the red-team-gate chain pinned.
 
     This is the load-bearing assertion: it fails if any hop of the
-    production red-team completion chain (#1986) is severed in the real
-    tree, which is the exact regression #1979's audit found and WS1 fixed.
+    production red-team completion chain is severed in the real tree,
+    the exact regression the runtime-reachability gate exists to prevent.
     """
     assert _MODULE._run(_REPO_ROOT) == 0
