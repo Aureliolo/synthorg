@@ -66,7 +66,7 @@ class CostForecastRepository(
     """
 
     @override
-    async def save(self, entity: Forecast) -> None:
+    async def save(self, entity: Forecast, /) -> None:
         """Upsert a cost forecast row keyed by ``forecast_id``.
 
         Raises:
@@ -78,7 +78,7 @@ class CostForecastRepository(
         ...
 
     @override
-    async def get(self, entity_id: UUID) -> Forecast | None:
+    async def get(self, entity_id: UUID, /) -> Forecast | None:
         """Retrieve a forecast by ``forecast_id``, or ``None`` when absent.
 
         Raises:
@@ -87,7 +87,7 @@ class CostForecastRepository(
         ...
 
     @override
-    async def delete(self, entity_id: UUID) -> bool:
+    async def delete(self, entity_id: UUID, /) -> bool:
         """Delete a forecast by id. ``True`` iff a row existed.
 
         Raises:
@@ -112,6 +112,7 @@ class CostForecastRepository(
     @override
     async def transition_if(
         self,
+        /,
         entity_id: UUID,
         from_state: ForecastDecision,
         to_state: ForecastDecision,

@@ -48,7 +48,7 @@ class SubworkflowRepository(
     """
 
     @override
-    async def save(self, entity: WorkflowDefinition) -> None:
+    async def save(self, entity: WorkflowDefinition, /) -> None:
         """Persist a new subworkflow version (insert-only).
 
         The entity's ``id`` is interpreted as the ``subworkflow_id``
@@ -65,7 +65,7 @@ class SubworkflowRepository(
         ...
 
     @override
-    async def get(self, entity_id: SubworkflowKey) -> WorkflowDefinition | None:
+    async def get(self, entity_id: SubworkflowKey, /) -> WorkflowDefinition | None:
         """Fetch a specific subworkflow version.
 
         Args:
@@ -77,7 +77,7 @@ class SubworkflowRepository(
         ...
 
     @override
-    async def delete(self, entity_id: SubworkflowKey) -> bool:
+    async def delete(self, entity_id: SubworkflowKey, /) -> bool:
         """Delete a specific subworkflow version.
 
         Deletion protection (rejecting when a parent pins the version)

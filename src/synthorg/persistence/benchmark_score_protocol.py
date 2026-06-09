@@ -40,7 +40,7 @@ class BenchmarkScoreRepository(
     """
 
     @override
-    async def save(self, entity: BenchmarkScoreRecord) -> None:
+    async def save(self, entity: BenchmarkScoreRecord, /) -> None:
         """Upsert a benchmark-score row keyed by ``model_id``.
 
         Raises:
@@ -51,7 +51,7 @@ class BenchmarkScoreRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> BenchmarkScoreRecord | None:
+    async def get(self, entity_id: NotBlankStr, /) -> BenchmarkScoreRecord | None:
         """Retrieve a score by ``model_id``, or ``None`` when absent.
 
         Raises:
@@ -60,7 +60,7 @@ class BenchmarkScoreRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a score by ``model_id``. ``True`` iff a row existed.
 
         Raises:

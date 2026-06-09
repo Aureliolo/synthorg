@@ -7,12 +7,12 @@ any legacy ISO strings) to UTC-aware. Satisfies
 ``ConversationParticipantRepository`` structurally.
 """
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import ConversationParticipantStatus
 from synthorg.meta.chief_of_staff.group_models import ConversationParticipant
 from synthorg.observability import get_logger, safe_error_description
@@ -27,11 +27,6 @@ from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.conversation_participant_protocol import (
     ConversationParticipantFilterSpec,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

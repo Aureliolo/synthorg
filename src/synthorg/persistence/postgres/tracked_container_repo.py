@@ -1,12 +1,12 @@
 """Postgres repository for tracked Docker container records."""
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.tracked_container import (
     PERSISTENCE_TRACKED_CONTAINER_DELETE_FAILED,
@@ -18,11 +18,6 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.tracked_container_protocol import TrackedContainerRecord
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

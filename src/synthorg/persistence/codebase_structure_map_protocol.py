@@ -25,7 +25,7 @@ class CodebaseStructureMapRepository(
     """
 
     @override
-    async def save(self, entity: CodebaseStructureMap) -> None:
+    async def save(self, entity: CodebaseStructureMap, /) -> None:
         """Persist a structure map via upsert (insert or update).
 
         Args:
@@ -38,7 +38,7 @@ class CodebaseStructureMapRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> CodebaseStructureMap | None:
+    async def get(self, entity_id: NotBlankStr, /) -> CodebaseStructureMap | None:
         """Retrieve a structure map by owning project id.
 
         Args:
@@ -75,7 +75,7 @@ class CodebaseStructureMapRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a structure map by owning project id.
 
         Args:

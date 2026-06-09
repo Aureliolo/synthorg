@@ -1,12 +1,10 @@
 """AgentState repository protocol."""
 
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
-
-if TYPE_CHECKING:
-    from synthorg.engine.agent_state import AgentRuntimeState
 
 
 @runtime_checkable
@@ -23,7 +21,7 @@ class AgentStateRepository(
     """
 
     @override
-    async def save(self, entity: AgentRuntimeState) -> None:
+    async def save(self, entity: AgentRuntimeState, /) -> None:
         """Upsert an agent runtime state by ``agent_id``.
 
         Args:
@@ -35,7 +33,7 @@ class AgentStateRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> AgentRuntimeState | None:
+    async def get(self, entity_id: NotBlankStr, /) -> AgentRuntimeState | None:
         """Retrieve an agent runtime state by agent ID.
 
         Args:
@@ -98,7 +96,7 @@ class AgentStateRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete an agent runtime state by agent ID.
 
         Args:

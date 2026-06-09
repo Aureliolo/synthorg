@@ -8,6 +8,8 @@ reference typed against this protocol so the storage implementation
 can be swapped without changing the store itself.
 """
 
+from collections.abc import Sequence
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,9 +24,6 @@ from synthorg.persistence._generics import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import datetime
-
     from typing_extensions import TypedDict
 
     class TransitionKwargs(TypedDict, total=False):
@@ -67,7 +66,7 @@ class ApprovalRepository(
     """
 
     @override
-    async def save(self, entity: ApprovalItem) -> None:
+    async def save(self, entity: ApprovalItem, /) -> None:
         """Upsert an approval item.
 
         Args:
@@ -98,6 +97,7 @@ class ApprovalRepository(
     @override
     async def transition_if(
         self,
+        /,
         entity_id: NotBlankStr,
         from_state: ApprovalStatus,
         to_state: ApprovalStatus,
@@ -182,7 +182,7 @@ class ApprovalRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> ApprovalItem | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ApprovalItem | None:
         """Retrieve an approval item by ID.
 
         Args:
@@ -281,7 +281,7 @@ class ApprovalRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete an approval item by ID.
 
         Args:

@@ -7,10 +7,9 @@ TEXT in ``payload_json``. ``save`` upserts on the UNIQUE ``task_id``.
 """
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -29,9 +28,6 @@ from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptFilterSpec,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

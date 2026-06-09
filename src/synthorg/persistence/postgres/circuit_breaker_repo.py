@@ -5,10 +5,9 @@ Postgres stores opened_at as DOUBLE PRECISION (Unix float timestamp) and
 bounce/trip counts as BIGINT.
 """
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -25,9 +24,6 @@ from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerPairKey,
     CircuitBreakerStateRecord,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

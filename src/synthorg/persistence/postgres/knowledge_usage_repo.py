@@ -7,10 +7,10 @@ Postgres sibling of ``persistence/sqlite/knowledge_usage_repo.py``.
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
@@ -28,9 +28,6 @@ from synthorg.persistence.knowledge_usage_protocol import (
     KnowledgeUsageFilterSpec,
     KnowledgeUsageRecord,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

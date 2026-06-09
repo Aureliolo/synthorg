@@ -9,16 +9,13 @@ the same write-context and row-to-model helpers.
 
 import json
 import sqlite3
+from collections.abc import Sequence
 from datetime import datetime
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 import aiosqlite
 from aiosqlite import Row
 from pydantic import ValidationError
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem

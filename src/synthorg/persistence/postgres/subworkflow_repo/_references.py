@@ -1,10 +1,9 @@
 """Referential-integrity scanning mixin for Postgres subworkflows."""
 
 import hashlib
-from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import TupleRow, dict_row
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -20,9 +19,6 @@ from synthorg.persistence.postgres.subworkflow_repo._base import _SubworkflowRep
 from synthorg.persistence.postgres.subworkflow_repo._marshalling import (
     extract_references,
 )
-
-if TYPE_CHECKING:
-    from psycopg.rows import TupleRow
 
 logger = get_logger(__name__)
 

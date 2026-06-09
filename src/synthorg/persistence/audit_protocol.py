@@ -1,17 +1,14 @@
 """Audit repository protocol."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, AppendOnlyRepository
-from synthorg.security.models import AuditVerdictStr
-
-if TYPE_CHECKING:
-    from synthorg.security.models import AuditEntry
+from synthorg.security.models import AuditEntry, AuditVerdictStr
 
 __all__ = [
     "AuditFilterSpec",
@@ -88,7 +85,7 @@ class AuditRepository(
     """
 
     @override
-    async def append(self, entry: AuditEntry) -> None:
+    async def append(self, entry: AuditEntry, /) -> None:
         """Persist an audit entry (append-only).
 
         Args:
@@ -127,7 +124,7 @@ class AuditRepository(
         ...
 
     @override
-    async def purge_before(self, cutoff: datetime) -> int:
+    async def purge_before(self, cutoff: datetime, /) -> int:
         """Delete audit entries older than *cutoff* (CFG-1 audit).
 
         This is the one exception to the append-only rule: it powers

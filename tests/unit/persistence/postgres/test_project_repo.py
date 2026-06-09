@@ -12,13 +12,14 @@ from typing import Any
 
 import psycopg
 import pytest
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.persistence.postgres.project_repo import PostgresProjectRepository
 from synthorg.persistence.project_protocol import ProjectFilterSpec
-from tests._shared import as_uuid, sid
+from tests._shared import as_uuid, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -73,7 +74,8 @@ class _RaisingPool:
 
 
 def _repo() -> PostgresProjectRepository:
-    return PostgresProjectRepository(_RaisingPool())  # type: ignore[arg-type]
+    pool = mock_of[AsyncConnectionPool](connection=_RaisingPool().connection)
+    return PostgresProjectRepository(pool)
 
 
 async def test_create_translates_psycopg_error() -> None:

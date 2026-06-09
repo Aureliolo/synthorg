@@ -60,7 +60,7 @@ class ArtifactRepository(
     """
 
     @override
-    async def save(self, entity: Artifact) -> None:
+    async def save(self, entity: Artifact, /) -> None:
         """Persist an artifact (insert or update by id).
 
         Args:
@@ -95,7 +95,7 @@ class ArtifactRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> Artifact | None:
+    async def get(self, entity_id: NotBlankStr, /) -> Artifact | None:
         """Retrieve an artifact by its ID.
 
         Args:
@@ -177,7 +177,7 @@ class ArtifactRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete an artifact by ID.
 
         Args:

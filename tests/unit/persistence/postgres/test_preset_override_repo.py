@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
+from psycopg_pool import AsyncConnectionPool
 from typeguard import suppress_type_checks
 
 from synthorg.core.persistence_errors import QueryError
@@ -17,6 +18,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.persistence.postgres.preset_override_repo import (
     PostgresPresetOverrideRepo,
 )
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -68,7 +70,9 @@ async def test_get_translates_corrupt_row_to_query_error() -> None:
         "updated_at": 12345,
         "updated_by": "operator",
     }
-    repo = PostgresPresetOverrideRepo(_FakePool(corrupt))  # type: ignore[arg-type]
+    repo = PostgresPresetOverrideRepo(
+        mock_of[AsyncConnectionPool](connection=_FakePool(corrupt).connection)
+    )
 
     # The corrupt ``updated_at`` int trips the repository's fail-closed guard;
     # suppress typeguard so that guard (QueryError) runs instead of typeguard
@@ -79,6 +83,8 @@ async def test_get_translates_corrupt_row_to_query_error() -> None:
 
 async def test_get_returns_none_when_absent() -> None:
     """No row -> ``None`` (the guard does not fire)."""
-    repo = PostgresPresetOverrideRepo(_FakePool(None))  # type: ignore[arg-type]
+    repo = PostgresPresetOverrideRepo(
+        mock_of[AsyncConnectionPool](connection=_FakePool(None).connection)
+    )
 
     assert await repo.get(NotBlankStr("missing")) is None

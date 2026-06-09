@@ -75,7 +75,7 @@ class RedTeamReportArchiveRepository(
 
     @override
     async def append(  # pyright: ignore[reportIncompatibleMethodOverride] -- domain-specific param name
-        self, record: RedTeamReportRecord
+        self, record: RedTeamReportRecord, /
     ) -> None:
         """Persist one record (append-only; a duplicate execution is a violation).
 
@@ -105,7 +105,7 @@ class RedTeamReportArchiveRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Delete records with ``recorded_at < threshold``. Returns rows removed.
 
         ``threshold`` must be timezone-aware; passing a naive value is a

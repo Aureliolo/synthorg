@@ -1,13 +1,14 @@
 """Postgres repository implementation for :class:`ChunkProvenanceRow`."""
 
 import json
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, TupleRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import TypeAdapter, ValidationError
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.enums import ContentKind
 from synthorg.knowledge.models import ChunkProvenanceRow, ProvenanceLocator
 from synthorg.observability import get_logger, safe_error_description
@@ -27,15 +28,10 @@ from synthorg.observability.events.persistence.knowledge_provenance import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp
 from synthorg.persistence._shared.pagination import validate_pagination_args
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.persistence.knowledge_protocol import (
-        ChunkProvenanceFilter,
-        ChunkProvenanceKey,
-    )
+from synthorg.persistence.knowledge_protocol import (
+    ChunkProvenanceFilter,
+    ChunkProvenanceKey,
+)
 
 logger = get_logger(__name__)
 

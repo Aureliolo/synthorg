@@ -9,9 +9,11 @@ point-in-time ``snapshot_at`` query lives in
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
+import psycopg
 from psycopg.rows import TupleRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
@@ -48,11 +50,6 @@ from synthorg.persistence._shared.org_fact_marshalling import (
 )
 from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_FACTS
 from synthorg.persistence.postgres._org_fact_sql import SNAPSHOT_AT_SQL
-
-if TYPE_CHECKING:
-    import psycopg
-    from psycopg_pool import AsyncConnectionPool
-
 
 logger = get_logger(__name__)
 

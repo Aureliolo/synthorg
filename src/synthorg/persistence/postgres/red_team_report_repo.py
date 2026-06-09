@@ -9,10 +9,10 @@ backend, where the dual-backend drift gate maps TEXT to TEXT).
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
@@ -32,12 +32,6 @@ from synthorg.security.redteam.models import (
     RedTeamReportRecord,
     RedTeamVerdict,
 )
-
-if TYPE_CHECKING:
-    # psycopg_pool ships only in the ``postgres`` extra; importing it under
-    # TYPE_CHECKING keeps this module importable without that extra (the
-    # Postgres backend, and thus this repository, is wired only when present).
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

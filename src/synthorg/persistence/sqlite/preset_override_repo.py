@@ -2,11 +2,12 @@
 
 import json
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 
+from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.preset_override import (
     PERSISTENCE_PRESET_OVERRIDE_DELETE_FAILED,
@@ -22,10 +23,6 @@ from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.providers.enums import AuthType
 from synthorg.providers.management.capability_dtos import PresetOverride
-
-if TYPE_CHECKING:
-    from synthorg.config.schema import ProviderModelConfig
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 
@@ -274,9 +271,6 @@ class SQLitePresetOverrideRepo:
         Raises:
             QueryError: If the database query fails.
         """
-        from synthorg.config.schema import (  # noqa: PLC0415
-            ProviderModelConfig as _ProviderModelConfig,
-        )
 
         def _decode_json_list(raw: object) -> list[object] | None:
             if raw is None:
@@ -305,7 +299,7 @@ class SQLitePresetOverrideRepo:
 
         models_raw = _decode_json_list(row["default_models"])
         models: tuple[ProviderModelConfig, ...] | None = (
-            tuple(_ProviderModelConfig.model_validate(m) for m in models_raw)
+            tuple(ProviderModelConfig.model_validate(m) for m in models_raw)
             if models_raw is not None
             else None
         )

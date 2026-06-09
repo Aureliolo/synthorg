@@ -9,10 +9,10 @@ clean exit and rolls back on exception.
 import contextlib
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.auth.session import Session
@@ -29,10 +29,6 @@ from synthorg.persistence._shared.pagination import (
     validate_pagination_args,
 )
 from synthorg.persistence.auth_protocol import SessionFilterSpec
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
 
 logger = get_logger(__name__)
 

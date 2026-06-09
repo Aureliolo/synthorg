@@ -9,9 +9,10 @@ used by every write (including the plain ``save``).
 """
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 import psycopg
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
@@ -21,11 +22,6 @@ from synthorg.observability.events.settings import (
 )
 from synthorg.persistence._shared import parse_iso_utc
 from synthorg.persistence.settings_protocol import SettingRow, SettingRowKey
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

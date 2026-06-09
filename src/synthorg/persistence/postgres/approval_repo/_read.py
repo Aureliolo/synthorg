@@ -1,6 +1,7 @@
 """Read-path mixin for the Postgres approval repository."""
 
-from typing import TYPE_CHECKING, LiteralString
+from collections.abc import Sequence
+from typing import LiteralString
 
 import psycopg
 from psycopg.rows import dict_row
@@ -20,9 +21,6 @@ from synthorg.persistence.approval_protocol import ApprovalFilterSpec
 from synthorg.persistence.postgres.approval_repo._base import _ApprovalRepoBase
 from synthorg.persistence.postgres.approval_repo._marshalling import row_to_item
 from synthorg.persistence.postgres.approval_repo._sql import SELECT_COLS
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 logger = get_logger(__name__)
 

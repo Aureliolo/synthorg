@@ -1,13 +1,11 @@
 """Bespoke repository protocol for versioned entity persistence."""
 
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from synthorg.versioning.models import VersionSnapshot
+from synthorg.versioning.models import VersionSnapshot
 
 #: Default limit for list_versions pagination.
 _DEFAULT_LIST_LIMIT_50: Final[int] = 50

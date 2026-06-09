@@ -27,7 +27,7 @@ class ProjectEnvironmentRepository(
     """
 
     @override
-    async def save(self, entity: ProjectEnvironment) -> None:
+    async def save(self, entity: ProjectEnvironment, /) -> None:
         """Persist a project environment via upsert (insert or update).
 
         Args:
@@ -40,7 +40,7 @@ class ProjectEnvironmentRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> ProjectEnvironment | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ProjectEnvironment | None:
         """Retrieve a project environment by owning project id.
 
         Args:
@@ -77,7 +77,7 @@ class ProjectEnvironmentRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a project environment by owning project id.
 
         Args:

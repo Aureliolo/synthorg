@@ -12,15 +12,13 @@ import contextlib
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import psycopg
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 
@@ -87,7 +85,7 @@ async def subscribe(
         finally:
             try:
                 await conn.execute(f'UNLISTEN "{channel}"')
-            except Exception as exc:
+            except psycopg.Error as exc:
                 session_tainted = True
                 logger.warning(
                     API_REQUEST_ERROR,
@@ -97,7 +95,7 @@ async def subscribe(
                 )
             try:
                 await conn.set_autocommit(bool(original_autocommit))
-            except Exception as exc:
+            except psycopg.Error as exc:
                 session_tainted = True
                 logger.warning(
                     API_REQUEST_ERROR,

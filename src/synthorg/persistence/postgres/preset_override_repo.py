@@ -1,13 +1,16 @@
 """Postgres repository for operator-authored preset overrides."""
 
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
+from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.preset_override import (
     PERSISTENCE_PRESET_OVERRIDE_DELETE_FAILED,
@@ -19,12 +22,6 @@ from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.providers.enums import AuthType
 from synthorg.providers.management.capability_dtos import PresetOverride
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.config.schema import ProviderModelConfig
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

@@ -1,13 +1,11 @@
 """SSRF violation repository protocol."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
+from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
 
 @runtime_checkable
@@ -27,7 +25,7 @@ class SsrfViolationRepository(Protocol):
     correlated columns.
     """
 
-    async def save(self, entity: SsrfViolation) -> None:
+    async def save(self, entity: SsrfViolation, /) -> None:
         """Persist a new SSRF violation (insert-only).
 
         Args:
@@ -38,10 +36,7 @@ class SsrfViolationRepository(Protocol):
         """
         ...
 
-    async def get(
-        self,
-        entity_id: NotBlankStr,
-    ) -> SsrfViolation | None:
+    async def get(self, entity_id: NotBlankStr, /) -> SsrfViolation | None:
         """Retrieve a violation by ID.
 
         Args:

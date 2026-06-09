@@ -66,17 +66,17 @@ class ResearchRunRepository(
     """
 
     @override
-    async def save(self, entity: ResearchRun) -> None:
+    async def save(self, entity: ResearchRun, /) -> None:
         """Persist a run row via upsert (PK ``run_id``)."""
         ...
 
     @override
-    async def get(self, entity_id: ResearchRunKey) -> ResearchRun | None:
+    async def get(self, entity_id: ResearchRunKey, /) -> ResearchRun | None:
         """Retrieve a run by ``run_id``, or ``None`` when absent."""
         ...
 
     @override
-    async def delete(self, entity_id: ResearchRunKey) -> bool:
+    async def delete(self, entity_id: ResearchRunKey, /) -> bool:
         """Delete a run by ``run_id``. ``True`` iff a row existed."""
         ...
 

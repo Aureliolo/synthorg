@@ -7,11 +7,12 @@ and ``attachments`` use native JSONB.
 """
 
 import json
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.communication.message import Message
@@ -34,13 +35,7 @@ from synthorg.persistence._shared import (
     normalize_utc,
     validate_pagination_args,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.persistence.message_protocol import MessageFilterSpec
+from synthorg.persistence.message_protocol import MessageFilterSpec
 
 logger = get_logger(__name__)
 

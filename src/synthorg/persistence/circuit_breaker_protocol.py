@@ -50,7 +50,7 @@ class CircuitBreakerStateRepository(
     """
 
     @override
-    async def save(self, entity: CircuitBreakerStateRecord) -> None:
+    async def save(self, entity: CircuitBreakerStateRecord, /) -> None:
         """Persist a circuit breaker state record (upsert).
 
         Args:
@@ -63,7 +63,7 @@ class CircuitBreakerStateRepository(
 
     @override
     async def get(
-        self, entity_id: CircuitBreakerPairKey
+        self, entity_id: CircuitBreakerPairKey, /
     ) -> CircuitBreakerStateRecord | None:
         """Retrieve a circuit breaker state record by pair key.
 
@@ -127,7 +127,7 @@ class CircuitBreakerStateRepository(
         ...
 
     @override
-    async def delete(self, entity_id: CircuitBreakerPairKey) -> bool:
+    async def delete(self, entity_id: CircuitBreakerPairKey, /) -> bool:
         """Delete a circuit breaker state record.
 
         Args:

@@ -69,7 +69,7 @@ class DocsRepository(
     """
 
     @override
-    async def save(self, entity: DocMetadata) -> None:
+    async def save(self, entity: DocMetadata, /) -> None:
         """Persist a doc metadata row via upsert.
 
         Args:
@@ -81,7 +81,7 @@ class DocsRepository(
         ...
 
     @override
-    async def get(self, entity_id: DocsRepositoryKey) -> DocMetadata | None:
+    async def get(self, entity_id: DocsRepositoryKey, /) -> DocMetadata | None:
         """Retrieve metadata by ``(project_id, slug)``.
 
         Args:
@@ -119,7 +119,7 @@ class DocsRepository(
         ...
 
     @override
-    async def delete(self, entity_id: DocsRepositoryKey) -> bool:
+    async def delete(self, entity_id: DocsRepositoryKey, /) -> bool:
         """Delete a metadata row by ``(project_id, slug)``.
 
         Args:

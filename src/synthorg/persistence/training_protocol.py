@@ -1,21 +1,19 @@
 """Training plan and result repository protocols."""
 
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.training.models import (
+    TrainingPlan,
+    TrainingResult,
+)
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     FilteredQueryRepository,
     IdKeyedRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.training.models import (
-        TrainingPlan,
-        TrainingResult,
-    )
 
 __all__ = [
     "TrainingPlanFilterSpec",
@@ -56,7 +54,7 @@ class TrainingPlanRepository(
     """
 
     @override
-    async def save(self, entity: TrainingPlan) -> None:
+    async def save(self, entity: TrainingPlan, /) -> None:
         """Persist a training plan (insert or update by id).
 
         Args:
@@ -68,7 +66,7 @@ class TrainingPlanRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> TrainingPlan | None:
+    async def get(self, entity_id: NotBlankStr, /) -> TrainingPlan | None:
         """Retrieve a training plan by its ID.
 
         Args:
@@ -83,7 +81,7 @@ class TrainingPlanRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a training plan by ID.
 
         Args:
@@ -241,7 +239,7 @@ class TrainingResultRepository(
     """
 
     @override
-    async def save(self, entity: TrainingResult) -> None:
+    async def save(self, entity: TrainingResult, /) -> None:
         """Persist a training result (insert or update by id).
 
         Args:
@@ -253,7 +251,7 @@ class TrainingResultRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> TrainingResult | None:
+    async def get(self, entity_id: NotBlankStr, /) -> TrainingResult | None:
         """Retrieve a training result by its ID.
 
         Args:
@@ -268,7 +266,7 @@ class TrainingResultRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a training result by ID.
 
         Args:

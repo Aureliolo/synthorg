@@ -2,9 +2,9 @@
 
 import json
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
+from aiosqlite import Row
 
 from synthorg.core.persistence_errors import (
     ConstraintViolationError,
@@ -12,6 +12,7 @@ from synthorg.core.persistence_errors import (
     QueryError,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_DELETE_FAILED,
@@ -32,11 +33,6 @@ from synthorg.persistence.custom_rule_protocol import (
     CustomRuleFilterSpec,
 )
 from synthorg.persistence.sqlite._shared import WriteContext
-
-if TYPE_CHECKING:
-    from aiosqlite import Row
-
-    from synthorg.meta.rules.custom import CustomRuleDefinition
 
 logger = get_logger(__name__)
 

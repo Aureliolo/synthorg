@@ -7,7 +7,7 @@ workspace; this row only carries pointers + indexing state.
 
 import json
 import sqlite3
-from typing import TYPE_CHECKING
+from collections.abc import Iterable
 
 import aiosqlite
 from pydantic import ValidationError
@@ -32,12 +32,8 @@ from synthorg.observability.events.persistence.project_doc import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.persistence.docs_protocol import DocsFilterSpec, DocsRepositoryKey
-    from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.docs_protocol import DocsFilterSpec, DocsRepositoryKey
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

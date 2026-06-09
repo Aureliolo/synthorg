@@ -41,7 +41,7 @@ class CustomRuleRepository(
     """
 
     @override
-    async def save(self, entity: CustomRuleDefinition) -> None:
+    async def save(self, entity: CustomRuleDefinition, /) -> None:
         """Persist a custom rule (insert or update by id).
 
         Args:
@@ -55,10 +55,7 @@ class CustomRuleRepository(
         ...
 
     @override
-    async def get(
-        self,
-        entity_id: NotBlankStr,
-    ) -> CustomRuleDefinition | None:
+    async def get(self, entity_id: NotBlankStr, /) -> CustomRuleDefinition | None:
         """Retrieve a custom rule by id.
 
         Args:
@@ -139,7 +136,7 @@ class CustomRuleRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a custom rule by id.
 
         Args:

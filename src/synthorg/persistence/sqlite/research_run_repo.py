@@ -7,7 +7,7 @@ ordering.
 """
 
 import sqlite3
-from typing import TYPE_CHECKING
+from collections.abc import Iterable
 
 import aiosqlite
 from pydantic import ValidationError
@@ -29,16 +29,12 @@ from synthorg.observability.events.persistence.research_run import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
+from synthorg.persistence.research_protocol import (
+    ResearchRunFilter,
+    ResearchRunKey,
+)
+from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.research.models import ResearchRun
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.persistence.research_protocol import (
-        ResearchRunFilter,
-        ResearchRunKey,
-    )
-    from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

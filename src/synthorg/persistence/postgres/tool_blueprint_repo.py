@@ -7,14 +7,16 @@ Sibling of :class:`SQLiteDynamicToolRepository` backed by
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.toolsmith.models import (
     ToolBlueprint,
     ToolBlueprintState,
@@ -42,11 +44,6 @@ from synthorg.persistence._shared import (
 from synthorg.persistence.tool_blueprint_protocol import (
     ToolBlueprintFilterSpec,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

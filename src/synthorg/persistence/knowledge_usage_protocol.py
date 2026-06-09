@@ -94,8 +94,7 @@ class KnowledgeUsageRecordRepository(
 
     @override
     async def append(  # pyright: ignore[reportIncompatibleMethodOverride] -- domain-specific param name
-        self,
-        record: KnowledgeUsageRecord,
+        self, record: KnowledgeUsageRecord, /
     ) -> None:
         """Persist one usage record (append-only; duplicate id is a violation)."""
         ...
@@ -112,7 +111,7 @@ class KnowledgeUsageRecordRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Delete records with ``recorded_at < threshold``. Returns rows removed.
 
         ``threshold`` must be timezone-aware; a naive datetime is rejected

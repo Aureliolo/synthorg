@@ -9,9 +9,9 @@ duplicate. ``is_completed`` is the pre-execute existence check.
 
 import contextlib
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
 
 import psycopg
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -23,9 +23,6 @@ from synthorg.observability.events.persistence.seen_claims import (
     PERSISTENCE_SEEN_CLAIMS_PRUNED,
 )
 from synthorg.persistence._shared import normalize_utc
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

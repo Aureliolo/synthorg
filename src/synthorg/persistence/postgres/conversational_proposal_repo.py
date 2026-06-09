@@ -5,13 +5,13 @@ Sibling of ``SQLiteConversationalProposalRepository`` backed by
 ``ConversationalProposalRepository`` structurally.
 """
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.conversational_proposal import (
@@ -27,11 +27,6 @@ from synthorg.persistence._shared import (
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

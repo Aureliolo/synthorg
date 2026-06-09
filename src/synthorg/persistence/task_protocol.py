@@ -46,7 +46,7 @@ class TaskRepository(
     """
 
     @override
-    async def save(self, entity: Task) -> None:
+    async def save(self, entity: Task, /) -> None:
         """Persist a task (insert or update by id).
 
         Args:
@@ -58,7 +58,7 @@ class TaskRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> Task | None:
+    async def get(self, entity_id: NotBlankStr, /) -> Task | None:
         """Retrieve a task by its ID.
 
         Args:
@@ -132,7 +132,7 @@ class TaskRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a task by ID.
 
         Args:

@@ -1,10 +1,9 @@
 """Postgres repository implementation for CodebaseStructureMap."""
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.codebase_structure_map import CodebaseStructureMap
@@ -23,9 +22,6 @@ from synthorg.observability.events.persistence.codebase_structure_map import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp
 from synthorg.persistence._shared.pagination import validate_pagination_args
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

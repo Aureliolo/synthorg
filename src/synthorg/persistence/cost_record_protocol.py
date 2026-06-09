@@ -1,18 +1,16 @@
 """CostRecord repository protocol."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.budget.cost_record import CostRecord
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     AppendOnlyRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.cost_record import CostRecord
 
 
 class CostRecordFilterSpec(BaseModel):
@@ -44,7 +42,7 @@ class CostRecordRepository(
     """
 
     @override
-    async def append(self, event: CostRecord) -> None:
+    async def append(self, event: CostRecord, /) -> None:
         """Persist a cost record (append-only).
 
         Args:
@@ -79,7 +77,7 @@ class CostRecordRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Delete cost records with timestamp before threshold (retention).
 
         Args:

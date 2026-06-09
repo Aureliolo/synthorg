@@ -18,12 +18,9 @@ custom enum types, or domain-specific serialization) so repositories
 stay small.
 """
 
-from typing import TYPE_CHECKING
+import psycopg
 
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    import psycopg
 
 logger = get_logger(__name__)
 

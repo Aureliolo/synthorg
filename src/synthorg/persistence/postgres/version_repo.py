@@ -24,11 +24,12 @@ Example::
 """
 
 import re
-from typing import TYPE_CHECKING
+from collections.abc import Callable
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
@@ -46,11 +47,6 @@ from synthorg.observability.events.versioning import (
 from synthorg.persistence._shared.datetime_marshaller import coerce_row_timestamp
 from synthorg.persistence.version_protocol import _DEFAULT_LIST_LIMIT_50
 from synthorg.versioning.models import VersionSnapshot
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

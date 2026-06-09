@@ -3,13 +3,14 @@
 import json
 import sqlite3
 from datetime import datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import aiosqlite
 from aiosqlite import Row
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.toolsmith.models import (
     ToolBlueprint,
     ToolBlueprintState,
@@ -42,9 +43,6 @@ from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.tool_blueprint_protocol import (
     ToolBlueprintFilterSpec,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

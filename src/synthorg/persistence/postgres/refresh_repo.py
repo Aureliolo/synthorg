@@ -7,10 +7,17 @@ and returns the associated session/user info for re-issuance.
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from psycopg import Error as PsycopgError
 from psycopg.rows import BaseRowFactory, DictRow
+
+# Persistence-boundary rule: SECURITY_AUTH_REFRESH_* events are
+# auth decisions, not storage facts. Repos must not emit them; the
+# service / controller layer that calls ``consume`` /
+# ``revoke_by_session`` / ``revoke_by_user`` is responsible for
+# translating the return value into the appropriate
+# ``security.auth.refresh_*`` audit event.
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.auth.refresh_record import (
     RefreshConsumeOutcome,
@@ -23,16 +30,6 @@ from synthorg.observability.events.api import (
     API_AUTH_REFRESH_PERSISTENCE_ERROR,
 )
 from synthorg.persistence._shared import normalize_utc
-
-# Persistence-boundary rule: SECURITY_AUTH_REFRESH_* events are
-# auth decisions, not storage facts. Repos must not emit them; the
-# service / controller layer that calls ``consume`` /
-# ``revoke_by_session`` / ``revoke_by_user`` is responsible for
-# translating the return value into the appropriate
-# ``security.auth.refresh_*`` audit event.
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 
 def _import_dict_row() -> BaseRowFactory[DictRow]:

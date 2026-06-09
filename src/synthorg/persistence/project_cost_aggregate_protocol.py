@@ -32,10 +32,7 @@ class ProjectCostAggregateRepository(Protocol):
     concurrent cost recordings do not lose updates.
     """
 
-    async def get(
-        self,
-        project_id: NotBlankStr,
-    ) -> ProjectCostAggregate | None:
+    async def get(self, project_id: NotBlankStr, /) -> ProjectCostAggregate | None:
         """Retrieve the aggregate for a project.
 
         Returns:

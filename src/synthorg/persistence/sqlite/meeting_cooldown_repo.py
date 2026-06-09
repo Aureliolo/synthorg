@@ -1,13 +1,12 @@
 """SQLite repository for meeting cooldown timestamps."""
 
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.meeting_cooldown import (
     PERSISTENCE_MEETING_COOLDOWN_DELETE_FAILED,
@@ -23,9 +22,6 @@ from synthorg.persistence._shared.datetime_marshaller import (
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.meeting_cooldown_protocol import MeetingCooldownRecord
 from synthorg.persistence.sqlite._shared import WriteContext
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 
@@ -43,17 +39,19 @@ class SQLiteMeetingCooldownRepository:
         self._write_context = write_context
 
     async def _rollback_quietly(self, event: str) -> None:
-        """Roll back the current transaction, suppressing non-critical errors.
+        """Roll back the current transaction, swallowing driver errors.
 
-        Calls :func:`reraise_critical` first so ``MemoryError`` and
-        ``RecursionError`` still propagate; any other rollback failure
-        is logged at WARNING and swallowed so the caller's outer
-        exception remains the operative one.
+        Any rollback failure is logged at WARNING and swallowed so the
+        caller's outer exception remains the operative one. Narrowed to
+        the driver-error surface, so ``MemoryError`` / ``RecursionError``
+        propagate naturally.
         """
         try:
             await self._db.rollback()
-        except Exception as exc:
-            reraise_critical(exc)
+        # aiosqlite raises a bare ValueError("Connection closed") for a closed
+        # connection; treat it as a driver-level rollback failure so this
+        # best-effort rollback never masks the caller's primary error.
+        except (sqlite3.Error, ValueError) as exc:
             logger.warning(
                 event,
                 error_type=type(exc).__name__,

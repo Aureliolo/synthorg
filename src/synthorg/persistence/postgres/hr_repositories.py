@@ -8,11 +8,11 @@ Pydantic models as the SQLite backend.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -45,9 +45,6 @@ from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

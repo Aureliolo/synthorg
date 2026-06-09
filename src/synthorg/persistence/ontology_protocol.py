@@ -7,24 +7,22 @@ persistence-layer repository; lifecycle methods (``connect`` /
 belong to :class:`PersistenceBackend`.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol, override, runtime_checkable
+from typing import Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.core.types import NotBlankStr
+from synthorg.ontology.models import (
+    DriftReport,
+    EntityDefinition,
+    EntityTier,
+)
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     AppendOnlyRepository,
     IdKeyedRepository,
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.ontology.models import (
-        DriftReport,
-        EntityDefinition,
-        EntityTier,
-    )
 
 _DEFAULT_DRIFT_REPORTS_LIMIT: Final[int] = 10
 
@@ -61,7 +59,7 @@ class OntologyEntityRepository(
         ...
 
     @override
-    async def save(self, entity: EntityDefinition) -> None:
+    async def save(self, entity: EntityDefinition, /) -> None:
         """Insert or update an entity (idempotent upsert).
 
         Implements the :class:`IdKeyedRepository` upsert contract: a
@@ -78,7 +76,7 @@ class OntologyEntityRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> EntityDefinition | None:
+    async def get(self, entity_id: NotBlankStr, /) -> EntityDefinition | None:
         """Retrieve an entity definition by name.
 
         Returns ``None`` when absent (generic ``IdKeyedRepository``
@@ -95,7 +93,7 @@ class OntologyEntityRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete an entity definition by name.
 
         Returns ``True`` iff a row existed (generic ``IdKeyedRepository`` contract).
@@ -237,7 +235,7 @@ class OntologyDriftReportRepository(
     """
 
     @override
-    async def append(self, event: DriftReport) -> None:
+    async def append(self, event: DriftReport, /) -> None:
         """Append one drift report (write-only; reports are immutable once written).
 
         Args:

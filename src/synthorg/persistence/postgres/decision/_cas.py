@@ -12,12 +12,13 @@ and the loser retries with a freshly computed version.
 import copy
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import psycopg
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.decision_record import (
@@ -28,9 +29,6 @@ from synthorg.persistence.postgres.decision._sql import (
     _INSERT_SQL,
     _build_insert_params,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

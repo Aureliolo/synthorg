@@ -8,11 +8,10 @@ marshalling is shared with the SQLite sibling via
 :mod:`synthorg.persistence._shared.workflow_execution_marshalling`.
 """
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
@@ -45,9 +44,6 @@ from synthorg.persistence._shared.workflow_execution_marshalling import (
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionFilterSpec,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

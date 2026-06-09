@@ -3,11 +3,12 @@
 import json
 import sqlite3
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 import aiosqlite
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.audit_entry import (
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
@@ -21,17 +22,12 @@ from synthorg.persistence._shared.audit import (
     classify_audit_save_error,
     row_to_audit_entry,
 )
-
-if TYPE_CHECKING:
-    from synthorg.approval.enums import ApprovalRiskLevel
-    from synthorg.core.types import NotBlankStr
-    from synthorg.persistence.audit_protocol import AuditFilterSpec
-    from synthorg.security.models import AuditEntry, AuditVerdictStr
-
+from synthorg.persistence.audit_protocol import AuditFilterSpec
 from synthorg.persistence.sqlite._shared import (
     WriteContext,
     is_unique_constraint_error,
 )
+from synthorg.security.models import AuditEntry, AuditVerdictStr
 
 logger = get_logger(__name__)
 

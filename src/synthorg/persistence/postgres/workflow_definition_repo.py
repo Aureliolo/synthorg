@@ -8,11 +8,10 @@ the SQLite sibling via
 :mod:`synthorg.persistence._shared.workflow_definition_marshalling`.
 """
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
@@ -37,13 +36,9 @@ from synthorg.persistence._shared.workflow_definition_marshalling import (
     definition_jsonb_payloads,
     row_to_workflow_definition,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.persistence.workflow_definition_protocol import (
-        WorkflowDefinitionFilterSpec,
-    )
+from synthorg.persistence.workflow_definition_protocol import (
+    WorkflowDefinitionFilterSpec,
+)
 
 logger = get_logger(__name__)
 

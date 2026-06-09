@@ -1,7 +1,7 @@
 """SQLite append-only repository for conversation turns."""
 
 import sqlite3
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 import aiosqlite
 
@@ -22,9 +22,6 @@ from synthorg.persistence.sqlite.conversation_repo._base import (
     _MAX_PAGE_LIMIT,
     _safe_rollback,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 logger = get_logger(__name__)
 

@@ -14,8 +14,8 @@ repository boundary so silent re-stamping cannot poison aggregates. Row
 """
 
 import sqlite3
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 import aiosqlite
@@ -45,9 +45,6 @@ from synthorg.persistence._shared.cost_forecast_marshalling import (
 )
 from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 logger = get_logger(__name__)
 

@@ -57,7 +57,7 @@ class WorkflowExecutionRepository(
     """
 
     @override
-    async def save(self, execution: WorkflowExecution) -> None:
+    async def save(self, execution: WorkflowExecution, /) -> None:
         """Persist a workflow execution (insert or update).
 
         Optimistic concurrency: if the execution's version does not match
@@ -78,10 +78,7 @@ class WorkflowExecutionRepository(
         ...
 
     @override
-    async def get(
-        self,
-        execution_id: NotBlankStr,
-    ) -> WorkflowExecution | None:
+    async def get(self, execution_id: NotBlankStr, /) -> WorkflowExecution | None:
         """Retrieve a workflow execution by its ID.
 
         Args:
@@ -178,7 +175,7 @@ class WorkflowExecutionRepository(
         ...
 
     @override
-    async def delete(self, execution_id: NotBlankStr) -> bool:
+    async def delete(self, execution_id: NotBlankStr, /) -> bool:
         """Delete a workflow execution by ID.
 
         Args:

@@ -9,7 +9,7 @@ no ``api`` / ``meta`` module imports ``aiosqlite`` / ``psycopg``.
 
 from typing import TYPE_CHECKING, cast
 
-from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.charter import (
     PERSISTENCE_CHARTER_HANDLE_UNAVAILABLE,
@@ -20,6 +20,10 @@ if TYPE_CHECKING:
     import aiosqlite
     from psycopg_pool import AsyncConnectionPool
 
+    # Kept TYPE_CHECKING-only: importing charter_protocol at module level
+    # pulls meta.charter (via its enums), whose package init eagerly imports
+    # back into charter_protocol, so a fresh import of this factory before
+    # meta.charter is loaded raises a partially-initialised ImportError.
     from synthorg.persistence.charter_protocol import CharterRepository
     from synthorg.persistence.protocol import PersistenceBackend
 
@@ -50,8 +54,7 @@ def build_charter_repository(
     try:
         handle = backend.get_db()
         write_context = backend.write_context
-    except Exception as exc:
-        reraise_critical(exc)
+    except PersistenceConnectionError as exc:
         logger.warning(
             PERSISTENCE_CHARTER_HANDLE_UNAVAILABLE,
             backend_name=name,

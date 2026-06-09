@@ -47,12 +47,12 @@ class ConnectionRepository(
     """
 
     @override
-    async def save(self, entity: Connection) -> None:
+    async def save(self, entity: Connection, /) -> None:
         """Persist a connection (insert or upsert by name)."""
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> Connection | None:
+    async def get(self, entity_id: NotBlankStr, /) -> Connection | None:
         """Retrieve a connection by name."""
         ...
 
@@ -89,7 +89,7 @@ class ConnectionRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a connection by name.
 
         Returns:
@@ -119,7 +119,7 @@ class ConnectionSecretRepository(Protocol):
         """Retrieve an encrypted secret blob."""
         ...
 
-    async def delete(self, secret_id: NotBlankStr) -> bool:
+    async def delete(self, secret_id: NotBlankStr, /) -> bool:
         """Delete an encrypted secret."""
         ...
 
@@ -138,12 +138,12 @@ class OAuthStateRepository(
     """
 
     @override
-    async def save(self, entity: OAuthState) -> None:
+    async def save(self, entity: OAuthState, /) -> None:
         """Persist an OAuth state."""
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> OAuthState | None:
+    async def get(self, entity_id: NotBlankStr, /) -> OAuthState | None:
         """Retrieve by state token."""
         ...
 
@@ -158,7 +158,7 @@ class OAuthStateRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a state token (consumed or expired)."""
         ...
 
@@ -223,12 +223,12 @@ class WebhookReceiptRepository(
     """
 
     @override
-    async def save(self, entity: WebhookReceipt) -> None:
+    async def save(self, entity: WebhookReceipt, /) -> None:
         """Persist a webhook receipt."""
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> WebhookReceipt | None:
+    async def get(self, entity_id: NotBlankStr, /) -> WebhookReceipt | None:
         """Fetch a single receipt by ID, or ``None`` when absent.
 
         Used by the retry endpoint to look up a failed receipt before
@@ -247,7 +247,7 @@ class WebhookReceiptRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a webhook receipt by ID.
 
         Returns:

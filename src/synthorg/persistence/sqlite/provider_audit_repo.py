@@ -9,11 +9,12 @@ drawer.
 
 import json
 import sqlite3
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 import aiosqlite
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.audit_entry import (
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
@@ -34,11 +35,6 @@ from synthorg.providers.management.capability_dtos import (
     ProviderAuditActor,
     ProviderAuditEvent,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

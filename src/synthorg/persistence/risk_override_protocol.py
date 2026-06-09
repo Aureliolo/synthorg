@@ -1,13 +1,11 @@
 """Risk override repository protocol."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.security.rules.risk_override import RiskTierOverride
+from synthorg.security.rules.risk_override import RiskTierOverride
 
 
 @runtime_checkable
@@ -28,7 +26,7 @@ class RiskOverrideRepository(
     """
 
     @override
-    async def save(self, entity: RiskTierOverride) -> None:
+    async def save(self, entity: RiskTierOverride, /) -> None:
         """Persist a new override (insert-only).
 
         Args:
@@ -40,7 +38,7 @@ class RiskOverrideRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> RiskTierOverride | None:
+    async def get(self, entity_id: NotBlankStr, /) -> RiskTierOverride | None:
         """Retrieve an override by ID.
 
         Args:
@@ -83,7 +81,7 @@ class RiskOverrideRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete an override by ID.
 
         Args:

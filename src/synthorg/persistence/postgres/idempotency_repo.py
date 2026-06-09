@@ -11,11 +11,11 @@ to overwrite expired/failed rows in a follow-up ``UPDATE``.
 
 import secrets
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
 
 from psycopg import AsyncCursor
 from psycopg import Error as PsycopgError
 from psycopg.rows import BaseRowFactory, DictRow
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -29,9 +29,6 @@ from synthorg.persistence.idempotency_protocol import (
     IdempotencyOutcome,
     IdempotencyRecord,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 
 def _import_dict_row() -> BaseRowFactory[DictRow]:

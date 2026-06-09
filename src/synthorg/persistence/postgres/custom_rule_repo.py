@@ -10,15 +10,16 @@ name -- robust to accidental SELECT re-ordering.
 """
 
 from datetime import UTC
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_DELETE_FAILED,
@@ -37,12 +38,6 @@ from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.custom_rule_protocol import (
     CustomRuleFilterSpec,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.meta.rules.custom import CustomRuleDefinition
-
 
 logger = get_logger(__name__)
 

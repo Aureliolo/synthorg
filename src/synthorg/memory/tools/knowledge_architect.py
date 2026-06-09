@@ -456,7 +456,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
                 is_human=False,
             )
             deleted = await self._fact_store.delete(
-                fact_id=entry_id,
+                entry_id,
                 author=author,
             )
         except Exception as exc:

@@ -35,7 +35,7 @@ class PresetOverrideRepo(
     """
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> PresetOverride | None:
+    async def get(self, entity_id: NotBlankStr, /) -> PresetOverride | None:
         """Read the override for ``entity_id``, if any.
 
         Args:
@@ -50,7 +50,7 @@ class PresetOverrideRepo(
         ...
 
     @override
-    async def save(self, entity: PresetOverride) -> None:
+    async def save(self, entity: PresetOverride, /) -> None:
         """Insert or replace the override for ``entity.preset_name``.
 
         ``updated_at`` and ``updated_by`` are required by the schema;
@@ -65,7 +65,7 @@ class PresetOverrideRepo(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Remove the override for ``entity_id``.
 
         Args:

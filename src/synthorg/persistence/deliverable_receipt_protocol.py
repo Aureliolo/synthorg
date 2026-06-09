@@ -8,19 +8,17 @@ the prior receipt rather than accumulating duplicates. The full receipt
 is stored as a JSON payload; the structured columns exist for filtering.
 """
 
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
+from synthorg.deliverable_receipts.models import DeliverableReceipt
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     FilteredQueryRepository,
     IdKeyedRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.deliverable_receipts.models import DeliverableReceipt
 
 __all__ = [
     "DeliverableReceiptFilterSpec",
@@ -66,7 +64,7 @@ class DeliverableReceiptRepository(
     """
 
     @override
-    async def save(self, entity: DeliverableReceipt) -> None:
+    async def save(self, entity: DeliverableReceipt, /) -> None:
         """Persist a receipt via upsert keyed on ``task_id``.
 
         Args:
@@ -79,7 +77,7 @@ class DeliverableReceiptRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> DeliverableReceipt | None:
+    async def get(self, entity_id: NotBlankStr, /) -> DeliverableReceipt | None:
         """Retrieve a receipt by ``receipt_id``.
 
         Args:
@@ -115,7 +113,7 @@ class DeliverableReceiptRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a receipt by ``receipt_id``.
 
         Args:

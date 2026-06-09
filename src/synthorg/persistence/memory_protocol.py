@@ -20,20 +20,17 @@ categories) because:
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.enums import OrgFactCategory
+from synthorg.memory.org.models import (
+    OperationLogEntry,
+    OperationLogSnapshot,
+    OrgFact,
+    OrgFactAuthor,
+)
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.enums import OrgFactCategory
-    from synthorg.memory.org.models import (
-        OperationLogEntry,
-        OperationLogSnapshot,
-        OrgFact,
-        OrgFactAuthor,
-    )
-
 
 _DEFAULT_LIST_LIMIT_FACTS: Final[int] = 5
 
@@ -49,7 +46,7 @@ class OrgFactRepository(Protocol):
     materialized on read for efficient point-in-time reconstruction.
     """
 
-    async def save(self, fact: OrgFact) -> None:
+    async def save(self, fact: OrgFact, /) -> None:
         """Publish an organizational fact.
 
         Appends a PUBLISH operation to the log and updates the
@@ -64,7 +61,7 @@ class OrgFactRepository(Protocol):
         """
         ...
 
-    async def get(self, fact_id: NotBlankStr) -> OrgFact | None:
+    async def get(self, fact_id: NotBlankStr, /) -> OrgFact | None:
         """Retrieve the current state of a fact by ID.
 
         Returns ``None`` if the fact does not exist or has been
@@ -139,6 +136,7 @@ class OrgFactRepository(Protocol):
     async def delete(
         self,
         fact_id: NotBlankStr,
+        /,
         *,
         author: OrgFactAuthor,
     ) -> bool:
@@ -212,6 +210,7 @@ class OrgFactRepository(Protocol):
     async def get_operation_log(
         self,
         fact_id: NotBlankStr,
+        /,
         *,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,

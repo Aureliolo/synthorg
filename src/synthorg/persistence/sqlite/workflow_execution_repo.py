@@ -9,10 +9,8 @@ Row <-> model marshalling is shared with the Postgres sibling via
 import json
 import sqlite3
 from datetime import UTC
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import aiosqlite
+import aiosqlite
 
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,

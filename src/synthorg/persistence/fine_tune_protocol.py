@@ -6,16 +6,14 @@ these Protocols instead of the SQLite classes so the persistence
 backend can be swapped without touching service code.
 """
 
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.embedding.fine_tune_models import (
+    CheckpointRecord,
+    FineTuneRun,
+)
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
-
-if TYPE_CHECKING:
-    from synthorg.memory.embedding.fine_tune_models import (
-        CheckpointRecord,
-        FineTuneRun,
-    )
 
 
 @runtime_checkable
@@ -34,7 +32,7 @@ class FineTuneRunRepository(
     """
 
     @override
-    async def save(self, entity: FineTuneRun) -> None:
+    async def save(self, entity: FineTuneRun, /) -> None:
         """Upsert a run by ``id`` (idempotent semantics).
 
         Args:
@@ -46,7 +44,7 @@ class FineTuneRunRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> FineTuneRun | None:
+    async def get(self, entity_id: NotBlankStr, /) -> FineTuneRun | None:
         """Retrieve a run by ID.
 
         Args:
@@ -61,7 +59,7 @@ class FineTuneRunRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a run by ID.
 
         Args:
@@ -181,7 +179,7 @@ class FineTuneCheckpointRepository(
     """
 
     @override
-    async def save(self, entity: CheckpointRecord) -> None:
+    async def save(self, entity: CheckpointRecord, /) -> None:
         """Upsert a checkpoint by ``id`` (idempotent semantics).
 
         Args:
@@ -193,7 +191,7 @@ class FineTuneCheckpointRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> CheckpointRecord | None:
+    async def get(self, entity_id: NotBlankStr, /) -> CheckpointRecord | None:
         """Retrieve a checkpoint by ID.
 
         Args:
@@ -208,7 +206,7 @@ class FineTuneCheckpointRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a checkpoint by ID.
 
         Raises when deleting the active checkpoint (domain invariant).
@@ -272,7 +270,7 @@ class FineTuneCheckpointRepository(
         """
         ...
 
-    async def set_active(self, checkpoint_id: NotBlankStr) -> None:
+    async def set_active(self, checkpoint_id: NotBlankStr, /) -> None:
         """Deactivate all checkpoints and atomically activate the given one.
 
         Bespoke D7: domain invariant enforcement. Raises when

@@ -5,10 +5,9 @@ record) plus denormalised ``run_id`` / ``brief_id`` / ``project_id`` /
 ``status`` / ``created_at`` columns for filtering and ordering.
 """
 
-from typing import TYPE_CHECKING
-
 import psycopg
 from psycopg.rows import DictRow, TupleRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -28,15 +27,11 @@ from synthorg.observability.events.persistence.research_run import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence.research_protocol import (
+    ResearchRunFilter,
+    ResearchRunKey,
+)
 from synthorg.research.models import ResearchRun
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.persistence.research_protocol import (
-        ResearchRunFilter,
-        ResearchRunKey,
-    )
 
 logger = get_logger(__name__)
 

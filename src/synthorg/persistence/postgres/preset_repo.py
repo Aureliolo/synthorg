@@ -10,10 +10,10 @@ to the caller.
 
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -30,9 +30,6 @@ from synthorg.observability.events.preset import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.preset_protocol import Preset, PresetFilterSpec
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

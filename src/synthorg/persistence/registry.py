@@ -8,7 +8,6 @@ optional ``synthorg.persistence.postgres`` extra.
 
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.observability import get_logger
@@ -19,10 +18,8 @@ from synthorg.observability.events.registry import (
     REGISTRY_FACTORY_NOT_FOUND,
 )
 from synthorg.observability.redaction import safe_error_description
-
-if TYPE_CHECKING:
-    from synthorg.persistence.config import PersistenceConfig
-    from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.config import PersistenceConfig
+from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 

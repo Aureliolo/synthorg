@@ -7,10 +7,10 @@ newest-first and bounded by an explicit ``limit``.
 
 import json
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
 
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
@@ -30,10 +30,6 @@ from synthorg.persistence._shared import (
     normalize_utc,
     validate_pagination_args,
 )
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
 
 logger = get_logger(__name__)
 

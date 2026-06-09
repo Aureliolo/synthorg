@@ -5,10 +5,11 @@ import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal, override
+from typing import Literal, override
 
 import aiosqlite
 
+from synthorg.core.auth.config import AuthConfig
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -24,7 +25,11 @@ from synthorg.observability.events.persistence.backend import (
     PERSISTENCE_BACKEND_NOT_CONNECTED,
     PERSISTENCE_BACKEND_WAL_MODE_FAILED,
 )
+from synthorg.ontology.models import EntityDefinition
 from synthorg.persistence._shared import format_iso_utc
+from synthorg.persistence.auth_protocol import LockoutRepository
+from synthorg.persistence.config import SQLiteConfig
+from synthorg.persistence.escalation_protocol import EscalationQueueRepository
 from synthorg.persistence.migrations import migrate_apply, to_sqlite_url
 from synthorg.persistence.sqlite._repository_wiring import (
     _SQLiteRepositoryWiring,
@@ -32,14 +37,7 @@ from synthorg.persistence.sqlite._repository_wiring import (
 from synthorg.persistence.sqlite.lockout_repo import (
     SQLiteLockoutRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.auth.config import AuthConfig
-    from synthorg.ontology.models import EntityDefinition
-    from synthorg.persistence.auth_protocol import LockoutRepository
-    from synthorg.persistence.config import SQLiteConfig
-    from synthorg.persistence.escalation_protocol import EscalationQueueRepository
-    from synthorg.versioning.service import VersioningService
+from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
 

@@ -11,12 +11,12 @@ import copy
 import sqlite3
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.decision_record import (
@@ -29,9 +29,6 @@ from synthorg.persistence.sqlite.decision._sql import (
     _build_insert_params,
     _is_structural_constraint_error,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

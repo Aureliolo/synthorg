@@ -83,7 +83,7 @@ class ProjectRepository(
         ...
 
     @override
-    async def save(self, entity: Project) -> None:
+    async def save(self, entity: Project, /) -> None:
         """Persist a project via upsert (insert or update).
 
         Used for migration / import paths that legitimately do not
@@ -100,7 +100,7 @@ class ProjectRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> Project | None:
+    async def get(self, entity_id: NotBlankStr, /) -> Project | None:
         """Retrieve a project by its ID.
 
         Args:
@@ -167,7 +167,7 @@ class ProjectRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a project by ID.
 
         Args:

@@ -5,10 +5,11 @@ Postgres stores timestamps as native TIMESTAMPTZ and port as BIGINT.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
@@ -22,9 +23,6 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, normalize_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

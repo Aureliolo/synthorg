@@ -15,7 +15,8 @@ Concrete implementations live in the backend packages
 All protocols are ``@runtime_checkable``; all methods are ``async``.
 """
 
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from datetime import datetime
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,9 +28,6 @@ from synthorg.persistence._generics import (
     AppendOnlyRepository,
     StatefulRepository,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 
 class ConversationTurnFilterSpec(BaseModel):
@@ -63,7 +61,7 @@ class ConversationRepository(
     """
 
     @override
-    async def save(self, entity: Conversation) -> None:
+    async def save(self, entity: Conversation, /) -> None:
         """Upsert a conversation header.
 
         Raises:
@@ -73,7 +71,7 @@ class ConversationRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> Conversation | None:
+    async def get(self, entity_id: NotBlankStr, /) -> Conversation | None:
         """Retrieve a conversation by id, or ``None`` when absent.
 
         Raises:
@@ -82,7 +80,7 @@ class ConversationRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete a conversation by id. ``True`` iff a row existed.
 
         Raises:
@@ -107,6 +105,7 @@ class ConversationRepository(
     @override
     async def transition_if(
         self,
+        /,
         entity_id: NotBlankStr,
         from_state: ConversationStatus,
         to_state: ConversationStatus,
@@ -146,7 +145,7 @@ class ConversationTurnRepository(
     """
 
     @override
-    async def append(self, event: ConversationTurn) -> None:
+    async def append(self, event: ConversationTurn, /) -> None:
         """Append one turn (immutable once written).
 
         Raises:
@@ -175,7 +174,7 @@ class ConversationTurnRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         """Delete turns created before ``threshold``. Returns rows removed.
 
         ``threshold`` must be timezone-aware; a naive datetime is rejected

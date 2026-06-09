@@ -58,7 +58,7 @@ class MeetingCooldownRepository(
     """
 
     @override
-    async def save(self, entity: MeetingCooldownRecord) -> None:
+    async def save(self, entity: MeetingCooldownRecord, /) -> None:
         """Insert or replace the cooldown row for one meeting type.
 
         Args:
@@ -70,7 +70,7 @@ class MeetingCooldownRepository(
         ...
 
     @override
-    async def get(self, entity_id: NotBlankStr) -> MeetingCooldownRecord | None:
+    async def get(self, entity_id: NotBlankStr, /) -> MeetingCooldownRecord | None:
         """Read the cooldown row for one meeting type, or ``None`` if absent.
 
         Args:
@@ -85,7 +85,7 @@ class MeetingCooldownRepository(
         ...
 
     @override
-    async def delete(self, entity_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         """Delete the cooldown row for one meeting type.
 
         Args:

@@ -7,10 +7,10 @@ the protocol surface remains identical for both backends.
 """
 
 from datetime import UTC
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.artifact import Artifact
@@ -28,9 +28,6 @@ from synthorg.observability.events.persistence.artifact import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

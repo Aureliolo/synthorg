@@ -12,12 +12,13 @@ Enforces the same-currency invariant on :meth:`save` against the live
 :mod:`synthorg.persistence._shared.cost_forecast_marshalling`.
 """
 
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import MixedCurrencyAggregationError
@@ -39,11 +40,6 @@ from synthorg.persistence._shared.cost_forecast_marshalling import (
     validate_cost_forecast_update_keys,
 )
 from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
 

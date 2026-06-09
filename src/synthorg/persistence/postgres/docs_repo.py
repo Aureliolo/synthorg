@@ -1,10 +1,10 @@
 """Postgres repository implementation for :class:`DocMetadata`."""
 
 import json
-from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, TupleRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -27,11 +27,7 @@ from synthorg.observability.events.persistence.project_doc import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp
 from synthorg.persistence._shared.pagination import validate_pagination_args
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.persistence.docs_protocol import DocsFilterSpec, DocsRepositoryKey
+from synthorg.persistence.docs_protocol import DocsFilterSpec, DocsRepositoryKey
 
 logger = get_logger(__name__)
 
