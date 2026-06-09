@@ -5511,7 +5511,7 @@
     },
     {
       "kind": "code",
-      "loc": 12,
+      "loc": 13,
       "loc_cap": 500,
       "module": "src/synthorg/engine/intake/__init__.py",
       "owning_feature": "engine"
@@ -5532,7 +5532,7 @@
     },
     {
       "kind": "code",
-      "loc": 29,
+      "loc": 54,
       "loc_cap": 500,
       "module": "src/synthorg/engine/intake/protocol.py",
       "owning_feature": "engine"
