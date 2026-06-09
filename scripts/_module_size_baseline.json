@@ -1,9 +1,6 @@
 {
   "description": "Frozen baseline of oversized src/synthorg/ modules. Each entry under `locations` is `<posix_path>: <current_loc>`. Modules absent from the baseline are enforced strictly against their tier cap. Modules present here may stay at or below the recorded LOC; growing past it fails the gate. Regenerate (rare; requires explicit user approval) with: uv run python scripts/check_module_size_budget.py --update-baseline",
   "locations": {
-    "src/synthorg/budget/coordination_metrics.py": 580,
-    "src/synthorg/budget/optimizer.py": 679,
-    "src/synthorg/budget/reports.py": 508,
     "src/synthorg/communication/conflict_resolution/human_strategy.py": 521,
     "src/synthorg/communication/meeting/orchestrator.py": 604,
     "src/synthorg/communication/meeting/structured_phases.py": 696,
@@ -34,17 +31,9 @@
     "src/synthorg/providers/management/dtos.py": 733,
     "src/synthorg/providers/presets.py": 666,
     "src/synthorg/providers/routing/strategies.py": 526,
-    "src/synthorg/security/config.py": 549,
-    "src/synthorg/security/llm_evaluator.py": 639,
-    "src/synthorg/security/safety_classifier.py": 549,
-    "src/synthorg/security/service.py": 560,
     "src/synthorg/settings/dispatcher.py": 575,
     "src/synthorg/settings/resolver.py": 1152,
     "src/synthorg/templates/renderer.py": 658,
-    "src/synthorg/tools/_git_base.py": 539,
-    "src/synthorg/tools/external_api/external_api_tool.py": 528,
-    "src/synthorg/tools/git_tools.py": 535,
-    "src/synthorg/tools/sandbox/subprocess_sandbox.py": 663,
     "src/synthorg/workers/claim.py": 639,
     "src/synthorg/workers/runtime_builder.py": 836
   }
