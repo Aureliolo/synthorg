@@ -728,32 +728,32 @@
     },
     "src/synthorg/meta/appliers/_architecture_validators.py": {
       "cap": 500,
-      "loc": 459,
-      "ratio": 0.918,
+      "loc": 458,
+      "ratio": 0.916,
       "tier": "code"
     },
     "src/synthorg/meta/appliers/code_applier.py": {
       "cap": 500,
-      "loc": 435,
-      "ratio": 0.87,
+      "loc": 434,
+      "ratio": 0.868,
       "tier": "code"
     },
     "src/synthorg/meta/chief_of_staff/group_chat.py": {
       "cap": 600,
-      "loc": 510,
-      "ratio": 0.85,
+      "loc": 508,
+      "ratio": 0.847,
       "tier": "service"
     },
     "src/synthorg/meta/chief_of_staff/models.py": {
       "cap": 500,
-      "loc": 479,
-      "ratio": 0.958,
+      "loc": 489,
+      "ratio": 0.978,
       "tier": "code"
     },
     "src/synthorg/meta/chief_of_staff/propose.py": {
       "cap": 500,
-      "loc": 427,
-      "ratio": 0.854,
+      "loc": 425,
+      "ratio": 0.85,
       "tier": "code"
     },
     "src/synthorg/meta/feature.py": {
@@ -770,32 +770,32 @@
     },
     "src/synthorg/meta/mcp/handlers/common_args.py": {
       "cap": 500,
-      "loc": 424,
-      "ratio": 0.848,
+      "loc": 440,
+      "ratio": 0.88,
       "tier": "code"
     },
     "src/synthorg/meta/mcp/handlers/tasks.py": {
       "cap": 500,
-      "loc": 464,
-      "ratio": 0.928,
+      "loc": 471,
+      "ratio": 0.942,
       "tier": "code"
     },
     "src/synthorg/meta/rollout/ab_test.py": {
       "cap": 500,
-      "loc": 421,
-      "ratio": 0.842,
+      "loc": 420,
+      "ratio": 0.84,
       "tier": "code"
     },
     "src/synthorg/meta/rules/builtin.py": {
       "cap": 500,
-      "loc": 492,
-      "ratio": 0.984,
+      "loc": 491,
+      "ratio": 0.982,
       "tier": "code"
     },
     "src/synthorg/meta/rules/custom.py": {
       "cap": 500,
-      "loc": 463,
-      "ratio": 0.926,
+      "loc": 472,
+      "ratio": 0.944,
       "tier": "code"
     },
     "src/synthorg/meta/strategies/code_modification.py": {
@@ -806,8 +806,8 @@
     },
     "src/synthorg/meta/telemetry/emitter.py": {
       "cap": 500,
-      "loc": 411,
-      "ratio": 0.822,
+      "loc": 418,
+      "ratio": 0.836,
       "tier": "code"
     },
     "src/synthorg/observability/prometheus_collector.py": {
@@ -1225,7 +1225,7 @@
     "synthorg.api.pagination": 54,
     "synthorg.api.path_params": 73,
     "synthorg.api.rate_limits": 64,
-    "synthorg.api.state": 169,
+    "synthorg.api.state": 222,
     "synthorg.api.state_slices": 32,
     "synthorg.approval.enums": 69,
     "synthorg.approval.protocol": 42,
@@ -1292,7 +1292,7 @@
     "synthorg.memory.protocol": 66,
     "synthorg.meta.chief_of_staff.models": 31,
     "synthorg.meta.config": 20,
-    "synthorg.meta.mcp.errors": 55,
+    "synthorg.meta.mcp.errors": 56,
     "synthorg.meta.mcp.handler_protocol": 45,
     "synthorg.meta.mcp.handlers.common": 53,
     "synthorg.meta.mcp.handlers.common_args": 47,
