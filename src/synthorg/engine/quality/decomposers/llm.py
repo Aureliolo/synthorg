@@ -190,7 +190,7 @@ def accepted_index(raw: object) -> int:
             integer ``source_criterion_index`` (unreachable in
             practice: the caller validates the probe first).
     """
-    if isinstance(raw, dict):
+    if isinstance(raw, Mapping):
         value = raw.get("source_criterion_index")
         if isinstance(value, int):
             return value
@@ -206,8 +206,8 @@ def _probe_rejection_reason(
     cap: int,
 ) -> str | None:
     """Return a short rejection reason or ``None`` if the probe is valid."""
-    if not isinstance(raw, dict):
-        return "not a dict"
+    if not isinstance(raw, Mapping):
+        return "not a mapping"
     index = raw.get("source_criterion_index")
     if not isinstance(index, int) or not (0 <= index < len(criteria)):
         return "index out of range"
