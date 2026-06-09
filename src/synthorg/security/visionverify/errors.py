@@ -7,7 +7,7 @@ Every failure path raises a ``<Vision><Condition>Error`` subclass of
 
 import copy
 from types import MappingProxyType
-from typing import Any, ClassVar, override
+from typing import ClassVar, override
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -30,11 +30,11 @@ class VisionDomainError(DomainError):
         self,
         message: str,
         *,
-        context: dict[str, Any] | None = None,
+        context: dict[str, object] | None = None,
     ) -> None:
         """Initialise with a message and an optional metadata mapping."""
         self.message = message
-        self.context: MappingProxyType[str, Any] = MappingProxyType(
+        self.context: MappingProxyType[str, object] = MappingProxyType(
             copy.deepcopy(context) if context else {},
         )
         super().__init__(message)

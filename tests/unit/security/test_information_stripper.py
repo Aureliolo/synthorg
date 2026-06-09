@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.security.safety_classifier import InformationStripper
+from synthorg.security.information_stripper import InformationStripper
 
 # ── Helpers ───────────────────────────────────────────────────────
 

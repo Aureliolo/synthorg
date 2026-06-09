@@ -6,12 +6,10 @@ substrate-backed implementation resolves each claim against source
 chunks in the knowledge store. The gate does not change between the two.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from synthorg.security.redteam.grounding.models import UngroundedClaim
+from synthorg.security.redteam.grounding.models import UngroundedClaim
 
 
 @runtime_checkable

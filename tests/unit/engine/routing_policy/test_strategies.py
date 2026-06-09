@@ -7,7 +7,7 @@ import pytest
 
 from synthorg.budget.benchmark_protocol import BenchmarkScore
 from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
-from synthorg.budget.coordination_metrics import (
+from synthorg.budget.coordination_metric_models import (
     CoordinationMetrics,
     ErrorAmplification,
 )

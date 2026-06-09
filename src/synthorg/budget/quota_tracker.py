@@ -10,11 +10,9 @@ Concurrency-safe via ``asyncio.Lock`` (same pattern as
 
 import asyncio
 import copy
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final, NamedTuple
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from typing import Final, NamedTuple
 
 from synthorg.budget.quota import (
     QuotaCheckResult,

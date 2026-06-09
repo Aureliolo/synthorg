@@ -3,7 +3,7 @@
 import copy
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -34,7 +34,7 @@ class PolicyActionRequest(BaseModel):
     resource: NotBlankStr = Field(
         description="Target of the action",
     )
-    context: Mapping[str, Any] = Field(
+    context: Mapping[str, object] = Field(
         default_factory=dict,
         description="Additional evaluation context",
     )

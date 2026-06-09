@@ -1,12 +1,11 @@
 """Factory for creating output scan policy instances from configuration."""
 
-from typing import TYPE_CHECKING
-
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_CONFIG_LOADED,
     SECURITY_INTERCEPTOR_ERROR,
 )
+from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.security.config import OutputScanPolicyType
 from synthorg.security.output_scan_policy import (
     AutonomyTieredPolicy,
@@ -15,9 +14,6 @@ from synthorg.security.output_scan_policy import (
     RedactPolicy,
     WithholdPolicy,
 )
-
-if TYPE_CHECKING:
-    from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
 

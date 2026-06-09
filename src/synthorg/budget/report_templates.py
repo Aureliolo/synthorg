@@ -19,7 +19,7 @@ from pydantic import (
 )
 
 from synthorg.budget.report_config import ReportPeriod
-from synthorg.budget.reports import SpendingReport
+from synthorg.budget.report_models import SpendingReport
 from synthorg.core.types import NotBlankStr
 
 # ── Performance ──────────────────────────────────────────────────

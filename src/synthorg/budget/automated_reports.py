@@ -37,7 +37,8 @@ from synthorg.observability.events.reporting import (
 if TYPE_CHECKING:
     from synthorg.budget.cost_record import CostRecord
     from synthorg.budget.report_config import AutomatedReportingConfig
-    from synthorg.budget.reports import ReportGenerator, SpendingReport
+    from synthorg.budget.report_models import SpendingReport
+    from synthorg.budget.reports import ReportGenerator
     from synthorg.budget.risk_record import RiskRecord
     from synthorg.budget.risk_tracker import RiskTracker
     from synthorg.budget.tracker import CostTracker

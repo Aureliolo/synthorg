@@ -2,13 +2,15 @@
 
 import pytest
 
-from synthorg.budget.coordination_metrics import (
+from synthorg.budget.coordination_metric_models import (
     CoordinationEfficiency,
     CoordinationMetrics,
     CoordinationOverhead,
     ErrorAmplification,
     MessageDensity,
     RedundancyRate,
+)
+from synthorg.budget.coordination_metrics import (
     compute_amdahl_ceiling,
     compute_efficiency,
     compute_error_amplification,
@@ -319,7 +321,7 @@ class TestComputeStragglerGap:
     def test_slowest_below_mean_rejected(self) -> None:
         from pydantic import ValidationError
 
-        from synthorg.budget.coordination_metrics import StragglerGap
+        from synthorg.budget.coordination_metric_models import StragglerGap
 
         with pytest.raises(ValidationError, match="slowest_duration_seconds"):
             StragglerGap(

@@ -6,12 +6,28 @@ application).
 """
 
 from enum import StrEnum
-from typing import Any, Final, NamedTuple
+from typing import Final, NamedTuple, cast
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
+
+
+def _budget_percent(dept: dict[str, object]) -> float:
+    """Read a department's ``budget_percent`` as a float.
+
+    A missing key and an explicit ``None`` both read as ``0.0`` (an
+    explicit null is treated the same as absent). Any other non-numeric
+    value still raises in the downstream arithmetic, so the contract
+    that ``budget_percent`` is numeric is unchanged.
+
+    Returns:
+        The department's ``budget_percent`` value, or ``0.0`` when the
+        key is absent or explicitly ``None``.
+    """
+    value = dept.get("budget_percent")
+    return cast("float", value if value is not None else 0.0)
 
 
 class RebalanceMode(StrEnum):
@@ -35,7 +51,7 @@ class RebalanceResult(NamedTuple):
             the projected total exceeds ``max_budget``.
     """
 
-    departments: tuple[dict[str, Any], ...]
+    departments: tuple[dict[str, object], ...]
     old_total: float
     new_total: float
     scale_factor: float | None
@@ -46,8 +62,8 @@ _DEFAULT_MAX_BUDGET: Final[float] = 100.0
 
 
 def compute_rebalance(
-    existing_depts: list[dict[str, Any]],
-    new_depts: list[dict[str, Any]],
+    existing_depts: list[dict[str, object]],
+    new_depts: list[dict[str, object]],
     mode: RebalanceMode,
     *,
     max_budget: float = _DEFAULT_MAX_BUDGET,
@@ -71,8 +87,8 @@ def compute_rebalance(
         A :class:`RebalanceResult` with the combined department list
         and metadata about the rebalance operation.
     """
-    existing_total = sum(d.get("budget_percent", 0.0) for d in existing_depts)
-    new_total = sum(d.get("budget_percent", 0.0) for d in new_depts)
+    existing_total = sum(_budget_percent(d) for d in existing_depts)
+    new_total = sum(_budget_percent(d) for d in new_depts)
     combined_total = existing_total + new_total
 
     if mode == RebalanceMode.NONE:
@@ -119,7 +135,7 @@ def compute_rebalance(
     scaled_existing = []
     for dept in existing_depts:
         scaled = {**dept}
-        old_pct = dept.get("budget_percent", 0.0)
+        old_pct = _budget_percent(dept)
         scaled["budget_percent"] = round(
             old_pct * factor,
             rounding_precision,
@@ -127,7 +143,7 @@ def compute_rebalance(
         scaled_existing.append(scaled)
 
     all_depts = [*scaled_existing, *new_depts]
-    final_total = sum(d.get("budget_percent", 0.0) for d in all_depts)
+    final_total = sum(_budget_percent(d) for d in all_depts)
 
     return RebalanceResult(
         departments=tuple(all_depts),

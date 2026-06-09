@@ -1,5 +1,7 @@
 """Tests for budget rebalance utility."""
 
+from typing import cast
+
 import pytest
 
 from synthorg.budget.rebalance import (
@@ -194,7 +196,7 @@ class TestRebalanceModeScaleExisting:
             RebalanceMode.SCALE_EXISTING,
         )
 
-        total = sum(d["budget_percent"] for d in result.departments)
+        total = sum(cast("float", d["budget_percent"]) for d in result.departments)
         assert round(total, 10) == pytest.approx(100.0, abs=1e-8)
 
     def test_does_not_mutate_input_dicts(self) -> None:

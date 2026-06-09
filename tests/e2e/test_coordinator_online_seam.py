@@ -26,7 +26,7 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
-from synthorg.budget.coordination_metrics import CoordinationMetrics
+from synthorg.budget.coordination_metric_models import CoordinationMetrics
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig

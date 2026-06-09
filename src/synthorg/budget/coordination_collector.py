@@ -17,7 +17,7 @@ from synthorg.budget.coordination_config import (
     CoordinationMetricsConfig,
     OrchestrationAlertThresholds,
 )
-from synthorg.budget.coordination_metrics import (
+from synthorg.budget.coordination_metric_models import (
     AmdahlCeiling,
     CoordinationEfficiency,
     CoordinationMetrics,
@@ -28,6 +28,8 @@ from synthorg.budget.coordination_metrics import (
     RedundancyRate,
     StragglerGap,
     TokenSpeedupRatio,
+)
+from synthorg.budget.coordination_metrics import (
     compute_amdahl_ceiling,
     compute_efficiency,
     compute_error_amplification,

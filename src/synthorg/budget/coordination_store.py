@@ -11,7 +11,7 @@ from typing import Final
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.budget.coordination_metrics import CoordinationMetrics
+from synthorg.budget.coordination_metric_models import CoordinationMetrics
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination_metrics import (

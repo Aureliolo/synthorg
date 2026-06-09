@@ -54,7 +54,6 @@ class TestToolMetadata:
 class TestToolExecute:
     """Tool writes the report through the repo on a valid payload."""
 
-    @pytest.mark.asyncio
     async def test_valid_payload_persists_report(
         self,
         tool: SubmitRedTeamReportTool,
@@ -75,7 +74,6 @@ class TestToolExecute:
         assert len(report.findings) == 1
         assert report.findings[0].severity is RedTeamSeverity.HIGH
 
-    @pytest.mark.asyncio
     async def test_empty_findings_allowed_with_summary(
         self,
         tool: SubmitRedTeamReportTool,
@@ -94,7 +92,6 @@ class TestToolExecute:
         report = await repo.get(execution_id="exec-1")
         assert report.findings == ()
 
-    @pytest.mark.asyncio
     async def test_missing_summary_raises_validation_error(
         self,
         tool: SubmitRedTeamReportTool,
@@ -108,7 +105,6 @@ class TestToolExecute:
                 },
             )
 
-    @pytest.mark.asyncio
     async def test_missing_execution_id_raises_validation_error(
         self,
         tool: SubmitRedTeamReportTool,
@@ -118,7 +114,6 @@ class TestToolExecute:
                 arguments={"task_id": "task-1", "summary": "x"},
             )
 
-    @pytest.mark.asyncio
     async def test_high_severity_finding_without_evidence_rejected(
         self,
         tool: SubmitRedTeamReportTool,
@@ -140,7 +135,6 @@ class TestToolExecute:
                 },
             )
 
-    @pytest.mark.asyncio
     async def test_unknown_field_raises_validation_error(
         self,
         tool: SubmitRedTeamReportTool,
@@ -155,12 +149,11 @@ class TestToolExecute:
                 },
             )
 
-    @pytest.mark.asyncio
     async def test_duplicate_submission_returns_error_result(
         self,
         tool: SubmitRedTeamReportTool,
     ) -> None:
-        first_args = {
+        first_args: dict[str, object] = {
             "execution_id": "exec-1",
             "task_id": "task-1",
             "summary": "first",
@@ -180,7 +173,6 @@ class TestToolExecute:
 class TestExecutionIdArguments:
     """The tool reads execution_id and task_id from args, not constructor."""
 
-    @pytest.mark.asyncio
     async def test_execution_id_is_in_args_schema(
         self,
         tool: SubmitRedTeamReportTool,
@@ -191,7 +183,6 @@ class TestExecutionIdArguments:
         assert "execution_id" in properties
         assert "task_id" in properties
 
-    @pytest.mark.asyncio
     async def test_singleton_tool_serves_multiple_execution_ids(
         self,
         tool: SubmitRedTeamReportTool,
@@ -228,7 +219,6 @@ class TestExecutionIdArguments:
 class TestTrustedContextEnforcement:
     """The tool rejects payloads whose ids disagree with the gate's context."""
 
-    @pytest.mark.asyncio
     async def test_matching_ids_pass(
         self,
         tool: SubmitRedTeamReportTool,
@@ -247,7 +237,6 @@ class TestTrustedContextEnforcement:
         report = await repo.get(execution_id="exec-1")
         assert report.task_id == "task-1"
 
-    @pytest.mark.asyncio
     async def test_execution_id_mismatch_rejected(
         self,
         tool: SubmitRedTeamReportTool,
@@ -265,7 +254,6 @@ class TestTrustedContextEnforcement:
                 },
             )
 
-    @pytest.mark.asyncio
     async def test_task_id_mismatch_rejected(
         self,
         tool: SubmitRedTeamReportTool,
@@ -283,7 +271,6 @@ class TestTrustedContextEnforcement:
                 },
             )
 
-    @pytest.mark.asyncio
     async def test_no_context_rejected(
         self,
         tool: SubmitRedTeamReportTool,

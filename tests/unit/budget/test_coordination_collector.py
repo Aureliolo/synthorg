@@ -17,7 +17,7 @@ from synthorg.budget.coordination_config import (
     CoordinationMetricsConfig,
     OrchestrationAlertThresholds,
 )
-from synthorg.budget.coordination_metrics import CoordinationMetrics
+from synthorg.budget.coordination_metric_models import CoordinationMetrics
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.core.agent import AgentIdentity, ModelConfig

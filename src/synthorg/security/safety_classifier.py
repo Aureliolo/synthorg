@@ -20,7 +20,6 @@ Design invariants:
 
 import asyncio
 import html
-import re
 import secrets
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
@@ -43,7 +42,6 @@ from synthorg.core.types import NotBlankStr
 # of ``engine/``; the deferred import is correctness-preserving.
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.security import (
-    SECURITY_INFO_STRIP_COMPLETE,
     SECURITY_SAFETY_CLASSIFY_COMPLETE,
     SECURITY_SAFETY_CLASSIFY_ERROR,
     SECURITY_SAFETY_CLASSIFY_START,
@@ -68,9 +66,9 @@ from synthorg.providers.models import (
     CompletionResponse,
     ToolDefinition,
 )
+from synthorg.security._shared_patterns import CONTROL_CHAR_RE
 from synthorg.security.config import SafetyClassifierConfig
-from synthorg.security.rules.credential_detector import CREDENTIAL_PATTERNS
-from synthorg.security.rules.data_leak_detector import PII_PATTERNS
+from synthorg.security.information_stripper import InformationStripper
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -82,52 +80,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# ── Information stripping patterns ───────────────────────────────
-
-# Reuse existing credential and PII patterns from detectors.
-_CREDENTIAL_STRIP_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
-    CREDENTIAL_PATTERNS
-)
-_PII_STRIP_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = PII_PATTERNS
-
-# Additional patterns for UUIDs, emails, and internal IDs.
-_UUID_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
-    r"-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b",
-)
-_EMAIL_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b",
-)
-_INTERNAL_ID_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"\b(?:agent|task)-[A-Za-z0-9][A-Za-z0-9\-]*\b",
-)
-
-# Placeholder tokens.
-_CREDENTIAL_PLACEHOLDER: Final[str] = "[CREDENTIAL]"
-_PII_PLACEHOLDER: Final[str] = "[PII]"
-_ID_PLACEHOLDER: Final[str] = "[ID]"
-_EMAIL_PLACEHOLDER: Final[str] = "[EMAIL]"
-
 # Maximum length for LLM-returned reason string.
 _MAX_REASON_LENGTH: Final[int] = 300
 
 _MILLISECONDS_PER_SECOND: Final[float] = 1000.0
-
-# Regex to strip control and formatting characters from LLM-returned
-# reason.  Best-effort coverage: ASCII control (C0/DEL), Unicode bidi
-# overrides, zero-width chars, line/paragraph separators, and known
-# invisible characters used in prompt injection payloads.
-_CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(
-    r"[\x00-\x1f\x7f"
-    r"\u200b-\u200f"  # zero-width and bidi marks
-    r"\u2028-\u2029"  # line / paragraph separators
-    r"\u202a-\u202e"  # bidi embedding/override
-    r"\u2066-\u2069"  # bidi isolate
-    r"\u2800"  # braille blank (invisible)
-    r"\u3164"  # hangul filler (invisible)
-    r"\ufeff"  # BOM / zero-width no-break space
-    r"]",
-)
 
 
 # ── Enums and models ─────────────────────────────────────────────
@@ -187,63 +143,6 @@ class SafetyClassifierResult(BaseModel):
     stripped_description: str
     reason: NotBlankStr
     classification_duration_ms: float = Field(ge=0.0)
-
-
-# ── InformationStripper ─────────────────────────────────────────
-
-
-class InformationStripper:
-    """Strip PII, secrets, UUIDs, emails, and internal IDs from text.
-
-    Reuses credential patterns from ``credential_detector`` and PII
-    patterns from ``data_leak_detector``, plus additional patterns
-    for UUIDs, email addresses, and internal ID formats.  Each
-    category is replaced with a distinct tagged placeholder.
-    """
-
-    def strip(self, text: str) -> str:
-        """Replace sensitive data with tagged placeholders.
-
-        Args:
-            text: The input text to sanitize.
-
-        Returns:
-            The text with sensitive patterns replaced by
-            ``[CREDENTIAL]``, ``[PII]``, ``[ID]``, or ``[EMAIL]``.
-        """
-        if not text:
-            return text
-
-        result = text
-
-        # Credentials first (most specific patterns).
-        for _label, pattern in _CREDENTIAL_STRIP_PATTERNS:
-            result = pattern.sub(_CREDENTIAL_PLACEHOLDER, result)
-
-        # PII patterns.
-        for _label, pattern in _PII_STRIP_PATTERNS:
-            result = pattern.sub(_PII_PLACEHOLDER, result)
-
-        # UUIDs.
-        result = _UUID_PATTERN.sub(_ID_PLACEHOLDER, result)
-
-        # Internal IDs (agent-xxx, task-xxx).
-        result = _INTERNAL_ID_PATTERN.sub(_ID_PLACEHOLDER, result)
-
-        # Emails (after credentials to avoid double-matching
-        # patterns that look like email-with-token).
-        result = _EMAIL_PATTERN.sub(_EMAIL_PLACEHOLDER, result)
-
-        # Strip bidi overrides and zero-width characters that
-        # could hide prompt injection payloads.
-        result = _CONTROL_CHAR_RE.sub(" ", result)
-
-        logger.debug(
-            SECURITY_INFO_STRIP_COMPLETE,
-            original_length=len(text),
-            stripped_length=len(result),
-        )
-        return result
 
 
 # ── LLM tool schema ──────────────────────────────────────────────
@@ -686,7 +585,7 @@ class SafetyClassifier:
         # Strip control chars first, then whitespace -- a reason
         # composed entirely of control chars becomes empty after
         # substitution, which would violate NotBlankStr.
-        reason_clean = _CONTROL_CHAR_RE.sub(
+        reason_clean = CONTROL_CHAR_RE.sub(
             " ",
             str(raw_reason) if raw_reason else "",
         ).strip()

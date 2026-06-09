@@ -5,14 +5,14 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.budget.config import BudgetConfig
-from synthorg.budget.reports import (
+from synthorg.budget.report_models import (
     ModelDistribution,
     PeriodComparison,
     ProviderDistribution,
-    ReportGenerator,
     SpendingReport,
     TaskSpending,
 )
+from synthorg.budget.reports import ReportGenerator
 from synthorg.budget.spending_summary import SpendingSummary
 from synthorg.budget.tracker import CostTracker
 from tests.unit.budget.conftest import make_cost_record

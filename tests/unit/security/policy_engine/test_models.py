@@ -1,5 +1,7 @@
 """Tests for PolicyEngine models."""
 
+from collections.abc import Mapping
+
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -65,7 +67,9 @@ class TestPolicyActionRequest:
         )
         # Mutate original -- should not affect the request.
         original_ctx["nested"]["key"] = "mutated"
-        assert req.context["nested"]["key"] == "value"
+        nested = req.context["nested"]
+        assert isinstance(nested, Mapping)
+        assert nested["key"] == "value"
 
     def test_default_context_is_empty(self) -> None:
         req = PolicyActionRequest(

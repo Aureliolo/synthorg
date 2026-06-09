@@ -576,6 +576,37 @@ async def test_reason_control_chars_are_sanitized() -> None:
 
 
 @pytest.mark.unit
+async def test_reason_strips_zero_width_and_bidi_chars() -> None:
+    """Zero-width and bidi-override chars in the reason are stripped.
+
+    The reason flows into the audit log and approval queue, so it must
+    be sanitised against the same format-character set the input
+    stripper removes, not just ASCII control chars.
+    """
+    zwsp = chr(0x200B)
+    bidi_override = chr(0x202E)
+    tc = _make_llm_tool_call(
+        verdict="allow",
+        risk_level="low",
+        reason=f"safe{zwsp}action{bidi_override}now",
+    )
+    mock_driver = AsyncMock()
+    mock_driver.complete = AsyncMock(
+        return_value=_make_completion_response(tc),
+    )
+    evaluator = _make_evaluator(
+        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
+    )
+    context = _make_context()
+    rule_verdict = _make_rule_verdict()
+
+    result = await evaluator.evaluate(context, rule_verdict)
+
+    assert zwsp not in result.reason
+    assert bidi_override not in result.reason
+
+
+@pytest.mark.unit
 async def test_use_rule_verdict_annotates_reason() -> None:
     """USE_RULE_VERDICT policy annotates the reason with failure context."""
     mock_driver = AsyncMock()

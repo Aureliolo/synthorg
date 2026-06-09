@@ -14,7 +14,7 @@ from synthorg.budget.coordination_collector import (
     CollectionInputs,
     CoordinationMetricsCollector,
 )
-from synthorg.budget.coordination_metrics import CoordinationMetrics
+from synthorg.budget.coordination_metric_models import CoordinationMetrics
 from synthorg.core.task_enums import CoordinationTopology, TaskStatus, TaskStructure
 from synthorg.core.task_transitions import transition_path
 from synthorg.engine.coordination.config import CoordinationConfig

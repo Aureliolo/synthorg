@@ -7,7 +7,7 @@ and risk budget configuration.
 
 from collections import Counter
 from collections.abc import Mapping
-from typing import Any, ClassVar, Literal, Self
+from typing import ClassVar, Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -85,13 +85,13 @@ class BudgetAlertConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
+    def _apply_mirrors(cls, data: object) -> object:
         """Apply mirrors.
 
         Returns:
-            Result of type ``Any``.
+            Result of type ``object``.
         """
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
 
     @model_validator(mode="after")
     def _validate_threshold_ordering(self) -> Self:
@@ -165,13 +165,13 @@ class AutoDowngradeConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
+    def _apply_mirrors(cls, data: object) -> object:
         """Apply mirrors.
 
         Returns:
-            Result of type ``Any``.
+            Result of type ``object``.
         """
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
 
     boundary: Literal["task_assignment"] = Field(
         default="task_assignment",
@@ -182,7 +182,7 @@ class AutoDowngradeConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _normalize_downgrade_map(cls, data: Any) -> Any:
+    def _normalize_downgrade_map(cls, data: object) -> object:
         """Normalize downgrade_map aliases by stripping leading/trailing whitespace.
 
         Runs before NotBlankStr validation so that ``" large "`` becomes
@@ -191,12 +191,12 @@ class AutoDowngradeConfig(BaseModel):
         that Pydantic can surface a proper field-level ``ValidationError``.
 
         Returns:
-            Result of type ``Any``.
+            Result of type ``object``.
         """
         if isinstance(data, dict) and "downgrade_map" in data:
             raw_map = data["downgrade_map"]
             if isinstance(raw_map, (list, tuple)):
-                normalized: list[Any] = []
+                normalized: list[object] = []
                 for item in raw_map:
                     if (
                         isinstance(item, (list, tuple))
@@ -466,13 +466,13 @@ class BudgetConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
+    def _apply_mirrors(cls, data: object) -> object:
         """Apply mirrors.
 
         Returns:
-            Result of type ``Any``.
+            Result of type ``object``.
         """
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
 
     @model_validator(mode="after")
     def _validate_per_task_limit_within_monthly(self) -> Self:
