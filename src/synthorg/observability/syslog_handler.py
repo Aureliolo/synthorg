@@ -7,16 +7,14 @@ JSON output via structlog's ``ProcessorFormatter``.
 import logging.handlers
 import socket
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
 
 import structlog
 from structlog.stdlib import ProcessorFormatter
+from structlog.typing import Processor
 
+from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import SyslogFacility, SyslogProtocol
 from synthorg.observability.redaction import safe_error_description
-
-if TYPE_CHECKING:
-    from synthorg.observability.config import SinkConfig
 
 FACILITY_MAP: MappingProxyType[SyslogFacility, int] = MappingProxyType(
     {
@@ -46,7 +44,7 @@ PROTOCOL_MAP: MappingProxyType[SyslogProtocol, int] = MappingProxyType(
 
 def build_syslog_handler(
     sink: SinkConfig,
-    foreign_pre_chain: list[Any],
+    foreign_pre_chain: list[Processor],
 ) -> logging.handlers.SysLogHandler:
     """Build a SysLogHandler from a SYSLOG sink configuration.
 
@@ -87,8 +85,8 @@ def build_syslog_handler(
     handler.append_nul = sink.syslog_protocol == SyslogProtocol.TCP
     handler.setLevel(sink.level.value)
 
-    renderer: Any = structlog.processors.JSONRenderer()
-    processors: list[Any] = [
+    renderer: Processor = structlog.processors.JSONRenderer()
+    processors: list[Processor] = [
         ProcessorFormatter.remove_processors_meta,
         structlog.processors.format_exc_info,
         renderer,

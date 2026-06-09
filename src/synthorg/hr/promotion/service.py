@@ -1,3 +1,4 @@
+# module-kind: service
 """Promotion service orchestrator.
 
 Central service for managing agent promotions and demotions,
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import PromotionDirection
@@ -19,13 +21,19 @@ from synthorg.hr.errors import (
     PromotionCooldownError,
     PromotionError,
 )
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.promotion.approval_protocol import PromotionApprovalStrategy
+from synthorg.hr.promotion.config import PromotionConfig
+from synthorg.hr.promotion.criteria_protocol import PromotionCriteriaStrategy
+from synthorg.hr.promotion.model_mapping_protocol import ModelMappingStrategy
 from synthorg.hr.promotion.models import (
     PromotionEvaluation,
     PromotionRecord,
     PromotionRequest,
 )
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.promotion import (
     DEMOTION_APPLIED,
     PROMOTION_APPLIED,
@@ -39,24 +47,10 @@ from synthorg.observability.events.promotion import (
     PROMOTION_REJECTED,
     PROMOTION_REQUESTED,
 )
+from synthorg.security.trust.service import TrustService
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
-
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.hr.promotion.approval_protocol import (
-        PromotionApprovalStrategy,
-    )
-    from synthorg.hr.promotion.config import PromotionConfig
-    from synthorg.hr.promotion.criteria_protocol import (
-        PromotionCriteriaStrategy,
-    )
-    from synthorg.hr.promotion.model_mapping_protocol import (
-        ModelMappingStrategy,
-    )
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.security.trust.service import TrustService
 
 logger = get_logger(__name__)
 
@@ -477,8 +471,9 @@ class PromotionService:
                 logger.warning(
                     PROMOTION_APPLIED,
                     agent_id=request.agent_id,
-                    error="Trust re-evaluation failed after promotion; "
-                    "promotion still applied",
+                    note="trust re-evaluation failed; promotion still applied",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         event = (
@@ -508,7 +503,9 @@ class PromotionService:
                 logger.warning(
                     PROMOTION_NOTIFICATION_SENT,
                     agent_id=request.agent_id,
-                    error="Notification callback failed; promotion still applied",
+                    note="notification callback failed; promotion still applied",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         return record

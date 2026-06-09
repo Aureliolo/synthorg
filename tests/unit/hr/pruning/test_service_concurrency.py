@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Concurrency regression tests for PruningService.
 
 ``_process_decided_approvals`` previously had a check-then-act race on

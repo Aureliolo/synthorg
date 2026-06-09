@@ -1,19 +1,20 @@
+# module-kind: service
 """Training service orchestrator."""
 
 import asyncio
 import copy
 from collections import OrderedDict
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.training._guards_runner import apply_guards
 from synthorg.hr.training._storage import store_guarded_items
 from synthorg.hr.training.models import (
     ContentType,
-    TrainingApprovalHandle,
-    TrainingGuardDecision,
     TrainingItem,
     TrainingPlan,
     TrainingPlanStatus,
@@ -29,21 +30,20 @@ from synthorg.observability.events.hr import (
 from synthorg.observability.events.training import (
     HR_TRAINING_CURATION_FAILED,
     HR_TRAINING_EXTRACTION_FAILED,
-    HR_TRAINING_GUARD_EVALUATION,
-    HR_TRAINING_GUARD_FAILED,
     HR_TRAINING_ITEMS_EXTRACTED,
     HR_TRAINING_PLAN_EXECUTED,
     HR_TRAINING_PLAN_FAILED,
     HR_TRAINING_PLAN_IDEMPOTENT,
     HR_TRAINING_PLAN_STATUS_TRANSITIONED,
-    HR_TRAINING_REVIEW_PENDING,
     HR_TRAINING_SKIPPED,
 )
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
+    # Collaborator protocols stay TYPE_CHECKING: tests pass partial
+    # fakes for these, and hoisting them to runtime makes typeguard's
+    # check_protocol reject the fakes (their methods are fully
+    # resolvable). See the #2183 established policy.
     from synthorg.hr.training.protocol import (
         ContentExtractor,
         CurationStrategy,
@@ -496,7 +496,7 @@ class TrainingService:
             guarded_items,
             approval_id,
             pending_approvals,
-        ) = await self._apply_guards(plan, curated_items)
+        ) = await apply_guards(plan, curated_items, guards=self._guards)
         stored = await self._store_items(plan, guarded_items)
 
         completed_at = datetime.now(UTC)
@@ -661,128 +661,6 @@ class TrainingService:
             raise
 
         return ct, len(items), len(curated), curated
-
-    async def _apply_guards(
-        self,
-        plan: TrainingPlan,
-        curated_items: _CuratedMap,
-    ) -> tuple[
-        tuple[tuple[ContentType, int], ...],
-        tuple[str, ...],
-        _CuratedMap,
-        str | None,
-        tuple[TrainingApprovalHandle, ...],
-    ]:
-        """Apply guard chain sequentially per content type.
-
-        Returns guarded counts, errors, guarded items map, the first
-        approval item id (for backwards-compatible callers), and the
-        full tuple of pending approval handles so no ID is lost when
-        multiple content types trigger review.
-
-        Returns:
-            Tuple ``(tuple[tuple[ContentType, int], ...], tuple[str, ...], _CuratedMap,
-            str | None, tuple[TrainingApprovalHandle, ...])``.
-        """
-        guarded_counts: list[tuple[ContentType, int]] = []
-        all_errors: list[str] = []
-        guarded_items: _CuratedMap = {}
-        approval_handles: list[TrainingApprovalHandle] = []
-
-        for ct in sorted(curated_items.keys(), key=lambda c: c.value):
-            items = curated_items[ct]
-            current_items, errors, handle = await self._run_guards_for_type(
-                plan,
-                ct,
-                items,
-            )
-            all_errors.extend(errors)
-            if handle is not None:
-                approval_handles.append(handle)
-            guarded_counts.append((ct, len(current_items)))
-            guarded_items[ct] = current_items
-
-        approval_id = (
-            str(approval_handles[0].approval_item_id) if approval_handles else None
-        )
-
-        if approval_handles:
-            logger.info(
-                HR_TRAINING_REVIEW_PENDING,
-                plan_id=str(plan.id),
-                approval_count=len(approval_handles),
-                content_types=[h.content_type.value for h in approval_handles],
-            )
-
-        return (
-            tuple(guarded_counts),
-            tuple(all_errors),
-            guarded_items,
-            approval_id,
-            tuple(approval_handles),
-        )
-
-    async def _run_guards_for_type(
-        self,
-        plan: TrainingPlan,
-        ct: ContentType,
-        items: tuple[TrainingItem, ...],
-    ) -> tuple[
-        tuple[TrainingItem, ...],
-        list[str],
-        TrainingApprovalHandle | None,
-    ]:
-        """Apply the guard chain to a single content type.
-
-        Returns:
-            Tuple ``(tuple[TrainingItem, ...], list[str], TrainingApprovalHandle |
-            None)``.
-
-        Raises:
-            Exception: Raised when the relevant invariant fails.
-        """
-        current_items = items
-        errors: list[str] = []
-        handle: TrainingApprovalHandle | None = None
-
-        for guard in self._guards:
-            try:
-                decision: TrainingGuardDecision = await guard.evaluate(
-                    current_items,
-                    content_type=ct,
-                    plan=plan,
-                )
-            except Exception as exc:
-                # See comment at the top of ``_execute_locked``.
-                logger.warning(
-                    HR_TRAINING_GUARD_FAILED,
-                    plan_id=str(plan.id),
-                    guard=guard.name,
-                    content_type=ct.value,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise
-
-            logger.debug(
-                HR_TRAINING_GUARD_EVALUATION,
-                guard=guard.name,
-                content_type=ct.value,
-                approved=len(decision.approved_items),
-                rejected=decision.rejected_count,
-            )
-
-            current_items = decision.approved_items
-            errors.extend(decision.rejection_reasons)
-
-            if decision.approval_item_id is not None:
-                handle = TrainingApprovalHandle(
-                    approval_item_id=decision.approval_item_id,
-                    content_type=ct,
-                    item_count=decision.rejected_count,
-                )
-
-        return current_items, errors, handle
 
     async def _store_items(
         self,

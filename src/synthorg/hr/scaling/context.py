@@ -5,26 +5,21 @@ import copy
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.models import ScalingContext, ScalingSignal
+from synthorg.hr.scaling.protocols import ScalingSignalSource
+from synthorg.hr.scaling.signals.benchmark import BenchmarkSignalSource
+from synthorg.hr.scaling.signals.budget import BudgetSignalSource
+from synthorg.hr.scaling.signals.performance import PerformanceSignalSource
+from synthorg.hr.scaling.signals.skill import SkillSignalSource
+from synthorg.hr.scaling.signals.workload import WorkloadSignalSource
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_SCALING_CONTEXT_BUILT,
     HR_SCALING_SIGNAL_COLLECTION_DEGRADED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.hr.scaling.protocols import ScalingSignalSource
-    from synthorg.hr.scaling.signals.benchmark import BenchmarkSignalSource
-    from synthorg.hr.scaling.signals.budget import BudgetSignalSource
-    from synthorg.hr.scaling.signals.performance import (
-        PerformanceSignalSource,
-    )
-    from synthorg.hr.scaling.signals.skill import SkillSignalSource
-    from synthorg.hr.scaling.signals.workload import WorkloadSignalSource
 
 logger = get_logger(__name__)
 
@@ -62,11 +57,11 @@ class ScalingContextBuilder:
         self,
         *,
         agent_ids: tuple[NotBlankStr, ...],
-        workload_kwargs: dict[str, Any] | None = None,
-        budget_kwargs: dict[str, Any] | None = None,
-        performance_kwargs: dict[str, Any] | None = None,
-        skill_kwargs: dict[str, Any] | None = None,
-        benchmark_kwargs: dict[str, Any] | None = None,
+        workload_kwargs: Mapping[str, object] | None = None,
+        budget_kwargs: Mapping[str, object] | None = None,
+        performance_kwargs: Mapping[str, object] | None = None,
+        skill_kwargs: Mapping[str, object] | None = None,
+        benchmark_kwargs: Mapping[str, object] | None = None,
     ) -> ScalingContext:
         """Build a frozen scaling context from all signal sources.
 
@@ -165,7 +160,7 @@ class ScalingContextBuilder:
         name: str,
         source: ScalingSignalSource | None,
         agent_ids: tuple[NotBlankStr, ...],
-        kwargs: dict[str, Any] | None,
+        kwargs: Mapping[str, object] | None,
     ) -> tuple[ScalingSignal, ...]:
         """Collect signals from a source, degrading gracefully on failure.
 

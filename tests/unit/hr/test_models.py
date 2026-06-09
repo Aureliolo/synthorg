@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for HR domain models."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -468,7 +466,7 @@ class TestAgentLifecycleEvent:
     )
     def test_blank_fields_rejected(self, field: str) -> None:
         now = datetime.now(UTC)
-        kwargs: dict[str, Any] = {
+        kwargs: dict[str, object] = {
             "agent_id": "agent-001",
             "agent_name": "test-agent",
             "event_type": LifecycleEventType.HIRED,
@@ -477,4 +475,4 @@ class TestAgentLifecycleEvent:
         }
         kwargs[field] = "  "
         with pytest.raises(ValidationError):
-            AgentLifecycleEvent(**kwargs)
+            AgentLifecycleEvent.model_validate(kwargs)

@@ -1,7 +1,6 @@
 """Unit tests for AuditChainConfig TSA preset coherence."""
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -80,14 +79,16 @@ def test_preset_resolves_to_canonical_url(
 )
 def test_tsa_missing_roots_rejected_when_verifying(
     tsa_preset: TsaPreset,
-    extra_kwargs: dict[str, Any],
+    extra_kwargs: dict[str, object],
 ) -> None:
     """Verifying presets reject configs without ``tsa_trusted_roots_path``."""
     with pytest.raises(ValidationError, match="tsa_trusted_roots_path"):
-        AuditChainConfig(
-            tsa_preset=tsa_preset,
-            tsa_verify_signature=True,
-            **extra_kwargs,
+        AuditChainConfig.model_validate(
+            {
+                "tsa_preset": tsa_preset,
+                "tsa_verify_signature": True,
+                **extra_kwargs,
+            },
         )
 
 

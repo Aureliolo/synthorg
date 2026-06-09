@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for training mode service orchestrator."""
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -70,11 +68,11 @@ def _make_guard_decision(
 
 def _make_service(
     *,
-    selector: Any = None,
+    selector: SourceSelector | None = None,
     extractors: dict[ContentType, AsyncMock] | None = None,
-    curation: Any = None,
+    curation: CurationStrategy | None = None,
     guards: tuple[AsyncMock, ...] | None = None,
-    memory_backend: Any = None,
+    memory_backend: MemoryBackend | None = None,
 ) -> TrainingService:
     """Build a TrainingService with mocked dependencies."""
     if selector is None:

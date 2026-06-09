@@ -1,10 +1,9 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for EvalLoopCoordinator."""
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -226,7 +225,7 @@ class TestEvalLoopCoordinatorCollectAgentIds:
         assert ids == ()
 
 
-def _make_pillar_score(pillar: str, score: float) -> Any:
+def _make_pillar_score(pillar: str, score: float) -> SimpleNamespace:
     """Build a concrete test double with the shape ``_identify_patterns`` reads.
 
     Using ``SimpleNamespace`` (not ``MagicMock``) means a misspelled

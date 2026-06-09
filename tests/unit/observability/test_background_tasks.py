@@ -127,11 +127,14 @@ async def test_drain_cancels_on_timeout(
     call_count = 0
 
     async def _wait_shim(
-        tasks: set[asyncio.Task[Any]],
+        tasks: set[asyncio.Task[object]],
         *,
         timeout: float | None = None,  # noqa: ASYNC109 - mirrors asyncio.wait
+        # ``**kwargs`` forwards verbatim to the real ``asyncio.wait``
+        # (typed ``return_when: str``); ``Any`` is the correct
+        # stdlib-passthrough type here.
         **kwargs: Any,
-    ) -> tuple[set[asyncio.Task[Any]], set[asyncio.Task[Any]]]:
+    ) -> tuple[set[asyncio.Task[object]], set[asyncio.Task[object]]]:
         nonlocal call_count
         call_count += 1
         if call_count == 1:

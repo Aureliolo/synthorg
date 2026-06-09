@@ -1,3 +1,4 @@
+# module-kind: adapter
 """RFC 3161 Time-Stamp Authority client for the audit chain.
 
 Issues a timestamp request for a SHA-256 (or SHA-512) hash of a
@@ -24,9 +25,10 @@ Reference: RFC 3161, RFC 5816.
 
 import hashlib
 import hmac
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import Final
 
 import httpx
 import rfc3161_client
@@ -34,9 +36,6 @@ from cryptography import x509
 from rfc3161_client import TimestampRequestBuilder
 from rfc3161_client import base as _rfc_base
 from rfc3161_client import tsp as _rfc_tsp
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import extract_media_type
@@ -57,7 +56,7 @@ logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 5.0
 
-_HASH_ALGORITHMS: dict[str, Any] = {
+_HASH_ALGORITHMS: dict[str, _rfc_base.HashAlgorithm] = {
     "sha256": _rfc_base.HashAlgorithm.SHA256,
     "sha512": _rfc_base.HashAlgorithm.SHA512,
 }
@@ -402,7 +401,7 @@ class TsaClient:
         return response.content
 
 
-def _decode_response(raw: bytes) -> Any:
+def _decode_response(raw: bytes) -> rfc3161_client.TimeStampResponse:
     """Decode a raw TSA response into an ASN.1 ``TimeStampResp``.
 
     Returns:
@@ -426,14 +425,30 @@ def _decode_response(raw: bytes) -> Any:
         raise TsaProtocolError(msg) from exc
 
 
-def _check_pki_status(response: Any, tsa_url: str) -> None:
+def _check_pki_status(
+    response: rfc3161_client.TimeStampResponse,
+    tsa_url: str,
+) -> None:
     """Verify the TSA granted the timestamp request.
 
     Raises:
         TsaProtocolError: If the PKI status is not ``GRANTED`` or
             ``GRANTED_WITH_MODS``.
     """
-    status = response.status
+    try:
+        status = _rfc_tsp.PKIStatus(response.status)
+    except ValueError as exc:
+        status_string = getattr(response, "status_string", None)
+        logger.warning(
+            SECURITY_TIMESTAMP_REJECTED,
+            tsa_url=tsa_url,
+            pki_status=f"unknown({response.status!r})",
+            status_string=status_string,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = f"TSA rejected request: unknown PKI status {response.status!r}"
+        raise TsaProtocolError(msg) from exc
     if status in {
         _rfc_tsp.PKIStatus.GRANTED,
         _rfc_tsp.PKIStatus.GRANTED_WITH_MODS,
@@ -451,7 +466,7 @@ def _check_pki_status(response: Any, tsa_url: str) -> None:
 
 
 def _check_hash_binding(
-    tst_info: Any,
+    tst_info: rfc3161_client.TimeStampTokenInfo,
     expected_digest: bytes,
     hash_algorithm: str,
     tsa_url: str,
@@ -513,7 +528,11 @@ def _check_hash_binding(
         raise TsaHashMismatchError(msg)
 
 
-def _check_nonce(tst_info: Any, expected_nonce: int, tsa_url: str) -> None:
+def _check_nonce(
+    tst_info: rfc3161_client.TimeStampTokenInfo,
+    expected_nonce: int,
+    tsa_url: str,
+) -> None:
     """Verify the response's nonce matches the request (replay guard).
 
     Nonces are public values echoed in the request and response;
@@ -536,7 +555,7 @@ def _check_nonce(tst_info: Any, expected_nonce: int, tsa_url: str) -> None:
 
 
 def _verify_signature(
-    response: Any,
+    response: rfc3161_client.TimeStampResponse,
     *,
     hashed_message: bytes,
     trusted_roots: tuple[x509.Certificate, ...],
@@ -599,7 +618,7 @@ def _load_root_cert(pem_bytes: bytes) -> x509.Certificate:
         raise ValueError(msg) from exc
 
 
-def _gen_time_to_datetime(gen_time: Any) -> datetime:
+def _gen_time_to_datetime(gen_time: object) -> datetime:
     """Coerce a TSTInfo ``gen_time`` into a UTC-aware datetime.
 
     Returns:

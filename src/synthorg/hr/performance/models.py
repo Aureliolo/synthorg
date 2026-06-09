@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Performance tracking domain models.
 
 Frozen Pydantic models for task metrics, collaboration metrics,

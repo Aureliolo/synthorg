@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Observability configuration models.
 
 Frozen Pydantic models for log sinks, rotation, and top-level logging
@@ -16,6 +17,7 @@ from typing import Final, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.observability._endpoint_safety import validate_otlp_endpoint_safety
 from synthorg.observability.enums import (
     LogLevel,
     OtlpProtocol,
@@ -85,86 +87,6 @@ class RotationConfig(BaseModel):
         default=False,
         description="Gzip-compress rotated backup files",
     )
-
-
-def _is_private_ip(addr_str: str) -> bool:
-    """Check whether an IP address string is private/loopback/link-local.
-
-    Returns:
-        ``True`` if *addr_str* parses as a private, loopback, or
-        link-local IP; ``False`` for public IPs or unparseable strings.
-    """
-    import ipaddress  # noqa: PLC0415
-
-    try:
-        addr = ipaddress.ip_address(addr_str)
-    except ValueError:
-        return False
-    return bool(addr.is_private or addr.is_loopback or addr.is_link_local)
-
-
-def _validate_otlp_endpoint_safety(
-    endpoint: str,
-    hostname: str,
-    *,
-    has_headers: bool,
-) -> None:
-    """Reject private IPs (SSRF) and warn on unencrypted HTTP.
-
-    Checks both IP literals and DNS-resolved addresses (best-effort).
-    Localhost (127.0.0.1, ::1, ``localhost``) is always allowed as a
-    standard local OTLP collector endpoint.
-
-    Raises:
-        ValueError: If the hostname is a non-localhost private/loopback
-            IP literal, or resolves via DNS to a private/loopback
-            address.
-    """
-    localhost_names = {"localhost", "127.0.0.1", "::1"}
-
-    # Allow localhost/loopback -- standard for local collectors.
-    if hostname in localhost_names:
-        return
-
-    # Direct IP literal check (non-localhost private IPs).
-    if _is_private_ip(hostname):
-        msg = (
-            f"otlp_endpoint must not target private/loopback IP addresses ({hostname})"
-        )
-        raise ValueError(msg)
-
-    # DNS resolution check for hostnames (best-effort).
-    if not _is_private_ip(hostname):
-        import socket  # noqa: PLC0415
-
-        try:
-            addrs = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
-        except socket.gaierror:
-            # DNS resolution failed -- skip check (hostname may be valid
-            # at runtime even if not resolvable at config-load time).
-            return
-        for _family, _type, _proto, _canonname, sockaddr in addrs:
-            resolved_ip = str(sockaddr[0])
-            if _is_private_ip(resolved_ip):
-                msg = (
-                    f"otlp_endpoint hostname {hostname!r} resolves to "
-                    f"private/loopback address {resolved_ip}"
-                )
-                raise ValueError(msg)
-
-    if (
-        endpoint.startswith("http://")
-        and hostname not in ("localhost", "127.0.0.1", "::1")
-        and has_headers
-    ):
-        import warnings  # noqa: PLC0415
-
-        warnings.warn(
-            "OTLP endpoint uses unencrypted HTTP with headers "
-            "that may contain secrets; prefer https://",
-            UserWarning,
-            stacklevel=4,
-        )
 
 
 class SinkConfig(BaseModel):
@@ -504,7 +426,7 @@ class SinkConfig(BaseModel):
         if not parsed.hostname:
             msg = "otlp_endpoint must include a host"
             raise ValueError(msg)
-        _validate_otlp_endpoint_safety(
+        validate_otlp_endpoint_safety(
             self.otlp_endpoint,
             parsed.hostname,
             has_headers=bool(self.otlp_headers),

@@ -9,16 +9,14 @@ import gzip
 import logging
 import logging.handlers
 import sys
-from pathlib import Path as StdPath
+from collections.abc import Mapping
+from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, override
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from pathlib import Path
+from typing import override
 
 import structlog
 from structlog.stdlib import ProcessorFormatter
+from structlog.typing import Processor
 
 from synthorg.observability.config import RotationConfig, SinkConfig
 from synthorg.observability.enums import RotationStrategy, SinkType
@@ -104,12 +102,12 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
     def _shift_gz_backups(self) -> None:
         """Shift existing .gz backups (highest index first)."""
         # Remove the oldest before shifting to make room
-        oldest = StdPath(f"{self.baseFilename}.{self.backupCount}.gz")
+        oldest = Path(f"{self.baseFilename}.{self.backupCount}.gz")
         if oldest.exists():
             oldest.unlink()
         for i in range(self.backupCount - 1, 0, -1):
-            src = StdPath(f"{self.baseFilename}.{i}.gz")
-            dst = StdPath(f"{self.baseFilename}.{i + 1}.gz")
+            src = Path(f"{self.baseFilename}.{i}.gz")
+            dst = Path(f"{self.baseFilename}.{i + 1}.gz")
             if src.exists():
                 if dst.exists():
                     dst.unlink()
@@ -125,7 +123,7 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
         dfn = self.rotation_filename(
             f"{self.baseFilename}.1",
         )
-        dfn_path = StdPath(dfn)
+        dfn_path = Path(dfn)
         if dfn_path.exists():
             dfn_path.unlink()
         self.rotate(self.baseFilename, dfn)
@@ -133,9 +131,9 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
 
     def _compress_file(self, path: str) -> None:
         """Gzip a single file in place via atomic temp file."""
-        src = StdPath(path)
-        tmp_gz = StdPath(f"{path}.gz.tmp")
-        gz = StdPath(f"{path}.gz")
+        src = Path(path)
+        tmp_gz = Path(f"{path}.gz.tmp")
+        gz = Path(f"{path}.gz")
         try:
             with src.open("rb") as src_f, gzip.open(tmp_gz, "wb") as gz_f:
                 while chunk := src_f.read(1024 * 1024):
@@ -381,7 +379,7 @@ def _build_file_handler(
 
 def _build_formatter(
     sink: SinkConfig,
-    foreign_pre_chain: list[Any],
+    foreign_pre_chain: list[Processor],
 ) -> ProcessorFormatter:
     """Build a ``ProcessorFormatter`` for the given sink.
 
@@ -393,13 +391,13 @@ def _build_formatter(
         A ``ProcessorFormatter`` configured with JSON or console
         rendering and the matching exception-info processor for the sink.
     """
-    renderer: Any
+    renderer: Processor
     if sink.json_format:
         renderer = structlog.processors.JSONRenderer()
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
 
-    processors: list[Any] = [ProcessorFormatter.remove_processors_meta]
+    processors: list[Processor] = [ProcessorFormatter.remove_processors_meta]
     if sink.json_format:
         processors.append(structlog.processors.format_exc_info)
     processors.append(renderer)
@@ -413,7 +411,7 @@ def _build_formatter(
 def _attach_formatter_and_routing(
     handler: logging.Handler,
     sink: SinkConfig,
-    foreign_pre_chain: list[Any],
+    foreign_pre_chain: list[Processor],
     routing: Mapping[str, tuple[str, ...]],
 ) -> None:
     """Set formatter and optional routing filters on a handler.
@@ -450,7 +448,7 @@ def _attach_formatter_and_routing(
 def build_handler(
     sink: SinkConfig,
     log_dir: Path,
-    foreign_pre_chain: list[Any],
+    foreign_pre_chain: list[Processor],
     *,
     routing: Mapping[str, tuple[str, ...]] | None = None,
 ) -> logging.Handler:

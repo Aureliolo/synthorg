@@ -1,3 +1,4 @@
+# module-kind: service
 """Agent activity feed service.
 
 Aggregates the multiple activity sources that ``activity.py`` already
@@ -21,6 +22,11 @@ from typing import TYPE_CHECKING
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.hr._activity_validation import (
+    validate_pagination,
+    validate_request,
+    validate_window,
+)
 from synthorg.hr.activity import ActivityEvent, merge_activity_timeline
 from synthorg.observability import (
     get_logger,
@@ -29,12 +35,17 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.hr import (
     HR_ACTIVITY_AGENT_FETCHED,
-    HR_ACTIVITY_INVALID_REQUEST,
     HR_ACTIVITY_LIFECYCLE_CAP_HIT,
     HR_ACTIVITY_SOURCE_FETCH_FAILED,
 )
 
 if TYPE_CHECKING:
+    # Cross-package signature types stay TYPE_CHECKING: hoisting
+    # ``budget.cost_record`` to runtime triggers the budget<->providers
+    # cold-import cycle (providers/__init__ eagerly re-exports
+    # BaseCompletionProvider, which imports budget.cost_record back).
+    # PEP 649 evaluates these annotations lazily, so the signatures
+    # resolve without a runtime import.
     from synthorg.budget.cost_record import CostRecord
     from synthorg.budget.tracker import CostTracker
     from synthorg.communication.delegation.models import DelegationRecord
@@ -47,11 +58,9 @@ if TYPE_CHECKING:
     from synthorg.tools.invocation_record import ToolInvocationRecord
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
-
 logger = get_logger(__name__)
 
 _DEFAULT_WINDOW_HOURS: int = 168  # 7 days -- matches API controller cap.
-_MAX_WINDOW_HOURS: int = 720  # 30 days -- upper cap for pathological queries.
 # Safety rail for the lifecycle-events fetch so a pathological agent
 # (runaway status churn, accidental event replay) cannot swamp the
 # merge step. Set well above any expected production load; when the
@@ -162,7 +171,7 @@ class ActivityFeedService:
                 ``[1, _MAX_WINDOW_HOURS]``.
         """
         agent_key = str(agent_id)
-        self._validate_request(
+        validate_request(
             agent_id=agent_key,
             offset=offset,
             limit=limit,
@@ -270,8 +279,8 @@ class ActivityFeedService:
             window duration; revisit if the unfiltered fetch dominates
             request latency.
         """
-        self._validate_pagination(offset=offset, limit=limit)
-        self._validate_window(window_hours=window_hours)
+        validate_pagination(offset=offset, limit=limit)
+        validate_window(window_hours=window_hours)
         now = datetime.now(UTC)
         since = now - timedelta(hours=window_hours)
 
@@ -422,97 +431,6 @@ class ActivityFeedService:
                 error=safe_error_description(exc),
             )
             return ()
-
-    def _validate_pagination(self, *, offset: int, limit: int) -> None:
-        """Validate offset and limit, logging before each raise.
-
-        Raises:
-            ValueError: If an argument fails domain validation.
-        """
-        if offset < 0:
-            logger.warning(
-                HR_ACTIVITY_INVALID_REQUEST,
-                param="offset",
-                value=offset,
-            )
-            msg = f"offset must be >= 0, got {offset}"
-            raise ValueError(msg)
-        if limit < 1:
-            logger.warning(
-                HR_ACTIVITY_INVALID_REQUEST,
-                param="limit",
-                value=limit,
-            )
-            msg = f"limit must be >= 1, got {limit}"
-            raise ValueError(msg)
-
-    def _validate_window(self, *, window_hours: int) -> None:
-        """Validate window_hours; logged before raise.
-
-        Raises:
-            ValueError: If an argument fails domain validation.
-        """
-        if window_hours < 1 or window_hours > _MAX_WINDOW_HOURS:
-            logger.warning(
-                HR_ACTIVITY_INVALID_REQUEST,
-                param="window_hours",
-                value=window_hours,
-                max_allowed=_MAX_WINDOW_HOURS,
-            )
-            msg = (
-                f"window_hours must be between 1 and {_MAX_WINDOW_HOURS}, "
-                f"got {window_hours}"
-            )
-            raise ValueError(msg)
-
-    def _validate_request(
-        self,
-        *,
-        agent_id: str,
-        offset: int,
-        limit: int,
-        window_hours: int,
-    ) -> None:
-        """Validate pagination + window inputs, logging before each raise.
-
-        Service-layer error paths must log at WARNING with context
-        before raising so bad MCP requests are visible in the audit
-        trail (per CLAUDE.md ``## Logging``).
-
-        Raises:
-            ValueError: If an argument fails domain validation.
-        """
-        if offset < 0:
-            logger.warning(
-                HR_ACTIVITY_INVALID_REQUEST,
-                agent_id=agent_id,
-                param="offset",
-                value=offset,
-            )
-            msg = f"offset must be >= 0, got {offset}"
-            raise ValueError(msg)
-        if limit < 1:
-            logger.warning(
-                HR_ACTIVITY_INVALID_REQUEST,
-                agent_id=agent_id,
-                param="limit",
-                value=limit,
-            )
-            msg = f"limit must be >= 1, got {limit}"
-            raise ValueError(msg)
-        if window_hours < 1 or window_hours > _MAX_WINDOW_HOURS:
-            logger.warning(
-                HR_ACTIVITY_INVALID_REQUEST,
-                agent_id=agent_id,
-                param="window_hours",
-                value=window_hours,
-                max_allowed=_MAX_WINDOW_HOURS,
-            )
-            msg = (
-                f"window_hours must be between 1 and {_MAX_WINDOW_HOURS}, "
-                f"got {window_hours}"
-            )
-            raise ValueError(msg)
 
     async def _resolve_currency(self) -> str:
         """Resolve the runtime display currency.

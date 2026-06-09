@@ -1,10 +1,9 @@
-# mypy: disable-error-code="explicit-any"
 """Shared fixtures for scaling unit tests."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.hr.scaling.enums import (
     ScalingActionType,
     ScalingStrategyName,
@@ -50,7 +49,7 @@ def make_context(  # noqa: PLR0913
     performance_signals: tuple[ScalingSignal, ...] = (),
     skill_signals: tuple[ScalingSignal, ...] = (),
     benchmark_signals: tuple[ScalingSignal, ...] = (),
-    performance_snapshots: dict[str, Any] | None = None,
+    performance_snapshots: dict[str, AgentPerformanceSnapshot] | None = None,
     evaluated_at: datetime | None = None,
 ) -> ScalingContext:
     """Create a ScalingContext with sensible defaults."""

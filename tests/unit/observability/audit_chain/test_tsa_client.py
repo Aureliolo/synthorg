@@ -11,8 +11,6 @@ Covers:
   unparseable trusted-root PEM.
 """
 
-from typing import Any
-
 import httpx
 import pytest
 import respx
@@ -51,48 +49,49 @@ def test_unparseable_trusted_root_raises() -> None:
 
 
 @pytest.mark.parametrize(
-    ("mock_kwargs", "expected_error"),
+    ("return_value", "side_effect", "expected_error"),
     [
         pytest.param(
-            {"side_effect": httpx.TimeoutException("slow")},
+            None,
+            httpx.TimeoutException("slow"),
             TsaTimeoutError,
             id="timeout",
         ),
         pytest.param(
-            {
-                "return_value": httpx.Response(
-                    400,
-                    content=b"bad request",
-                    headers={"Content-Type": "application/timestamp-reply"},
-                ),
-            },
+            httpx.Response(
+                400,
+                content=b"bad request",
+                headers={"Content-Type": "application/timestamp-reply"},
+            ),
+            None,
             TsaTransportError,
             id="http_4xx",
         ),
         pytest.param(
-            {
-                "return_value": httpx.Response(
-                    503,
-                    content=b"down",
-                    headers={"Content-Type": "application/timestamp-reply"},
-                ),
-            },
+            httpx.Response(
+                503,
+                content=b"down",
+                headers={"Content-Type": "application/timestamp-reply"},
+            ),
+            None,
             TsaTransportError,
             id="http_5xx",
         ),
         pytest.param(
-            {"side_effect": httpx.ConnectError("dns fail")},
+            None,
+            httpx.ConnectError("dns fail"),
             TsaTransportError,
             id="connect_error",
         ),
     ],
 )
 async def test_transport_failures_map_to_typed_errors(
-    mock_kwargs: dict[str, Any],
+    return_value: httpx.Response | None,
+    side_effect: Exception | None,
     expected_error: type[Exception],
 ) -> None:
     async with respx.mock(base_url=_TSA_URL) as router:
-        router.post("").mock(**mock_kwargs)
+        router.post("").mock(return_value=return_value, side_effect=side_effect)
         client = TsaClient(_TSA_URL, timeout_sec=0.5)
         with pytest.raises(expected_error):
             await client.request_timestamp(b"payload")

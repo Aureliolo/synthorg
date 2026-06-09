@@ -1,15 +1,16 @@
 # ruff: noqa: TRY004 -- consistent ValueError API with sink_config_builder
 """Syslog and HTTP custom sink parsers for the sink config builder.
 
-Extracted from ``sink_config_builder`` to keep the main module under
-the 800-line limit.  These functions are internal helpers -- import
-them via ``sink_config_builder`` dispatch, not directly.
+Internal helpers -- import them via ``sink_config_builder`` dispatch,
+not directly.
 """
 
-from typing import Any
+from collections.abc import Callable
+from typing import Final, Protocol
 
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import (
+    LogLevel,
     SinkType,
     SyslogFacility,
     SyslogProtocol,
@@ -17,14 +18,56 @@ from synthorg.observability.enums import (
 
 _SYSLOG_FACILITY_MAP: dict[str, SyslogFacility] = {f.value: f for f in SyslogFacility}
 _SYSLOG_PROTOCOL_MAP: dict[str, SyslogProtocol] = {p.value: p for p in SyslogProtocol}
+_DEFAULT_SYSLOG_PORT: Final[int] = 514
+
+
+class _EnumParser(Protocol):
+    """Callback resolving a string entry field to an enum member."""
+
+    def __call__[T](
+        self,
+        entry: dict[str, object],
+        key: str,
+        mapping: dict[str, T],
+        label: str,
+        context: str,
+    ) -> T:
+        """Resolve ``entry[key]`` to a member of ``mapping``.
+
+        Returns:
+            The mapped enum member.
+        """
+        ...
+
+
+class _CommonParser(Protocol):
+    """Callback extracting ``(level, json_format)`` from a sink entry."""
+
+    def __call__(
+        self,
+        entry: dict[str, object],
+        index: int,
+        *,
+        sink_type: str = ...,
+    ) -> tuple[LogLevel, bool]:
+        """Extract the common ``(level, json_format)`` pair.
+
+        Returns:
+            The parsed ``(level, json_format)`` tuple.
+        """
+        ...
+
+
+_IntParser = Callable[[dict[str, object], str, str], int]
+_NumberParser = Callable[[dict[str, object], str, str], float]
 
 
 def _parse_syslog_optional_fields(
-    entry: dict[str, Any],
+    entry: dict[str, object],
     ctx: str,
     *,
-    parse_int: Any,
-    parse_enum: Any,
+    parse_int: _IntParser,
+    parse_enum: _EnumParser,
 ) -> tuple[int, SyslogFacility, SyslogProtocol]:
     """Parse optional syslog fields from a custom sink entry.
 
@@ -32,7 +75,11 @@ def _parse_syslog_optional_fields(
         A ``(port, facility, protocol)`` tuple, using the syslog defaults
         (514, USER, UDP) for any key absent from the entry.
     """
-    port = parse_int(entry, "syslog_port", ctx) if "syslog_port" in entry else 514
+    port = (
+        parse_int(entry, "syslog_port", ctx)
+        if "syslog_port" in entry
+        else _DEFAULT_SYSLOG_PORT
+    )
     facility = (
         parse_enum(
             entry,
@@ -59,12 +106,12 @@ def _parse_syslog_optional_fields(
 
 
 def build_custom_syslog_sink(
-    entry: dict[str, Any],
+    entry: dict[str, object],
     index: int,
     *,
-    parse_common: Any,
-    parse_int: Any,
-    parse_enum: Any,
+    parse_common: _CommonParser,
+    parse_int: _IntParser,
+    parse_enum: _EnumParser,
 ) -> SinkConfig:
     """Build a SYSLOG SinkConfig from a custom sink entry.
 
@@ -107,7 +154,7 @@ def build_custom_syslog_sink(
 
 
 def _parse_http_headers(
-    entry: dict[str, Any],
+    entry: dict[str, object],
     index: int,
 ) -> tuple[tuple[str, str], ...]:
     """Parse and validate HTTP headers from a custom sink entry.
@@ -146,12 +193,12 @@ def _parse_http_headers(
 
 
 def build_custom_http_sink(
-    entry: dict[str, Any],
+    entry: dict[str, object],
     index: int,
     *,
-    parse_common: Any,
-    parse_int: Any,
-    parse_number: Any,
+    parse_common: _CommonParser,
+    parse_int: _IntParser,
+    parse_number: _NumberParser,
 ) -> SinkConfig:
     """Build an HTTP SinkConfig from a custom sink entry.
 
@@ -176,7 +223,7 @@ def build_custom_http_sink(
         index,
         sink_type="http",
     )
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, object] = {
         "sink_type": SinkType.HTTP,
         "level": level,
         "http_url": raw_url.strip(),
@@ -196,4 +243,4 @@ def build_custom_http_sink(
     if "http_headers" in entry:
         kwargs["http_headers"] = _parse_http_headers(entry, index)
 
-    return SinkConfig(**kwargs)
+    return SinkConfig.model_validate(kwargs)

@@ -11,17 +11,15 @@ import sys
 import threading
 import urllib.error
 import urllib.request
-from typing import TYPE_CHECKING, Any, Final, override
+from typing import Final, override
 
 import structlog
 from structlog.stdlib import ProcessorFormatter
+from structlog.typing import Processor
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability.config import SinkConfig
 from synthorg.observability.redaction import safe_error_description
-
-if TYPE_CHECKING:
-    from synthorg.observability.config import SinkConfig
-
 
 _DEFAULT_BATCH_SIZE: Final[int] = 100
 _DEFAULT_FLUSH_INTERVAL_SECONDS: Final[float] = 5.0
@@ -219,7 +217,7 @@ class HttpBatchHandler(logging.Handler):
 
 def build_http_handler(
     sink: SinkConfig,
-    foreign_pre_chain: list[Any],
+    foreign_pre_chain: list[Processor],
 ) -> HttpBatchHandler:
     """Build an HttpBatchHandler from an HTTP sink configuration.
 
@@ -246,8 +244,8 @@ def build_http_handler(
     )
     handler.setLevel(sink.level.value)
 
-    renderer: Any = structlog.processors.JSONRenderer()
-    processors: list[Any] = [
+    renderer: Processor = structlog.processors.JSONRenderer()
+    processors: list[Processor] = [
         ProcessorFormatter.remove_processors_meta,
         structlog.processors.format_exc_info,
         renderer,

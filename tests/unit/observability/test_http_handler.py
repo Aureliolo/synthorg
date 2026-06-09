@@ -3,7 +3,7 @@
 import json
 import logging
 import threading
-from typing import Any, override
+from typing import override
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -77,7 +77,7 @@ class TestHttpBatchHandler:
         handler_cleanup.append(handler)
         flushed = threading.Event()
 
-        def _mock_urlopen(*args: Any, **kwargs: Any) -> MagicMock:
+        def _mock_urlopen(*args: object, **kwargs: object) -> MagicMock:
             flushed.set()
             return MagicMock()
 

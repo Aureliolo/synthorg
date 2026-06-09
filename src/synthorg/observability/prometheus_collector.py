@@ -1,3 +1,4 @@
+# module-kind: service
 """Prometheus metrics collector for SynthOrg business metrics.
 
 Maintains Gauge/Counter instances in a dedicated ``CollectorRegistry``
@@ -17,7 +18,7 @@ the file stays under the 800-line ceiling mandated by ``CLAUDE.md``.
 import asyncio
 from collections import Counter
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from prometheus_client import CollectorRegistry, Gauge, Info
 from prometheus_client import Counter as PromCounter
@@ -25,10 +26,17 @@ from prometheus_client import Counter as PromCounter
 from synthorg import __version__
 from synthorg.budget.billing import billing_period_start
 from synthorg.budget.state import BudgetStateSlice, cost_tracker_of
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.state import EngineStateSlice, task_engine_of
 from synthorg.hr.state import HrStateSlice, agent_registry_of
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import get_logger
+from synthorg.observability._prometheus_label_fetchers import (
+    agent_ids_from_agents,
+    fetch_departments,
+    fetch_tool_names,
+    fetch_workflow_definitions,
+)
 from synthorg.observability.events.metrics import (
     METRICS_COLLECTOR_INITIALIZED,
     METRICS_SCRAPE_COMPLETED,
@@ -46,143 +54,12 @@ from synthorg.observability.prometheus_recording import RecordingMixin
 from synthorg.observability.prometheus_recording_streams import (
     StreamRecordingMixin,
 )
-from synthorg.organization.state import OrganizationStateSlice
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
-
-
-def _agent_ids_from_agents(
-    agents: tuple[Any, ...] | None,
-) -> frozenset[str] | None:
-    """Derive the agent-id frozenset from the registry-fetch result.
-
-    Returns ``None`` when *agents* is ``None`` (the registry fetch
-    raised) so the snapshot merge can carry the previous allowlist
-    forward; returns the (possibly empty) frozenset of stringified
-    agent ids otherwise.
-
-    Returns:
-        ``None`` when *agents* is ``None`` (fetch failed), otherwise a
-        frozenset of stringified agent IDs (possibly empty).
-    """
-    if agents is None:
-        return None
-    return frozenset(str(a.id) for a in agents)
-
-
-async def _fetch_workflow_definitions(
-    app_state: AppState,
-) -> frozenset[str] | None:
-    """Pull the active workflow-definition id set from persistence.
-
-    Returns ``frozenset()`` when the repo isn't wired up (the snapshot
-    merge treats that as a "successful fetch with zero entries"), the
-    real id set on success, or ``None`` on a registry-fetch exception
-    so the merge step keeps the previous allowlist.
-
-    Returns:
-        ``frozenset()`` when the repo is not wired, the live frozenset of
-        definition ID strings on success, or ``None`` on a fetch
-        exception so the merge preserves the previous allowlist.
-    """
-    try:
-        persistence = app_state.slice(PersistenceStateSlice).backend
-        wf_repo = getattr(persistence, "workflow_definitions", None)
-        if wf_repo is None:
-            return frozenset()
-        from synthorg.persistence._generics import (  # noqa: PLC0415
-            DEFAULT_PAGE_SIZE,
-        )
-        from synthorg.persistence._shared import paginate  # noqa: PLC0415
-        from synthorg.persistence.workflow_definition_protocol import (  # noqa: PLC0415
-            WorkflowDefinitionFilterSpec,
-        )
-
-        definitions: list[Any] = []
-        async for page in paginate(
-            lambda limit, offset: wf_repo.query(
-                WorkflowDefinitionFilterSpec(), limit=limit, offset=offset
-            ),
-            page_size=DEFAULT_PAGE_SIZE,
-        ):
-            definitions.extend(page)
-    except Exception as exc:
-        reraise_critical(exc)
-        logger.warning(
-            METRICS_SCRAPE_FAILED,
-            component="workflow_definition_repo",
-        )
-        return None
-    return frozenset(str(d.id) for d in definitions)
-
-
-async def _fetch_departments(app_state: AppState) -> frozenset[str] | None:
-    """Pull the active department-name set from the department service.
-
-    Same return contract as :func:`_fetch_workflow_definitions`:
-    empty frozenset for "service not wired", real set on success,
-    ``None`` on exception so the merge step preserves the previous
-    allowlist.
-
-    Returns:
-        ``frozenset()`` when the department service is not wired, the
-        live frozenset of department-name strings on success, or
-        ``None`` on a fetch exception.
-    """
-    try:
-        dept_service = app_state.slice(OrganizationStateSlice).department_service
-        if dept_service is None:
-            return frozenset()
-        records, _ = await dept_service.list_departments()
-    except Exception as exc:
-        reraise_critical(exc)
-        logger.warning(
-            METRICS_SCRAPE_FAILED,
-            component="department_service",
-        )
-        return None
-    return frozenset(str(r.name) for r in records)
-
-
-async def _fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
-    """Pull the registered tool-name set from the tool registry.
-
-    Same return contract as :func:`_fetch_departments`: empty
-    frozenset when the registry is not wired, real set on success,
-    ``None`` on exception so the merge step preserves the previous
-    allowlist. Synchronous reads from a frozen ``MappingProxyType``
-    cannot raise meaningfully today, but the registry exposure path
-    may grow async I/O later (plugin lazy-load, MCP server discovery)
-    so this is wrapped for symmetry with the other registry fetchers.
-
-    Returns:
-        ``frozenset()`` when the tool registry is not wired, the live
-        frozenset of registered tool-name strings on success, or
-        ``None`` on a fetch exception.
-    """
-    try:
-        registry = getattr(app_state, "tool_registry", None)
-        if registry is None:
-            return frozenset()
-        return frozenset(registry.list_tools())
-    except Exception as exc:
-        reraise_critical(exc)
-        # ``_fetch_tool_names`` runs inside a ``TaskGroup`` alongside
-        # the workflow / department fetchers; an uncaught exception
-        # here would cancel its siblings via the structured-concurrency
-        # contract and lose their snapshot updates too. Catch broadly,
-        # emit a redacted structured error (the helper logs WITHOUT
-        # attaching the traceback so frame-locals stay out of the
-        # event), and fall back to ``None`` so the merge step preserves
-        # the prior tool-name allowlist.
-        log_exception_redacted(
-            logger, METRICS_SCRAPE_FAILED, exc, component="tool_registry"
-        )
-        return None
 
 
 class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
@@ -431,7 +308,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
     async def _rebuild_label_snapshot(
         self,
         app_state: AppState,
-        agents: tuple[Any, ...] | None,
+        agents: tuple[AgentIdentity, ...] | None,
     ) -> None:
         """Refresh the snapshot consumed by sync ``validate_*`` helpers.
 
@@ -444,11 +321,11 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         thereafter, so a transient outage in one registry does not
         suppress the unrelated allowlists.
         """
-        agent_ids = _agent_ids_from_agents(agents)
+        agent_ids = agent_ids_from_agents(agents)
         async with asyncio.TaskGroup() as tg:
-            wf_task = tg.create_task(_fetch_workflow_definitions(app_state))
-            dept_task = tg.create_task(_fetch_departments(app_state))
-            tool_task = tg.create_task(_fetch_tool_names(app_state))
+            wf_task = tg.create_task(fetch_workflow_definitions(app_state))
+            dept_task = tg.create_task(fetch_departments(app_state))
+            tool_task = tg.create_task(fetch_tool_names(app_state))
         await self._merge_and_update_snapshot(
             agent_ids=agent_ids,
             wf_ids=wf_task.result(),
@@ -619,7 +496,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
     async def _refresh_agent_metrics(
         self,
         app_state: AppState,
-    ) -> tuple[Any, ...] | None:
+    ) -> tuple[AgentIdentity, ...] | None:
         """Update agent gauges from AgentRegistryService.
 
         Always clears label series first so disappeared combinations
@@ -680,7 +557,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
     async def _refresh_agent_cost_metrics(
         self,
         app_state: AppState,
-        agents: tuple[Any, ...],
+        agents: tuple[AgentIdentity, ...],
         utc_midnight: datetime,
     ) -> None:
         """Update per-agent cost and budget utilization gauges.
