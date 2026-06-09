@@ -46,6 +46,7 @@ from synthorg.meta.toolsmith.dynamic_registry import (
 )
 from synthorg.meta.toolsmith.factory import build_toolsmith
 from synthorg.meta.toolsmith.models import ToolBlueprint, ToolSandboxBackend
+from synthorg.persistence.tool_blueprint_protocol import ToolBlueprintFilterSpec
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import FinishReason
@@ -125,6 +126,21 @@ class _LocalPythonSandbox:
     async def cleanup(self) -> None:
         return None
 
+    async def release_owner(
+        self,
+        owner_id: Any,
+        *,
+        project_id: Any = None,
+        image_override: str | None = None,
+    ) -> None:
+        del owner_id, project_id, image_override
+
+    async def health_check(self) -> bool:
+        return True
+
+    def get_backend_type(self) -> NotBlankStr:
+        return NotBlankStr("subprocess")
+
 
 class _FakeProvider(BaseCompletionProvider):
     """Authoring provider stub: returns the canned tool-authoring response.
@@ -197,6 +213,41 @@ class _InMemoryRepo:
         self.rows[entity_id] = row.model_copy(update={"state": to_state, **updates})
         return True
 
+    async def delete(self, entity_id: str) -> bool:
+        return self.rows.pop(entity_id, None) is not None
+
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[ToolBlueprint, ...]:
+        rows = tuple(self.rows.values())
+        return rows[offset : offset + limit]
+
+    async def query(
+        self,
+        filter_spec: ToolBlueprintFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ToolBlueprint, ...]:
+        rows = [
+            bp
+            for bp in self.rows.values()
+            if (filter_spec.state is None or bp.state is filter_spec.state)
+            and (
+                filter_spec.capability is None
+                or bp.capability == filter_spec.capability
+            )
+            and (
+                filter_spec.sandbox_backend is None
+                or bp.sandbox_backend is filter_spec.sandbox_backend
+            )
+        ]
+        return tuple(rows)[offset : offset + limit]
+
+    async def count(self, filter_spec: ToolBlueprintFilterSpec) -> int:
+        rows = await self.query(filter_spec, limit=len(self.rows) + 1)
+        return len(rows)
+
 
 class _InMemoryApprovalStore:
     """Minimal ApprovalStoreProtocol: records enqueued approval items."""
@@ -206,6 +257,36 @@ class _InMemoryApprovalStore:
 
     async def add(self, item: ApprovalItem) -> None:
         self.items[str(item.id)] = item
+
+    async def clear(self) -> None:
+        self.items.clear()
+
+    async def delete(self, approval_id: str) -> bool:
+        return self.items.pop(str(approval_id), None) is not None
+
+    async def get(self, approval_id: str) -> ApprovalItem | None:
+        return self.items.get(str(approval_id))
+
+    async def list_items(
+        self,
+        *,
+        status: Any = None,
+        risk_level: Any = None,
+        action_type: Any = None,
+    ) -> tuple[ApprovalItem, ...]:
+        del status, risk_level, action_type
+        return tuple(self.items.values())
+
+    async def save(self, item: ApprovalItem) -> ApprovalItem | None:
+        self.items[str(item.id)] = item
+        return item
+
+    async def save_if_pending(self, item: ApprovalItem) -> ApprovalItem | None:
+        self.items[str(item.id)] = item
+        return item
+
+    async def consume_if_approved(self, approval_id: str) -> ApprovalItem | None:
+        return self.items.get(str(approval_id))
 
 
 def _config() -> SelfImprovementConfig:
