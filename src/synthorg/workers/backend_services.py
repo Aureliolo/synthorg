@@ -104,7 +104,11 @@ class DistributedBackendServices:
             for name, component in self._start_order:
                 await component.start()
                 started.append((name, component))
-        except Exception:
+        except Exception as exc:
+            # Critical errors skip the rollback: stopping components is
+            # async teardown work that may allocate, and must not run
+            # under catastrophic interpreter state.
+            reraise_critical(exc)
             for _name, component in reversed(started):
                 try:
                     await component.stop()

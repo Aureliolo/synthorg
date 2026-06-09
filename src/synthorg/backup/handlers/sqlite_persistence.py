@@ -242,7 +242,11 @@ class SQLitePersistenceComponentHandler:
             if not integrity_check(str(db_path)):
                 msg = "Restored database failed integrity check"
                 raise ComponentBackupError(msg)  # noqa: TRY301
-        except Exception:
+        except Exception as exc:
+            # Critical errors skip the rollback: it does filesystem work
+            # that may allocate, and must not run under catastrophic
+            # interpreter state.
+            reraise_critical(exc)
             # Rollback: restore the original if we had one; otherwise wipe
             # the partially-copied (invalid) file so no bad DB remains.
             if bak_path.exists():

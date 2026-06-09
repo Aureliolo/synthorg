@@ -99,6 +99,47 @@ class TestLogfireReporterReportRaises:
             await reporter.report(event)
         mock_logger.warning.assert_not_called()
 
+    async def test_flush_swallows_ordinary_failure(
+        self,
+        reporter: LogfireReporter,
+    ) -> None:
+        """A routine exporter failure degrades to a warning, never raises."""
+        with patch.object(
+            reporter._logfire,
+            "force_flush",
+            side_effect=RuntimeError("exporter down"),
+        ):
+            await reporter.flush()
+
+    async def test_flush_memory_error_propagates(
+        self,
+        reporter: LogfireReporter,
+    ) -> None:
+        with (
+            patch.object(
+                reporter._logfire,
+                "force_flush",
+                side_effect=MemoryError,
+            ),
+            pytest.raises(MemoryError),
+        ):
+            await reporter.flush()
+
+    async def test_shutdown_memory_error_propagates(
+        self,
+        reporter: LogfireReporter,
+    ) -> None:
+        with (
+            patch.object(reporter._logfire, "force_flush"),
+            patch.object(
+                reporter._logfire,
+                "shutdown",
+                side_effect=MemoryError,
+            ),
+            pytest.raises(MemoryError),
+        ):
+            await reporter.shutdown()
+
 
 @pytest.mark.unit
 class TestLogfireReporterConfigure:

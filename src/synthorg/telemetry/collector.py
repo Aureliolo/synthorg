@@ -577,6 +577,7 @@ class TelemetryCollector:
                     try:
                         params = self._session_summary_snapshot_provider()
                     except Exception as exc:
+                        reraise_critical(exc)
                         logger.warning(
                             TELEMETRY_REPORT_FAILED,
                             detail="session_summary_snapshot_failed",
@@ -586,6 +587,7 @@ class TelemetryCollector:
                 try:
                     await self.send_session_summary(params)
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         TELEMETRY_REPORT_FAILED,
                         detail="send_session_summary_failed",
@@ -595,6 +597,7 @@ class TelemetryCollector:
                 try:
                     await self._send_shutdown_event()
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         TELEMETRY_REPORT_FAILED,
                         detail="send_shutdown_event_failed",
@@ -604,6 +607,7 @@ class TelemetryCollector:
             try:
                 await self._reporter.shutdown()
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     TELEMETRY_REPORT_FAILED,
                     detail="reporter_shutdown_failed",
@@ -746,6 +750,7 @@ class TelemetryCollector:
         try:
             await self._reporter.report(event)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 event_type=event.event_type,
@@ -786,6 +791,7 @@ class TelemetryCollector:
         try:
             docker_info: DockerHostInfo = await fetch_docker_info()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 detail="docker_info_fetch_unexpected_exception",
@@ -840,6 +846,7 @@ class TelemetryCollector:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     TELEMETRY_REPORT_FAILED,
                     detail="heartbeat_loop",

@@ -45,6 +45,7 @@ import os
 from collections.abc import Mapping
 from typing import Final, Literal, NotRequired, TypedDict
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.telemetry import TELEMETRY_REPORT_FAILED
 from synthorg.telemetry.config import MAX_STRING_LENGTH
@@ -293,6 +294,7 @@ async def _probe_daemon_info(aiodocker_mod: object) -> object | None:
     try:
         client = aiodocker_mod.Docker()  # type: ignore[attr-defined]
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             TELEMETRY_REPORT_FAILED,
             detail="docker_info_client_construction",
@@ -311,6 +313,7 @@ async def _probe_daemon_info(aiodocker_mod: object) -> object | None:
         )
         return None
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             TELEMETRY_REPORT_FAILED,
             detail="docker_info_fetch_failed",

@@ -150,7 +150,10 @@ def protocol_exports(directory: str) -> tuple[str, ...]:
     package_name = ".".join(Path(directory).parts[1:])
     try:
         package = importlib.import_module(package_name)
-    except Exception:
+    except ImportError, AttributeError:
+        # Best-effort covers only import-shape failures (missing
+        # optional deps, absent submodule attribute); any other error
+        # is a real defect in the feature package and must propagate.
         return ()
     exported: tuple[str, ...] = tuple(getattr(package, "__all__", ()))
     return tuple(

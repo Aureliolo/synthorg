@@ -21,6 +21,7 @@ from synthorg.backup.errors import (
     ManifestError,
 )
 from synthorg.backup.models import BackupInfo, BackupManifest
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.backup import (
     BACKUP_DELETED,
@@ -127,10 +128,12 @@ class BackupServiceArchiveMixin:
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
             m = BackupManifest.model_validate(data)
             return BackupInfo.from_manifest(m, compressed=False)
-        except Exception:
+        except (OSError, ValueError, ValidationError) as exc:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(manifest_path),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
@@ -151,7 +154,7 @@ class BackupServiceArchiveMixin:
         try:
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
             m = BackupManifest.model_validate(data)
-        except Exception as exc:
+        except (OSError, ValueError, ValidationError) as exc:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(manifest_path),
@@ -178,10 +181,16 @@ class BackupServiceArchiveMixin:
             )
             if m is not None:
                 return BackupInfo.from_manifest(m, compressed=True)
-        except Exception:
+        except Exception as exc:
+            # ``_read_manifest_from_archive`` handles its expected
+            # failure set internally; anything escaping is unexpected
+            # and must not break listing -- but critical errors do.
+            reraise_critical(exc)
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(entry),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         return None
 
@@ -265,10 +274,13 @@ class BackupServiceArchiveMixin:
         try:
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
             return bool(data.get("backup_id") == backup_id)
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(manifest_path),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return False
 
@@ -326,10 +338,16 @@ class BackupServiceArchiveMixin:
                     and archive_manifest.backup_id == backup_id
                 ):
                     return archive_manifest
-            except Exception:
+            except Exception as exc:
+                # ``_read_manifest_from_archive`` handles its expected
+                # failure set internally; anything escaping is
+                # unexpected, but critical errors must propagate.
+                reraise_critical(exc)
                 logger.warning(
                     BACKUP_MANIFEST_INVALID,
                     path=str(entry),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         return None
 
@@ -391,11 +409,13 @@ class BackupServiceArchiveMixin:
                 )
             except ManifestError:
                 raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     BACKUP_FAILED,
                     backup_id=backup_id,
-                    error="Failed to extract archive",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 if await asyncio.to_thread(temp_dir.exists):
                     await asyncio.to_thread(shutil.rmtree, temp_dir)
@@ -420,11 +440,14 @@ class BackupServiceArchiveMixin:
             return True
         try:
             m = self._read_manifest_from_archive(entry)
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(entry),
-                error="Failed to read archive manifest for matching",
+                detail="failed to read archive manifest for matching",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return False
         else:
