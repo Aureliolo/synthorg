@@ -10,7 +10,8 @@ from typing import Any
 
 import pytest
 
-from synthorg.api.openapi import _should_inject, inject_rfc9457_responses
+from synthorg.api.openapi import inject_rfc9457_responses
+from synthorg.api.openapi_responses import _should_inject
 
 # ── Fixtures ──────────────────────────────────────────────────
 

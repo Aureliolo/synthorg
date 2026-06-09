@@ -9,10 +9,8 @@ from typing import Any
 
 import pytest
 
-from synthorg.api.openapi import (
-    _normalize_nullable_unions,
-    inject_rfc9457_responses,
-)
+from synthorg.api.openapi import inject_rfc9457_responses
+from synthorg.api.openapi_normalize import _normalize_nullable_unions
 
 
 def _minimal_schema(
