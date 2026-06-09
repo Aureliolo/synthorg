@@ -13,16 +13,14 @@ shape validators run after a successful parse for a tighter contract.
 
 import json
 import math
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.registry import StrategyRegistry
 from synthorg.observability import safe_error_description
 from synthorg.settings.enums import SettingType
 from synthorg.settings.errors import SettingValidationError
 from synthorg.settings.json_validators import get_json_validator
-
-if TYPE_CHECKING:
-    from synthorg.settings.models import SettingDefinition
+from synthorg.settings.models import SettingDefinition
 
 _SENSITIVE_MASK: Final[str] = "********"
 

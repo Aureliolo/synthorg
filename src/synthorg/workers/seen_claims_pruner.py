@@ -12,7 +12,7 @@ fail-open so a transient DB error never wedges the loop.
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.persistence_errors import QueryError
@@ -23,9 +23,7 @@ from synthorg.observability.events.workers import (
     WORKERS_SEEN_CLAIMS_PRUNER_STARTED,
     WORKERS_SEEN_CLAIMS_PRUNER_STOPPED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
+from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 
 logger = get_logger(__name__)
 

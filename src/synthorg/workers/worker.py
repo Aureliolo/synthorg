@@ -18,7 +18,7 @@ follow-up PR).
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any, Final
+from typing import Any, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -45,6 +45,7 @@ from synthorg.observability.events.workers import (
     WORKERS_WORKER_STARTED,
     WORKERS_WORKER_STOPPED,
 )
+from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.workers.claim import (
     JetStreamTaskQueue,
     TaskClaim,
@@ -55,9 +56,6 @@ from synthorg.workers.heartbeat_models import (
     HEARTBEAT_SUBJECT_PREFIX,
     WorkerHeartbeat,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 
 logger = get_logger(__name__)
 

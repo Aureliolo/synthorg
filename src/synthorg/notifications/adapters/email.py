@@ -6,18 +6,16 @@ import re
 import smtplib
 import ssl
 from email.message import EmailMessage
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.notifications.models import Notification
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_EMAIL_DELIVERED,
     NOTIFICATION_EMAIL_FAILED,
     NOTIFICATION_EMAIL_PARTIAL_CREDENTIALS,
 )
-
-if TYPE_CHECKING:
-    from synthorg.notifications.models import Notification
 
 logger = get_logger(__name__)
 _DEFAULT_PORT: Final[int] = 587

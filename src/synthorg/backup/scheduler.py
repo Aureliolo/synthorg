@@ -18,6 +18,8 @@ from synthorg.observability.events.backup import (
 )
 
 if TYPE_CHECKING:
+    # Cycle breaker: ``backup.service`` imports this module at runtime,
+    # so the scheduler names the service for signatures only.
     from synthorg.backup.service import BackupService
 
 logger = get_logger(__name__)

@@ -14,6 +14,7 @@ from synthorg.communication.errors import (
     ChannelAlreadyExistsError,
     CommunicationError,
 )
+from synthorg.communication.message import Message
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import (
@@ -38,7 +39,9 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.subscriber import SettingsSubscriber
 
 if TYPE_CHECKING:
-    from synthorg.communication.message import Message
+    # Concrete-faked collaborator: tests drive the dispatcher with a
+    # duck-typed resolver stub, so a runtime import would make typeguard
+    # reject the fake.
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)

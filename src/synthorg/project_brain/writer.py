@@ -36,6 +36,7 @@ from synthorg.project_brain.constants import (
     BRAIN_WORKSPACE_SUBDIR,
 )
 from synthorg.project_brain.errors import BrainCommitError
+from synthorg.project_brain.models import BrainEntry
 from synthorg.project_brain.serializer import serialize_entry
 
 if TYPE_CHECKING:
@@ -43,7 +44,6 @@ if TYPE_CHECKING:
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,
     )
-    from synthorg.project_brain.models import BrainEntry
 
 logger = get_logger(__name__)
 

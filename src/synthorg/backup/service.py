@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg import __version__
+from synthorg.backup.config import BackupConfig
 from synthorg.backup.errors import (
     BackupInProgressError,
     BackupNotFoundError,
@@ -47,7 +48,10 @@ from synthorg.observability.events.backup import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.backup.config import BackupConfig
+    # Cycle breaker: importing any ``backup.handlers`` submodule runs the
+    # handlers package init, whose postgres handler pulls the persistence
+    # backend whose repos import ``config.schema`` -- which imports this
+    # package. The protocol is named for signatures only.
     from synthorg.backup.handlers.protocol import ComponentHandler
 
 logger = get_logger(__name__)

@@ -23,10 +23,8 @@ value -- the dispatcher is fail-fast at the validation boundary, not
 a normalisation hook.
 """
 
-from typing import TYPE_CHECKING, Any, Final
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from collections.abc import Callable
+from typing import Any, Final
 
 
 def _validate_csp_docs_external_origins(value: Any) -> None:

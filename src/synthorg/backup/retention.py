@@ -5,10 +5,11 @@ import json
 import shutil
 import tarfile
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from pydantic import ValidationError
 
+from synthorg.backup.config import RetentionConfig
 from synthorg.backup.errors import RetentionError
 from synthorg.backup.models import BackupManifest, BackupTrigger
 from synthorg.core.critical_errors import reraise_critical
@@ -22,11 +23,6 @@ from synthorg.observability.events.backup import (
     BACKUP_RETENTION_FAILED,
     BACKUP_RETENTION_PRUNED,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-    from synthorg.backup.config import RetentionConfig
 
 logger = get_logger(__name__)
 

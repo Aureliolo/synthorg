@@ -15,7 +15,7 @@ returns the recorded assignment when one exists).
 """
 
 import hashlib
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
@@ -25,6 +25,7 @@ from synthorg.experiments.models import (
     ExperimentAssignment,
     ExperimentVariant,
 )
+from synthorg.experiments.protocol import ExperimentRepository
 from synthorg.observability import get_logger
 from synthorg.observability.events.experiments import (
     EXPERIMENT_ASSIGNMENT_COMPUTED,
@@ -34,9 +35,6 @@ from synthorg.observability.events.experiments import (
     EXPERIMENT_VARIANT_INVALID_WEIGHT,
     EXPERIMENT_VARIANT_REGISTERED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.experiments.protocol import ExperimentRepository
 
 logger = get_logger(__name__)
 

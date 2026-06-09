@@ -13,10 +13,8 @@ deduplication.
 
 import hashlib
 import json
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from pydantic import BaseModel
+from pydantic import BaseModel
 
 
 def compute_content_hash(model: BaseModel) -> str:

@@ -16,10 +16,10 @@ mappings it delegates to:
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace._git_subprocess import run_git_subprocess
+from synthorg.memory.models import MemoryEntry
 from synthorg.observability import get_logger
 from synthorg.observability.events.project_brain import BRAIN_HISTORY_READ
 from synthorg.persistence.project_brain_protocol import BrainFilterSpec
@@ -36,9 +36,6 @@ from synthorg.project_brain.models import (
     BrainSearchHit,
     BrainSummary,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.models import MemoryEntry
 
 logger = get_logger(__name__)
 

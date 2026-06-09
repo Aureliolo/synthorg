@@ -6,21 +6,17 @@ persistence backend plus the optional brain, red-team, and cassette
 collaborators, and returns the orchestrating service.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.budget.currency import CurrencyCode
+from synthorg.core.clock import Clock
 from synthorg.deliverable_receipts.builder import ReceiptBuilder
 from synthorg.deliverable_receipts.renderer import ReceiptRenderer
 from synthorg.deliverable_receipts.service import DeliverableReceiptService
 from synthorg.deliverable_receipts.validator import ReceiptValidator
-
-if TYPE_CHECKING:
-    from synthorg.budget.currency import CurrencyCode
-    from synthorg.core.clock import Clock
-    from synthorg.docs_engine.service import DocsService
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.project_brain.service import ProjectBrainService
-    from synthorg.providers.cassette.mode import CassetteConfig
-    from synthorg.security.redteam.protocol import RedTeamReportRepository
+from synthorg.docs_engine.service import DocsService
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.project_brain.service import ProjectBrainService
+from synthorg.providers.cassette.mode import CassetteConfig
+from synthorg.security.redteam.protocol import RedTeamReportRepository
 
 
 def build_deliverable_receipt_service(  # noqa: PLR0913 -- cohesive boot wiring

@@ -13,7 +13,6 @@ just accepts whatever token its caller passes.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.telemetry import (
@@ -21,10 +20,8 @@ from synthorg.observability.events.telemetry import (
     TELEMETRY_REPORTER_INITIALIZED,
 )
 from synthorg.telemetry.config import DEFAULT_ENVIRONMENT
+from synthorg.telemetry.protocol import TelemetryEvent
 from synthorg.telemetry.reporters.errors import LogfireConfigureError
-
-if TYPE_CHECKING:
-    from synthorg.telemetry.protocol import TelemetryEvent
 
 logger = get_logger(__name__)
 

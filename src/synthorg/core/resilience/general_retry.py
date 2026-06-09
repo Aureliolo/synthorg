@@ -51,7 +51,8 @@ transient-failure retry with temporal backoff.
 
 import math
 import random
-from typing import TYPE_CHECKING, Final, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Final, TypeVar
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -59,9 +60,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.resilience import (
     CORE_RESILIENCE_INVALID_CONFIG,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
 logger = get_logger(__name__)
 

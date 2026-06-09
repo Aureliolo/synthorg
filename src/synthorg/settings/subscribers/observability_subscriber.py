@@ -2,7 +2,7 @@
 
 import asyncio
 import sys
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
@@ -19,9 +19,7 @@ from synthorg.observability.sink_config_builder import (
     SinkBuildResult,
     build_log_config_from_settings,
 )
-
-if TYPE_CHECKING:
-    from synthorg.settings.service import SettingsService
+from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 

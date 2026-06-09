@@ -20,8 +20,8 @@ import os
 import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.enums import MessageType
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.core.critical_errors import reraise_critical
@@ -42,7 +42,8 @@ from synthorg.observability.events.settings import (
     SETTINGS_VERSION_CONFLICT,
 )
 from synthorg.observability.metrics_hub import record_settings_mutation
-from synthorg.persistence.settings_protocol import SettingRow
+from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
+from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import SettingsImportSource, SettingSource
 from synthorg.settings.errors import (
     SettingNotFoundError,
@@ -51,13 +52,8 @@ from synthorg.settings.errors import (
     SettingValidationError,
 )
 from synthorg.settings.models import SettingDefinition, SettingEntry, SettingValue
+from synthorg.settings.registry import SettingsRegistry
 from synthorg.settings.type_validators import validate_by_type
-
-if TYPE_CHECKING:
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.persistence.settings_protocol import SettingsRepository
-    from synthorg.settings.encryption import SettingsEncryptor
-    from synthorg.settings.registry import SettingsRegistry
 
 logger = get_logger(__name__)
 

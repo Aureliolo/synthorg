@@ -15,7 +15,7 @@ the typed variant. ``ValidationError`` is the only failure mode;
 the gateway maps it to a ``-32602 Invalid params`` response.
 """
 
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import Annotated, Literal
 
 from pydantic import (
     BaseModel,
@@ -25,12 +25,9 @@ from pydantic import (
     TypeAdapter,
 )
 
-from synthorg.a2a.models import A2AMessage
+from synthorg.a2a.models import A2AMessage, JsonRpcRequest
 from synthorg.api.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from synthorg.a2a.models import JsonRpcRequest
 
 
 class A2AMessageSendParams(BaseModel):

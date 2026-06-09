@@ -11,8 +11,10 @@ without editing this file.
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, assert_never
 
+from synthorg.backup.config import BackupConfig
 from synthorg.backup.handlers.config_handler import ConfigComponentHandler
 from synthorg.backup.handlers.memory import MemoryComponentHandler
+from synthorg.backup.handlers.protocol import ComponentHandler
 from synthorg.backup.models import BackupComponent
 from synthorg.backup.registry import PERSISTENCE_BACKUP_HANDLER_REGISTRY
 from synthorg.backup.service import BackupService
@@ -21,8 +23,8 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 
 if TYPE_CHECKING:
-    from synthorg.backup.config import BackupConfig
-    from synthorg.backup.handlers.protocol import ComponentHandler
+    # Cycle breaker: ``config.schema`` sits on the eager-init config
+    # chain and is named here for signatures only.
     from synthorg.config.schema import RootConfig
 
 logger = get_logger(__name__)

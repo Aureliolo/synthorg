@@ -12,8 +12,10 @@ through the normal ``TaskEngine`` mutation queue. The dispatcher only
 reacts to successful mutations and publishes the enqueue signal.
 """
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.observability import (
@@ -32,9 +34,9 @@ from synthorg.settings.bridge_configs import WorkersBridgeConfig
 from synthorg.workers.claim import TaskClaim
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from synthorg.core.clock import Clock
+    # Concrete-faked collaborator: tests drive the dispatcher with a
+    # duck-typed queue stub, so a runtime import would make typeguard
+    # reject the fake.
     from synthorg.engine.task_engine_models import TaskStateChanged
     from synthorg.workers.claim import JetStreamTaskQueue
 

@@ -8,8 +8,10 @@ directly; ``UriPart`` (no A2A equivalent) is converted to text.
 import copy
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast
+from typing import cast
 from uuid import uuid4
+
+from pydantic import JsonValue
 
 from synthorg.a2a.models import (
     A2ADataPart,
@@ -29,9 +31,6 @@ from synthorg.communication.message import (
     TextPart,
 )
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from pydantic import JsonValue
 
 logger = get_logger(__name__)
 

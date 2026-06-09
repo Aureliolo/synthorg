@@ -28,11 +28,12 @@ Auth: the executor uses a Bearer token whose source is documented in
 once at construction.
 """
 
-from typing import TYPE_CHECKING, Any, Final
+from typing import Any, Final
 from urllib.parse import quote
 
 import httpx
 
+from synthorg.core.clock import Clock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_EXECUTOR_HTTP_FAILED,
@@ -42,9 +43,6 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTOR_INVALID_INIT_ARG,
 )
 from synthorg.workers.claim import TaskClaim, TaskClaimStatus
-
-if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
 
 logger = get_logger(__name__)
 

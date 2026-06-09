@@ -35,6 +35,8 @@ from synthorg.workers.heartbeat_models import (
 )
 
 if TYPE_CHECKING:
+    # Concrete-faked collaborator: tests inject FakeJetStreamTaskQueue,
+    # so a runtime import would make typeguard reject the fake.
     from synthorg.workers.claim import JetStreamTaskQueue
 
 logger = get_logger(__name__)

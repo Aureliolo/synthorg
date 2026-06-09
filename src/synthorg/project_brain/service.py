@@ -22,6 +22,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryQuery
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.project_brain import (
     BRAIN_ENTRY_APPENDED,
@@ -30,7 +31,9 @@ from synthorg.observability.events.project_brain import (
     BRAIN_SEARCH_COMPLETE,
     BRAIN_SNAPSHOT_FAILED,
 )
+from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
 from synthorg.project_brain._locks import PerKeyLockRegistry
+from synthorg.project_brain.chunker import BrainChunker
 from synthorg.project_brain.constants import (
     BRAIN_BRANCH_NAME,
     BRAIN_HISTORY_DEFAULT_LIMIT,
@@ -70,9 +73,9 @@ if TYPE_CHECKING:
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,
     )
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
-    from synthorg.project_brain.chunker import BrainChunker
+
+    # Concrete-faked collaborators: tests inject duck-typed indexer and
+    # writer stubs, so a runtime import would make typeguard reject them.
     from synthorg.project_brain.indexer import BrainIndexer
     from synthorg.project_brain.writer import BrainWriter
 

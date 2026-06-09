@@ -20,7 +20,7 @@ import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final
+from typing import Any, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -40,11 +40,9 @@ from synthorg.observability.events.workers import (
     WORKERS_DEAD_LETTER_FAILED,
     WORKERS_DEAD_LETTER_TRANSITIONED,
 )
+from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim
 from synthorg.workers.config import QueueConfig
-
-if TYPE_CHECKING:
-    from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 
 logger = get_logger(__name__)
 

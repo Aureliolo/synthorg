@@ -2,13 +2,13 @@
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.notifications.models import (
     Notification,
     NotificationSeverity,
 )
+from synthorg.notifications.protocol import NotificationSink
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_DISPATCH_FAILED,
@@ -24,10 +24,7 @@ from synthorg.observability.events.notification import (
     NOTIFICATION_SINK_START_FAILED,
 )
 from synthorg.settings.enums import SettingNamespace
-
-if TYPE_CHECKING:
-    from synthorg.notifications.protocol import NotificationSink
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 

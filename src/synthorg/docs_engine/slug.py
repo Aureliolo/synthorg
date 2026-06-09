@@ -8,14 +8,11 @@ URL paths short.
 """
 
 import re
-from typing import TYPE_CHECKING
+from collections.abc import Container
 
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import DOCS_SLUG_MAX_LENGTH
 from synthorg.docs_engine.errors import DocValidationError
-
-if TYPE_CHECKING:
-    from collections.abc import Container
 
 _KEEP_PATTERN = re.compile(r"[^a-z0-9]+")
 _FALLBACK_SLUG: NotBlankStr = NotBlankStr("doc")

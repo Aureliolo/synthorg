@@ -5,7 +5,7 @@ package.
 """
 
 import copy
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
 
 from pydantic import JsonValue, ValidationError
 
@@ -19,9 +19,6 @@ from synthorg.observability.events.template import (
 )
 from synthorg.templates.errors import TemplateRenderError
 from synthorg.templates.presets import get_personality_preset
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

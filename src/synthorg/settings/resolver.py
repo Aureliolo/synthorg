@@ -20,45 +20,53 @@ single audit chokepoint for fragmented resolution paths.
 
 import asyncio
 import json
+from collections.abc import Mapping
 from enum import StrEnum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel
+
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
     SETTINGS_FETCH_FAILED,
     SETTINGS_NOT_FOUND,
     SETTINGS_VALIDATION_FAILED,
 )
+from synthorg.settings.bridge_configs import (
+    A2ABridgeConfig,
+    ApiBridgeConfig,
+    ClientBridgeConfig,
+    CommunicationBridgeConfig,
+    CoordinationBridgeConfig,
+    EngineBridgeConfig,
+    IntegrationsBridgeConfig,
+    MemoryBridgeConfig,
+    MetaBridgeConfig,
+    NotificationsBridgeConfig,
+    ObservabilityBridgeConfig,
+    SettingsDispatcherBridgeConfig,
+    ToolsBridgeConfig,
+    WorkersBridgeConfig,
+)
 from synthorg.settings.errors import SettingNotFoundError, SettingsEncryptionError
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from pydantic import BaseModel
-
+    # Cycle breakers: the api / budget / config / core-company / engine
+    # config models all reach back into the settings package at runtime
+    # (mirrors, registry seeds, kill switches), so the bridge-read
+    # signatures name them without importing them.
     from synthorg.api.config import ApiConfig
     from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
     from synthorg.config.schema import AgentConfig, ProviderConfig, RootConfig
-    from synthorg.core.autonomy_enums import AutonomyLevel
     from synthorg.core.company import Department
     from synthorg.engine.coordination.config import CoordinationConfig
-    from synthorg.settings.bridge_configs import (
-        A2ABridgeConfig,
-        ApiBridgeConfig,
-        ClientBridgeConfig,
-        CommunicationBridgeConfig,
-        CoordinationBridgeConfig,
-        EngineBridgeConfig,
-        IntegrationsBridgeConfig,
-        MemoryBridgeConfig,
-        MetaBridgeConfig,
-        NotificationsBridgeConfig,
-        ObservabilityBridgeConfig,
-        SettingsDispatcherBridgeConfig,
-        ToolsBridgeConfig,
-        WorkersBridgeConfig,
-    )
+
+    # The service module pulls the communication package (message bus
+    # types) whose import chain reaches back into settings; the resolver
+    # must stay import-light so every runtime consumer of it stays
+    # cycle-free. The service instance arrives via the constructor.
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)

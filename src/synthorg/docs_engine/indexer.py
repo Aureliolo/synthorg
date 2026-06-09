@@ -13,7 +13,6 @@ talks to the workspace, not the memory backend.
 
 import asyncio
 import builtins
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
@@ -25,16 +24,14 @@ from synthorg.docs_engine.constants import (
     SYSTEM_DOCS_AGENT_ID,
 )
 from synthorg.docs_engine.errors import DocIndexError
+from synthorg.docs_engine.models import DocChunk
 from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docs import (
     DOC_INDEX_FAILED,
     DOC_INDEXED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.docs_engine.models import DocChunk
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 

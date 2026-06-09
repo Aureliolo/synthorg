@@ -19,9 +19,11 @@ across multiple.
 """
 
 import json
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, cast
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.types import NotBlankStr
 from synthorg.infrastructure.services._shared import (
     _require_callable,
     _split_setting_key,
@@ -37,11 +39,11 @@ from synthorg.observability.events.settings import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
+    # Owner-service types stay import-free at runtime so the facades can
+    # be constructed without pulling the full api / providers / backup
+    # service trees into the MCP layer's import graph.
     from synthorg.api.auth.service import AuthService
     from synthorg.backup.service import BackupService as CoreBackupService
-    from synthorg.core.types import NotBlankStr
     from synthorg.providers.health import ProviderHealthTracker
     from synthorg.providers.management.service import ProviderManagementService
     from synthorg.providers.registry import ProviderRegistry

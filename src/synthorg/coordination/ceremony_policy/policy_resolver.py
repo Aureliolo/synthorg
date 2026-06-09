@@ -10,6 +10,7 @@ layer both depend on this module so neither has to depend on the other.
 import asyncio
 import enum
 import json
+from collections.abc import Mapping
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final, Self
 
@@ -37,8 +38,6 @@ from synthorg.settings.state import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)

@@ -15,7 +15,7 @@ so boot stays fast as the brain grows, and it detects both never-indexed entries
 and entries stuck at an older revision.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Iterable
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
@@ -26,15 +26,13 @@ from synthorg.observability.events.project_brain import (
     BRAIN_REPLAY_FAILED,
     BRAIN_REPLAY_START,
 )
-from synthorg.persistence.project_brain_protocol import BrainFilterSpec
+from synthorg.persistence.project_brain_protocol import (
+    BrainFilterSpec,
+    ProjectBrainRepository,
+)
+from synthorg.project_brain.chunker import BrainChunker
 from synthorg.project_brain.errors import BrainIndexError
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
-    from synthorg.project_brain.chunker import BrainChunker
-    from synthorg.project_brain.indexer import BrainIndexer
+from synthorg.project_brain.indexer import BrainIndexer
 
 logger = get_logger(__name__)
 

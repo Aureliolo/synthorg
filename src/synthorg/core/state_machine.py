@@ -22,14 +22,12 @@ Usage::
 """
 
 from collections import deque
+from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
 
 logger = get_logger(__name__)
 

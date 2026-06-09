@@ -2,22 +2,19 @@
 
 import asyncio
 import math
-from typing import TYPE_CHECKING, Final, Self
+from types import TracebackType
+from typing import Final, Self
 
 import httpx
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.notifications.adapters.ntfy import _validate_outbound_url
+from synthorg.notifications.models import Notification
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_SLACK_DELIVERED,
     NOTIFICATION_SLACK_FAILED,
 )
-
-if TYPE_CHECKING:
-    from types import TracebackType
-
-    from synthorg.notifications.models import Notification
 
 logger = get_logger(__name__)
 _DEFAULT_WEBHOOK_TIMEOUT_SECONDS: Final[float] = 10.0

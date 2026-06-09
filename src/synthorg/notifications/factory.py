@@ -5,8 +5,6 @@ Builds ``NotificationDispatcher`` instances from
 for each configured sink.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.normalization import (
     normalize_ascii_lowercase_or_default,
     parse_comma_list_stripped,
@@ -20,6 +18,7 @@ from synthorg.notifications.config import (
     NotificationSinkType,
 )
 from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.notifications.protocol import NotificationSink
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_SINK_CONFIG_INVALID,
@@ -27,11 +26,8 @@ from synthorg.observability.events.notification import (
     NOTIFICATION_SINK_DISABLED,
     NOTIFICATION_SINK_UNKNOWN_TYPE,
 )
-
-if TYPE_CHECKING:
-    from synthorg.notifications.protocol import NotificationSink
-    from synthorg.settings.bridge_configs import NotificationsBridgeConfig
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.bridge_configs import NotificationsBridgeConfig
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 

@@ -20,12 +20,15 @@ component cannot strand the others.
 
 from typing import TYPE_CHECKING, Any, Protocol
 
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_BACKEND_BUNDLE_STARTED,
     WORKERS_BACKEND_BUNDLE_STOP_FAILED,
 )
+from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
+from synthorg.workers.config import QueueConfig
 from synthorg.workers.dead_letter import (
     DeadLetterConsumer,
     make_engine_task_fail_handler,
@@ -34,10 +37,9 @@ from synthorg.workers.heartbeat_subscriber import WorkerHeartbeatSubscriber
 from synthorg.workers.seen_claims_pruner import SeenClaimsPruner
 
 if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
-    from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
+    # Concrete-faked collaborator: tests inject duck-typed queue stubs,
+    # so a runtime import would make typeguard reject the fakes.
     from synthorg.workers.claim import JetStreamTaskQueue
-    from synthorg.workers.config import QueueConfig
 
 logger = get_logger(__name__)
 

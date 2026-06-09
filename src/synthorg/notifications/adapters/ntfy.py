@@ -4,13 +4,11 @@ import asyncio
 import ipaddress
 import math
 import re
-from typing import TYPE_CHECKING, Final, Self
+from types import TracebackType
+from typing import Final, Self
 from urllib.parse import urlparse
 
 import httpx
-
-if TYPE_CHECKING:
-    from types import TracebackType
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash

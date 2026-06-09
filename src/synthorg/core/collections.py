@@ -1,9 +1,6 @@
 """Generic collection helpers shared across the codebase."""
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
+from collections.abc import Iterable
 
 
 def dedupe_preserving_order[T](items: Iterable[T]) -> tuple[T, ...]:

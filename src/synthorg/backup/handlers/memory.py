@@ -2,7 +2,7 @@
 
 import asyncio
 import shutil
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
@@ -17,9 +17,6 @@ from synthorg.observability.events.backup import (
     BACKUP_COMPONENT_FAILED,
     BACKUP_COMPONENT_STARTED,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = get_logger(__name__)
 

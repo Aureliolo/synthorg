@@ -10,8 +10,8 @@ mapping of discriminator value to factory callable, then dispatches via
 """
 
 import enum
+from collections.abc import Callable, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
@@ -23,9 +23,6 @@ from synthorg.observability.events.registry import (
     REGISTRY_FACTORY_NOT_FOUND,
 )
 from synthorg.observability.redaction import safe_error_description
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
 
 logger = get_logger(__name__)
 

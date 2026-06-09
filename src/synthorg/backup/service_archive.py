@@ -10,10 +10,11 @@ import json
 import shutil
 import tarfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import ValidationError
 
+from synthorg.backup.config import BackupConfig
 from synthorg.backup.errors import (
     BackupInProgressError,
     BackupNotFoundError,
@@ -29,9 +30,6 @@ from synthorg.observability.events.backup import (
     BACKUP_MANIFEST_INVALID,
     BACKUP_NOT_FOUND,
 )
-
-if TYPE_CHECKING:
-    from synthorg.backup.config import BackupConfig
 
 logger = get_logger(__name__)
 

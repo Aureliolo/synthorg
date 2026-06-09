@@ -14,9 +14,12 @@ autonomy / environment / sandbox helpers this mixin calls through
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import AgentRuntimeNotConfiguredError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_NO_PARKED_CONTEXT,
     APPROVAL_GATE_RESUME_DISPATCHED,
@@ -31,13 +34,10 @@ from synthorg.tools.sandbox.active_environment import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.types import NotBlankStr
     from synthorg.engine.agent_engine import AgentEngine
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,
     )
-    from synthorg.observability.background_tasks import BackgroundTaskRegistry
     from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)

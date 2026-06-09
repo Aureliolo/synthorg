@@ -18,11 +18,13 @@ with no runtime benefit.
 
 import asyncio
 import copy
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast, override
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.company import (
     COMPANY_UPDATED_VIA_MCP,
@@ -37,10 +39,7 @@ from synthorg.observability.events.company import (
 from synthorg.organization.models import UpdateCompanyRequest
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
     from synthorg.api.services.org_mutations import OrgMutationService
-    from synthorg.core.types import NotBlankStr
 
 
 logger = get_logger(__name__)

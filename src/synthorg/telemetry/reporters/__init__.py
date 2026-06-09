@@ -29,21 +29,16 @@ programming bug -- which is precisely how the previous
 slip past detection.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.telemetry import TELEMETRY_REPORT_FAILED
-from synthorg.telemetry.config import TelemetryBackend
+from synthorg.telemetry.config import TelemetryBackend, TelemetryConfig
+from synthorg.telemetry.protocol import TelemetryReporter
 from synthorg.telemetry.reporters._embedded_token import (
     EMBEDDED_TELEMETRY_TOKEN,
     is_token_embedded,
 )
 from synthorg.telemetry.reporters.errors import LogfireConfigureError
 from synthorg.telemetry.reporters.noop import NoopReporter
-
-if TYPE_CHECKING:
-    from synthorg.telemetry.config import TelemetryConfig
-    from synthorg.telemetry.protocol import TelemetryReporter
 
 logger = get_logger(__name__)
 

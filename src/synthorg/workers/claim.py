@@ -39,6 +39,9 @@ from synthorg.observability.events.workers import (
 from synthorg.workers.config import QueueConfig
 
 if TYPE_CHECKING:
+    # Cycle breaker: ``communication.config`` sits on the eager-init
+    # config chain; importing it at runtime would re-create the
+    # cold-import cycle the import-layering contracts cut.
     from synthorg.communication.config import NatsConfig
 
 logger = get_logger(__name__)

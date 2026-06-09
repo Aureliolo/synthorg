@@ -28,10 +28,10 @@ from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
+from synthorg.settings.service import SettingsService
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 

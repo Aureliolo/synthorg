@@ -17,21 +17,16 @@ owns that entry point, exposed over REST via
 ``POST /tasks/{task_id}/coordinate``.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.budget.coordination_store import (
+    CoordinationMetricsRecord,
+    CoordinationMetricsStore,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination_metrics import (
     COORD_METRICS_INVALID_REQUEST,
     COORD_METRICS_RECORD_FETCHED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.coordination_store import (
-        CoordinationMetricsRecord,
-        CoordinationMetricsStore,
-    )
-
 
 logger = get_logger(__name__)
 

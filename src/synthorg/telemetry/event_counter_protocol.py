@@ -17,15 +17,13 @@ Design:
   plumbing, so tests can feed events directly into the counter.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from datetime import datetime
+from typing import Final, Protocol, runtime_checkable
+
+from synthorg.meta.signal_models import OrgTelemetrySummary
+from synthorg.telemetry.protocol import TelemetryEvent
 
 _DEFAULT_MAX_TOP: Final[int] = 10
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.meta.signal_models import OrgTelemetrySummary
-    from synthorg.telemetry.protocol import TelemetryEvent
 
 
 @runtime_checkable

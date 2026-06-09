@@ -12,7 +12,8 @@ each template's Jinja2 is rendered independently, then configs are
 merged via :func:`~synthorg.templates.merge.merge_template_configs`.
 """
 
-from typing import TYPE_CHECKING, cast
+from collections.abc import Mapping
+from typing import cast
 
 import yaml
 from jinja2 import TemplateError as Jinja2TemplateError
@@ -21,6 +22,7 @@ from pydantic import JsonValue, ValidationError
 
 from synthorg.config.defaults import default_config_dict
 from synthorg.config.errors import ConfigLocation
+from synthorg.config.schema import RootConfig
 from synthorg.config.utils import deep_merge, to_float
 from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.observability import get_logger, safe_error_description
@@ -46,21 +48,16 @@ from synthorg.templates._render_helpers import (
     validate_as_root_config,
 )
 from synthorg.templates.errors import TemplateRenderError
+from synthorg.templates.loader import LoadedTemplate
 from synthorg.templates.merge import DEFAULT_MERGE_DEPARTMENT, merge_template_configs
 from synthorg.templates.presets import generate_auto_name
+from synthorg.templates.schema import CompanyTemplate
 
 # Placeholder provider name resolved by the engine at startup.
 _DEFAULT_PROVIDER = "default"
 
 # Default department when not specified in template agent config.
 _DEFAULT_DEPARTMENT = DEFAULT_MERGE_DEPARTMENT
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.config.schema import RootConfig
-    from synthorg.templates.loader import LoadedTemplate
-    from synthorg.templates.schema import CompanyTemplate
 
 logger = get_logger(__name__)
 

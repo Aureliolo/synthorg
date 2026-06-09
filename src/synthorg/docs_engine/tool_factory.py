@@ -15,18 +15,14 @@ execution context, a future tool-loader hook) consume the factory
 without re-importing :class:`DocsService`.
 """
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Iterable
+from typing import Final
 
+from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.service import DocsService
+from synthorg.tools.base import BaseTool
 from synthorg.tools.docs.search_living_docs import SearchLivingDocsTool
 from synthorg.tools.docs.write_living_doc import WriteLivingDocTool
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.docs_engine.service import DocsService
-    from synthorg.tools.base import BaseTool
-
 
 DOCS_TOOL_NAMES: Final[tuple[str, ...]] = (
     "write_living_doc",

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.chunker import DocChunker
 from synthorg.docs_engine.constants import (
     DOCS_BRANCH_NAME,
     DOCS_HISTORY_DEFAULT_LIMIT,
@@ -37,6 +38,7 @@ from synthorg.docs_engine.errors import (
     DocNotFoundError,
     DocValidationError,
 )
+from synthorg.docs_engine.indexer import DocIndexer
 from synthorg.docs_engine.models import (
     DocBlock,
     DocMetadata,
@@ -47,8 +49,10 @@ from synthorg.docs_engine.models import (
 )
 from synthorg.docs_engine.serializer import deserialize_doc
 from synthorg.docs_engine.slug import derive_slug
+from synthorg.docs_engine.writer import DocWriter
 from synthorg.engine.workspace._git_subprocess import run_git_subprocess
 from synthorg.memory.models import MemoryEntry, MemoryQuery
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docs import (
     DOC_HISTORY_READ,
@@ -58,17 +62,12 @@ from synthorg.observability.events.docs import (
     DOC_SEARCH_START,
     DOC_SLUG_DERIVED,
 )
-from synthorg.persistence.docs_protocol import DocsFilterSpec
+from synthorg.persistence.docs_protocol import DocsFilterSpec, DocsRepository
 
 if TYPE_CHECKING:
-    from synthorg.docs_engine.chunker import DocChunker
-    from synthorg.docs_engine.indexer import DocIndexer
-    from synthorg.docs_engine.writer import DocWriter
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,
     )
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.persistence.docs_protocol import DocsRepository
 
 logger = get_logger(__name__)
 

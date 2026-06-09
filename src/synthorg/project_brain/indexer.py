@@ -12,12 +12,12 @@ backend; the chunker is pure and the writer talks to the workspace.
 
 import asyncio
 import builtins
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.project_brain import (
     BRAIN_ENTRY_INDEX_FAILED,
@@ -30,10 +30,7 @@ from synthorg.project_brain.constants import (
     SYSTEM_BRAIN_AGENT_ID,
 )
 from synthorg.project_brain.errors import BrainIndexError
-
-if TYPE_CHECKING:
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.project_brain.models import BrainChunk
+from synthorg.project_brain.models import BrainChunk
 
 logger = get_logger(__name__)
 

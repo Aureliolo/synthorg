@@ -8,12 +8,22 @@ receipt, persists it, and projects a human-readable section into the
 doc. It also serves reads and validation for the REST controller.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
+from synthorg.deliverable_receipts.builder import ReceiptBuilder
 from synthorg.deliverable_receipts.errors import DeliverableReceiptNotFoundError
+from synthorg.deliverable_receipts.models import (
+    DeliverableReceipt,
+    ReceiptValidationResult,
+)
+from synthorg.deliverable_receipts.renderer import ReceiptRenderer
+from synthorg.deliverable_receipts.validator import ReceiptValidator
 from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.errors import DocNotFoundError
+from synthorg.docs_engine.service import DocsService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable_receipts import (
     RECEIPT_BUILT,
@@ -22,30 +32,13 @@ from synthorg.observability.events.deliverable_receipts import (
 )
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptFilterSpec,
+    DeliverableReceiptRepository,
 )
-from synthorg.persistence.docs_protocol import DocsFilterSpec
+from synthorg.persistence.docs_protocol import DocsFilterSpec, DocsRepository
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameFilterSpec,
+    FlightRecorderFrameRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.core.types import NotBlankStr
-    from synthorg.deliverable_receipts.builder import ReceiptBuilder
-    from synthorg.deliverable_receipts.models import (
-        DeliverableReceipt,
-        ReceiptValidationResult,
-    )
-    from synthorg.deliverable_receipts.renderer import ReceiptRenderer
-    from synthorg.deliverable_receipts.validator import ReceiptValidator
-    from synthorg.docs_engine.service import DocsService
-    from synthorg.persistence.deliverable_receipt_protocol import (
-        DeliverableReceiptRepository,
-    )
-    from synthorg.persistence.docs_protocol import DocsRepository
-    from synthorg.persistence.flight_recorder_protocol import (
-        FlightRecorderFrameRepository,
-    )
 
 logger = get_logger(__name__)
 
