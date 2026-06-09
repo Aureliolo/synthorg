@@ -98,20 +98,25 @@ async def test_scheduler_stop_drains_pending_notifications() -> None:
         notification_dispatcher=None,
     )
 
-    # Deterministic blocker instead of ``asyncio.sleep(0.1)``: the
-    # task stays pending until ``stop()`` cancels it, so the test
-    # exercises the drain+cancel path without a real-time delay
-    # that flakes under xdist.
-    blocker = asyncio.Event()
+    drained = asyncio.Event()
 
-    async def _blocked_until_cancelled() -> None:
-        await blocker.wait()
+    async def _pending_notification() -> None:
+        # Yields once so the task is still pending at the active_count
+        # assertion below (nothing has driven the loop since spawn),
+        # then completes on its first scheduler step. ``stop()``'s drain
+        # reaps it to completion -- exercising the scheduler's stop ->
+        # drain wiring without waiting out the registry's 5s force-cancel
+        # timeout. That force-cancel path is covered fast in
+        # tests/unit/observability/test_background_tasks.py.
+        await asyncio.sleep(0)
+        drained.set()
 
     _ = scheduler._background_tasks.spawn(
-        _blocked_until_cancelled(),
+        _pending_notification(),
         event=NOTIFICATION_ESCALATION_SEND,
     )
     assert scheduler._background_tasks.active_count == 1
 
     await scheduler.stop()
     assert scheduler._background_tasks.active_count == 0
+    assert drained.is_set()
