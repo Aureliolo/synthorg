@@ -263,7 +263,7 @@ class TestDepartment:
 
     def test_ceremony_policy_is_defensively_copied(self) -> None:
         """Mutating the source dict must not affect the stored policy."""
-        source = {"strategy": "calendar", "cadence": "weekly"}
+        source: dict[str, object] = {"strategy": "calendar", "cadence": "weekly"}
         dept = Department(
             name="marketing",
             head="head",

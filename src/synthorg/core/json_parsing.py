@@ -23,7 +23,6 @@ import re
 # can resolve ``Callable`` in the public function annotations under
 # Python 3.14's PEP 649 lazy-evaluation regime.
 from collections.abc import Callable
-from typing import Any
 
 from synthorg.core.critical_errors import reraise_critical
 
@@ -65,7 +64,9 @@ def _safe_log(callback: Callable[[str], None] | None, detail: str) -> None:
         return
 
 
-def _scan_for_json(stripped: str, opener: str) -> dict[str, Any] | list[Any] | None:
+def _scan_for_json(
+    stripped: str, opener: str
+) -> dict[str, object] | list[object] | None:
     """Scan ``stripped`` for the first parseable JSON value at each ``opener``.
 
     Walks every ``opener`` position (``{`` for objects, ``[`` for arrays)
@@ -96,7 +97,7 @@ def extract_json_from_llm_response(
     text: str,
     *,
     logger_callback: Callable[[str], None] | None = None,
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     """Extract a JSON object from an LLM response.
 
     Strips markdown fences first; on parse failure, falls back to
@@ -148,7 +149,7 @@ def extract_json_array_from_llm_response(
     text: str,
     *,
     logger_callback: Callable[[str], None] | None = None,
-) -> list[Any] | None:
+) -> list[object] | None:
     """Extract a JSON array from an LLM response (mirror of dict variant).
 
     Strips markdown fences first; on parse failure, falls back to

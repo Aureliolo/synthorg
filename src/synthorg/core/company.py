@@ -2,7 +2,7 @@
 
 import copy
 from collections import Counter
-from typing import Any, Self
+from typing import Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
@@ -470,7 +470,7 @@ class Department(BaseModel):
         default_factory=DepartmentPolicies,
         description="Department-level operational policies",
     )
-    ceremony_policy: dict[str, Any] | None = Field(
+    ceremony_policy: dict[str, object] | None = Field(
         default=None,
         description="Per-department ceremony policy override",
     )

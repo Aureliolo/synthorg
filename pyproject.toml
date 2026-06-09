@@ -577,12 +577,9 @@ ignore_missing_imports = true
 # only the flags / error codes actually firing.
 # ──────────────────────────────────────────────────────────────────────
 
-# synthorg.api.* and synthorg.approval.* now hit the full strict++ bar
-# (explicit-Any drained in #2253); no override block remains for them.
-[[tool.mypy.overrides]]
-module = "synthorg.core.*"
-disallow_any_explicit = false
-
+# Every synthorg.* package now hits the full strict++ bar; the
+# remaining irreducible explicit-Any sites carry per-line
+# ``# type: ignore[explicit-any]`` suppressions with rationale.
 # Test code carries the residual strict++ exemptions still lifted on the
 # tests.* surface. ``disallow_any_generics`` is already enforced across
 # tests/, with the bulk of test files explicitly typed under the full

@@ -77,7 +77,12 @@ class StrategyRegistry[T]:
             entries can never satisfy a lookup).
     """
 
-    def __init__(
+    # ``Callable[..., T]`` is deliberate throughout: each registered
+    # factory is a distinct class with its own ``__init__`` deps, unified
+    # only by its return type. No Protocol can express that (a
+    # ``**deps: object`` Protocol fails contravariance against the
+    # concrete factories' specific keyword params).
+    def __init__(  # type: ignore[explicit-any]  # heterogeneous factory signatures
         self,
         factories: Mapping[str, Callable[..., T]],
         *,
@@ -96,7 +101,7 @@ class StrategyRegistry[T]:
             msg = f"StrategyRegistry({kind!r}) requires at least one factory"
             raise ValueError(msg)
         self._kind = kind
-        self._factories: MappingProxyType[str, Callable[..., T]] = MappingProxyType(
+        self._factories: MappingProxyType[str, Callable[..., T]] = MappingProxyType(  # type: ignore[explicit-any]
             {_key(k): v for k, v in factories.items()},
         )
         logger.info(
@@ -111,7 +116,7 @@ class StrategyRegistry[T]:
         """Subsystem identifier supplied at construction."""
         return self._kind
 
-    def get(self, name: str) -> Callable[..., T]:
+    def get(self, name: str) -> Callable[..., T]:  # type: ignore[explicit-any]
         """Look up a factory by discriminator value.
 
         Args:

@@ -15,6 +15,7 @@ slots so the suite does not need a live NATS container -- the
 public ``start()`` path is unaffected.
 """
 
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -32,6 +33,12 @@ from synthorg.workers.claim import (
     TaskClaim,
 )
 from synthorg.workers.config import QueueConfig
+
+if TYPE_CHECKING:
+    from nats.aio.client import Client as NatsClient
+    from nats.js import JetStreamContext
+
+    PullSubscription = JetStreamContext.PullSubscription
 
 
 class _SubscriptionStub:
@@ -143,8 +150,11 @@ async def test_stop_logs_unsubscribe_failure_with_structured_fields(
     """``stop()`` swallows unsubscribe errors but emits ``error_type`` + ``error``."""
     spy = _patch_logger(monkeypatch)
     queue = _make_queue()
-    queue._sub = AsyncMock(spec=_SubscriptionStub)
-    queue._sub.unsubscribe.side_effect = RuntimeError("transient nats error")
+    sub = AsyncMock(spec=_SubscriptionStub)
+    sub.unsubscribe.side_effect = RuntimeError("transient nats error")
+    # Cast to the slot's declared optional type so the post-stop
+    # ``is None`` asserts below stay reachable for mypy.
+    queue._sub = cast("PullSubscription | None", sub)
 
     # ``stop()`` must not raise on a routine subscription failure -- the
     # carve-out below the bound exception handler only fires on
@@ -166,8 +176,9 @@ async def test_stop_logs_drain_failure_with_structured_fields(
     """``stop()`` swallows drain errors but emits ``error_type`` + ``error``."""
     spy = _patch_logger(monkeypatch)
     queue = _make_queue()
-    queue._client = AsyncMock(spec=_ClientStub)
-    queue._client.drain.side_effect = RuntimeError("transient nats error")
+    client = AsyncMock(spec=_ClientStub)
+    client.drain.side_effect = RuntimeError("transient nats error")
+    queue._client = cast("NatsClient | None", client)
 
     await queue.stop()
 
@@ -208,10 +219,12 @@ async def test_drain_partial_logs_unsubscribe_failure(
     """``_drain_partial`` mirrors ``stop()``'s teardown carve-out."""
     spy = _patch_logger(monkeypatch)
     queue = _make_queue()
-    queue._sub = AsyncMock(spec=_SubscriptionStub)
-    queue._sub.unsubscribe.side_effect = RuntimeError("nats")
-    queue._client = AsyncMock(spec=_ClientStub)
-    queue._client.drain.side_effect = RuntimeError("nats drain")
+    sub = AsyncMock(spec=_SubscriptionStub)
+    sub.unsubscribe.side_effect = RuntimeError("nats")
+    queue._sub = cast("PullSubscription | None", sub)
+    client = AsyncMock(spec=_ClientStub)
+    client.drain.side_effect = RuntimeError("nats drain")
+    queue._client = cast("NatsClient | None", client)
 
     await queue._drain_partial()
 

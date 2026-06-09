@@ -36,6 +36,7 @@ def test_default_mirror_applies_when_env_unset(
         ),
     )
     result = apply_settings_mirrors({}, mirrors)
+    assert isinstance(result, dict)
     assert "fail_fast" in result, "default-mirror should populate when env unset"
 
 
@@ -58,6 +59,7 @@ def test_only_if_env_set_skips_when_env_unset(
         ),
     )
     result = apply_settings_mirrors({}, mirrors)
+    assert isinstance(result, dict)
     assert "max_concurrency_per_wave" not in result, (
         "only_if_env_set must NOT overwrite the field when no env override exists"
     )
@@ -78,6 +80,7 @@ def test_only_if_env_set_applies_when_env_set(
         ),
     )
     result = apply_settings_mirrors({}, mirrors)
+    assert isinstance(result, dict)
     assert result.get("max_concurrency_per_wave") == 12
 
 
@@ -93,6 +96,7 @@ def test_caller_kwargs_always_win(monkeypatch: pytest.MonkeyPatch) -> None:
         ),
     )
     result = apply_settings_mirrors({"fail_fast": False}, mirrors)
+    assert isinstance(result, dict)
     assert result["fail_fast"] is False, "caller kwarg must beat env"
 
 

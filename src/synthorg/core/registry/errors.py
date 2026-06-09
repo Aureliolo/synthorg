@@ -1,8 +1,9 @@
 """Errors raised by :class:`synthorg.core.registry.StrategyRegistry`."""
 
 import copy
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any, ClassVar, override
+from typing import ClassVar, override
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -20,12 +21,12 @@ class StrategyFactoryError(DomainError):
         self,
         message: str,
         *,
-        context: dict[str, Any] | None = None,
+        context: Mapping[str, object] | None = None,
     ) -> None:
         """Store *message* and an immutable *context* mapping."""
         self.message = message
-        self.context: MappingProxyType[str, Any] = MappingProxyType(
-            copy.deepcopy(context) if context else {},
+        self.context: MappingProxyType[str, object] = MappingProxyType(
+            copy.deepcopy(dict(context)) if context else {},
         )
         super().__init__(message)
 
