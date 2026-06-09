@@ -9,8 +9,11 @@ with a DEBUG log (safe default = opt-out).
 """
 
 import inspect
-from typing import TYPE_CHECKING, Any
 
+from synthorg.engine.middleware.config import (
+    AgentMiddlewareConfig,
+    CoordinationMiddlewareConfig,
+)
 from synthorg.engine.middleware.coordination_protocol import (
     CoordinationMiddleware,
     CoordinationMiddlewareChain,
@@ -36,19 +39,13 @@ from synthorg.observability.events.middleware import (
     MIDDLEWARE_SKIPPED,
 )
 
-if TYPE_CHECKING:
-    from synthorg.engine.middleware.config import (
-        AgentMiddlewareConfig,
-        CoordinationMiddlewareConfig,
-    )
-
 logger = get_logger(__name__)
 
 
 def build_agent_middleware_chain(
     config: AgentMiddlewareConfig,
     *,
-    deps: dict[str, Any] | None = None,
+    deps: dict[str, object] | None = None,
 ) -> AgentMiddlewareChain:
     """Build an agent middleware chain from configuration.
 
@@ -133,7 +130,7 @@ def build_agent_middleware_chain(
 def build_coordination_middleware_chain(
     config: CoordinationMiddlewareConfig,
     *,
-    deps: dict[str, Any] | None = None,
+    deps: dict[str, object] | None = None,
 ) -> CoordinationMiddlewareChain:
     """Build a coordination middleware chain from configuration.
 

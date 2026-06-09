@@ -1,6 +1,5 @@
 """Tests for BehaviorTaggerMiddleware."""
 
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,7 +12,7 @@ from synthorg.engine.middleware.models import AgentMiddlewareContext
 from synthorg.execution.turn import BehaviorTag
 
 
-def _make_ctx(**metadata: Any) -> MagicMock:
+def _make_ctx(**metadata: object) -> MagicMock:
     """Build a minimal mock AgentMiddlewareContext."""
     ctx = MagicMock()
     ctx.agent_id = "test-agent"

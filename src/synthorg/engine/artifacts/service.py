@@ -16,7 +16,6 @@ one mixed-orchestration site that benefits from the service boundary.
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.core.artifact import Artifact, ArtifactType
 from synthorg.core.critical_errors import reraise_critical
@@ -35,14 +34,11 @@ from synthorg.observability.events.persistence.artifact import (
 from synthorg.observability.events.persistence.artifact_storage import (
     PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.artifact_storage import ArtifactStorageBackend
-
 from synthorg.persistence.artifact_protocol import (
     ArtifactFilterSpec,
     ArtifactRepository,
 )
+from synthorg.persistence.artifact_storage import ArtifactStorageBackend
 
 logger = get_logger(__name__)
 

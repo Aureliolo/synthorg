@@ -2,42 +2,40 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.registry import StrategyRegistry
+from synthorg.engine.evolution.config import (
+    EvolutionConfig,
+    ShadowEvaluationConfig,
+)
+from synthorg.engine.evolution.guards.shadow_protocol import (
+    ShadowAgentRunner,
+    ShadowTaskProvider,
+)
+from synthorg.engine.evolution.guards.shadow_providers import (
+    TaskSampler,
+)
 from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationProposal,  # used by _NoOpProposer
 )
+from synthorg.engine.evolution.protocols import (
+    AdaptationAdapter,
+    AdaptationGuard,
+    AdaptationProposer,
+    EvolutionTrigger,
+)
 from synthorg.engine.identity.store.factory import build_identity_store
+from synthorg.engine.identity.store.protocol import IdentityVersionStore
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.versioning.service import VersioningService
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.evolution.config import (
-        EvolutionConfig,
-        ShadowEvaluationConfig,
-    )
-    from synthorg.engine.evolution.guards.shadow_protocol import (
-        ShadowAgentRunner,
-        ShadowTaskProvider,
-    )
-    from synthorg.engine.evolution.guards.shadow_providers import (
-        TaskSampler,
-    )
-    from synthorg.engine.evolution.protocols import (
-        AdaptationAdapter,
-        AdaptationGuard,
-        AdaptationProposer,
-        EvolutionTrigger,
-    )
     from synthorg.engine.evolution.service import EvolutionService
-    from synthorg.engine.identity.store.protocol import (
-        IdentityVersionStore,
-    )
-    from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
 

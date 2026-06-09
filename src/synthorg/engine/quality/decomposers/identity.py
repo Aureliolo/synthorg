@@ -1,16 +1,12 @@
 """Identity criteria decomposer -- one probe per criterion."""
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.task import AcceptanceCriterion
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.quality.verification import AtomicProbe
 from synthorg.observability import get_logger
 from synthorg.observability.events.verification import (
     VERIFICATION_CRITERIA_DECOMPOSED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.task import AcceptanceCriterion
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

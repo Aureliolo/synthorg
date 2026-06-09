@@ -6,7 +6,9 @@ LLM responses into ``MergeConflict`` instances.
 
 import json
 import re
-from typing import Any
+from collections.abc import Mapping
+
+from pydantic import JsonValue
 
 from synthorg.engine.prompt_safety import (
     TAG_CODE_DIFF,
@@ -42,7 +44,7 @@ def build_semantic_review_tool() -> ToolDefinition:
     Returns:
         A ToolDefinition with JSON Schema for semantic conflict reports.
     """
-    conflict_schema: dict[str, Any] = {
+    conflict_schema: dict[str, JsonValue] = {
         "type": "object",
         "properties": {
             "file_path": {
@@ -190,7 +192,7 @@ def parse_tool_call_response(
 
 
 def _parse_conflicts_from_args(
-    arguments: dict[str, Any],
+    arguments: Mapping[str, object],
 ) -> tuple[MergeConflict, ...]:
     """Parse conflicts from tool call arguments dict.
 

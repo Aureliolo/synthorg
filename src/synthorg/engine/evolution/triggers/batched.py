@@ -6,18 +6,16 @@ for an agent. Default interval is one day (86400 seconds).
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.evolution.protocols import EvolutionContext
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
     EVOLUTION_TRIGGER_REQUESTED,
     EVOLUTION_TRIGGER_RUN_RECORDED,
     EVOLUTION_TRIGGER_SKIPPED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.evolution.protocols import EvolutionContext
 
 logger = get_logger(__name__)
 

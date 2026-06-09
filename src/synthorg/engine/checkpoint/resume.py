@@ -6,18 +6,21 @@ checkpoint callbacks, and cleaning up after a successful resume.
 Used by ``AgentEngine`` to keep resume orchestration concise.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_loop import HybridLoop
+from synthorg.engine.loop_protocol import ExecutionLoop
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.recovery import FailureCategory
 from synthorg.engine.sanitization import sanitize_message
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.checkpoint import (
     CHECKPOINT_DELETE_FAILED,
     CHECKPOINT_DELETED,
@@ -27,15 +30,12 @@ from synthorg.observability.events.checkpoint import (
     HEARTBEAT_DELETE_FAILED,
     HEARTBEAT_DELETED,
 )
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,
+    HeartbeatRepository,
+)
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
-
-if TYPE_CHECKING:
-    from synthorg.engine.loop_protocol import ExecutionLoop
-    from synthorg.persistence.checkpoint_protocol import (
-        CheckpointRepository,
-        HeartbeatRepository,
-    )
 
 logger = get_logger(__name__)
 
@@ -219,7 +219,8 @@ async def cleanup_checkpoint_artifacts(
             logger.warning(
                 CHECKPOINT_DELETE_FAILED,
                 execution_id=execution_id,
-                error="Failed to clean up checkpoints after resume",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     if heartbeat_repo is not None:
@@ -234,5 +235,6 @@ async def cleanup_checkpoint_artifacts(
             logger.warning(
                 HEARTBEAT_DELETE_FAILED,
                 execution_id=execution_id,
-                error="Failed to clean up heartbeat after resume",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )

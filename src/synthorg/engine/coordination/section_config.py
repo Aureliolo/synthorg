@@ -4,7 +4,7 @@ Bridges the ``coordination:`` section in company YAML to the
 per-run :class:`CoordinationConfig` used by :class:`MultiAgentCoordinator`.
 """
 
-from typing import Any, ClassVar
+from typing import ClassVar, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -110,8 +110,8 @@ class CoordinationSectionConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+    def _apply_mirrors(cls, data: object) -> object:
+        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
 
     def to_coordination_config(
         self,

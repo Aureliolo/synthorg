@@ -1,6 +1,7 @@
 """Tests for S1 constraint middleware implementations."""
 
 from datetime import date
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -20,6 +21,7 @@ from synthorg.engine.middleware.coordination_protocol import (
 from synthorg.engine.middleware.errors import ClarificationRequiredError
 from synthorg.engine.middleware.models import (
     AgentMiddlewareContext,
+    AssumptionViolationEvent,
     AssumptionViolationType,
 )
 from synthorg.engine.middleware.protocol import AgentMiddleware
@@ -144,8 +146,8 @@ class TestAuthorityDeferenceGuard:
             )
         )
         result = await mw.before_agent(ctx)
-        meta = result.metadata["authority_deference"]
-        assert meta["detected_count"] > 0
+        meta = cast("dict[str, object]", result.metadata["authority_deference"])
+        assert cast("int", meta["detected_count"]) > 0
 
     async def test_no_cues_zero_count(self) -> None:
         mw = AuthorityDeferenceGuard()
@@ -158,15 +160,15 @@ class TestAuthorityDeferenceGuard:
             )
         )
         result = await mw.before_agent(ctx)
-        meta = result.metadata["authority_deference"]
-        assert meta["detected_count"] == 0
+        meta = cast("dict[str, object]", result.metadata["authority_deference"])
+        assert cast("int", meta["detected_count"]) == 0
 
     async def test_records_justification_header(self) -> None:
         mw = AuthorityDeferenceGuard()
         ctx = _mw_context()
         result = await mw.before_agent(ctx)
-        meta = result.metadata["authority_deference"]
-        assert "merit" in meta["justification_header"]
+        meta = cast("dict[str, object]", result.metadata["authority_deference"])
+        assert "merit" in cast("str", meta["justification_header"])
 
 
 # ── AuthorityDeferenceCoordinationMiddleware ──────────────────────
@@ -187,8 +189,11 @@ class TestAuthorityDeferenceCoordination:
         mw = AuthorityDeferenceCoordinationMiddleware()
         ctx = _coord_context()
         result = await mw.before_update_parent(ctx)
-        meta = result.metadata["authority_deference_coordination"]
-        assert meta["detected_count"] == 0
+        meta = cast(
+            "dict[str, object]",
+            result.metadata["authority_deference_coordination"],
+        )
+        assert cast("int", meta["detected_count"]) == 0
 
 
 # ── AssumptionViolationMiddleware ─────────────────────────────────
@@ -222,7 +227,10 @@ class TestAssumptionViolationMiddleware:
             )
         )
         result = await mw.after_model(ctx)
-        violations = result.metadata["assumption_violations"]
+        violations = cast(
+            "tuple[AssumptionViolationEvent, ...]",
+            result.metadata["assumption_violations"],
+        )
         assert len(violations) >= 1
         assert (
             violations[0].violation_type == AssumptionViolationType.PRECONDITION_CHANGED
@@ -239,7 +247,10 @@ class TestAssumptionViolationMiddleware:
             )
         )
         result = await mw.after_model(ctx)
-        violations = result.metadata["assumption_violations"]
+        violations = cast(
+            "tuple[AssumptionViolationEvent, ...]",
+            result.metadata["assumption_violations"],
+        )
         assert len(violations) >= 1
         assert violations[0].violation_type == AssumptionViolationType.DEPENDENCY_FAILED
 
@@ -334,7 +345,9 @@ class TestDelegationChainHashMiddleware:
         ctx = _mw_context()
         result = await mw.before_agent(ctx)
         assert "delegation_chain_hash" in result.metadata
-        assert len(result.metadata["delegation_chain_hash"]) == 64  # SHA-256 hex
+        assert (
+            len(cast("str", result.metadata["delegation_chain_hash"])) == 64
+        )  # SHA-256 hex
 
     async def test_hash_deterministic(self) -> None:
         mw = DelegationChainHashMiddleware()

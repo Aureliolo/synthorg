@@ -9,10 +9,12 @@ import asyncio
 import re
 from collections.abc import Callable, Coroutine
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.workspace.semantic_analyzer import filter_files
+from synthorg.engine.workspace.config import SemanticAnalysisConfig
+from synthorg.engine.workspace.models import MergeConflict, Workspace
+from synthorg.engine.workspace.semantic_analyzer import SemanticAnalyzer, filter_files
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
@@ -20,11 +22,6 @@ from synthorg.observability.events.workspace import (
 )
 
 type GitRunner = Callable[..., Coroutine[object, object, tuple[int, str, str]]]
-
-if TYPE_CHECKING:
-    from synthorg.engine.workspace.config import SemanticAnalysisConfig
-    from synthorg.engine.workspace.models import MergeConflict, Workspace
-    from synthorg.engine.workspace.semantic_analyzer import SemanticAnalyzer
 
 logger = get_logger(__name__)
 

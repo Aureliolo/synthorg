@@ -7,11 +7,13 @@ required dependency is absent raises :class:`GitBackendConfigError` at
 construction (fail fast), exactly like the autonomy strategy factory.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.errors import GitBackendConfigError
+from synthorg.engine.workspace.git_backend.config import (
+    GitBackendConfig,
+    GitBackendDeps,
+)
 from synthorg.engine.workspace.git_backend.embedded import EmbeddedGitBackend
 from synthorg.engine.workspace.git_backend.external_remote import (
     ExternalRemoteGitBackend,
@@ -19,13 +21,7 @@ from synthorg.engine.workspace.git_backend.external_remote import (
 from synthorg.engine.workspace.git_backend.local_path import (
     LocalPathGitBackend,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workspace.git_backend.config import (
-        GitBackendConfig,
-        GitBackendDeps,
-    )
-    from synthorg.engine.workspace.git_backend.protocol import GitBackend
+from synthorg.engine.workspace.git_backend.protocol import GitBackend
 
 
 def _build_embedded(

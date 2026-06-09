@@ -6,15 +6,28 @@ Trigger -> build context -> proposer -> guards -> adapter.apply.
 import asyncio
 import copy
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.evolution.config import EvolutionConfig
 from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationDecision,
     AdaptationProposal,
     EvolutionEvent,
 )
+from synthorg.engine.evolution.protocols import (
+    AdaptationAdapter,
+    AdaptationGuard,
+    AdaptationProposer,
+    EvolutionContext,
+    EvolutionTrigger,
+)
+from synthorg.engine.identity.store.protocol import IdentityVersionStore
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.memory.models import MemoryEntry
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evolution import (
     EVOLUTION_ADAPTATION_FAILED,
@@ -29,24 +42,6 @@ from synthorg.observability.events.evolution import (
     EVOLUTION_SERVICE_STARTED,
     EVOLUTION_TRIGGER_SKIPPED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.evolution.config import EvolutionConfig
-    from synthorg.engine.evolution.protocols import (
-        AdaptationAdapter,
-        AdaptationGuard,
-        AdaptationProposer,
-        EvolutionContext,
-        EvolutionTrigger,
-    )
-    from synthorg.engine.identity.store.protocol import (
-        IdentityVersionStore,
-    )
-    from synthorg.hr.performance.models import AgentPerformanceSnapshot
-    from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.memory.models import MemoryEntry
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 
@@ -393,10 +388,6 @@ class EvolutionService:
         Raises:
             ValueError: If ``agent_id`` is not in the identity store.
         """
-        from synthorg.engine.evolution.protocols import (  # noqa: PLC0415
-            EvolutionContext,
-        )
-
         identity = await self._identity_store.get_current(agent_id)
         if identity is None:
             msg = f"Agent {agent_id!r} not found in identity store"

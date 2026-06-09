@@ -1,8 +1,10 @@
 """Centralized dispatcher."""
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination._dispatch_helpers import (
     execute_waves,
     merge_workspaces,
@@ -10,21 +12,20 @@ from synthorg.engine.coordination._dispatch_helpers import (
     teardown_workspaces,
     validate_routing_against_decomposition,
 )
+from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
 from synthorg.engine.coordination.group_builder import build_execution_waves
+from synthorg.engine.coordination.models import CoordinationPhaseResult
+from synthorg.engine.decomposition.models import DecompositionResult
+from synthorg.engine.routing.models import RoutingResult
+from synthorg.engine.workspace.models import Workspace, WorkspaceGroupResult
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import COORDINATION_PHASE_FAILED
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.coordination.config import CoordinationConfig
-    from synthorg.engine.coordination.models import CoordinationPhaseResult
-    from synthorg.engine.decomposition.models import DecompositionResult
+    # Concrete services faked in dispatcher tests; a runtime import would make
+    # typeguard enforce a nominal isinstance the fakes cannot satisfy.
     from synthorg.engine.parallel import ParallelExecutor
-    from synthorg.engine.routing.models import RoutingResult
-    from synthorg.engine.workspace.models import Workspace, WorkspaceGroupResult
     from synthorg.engine.workspace.service import WorkspaceIsolationService
 
 logger = get_logger(__name__)

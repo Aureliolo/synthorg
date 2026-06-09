@@ -5,16 +5,24 @@ wave execution, and validation primitives used by the four
 concrete dispatchers.
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.models import (
     CoordinationPhaseResult,
     CoordinationWave,
 )
+from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.errors import CoordinationError
+from synthorg.engine.parallel_models import ParallelExecutionGroup
+from synthorg.engine.routing.models import RoutingResult
 from synthorg.engine.workspace.models import (
+    MergeResult,
     Workspace,
     WorkspaceGroupResult,
     WorkspaceRequest,
@@ -32,16 +40,9 @@ from synthorg.observability.events.coordination import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
-    from synthorg.core.clock import Clock
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.coordination.config import CoordinationConfig
-    from synthorg.engine.decomposition.models import DecompositionResult
+    # Concrete services faked in dispatcher tests; a runtime import would make
+    # typeguard enforce a nominal isinstance the fakes cannot satisfy.
     from synthorg.engine.parallel import ParallelExecutor
-    from synthorg.engine.parallel_models import ParallelExecutionGroup
-    from synthorg.engine.routing.models import RoutingResult
-    from synthorg.engine.workspace.models import MergeResult
     from synthorg.engine.workspace.service import WorkspaceIsolationService
 
 logger = get_logger(__name__)

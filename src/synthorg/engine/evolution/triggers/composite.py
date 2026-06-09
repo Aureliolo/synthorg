@@ -3,20 +3,17 @@
 OR-combines multiple triggers: fires if ANY sub-trigger fires.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.evolution.protocols import (
+    EvolutionContext,
+    EvolutionTrigger,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evolution import (
     EVOLUTION_TRIGGER_FAILED,
     EVOLUTION_TRIGGER_REQUESTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.evolution.protocols import (
-        EvolutionContext,
-        EvolutionTrigger,
-    )
 
 logger = get_logger(__name__)
 
@@ -73,6 +70,7 @@ class CompositeTrigger:
                     context=context,
                 )
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     EVOLUTION_TRIGGER_FAILED,
                     agent_id=str(agent_id),

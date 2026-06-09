@@ -18,14 +18,11 @@ tasks are available.
 
 import copy
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
 
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.evolution.config import ShadowEvaluationConfig
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.evolution.config import ShadowEvaluationConfig
 
 logger = get_logger(__name__)
 

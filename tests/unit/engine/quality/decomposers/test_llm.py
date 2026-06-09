@@ -1,7 +1,5 @@
 """Tests for the LLM-based criteria decomposer."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.core.task import AcceptanceCriterion
@@ -17,7 +15,7 @@ from tests.unit.engine.quality.scripted_provider import (
 )
 
 
-def _build_response(tool_arguments: dict[str, Any]) -> CompletionResponse:
+def _build_response(tool_arguments: dict[str, object]) -> CompletionResponse:
     return build_tool_call_response(
         "emit_atomic_probes",
         tool_arguments,

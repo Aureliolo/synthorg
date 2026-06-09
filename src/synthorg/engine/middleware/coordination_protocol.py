@@ -7,7 +7,7 @@ on ``CoordinationMiddlewareContext`` (distinct from the agent-level
 """
 
 import copy
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -28,7 +28,7 @@ from synthorg.engine.middleware.models import (
     TaskLedger,
 )
 from synthorg.engine.routing.models import RoutingResult
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.middleware import (
     MIDDLEWARE_COORDINATION_HOOK_ERROR,
 )
@@ -91,7 +91,7 @@ class CoordinationMiddlewareContext(BaseModel):
         default=None,
         description="ProgressLedger from ProgressLedgerMiddleware",
     )
-    metadata: dict[str, Any] = Field(
+    metadata: dict[str, object] = Field(
         default_factory=dict,
         description="Middleware-to-middleware data pass-through",
     )
@@ -114,7 +114,7 @@ class CoordinationMiddlewareContext(BaseModel):
     def with_metadata(
         self,
         key: str,
-        value: Any,
+        value: object,
     ) -> CoordinationMiddlewareContext:
         """Return a copy with an additional metadata entry."""
         updated = copy.deepcopy(self.metadata)
@@ -339,11 +339,13 @@ class CoordinationMiddlewareChain:
         for mw in self._middleware:
             try:
                 ctx = await mw.before_decompose(ctx)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     MIDDLEWARE_COORDINATION_HOOK_ERROR,
                     middleware=mw.name,
                     hook="before_decompose",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
         return ctx
@@ -361,11 +363,13 @@ class CoordinationMiddlewareChain:
         for mw in self._middleware:
             try:
                 ctx = await mw.after_decompose(ctx)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     MIDDLEWARE_COORDINATION_HOOK_ERROR,
                     middleware=mw.name,
                     hook="after_decompose",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
         return ctx
@@ -383,11 +387,13 @@ class CoordinationMiddlewareChain:
         for mw in self._middleware:
             try:
                 ctx = await mw.before_dispatch(ctx)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     MIDDLEWARE_COORDINATION_HOOK_ERROR,
                     middleware=mw.name,
                     hook="before_dispatch",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
         return ctx
@@ -405,11 +411,13 @@ class CoordinationMiddlewareChain:
         for mw in self._middleware:
             try:
                 ctx = await mw.after_rollup(ctx)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     MIDDLEWARE_COORDINATION_HOOK_ERROR,
                     middleware=mw.name,
                     hook="after_rollup",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
         return ctx
@@ -427,11 +435,13 @@ class CoordinationMiddlewareChain:
         for mw in self._middleware:
             try:
                 ctx = await mw.before_update_parent(ctx)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     MIDDLEWARE_COORDINATION_HOOK_ERROR,
                     middleware=mw.name,
                     hook="before_update_parent",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
         return ctx

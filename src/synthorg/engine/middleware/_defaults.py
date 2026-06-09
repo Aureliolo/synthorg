@@ -9,8 +9,6 @@ Call ``register_default_middleware()`` once at application startup
 (e.g. from ``AgentEngine.__init__`` or the app entrypoint).
 """
 
-from typing import Any
-
 from synthorg.engine.middleware.behavior_tagger import (
     BehaviorTaggerMiddleware,
 )
@@ -31,6 +29,8 @@ from synthorg.engine.middleware.coordination_constraints import (
 from synthorg.engine.middleware.disclosure import DisclosureMiddleware
 from synthorg.engine.middleware.policy_gate import PolicyGateMiddleware
 from synthorg.engine.middleware.registry import (
+    AgentMiddlewareFactory,
+    CoordinationMiddlewareFactory,
     register_agent_middleware,
     register_coordination_middleware,
 )
@@ -53,7 +53,7 @@ _registered = False
 
 # ── Default middleware tables ─────────────────────────────────────
 
-_AGENT_DEFAULTS: tuple[tuple[str, Any], ...] = (
+_AGENT_DEFAULTS: tuple[tuple[str, AgentMiddlewareFactory], ...] = (
     ("checkpoint_resume", CheckpointResumeMiddleware),
     ("delegation_chain_hash", DelegationChainHashMiddleware),
     ("authority_deference", AuthorityDeferenceGuard),
@@ -70,12 +70,12 @@ _AGENT_DEFAULTS: tuple[tuple[str, Any], ...] = (
 # Opt-in middleware: registered in the factory but NOT in the
 # default agent chain.  Enable by adding the name to the
 # company's AgentMiddlewareConfig.chain.
-_AGENT_OPT_IN: tuple[tuple[str, Any], ...] = (
+_AGENT_OPT_IN: tuple[tuple[str, AgentMiddlewareFactory], ...] = (
     ("behavior_tagger", BehaviorTaggerMiddleware),
     ("semantic_drift_detector", SemanticDriftDetector),
 )
 
-_COORDINATION_DEFAULTS: tuple[tuple[str, Any], ...] = (
+_COORDINATION_DEFAULTS: tuple[tuple[str, CoordinationMiddlewareFactory], ...] = (
     ("clarification_gate", ClarificationGateMiddleware),
     ("task_ledger", TaskLedgerMiddleware),
     ("plan_review_gate", PlanReviewGateMiddleware),
@@ -104,8 +104,8 @@ def register_default_middleware() -> None:
     for name, factory in _AGENT_OPT_IN:
         register_agent_middleware(name, factory)
 
-    for name, factory in _COORDINATION_DEFAULTS:
-        register_coordination_middleware(name, factory)
+    for name, coord_factory in _COORDINATION_DEFAULTS:
+        register_coordination_middleware(name, coord_factory)
 
     _registered = True
     logger.debug(

@@ -5,10 +5,9 @@ The callback is invoked after each completed turn with the current
 based on configuration (e.g. every N turns).
 """
 
-from collections.abc import Callable, Coroutine
-from typing import Any
+from collections.abc import Awaitable, Callable
 
 from synthorg.engine.context import AgentContext
 
-CheckpointCallback = Callable[[AgentContext], Coroutine[Any, Any, None]]
+CheckpointCallback = Callable[[AgentContext], Awaitable[None]]
 """Async callback invoked after each turn; may skip persistence based on config."""

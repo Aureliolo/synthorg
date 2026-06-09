@@ -10,7 +10,7 @@ import math
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from uuid import uuid4
 
 from synthorg.core.clock import Clock, SystemClock
@@ -30,6 +30,7 @@ from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceRequest,
 )
+from synthorg.engine.workspace.semantic_analyzer import SemanticAnalyzer
 from synthorg.engine.workspace.semantic_git_ops import run_semantic_analysis
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
@@ -47,9 +48,6 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_TEARDOWN_FAILED,
     WORKSPACE_TEARDOWN_START,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workspace.semantic_analyzer import SemanticAnalyzer
 
 logger = get_logger(__name__)
 

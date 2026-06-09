@@ -18,13 +18,16 @@ from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import CoordinationTopology
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.attribution import (
     AgentContribution,
     CoordinationResultWithAttribution,
     build_agent_contributions,
 )
 from synthorg.engine.coordination.dispatcher_factory import select_dispatcher
+from synthorg.engine.coordination.dispatcher_types import DispatchResult
 from synthorg.engine.coordination.models import (
+    CoordinationContext,
     CoordinationPhaseResult,
     CoordinationResult,
 )
@@ -32,7 +35,11 @@ from synthorg.engine.coordination.parent_rollup import (
     compute_status_rollup,
     run_update_parent_phase,
 )
+from synthorg.engine.decomposition.models import (
+    DecompositionResult,
+)
 from synthorg.engine.errors import CoordinationPhaseError
+from synthorg.engine.routing.models import RoutingResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
     COORDINATION_CLEANUP_FAILED,
@@ -46,21 +53,16 @@ from synthorg.observability.events.coordination import (
 )
 
 if TYPE_CHECKING:
+    # Concrete services faked in tests; a runtime import would make typeguard
+    # enforce a nominal isinstance the fakes cannot satisfy.
     from synthorg.budget.coordination_collector import (
         CoordinationMetricsCollector,
-    )
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.coordination.dispatcher_types import DispatchResult
-    from synthorg.engine.coordination.models import CoordinationContext
-    from synthorg.engine.decomposition.models import (
-        DecompositionResult,
     )
     from synthorg.engine.decomposition.service import DecompositionService
     from synthorg.engine.middleware.coordination_protocol import (
         CoordinationMiddlewareChain,
     )
     from synthorg.engine.parallel import ParallelExecutor
-    from synthorg.engine.routing.models import RoutingResult
     from synthorg.engine.routing.service import TaskRoutingService
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.workspace.project_workspace_service import (
@@ -256,9 +258,7 @@ class MultiAgentCoordinator:
             # topology resolution so that any routing mutations the
             # middleware applies (e.g. re-routing unassigned subtasks,
             # enriching topology metadata) are included in the inputs
-            # those two phases consume.  Previously the order was
-            # validate -> resolve -> middleware, which meant middleware
-            # edits to ``routing_result`` never influenced topology.
+            # those two phases consume.
             if mw_chain is not None:
                 mw_ctx = mw_ctx.model_copy(
                     update={

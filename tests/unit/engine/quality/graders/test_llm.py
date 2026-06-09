@@ -1,7 +1,6 @@
 """Tests for the LLM-based rubric grader."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 from pydantic import JsonValue
@@ -72,7 +71,7 @@ def _probes() -> tuple[AtomicProbe, ...]:
     )
 
 
-def _response(tool_arguments: dict[str, Any]) -> CompletionResponse:
+def _response(tool_arguments: dict[str, object]) -> CompletionResponse:
     return build_tool_call_response(
         "emit_rubric_verdict",
         tool_arguments,

@@ -6,9 +6,15 @@ as explicit parameters (no ``self``).
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.evolution.service import EvolutionService
+from synthorg.engine.loop_protocol import ExecutionResult
+from synthorg.engine.recovery import RecoveryResult
+from synthorg.memory.procedural.capture.protocol import CaptureStrategy
+from synthorg.memory.procedural.models import ProceduralMemoryConfig
+from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.capture import (
     CAPTURE_STRATEGY_FAILED,
@@ -26,15 +32,6 @@ from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_ERROR,
     PROCEDURAL_MEMORY_SKIPPED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.evolution.service import EvolutionService
-    from synthorg.engine.loop_protocol import ExecutionResult
-    from synthorg.engine.recovery import RecoveryResult
-    from synthorg.memory.procedural.capture.protocol import CaptureStrategy
-    from synthorg.memory.procedural.models import ProceduralMemoryConfig
-    from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 

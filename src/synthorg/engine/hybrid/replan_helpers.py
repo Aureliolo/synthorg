@@ -11,11 +11,13 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from synthorg.core.normalization import compare_ci
+from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid.step_helpers import (
     call_planner,
     invoke_checkpoint_callback,
     truncate_plan,
 )
+from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_control_helpers import (
     check_budget,
     check_shutdown,
@@ -49,14 +51,13 @@ from synthorg.observability.events.execution import (
     EXECUTION_PLAN_STEP_FAILED,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
+    # ``checkpoint`` package init eagerly pulls ``resume`` -> ``hybrid_loop``;
+    # a runtime import here would cycle back into the mid-import hybrid loop.
     from synthorg.engine.checkpoint.callback import CheckpointCallback
-    from synthorg.engine.context import AgentContext
-    from synthorg.engine.hybrid_models import HybridLoopConfig
-    from synthorg.providers.models import CompletionConfig
-    from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

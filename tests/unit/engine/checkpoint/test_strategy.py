@@ -1,6 +1,6 @@
 """Tests for CheckpointRecoveryStrategy."""
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -522,10 +522,10 @@ class TestCheckpointRecoveryFallbackCleanup:
         )
 
         # Cleanup was called before fallback
-        cast(Any, cp_repo.delete_by_execution).assert_awaited_once_with(
+        cast("AsyncMock", cp_repo.delete_by_execution).assert_awaited_once_with(
             ctx.execution_id,
         )
-        cast(Any, hb_repo.delete).assert_awaited_once_with(ctx.execution_id)
+        cast("AsyncMock", hb_repo.delete).assert_awaited_once_with(ctx.execution_id)
 
     async def test_exhausted_attempts_calls_cleanup(
         self,

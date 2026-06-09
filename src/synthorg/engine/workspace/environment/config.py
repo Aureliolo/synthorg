@@ -11,15 +11,13 @@ client factory for the devcontainer image build, the clock) travel in
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.clock import Clock
 from synthorg.core.project_enums import EnvironmentType
-
-if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
-    from synthorg.engine.workspace.environment.image_builder import ImageBuilder
+from synthorg.engine.workspace.environment.image_builder import ImageBuilder
 
 _DEFAULT_MANIFEST_FILENAME: Final[str] = "synthorg.env.yaml"
 _DEFAULT_PROVISION_TIMEOUT_SECONDS: Final[float] = 900.0

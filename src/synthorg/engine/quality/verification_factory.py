@@ -10,8 +10,8 @@ and model-matching logic.
 """
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 
+from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.core.validation import require_non_blank
 from synthorg.engine.quality.decomposer_protocol import (
     CriteriaDecomposer,
@@ -37,10 +37,7 @@ from synthorg.observability.events.verification import (
     VERIFICATION_FACTORY_UNKNOWN_DECOMPOSER,
     VERIFICATION_FACTORY_UNKNOWN_GRADER,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import ModelTier, NotBlankStr
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

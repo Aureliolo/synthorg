@@ -8,18 +8,20 @@ in ``log_only`` mode, denials are logged but the action proceeds.
 from typing import TYPE_CHECKING, override
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.middleware.models import (
+    AgentMiddlewareContext,
+    ToolCallResult,
+)
 from synthorg.engine.middleware.protocol import BaseAgentMiddleware, ToolCallable
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_POLICY_DECISION_DENY,
+    SECURITY_POLICY_ENGINE_ERROR,
     SECURITY_POLICY_LOG_ONLY_DENY,
 )
 
 if TYPE_CHECKING:
-    from synthorg.engine.middleware.models import (
-        AgentMiddlewareContext,
-        ToolCallResult,
-    )
+    # security imports engine.prompt_safety, so a runtime import here cycles.
     from synthorg.security.policy_engine.protocol import PolicyEngine
 
 logger = get_logger(__name__)
@@ -72,9 +74,6 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
         if self._engine is None:
             return await call(ctx)
 
-        from synthorg.engine.middleware.models import (  # noqa: PLC0415
-            ToolCallResult,
-        )
         from synthorg.security.policy_engine.models import (  # noqa: PLC0415
             PolicyActionRequest,
         )
@@ -97,12 +96,10 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
             decision = await self._engine.evaluate(request)
         except Exception as exc:
             reraise_critical(exc)
-            from synthorg.observability.events.security import (  # noqa: PLC0415
-                SECURITY_POLICY_ENGINE_ERROR,
-            )
-
             logger.error(
                 SECURITY_POLICY_ENGINE_ERROR,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             # Fail-open: proceed to tool call on evaluation error.
             # CedarPolicyEngine handles fail_closed internally; this

@@ -149,7 +149,7 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Analyze rollup and emit ProgressLedger.
+        """Analyse rollup and emit ProgressLedger.
 
         Returns:
             The context with the new :class:`ProgressLedger` stored,
@@ -163,7 +163,7 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
         # Determine round number
         round_number = (existing.round_number + 1) if existing else 1
 
-        # Analyze progress via monotonic comparison of completed-count.
+        # Analyse progress via monotonic comparison of completed-count.
         # ``SubtaskStatusRollup.completed`` is the canonical name on
         # the rollup; ``ProgressLedger.completed_count`` is the
         # snapshot we persist for round-over-round comparison.

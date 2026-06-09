@@ -8,11 +8,13 @@ EvaluationVersionService surfaces evaluation-config version history.
 
 import asyncio
 import copy
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.quality import (
     REVIEW_CREATED_VIA_MCP,
@@ -20,9 +22,8 @@ from synthorg.observability.events.quality import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
-    from synthorg.core.types import NotBlankStr
+    # Concrete tracker faked in tests; a runtime import would make typeguard
+    # enforce a nominal isinstance the fake cannot satisfy.
     from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
@@ -35,7 +36,7 @@ class QualityFacadeService:
     """Wraps :class:`PerformanceTracker`'s scoring surface."""
 
     def __init__(self, *, tracker: PerformanceTracker) -> None:
-        self._tracker = cast("Any", tracker)
+        self._tracker = tracker
 
     async def get_summary(self) -> Mapping[str, object]:
         fn = getattr(self._tracker, "get_quality_summary", None)
@@ -274,8 +275,8 @@ class EvaluationVersionService:
     available; returns ``()`` / ``None`` otherwise.
     """
 
-    def __init__(self, *, persistence: Any) -> None:
-        self._persistence = cast("Any", persistence)
+    def __init__(self, *, persistence: object) -> None:
+        self._persistence = persistence
 
     async def list_versions(self) -> Sequence[object]:
         repo = getattr(self._persistence, "evaluation_config_versions", None)

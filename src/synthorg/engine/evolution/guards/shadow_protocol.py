@@ -16,18 +16,14 @@ full ``AgentEngine`` graph.  Production wiring adapts the runner to
 ``AgentEngine.run``; unit tests supply a deterministic fake.
 """
 
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from typing import Self
-
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.evolution.models import AdaptationProposal
+from synthorg.engine.evolution.models import AdaptationProposal
 
 
 class ShadowTaskOutcome(BaseModel):

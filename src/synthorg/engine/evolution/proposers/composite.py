@@ -4,23 +4,19 @@ Routes to failure proposer on declining quality trends, success proposer
 otherwise. Returns proposals from the selected path without merging.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.evolution.models import AdaptationProposal
 from synthorg.engine.evolution.protocols import (
     AdaptationProposer,
+    EvolutionContext,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
     EVOLUTION_PROPOSER_INIT,
     EVOLUTION_PROPOSER_ROUTE,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.evolution.models import AdaptationProposal
-    from synthorg.engine.evolution.protocols import (
-        EvolutionContext,
-    )
 
 logger = get_logger(__name__)
 

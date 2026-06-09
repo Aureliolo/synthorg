@@ -12,7 +12,7 @@ seam, so a future virtual-branch strategy supplies its own
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import NamedTuple
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -22,6 +22,9 @@ from synthorg.engine.errors import (
     WorkspaceMergeError,
     WorkspacePushError,
 )
+from synthorg.engine.workspace.git_backend import GitBackend
+from synthorg.engine.workspace.models import MergeResult, Workspace
+from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -34,11 +37,6 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_PUSH_QUEUE_WORKER_FAILED,
 )
 from synthorg.observability.metrics_hub import record_push_queue_event
-
-if TYPE_CHECKING:
-    from synthorg.engine.workspace.git_backend import GitBackend
-    from synthorg.engine.workspace.models import MergeResult, Workspace
-    from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
 
 logger = get_logger(__name__)
 

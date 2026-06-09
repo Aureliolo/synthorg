@@ -6,7 +6,8 @@ Forgejo is a Gitea fork sharing the ``/api/v1`` REST surface, so
 ``_GiteaFamilyAuthenticator`` split in the connection authenticators.
 """
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Mapping
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -23,9 +24,6 @@ from synthorg.observability.events.workspace import (
     FORGE_API_REPO_CREATED,
     FORGE_API_REPO_EXISTS_CHECK,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

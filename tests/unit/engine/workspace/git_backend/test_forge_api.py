@@ -5,7 +5,7 @@ rate-limit + auth error mapping, and the API-base-URL derivation,
 against ``respx``-mocked HTTP (no live forge).
 """
 
-from typing import Any, cast
+from typing import cast
 
 import httpx
 import pytest
@@ -18,6 +18,7 @@ from synthorg.engine.errors import (
     GitBackendRateLimitError,
 )
 from synthorg.engine.workspace.git_backend.forge_api import build_forge_api_client
+from synthorg.engine.workspace.git_backend.forge_api._base import BaseForgeClient
 from synthorg.engine.workspace.git_backend.forge_api.gitea import GiteaForgeClient
 from synthorg.engine.workspace.git_backend.forge_api.github import GitHubForgeClient
 from synthorg.engine.workspace.git_backend.forge_api.gitlab import GitLabForgeClient
@@ -278,4 +279,4 @@ class TestFactoryApiBaseDerivation:
             token="t",
             timeout=5.0,
         )
-        assert cast("Any", client)._api_base_url == expected_api
+        assert cast("BaseForgeClient", client)._api_base_url == expected_api

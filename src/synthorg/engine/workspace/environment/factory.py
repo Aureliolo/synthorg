@@ -8,23 +8,19 @@ dependency; ``DEVCONTAINER`` falls back to the default
 :class:`SubprocessImageBuilder` when no builder is injected.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.project_enums import EnvironmentType
 from synthorg.core.registry import StrategyRegistry
+from synthorg.engine.workspace.environment.config import (
+    EnvironmentConfig,
+    EnvironmentDeps,
+)
 from synthorg.engine.workspace.environment.devcontainer import (
     DevcontainerEnvironmentStrategy,
 )
 from synthorg.engine.workspace.environment.image_builder import SubprocessImageBuilder
 from synthorg.engine.workspace.environment.manifest import ManifestEnvironmentStrategy
 from synthorg.engine.workspace.environment.nix import NixEnvironmentStrategy
-
-if TYPE_CHECKING:
-    from synthorg.engine.workspace.environment.config import (
-        EnvironmentConfig,
-        EnvironmentDeps,
-    )
-    from synthorg.engine.workspace.environment.protocol import EnvironmentStrategy
+from synthorg.engine.workspace.environment.protocol import EnvironmentStrategy
 
 
 def _build_manifest(

@@ -1,13 +1,12 @@
 """Workspace isolation strategy protocol."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.engine.workspace.models import (
-        MergeResult,
-        Workspace,
-        WorkspaceRequest,
-    )
+from synthorg.engine.workspace.models import (
+    MergeResult,
+    Workspace,
+    WorkspaceRequest,
+)
 
 
 @runtime_checkable

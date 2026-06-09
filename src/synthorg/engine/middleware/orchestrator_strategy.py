@@ -8,13 +8,11 @@ within the ``CentralizedDispatcher``.  Two implementations:
 """
 
 import re
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.middleware.models import ProgressLedger
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.middleware.models import ProgressLedger
 
 logger = get_logger(__name__)
 

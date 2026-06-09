@@ -8,7 +8,8 @@ The git subprocess and forge REST client are mocked (no live forge).
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -120,14 +121,14 @@ class _FakeGit:
         return 0, "", ""
 
 
-def _catalog_forge() -> Any:
+def _catalog_forge() -> ConnectionCatalog:
     catalog = mock_of[ConnectionCatalog]()
     catalog.get.return_value = _connection("https://example-provider.invalid/acme")
     catalog.get_credentials.return_value = {"token": "secret-token"}
-    return catalog
+    return cast("ConnectionCatalog", catalog)
 
 
-def _fake_forge(*, exists: bool) -> Any:
+def _fake_forge(*, exists: bool) -> ForgeApiClient:
     forge = mock_of[ForgeApiClient]()
     forge.repo_exists.return_value = exists
     forge.create_repo.return_value = ForgeRepo(
@@ -136,7 +137,7 @@ def _fake_forge(*, exists: bool) -> Any:
         private=True,
         clone_url=NotBlankStr("https://example-provider.invalid/acme/p1.git"),
     )
-    return forge
+    return cast("ForgeApiClient", forge)
 
 
 def _patch_git(
@@ -283,7 +284,7 @@ class TestExternalRemotePushHardening:
             branch=NotBlankStr("main"),
             base_branch=NotBlankStr("main"),
         )
-        forge.create_repo.assert_awaited_once()
+        cast("AsyncMock", forge.create_repo).assert_awaited_once()
         assert fake.push_count == 2
         assert str(result.head_sha)
 
@@ -306,7 +307,7 @@ class TestExternalRemotePushHardening:
             branch=NotBlankStr("main"),
             base_branch=NotBlankStr("main"),
         )
-        forge.create_repo.assert_awaited_once()
+        cast("AsyncMock", forge.create_repo).assert_awaited_once()
         assert fake.push_count == 2
 
     async def test_missing_remote_not_created_when_provisioning_disabled(
@@ -338,7 +339,7 @@ class TestExternalRemotePushHardening:
                 branch=NotBlankStr("main"),
                 base_branch=NotBlankStr("main"),
             )
-        forge.create_repo.assert_not_called()
+        cast("AsyncMock", forge.create_repo).assert_not_called()
 
     async def test_auth_failure_is_not_retried(
         self,
@@ -360,7 +361,7 @@ class TestExternalRemotePushHardening:
             )
         # Auth is non-retryable: exactly one attempt, no existence probe.
         assert fake.push_count == 1
-        forge.repo_exists.assert_not_called()
+        cast("AsyncMock", forge.repo_exists).assert_not_called()
 
     async def test_fetch_auth_failure_is_not_retried(
         self,

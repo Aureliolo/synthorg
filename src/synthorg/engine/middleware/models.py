@@ -6,7 +6,7 @@ ledger state, and assumption-violation signals.
 
 import copy
 from enum import StrEnum
-from typing import Any, Self
+from typing import Self
 
 from pydantic import (
     AwareDatetime,
@@ -69,7 +69,7 @@ class AgentMiddlewareContext(BaseModel):
         default=None,
         description="Resolved autonomy for this run",
     )
-    metadata: dict[str, Any] = Field(
+    metadata: dict[str, object] = Field(
         default_factory=dict,
         description="Middleware-to-middleware data pass-through",
     )
@@ -92,7 +92,7 @@ class AgentMiddlewareContext(BaseModel):
     def with_metadata(
         self,
         key: str,
-        value: Any,
+        value: object,
     ) -> AgentMiddlewareContext:
         """Return a copy with an additional metadata entry.
 
@@ -169,7 +169,7 @@ class ToolCallResult(BaseModel):
         default=None,
         description="Error description on failure",
     )
-    metadata: dict[str, Any] = Field(
+    metadata: dict[str, object] = Field(
         default_factory=dict,
         description="Tool execution metadata (not forwarded to LLM)",
     )

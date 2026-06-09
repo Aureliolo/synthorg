@@ -9,26 +9,24 @@ middleware chain explicitly.
 """
 
 import threading
-from typing import TYPE_CHECKING, Final, override
+from typing import Final, override
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.text_similarity import cosine_word_similarity
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.middleware.models import (
+    AgentMiddlewareContext,
+    ModelCallResult,
+)
 from synthorg.engine.middleware.protocol import BaseAgentMiddleware, ModelCallable
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.middleware import (
     MIDDLEWARE_SEMANTIC_DRIFT_DETECTED,
     MIDDLEWARE_SEMANTIC_DRIFT_ERROR,
     MIDDLEWARE_SEMANTIC_DRIFT_SKIPPED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.middleware.models import (
-        AgentMiddlewareContext,
-        ModelCallResult,
-    )
 
 logger = get_logger(__name__)
 
@@ -148,6 +146,8 @@ class SemanticDriftDetector(BaseAgentMiddleware):
                 MIDDLEWARE_SEMANTIC_DRIFT_ERROR,
                 agent_id=str(ctx.agent_id),
                 task_id=str(ctx.task_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
         return result

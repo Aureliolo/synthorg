@@ -23,7 +23,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.project_enums import EnvironmentType
@@ -35,17 +35,15 @@ from synthorg.engine.errors import (
     EnvironmentDockerBuildError,
     EnvironmentProvisionError,
 )
+from synthorg.engine.workspace.environment.image_builder import (
+    BuildOutcome,
+    ImageBuilder,
+)
 from synthorg.engine.workspace.environment.protocol import (
     EnvironmentCommandRunner,
     ProvisionedEnvironment,
     ScaffoldResult,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workspace.environment.image_builder import (
-        BuildOutcome,
-        ImageBuilder,
-    )
 from synthorg.engine.workspace.environment.templates import DEFAULT_DEVCONTAINER_JSON
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (

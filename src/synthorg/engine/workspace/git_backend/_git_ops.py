@@ -8,23 +8,20 @@ failure surfaces as a :class:`~synthorg.engine.errors.GitBackendError`.
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.errors import GitBackendSeedError
+from synthorg.engine.errors import GitBackendError, GitBackendSeedError
 from synthorg.engine.workspace._git_subprocess import (
     _redact_args,
     run_git_subprocess,
 )
+from synthorg.engine.workspace.git_backend.protocol import ResolvedSource
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     GIT_BACKEND_PROVISION_FAILED,
     GIT_BACKEND_SEED_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.errors import GitBackendError
-    from synthorg.engine.workspace.git_backend.protocol import ResolvedSource
 
 logger = get_logger(__name__)
 

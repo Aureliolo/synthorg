@@ -405,7 +405,13 @@ class TestMakeLoopWithCallbackInjection:
         cp_repo, hb_repo = _make_repos()
 
         class CustomLoop:
-            """Custom loop not supported by make_loop_with_callback."""
+            """Valid ExecutionLoop not handled by make_loop_with_callback dispatch."""
+
+            async def execute(self, **kwargs: object) -> object:
+                raise NotImplementedError
+
+            def get_loop_type(self) -> str:
+                return "custom"
 
         original = CustomLoop()
         result = make_loop_with_callback(
