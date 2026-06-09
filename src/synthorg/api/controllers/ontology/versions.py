@@ -61,7 +61,7 @@ class OntologyVersionsController(Controller):
         try:
             await svc.get(name)
         except OntologyNotFoundError:
-            logger.info(API_RESOURCE_NOT_FOUND, resource="entity", name=name)
+            logger.warning(API_RESOURCE_NOT_FOUND, resource="entity", name=name)
             msg = "Entity not found"
             raise NotFoundError(msg)  # noqa: B904
 

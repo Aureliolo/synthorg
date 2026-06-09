@@ -37,10 +37,11 @@ async def _mark_failed(
     """Mark a simulation run failed with a stable error message.
 
     Wraps ``simulation_store.update_status`` in ``contextlib.suppress``
-    so a missing record (race with cancellation) does not propagate;
-    the failure has already been logged by the caller.
+    so a missing record (``KeyError``, race with cancellation) or an
+    invalid status transition (``ValueError``) does not propagate; the
+    failure has already been logged by the caller.
     """
-    with contextlib.suppress(ValueError):
+    with contextlib.suppress(ValueError, KeyError):
         await sim_state.simulation_store.update_status(
             simulation_id,
             status="failed",

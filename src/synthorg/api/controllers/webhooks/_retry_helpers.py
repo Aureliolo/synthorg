@@ -12,9 +12,10 @@ import asyncio
 import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.api.controllers.webhooks import _shared
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.integrations.connections.models import WebhookReceipt
@@ -28,10 +29,7 @@ from synthorg.observability.events.integrations import (
     WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
     WEBHOOK_REJECTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 

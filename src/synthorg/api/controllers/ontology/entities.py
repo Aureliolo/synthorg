@@ -48,6 +48,49 @@ from synthorg.ontology.models import (
 logger = get_logger(__name__)
 
 
+def _build_entity_updates(
+    existing: EntityDefinition,
+    data: UpdateEntityRequest,
+) -> dict[str, object]:
+    """Map a partial update request onto entity field updates.
+
+    ``fields`` / ``relationships`` are mapped only for non-CORE
+    entities; the handler rejects CORE mutations before calling this,
+    so the tier check here only guards the silent-skip path.
+
+    Returns:
+        Mapping of changed field names to their new values; empty when
+        the request carries no changes.
+    """
+    updates: dict[str, object] = {}
+    if data.definition is not None:
+        updates["definition"] = data.definition
+    if data.disambiguation is not None:
+        updates["disambiguation"] = data.disambiguation
+    if data.constraints is not None:
+        updates["constraints"] = data.constraints
+    if existing.tier != EntityTier.CORE:
+        if data.fields is not None:
+            updates["fields"] = tuple(
+                EntityField(
+                    name=f.name,
+                    type_hint=f.type_hint,
+                    description=f.description,
+                )
+                for f in data.fields
+            )
+        if data.relationships is not None:
+            updates["relationships"] = tuple(
+                EntityRelation(
+                    target=r.target,
+                    relation=r.relation,
+                    description=r.description,
+                )
+                for r in data.relationships
+            )
+    return updates
+
+
 class OntologyController(Controller):
     """Entity definition CRUD for the ontology subsystem."""
 
@@ -242,33 +285,7 @@ class OntologyController(Controller):
             )
             raise ValidationError(msg)
 
-        updates: dict[str, object] = {}
-        if data.definition is not None:
-            updates["definition"] = data.definition
-        if data.disambiguation is not None:
-            updates["disambiguation"] = data.disambiguation
-        if data.constraints is not None:
-            updates["constraints"] = data.constraints
-        if existing.tier != EntityTier.CORE:
-            if data.fields is not None:
-                updates["fields"] = tuple(
-                    EntityField(
-                        name=f.name,
-                        type_hint=f.type_hint,
-                        description=f.description,
-                    )
-                    for f in data.fields
-                )
-            if data.relationships is not None:
-                updates["relationships"] = tuple(
-                    EntityRelation(
-                        target=r.target,
-                        relation=r.relation,
-                        description=r.description,
-                    )
-                    for r in data.relationships
-                )
-
+        updates = _build_entity_updates(existing, data)
         if not updates:
             return ApiResponse(data=_entity_to_response(existing))
         updates["updated_at"] = datetime.now(UTC)

@@ -5,6 +5,7 @@ from litestar import Controller, get, post
 from litestar.datastructures import State
 
 from synthorg.api.controllers.ontology._shared import _DEFAULT_LIMIT
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_ontology import DriftReportResponse
 from synthorg.api.guards import require_read_access, require_write_access
@@ -85,12 +86,19 @@ class OntologyDriftController(Controller):
             )
             return PaginatedResponse(data=(), pagination=meta)
 
-        # Request ``limit + 1`` so ``paginate_cursor`` can detect that
-        # another page exists (its ``has_more`` check compares
-        # ``next_offset`` against ``len(items)`` -- if the store only
-        # returns ``limit`` items the helper always reports
-        # ``has_more=False`` regardless of the true count).
-        reports = await store.get_all_latest(limit=limit + 1)
+        # Decode the cursor offset at the controller so the fetch
+        # window covers every row ``paginate_cursor`` will slice:
+        # it indexes ``items[offset : offset + limit]``, so a window
+        # of ``offset + limit + 1`` keeps later pages complete while
+        # the trailing extra row lets ``has_more`` detect a next page
+        # (a bare ``limit + 1`` window truncated cursor pages to
+        # slices of the first window).
+        offset = (
+            0
+            if cursor is None
+            else decode_cursor(cursor, secret=cursor_secret_of(app_state))
+        )
+        reports = await store.get_all_latest(limit=offset + limit + 1)
         responses = tuple(_drift_report_to_response(r) for r in reports)
         page, meta = paginate_cursor(
             responses,

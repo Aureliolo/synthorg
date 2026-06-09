@@ -562,7 +562,7 @@
     },
     {
       "kind": "code",
-      "loc": 193,
+      "loc": 194,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/_simulation_runtime.py",
       "owning_feature": "api_core"
@@ -933,7 +933,7 @@
     },
     {
       "kind": "code",
-      "loc": 146,
+      "loc": 151,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/events/_shared.py",
       "owning_feature": "api_core"
@@ -1115,14 +1115,14 @@
     },
     {
       "kind": "controller",
-      "loc": 128,
+      "loc": 134,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/ontology/drift.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "controller",
-      "loc": 284,
+      "loc": 298,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/ontology/entities.py",
       "owning_feature": "api_core"
@@ -1500,7 +1500,7 @@
     },
     {
       "kind": "code",
-      "loc": 218,
+      "loc": 217,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/webhooks/_retry_helpers.py",
       "owning_feature": "api_core"

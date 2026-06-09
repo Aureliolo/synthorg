@@ -1219,7 +1219,7 @@
     "synthorg.api.api_core_state": 28,
     "synthorg.api.boundary": 27,
     "synthorg.api.construction_wiring": 20,
-    "synthorg.api.cursor": 25,
+    "synthorg.api.cursor": 26,
     "synthorg.api.dto": 113,
     "synthorg.api.guards": 105,
     "synthorg.api.pagination": 54,

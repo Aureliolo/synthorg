@@ -175,6 +175,11 @@ async def _resolve_interrupt(
     )
     resolved = await store.resolve(resolution)
     if resolved is None:
+        logger.warning(
+            EVENT_STREAM_INTERRUPT_NOT_FOUND,
+            interrupt_id=interrupt_id,
+            reason="interrupt_no_longer_pending",
+        )
         msg = f"Interrupt {interrupt_id!r} is no longer pending"
         raise NotFoundError(msg)
 
