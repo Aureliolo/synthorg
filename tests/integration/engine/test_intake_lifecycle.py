@@ -15,8 +15,8 @@ from synthorg.engine.intake import (
     IntakeEngine,
     IntakeResult,
     IntakeStrategy,
+    TaskCreator,
 )
-from synthorg.engine.task_engine import TaskEngine
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
@@ -117,7 +117,7 @@ class TestDirectIntake:
     async def test_creates_task_on_accept(self) -> None:
         task_engine = _FakeTaskEngine(next_id="task-xyz")
         strategy = DirectIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
             project="sim",
         )
         result = await strategy.process(_request(title="Build feature"))
@@ -128,7 +128,7 @@ class TestDirectIntake:
     async def test_full_lifecycle_with_direct(self) -> None:
         task_engine = _FakeTaskEngine(next_id="task-abc")
         strategy = DirectIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
         )
         engine = IntakeEngine(strategy=strategy)
         final, result = await engine.process(_request())
@@ -167,7 +167,7 @@ class TestAgentIntake:
         )
         task_engine = _FakeTaskEngine(next_id="task-ag")
         strategy = AgentIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
             provider=cast(CompletionProvider, provider),
             model="test-model",
         )
@@ -181,7 +181,7 @@ class TestAgentIntake:
         )
         task_engine = _FakeTaskEngine()
         strategy = AgentIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
             provider=cast(CompletionProvider, provider),
             model="test-model",
         )
@@ -194,7 +194,7 @@ class TestAgentIntake:
         provider = _StubProvider(content="not json")
         task_engine = _FakeTaskEngine()
         strategy = AgentIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
             provider=cast(CompletionProvider, provider),
             model="test-model",
         )
@@ -209,7 +209,7 @@ class TestAgentIntake:
         provider = _StubProvider(content='{"accepted": false}')
         task_engine = _FakeTaskEngine()
         strategy = AgentIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
             provider=cast(CompletionProvider, provider),
             model="test-model",
         )
@@ -228,7 +228,7 @@ class TestAgentIntake:
         )
         task_engine = _FakeTaskEngine(next_id="task-r")
         strategy = AgentIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
             provider=cast(CompletionProvider, provider),
             model="test-model",
         )

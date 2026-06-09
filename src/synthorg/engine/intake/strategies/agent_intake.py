@@ -13,12 +13,12 @@ from synthorg.client.models import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.models import IntakeResult
+from synthorg.engine.intake.protocol import TaskCreator
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.review_pipeline import (
@@ -56,7 +56,7 @@ class AgentIntake:
     def __init__(  # noqa: PLR0913
         self,
         *,
-        task_engine: TaskEngine,
+        task_engine: TaskCreator,
         provider: CompletionProvider,
         model: NotBlankStr,
         project: NotBlankStr = "simulation",
