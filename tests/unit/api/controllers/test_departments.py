@@ -105,7 +105,7 @@ class TestDepartmentCeremonyPolicyCas:
         """Writer A and writer B both complete; final state contains both."""
         import asyncio
 
-        from synthorg.api.controllers.departments import (
+        from synthorg.api.controllers.departments._shared import (
             _load_dept_policies_versioned,
             _mutate_dept_policies_with_retry,
         )
@@ -145,7 +145,7 @@ class TestDepartmentCeremonyPolicyCas:
         """
         from unittest.mock import AsyncMock
 
-        from synthorg.api.controllers.departments import (
+        from synthorg.api.controllers.departments._shared import (
             _load_dept_policies_versioned,
             _mutate_dept_policies_with_retry,
         )
@@ -202,7 +202,7 @@ class TestDepartmentCeremonyPolicyCas:
         """
         from unittest.mock import AsyncMock
 
-        from synthorg.api.controllers.departments import (
+        from synthorg.api.controllers.departments._shared import (
             _DEPT_POLICY_CAS_FALLBACK_ATTEMPTS,
             _mutate_dept_policies_with_retry,
         )
@@ -247,7 +247,7 @@ class TestDepartmentCeremonyPolicyCas:
         """
         from unittest.mock import AsyncMock
 
-        from synthorg.api.controllers.departments import (
+        from synthorg.api.controllers.departments._shared import (
             _mutate_dept_policies_with_retry,
         )
         from synthorg.core.domain_errors import VersionConflictError

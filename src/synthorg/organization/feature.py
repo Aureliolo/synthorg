@@ -14,7 +14,11 @@ from collections.abc import Mapping
 from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.company import CompanyController
 from synthorg.api.controllers.company_versions import CompanyVersionController
-from synthorg.api.controllers.departments import DepartmentController
+from synthorg.api.controllers.departments.ceremony_policy import (
+    DepartmentCeremonyPolicyController,
+)
+from synthorg.api.controllers.departments.crud import DepartmentController
+from synthorg.api.controllers.departments.health import DepartmentHealthController
 from synthorg.api.controllers.role_versions import RoleVersionController
 from synthorg.api.controllers.teams import TeamController
 from synthorg.api.controllers.template_packs import TemplatePackController
@@ -44,6 +48,8 @@ FEATURE: FeatureModule = FeatureManifest(
         CompanyController,
         CompanyVersionController,
         DepartmentController,
+        DepartmentHealthController,
+        DepartmentCeremonyPolicyController,
         TeamController,
         RoleVersionController,
         TemplatePackController,
