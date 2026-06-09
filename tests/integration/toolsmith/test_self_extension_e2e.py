@@ -26,9 +26,10 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, override
 
 import pytest
 
@@ -45,6 +46,17 @@ from synthorg.meta.toolsmith.dynamic_registry import (
 )
 from synthorg.meta.toolsmith.factory import build_toolsmith
 from synthorg.meta.toolsmith.models import ToolBlueprint, ToolSandboxBackend
+from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    StreamChunk,
+    TokenUsage,
+    ToolDefinition,
+)
 from synthorg.tools.sandbox.result import SandboxResult
 from tests._shared import FakeClock
 
@@ -114,17 +126,48 @@ class _LocalPythonSandbox:
         return None
 
 
-class _FakeResponse:
-    def __init__(self, content: str) -> None:
-        self.content = content
+class _FakeProvider(BaseCompletionProvider):
+    """Authoring provider stub: returns the canned tool-authoring response.
 
+    Subclasses the concrete base so the ``build_toolsmith`` boundary's
+    runtime type check (``provider`` must be a ``BaseCompletionProvider``)
+    is satisfied; the inherited ``complete`` wrapper drives
+    ``_do_complete``.
+    """
 
-class _FakeProvider:
-    async def complete(
-        self, *, messages: Any, model: str, config: Any
-    ) -> _FakeResponse:
-        del messages, model, config
-        return _FakeResponse(_AUTHORING_RESPONSE)
+    @override
+    async def _do_complete(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> CompletionResponse:
+        del messages, tools, config
+        return CompletionResponse(
+            content=_AUTHORING_RESPONSE,
+            finish_reason=FinishReason.STOP,
+            usage=TokenUsage(input_tokens=8, output_tokens=4, cost=0.0),
+            model=model,
+        )
+
+    @override
+    async def _do_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        del messages, model, tools, config
+        raise NotImplementedError
+
+    @override
+    async def _do_get_model_capabilities(self, model: str) -> ModelCapabilities:
+        del model
+        raise NotImplementedError
 
 
 class _FakeScorecard:
@@ -188,7 +231,7 @@ class TestSelfExtensionE2E:
         approvals = _InMemoryApprovalStore()
         runtime = build_toolsmith(
             si_config=_config(),
-            provider=_FakeProvider(),  # type: ignore[arg-type]
+            provider=_FakeProvider(),
             repo=repo,  # type: ignore[arg-type]
             sandbox_resolver=lambda _bp: _LocalPythonSandbox(),  # type: ignore[arg-type,return-value]
             scorecard_provider=_FakeScorecard(),
@@ -243,7 +286,7 @@ class TestSelfExtensionE2E:
         clock = FakeClock(start=_NOW)
         runtime = build_toolsmith(
             si_config=_config(),
-            provider=_FakeProvider(),  # type: ignore[arg-type]
+            provider=_FakeProvider(),
             repo=_InMemoryRepo(),  # type: ignore[arg-type]
             sandbox_resolver=lambda _bp: _LocalPythonSandbox(),  # type: ignore[arg-type,return-value]
             scorecard_provider=_FakeScorecard(),
@@ -269,7 +312,7 @@ class TestSelfExtensionE2E:
 
         runtime = build_toolsmith(
             si_config=_config(),
-            provider=_FakeProvider(),  # type: ignore[arg-type]
+            provider=_FakeProvider(),
             repo=repo,  # type: ignore[arg-type]
             sandbox_resolver=lambda _bp: _LocalPythonSandbox(),  # type: ignore[arg-type,return-value]
             scorecard_provider=_RegressingScorecard(),
