@@ -1,5 +1,6 @@
 """Integration tests for the intake engine lifecycle."""
 
+from collections.abc import AsyncIterator, Mapping
 from typing import cast
 
 import pytest
@@ -17,11 +18,13 @@ from synthorg.engine.intake import (
     IntakeStrategy,
     TaskCreator,
 )
+from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
+    StreamChunk,
     TokenUsage,
     ToolDefinition,
 )
@@ -158,6 +161,36 @@ class _StubProvider:
             usage=TokenUsage(input_tokens=5, output_tokens=5, cost=0.0),
             model=model,
         )
+
+    async def stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        del messages, model, tools, config
+        msg = "intake stub provider does not stream"
+        raise NotImplementedError(msg)
+
+    async def get_model_capabilities(self, model: str) -> ModelCapabilities:
+        return ModelCapabilities(
+            model_id=model,
+            provider="test-provider",
+            supports_tools=True,
+            supports_streaming=False,
+            max_context_tokens=8192,
+            max_output_tokens=4096,
+            cost_per_1k_input=0.01,
+            cost_per_1k_output=0.03,
+        )
+
+    async def batch_get_capabilities(
+        self,
+        models: tuple[str, ...],
+    ) -> Mapping[str, ModelCapabilities | None]:
+        return {m: await self.get_model_capabilities(m) for m in models}
 
 
 class TestAgentIntake:
