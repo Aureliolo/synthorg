@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Regression tests for the telemetry-backend reporter.
 
 The collector's ``_send`` helper only flips the "delivered" return
@@ -13,12 +12,18 @@ logs would double-count failures.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 
 from synthorg.telemetry.protocol import TelemetryEvent
+
+if TYPE_CHECKING:
+    # Optional-dependency guard: the logfire extra may be absent at
+    # runtime (tests importorskip it per-case), so the reporter type is
+    # imported for annotations only.
+    from synthorg.telemetry.reporters.logfire import LogfireReporter
 
 
 def _event() -> TelemetryEvent:
@@ -39,7 +44,7 @@ class TestLogfireReporterReportRaises:
     """``report()`` must propagate backend failures, not swallow them."""
 
     @pytest.fixture
-    def reporter(self) -> Any:
+    def reporter(self) -> LogfireReporter:
         pytest.importorskip(
             "logfire",
             reason="logfire extra not installed in this environment",
@@ -61,7 +66,7 @@ class TestLogfireReporterReportRaises:
 
     async def test_backend_exception_propagates(
         self,
-        reporter: Any,
+        reporter: LogfireReporter,
     ) -> None:
         event = _event()
         with (
@@ -76,7 +81,7 @@ class TestLogfireReporterReportRaises:
 
     async def test_reporter_does_not_emit_report_failed_alert(
         self,
-        reporter: Any,
+        reporter: LogfireReporter,
     ) -> None:
         """The collector owns ``TELEMETRY_REPORT_FAILED``; reporter stays quiet."""
         event = _event()

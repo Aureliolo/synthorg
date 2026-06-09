@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Lifecycle contract tests for HTTP-bearing notification sinks.
 
 Pins the resource-hygiene rule that ``SlackNotificationSink`` and

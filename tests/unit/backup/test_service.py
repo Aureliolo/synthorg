@@ -1,14 +1,14 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for BackupService -- central orchestrator for backup/restore."""
 
 from pathlib import Path
-from typing import Any
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from synthorg.backup.config import BackupConfig, RetentionConfig
 from synthorg.backup.errors import BackupInProgressError, BackupNotFoundError
+from synthorg.backup.handlers.protocol import ComponentHandler
 from synthorg.backup.models import (
     BackupComponent,
     BackupManifest,
@@ -17,14 +17,20 @@ from synthorg.backup.models import (
 from synthorg.backup.service import BackupService
 
 
-def _make_handler(component: BackupComponent) -> MagicMock:
-    """Build a mock ComponentHandler for testing."""
+def _make_handler(component: BackupComponent) -> ComponentHandler:
+    """Build a mock ComponentHandler for testing.
+
+    A hand-assembled ``MagicMock`` (not ``mock_of`` / autospec) because
+    ``BackupService.__init__`` deep-copies its handlers dict and an
+    autospec'd ``runtime_checkable`` Protocol instance is not
+    deep-copyable (its state carries the un-picklable ABC caches).
+    """
     handler = MagicMock()
     handler.component = component
     handler.backup = AsyncMock(return_value=512)
     handler.restore = AsyncMock()
     handler.validate_source = AsyncMock(return_value=True)
-    return handler
+    return cast("ComponentHandler", handler)
 
 
 def _make_service(
@@ -32,7 +38,7 @@ def _make_service(
     *,
     enabled: bool = True,
     compression: bool = False,
-    handlers: dict[BackupComponent, Any] | None = None,
+    handlers: dict[BackupComponent, ComponentHandler] | None = None,
     schedule_hours: int = 6,
 ) -> BackupService:
     """Build a BackupService with tmp_path-based config and mock handlers."""

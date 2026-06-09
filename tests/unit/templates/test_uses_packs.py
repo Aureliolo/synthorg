@@ -1,8 +1,4 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for uses_packs template composition."""
-
-from collections.abc import Callable
-from typing import Any
 
 import pytest
 
@@ -10,47 +6,45 @@ from synthorg.templates.loader import LoadedTemplate, _parse_template_yaml
 from synthorg.templates.renderer import render_template
 from synthorg.templates.schema import CompanyTemplate
 
+from .conftest import TemplateDictFactory
+
 
 @pytest.mark.unit
 class TestUsesPacksField:
     """Tests for the uses_packs field on CompanyTemplate."""
 
-    def test_defaults_to_empty(
-        self, make_template_dict: Callable[..., dict[str, Any]]
-    ) -> None:
+    def test_defaults_to_empty(self, make_template_dict: TemplateDictFactory) -> None:
         data = make_template_dict()
-        tmpl = CompanyTemplate(**data)
+        tmpl = CompanyTemplate.model_validate(data)
         assert tmpl.uses_packs == ()
 
-    def test_accepts_pack_names(
-        self, make_template_dict: Callable[..., dict[str, Any]]
-    ) -> None:
+    def test_accepts_pack_names(self, make_template_dict: TemplateDictFactory) -> None:
         data = make_template_dict(
             uses_packs=("security-team", "data-team"),
         )
-        tmpl = CompanyTemplate(**data)
+        tmpl = CompanyTemplate.model_validate(data)
         assert tmpl.uses_packs == ("security-team", "data-team")
 
     def test_skips_agent_count_validation_with_packs(
-        self, make_template_dict: Callable[..., dict[str, Any]]
+        self, make_template_dict: TemplateDictFactory
     ) -> None:
         """Templates with uses_packs can have zero agents."""
         data = make_template_dict(
             agents=(),
             uses_packs=("security-team",),
         )
-        tmpl = CompanyTemplate(**data)
+        tmpl = CompanyTemplate.model_validate(data)
         assert len(tmpl.agents) == 0
 
     def test_rejects_duplicate_pack_names(
-        self, make_template_dict: Callable[..., dict[str, Any]]
+        self, make_template_dict: TemplateDictFactory
     ) -> None:
         """Duplicate pack names in uses_packs are rejected."""
         data = make_template_dict(
             uses_packs=("security-team", "security-team"),
         )
         with pytest.raises(ValueError, match="Duplicate pack names"):
-            CompanyTemplate(**data)
+            CompanyTemplate.model_validate(data)
 
 
 def _make_loaded(yaml_text: str) -> LoadedTemplate:

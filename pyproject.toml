@@ -650,14 +650,32 @@ disable_error_code = [
     "unused-ignore",         # holding pen; closes alongside the above
 ]
 
-# The communication / providers / integrations test subtrees are drained
-# of explicit ``Any`` ahead of the wider tests.* cleanup, so they re-enable
-# the strict bar locally (a more-specific override wins over tests.* above).
+# Test subtrees already drained of explicit ``Any`` ahead of the wider
+# tests.* cleanup re-enable the strict bar locally (a more-specific
+# override wins over tests.* above).
 [[tool.mypy.overrides]]
 module = [
     "tests.unit.communication.*",
     "tests.unit.providers.*",
     "tests.unit.integrations.*",
+    "tests.unit._core.*",
+    "tests.unit.a2a.*",
+    "tests.unit.backup.*",
+    "tests.unit.config.*",
+    "tests.unit.coordination.*",
+    "tests.unit.core.*",
+    "tests.unit.deliverable_receipts.*",
+    "tests.unit.docs_engine.*",
+    "tests.unit.experiments.*",
+    "tests.unit.infrastructure.*",
+    "tests.unit.notifications.*",
+    "tests.unit.organization.*",
+    "tests.unit.project_brain.*",
+    "tests.unit.settings.*",
+    "tests.unit.telemetry.*",
+    "tests.unit.templates.*",
+    "tests.unit.versioning.*",
+    "tests.unit.workers.*",
 ]
 disallow_any_explicit = true
 

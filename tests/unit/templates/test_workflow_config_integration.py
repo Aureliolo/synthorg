@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for workflow configuration integration in templates.
 
 Verifies that templates can declare ``workflow_config`` sections with
@@ -26,10 +25,7 @@ from synthorg.templates.renderer import render_template
 from synthorg.templates.schema import CompanyTemplate
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from typing import Any
-
-    from .conftest import TemplateFileFactory
+    from .conftest import TemplateDictFactory, TemplateFileFactory
 
 
 # ── Schema: CompanyTemplate accepts workflow_config ─────────────
@@ -41,14 +37,14 @@ class TestCompanyTemplateWorkflowConfig:
 
     def test_default_workflow_config_is_empty_dict(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
-        t = CompanyTemplate(**make_template_dict())
+        t = CompanyTemplate.model_validate(make_template_dict())
         assert t.workflow_config == {}
 
     def test_accepts_kanban_config(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         wf_config = {
             "kanban": {
@@ -58,13 +54,16 @@ class TestCompanyTemplateWorkflowConfig:
                 "enforce_wip": True,
             },
         }
-        t = CompanyTemplate(**make_template_dict(workflow_config=wf_config))
-        wfc: Any = t.workflow_config
-        assert wfc["kanban"]["enforce_wip"] is True
+        t = CompanyTemplate.model_validate(
+            make_template_dict(workflow_config=wf_config),
+        )
+        kanban = t.workflow_config["kanban"]
+        assert isinstance(kanban, dict)
+        assert kanban["enforce_wip"] is True
 
     def test_accepts_sprint_config(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         wf_config = {
             "sprint": {
@@ -72,13 +71,16 @@ class TestCompanyTemplateWorkflowConfig:
                 "max_tasks_per_sprint": 20,
             },
         }
-        t = CompanyTemplate(**make_template_dict(workflow_config=wf_config))
-        wfc: Any = t.workflow_config
-        assert wfc["sprint"]["duration_days"] == 7
+        t = CompanyTemplate.model_validate(
+            make_template_dict(workflow_config=wf_config),
+        )
+        sprint = t.workflow_config["sprint"]
+        assert isinstance(sprint, dict)
+        assert sprint["duration_days"] == 7
 
     def test_accepts_full_agile_kanban_config(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         wf_config = {
             "kanban": {
@@ -98,8 +100,8 @@ class TestCompanyTemplateWorkflowConfig:
                 ],
             },
         }
-        t = CompanyTemplate(
-            **make_template_dict(
+        t = CompanyTemplate.model_validate(
+            make_template_dict(
                 workflow="agile_kanban",
                 workflow_config=wf_config,
             ),
@@ -109,7 +111,7 @@ class TestCompanyTemplateWorkflowConfig:
 
     def test_jinja2_placeholder_survives_pass1(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         """Pass 1 strips Jinja2 to __JINJA2__, so workflow_config may
         contain placeholder strings.  CompanyTemplate must accept them."""
@@ -120,9 +122,16 @@ class TestCompanyTemplateWorkflowConfig:
                 ],
             },
         }
-        t = CompanyTemplate(**make_template_dict(workflow_config=wf_config))
-        wfc: Any = t.workflow_config
-        assert wfc["kanban"]["wip_limits"][0]["limit"] == "__JINJA2__"
+        t = CompanyTemplate.model_validate(
+            make_template_dict(workflow_config=wf_config),
+        )
+        kanban = t.workflow_config["kanban"]
+        assert isinstance(kanban, dict)
+        wip_limits = kanban["wip_limits"]
+        assert isinstance(wip_limits, list)
+        first = wip_limits[0]
+        assert isinstance(first, dict)
+        assert first["limit"] == "__JINJA2__"
 
 
 # ── Renderer: workflow flows through to RootConfig ──────────────

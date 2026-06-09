@@ -1,9 +1,9 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for preset validation, custom preset resolution, and warn behavior."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.config.schema import RootConfig
 from synthorg.organization.enums import CompanyType
@@ -21,9 +21,9 @@ if TYPE_CHECKING:
 
 
 def _make_template(
-    agents: list[dict[str, Any]],
+    agents: list[dict[str, object]],
 ) -> CompanyTemplate:
-    agent_cfgs = tuple(TemplateAgentConfig(**a) for a in agents)
+    agent_cfgs = tuple(TemplateAgentConfig.model_validate(a) for a in agents)
     return CompanyTemplate(
         metadata=TemplateMetadata(
             name="Validation Test",
@@ -63,9 +63,9 @@ class TestValidatePresetReferences:
         assert "Dev" in warnings[0]
 
     def test_no_warning_for_custom_preset(self) -> None:
-        custom: dict[str, dict[str, Any]] = {
+        custom: dict[str, dict[str, JsonValue]] = {
             "my_custom": {
-                "traits": ("a",),
+                "traits": ["a"],
                 "communication_style": "test",
             },
         }
@@ -118,7 +118,7 @@ class TestUnknownPresetWarning:
             "role": "Dev",
             "personality_preset": "does_not_exist",
         }
-        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert "personality" not in result
 
     def test_unknown_preset_does_not_raise(self) -> None:
@@ -130,7 +130,7 @@ class TestUnknownPresetWarning:
             "personality_preset": "nonexistent_preset",
         }
         # Should not raise -- just warns and skips personality.
-        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert result["role"] == "Dev"
 
 
@@ -143,9 +143,9 @@ class TestCustomPresetResolution:
         """Custom preset is resolved when passed to _expand_single_agent."""
         from synthorg.templates.renderer import _expand_single_agent
 
-        custom: dict[str, dict[str, Any]] = {
+        custom: dict[str, dict[str, JsonValue]] = {
             "my_custom": {
-                "traits": ("custom-trait",),
+                "traits": ["custom-trait"],
                 "communication_style": "custom",
                 "description": "Custom",
                 "openness": 0.5,
@@ -159,14 +159,16 @@ class TestCustomPresetResolution:
             "role": "Dev",
             "personality_preset": "my_custom",
         }
-        result: Any = _expand_single_agent(
+        result = _expand_single_agent(
             agent,
             0,
             set(),
             has_extends=False,
             custom_presets=custom,
         )
-        assert result["personality"]["communication_style"] == "custom"
+        personality = result["personality"]
+        assert isinstance(personality, dict)
+        assert personality["communication_style"] == "custom"
 
     def test_custom_preset_threaded_through_render_template(
         self,
@@ -190,9 +192,9 @@ template:
       department: "engineering"
       personality_preset: "my_custom"
 """
-        custom: dict[str, dict[str, Any]] = {
+        custom: dict[str, dict[str, JsonValue]] = {
             "my_custom": {
-                "traits": ("custom-trait",),
+                "traits": ["custom-trait"],
                 "communication_style": "custom",
                 "description": "Custom",
                 "openness": 0.5,
@@ -242,16 +244,18 @@ template:
         """Builtin presets resolve when custom_presets dict is passed."""
         from synthorg.templates.renderer import _expand_single_agent
 
-        custom: dict[str, dict[str, Any]] = {"other_custom": {"traits": ("a",)}}
+        custom: dict[str, dict[str, JsonValue]] = {"other_custom": {"traits": ["a"]}}
         agent: dict[str, object] = {
             "role": "Dev",
             "personality_preset": "pragmatic_builder",
         }
-        result: Any = _expand_single_agent(
+        result = _expand_single_agent(
             agent,
             0,
             set(),
             has_extends=False,
             custom_presets=custom,
         )
-        assert result["personality"]["communication_style"] == "concise"
+        personality = result["personality"]
+        assert isinstance(personality, dict)
+        assert personality["communication_style"] == "concise"

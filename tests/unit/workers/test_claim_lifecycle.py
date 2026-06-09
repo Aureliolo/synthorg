@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Lifecycle / teardown coverage for ``JetStreamTaskQueue``.
 
 The model-only tests in ``test_claim.py`` do not exercise the
@@ -16,7 +15,6 @@ slots so the suite does not need a live NATS container -- the
 public ``start()`` path is unaffected.
 """
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -53,7 +51,7 @@ class _SubscriptionStub:
         self,
         batch: int = 1,
         timeout: float = 1.0,  # noqa: ASYNC109
-    ) -> list[Any]:  # pragma: no cover (spec only)
+    ) -> list[object]:  # pragma: no cover (spec only)
         return []
 
 

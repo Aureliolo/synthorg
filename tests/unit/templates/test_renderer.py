@@ -1,6 +1,6 @@
 """Tests for the two-pass template rendering pipeline."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 import structlog
@@ -472,9 +472,13 @@ class TestInlinePersonality:
                 "communication_style": "custom",
             },
         }
-        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
-        assert result["personality"]["communication_style"] == "custom"
-        assert "custom-trait" in result["personality"]["traits"]
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        personality = result["personality"]
+        assert isinstance(personality, dict)
+        assert personality["communication_style"] == "custom"
+        traits = personality["traits"]
+        assert isinstance(traits, tuple | list)
+        assert "custom-trait" in traits
 
 
 @pytest.mark.unit
@@ -493,9 +497,11 @@ class TestDepartmentPassthrough:
                 ],
             },
         ]
-        result: Any = build_departments(raw)
+        result = build_departments(raw)
         assert "reporting_lines" in result[0]
-        assert len(result[0]["reporting_lines"]) == 1
+        reporting_lines = result[0]["reporting_lines"]
+        assert isinstance(reporting_lines, list)
+        assert len(reporting_lines) == 1
 
     def test_policies_passthrough(self) -> None:
         """Policies from rendered data pass through to department dict."""
@@ -511,7 +517,7 @@ class TestDepartmentPassthrough:
                 },
             },
         ]
-        result: Any = build_departments(raw)
+        result = build_departments(raw)
         assert "policies" in result[0]
 
     def test_workflow_handoffs_passthrough(self) -> None:
@@ -539,9 +545,11 @@ class TestDepartmentPassthrough:
                 {"from_department": "eng", "to_department": "qa", "trigger": "done"},
             ],
         }
-        result: Any = _build_config_dict(rendered, template, {})
+        result = _build_config_dict(rendered, template, {})
         assert "workflow_handoffs" in result
-        assert len(result["workflow_handoffs"]) == 1
+        handoffs = result["workflow_handoffs"]
+        assert isinstance(handoffs, list)
+        assert len(handoffs) == 1
 
 
 @pytest.mark.unit
@@ -642,9 +650,11 @@ class TestEscalationPathsPassthrough:
                 },
             ],
         }
-        result: Any = _build_config_dict(rendered, template, {})
+        result = _build_config_dict(rendered, template, {})
         assert "escalation_paths" in result
-        assert len(result["escalation_paths"]) == 1
+        escalation_paths = result["escalation_paths"]
+        assert isinstance(escalation_paths, list)
+        assert len(escalation_paths) == 1
 
 
 @pytest.mark.unit
@@ -704,7 +714,7 @@ class TestExpandPreservesMergeId:
             "merge_id": "frontend",
             "department": "engineering",
         }
-        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert "merge_id" not in result
 
     def test_preserve_merge_id_without_extends(self) -> None:
@@ -773,10 +783,12 @@ class TestJinja2PlaceholderAutoName:
             "name": "__JINJA2__ Dev",
             "department": "engineering",
         }
-        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
         # The auto-generated name should NOT contain the placeholder.
-        assert "__JINJA2__" not in result["name"]
-        assert len(result["name"]) > 0
+        name = result["name"]
+        assert isinstance(name, str)
+        assert "__JINJA2__" not in name
+        assert len(name) > 0
 
     def test_jinja2_placeholder_exact_match(self) -> None:
         """An agent name that is exactly __JINJA2__ is auto-named."""
@@ -787,6 +799,8 @@ class TestJinja2PlaceholderAutoName:
             "name": "__JINJA2__",
             "department": "executive",
         }
-        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
-        assert "__JINJA2__" not in result["name"]
-        assert len(result["name"]) > 0
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        name = result["name"]
+        assert isinstance(name, str)
+        assert "__JINJA2__" not in name
+        assert len(name) > 0

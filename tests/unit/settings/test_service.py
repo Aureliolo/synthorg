@@ -2,7 +2,8 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
-from typing import Any
+from types import ModuleType
+from typing import TypedDict
 from unittest.mock import AsyncMock
 
 import pytest
@@ -43,6 +44,15 @@ class _FakeConfig(BaseModel):
 
 
 _UNSET = object()
+
+
+class _DefnKwargs(TypedDict, total=False):
+    """The `_make_definition` overrides the validation matrix drives."""
+
+    setting_type: SettingType
+    enum_values: tuple[str, ...]
+    min_value: float
+    max_value: float
 
 
 def _row(
@@ -282,7 +292,7 @@ class TestValidation:
         mock_repo: AsyncMock,
         config: _FakeConfig,
         key: str,
-        defn_kwargs: dict[str, Any],
+        defn_kwargs: _DefnKwargs,
         bad_value: str,
         match: str,
     ) -> None:
@@ -927,7 +937,7 @@ class TestValidatorPattern:
 
 
 @contextmanager
-def _logger_info_spy(module: Any) -> Iterator[list[str]]:
+def _logger_info_spy(module: ModuleType) -> Iterator[list[str]]:
     """Spy on *module*'s ``logger.info`` and yield the captured events.
 
     structlog routes events through a custom processor pipeline that

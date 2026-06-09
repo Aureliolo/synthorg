@@ -1,9 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the provider-present runtime-services switch."""
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -304,8 +302,8 @@ class TestBootLogSafetySpineState:
 
     @staticmethod
     def _runtime_services_logs(
-        logs: Sequence[Mapping[str, Any]],
-    ) -> list[Mapping[str, Any]]:
+        logs: Sequence[Mapping[str, object]],
+    ) -> list[Mapping[str, object]]:
         return [
             entry
             for entry in logs

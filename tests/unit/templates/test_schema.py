@@ -1,10 +1,9 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for template schema models."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import CompanyType
@@ -18,7 +17,7 @@ from synthorg.templates.schema import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from .conftest import TemplateDictFactory
 
 # ── TemplateVariable ─────────────────────────────────────────────
 
@@ -139,7 +138,7 @@ class TestTemplateAgentConfig:
             TemplateAgentConfig(role="dev", model="   ")
 
     def test_dict_model_accepted(self) -> None:
-        model_dict: dict[str, Any] = {
+        model_dict: dict[str, JsonValue] = {
             "tier": "large",
             "priority": "quality",
             "min_context": 100000,
@@ -393,9 +392,9 @@ class TestTemplateMetadata:
 class TestCompanyTemplate:
     def test_valid_minimal(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
-        t = CompanyTemplate(**make_template_dict())
+        t = CompanyTemplate.model_validate(make_template_dict())
         assert t.metadata.name == "Test"
         assert len(t.agents) == 1
         assert t.workflow == "agile_kanban"
@@ -405,11 +404,11 @@ class TestCompanyTemplate:
 
     def test_agent_count_below_min_rejected(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         with pytest.raises(ValidationError, match="minimum"):
-            CompanyTemplate(
-                **make_template_dict(
+            CompanyTemplate.model_validate(
+                make_template_dict(
                     metadata={
                         "name": "T",
                         "company_type": "custom",
@@ -421,12 +420,12 @@ class TestCompanyTemplate:
 
     def test_agent_count_above_max_rejected(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         agents = tuple({"role": f"Dev{i}", "level": "mid"} for i in range(5))
         with pytest.raises(ValidationError, match="maximum"):
-            CompanyTemplate(
-                **make_template_dict(
+            CompanyTemplate.model_validate(
+                make_template_dict(
                     metadata={
                         "name": "T",
                         "company_type": "custom",
@@ -438,11 +437,11 @@ class TestCompanyTemplate:
 
     def test_duplicate_variable_names_rejected(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         with pytest.raises(ValidationError, match="Duplicate variable names"):
-            CompanyTemplate(
-                **make_template_dict(
+            CompanyTemplate.model_validate(
+                make_template_dict(
                     variables=(
                         {"name": "x", "var_type": "str"},
                         {"name": "x", "var_type": "int"},
@@ -452,11 +451,11 @@ class TestCompanyTemplate:
 
     def test_duplicate_department_names_rejected(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         with pytest.raises(ValidationError, match="Duplicate department names"):
-            CompanyTemplate(
-                **make_template_dict(
+            CompanyTemplate.model_validate(
+                make_template_dict(
                     departments=(
                         {"name": "eng", "budget_percent": 50},
                         {"name": "eng", "budget_percent": 50},
@@ -466,10 +465,10 @@ class TestCompanyTemplate:
 
     def test_unique_variables_accepted(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
-        t = CompanyTemplate(
-            **make_template_dict(
+        t = CompanyTemplate.model_validate(
+            make_template_dict(
                 variables=(
                     {"name": "x"},
                     {"name": "y"},
@@ -480,67 +479,67 @@ class TestCompanyTemplate:
 
     def test_autonomy_float_rejected(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         """Bare float for autonomy is no longer accepted."""
         with pytest.raises(ValidationError):
-            CompanyTemplate(**make_template_dict(autonomy=0.5))
+            CompanyTemplate.model_validate(make_template_dict(autonomy=0.5))
 
     def test_negative_budget_rejected(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         with pytest.raises(ValidationError):
-            CompanyTemplate(**make_template_dict(budget_monthly=-10.0))
+            CompanyTemplate.model_validate(make_template_dict(budget_monthly=-10.0))
 
     def test_blank_workflow_rejected(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         with pytest.raises(ValidationError):
-            CompanyTemplate(**make_template_dict(workflow=""))
+            CompanyTemplate.model_validate(make_template_dict(workflow=""))
 
     def test_whitespace_workflow_rejected(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         with pytest.raises(ValidationError):
-            CompanyTemplate(**make_template_dict(workflow="   "))
+            CompanyTemplate.model_validate(make_template_dict(workflow="   "))
 
     def test_blank_communication_rejected(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         with pytest.raises(ValidationError):
-            CompanyTemplate(**make_template_dict(communication=""))
+            CompanyTemplate.model_validate(make_template_dict(communication=""))
 
     def test_whitespace_communication_rejected(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
         with pytest.raises(ValidationError):
-            CompanyTemplate(**make_template_dict(communication="   "))
+            CompanyTemplate.model_validate(make_template_dict(communication="   "))
 
     def test_workflow_handoffs_default_empty(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
-        t = CompanyTemplate(**make_template_dict())
+        t = CompanyTemplate.model_validate(make_template_dict())
         assert t.workflow_handoffs == ()
 
     def test_escalation_paths_default_empty(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
-        t = CompanyTemplate(**make_template_dict())
+        t = CompanyTemplate.model_validate(make_template_dict())
         assert t.escalation_paths == ()
 
     def test_workflow_handoffs_accepted(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
-        t = CompanyTemplate(
-            **make_template_dict(
+        t = CompanyTemplate.model_validate(
+            make_template_dict(
                 workflow_handoffs=(
                     {
                         "from_department": "eng",
@@ -554,10 +553,10 @@ class TestCompanyTemplate:
 
     def test_escalation_paths_accepted(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
-        t = CompanyTemplate(
-            **make_template_dict(
+        t = CompanyTemplate.model_validate(
+            make_template_dict(
                 escalation_paths=(
                     {
                         "from_department": "eng",
@@ -571,29 +570,35 @@ class TestCompanyTemplate:
 
     def test_extends_field_accepted(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
-        t = CompanyTemplate(**make_template_dict(extends="startup", agents=()))
+        t = CompanyTemplate.model_validate(
+            make_template_dict(extends="startup", agents=()),
+        )
         assert t.extends == "startup"
 
     def test_extends_normalizes_case(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
-        t = CompanyTemplate(**make_template_dict(extends="  StartUp  ", agents=()))
+        t = CompanyTemplate.model_validate(
+            make_template_dict(extends="  StartUp  ", agents=()),
+        )
         assert t.extends == "startup"
 
     def test_extends_skips_agent_count_validation(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
-        t = CompanyTemplate(**make_template_dict(extends="startup", agents=()))
+        t = CompanyTemplate.model_validate(
+            make_template_dict(extends="startup", agents=()),
+        )
         assert len(t.agents) == 0
 
     def test_frozen(
         self,
-        make_template_dict: Callable[..., dict[str, Any]],
+        make_template_dict: TemplateDictFactory,
     ) -> None:
-        t = CompanyTemplate(**make_template_dict())
+        t = CompanyTemplate.model_validate(make_template_dict())
         with pytest.raises(ValidationError):
             t.workflow = "scrum"  # type: ignore[assignment,misc]

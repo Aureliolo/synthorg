@@ -1,7 +1,5 @@
 """Tests for template personality presets and auto-name generation."""
 
-from typing import Any
-
 import pytest
 from pydantic import JsonValue
 
@@ -145,17 +143,21 @@ class TestGetPersonalityPreset:
                 "stress_response": 0.5,
             },
         }
-        a: Any = get_personality_preset("my_custom", custom_presets=custom)
+        a = get_personality_preset("my_custom", custom_presets=custom)
         b = get_personality_preset("my_custom", custom_presets=custom)
         assert a == b
         assert a is not b
         # Mutating a nested mutable field must not affect the source.
-        a["traits"].append("mutated")
+        a_traits = a["traits"]
+        assert isinstance(a_traits, list)
+        a_traits.append("mutated")
         source_traits = custom["my_custom"]["traits"]
         assert isinstance(source_traits, list)
         assert "mutated" not in source_traits
-        c: Any = get_personality_preset("my_custom", custom_presets=custom)
-        assert "mutated" not in c["traits"]
+        c = get_personality_preset("my_custom", custom_presets=custom)
+        c_traits = c["traits"]
+        assert isinstance(c_traits, list)
+        assert "mutated" not in c_traits
 
     def test_custom_preset_overrides_builtin_defense_in_depth(self) -> None:
         """Custom preset with same name as builtin takes precedence.
