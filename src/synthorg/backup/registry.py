@@ -5,7 +5,6 @@ adding a new backend means registering its handler factory here rather
 than editing the dispatch site.
 """
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from synthorg.backup.errors import BackupConfigurationError
@@ -89,9 +88,6 @@ def _build_postgres_handler(
         raise BackupConfigurationError(msg)
     ensure_pg_tools_available()
     return PostgresPersistenceComponentHandler(config=pg_config)
-
-
-type _PersistenceHandlerFactory = Callable[..., "ComponentHandler"]
 
 
 PERSISTENCE_BACKUP_HANDLER_REGISTRY: StrategyRegistry[ComponentHandler] = (

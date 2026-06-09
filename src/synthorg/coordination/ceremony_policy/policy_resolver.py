@@ -12,7 +12,7 @@ import enum
 import json
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final, Self
+from typing import TYPE_CHECKING, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -64,7 +64,7 @@ class ResolvedPolicyField(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    value: str | dict[str, Any] | bool | float = Field(
+    value: str | dict[str, object] | bool | float = Field(
         description="Resolved field value",
     )
     source: PolicyFieldOrigin = Field(
@@ -169,7 +169,7 @@ def _parse_strategy(raw: str | None) -> CeremonyStrategyType | None:
         raise
 
 
-def _parse_strategy_config(raw: str | None) -> dict[str, Any] | None:
+def _parse_strategy_config(raw: str | None) -> dict[str, object] | None:
     """Parse strategy config JSON from its raw setting value.
 
     Returns:
