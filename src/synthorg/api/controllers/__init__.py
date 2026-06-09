@@ -84,7 +84,10 @@ from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
 from synthorg.api.controllers.metrics import MetricsController
 from synthorg.api.controllers.oauth import OAuthController
 from synthorg.api.controllers.objectives import ObjectiveController
-from synthorg.api.controllers.ontology import OntologyController
+from synthorg.api.controllers.ontology.admin import OntologyAdminController
+from synthorg.api.controllers.ontology.drift import OntologyDriftController
+from synthorg.api.controllers.ontology.entities import OntologyController
+from synthorg.api.controllers.ontology.versions import OntologyVersionsController
 from synthorg.api.controllers.personalities import (
     PersonalityPresetController,
 )
@@ -255,6 +258,9 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ReportsController,
     WorkflowExecutionController,
     OntologyController,
+    OntologyVersionsController,
+    OntologyDriftController,
+    OntologyAdminController,
     ClientController,
     ReviewController,
     ScalingController,
@@ -400,7 +406,10 @@ __all__ = [
     "MetaController",
     "MetricsController",
     "OAuthController",
+    "OntologyAdminController",
     "OntologyController",
+    "OntologyDriftController",
+    "OntologyVersionsController",
     "PersonalityPresetController",
     "ProjectBrainController",
     "ProjectController",

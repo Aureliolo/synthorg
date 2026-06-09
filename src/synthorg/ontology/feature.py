@@ -8,14 +8,22 @@ ghost-wired symbols.
 """
 
 from synthorg._core.features import FeatureManifest, FeatureModule
-from synthorg.api.controllers.ontology import OntologyController
+from synthorg.api.controllers.ontology.admin import OntologyAdminController
+from synthorg.api.controllers.ontology.drift import OntologyDriftController
+from synthorg.api.controllers.ontology.entities import OntologyController
+from synthorg.api.controllers.ontology.versions import OntologyVersionsController
 from synthorg.ontology.state import OntologyStateSlice
 
 FEATURE: FeatureModule = FeatureManifest(
     name="ontology",
     settings_namespace=None,
     state_slice=OntologyStateSlice,
-    controllers=(OntologyController,),
+    controllers=(
+        OntologyController,
+        OntologyVersionsController,
+        OntologyDriftController,
+        OntologyAdminController,
+    ),
     mcp_handlers=(),
     lifecycle_hooks=(),
     ghost_wired_symbols=(),
