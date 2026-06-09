@@ -7,7 +7,7 @@ the ``settings/`` subsystem free of imports from ``synthorg.api`` (a
 prohibited upward dependency).
 """
 
-from typing import ClassVar, Final, Literal, NoReturn, cast
+from typing import ClassVar, Final, Literal, NoReturn
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -179,7 +179,7 @@ class PerOpRateLimitConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: object) -> object:
-        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 class PerOpConcurrencyConfig(BaseModel):
@@ -271,4 +271,4 @@ class PerOpConcurrencyConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: object) -> object:
-        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)

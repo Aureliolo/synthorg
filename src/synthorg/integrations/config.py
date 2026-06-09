@@ -4,7 +4,7 @@ All models are frozen Pydantic ``BaseModel`` instances following
 the codebase convention of ``ConfigDict(frozen=True, allow_inf_nan=False)``.
 """
 
-from typing import ClassVar, Literal, Self, cast
+from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -157,7 +157,7 @@ class OAuthConfig(BaseModel):
             The raw model input with any unset mirror fields filled in
             from their registered settings (caller-supplied keys win).
         """
-        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 class WebhooksConfig(BaseModel):
@@ -197,7 +197,7 @@ class WebhooksConfig(BaseModel):
             The raw model input with any unset mirror fields filled in
             from their registered settings (caller-supplied keys win).
         """
-        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 class IntegrationHealthConfig(BaseModel):

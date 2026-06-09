@@ -215,7 +215,7 @@ class SecurityConfig(BaseModel):
         Returns:
             The input data with mirrored settings applied.
         """
-        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _check_disjoint_action_types(self) -> SecurityConfig:

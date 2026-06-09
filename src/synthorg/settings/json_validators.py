@@ -24,10 +24,10 @@ a normalisation hook.
 """
 
 from collections.abc import Callable
-from typing import Any, Final
+from typing import Final
 
 
-def _validate_csp_docs_external_origins(value: Any) -> None:
+def _validate_csp_docs_external_origins(value: object) -> None:
     """Reject any non-canonical ``csp_docs_external_origins`` payload.
 
     Reuses :class:`synthorg.settings.bridge_configs.ApiBridgeConfig`'s
@@ -66,12 +66,12 @@ def _validate_csp_docs_external_origins(value: Any) -> None:
     ApiBridgeConfig(csp_docs_external_origins=tuple(value))
 
 
-_JSON_VALIDATORS: Final[dict[tuple[str, str], Callable[[Any], None]]] = {
+_JSON_VALIDATORS: Final[dict[tuple[str, str], Callable[[object], None]]] = {
     ("api", "csp_docs_external_origins"): _validate_csp_docs_external_origins,
 }
 
 
-def get_json_validator(namespace: str, key: str) -> Callable[[Any], None] | None:
+def get_json_validator(namespace: str, key: str) -> Callable[[object], None] | None:
     """Return the registered write-time validator for *namespace*/*key*.
 
     Returns ``None`` when the setting has no JSON-shape validator

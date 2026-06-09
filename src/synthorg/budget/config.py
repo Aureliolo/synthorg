@@ -7,7 +7,7 @@ and risk budget configuration.
 
 from collections import Counter
 from collections.abc import Mapping
-from typing import ClassVar, Literal, Self, cast
+from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -91,7 +91,7 @@ class BudgetAlertConfig(BaseModel):
         Returns:
             Result of type ``object``.
         """
-        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_threshold_ordering(self) -> Self:
@@ -171,7 +171,7 @@ class AutoDowngradeConfig(BaseModel):
         Returns:
             Result of type ``object``.
         """
-        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     boundary: Literal["task_assignment"] = Field(
         default="task_assignment",
@@ -472,7 +472,7 @@ class BudgetConfig(BaseModel):
         Returns:
             Result of type ``object``.
         """
-        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_per_task_limit_within_monthly(self) -> Self:

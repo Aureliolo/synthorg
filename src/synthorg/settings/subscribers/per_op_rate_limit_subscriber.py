@@ -15,7 +15,7 @@ switching backends is not a hot-reload concern.
 
 import json
 import re
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from synthorg.config.rate_limits import (
     PerOpConcurrencyConfig,
@@ -60,7 +60,7 @@ _RATE_LIMIT_OVERRIDE_TUPLE_LEN: Final[int] = 2
 _INT_STRING_PATTERN = re.compile(r"^[+-]?\d+$")
 
 
-def _strict_int(value: Any, *, field: str) -> int:
+def _strict_int(value: object, *, field: str) -> int:
     """Coerce ``value`` to ``int`` without silent bool/float widening.
 
     Accepts a plain ``int`` (excluding ``bool`` -- ``isinstance(True,
@@ -241,7 +241,7 @@ class PerOpRateLimitSettingsSubscriber:
         )
         raise ValueError(msg)
 
-    async def _read_json(self, key: str) -> Any:
+    async def _read_json(self, key: str) -> object:
         """Read a JSON-typed setting and parse into Python objects.
 
         Returns:
@@ -254,7 +254,7 @@ class PerOpRateLimitSettingsSubscriber:
 
     @staticmethod
     def _coerce_rate_limit_overrides(
-        raw: Any,
+        raw: object,
     ) -> dict[str, tuple[int, int]]:
         """Coerce a JSON dict into ``PerOpRateLimitConfig.overrides`` shape.
 
@@ -314,7 +314,7 @@ class PerOpRateLimitSettingsSubscriber:
         return coerced
 
     @staticmethod
-    def _coerce_concurrency_overrides(raw: Any) -> dict[str, int]:
+    def _coerce_concurrency_overrides(raw: object) -> dict[str, int]:
         """Coerce a JSON dict into ``PerOpConcurrencyConfig.overrides``.
 
         Values must be non-negative (``0`` disables the operation;

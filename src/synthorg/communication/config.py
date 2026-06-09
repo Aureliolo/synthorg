@@ -1,7 +1,7 @@
 """Communication configuration models (see Communication design page)."""
 
 from collections import Counter
-from typing import ClassVar, Final, Literal, Self, cast
+from typing import ClassVar, Final, Literal, Self
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -322,7 +322,7 @@ class MeetingsConfig(BaseModel):
         Returns:
             The input data with mirrored settings applied.
         """
-        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_unique_meeting_names(self) -> Self:

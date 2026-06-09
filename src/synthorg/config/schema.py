@@ -1,7 +1,7 @@
 """Root configuration schema and config-level Pydantic models."""
 
 from collections import Counter
-from typing import ClassVar, Literal, Self, cast
+from typing import ClassVar, Literal, Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
@@ -156,7 +156,7 @@ class RoutingConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: object) -> object:
-        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 class AgentConfig(BaseModel):

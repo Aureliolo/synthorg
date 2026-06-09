@@ -299,8 +299,14 @@ class ConfigResolver:
 
         return await self.get_enum("company", "autonomy_level", AutonomyLevel)
 
-    async def get_json(self, namespace: str, key: str) -> Any:
+    async def get_json(  # type: ignore[explicit-any]  # parsed JSON feeds pydantic validation
+        self, namespace: str, key: str
+    ) -> Any:
         """Resolve a setting as parsed JSON.
+
+        ``Any`` is deliberate: callers hand the parsed value straight to
+        a Pydantic constructor or shape-check it themselves, so a
+        narrower static type would only force casts at every call site.
 
         Args:
             namespace: Setting namespace.
@@ -344,13 +350,13 @@ class ConfigResolver:
             msg = f"Setting {namespace}/{key} has an invalid JSON value"
             raise ValueError(msg) from exc
 
-    async def _resolve_list_setting(
+    async def _resolve_list_setting[ModelT: BaseModel](
         self,
         namespace: str,
         key: str,
-        model_cls: type[BaseModel],
-        fallback: tuple[Any, ...],
-    ) -> tuple[Any, ...]:
+        model_cls: type[ModelT],
+        fallback: tuple[ModelT, ...],
+    ) -> tuple[ModelT, ...]:
         """Resolve a JSON list setting to a tuple of validated models.
 
         Falls back to *fallback* on ``None``, invalid JSON, wrong
@@ -395,13 +401,13 @@ class ConfigResolver:
             )
             return fallback
 
-    async def _resolve_dict_setting(
+    async def _resolve_dict_setting[ModelT: BaseModel](
         self,
         namespace: str,
         key: str,
-        model_cls: type[BaseModel],
-        fallback: dict[str, Any],
-    ) -> dict[str, Any]:
+        model_cls: type[ModelT],
+        fallback: dict[str, ModelT],
+    ) -> dict[str, ModelT]:
         """Resolve a JSON dict setting to a dict of validated models.
 
         Falls back to *fallback* on ``None``, invalid JSON, wrong
@@ -751,7 +757,7 @@ class ConfigResolver:
 
     # ── Config-bridge composed reads (issues #1398, #1400) ──────────
 
-    async def _resolve_bridge_fields(
+    async def _resolve_bridge_fields(  # type: ignore[explicit-any]  # values feed Model(**values)
         self,
         namespace: str,
         specs: tuple[tuple[str, str], ...],
@@ -761,7 +767,10 @@ class ConfigResolver:
         Each spec is ``(key, kind)`` where ``kind`` is one of
         ``"int"``, ``"float"``, or ``"str"``.  Returns a mapping from
         key to parsed value, suitable for passing into a Pydantic
-        model constructor as keyword arguments.
+        model constructor as keyword arguments -- which is why the
+        value type is deliberately ``Any``: the callers unpack the
+        mapping into typed Pydantic ``__init__`` signatures that
+        validate at runtime.
 
         Args:
             namespace: Setting namespace (e.g. ``"a2a"``).
@@ -774,7 +783,7 @@ class ConfigResolver:
             SettingNotFoundError: If a key is not in the registry.
             ValueError: If a resolved value cannot be parsed.
         """
-        tasks: dict[str, asyncio.Task[Any]] = {}
+        tasks: dict[str, asyncio.Task[Any]] = {}  # type: ignore[explicit-any]  # see return type
         try:
             async with asyncio.TaskGroup() as tg:
                 tasks = {
@@ -805,7 +814,9 @@ class ConfigResolver:
             raise eg.exceptions[0] from eg
         return {key: task.result() for key, task in tasks.items()}
 
-    async def _resolve_typed(self, namespace: str, key: str, kind: str) -> Any:
+    async def _resolve_typed(  # type: ignore[explicit-any]  # kind-dispatched value; see _resolve_bridge_fields
+        self, namespace: str, key: str, kind: str
+    ) -> Any:
         """Dispatch to the accessor matching ``kind``.
 
         Args:

@@ -2,7 +2,6 @@
 
 import asyncio
 import sys
-from typing import Any
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
@@ -19,6 +18,7 @@ from synthorg.observability.sink_config_builder import (
     SinkBuildResult,
     build_log_config_from_settings,
 )
+from synthorg.settings.models import SettingValue
 from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -102,7 +102,7 @@ class ObservabilitySettingsSubscriber:
         async with self._rebuild_lock:
             await self._rebuild_pipeline(key)
 
-    async def _read_all_settings(self) -> tuple[Any, ...]:
+    async def _read_all_settings(self) -> tuple[SettingValue, ...]:
         """Read all 4 observability settings in parallel.
 
         Returns:
@@ -110,7 +110,7 @@ class ObservabilitySettingsSubscriber:
             ``enable_correlation``, ``sink_overrides`` and
             ``custom_sinks`` (in that order).
         """
-        return await asyncio.gather(
+        results = await asyncio.gather(
             self._settings_service.get("observability", "root_log_level"),
             self._settings_service.get(
                 "observability",
@@ -119,10 +119,11 @@ class ObservabilitySettingsSubscriber:
             self._settings_service.get("observability", "sink_overrides"),
             self._settings_service.get("observability", "custom_sinks"),
         )
+        return tuple(results)
 
     def _parse_and_build(
         self,
-        results: tuple[Any, ...],
+        results: tuple[SettingValue, ...],
         key: str,
     ) -> SinkBuildResult | None:
         """Parse settings and build log config.

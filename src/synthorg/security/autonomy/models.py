@@ -1,7 +1,7 @@
 """Autonomy data models -- presets, config, effective resolution, overrides."""
 
 from types import MappingProxyType
-from typing import ClassVar, Final, Self, cast
+from typing import ClassVar, Final, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -188,7 +188,7 @@ class AutonomyConfig(BaseModel):
         Returns:
             The input data with mirrored settings applied.
         """
-        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_level_in_presets(self) -> Self:
