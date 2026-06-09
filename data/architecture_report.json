@@ -476,8 +476,8 @@
     },
     "src/synthorg/engine/evolution/service.py": {
       "cap": 500,
-      "loc": 407,
-      "ratio": 0.814,
+      "loc": 404,
+      "ratio": 0.808,
       "tier": "code"
     },
     "src/synthorg/engine/feature.py": {
@@ -1348,7 +1348,7 @@
     "synthorg.core.auth.roles": 25,
     "synthorg.core.autonomy_enums": 34,
     "synthorg.core.clock": 154,
-    "synthorg.core.critical_errors": 463,
+    "synthorg.core.critical_errors": 464,
     "synthorg.core.domain_errors": 176,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 47,
@@ -1370,7 +1370,7 @@
     "synthorg.engine.workflow.enums": 33,
     "synthorg.execution.turn": 29,
     "synthorg.hr.enums": 33,
-    "synthorg.hr.performance.models": 48,
+    "synthorg.hr.performance.models": 49,
     "synthorg.hr.performance.tracker": 26,
     "synthorg.hr.registry": 40,
     "synthorg.hr.scaling.models": 21,
