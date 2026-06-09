@@ -190,7 +190,7 @@ def accepted_index(raw: object) -> int:
             integer ``source_criterion_index`` (unreachable in
             practice: the caller validates the probe first).
     """
-    if isinstance(raw, Mapping):
+    if isinstance(raw, dict):
         value = raw.get("source_criterion_index")
         if isinstance(value, int):
             return value

@@ -258,9 +258,7 @@ class MultiAgentCoordinator:
             # topology resolution so that any routing mutations the
             # middleware applies (e.g. re-routing unassigned subtasks,
             # enriching topology metadata) are included in the inputs
-            # those two phases consume.  Previously the order was
-            # validate -> resolve -> middleware, which meant middleware
-            # edits to ``routing_result`` never influenced topology.
+            # those two phases consume.
             if mw_chain is not None:
                 mw_ctx = mw_ctx.model_copy(
                     update={

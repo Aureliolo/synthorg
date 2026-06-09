@@ -1,6 +1,6 @@
 """LLM-based proposer for adaptation proposals.
 
-Uses a SEPARATE completion provider call to analyze evolution context
+Uses a SEPARATE completion provider call to analyse evolution context
 and generate adaptation proposals. Follows the EvoSkill principle:
 the agent being evolved does NOT propose its own changes.
 """
@@ -258,7 +258,7 @@ def _build_user_message(
 class SeparateAnalyzerProposer:
     """Generates adaptation proposals via dedicated LLM analysis.
 
-    Uses a separate completion provider call to analyze evolution context
+    Uses a separate completion provider call to analyse evolution context
     and produce adaptation proposals. Follows the EvoSkill principle:
     the target agent does NOT propose its own changes.
 

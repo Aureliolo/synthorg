@@ -3,6 +3,7 @@
 OR-combines multiple triggers: fires if ANY sub-trigger fires.
 """
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.protocols import (
     EvolutionContext,
@@ -69,6 +70,7 @@ class CompositeTrigger:
                     context=context,
                 )
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     EVOLUTION_TRIGGER_FAILED,
                     agent_id=str(agent_id),

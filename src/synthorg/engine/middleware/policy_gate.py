@@ -16,6 +16,7 @@ from synthorg.engine.middleware.protocol import BaseAgentMiddleware, ToolCallabl
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_POLICY_DECISION_DENY,
+    SECURITY_POLICY_ENGINE_ERROR,
     SECURITY_POLICY_LOG_ONLY_DENY,
 )
 
@@ -95,10 +96,6 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
             decision = await self._engine.evaluate(request)
         except Exception as exc:
             reraise_critical(exc)
-            from synthorg.observability.events.security import (  # noqa: PLC0415
-                SECURITY_POLICY_ENGINE_ERROR,
-            )
-
             logger.error(
                 SECURITY_POLICY_ENGINE_ERROR,
                 error_type=type(exc).__name__,

@@ -1,6 +1,6 @@
 """Advanced tests for hybrid loop: stagnation, tiering, metadata, etc."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Never
 
 import pytest
 
@@ -358,13 +358,17 @@ class TestHybridLoopProviderErrors:
                 msg = "provider unreachable"
                 raise ConnectionError(msg)
 
-            async def stream(self, *_args: Any, **_kwargs: Any) -> Any:
+            async def stream(self, *_args: Any, **_kwargs: Any) -> Never:
                 raise NotImplementedError
 
-            async def get_model_capabilities(self, *_args: Any, **_kwargs: Any) -> Any:
+            async def get_model_capabilities(
+                self, *_args: Any, **_kwargs: Any
+            ) -> Never:
                 raise NotImplementedError
 
-            async def batch_get_capabilities(self, *_args: Any, **_kwargs: Any) -> Any:
+            async def batch_get_capabilities(
+                self, *_args: Any, **_kwargs: Any
+            ) -> Never:
                 raise NotImplementedError
 
         ctx = _ctx_with_user_msg(sample_agent_context)
@@ -391,13 +395,17 @@ class TestHybridLoopProviderErrors:
                 msg = "provider unreachable"
                 raise ConnectionError(msg)
 
-            async def stream(self, *_args: Any, **_kwargs: Any) -> Any:
+            async def stream(self, *_args: Any, **_kwargs: Any) -> Never:
                 raise NotImplementedError
 
-            async def get_model_capabilities(self, *_args: Any, **_kwargs: Any) -> Any:
+            async def get_model_capabilities(
+                self, *_args: Any, **_kwargs: Any
+            ) -> Never:
                 raise NotImplementedError
 
-            async def batch_get_capabilities(self, *_args: Any, **_kwargs: Any) -> Any:
+            async def batch_get_capabilities(
+                self, *_args: Any, **_kwargs: Any
+            ) -> Never:
                 raise NotImplementedError
 
         ctx = _ctx_with_user_msg(sample_agent_context)
@@ -405,6 +413,6 @@ class TestHybridLoopProviderErrors:
 
         result = await loop.execute(
             context=ctx,
-            provider=FailingProvider(),  # type: ignore[arg-type]
+            provider=FailingProvider(),
         )
         assert result.termination_reason == TerminationReason.ERROR

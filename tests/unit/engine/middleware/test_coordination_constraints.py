@@ -1,4 +1,4 @@
-"""Tests for #1257 coordination constraint middleware."""
+"""Tests for coordination constraint middleware."""
 
 from datetime import UTC, date, datetime
 from typing import cast

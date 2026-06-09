@@ -6,8 +6,8 @@ Drives a real :class:`ReactLoop` reading active directives from the real
 explicit supersede) before the agent's turn; the agent then adopts it at its
 turn boundary, the obsolete task is cancelled through the task engine, and the
 brain records the directive. This is the runnable unit-level proxy for the
-#1997 acceptance criterion; ``tests/integration/intervention`` drives the same
-mechanism under the simulation harness.
+steering-adoption acceptance criterion; ``tests/integration/intervention``
+drives the same mechanism under the simulation harness.
 """
 
 import pytest

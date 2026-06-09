@@ -5273,7 +5273,7 @@
     },
     {
       "kind": "code",
-      "loc": 82,
+      "loc": 84,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/triggers/composite.py",
       "owning_feature": "engine"
@@ -5707,7 +5707,7 @@
     },
     {
       "kind": "code",
-      "loc": 114,
+      "loc": 112,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/policy_gate.py",
       "owning_feature": "engine"
