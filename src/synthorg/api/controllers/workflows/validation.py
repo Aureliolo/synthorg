@@ -29,6 +29,7 @@ from synthorg.engine.workflow.validation import (
 )
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_NOT_FOUND,
 )
@@ -87,6 +88,13 @@ class WorkflowValidationController(Controller):
                 created_by="draft",
             )
         except (ValueError, ValidationError) as exc:
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="workflows.validate_draft",
+                workflow_name=data.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = WorkflowDefinitionValidationError.default_message
             raise WorkflowDefinitionValidationError(msg) from exc
 
@@ -190,6 +198,13 @@ class WorkflowValidationController(Controller):
         try:
             yaml_str = export_workflow_yaml(definition)
         except ValueError as exc:
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="workflows.export",
+                definition_id=workflow_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = f"Export failed: {safe_error_description(exc)}"
             raise WorkflowYamlExportError(msg) from exc
 

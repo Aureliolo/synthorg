@@ -541,7 +541,7 @@
     },
     {
       "kind": "code",
-      "loc": 201,
+      "loc": 250,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/_custom_rules_helpers.py",
       "owning_feature": "api_core"
@@ -681,7 +681,7 @@
     },
     {
       "kind": "controller",
-      "loc": 156,
+      "loc": 159,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/analytics/overview.py",
       "owning_feature": "api_core"
@@ -884,14 +884,14 @@
     },
     {
       "kind": "code",
-      "loc": 301,
+      "loc": 312,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/departments/_shared.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "controller",
-      "loc": 134,
+      "loc": 120,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/departments/ceremony_policy.py",
       "owning_feature": "api_core"
@@ -1577,7 +1577,7 @@
     },
     {
       "kind": "controller",
-      "loc": 175,
+      "loc": 190,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/workflows/validation.py",
       "owning_feature": "api_core"

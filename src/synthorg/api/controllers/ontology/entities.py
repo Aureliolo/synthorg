@@ -120,7 +120,7 @@ class OntologyController(Controller):
             entity = await _ontology_service(app_state).get(name)
         except OntologyNotFoundError:
             msg = "Entity not found"
-            logger.info(
+            logger.warning(
                 API_RESOURCE_NOT_FOUND,
                 resource="entity",
                 name=name,
@@ -222,7 +222,7 @@ class OntologyController(Controller):
             existing = await svc.get(name)
         except OntologyNotFoundError:
             msg = "Entity not found"
-            logger.info(API_RESOURCE_NOT_FOUND, resource="entity", name=name)
+            logger.warning(API_RESOURCE_NOT_FOUND, resource="entity", name=name)
             raise NotFoundError(msg)  # noqa: B904
 
         if existing.tier == EntityTier.CORE and any(
@@ -302,7 +302,7 @@ class OntologyController(Controller):
             entity = await svc.get(name)
         except OntologyNotFoundError:
             msg = "Entity not found"
-            logger.info(API_RESOURCE_NOT_FOUND, resource="entity", name=name)
+            logger.warning(API_RESOURCE_NOT_FOUND, resource="entity", name=name)
             raise NotFoundError(msg)  # noqa: B904
 
         if entity.tier == EntityTier.CORE:

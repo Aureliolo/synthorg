@@ -8142,6 +8142,27 @@ export type components = {
              */
             readonly transport: "stdio" | "streamable_http";
         };
+        /** CeremonyPolicyConfig */
+        readonly CeremonyPolicyConfig: {
+            /** @description Whether to auto-transition sprints */
+            readonly auto_transition?: boolean | null;
+            /**
+             * @description Scheduling strategy type
+             * @enum {string|null}
+             */
+            readonly strategy?: "task_driven" | "calendar" | "hybrid" | "event_driven" | "budget_driven" | "throughput_adaptive" | "external_trigger" | "milestone_driven" | null;
+            /** @description Strategy-specific configuration parameters */
+            readonly strategy_config?: {
+                readonly [key: string]: unknown;
+            } | null;
+            /** @description Fraction of tasks complete to trigger auto-transition */
+            readonly transition_threshold?: number | null;
+            /**
+             * @description Velocity calculator type
+             * @enum {string|null}
+             */
+            readonly velocity_calculator?: "task_driven" | "calendar" | "multi_dimensional" | "budget" | "points_per_sprint" | null;
+        };
         /**
          * CeremonyStrategyType
          * @description Supported ceremony scheduling strategies.
@@ -15623,6 +15644,22 @@ export type components = {
          * @enum {string}
          */
         readonly ValidationErrorCode: "unreachable_node" | "end_not_reachable" | "conditional_missing_true" | "conditional_missing_false" | "conditional_extra_outgoing" | "split_too_few_branches" | "task_missing_title" | "cycle_detected" | "subworkflow_ref_missing" | "subworkflow_version_unpinned" | "subworkflow_not_found" | "subworkflow_input_missing" | "subworkflow_input_unknown" | "subworkflow_input_type_mismatch" | "subworkflow_output_missing" | "subworkflow_output_unknown" | "subworkflow_output_type_mismatch" | "subworkflow_cycle_detected" | "verification_missing_pass" | "verification_missing_fail" | "verification_missing_refer" | "verification_duplicate_edge" | "verification_extra_outgoing" | "verification_edge_outside" | "verification_missing_config";
+        /**
+         * VelocityCalcType
+         * @description Supported velocity calculator types.
+         *
+         *     Each maps to a ``VelocityCalculator`` implementation that computes
+         *     velocity metrics in a strategy-appropriate unit.
+         *
+         *     Members:
+         *         TASK_DRIVEN: Points per task completed.
+         *         CALENDAR: Points per calendar day.
+         *         MULTI_DIMENSIONAL: Points per sprint with secondary dimensions.
+         *         BUDGET: Points per currency unit consumed.
+         *         POINTS_PER_SPRINT: Simple points per sprint, no normalization.
+         * @enum {string}
+         */
+        readonly VelocityCalcType: "task_driven" | "calendar" | "multi_dimensional" | "budget" | "points_per_sprint";
         /** VersionSnapshot[AgentIdentity] */
         readonly VersionSnapshot_AgentIdentity_: {
             /** @description SHA-256 hex digest of canonical JSON */
@@ -20384,9 +20421,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": {
-                    readonly [key: string]: unknown;
-                };
+                readonly "application/json": components["schemas"]["CeremonyPolicyConfig"];
             };
         };
         readonly responses: {

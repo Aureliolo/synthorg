@@ -170,7 +170,20 @@ async def _get_dept_ceremony_override(
                 msg = f"Corrupt ceremony policy override for {department_name!r}"
                 raise ServiceUnavailableError(msg) from exc
             return val
-        return None
+        # Any other type is corrupted persisted data, not "inherit":
+        # surface it instead of silently resolving the wrong policy.
+        msg = (
+            f"Corrupt ceremony policy override for {department_name!r}: "
+            f"expected object or null, got {type(val).__name__}"
+        )
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="departments.ceremony_policy.get",
+            department=department_name,
+            error_type="InvalidOverrideType",
+            error=msg,
+        )
+        raise ServiceUnavailableError(msg)
 
     # Fall back to config-based ceremony_policy
     if app_state.slice(SettingsStateSlice).config_resolver is None:

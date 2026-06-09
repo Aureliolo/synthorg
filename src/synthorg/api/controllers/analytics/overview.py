@@ -23,6 +23,7 @@ from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.trends import BucketSize, bucket_cost_records
 from synthorg.config.schema import AgentConfig
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
@@ -162,6 +163,8 @@ class AnalyticsOverviewController(Controller):
                     ),
                 )
         except ExceptionGroup as eg:
+            for inner in eg.exceptions:
+                reraise_critical(inner)
             logger.warning(
                 API_REQUEST_ERROR,
                 endpoint="analytics.overview",

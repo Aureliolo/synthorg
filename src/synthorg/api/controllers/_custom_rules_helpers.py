@@ -7,7 +7,7 @@ the service wiring (``_service`` + ``CustomRulesService``) remains there
 for the existing patch target.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
@@ -28,6 +28,31 @@ from synthorg.meta.rules.custom import (
     CustomRuleDefinition,
     MetricDescriptor,
 )
+
+
+def _ensure_registered_metric_path(value: str) -> str:
+    """Reject metric paths that do not name a registered snapshot metric.
+
+    Shared by the create/update/preview request models so malformed
+    paths fail request validation (HTTP 400) instead of surfacing as a
+    500 when ``CustomRuleDefinition`` or ``_build_preview_snapshot``
+    raises inside the handler body.
+
+    Returns:
+        The validated metric path, unchanged.
+
+    Raises:
+        ValueError: If ``value`` is not a registered metric path.
+    """
+    valid_paths = {metric.path for metric in METRIC_REGISTRY}
+    if value not in valid_paths:
+        valid = ", ".join(sorted(valid_paths))
+        msg = (
+            f"metric_path '{value}' is not a valid snapshot metric. "
+            f"Valid paths: {valid}"
+        )
+        raise ValueError(msg)
+    return value
 
 
 class CreateCustomRuleRequest(BaseModel):
@@ -71,6 +96,16 @@ class CreateCustomRuleRequest(BaseModel):
         description="Strategies to trigger when the rule matches.",
     )
 
+    @field_validator("metric_path")
+    @classmethod
+    def _validate_metric_path(cls, value: NotBlankStr) -> NotBlankStr:
+        """Validate metric path at the request boundary.
+
+        Returns:
+            The validated metric path.
+        """
+        return NotBlankStr(_ensure_registered_metric_path(value))
+
 
 class UpdateCustomRuleRequest(BaseModel):
     """Request body for updating a custom signal rule.
@@ -97,6 +132,21 @@ class UpdateCustomRuleRequest(BaseModel):
     severity: RuleSeverity | None = None
     target_altitudes: tuple[ProposalAltitude, ...] | None = None
 
+    @field_validator("metric_path")
+    @classmethod
+    def _validate_metric_path(
+        cls,
+        value: NotBlankStr | None,
+    ) -> NotBlankStr | None:
+        """Validate metric path at the request boundary when supplied.
+
+        Returns:
+            The validated metric path, or ``None`` when omitted.
+        """
+        if value is None:
+            return None
+        return NotBlankStr(_ensure_registered_metric_path(value))
+
 
 class PreviewRuleRequest(BaseModel):
     """Request body for dry-run rule evaluation.
@@ -114,6 +164,16 @@ class PreviewRuleRequest(BaseModel):
     comparator: Comparator
     threshold: float
     sample_value: float
+
+    @field_validator("metric_path")
+    @classmethod
+    def _validate_metric_path(cls, value: NotBlankStr) -> NotBlankStr:
+        """Validate metric path at the request boundary.
+
+        Returns:
+            The validated metric path.
+        """
+        return NotBlankStr(_ensure_registered_metric_path(value))
 
 
 def rule_to_dict(rule: CustomRuleDefinition) -> dict[str, object]:

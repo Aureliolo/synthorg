@@ -15,14 +15,11 @@ from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import ValidationError
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_CEREMONY_POLICY_DEPT_CLEARED,
     API_CEREMONY_POLICY_DEPT_UPDATED,
-    API_REQUEST_ERROR,
 )
 
 logger = get_logger(__name__)
@@ -75,46 +72,33 @@ class DepartmentCeremonyPolicyController(Controller):
         self,
         state: State,
         name: PathName,
-        data: dict[str, object],
+        data: CeremonyPolicyConfig,
     ) -> ApiResponse[dict[str, object]]:
         """Set the ceremony policy override for a department.
 
-        Validates the input as a partial ``CeremonyPolicyConfig``.
+        Litestar validates the body as a partial
+        ``CeremonyPolicyConfig`` at the request boundary (invalid
+        payloads are rejected with HTTP 400 before the handler runs).
         Stores the override in the settings system under the
         ``dept_ceremony_policies`` JSON key.
 
         Args:
             state: Application state.
             name: Department name.
-            data: Partial ceremony policy dict.
+            data: Partial ceremony policy override.
 
         Returns:
             The stored ceremony policy dict.
 
         Raises:
             NotFoundError: If the department does not exist.
-            ValidationError: If the policy data is invalid.
         """
         app_state: AppState = state.app_state
 
         # Verify the department exists and get canonical name
         canonical = await _require_department_exists(app_state, name)
 
-        # Validate policy data via Pydantic
-        try:
-            validated = CeremonyPolicyConfig.model_validate(data)
-        except Exception as exc:
-            reraise_critical(exc)
-            msg = "Invalid ceremony policy data"
-            logger.warning(
-                API_REQUEST_ERROR,
-                endpoint="departments.ceremony_policy.update",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ValidationError(msg) from exc
-
-        clean_data = validated.model_dump(mode="json", exclude_none=True)
+        clean_data = data.model_dump(mode="json", exclude_none=True)
 
         # Merge into the dept_ceremony_policies JSON setting
         await _mutate_dept_policies_with_retry(app_state, canonical, clean_data)
