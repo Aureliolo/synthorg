@@ -1,22 +1,18 @@
 """Factory for building propagation strategies from configuration."""
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.registry import StrategyRegistry
+from synthorg.memory.procedural.propagation.config import PropagationConfig
 from synthorg.memory.procedural.propagation.department_scoped import (
     DepartmentScopedPropagation,
 )
 from synthorg.memory.procedural.propagation.no_propagation import (
     NoPropagation,
 )
+from synthorg.memory.procedural.propagation.protocol import PropagationStrategy
 from synthorg.memory.procedural.propagation.role_scoped import (
     RoleScopedPropagation,
 )
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.memory.procedural.propagation.config import PropagationConfig
-    from synthorg.memory.procedural.propagation.protocol import PropagationStrategy
 
 logger = get_logger(__name__)
 

@@ -9,7 +9,7 @@ unit-testable without real network egress.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -18,7 +18,7 @@ from synthorg.knowledge.errors import (
     KnowledgeIngestError,
     KnowledgeSourceUnavailableError,
 )
-from synthorg.knowledge.models import RawDocument, RawUnit, WebLocator
+from synthorg.knowledge.models import KnowledgeSource, RawDocument, RawUnit, WebLocator
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_LOAD_FAILED,
@@ -26,9 +26,6 @@ from synthorg.observability.events.knowledge import (
 )
 from synthorg.tools.html_parse_guard import HTMLParseGuard
 from synthorg.versioning.hashing import compute_text_hash
-
-if TYPE_CHECKING:
-    from synthorg.knowledge.models import KnowledgeSource
 
 logger = get_logger(__name__)
 

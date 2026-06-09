@@ -13,9 +13,9 @@ from synthorg.memory.ranking import (
     ScoredMemory,
     compute_combined_score,
     compute_recency_score,
-    fuse_ranked_lists,
     rank_memories,
 )
+from synthorg.memory.ranking_rrf import fuse_ranked_lists
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 
@@ -654,5 +654,4 @@ class TestScoringStrategyField:
 
 # ── Diversity re-ranking ───────────────────────────────────────────
 # Tests for ``bigram_jaccard`` and ``apply_diversity_penalty`` live in
-# ``test_ranking_diversity.py`` -- split from this file to stay under
-# the 800-line file convention.
+# ``test_ranking_diversity.py``.

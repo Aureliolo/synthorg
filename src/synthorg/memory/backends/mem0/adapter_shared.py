@@ -9,7 +9,9 @@ Relies on ``_sparse_encoder``, ``_qdrant_client``, ``_mem0_config``,
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.mem0.client_protocol import Mem0Client
+from synthorg.memory.backends.mem0.config import Mem0BackendConfig
 from synthorg.memory.backends.mem0.shared import (
     publish_shared,
     retract_shared,
@@ -18,12 +20,11 @@ from synthorg.memory.backends.mem0.shared import (
 from synthorg.memory.backends.mem0.sparse_search import async_retrieve_sparse
 from synthorg.memory.errors import MemoryError as DomainMemoryError
 from synthorg.memory.errors import MemoryRetrievalError
+from synthorg.memory.models import MemoryEntry, MemoryQuery, MemoryStoreRequest
+from synthorg.memory.sparse import BM25Tokenizer
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.backends.mem0.config import Mem0BackendConfig
-    from synthorg.memory.models import MemoryEntry, MemoryQuery, MemoryStoreRequest
-    from synthorg.memory.sparse import BM25Tokenizer
+    from qdrant_client import QdrantClient
 
 
 class Mem0AdapterSharedMixin:
@@ -32,7 +33,7 @@ class Mem0AdapterSharedMixin:
     __slots__ = ()
 
     _sparse_encoder: BM25Tokenizer | None
-    _qdrant_client: object
+    _qdrant_client: QdrantClient | None
     _mem0_config: Mem0BackendConfig
 
     @property
@@ -78,7 +79,11 @@ class Mem0AdapterSharedMixin:
         Returns:
             Tuple of ``MemoryEntry``.
         """
-        if not self.supports_sparse_search or self._sparse_encoder is None:
+        if (
+            not self.supports_sparse_search
+            or self._sparse_encoder is None
+            or self._qdrant_client is None
+        ):
             return ()
         self._require_connected()
         self._validate_agent_id(agent_id, error_cls=MemoryRetrievalError)

@@ -1,9 +1,10 @@
 """``RecallMemoryTool`` for ToolRegistry integration."""
 
-from typing import TYPE_CHECKING, Any, ClassVar, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel
 
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.tool_retriever import (
     RECALL_MEMORY_TOOL_NAME,
     ToolBasedInjectionStrategy,
@@ -12,9 +13,6 @@ from synthorg.memory.tools._args import RecallMemoryArgs
 from synthorg.memory.tools._shared import _is_error_response
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 
 class RecallMemoryTool(BaseTool):
@@ -50,7 +48,7 @@ class RecallMemoryTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute a memory recall by ID via the injection strategy.
 

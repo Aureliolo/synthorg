@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.registry import StrategyRegistry
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
 from synthorg.memory.consolidation.composite import (
     CompositeConsolidationStrategy,
 )
@@ -24,6 +26,8 @@ from synthorg.memory.consolidation.config import (
     ConsolidationStrategyType,
     LLMConsolidationConfig,
 )
+from synthorg.memory.consolidation.density import DensityClassifier
+from synthorg.memory.consolidation.extractive import ExtractivePreserver
 from synthorg.memory.consolidation.llm_op import LLMSynthesisOp
 from synthorg.memory.consolidation.ops import (
     ConcatenationOp,
@@ -31,15 +35,11 @@ from synthorg.memory.consolidation.ops import (
 )
 from synthorg.memory.consolidation.selectors import HighestRelevanceSelector
 from synthorg.memory.errors import MemoryConfigError
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
-    from synthorg.memory.consolidation.density import DensityClassifier
-    from synthorg.memory.consolidation.extractive import ExtractivePreserver
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.providers.protocol import CompletionProvider
 
 _DEFAULT_GROUP_THRESHOLD: Final[int] = 3
 

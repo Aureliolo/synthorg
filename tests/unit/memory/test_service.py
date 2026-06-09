@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for :class:`MemoryService`.
 
 Exercises the in-process logic of the service layer (deploy / rollback
@@ -13,10 +12,16 @@ from typing import override
 
 import pytest
 
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
     FineTuneRun,
+)
+from synthorg.memory.models import (
+    MemoryEntry,
+    MemoryQuery,
+    MemoryStoreRequest,
 )
 from synthorg.memory.service import (
     CheckpointNotFoundError,
@@ -294,7 +299,7 @@ class TestMemoryServiceDeploy:
         service = MemoryService(
             checkpoint_repo=repo,
             run_repo=_FakeRunRepo(),
-            settings_service=settings,  # type: ignore[arg-type]
+            settings_service=settings,
         )
 
         await service.deploy_checkpoint(NotBlankStr("a"))
@@ -320,7 +325,7 @@ class TestMemoryServiceDeploy:
         service = MemoryService(
             checkpoint_repo=repo,
             run_repo=_FakeRunRepo(),
-            settings_service=settings,  # type: ignore[arg-type]
+            settings_service=settings,
         )
 
         with pytest.raises(RuntimeError):
@@ -364,7 +369,7 @@ class TestMemoryServiceDeploy:
         service = MemoryService(
             checkpoint_repo=repo,
             run_repo=_FakeRunRepo(),
-            settings_service=settings,  # type: ignore[arg-type]
+            settings_service=settings,
         )
 
         with pytest.raises(RuntimeError):
@@ -433,9 +438,7 @@ class TestMemoryServiceRollback:
         service = MemoryService(
             checkpoint_repo=repo,
             run_repo=_FakeRunRepo(),
-            settings_service=(
-                _FakeSettingsService() if attach_settings else None  # type: ignore[arg-type]
-            ),
+            settings_service=(_FakeSettingsService() if attach_settings else None),
         )
         with pytest.raises(expected_exc, match=match):
             await service.rollback_checkpoint(NotBlankStr("a"))
@@ -452,7 +455,7 @@ class TestMemoryServiceRollback:
         service = MemoryService(
             checkpoint_repo=repo,
             run_repo=_FakeRunRepo(),
-            settings_service=settings,  # type: ignore[arg-type]
+            settings_service=settings,
         )
 
         await service.rollback_checkpoint(NotBlankStr("a"))
@@ -479,7 +482,7 @@ class TestMemoryServiceRollback:
         service = MemoryService(
             checkpoint_repo=repo,
             run_repo=_FakeRunRepo(),
-            settings_service=_FakeSettingsService(),  # type: ignore[arg-type]
+            settings_service=_FakeSettingsService(),
         )
         result = await service.rollback_checkpoint(NotBlankStr("a"))
         assert result.id == "a"
@@ -572,7 +575,7 @@ class TestRollbackStepCatastrophicErrors:
 
 
 class _FakeMemoryBackend:
-    """Minimal :class:`MemoryBackend` fake exposing only ``delete``."""
+    """Minimal :class:`MemoryBackend` fake; only ``delete`` is exercised."""
 
     def __init__(self, *, present: dict[tuple[str, str], bool] | None = None) -> None:
         # Map ``(agent_id, memory_id)`` -> exists. Defaults to empty;
@@ -580,9 +583,46 @@ class _FakeMemoryBackend:
         self._present: dict[tuple[str, str], bool] = dict(present or {})
         self.delete_calls: list[tuple[str, str]] = []
 
+    async def connect(self) -> None:
+        return None
+
+    async def disconnect(self) -> None:
+        return None
+
+    async def health_check(self) -> bool:
+        return True
+
+    @property
+    def is_connected(self) -> bool:
+        return True
+
+    @property
+    def backend_name(self) -> NotBlankStr:
+        return NotBlankStr("fake")
+
+    async def store(
+        self, agent_id: NotBlankStr, request: MemoryStoreRequest
+    ) -> NotBlankStr:
+        return NotBlankStr("mem-0")
+
+    async def retrieve(
+        self, agent_id: NotBlankStr, query: MemoryQuery
+    ) -> tuple[MemoryEntry, ...]:
+        return ()
+
+    async def get(
+        self, agent_id: NotBlankStr, memory_id: NotBlankStr
+    ) -> MemoryEntry | None:
+        return None
+
     async def delete(self, agent_id: str, memory_id: str) -> bool:
         self.delete_calls.append((str(agent_id), str(memory_id)))
         return self._present.pop((str(agent_id), str(memory_id)), False)
+
+    async def count(
+        self, agent_id: NotBlankStr, *, category: MemoryCategory | None = None
+    ) -> int:
+        return 0
 
 
 class TestMemoryServiceDeleteEntry:
@@ -594,7 +634,7 @@ class TestMemoryServiceDeleteEntry:
             checkpoint_repo=_FakeCheckpointRepo(),
             run_repo=_FakeRunRepo(),
             settings_service=None,
-            memory_backend=backend,  # type: ignore[arg-type]
+            memory_backend=backend,
         )
 
         result = await service.delete_memory_entry(
@@ -611,7 +651,7 @@ class TestMemoryServiceDeleteEntry:
             checkpoint_repo=_FakeCheckpointRepo(),
             run_repo=_FakeRunRepo(),
             settings_service=None,
-            memory_backend=backend,  # type: ignore[arg-type]
+            memory_backend=backend,
         )
 
         result = await service.delete_memory_entry(

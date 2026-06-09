@@ -11,7 +11,6 @@ hit from another project leaking into the result.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
@@ -26,22 +25,24 @@ from synthorg.knowledge.constants import (
     SYSTEM_KNOWLEDGE_AGENT_ID,
 )
 from synthorg.knowledge.errors import KnowledgeRetrievalError
-from synthorg.knowledge.models import Citation, KnowledgeHit
+from synthorg.knowledge.models import (
+    ChunkProvenanceRow,
+    Citation,
+    KnowledgeHit,
+    KnowledgeSource,
+)
 from synthorg.memory.models import MemoryEntry, MemoryQuery
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_CITATION_UNRESOLVED,
     KNOWLEDGE_SEARCH_FAILED,
     KNOWLEDGE_SEARCHED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.knowledge.models import ChunkProvenanceRow, KnowledgeSource
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.persistence.knowledge_protocol import (
-        ChunkProvenanceRepository,
-        KnowledgeSourceRepository,
-    )
+from synthorg.persistence.knowledge_protocol import (
+    ChunkProvenanceRepository,
+    KnowledgeSourceRepository,
+)
 
 logger = get_logger(__name__)
 

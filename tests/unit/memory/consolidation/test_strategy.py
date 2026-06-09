@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for the Simple composite (HighestRelevanceSelector + ConcatenationOp).
 
 Post ADR-0005 axis split: ``SimpleConsolidationStrategy`` is gone;
@@ -8,7 +7,7 @@ the composite is byte-identical (see ``test_axis_split_golden``).
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -74,7 +73,7 @@ class TestSimpleComposite:
         entries = tuple(_make_entry(f"m{i}") for i in range(2))
         result = await strategy.consolidate(entries, agent_id=_AGENT_ID)
         assert result.consolidated_count == 0
-        cast(Any, backend.delete).assert_not_called()
+        cast(AsyncMock, backend.delete).assert_not_called()
 
     async def test_single_category_above_threshold(self) -> None:
         backend = mock_of[MemoryBackend]()
@@ -145,7 +144,7 @@ class TestSimpleComposite:
         )
         await strategy.consolidate(long_entries, agent_id=_AGENT_ID)
 
-        store_call = cast(Any, backend.store).call_args
+        store_call = cast(AsyncMock, backend.store).call_args
         summary_content = store_call[0][1].content
         assert "..." in summary_content
 

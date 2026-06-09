@@ -10,7 +10,6 @@ edit cheap (one chunk re-embedded, not the whole document).
 
 import asyncio
 import builtins
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,17 +35,17 @@ from synthorg.knowledge.models import (
     KnowledgeSource,
 )
 from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_CHUNKS_INDEX_FAILED,
     KNOWLEDGE_CHUNKS_INDEXED,
     KNOWLEDGE_SOURCE_PURGED,
 )
-from synthorg.persistence.knowledge_protocol import ChunkProvenanceFilter
-
-if TYPE_CHECKING:
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.persistence.knowledge_protocol import ChunkProvenanceRepository
+from synthorg.persistence.knowledge_protocol import (
+    ChunkProvenanceFilter,
+    ChunkProvenanceRepository,
+)
 
 logger = get_logger(__name__)
 

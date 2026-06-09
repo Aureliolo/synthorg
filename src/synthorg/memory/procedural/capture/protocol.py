@@ -5,14 +5,12 @@ determine when and how procedural memories are generated from
 task execution outcomes.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from synthorg.engine.loop_protocol import ExecutionResult
-    from synthorg.engine.recovery import RecoveryResult
-    from synthorg.memory.protocol import MemoryBackend
+from synthorg.engine.loop_protocol import ExecutionResult
+from synthorg.engine.recovery import RecoveryResult
+from synthorg.memory.protocol import MemoryBackend
 
 
 # Pluggable procedural-memory capture seam for capture/factory.py dispatch

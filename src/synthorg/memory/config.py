@@ -5,7 +5,7 @@ and backend-specific settings.
 """
 
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Any, ClassVar, Self
+from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -303,11 +303,11 @@ class CompanyMemoryConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
+    def _apply_mirrors(cls, data: object) -> object:
         """Apply mirrors.
 
         Returns:
-            Result of type ``Any``.
+            The input data with any unset mirror fields populated.
         """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 

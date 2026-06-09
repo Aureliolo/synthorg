@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for SelfEditingMemoryStrategy core -- config, init, protocol, dispatch."""
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -13,7 +11,8 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.injection import InjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend
-from synthorg.memory.self_editing import (
+from synthorg.memory.self_editing import SelfEditingMemoryStrategy
+from synthorg.memory.self_editing_models import (
     ARCHIVAL_MEMORY_SEARCH_TOOL,
     ARCHIVAL_MEMORY_WRITE_TOOL,
     CORE_MEMORY_READ_TOOL,
@@ -21,7 +20,6 @@ from synthorg.memory.self_editing import (
     RECALL_MEMORY_READ_TOOL,
     RECALL_MEMORY_WRITE_TOOL,
     SelfEditingMemoryConfig,
-    SelfEditingMemoryStrategy,
 )
 from synthorg.providers.enums import MessageRole
 
@@ -60,8 +58,8 @@ def _make_backend(
     return backend
 
 
-def _make_config(**kwargs: Any) -> SelfEditingMemoryConfig:
-    return SelfEditingMemoryConfig(**kwargs)
+def _make_config(**kwargs: object) -> SelfEditingMemoryConfig:
+    return SelfEditingMemoryConfig.model_validate(kwargs)
 
 
 def _make_strategy(

@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Final, override
+from typing import Final, override
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.embedding.cancellation import CancellationToken
@@ -104,8 +104,8 @@ def _resolve_health_port() -> int:
 
 
 # Stage functions have different signatures; the runner dispatches by
-# unpacking config JSON into kwargs per stage.  Typed as Any because
-# mypy cannot narrow across the heterogeneous union.
+# reading stage-specific keys from the config JSON.  Every consumed key
+# is string-valued, coerced via ``str()`` at the call site.
 _EXECUTABLE_STAGES: frozenset[FineTuneStage] = frozenset(
     {
         FineTuneStage.GENERATING_DATA,
@@ -117,7 +117,7 @@ _EXECUTABLE_STAGES: frozenset[FineTuneStage] = frozenset(
 )
 
 
-def _load_config() -> dict[str, Any] | None:
+def _load_config() -> dict[str, object] | None:
     """Load and validate the stage config JSON.
 
     Returns:
@@ -230,7 +230,7 @@ def _run() -> int:
     stage_name = config.get("stage", "")
 
     try:
-        stage = FineTuneStage(stage_name)
+        stage = FineTuneStage(str(stage_name))
     except ValueError:
         print(f"ERROR: unknown stage {stage_name!r}", file=sys.stderr)  # noqa: T201
         _shutdown_health_server(health_server)
@@ -266,7 +266,7 @@ def _run() -> int:
 
 async def _dispatch_stage(
     stage: FineTuneStage,
-    config: dict[str, Any],
+    config: dict[str, object],
     token: CancellationToken,
 ) -> None:
     """Dispatch a stage call with the correct kwargs from config JSON.
@@ -291,35 +291,35 @@ async def _dispatch_stage(
     match stage:
         case FineTuneStage.GENERATING_DATA:
             await generate_training_data(
-                source_dir=config["source_dir"],
-                output_dir=config["output_dir"],
+                source_dir=str(config["source_dir"]),
+                output_dir=str(config["output_dir"]),
                 cancellation=token,
             )
         case FineTuneStage.MINING_NEGATIVES:
             await mine_hard_negatives(
-                training_data_path=config["training_data_path"],
-                base_model=config["base_model"],
-                output_dir=config["output_dir"],
+                training_data_path=str(config["training_data_path"]),
+                base_model=str(config["base_model"]),
+                output_dir=str(config["output_dir"]),
                 cancellation=token,
             )
         case FineTuneStage.TRAINING:
             await contrastive_fine_tune(
-                training_data_path=config["training_data_path"],
-                base_model=config["base_model"],
-                output_dir=config["output_dir"],
+                training_data_path=str(config["training_data_path"]),
+                base_model=str(config["base_model"]),
+                output_dir=str(config["output_dir"]),
                 cancellation=token,
             )
         case FineTuneStage.EVALUATING:
             await evaluate_checkpoint(
-                checkpoint_path=config["checkpoint_path"],
-                base_model=config["base_model"],
-                validation_data_path=config["validation_data_path"],
-                output_dir=config["output_dir"],
+                checkpoint_path=str(config["checkpoint_path"]),
+                base_model=str(config["base_model"]),
+                validation_data_path=str(config["validation_data_path"]),
+                output_dir=str(config["output_dir"]),
                 cancellation=token,
             )
         case FineTuneStage.DEPLOYING:
             await deploy_checkpoint(
-                checkpoint_path=config["checkpoint_path"],
+                checkpoint_path=str(config["checkpoint_path"]),
             )
 
 

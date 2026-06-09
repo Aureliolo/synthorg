@@ -9,12 +9,9 @@ import pytest
 from pytest_codspeed import BenchmarkFixture
 
 from synthorg.memory.models import MemoryEntry
-from synthorg.memory.ranking import (
-    apply_diversity_penalty,
-    bigram_jaccard,
-    fuse_ranked_lists,
-    rank_memories,
-)
+from synthorg.memory.ranking import rank_memories
+from synthorg.memory.ranking_mmr import apply_diversity_penalty, bigram_jaccard
+from synthorg.memory.ranking_rrf import fuse_ranked_lists
 from tests.benchmarks._helpers import NOW, RETRIEVAL_CONFIG, make_memory_entry
 
 

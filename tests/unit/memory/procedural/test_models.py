@@ -1,7 +1,4 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for procedural memory domain models."""
-
-from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -14,9 +11,9 @@ from synthorg.memory.procedural.models import (
 )
 
 
-def _make_payload(**overrides: Any) -> FailureAnalysisPayload:
+def _make_payload(**overrides: object) -> FailureAnalysisPayload:
     """Build a valid FailureAnalysisPayload with overridable defaults."""
-    defaults: dict[str, Any] = {
+    defaults: dict[str, object] = {
         "task_id": "task-001",
         "task_title": "Implement auth module",
         "task_description": "Create JWT authentication.",
@@ -31,12 +28,12 @@ def _make_payload(**overrides: Any) -> FailureAnalysisPayload:
         "can_reassign": True,
     }
     defaults.update(overrides)
-    return FailureAnalysisPayload(**defaults)
+    return FailureAnalysisPayload.model_validate(defaults)
 
 
-def _make_proposal(**overrides: Any) -> ProceduralMemoryProposal:
+def _make_proposal(**overrides: object) -> ProceduralMemoryProposal:
     """Build a valid ProceduralMemoryProposal with overridable defaults."""
-    defaults: dict[str, Any] = {
+    defaults: dict[str, object] = {
         "discovery": "When facing LLM timeouts, break task into smaller steps.",
         "condition": "Task exceeds 10 turns without progress.",
         "action": "Decompose the task into subtasks before retrying.",
@@ -45,7 +42,7 @@ def _make_proposal(**overrides: Any) -> ProceduralMemoryProposal:
         "tags": ("timeout", "decomposition"),
     }
     defaults.update(overrides)
-    return ProceduralMemoryProposal(**defaults)
+    return ProceduralMemoryProposal.model_validate(defaults)
 
 
 # -- FailureAnalysisPayload -------------------------------------------

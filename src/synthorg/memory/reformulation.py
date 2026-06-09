@@ -6,19 +6,16 @@ iteratively improve retrieval quality.
 """
 
 import builtins
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from collections.abc import Awaitable, Callable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.memory.models import MemoryEntry
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_REFORMULATION_FAILED,
     MEMORY_SUFFICIENCY_CHECK_FAILED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from synthorg.memory.models import MemoryEntry
 
 logger = get_logger(__name__)
 

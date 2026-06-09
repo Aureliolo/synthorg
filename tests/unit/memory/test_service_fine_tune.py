@@ -10,12 +10,16 @@ from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
     FineTuneDataSourceType,
+    FineTuneRequest,
     FineTuneRun,
     FineTuneRunConfig,
     FineTuneStatus,
 )
 from synthorg.memory.fine_tune_plan import FineTunePlan, MemoryBackendUnsupportedError
 from synthorg.memory.service import MemoryService
+from synthorg.settings.enums import SettingNamespace, SettingSource
+from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.models import SettingValue
 
 pytestmark = pytest.mark.unit
 
@@ -152,8 +156,6 @@ class _FakeCheckpointRepo:
 
 class _FakeOrchestrator:
     def __init__(self) -> None:
-        from synthorg.memory.embedding.fine_tune_models import FineTuneRequest
-
         self.start_calls: list[FineTuneRequest] = []
         self.resume_calls: list[str] = []
         self.cancel_calls: int = 0
@@ -165,7 +167,7 @@ class _FakeOrchestrator:
         # care can assign a ``FineTuneRun`` before invoking cancel.
         self.current_run: FineTuneRun | None = None
 
-    async def start(self, request) -> FineTuneRun:  # type: ignore[no-untyped-def]
+    async def start(self, request: FineTuneRequest) -> FineTuneRun:
         self.start_calls.append(request)
         return _run()
 
@@ -184,22 +186,24 @@ class _FakeSettings:
     def __init__(self) -> None:
         self._store: dict[tuple[str, str], str] = {}
 
-    async def get(self, namespace: str, key: str):  # type: ignore[no-untyped-def]
+    async def get(self, namespace: str, key: str) -> SettingValue:
         value = self._store.get((namespace, key))
         if value is None:
-            from synthorg.settings.errors import SettingNotFoundError
-
             msg = f"{namespace}.{key} not set"
             raise SettingNotFoundError(msg)
-
-        class _Entry:
-            def __init__(self, v: str) -> None:
-                self.value = v
-
-        return _Entry(value)
+        return SettingValue(
+            namespace=SettingNamespace(namespace),
+            key=NotBlankStr(key),
+            value=value,
+            source=SettingSource.DATABASE,
+            updated_at=None,
+        )
 
     async def set(self, namespace: str, key: str, value: str) -> None:
         self._store[(namespace, key)] = value
+
+    async def delete(self, namespace: str, key: str) -> None:
+        self._store.pop((namespace, key), None)
 
 
 def _service(
@@ -212,8 +216,8 @@ def _service(
     return MemoryService(
         checkpoint_repo=_FakeCheckpointRepo(checkpoints),
         run_repo=_FakeRunRepo(runs),
-        settings_service=settings,  # type: ignore[arg-type]
-        orchestrator=orchestrator,  # type: ignore[arg-type]
+        settings_service=settings,
+        orchestrator=orchestrator,
     )
 
 
@@ -423,10 +427,10 @@ class TestRunPreflight:
     ) -> None:
         """``os.access(R_OK)`` returning ``False`` fails the check.
 
-        Covers the "claims readable, isn't" gap Gemini flagged on
-        PR #1550 -- the pass message promises readability, so a
-        directory the runner cannot actually read must fail
-        preflight rather than proceed to pipeline start.
+        The preflight pass message promises readability, so a directory
+        that exists and is a directory but that the runner cannot
+        actually read must fail preflight rather than proceed to
+        pipeline start.
         """
         monkeypatch.setattr(Path, "exists", lambda self: True)
         monkeypatch.setattr(Path, "is_dir", lambda self: True)

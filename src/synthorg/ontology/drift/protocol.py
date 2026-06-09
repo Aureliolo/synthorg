@@ -1,10 +1,9 @@
 """Drift detection strategy protocol."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.ontology.models import DriftReport
+from synthorg.core.types import NotBlankStr
+from synthorg.ontology.models import DriftReport
 
 
 # LayeredDriftDetector impl in drift/layered.py; drift service consumer.

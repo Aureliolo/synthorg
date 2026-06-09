@@ -14,23 +14,24 @@ Constructor shapes diverge across the three impls (e.g. only
 than passing a uniform deps tuple where most fields would be ignored.
 """
 
-from typing import TYPE_CHECKING, assert_never
+from typing import assert_never
 
-from synthorg.memory.injection import InjectionStrategy
+from synthorg.memory.filter import MemoryFilterStrategy
+from synthorg.memory.injection import (
+    InjectionStrategy,
+    MemoryInjectionStrategy,
+    TokenEstimator,
+)
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.memory.reformulation import QueryReformulator, SufficiencyChecker
+from synthorg.memory.retrieval.protocol import HierarchicalRetriever
+from synthorg.memory.retrieval.reranking.protocol import QuerySpecificReranker
+from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.memory.self_editing import SelfEditingMemoryStrategy
+from synthorg.memory.self_editing_models import SelfEditingMemoryConfig
+from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
-
-if TYPE_CHECKING:
-    from synthorg.memory.filter import MemoryFilterStrategy
-    from synthorg.memory.injection import MemoryInjectionStrategy, TokenEstimator
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.memory.reformulation import QueryReformulator, SufficiencyChecker
-    from synthorg.memory.retrieval.protocol import HierarchicalRetriever
-    from synthorg.memory.retrieval.reranking.protocol import QuerySpecificReranker
-    from synthorg.memory.retrieval_config import MemoryRetrievalConfig
-    from synthorg.memory.self_editing import SelfEditingMemoryConfig
-    from synthorg.memory.shared import SharedKnowledgeStore
 
 
 def build_memory_injection_strategy(  # noqa: PLR0913 -- per-strategy deps surface

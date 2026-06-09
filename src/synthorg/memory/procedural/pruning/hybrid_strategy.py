@@ -4,14 +4,10 @@ Combines TTL-based expiry with Pareto frontier optimization for
 robust memory management.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.models import MemoryEntry
+from synthorg.memory.procedural.pruning.protocol import PruningStrategy
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.models import MemoryEntry
-    from synthorg.memory.procedural.pruning.protocol import PruningStrategy
 
 logger = get_logger(__name__)
 

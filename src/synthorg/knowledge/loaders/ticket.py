@@ -12,7 +12,7 @@ Each ticket comment becomes one :class:`RawUnit` with a
 comment (and char range) the matching chunk came from.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,16 +23,18 @@ from synthorg.knowledge.errors import (
     KnowledgeIngestError,
     KnowledgeSourceUnavailableError,
 )
-from synthorg.knowledge.models import RawDocument, RawUnit, TicketLocator
+from synthorg.knowledge.models import (
+    KnowledgeSource,
+    RawDocument,
+    RawUnit,
+    TicketLocator,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_LOAD_FAILED,
     KNOWLEDGE_SOURCE_LOADED,
 )
 from synthorg.versioning.hashing import compute_text_hash
-
-if TYPE_CHECKING:
-    from synthorg.knowledge.models import KnowledgeSource
 
 logger = get_logger(__name__)
 

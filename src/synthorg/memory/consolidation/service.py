@@ -6,7 +6,7 @@ max-memories enforcement into a single maintenance entry point.
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
@@ -27,10 +27,6 @@ from synthorg.memory.consolidation.strategy import (
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.settings.kill_switch import resolve_bool_with_fallback
-
-if TYPE_CHECKING:
-    from synthorg.settings.resolver import ConfigResolver
 from synthorg.observability.events.consolidation import (
     ARCHIVAL_ENTRY_STORED,
     ARCHIVAL_FAILED,
@@ -45,6 +41,8 @@ from synthorg.observability.events.consolidation import (
     MAX_MEMORIES_ENFORCE_FAILED,
     MAX_MEMORIES_ENFORCED,
 )
+from synthorg.settings.kill_switch import resolve_bool_with_fallback
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -199,6 +197,7 @@ class MemoryConsolidationService:
                     archival_index=index,
                 )
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CONSOLIDATION_FAILED,
                 agent_id=agent_id,
@@ -261,6 +260,7 @@ class MemoryConsolidationService:
                         deleted += 1
                 remaining -= len(entries)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MAX_MEMORIES_ENFORCE_FAILED,
                 agent_id=agent_id,
@@ -355,6 +355,7 @@ class MemoryConsolidationService:
             result = await self._run_consolidation_unchecked(agent_id)
             await self.enforce_max_memories(agent_id)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MAINTENANCE_FAILED,
                 agent_id=agent_id,

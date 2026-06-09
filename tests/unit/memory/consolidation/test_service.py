@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for MemoryConsolidationService."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -44,15 +42,16 @@ def _make_entry(entry_id: str) -> MemoryEntry:
 def _make_backend_mock(
     entries: tuple[MemoryEntry, ...] = (),
     count: int = 0,
-) -> Any:
-    return cast(
-        Any,
-        mock_of[MemoryBackend](
-            retrieve=AsyncMock(return_value=entries),
-            delete=AsyncMock(return_value=True),
-            count=AsyncMock(return_value=count),
-        ),
-    )
+    **method_overrides: AsyncMock,
+) -> MemoryBackend:
+    methods: dict[str, AsyncMock] = {
+        "retrieve": AsyncMock(return_value=entries),
+        "delete": AsyncMock(return_value=True),
+        "count": AsyncMock(return_value=count),
+    }
+    methods.update(method_overrides)
+    backend: MemoryBackend = mock_of[MemoryBackend](**methods)
+    return backend
 
 
 @pytest.mark.unit
@@ -180,8 +179,14 @@ class TestEnforceMaxMemories:
 
     async def test_enforce_max_memories_delete_returns_false(self) -> None:
         entries = tuple(_make_entry(f"m{i}") for i in range(3))
-        backend = _make_backend_mock(entries=entries, count=13)
-        backend.delete = AsyncMock(side_effect=[True, False, True])
+        backend = _make_backend_mock(
+            entries=entries,
+            count=13,
+            delete=AsyncMock(
+                spec=MemoryBackend.delete,
+                side_effect=[True, False, True],
+            ),
+        )
 
         config = ConsolidationConfig(max_memories_per_agent=10)
         service = MemoryConsolidationService(
@@ -255,9 +260,12 @@ class TestEnforceMaxMemoriesErrors:
             await service.enforce_max_memories(_AGENT_ID)
 
     async def test_retrieve_error_propagates(self) -> None:
-        backend = _make_backend_mock(count=15)
-        backend.retrieve = AsyncMock(
-            side_effect=RuntimeError("retrieve failed"),
+        backend = _make_backend_mock(
+            count=15,
+            retrieve=AsyncMock(
+                spec=MemoryBackend.retrieve,
+                side_effect=RuntimeError("retrieve failed"),
+            ),
         )
         config = ConsolidationConfig(max_memories_per_agent=10)
         service = MemoryConsolidationService(backend=backend, config=config)

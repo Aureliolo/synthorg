@@ -1,7 +1,5 @@
-# mypy: disable-error-code="explicit-any"
 """Shared fixtures for Mem0 adapter tests."""
 
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -50,7 +48,7 @@ def backend(
     return b
 
 
-def mem0_add_result(memory_id: str = "mem-001") -> dict[str, Any]:
+def mem0_add_result(memory_id: str = "mem-001") -> dict[str, object]:
     """Build a typical Mem0 add() return value."""
     return {
         "results": [
@@ -64,8 +62,8 @@ def mem0_add_result(memory_id: str = "mem-001") -> dict[str, Any]:
 
 
 def mem0_search_result(
-    items: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+    items: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
     """Build a typical Mem0 search() return value."""
     if items is None:
         items = [
@@ -87,14 +85,14 @@ def mem0_get_result(
     memory_id: str = "mem-001",
     *,
     user_id: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Build a typical Mem0 get() return value.
 
     Args:
         memory_id: Memory identifier.
         user_id: Optional owner ``user_id`` for ownership tests.
     """
-    result: dict[str, Any] = {
+    result: dict[str, object] = {
         "id": memory_id,
         "memory": "stored content",
         "created_at": "2026-03-12T10:00:00+00:00",

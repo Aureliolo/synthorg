@@ -3,8 +3,8 @@
 Creates hierarchical retrievers based on configuration.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.retrieval.hierarchical.default_retriever import (
     DefaultHierarchicalRetriever,
 )
@@ -16,21 +16,17 @@ from synthorg.memory.retrieval.hierarchical.workers import (
     ProceduralWorker,
     SemanticWorker,
 )
+from synthorg.memory.retrieval.protocol import (
+    HierarchicalRetriever,
+    RetrievalWorker,
+)
+from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_HIERARCHICAL_ROUTING,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.memory.retrieval.protocol import (
-        HierarchicalRetriever,
-        RetrievalWorker,
-    )
-    from synthorg.memory.retrieval_config import MemoryRetrievalConfig
-    from synthorg.memory.shared import SharedKnowledgeStore
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

@@ -83,7 +83,8 @@ from synthorg.memory.procedural import (
     propose_procedural_memory,
 )
 from synthorg.memory.protocol import MemoryBackend
-from synthorg.memory.ranking import FusionStrategy, ScoredMemory, fuse_ranked_lists
+from synthorg.memory.ranking import FusionStrategy, ScoredMemory
+from synthorg.memory.ranking_rrf import fuse_ranked_lists
 from synthorg.memory.reformulation import (
     LLMQueryReformulator,
     LLMSufficiencyChecker,
@@ -92,10 +93,8 @@ from synthorg.memory.reformulation import (
 )
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
-from synthorg.memory.self_editing import (
-    SelfEditingMemoryConfig,
-    SelfEditingMemoryStrategy,
-)
+from synthorg.memory.self_editing import SelfEditingMemoryStrategy
+from synthorg.memory.self_editing_models import SelfEditingMemoryConfig
 from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.memory.sparse import BM25Tokenizer, SparseVector
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy

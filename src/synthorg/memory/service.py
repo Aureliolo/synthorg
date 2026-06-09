@@ -32,7 +32,8 @@ to the checkpoint flow.
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from collections.abc import Awaitable
+from typing import ClassVar, Literal
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
@@ -42,11 +43,19 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.embedding.fine_tune_models import (
+    CheckpointRecord,
+    FineTuneRun,
+    FineTuneStatus,
+    PreflightResult,
+)
 from synthorg.memory.fine_tune_plan import (
     ActiveEmbedderSnapshot,
     FineTunePlan,
     MemoryBackendUnsupportedError,
 )
+from synthorg.memory.ports import FineTuneOrchestratorPort, SettingsAccessor
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -70,17 +79,6 @@ from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,
     FineTuneRunRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.embedding.fine_tune_models import (
-        CheckpointRecord,
-        FineTuneRun,
-        FineTuneStatus,
-        PreflightResult,
-    )
-    from synthorg.memory.embedding.fine_tune_orchestrator import FineTuneOrchestrator
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -198,8 +196,8 @@ class MemoryService:
         *,
         checkpoint_repo: FineTuneCheckpointRepository | None = None,
         run_repo: FineTuneRunRepository | None = None,
-        settings_service: SettingsService | None = None,
-        orchestrator: FineTuneOrchestrator | None = None,
+        settings_service: SettingsAccessor | None = None,
+        orchestrator: FineTuneOrchestratorPort | None = None,
         memory_backend: MemoryBackend | None = None,
     ) -> None:
         """Initialize with optional repository + settings + orchestrator deps.
@@ -501,7 +499,7 @@ class MemoryService:
 
             if self._settings is not None:
                 try:
-                    parsed: Any = json.loads(cp.backup_config_json)
+                    parsed: object = json.loads(cp.backup_config_json)
                 except (json.JSONDecodeError, TypeError) as exc:
                     logger.warning(
                         MEMORY_CHECKPOINT_ROLLBACK_FAILED,
@@ -527,7 +525,7 @@ class MemoryService:
                         f"{type(parsed).__name__}"
                     )
                     raise CheckpointRollbackCorruptError(msg)
-                backup: dict[str, Any] = parsed
+                backup: dict[str, object] = parsed
                 for key, value in backup.items():
                     await self._settings.set("memory", key, str(value))
 
@@ -697,14 +695,14 @@ class MemoryService:
             read_from_settings=True,
         )
 
-    def _require_orchestrator(self) -> FineTuneOrchestrator:
+    def _require_orchestrator(self) -> FineTuneOrchestratorPort:
         """Return the orchestrator or raise :class:`MemoryBackendUnsupportedError`.
 
         Handlers catch the exception and surface a ``not_supported``
         envelope (see :mod:`synthorg.meta.mcp.handlers.memory`).
 
         Returns:
-            Result of type ``FineTuneOrchestrator``.
+            Result of type ``FineTuneOrchestratorPort``.
 
         Raises:
             MemoryBackendUnsupportedError: If the operation is not supported by the
@@ -756,6 +754,7 @@ class MemoryService:
             await self._settings.set("memory", "embedder_model", model_path)
             await self._settings.set("memory", "embedder_provider", "local")
         except Exception as exc:
+            reraise_critical(exc)
             if prior is not None:
                 await self._rollback_step(
                     checkpoints.set_active(prior.id),
@@ -895,7 +894,7 @@ class MemoryService:
 
     @staticmethod
     async def _rollback_step(
-        coro: Any,
+        coro: Awaitable[object],
         *,
         checkpoint_id: str,
         step: str,

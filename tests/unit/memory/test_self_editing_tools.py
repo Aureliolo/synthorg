@@ -1,8 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for self-editing memory BaseTool wrappers and registry integration."""
 
 from datetime import UTC, datetime
-from typing import Any, override
+from typing import override
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -12,7 +11,12 @@ from synthorg.memory.injection import InjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
-from synthorg.memory.self_editing import (
+from synthorg.memory.self_editing import SelfEditingMemoryStrategy
+from synthorg.memory.self_editing_args import (
+    _MAX_CONTENT_LEN,
+    _MAX_MEMORY_ID_LEN,
+)
+from synthorg.memory.self_editing_models import (
     ARCHIVAL_MEMORY_SEARCH_TOOL,
     ARCHIVAL_MEMORY_WRITE_TOOL,
     CORE_MEMORY_READ_TOOL,
@@ -20,11 +24,6 @@ from synthorg.memory.self_editing import (
     RECALL_MEMORY_READ_TOOL,
     RECALL_MEMORY_WRITE_TOOL,
     SelfEditingMemoryConfig,
-    SelfEditingMemoryStrategy,
-)
-from synthorg.memory.self_editing_args import (
-    _MAX_CONTENT_LEN,
-    _MAX_MEMORY_ID_LEN,
 )
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from synthorg.memory.tools import (
@@ -76,8 +75,8 @@ def _make_backend(
     return backend
 
 
-def _make_config(**kwargs: Any) -> SelfEditingMemoryConfig:
-    return SelfEditingMemoryConfig(**kwargs)
+def _make_config(**kwargs: object) -> SelfEditingMemoryConfig:
+    return SelfEditingMemoryConfig.model_validate(kwargs)
 
 
 def _make_strategy(
@@ -107,7 +106,7 @@ class _DummyTool(BaseTool):
         )
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         return ToolExecutionResult(content="dummy")
 
 

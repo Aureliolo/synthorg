@@ -10,7 +10,7 @@ All Mem0 SDK calls run in ``asyncio.to_thread()``.
 
 import asyncio
 import builtins
-from typing import TYPE_CHECKING, Any, Final, override
+from typing import TYPE_CHECKING, Final, override
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
@@ -23,14 +23,18 @@ from synthorg.memory.backends.mem0.config import (
     build_mem0_config_dict,
 )
 from synthorg.memory.backends.mem0.mappers import (
-    SHARED_NAMESPACE,
-    apply_post_filters,
     build_mem0_metadata,
-    check_delete_ownership,
     extract_category,
     mem0_result_to_entry,
     query_to_mem0_getall_args,
     query_to_mem0_search_args,
+)
+from synthorg.memory.backends.mem0.mappers_filters import apply_post_filters
+from synthorg.memory.backends.mem0.mappers_shared import (
+    SHARED_NAMESPACE,
+    check_delete_ownership,
+)
+from synthorg.memory.backends.mem0.mappers_validate import (
     validate_add_result,
     validate_mem0_result,
 )
@@ -45,6 +49,11 @@ from synthorg.memory.errors import (
 )
 from synthorg.memory.errors import (
     MemoryError as DomainMemoryError,
+)
+from synthorg.memory.models import (
+    MemoryEntry,
+    MemoryQuery,
+    MemoryStoreRequest,
 )
 from synthorg.memory.sparse import BM25Tokenizer
 from synthorg.observability import (
@@ -76,12 +85,9 @@ from synthorg.observability.events.memory import (
 )
 
 if TYPE_CHECKING:
+    from qdrant_client import QdrantClient
+
     from synthorg.budget.tracker import CostTracker
-    from synthorg.memory.models import (
-        MemoryEntry,
-        MemoryQuery,
-        MemoryStoreRequest,
-    )
 
 
 logger = get_logger(__name__)
@@ -122,7 +128,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         self._client: Mem0Client | None = None
         self._connected = False
         self._connect_lock = asyncio.Lock()
-        self._qdrant_client: Any = None
+        self._qdrant_client: QdrantClient | None = None
         self._sparse_encoder: BM25Tokenizer | None = (
             BM25Tokenizer() if mem0_config.sparse_search_enabled else None
         )
@@ -183,7 +189,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             self._connected = True
             # Expose the Qdrant client for sparse vector operations.
             if self._mem0_config.sparse_search_enabled:
-                qdrant: Any = None
+                qdrant: QdrantClient | None = None
                 try:
                     qdrant = client.vector_store.client  # pyright: ignore[reportAttributeAccessIssue]
                     await async_init_sparse_field(

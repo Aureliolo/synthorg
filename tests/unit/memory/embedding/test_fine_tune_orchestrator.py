@@ -1,12 +1,10 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for FineTuneOrchestrator."""
 
 import asyncio
 import contextlib
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 import aiosqlite
@@ -450,16 +448,16 @@ _HELPERS = "synthorg.memory.embedding.fine_tune_run_helpers"
 
 
 @contextlib.contextmanager
-def _mock_stages_2_to_5() -> Any:
+def _mock_stages_2_to_5() -> Iterator[None]:
     """Mock stages 2-5, leaving stage 1 (data generation) real."""
 
-    async def _mine(**kwargs: Any) -> Path:
+    async def _mine(**kwargs: object) -> Path:
         return Path("training_triples.jsonl")
 
-    async def _train(**kwargs: Any) -> Path:
+    async def _train(**kwargs: object) -> Path:
         return Path("checkpoint")
 
-    async def _eval(**kwargs: Any) -> EvalMetrics:
+    async def _eval(**kwargs: object) -> EvalMetrics:
         return EvalMetrics(
             ndcg_at_10=0.6,
             recall_at_10=0.7,
@@ -467,7 +465,7 @@ def _mock_stages_2_to_5() -> Any:
             base_recall_at_10=0.6,
         )
 
-    async def _deploy(**kwargs: Any) -> str | None:
+    async def _deploy(**kwargs: object) -> str | None:
         return None
 
     with (
@@ -543,7 +541,7 @@ class TestTrainingDataSourceSelection:
             checkpoint_repo=cp_repo,
         )
 
-        async def _scan(**kwargs: Any) -> tuple[Path, Path]:
+        async def _scan(**kwargs: object) -> tuple[Path, Path]:
             return Path("training.jsonl"), Path("validation.jsonl")
 
         req = _request(tmp_path)
@@ -586,7 +584,7 @@ def _mock_all_stages(
     block: bool = False,
     eval_metrics: EvalMetrics | None = None,
     deploy_calls: list[str] | None = None,
-) -> Any:
+) -> Iterator[None]:
     """Mock all pipeline stage functions.
 
     If block=True, generate_training_data blocks until cancelled.
@@ -595,10 +593,10 @@ def _mock_all_stages(
     deploy mechanism so the promotion gate can be observed.
     """
 
-    async def _gen_data(**kwargs: Any) -> tuple[Path, Path]:
+    async def _gen_data(**kwargs: object) -> tuple[Path, Path]:
         if block:
             token = kwargs.get("cancellation")
-            if token:
+            if isinstance(token, CancellationToken):
                 # Block in a thread until cancelled. ``token.wait``
                 # rides on a ``threading.Event`` so cancel wakes us
                 # immediately without the 0.01s polling loop the
@@ -614,13 +612,13 @@ def _mock_all_stages(
         # the disk (matches ``_mock_stages_2_to_5``).
         return Path("training.jsonl"), Path("validation.jsonl")
 
-    async def _mine(**kwargs: Any) -> Path:
+    async def _mine(**kwargs: object) -> Path:
         return Path("training_triples.jsonl")
 
-    async def _train(**kwargs: Any) -> Path:
+    async def _train(**kwargs: object) -> Path:
         return Path("checkpoint")
 
-    async def _eval(**kwargs: Any) -> Any:
+    async def _eval(**kwargs: object) -> EvalMetrics:
         if eval_metrics is not None:
             return eval_metrics
         return EvalMetrics(
@@ -630,7 +628,7 @@ def _mock_all_stages(
             base_recall_at_10=0.6,
         )
 
-    async def _deploy(**kwargs: Any) -> str | None:
+    async def _deploy(**kwargs: object) -> str | None:
         if deploy_calls is not None:
             deploy_calls.append(str(kwargs.get("checkpoint_path", "")))
         return '{"embedder_model": "test-model"}'

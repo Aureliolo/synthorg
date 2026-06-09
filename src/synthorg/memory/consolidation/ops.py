@@ -22,29 +22,26 @@ exact store + delete failure semantics:
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
 from synthorg.memory.consolidation.axis import (
     ConsolidationContext,
     OpResult,
     SelectionGroup,
 )
-from synthorg.memory.consolidation.density import ContentDensity
+from synthorg.memory.consolidation.density import ContentDensity, DensityClassifier
+from synthorg.memory.consolidation.extractive import ExtractivePreserver
 from synthorg.memory.consolidation.models import (
     ArchivalMode,
     ArchivalModeAssignment,
 )
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryStoreRequest
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
 from synthorg.observability.events.consolidation import DUAL_MODE_GROUP_CLASSIFIED
-
-if TYPE_CHECKING:
-    from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
-    from synthorg.memory.consolidation.density import DensityClassifier
-    from synthorg.memory.consolidation.extractive import ExtractivePreserver
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 

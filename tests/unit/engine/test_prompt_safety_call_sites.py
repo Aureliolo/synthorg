@@ -117,10 +117,10 @@ class TestMemoryConsolidationLLMStrategy:
 
     def test_system_prompt_appends_untrusted_directive(self) -> None:
         """Base system prompt ends with the untrusted-content directive."""
-        from synthorg.memory.consolidation.llm_op import _BASE_SYSTEM_PROMPT
+        from synthorg.memory.consolidation.llm_op_prompts import BASE_SYSTEM_PROMPT
 
         directive = untrusted_content_directive((TAG_MEMORY_ENTRY,))
-        assert _BASE_SYSTEM_PROMPT.endswith(directive)
+        assert BASE_SYSTEM_PROMPT.endswith(directive)
 
     def test_system_prompt_with_trajectory_wraps_each_entry(self) -> None:
         """Trajectory-context entries are wrapped under TAG_MEMORY_ENTRY."""

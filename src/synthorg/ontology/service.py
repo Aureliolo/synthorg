@@ -1,8 +1,9 @@
 """Ontology service -- orchestrates backend, versioning, and bootstrap."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_BOOTSTRAP_COMPLETED,
@@ -10,6 +11,7 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_CONFIG_LOADED,
     ONTOLOGY_VERSION_SNAPSHOT,
 )
+from synthorg.ontology.config import EntitiesConfig, OntologyConfig
 from synthorg.ontology.decorator import get_entity_registry
 from synthorg.ontology.errors import OntologyDuplicateError, OntologyNotFoundError
 from synthorg.ontology.models import (
@@ -19,12 +21,9 @@ from synthorg.ontology.models import (
     EntityTier,
 )
 from synthorg.persistence._shared import collect_all_mapping
-
-if TYPE_CHECKING:
-    from synthorg.ontology.config import EntitiesConfig, OntologyConfig
-    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
-    from synthorg.versioning.models import VersionSnapshot
-    from synthorg.versioning.service import VersioningService
+from synthorg.persistence.ontology_protocol import OntologyEntityRepository
+from synthorg.versioning.models import VersionSnapshot
+from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -76,7 +75,8 @@ class OntologyService:
                 continue
             try:
                 await self._snapshot(entity)
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
                     entity_name=name,
@@ -139,7 +139,8 @@ class OntologyService:
                 continue
             try:
                 await self._snapshot(entity)
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
                     entity_name=entry.name,

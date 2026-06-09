@@ -1,8 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for memory BaseTool wrappers and ToolRegistry integration."""
 
 from datetime import UTC, datetime
-from typing import Any, cast, override
+from typing import cast, override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -84,7 +83,7 @@ class _DummyTool(BaseTool):
         )
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         return ToolExecutionResult(content="dummy")
 
 
@@ -130,11 +129,12 @@ class TestSearchMemoryTool:
         schema = tool.parameters_schema
         assert schema is not None
         assert schema["type"] == "object"
-        schema_d = cast("dict[str, Any]", schema)
-        assert "query" in schema_d["properties"]
-        assert "limit" in schema_d["properties"]
-        assert "categories" in schema_d["properties"]
-        assert "query" in schema_d["required"]
+        properties = cast("dict[str, object]", schema["properties"])
+        assert "query" in properties
+        assert "limit" in properties
+        assert "categories" in properties
+        required = cast("list[str]", schema["required"])
+        assert "query" in required
 
     def test_schema_is_deep_copied(self) -> None:
         tool = SearchMemoryTool(
@@ -222,7 +222,7 @@ class TestSearchMemoryTool:
         assert defn.name == "search_memory"
         assert defn.parameters_schema
         assert "query" in cast(
-            "dict[str, Any]", defn.parameters_schema.get("properties", {})
+            "dict[str, object]", defn.parameters_schema.get("properties", {})
         )
 
 
@@ -268,9 +268,10 @@ class TestRecallMemoryTool:
         schema = tool.parameters_schema
         assert schema is not None
         assert schema["type"] == "object"
-        schema_d = cast("dict[str, Any]", schema)
-        assert "memory_id" in schema_d["properties"]
-        assert "memory_id" in schema_d["required"]
+        properties = cast("dict[str, object]", schema["properties"])
+        assert "memory_id" in properties
+        required = cast("list[str]", schema["required"])
+        assert "memory_id" in required
 
     def test_schema_is_deep_copied(self) -> None:
         tool = RecallMemoryTool(
@@ -365,7 +366,7 @@ class TestRecallMemoryTool:
         assert defn.name == "recall_memory"
         assert defn.parameters_schema
         assert "memory_id" in cast(
-            "dict[str, Any]", defn.parameters_schema.get("properties", {})
+            "dict[str, object]", defn.parameters_schema.get("properties", {})
         )
 
 

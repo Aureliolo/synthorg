@@ -7,10 +7,8 @@ import pytest
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.backends.mem0.adapter import Mem0MemoryBackend
-from synthorg.memory.backends.mem0.mappers import (
-    SHARED_NAMESPACE,
-    validate_mem0_result,
-)
+from synthorg.memory.backends.mem0.mappers_shared import SHARED_NAMESPACE
+from synthorg.memory.backends.mem0.mappers_validate import validate_mem0_result
 from synthorg.memory.errors import (
     MemoryRetrievalError,
     MemoryStoreError,

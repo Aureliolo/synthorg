@@ -4,14 +4,10 @@ Shared formatting, argument parsing, and result merging utilities used
 by ``ToolBasedInjectionStrategy`` and its reformulation loop.
 """
 
-from typing import TYPE_CHECKING, Any
-
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.memory.models import MemoryEntry
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import MEMORY_RETRIEVAL_DEGRADED
-
-if TYPE_CHECKING:
-    from synthorg.memory.models import MemoryEntry
 
 logger = get_logger(__name__)
 
@@ -36,7 +32,7 @@ def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
 
 
 def _parse_categories(
-    raw: Any,
+    raw: object,
     *,
     agent_id: str | None = None,
 ) -> tuple[frozenset[MemoryCategory] | None, tuple[str, ...]]:
@@ -169,7 +165,7 @@ def _truncate_entries(
 
 
 def _parse_search_args(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     config_max_memories: int,
     *,
     agent_id: str | None = None,

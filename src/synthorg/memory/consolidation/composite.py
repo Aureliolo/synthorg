@@ -11,13 +11,19 @@ byte-identical with ``LLMConsolidationStrategy._run_groups``.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.consolidation.axis import (
+    ConsolidationOp,
+    EntrySelector,
+    OpResult,
+    SelectionGroup,
+)
 from synthorg.memory.consolidation.models import (
     ArchivalModeAssignment,
     ConsolidationResult,
 )
+from synthorg.memory.models import MemoryEntry
 from synthorg.observability import get_logger
 from synthorg.observability.events.consolidation import (
     LLM_STRATEGY_ERROR,
@@ -25,15 +31,6 @@ from synthorg.observability.events.consolidation import (
     STRATEGY_START,
 )
 from synthorg.providers.errors import ProviderError
-
-if TYPE_CHECKING:
-    from synthorg.memory.consolidation.axis import (
-        ConsolidationOp,
-        EntrySelector,
-        OpResult,
-        SelectionGroup,
-    )
-    from synthorg.memory.models import MemoryEntry
 
 logger = get_logger(__name__)
 

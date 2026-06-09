@@ -21,7 +21,6 @@ raise them so the sibling-module pair is not a runtime import cycle.
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
@@ -34,6 +33,7 @@ from synthorg.memory.fine_tune_plan import (
     FineTunePlan,
     MemoryBackendUnsupportedError,
 )
+from synthorg.memory.ports import FineTuneOrchestratorPort
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
@@ -45,9 +45,6 @@ from synthorg.observability.events.memory import (
 from synthorg.persistence.fine_tune_protocol import (
     FineTuneRunRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.embedding.fine_tune_orchestrator import FineTuneOrchestrator
 
 logger = get_logger(__name__)
 
@@ -71,7 +68,7 @@ class FineTuneAdminService:
         self,
         *,
         run_repo: FineTuneRunRepository | None = None,
-        orchestrator: FineTuneOrchestrator | None = None,
+        orchestrator: FineTuneOrchestratorPort | None = None,
     ) -> None:
         self._runs = run_repo
         self._orchestrator = orchestrator
@@ -100,11 +97,11 @@ class FineTuneAdminService:
             raise MemoryBackendUnsupportedError(msg)
         return self._runs
 
-    def _require_orchestrator(self) -> FineTuneOrchestrator:
+    def _require_orchestrator(self) -> FineTuneOrchestratorPort:
         """Require orchestrator.
 
         Returns:
-            Result of type ``FineTuneOrchestrator``.
+            Result of type ``FineTuneOrchestratorPort``.
 
         Raises:
             MemoryBackendUnsupportedError: If the operation is not supported by the

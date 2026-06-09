@@ -1,10 +1,9 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for fine-tuning pipeline stage functions."""
 
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Protocol, cast
+from typing import Protocol, TypedDict, cast
 from unittest.mock import patch
 
 import numpy as np
@@ -37,6 +36,14 @@ class _FakeSentenceTransformersModule(Protocol):
     ) -> _RecordingEncoder: ...
 
 
+class _EncodeCall(TypedDict):
+    """One recorded ``encode()`` invocation."""
+
+    model: str
+    texts: list[str]
+    kwargs: dict[str, object]
+
+
 class _RecordingEncoder:
     """Fake ``SentenceTransformer`` that records every ``encode()`` call.
 
@@ -47,11 +54,11 @@ class _RecordingEncoder:
 
     _EMBED_DIM = 8
 
-    def __init__(self, name: str, calls: list[dict[str, Any]]) -> None:
+    def __init__(self, name: str, calls: list[_EncodeCall]) -> None:
         self.name = name
         self._calls = calls
 
-    def encode(self, texts: list[str], **kwargs: Any) -> np.ndarray:
+    def encode(self, texts: list[str], **kwargs: object) -> np.ndarray:
         self._calls.append(
             {"model": self.name, "texts": list(texts), "kwargs": kwargs},
         )
@@ -61,14 +68,14 @@ class _RecordingEncoder:
             : len(texts)
         ]
 
-    def encode_query(self, *_args: Any, **_kwargs: Any) -> np.ndarray:
+    def encode_query(self, *_args: object, **_kwargs: object) -> np.ndarray:
         msg = (
             "Production code must call encode() with processing_kwargs, "
             "not encode_query()."
         )
         raise AssertionError(msg)
 
-    def encode_document(self, *_args: Any, **_kwargs: Any) -> np.ndarray:
+    def encode_document(self, *_args: object, **_kwargs: object) -> np.ndarray:
         msg = (
             "Production code must call encode() with processing_kwargs, "
             "not encode_document()."
@@ -77,7 +84,7 @@ class _RecordingEncoder:
 
 
 def _make_fake_st_module(
-    calls: list[dict[str, Any]],
+    calls: list[_EncodeCall],
 ) -> _FakeSentenceTransformersModule:
     """Build a ``SimpleNamespace`` fake of the ``sentence_transformers`` module."""
     fake = SimpleNamespace(
@@ -86,7 +93,7 @@ def _make_fake_st_module(
     return cast("_FakeSentenceTransformersModule", fake)
 
 
-def _expected_encode_kwargs(*, max_length: int) -> dict[str, Any]:
+def _expected_encode_kwargs(*, max_length: int) -> dict[str, object]:
     """Return the full kwargs dict the production code should pass to ``encode``."""
     return {
         "show_progress_bar": False,
@@ -97,8 +104,8 @@ def _expected_encode_kwargs(*, max_length: int) -> dict[str, Any]:
 
 
 def _index_calls(
-    calls: list[dict[str, Any]],
-) -> dict[tuple[str, tuple[str, ...]], dict[str, Any]]:
+    calls: list[_EncodeCall],
+) -> dict[tuple[str, tuple[str, ...]], _EncodeCall]:
     """Index encode calls by ``(model_name, texts)`` for order-independent lookup."""
     return {(call["model"], tuple(call["texts"])): call for call in calls}
 
@@ -299,7 +306,7 @@ class TestMineHardNegatives:
             + json.dumps({"query": "q2", "positive_passage": "p2"})
             + "\n",
         )
-        calls: list[dict[str, Any]] = []
+        calls: list[_EncodeCall] = []
         with patch(
             "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
             return_value=_make_fake_st_module(calls),
@@ -336,7 +343,7 @@ class TestMineHardNegatives:
         train.write_text(
             json.dumps({"query": long_query, "positive_passage": "p1"}) + "\n",
         )
-        calls: list[dict[str, Any]] = []
+        calls: list[_EncodeCall] = []
         with (
             patch(
                 "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
@@ -376,7 +383,7 @@ class TestMineHardNegatives:
             + json.dumps({"query": "q2"})
             + "\n",
         )
-        calls: list[dict[str, Any]] = []
+        calls: list[_EncodeCall] = []
         with (
             patch(
                 "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
@@ -402,7 +409,7 @@ class TestMineHardNegatives:
         train.write_text(
             json.dumps({"query": "q1", "positive_passage": 42}) + "\n",
         )
-        calls: list[dict[str, Any]] = []
+        calls: list[_EncodeCall] = []
         with (
             patch(
                 "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
@@ -453,14 +460,16 @@ class TestContrastiveFineTune:
             contrastive_fine_tune,
         )
 
-        kwargs: dict[str, Any] = {
+        kwargs: dict[str, object] = {
             "training_data_path": "/data",
             "base_model": "test-small-001",
             "output_dir": "/output",
             param: value,
         }
         with pytest.raises(ValueError, match=match):
-            await contrastive_fine_tune(**kwargs)
+            # The parametrized (param, value) drives one hyperparameter
+            # out of range; the dynamic key precludes a precise static type.
+            await contrastive_fine_tune(**kwargs)  # type: ignore[arg-type]
 
 
 # -- Stage 4: Evaluation (mock-based) --------------------------------
@@ -517,7 +526,7 @@ class TestEvaluateCheckpoint:
         )
         cp = tmp_path / "checkpoint"
         cp.mkdir()
-        calls: list[dict[str, Any]] = []
+        calls: list[_EncodeCall] = []
         with patch(
             "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
             return_value=_make_fake_st_module(calls),
@@ -552,7 +561,7 @@ class TestEvaluateCheckpoint:
         )
         cp = tmp_path / "checkpoint"
         cp.mkdir()
-        calls: list[dict[str, Any]] = []
+        calls: list[_EncodeCall] = []
         with (
             patch(
                 "synthorg.memory.embedding.fine_tune._import_sentence_transformers",

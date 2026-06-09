@@ -7,7 +7,7 @@ and wiki export settings.
 
 from enum import StrEnum
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Any, ClassVar, Final, Literal, Self
+from typing import ClassVar, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -405,11 +405,11 @@ class ConsolidationConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
+    def _apply_mirrors(cls, data: object) -> object:
         """Apply mirrors.
 
         Returns:
-            Result of type ``Any``.
+            The input data with any unset mirror fields populated.
         """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 

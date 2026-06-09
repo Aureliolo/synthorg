@@ -9,23 +9,20 @@ import builtins
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.consolidation.config import WikiExportConfig
 from synthorg.memory.models import MemoryQuery
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     WIKI_EXPORT_COMPLETE,
     WIKI_EXPORT_FAILED,
     WIKI_EXPORT_START,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.consolidation.config import WikiExportConfig
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 

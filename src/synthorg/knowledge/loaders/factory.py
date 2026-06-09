@@ -8,17 +8,13 @@ pinning + credential-brokering guarantees that the loaders themselves
 do not implement.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.errors import KnowledgeValidationError
 from synthorg.knowledge.loaders.pdf import PdfLoader
+from synthorg.knowledge.loaders.protocol import SourceLoader
 from synthorg.knowledge.loaders.repo import RepoLoader
 from synthorg.knowledge.loaders.ticket import TicketFetcher, TicketLoader
 from synthorg.knowledge.loaders.web import HtmlFetcher, WebLoader
-
-if TYPE_CHECKING:
-    from synthorg.knowledge.loaders.protocol import SourceLoader
 
 
 def build_source_loader(

@@ -3,20 +3,17 @@
 Shares memory with agents in the same department.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.memory.models import MemoryStoreRequest
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.memory.models import MemoryEntry, MemoryStoreRequest
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_PROPAGATION_TARGET_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.memory.models import MemoryEntry
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_TARGETS: Final[int] = 10

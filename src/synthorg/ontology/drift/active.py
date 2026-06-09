@@ -4,14 +4,12 @@ Same logic as passive but intended to run at delegation time
 (triggered by ``EntityAlignmentGuard`` in validate/enforce mode).
 """
 
-from typing import TYPE_CHECKING, Final, override
+from typing import Final, override
 
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
 from synthorg.ontology.drift.passive import PassiveMonitorStrategy
-
-if TYPE_CHECKING:
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
+from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 _DEFAULT_THRESHOLD: Final[float] = 0.3

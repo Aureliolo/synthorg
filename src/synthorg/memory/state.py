@@ -7,19 +7,15 @@ auto-wire path); the memory admin controller and MCP handlers raise
 503 on a ``None`` field.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,
 )
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.service import MemoryService
-
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 
 class MemoryStateSlice(BaseFeatureStateSlice):

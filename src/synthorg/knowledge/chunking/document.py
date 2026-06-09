@@ -7,13 +7,9 @@ offsets, so a citation resolves to an exact character range within the
 page / document / comment (and, for PDFs, the originating page + bbox).
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.knowledge.chunking._packing import pack_text_spans
 from synthorg.knowledge.chunking.protocol import ChunkPiece
-
-if TYPE_CHECKING:
-    from synthorg.knowledge.models import RawUnit
+from synthorg.knowledge.models import RawUnit
 
 
 class OffsetChunker:

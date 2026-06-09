@@ -5,19 +5,16 @@ similar to how ``ContextInjectionStrategy`` injects memory context.
 Respects the configured ``core_token_budget``.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.injection import DefaultTokenEstimator, TokenEstimator
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import ONTOLOGY_INJECTION_PREPARED
 from synthorg.ontology.models import EntityDefinition, EntityTier
+from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
-    from synthorg.providers.models import ToolDefinition
+from synthorg.providers.models import ChatMessage, ToolDefinition
 
 logger = get_logger(__name__)
 _DEFAULT_CORE_TOKEN_BUDGET: Final[int] = 2000

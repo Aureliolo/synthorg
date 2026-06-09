@@ -17,6 +17,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.memory.backends.mem0.config import Mem0BackendConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_EMBEDDING_COST_FAILED,
@@ -26,7 +27,6 @@ from synthorg.observability.events.budget import (
 
 if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
-    from synthorg.memory.backends.mem0.config import Mem0BackendConfig
 
 logger = get_logger(__name__)
 

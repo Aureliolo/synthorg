@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Failure-path coverage for the knowledge substrate.
 
 The happy paths are covered by ``test_indexer.py`` / ``test_service.py``
@@ -16,7 +15,7 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
 import pytest
 from typeguard import suppress_type_checks
@@ -34,7 +33,7 @@ from synthorg.knowledge.errors import (
 )
 from synthorg.knowledge.freshness import make_chunk_id
 from synthorg.knowledge.indexer import KnowledgeIndexer
-from synthorg.knowledge.loaders.pdf import PdfLoader
+from synthorg.knowledge.loaders.pdf import PdfLoader, _PdfDocument, _PdfPage
 from synthorg.knowledge.loaders.repo import RepoLoader
 from synthorg.knowledge.loaders.ticket import (
     TicketComment,
@@ -96,13 +95,13 @@ def _chunk(index: int, text: str, content_hash: str | None = None) -> KnowledgeC
 
 class _BrokenPdf:
     @property
-    def pages(self) -> list[Any]:  # pragma: no cover - never reached
+    def pages(self) -> list[_PdfPage]:  # pragma: no cover - never reached
         msg = "synthetic pdfplumber blowup"
         raise RuntimeError(msg)
 
 
 @contextmanager
-def _broken_pdf_opener(_path: str) -> Iterator[Any]:
+def _broken_pdf_opener(_path: str) -> Iterator[_PdfDocument]:
     yield _BrokenPdf()
 
 
@@ -125,7 +124,7 @@ class _StaticFetcher(HtmlFetcher):
 class _ExplodingGuard:
     """Drop-in replacement for HTMLParseGuard whose sanitize() blows up."""
 
-    def sanitize(self, _html: str) -> Any:
+    def sanitize(self, _html: str) -> str:
         msg = "synthetic sanitiser failure"
         raise ValueError(msg)
 

@@ -1,8 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for the procedural memory pipeline (end-to-end)."""
 
 from datetime import UTC, datetime
-from typing import Any
+from pathlib import Path
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -47,8 +46,8 @@ from synthorg.providers.models import TokenUsage
 from tests._shared import coerce_id, sid
 
 
-def _make_task(**overrides: Any) -> Task:
-    defaults: dict[str, Any] = {
+def _make_task(**overrides: object) -> Task:
+    defaults: dict[str, object] = {
         "id": "task-pipe-001",
         "title": "Implement caching layer",
         "description": "Add Redis caching to the API.",
@@ -60,7 +59,7 @@ def _make_task(**overrides: Any) -> Task:
     }
     defaults.update(overrides)
     defaults["id"] = coerce_id(defaults["id"])
-    return Task(**defaults)
+    return Task.model_validate(defaults)
 
 
 def _make_recovery_result(
@@ -147,8 +146,8 @@ def _make_identity() -> AgentIdentity:
     )
 
 
-def _make_proposal(**overrides: Any) -> ProceduralMemoryProposal:
-    defaults: dict[str, Any] = {
+def _make_proposal(**overrides: object) -> ProceduralMemoryProposal:
+    defaults: dict[str, object] = {
         "discovery": "Break large tasks into subtasks when facing timeouts.",
         "condition": "Task fails due to provider timeout after multiple turns.",
         "action": "Decompose the task before retrying.",
@@ -157,7 +156,7 @@ def _make_proposal(**overrides: Any) -> ProceduralMemoryProposal:
         "tags": ("timeout", "decomposition"),
     }
     defaults.update(overrides)
-    return ProceduralMemoryProposal(**defaults)
+    return ProceduralMemoryProposal.model_validate(defaults)
 
 
 # -- _build_payload ---------------------------------------------------
@@ -448,7 +447,7 @@ class TestFormatWithExecutionSteps:
 
 @pytest.mark.unit
 class TestMaterializeSkillMd:
-    def test_writes_skill_md_file(self, tmp_path: Any) -> None:
+    def test_writes_skill_md_file(self, tmp_path: Path) -> None:
         proposal = _make_proposal(
             execution_steps=("Step one", "Step two"),
         )
@@ -468,14 +467,14 @@ class TestMaterializeSkillMd:
         assert "## Execution Steps" in content
         assert "1. Step one" in content
 
-    def test_creates_directory_if_missing(self, tmp_path: Any) -> None:
+    def test_creates_directory_if_missing(self, tmp_path: Path) -> None:
         nested = tmp_path / "deep" / "nested"
         proposal = _make_proposal()
         path = materialize_skill_md(proposal, "task-002", str(nested))
 
         assert path.exists()
 
-    def test_omits_execution_section_when_no_steps(self, tmp_path: Any) -> None:
+    def test_omits_execution_section_when_no_steps(self, tmp_path: Path) -> None:
         proposal = _make_proposal(execution_steps=())
         path = materialize_skill_md(proposal, "task-003", str(tmp_path))
 
@@ -488,7 +487,7 @@ class TestMaterializeSkillMd:
 
 @pytest.mark.unit
 class TestProposeWithSkillMdConfig:
-    async def test_propose_with_skill_md_config(self, tmp_path: Any) -> None:
+    async def test_propose_with_skill_md_config(self, tmp_path: Path) -> None:
         """When config has skill_md_directory, SKILL.md is written."""
         proposer = AsyncMock(spec=ProceduralMemoryProposer)
         proposer.propose = AsyncMock(return_value=_make_proposal())
@@ -514,14 +513,14 @@ class TestProposeWithSkillMdConfig:
 
         assert result == "mem-010"
         # SKILL.md file should exist in the directory
-        md_files = list(tmp_path.glob("SKILL-*.md"))
+        md_files = list(tmp_path.glob("SKILL-*.md"))  # noqa: ASYNC240 -- test fs assertion
         assert len(md_files) == 1
         events = [entry["event"] for entry in logs]
         assert PROCEDURAL_MEMORY_SKILL_MD in events
 
     async def test_skill_md_write_failure_still_returns_memory_id(
         self,
-        tmp_path: Any,
+        tmp_path: Path,
     ) -> None:
         """Filesystem error in materialize does not prevent memory_id return."""
         proposer = AsyncMock(spec=ProceduralMemoryProposer)

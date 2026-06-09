@@ -9158,21 +9158,21 @@
     },
     {
       "kind": "code",
-      "loc": 38,
+      "loc": 36,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/chunking/document.py",
       "owning_feature": "knowledge"
     },
     {
       "kind": "code",
-      "loc": 64,
+      "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/chunking/factory.py",
       "owning_feature": "knowledge"
     },
     {
       "kind": "code",
-      "loc": 29,
+      "loc": 28,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/chunking/protocol.py",
       "owning_feature": "knowledge"
@@ -9207,7 +9207,7 @@
     },
     {
       "kind": "code",
-      "loc": 63,
+      "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/factory.py",
       "owning_feature": "knowledge"
@@ -9221,7 +9221,7 @@
     },
     {
       "kind": "code",
-      "loc": 72,
+      "loc": 70,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/freshness.py",
       "owning_feature": "knowledge"
@@ -9242,7 +9242,7 @@
     },
     {
       "kind": "code",
-      "loc": 54,
+      "loc": 52,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/loaders/factory.py",
       "owning_feature": "knowledge"
@@ -9256,28 +9256,28 @@
     },
     {
       "kind": "code",
-      "loc": 20,
+      "loc": 19,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/loaders/protocol.py",
       "owning_feature": "knowledge"
     },
     {
       "kind": "code",
-      "loc": 159,
+      "loc": 157,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/loaders/repo.py",
       "owning_feature": "knowledge"
     },
     {
       "kind": "code",
-      "loc": 134,
+      "loc": 137,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/loaders/ticket.py",
       "owning_feature": "knowledge"
     },
     {
       "kind": "code",
-      "loc": 111,
+      "loc": 109,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/loaders/web.py",
       "owning_feature": "knowledge"
@@ -9291,7 +9291,7 @@
     },
     {
       "kind": "code",
-      "loc": 239,
+      "loc": 241,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/retrieval.py",
       "owning_feature": "knowledge"
@@ -9305,14 +9305,14 @@
     },
     {
       "kind": "code",
-      "loc": 28,
+      "loc": 26,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/state.py",
       "owning_feature": "knowledge"
     },
     {
       "kind": "code",
-      "loc": 53,
+      "loc": 52,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/tool_factory.py",
       "owning_feature": "knowledge"
@@ -9333,7 +9333,7 @@
     },
     {
       "kind": "code",
-      "loc": 163,
+      "loc": 162,
       "loc_cap": 500,
       "module": "src/synthorg/memory/__init__.py",
       "owning_feature": "memory"
@@ -9354,7 +9354,7 @@
     },
     {
       "kind": "code",
-      "loc": 417,
+      "loc": 415,
       "loc_cap": 500,
       "module": "src/synthorg/memory/backends/composite/adapter.py",
       "owning_feature": "memory"
@@ -9389,7 +9389,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 733,
+      "loc": 738,
       "loc_cap": 1100,
       "module": "src/synthorg/memory/backends/mem0/adapter.py",
       "owning_feature": "memory"
@@ -9403,7 +9403,7 @@
     },
     {
       "kind": "code",
-      "loc": 134,
+      "loc": 139,
       "loc_cap": 500,
       "module": "src/synthorg/memory/backends/mem0/adapter_shared.py",
       "owning_feature": "memory"
@@ -9417,28 +9417,49 @@
     },
     {
       "kind": "code",
-      "loc": 405,
+      "loc": 423,
       "loc_cap": 500,
       "module": "src/synthorg/memory/backends/mem0/config.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 657,
+      "loc": 432,
       "loc_cap": 500,
       "module": "src/synthorg/memory/backends/mem0/mappers.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 315,
+      "loc": 88,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/backends/mem0/mappers_filters.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 94,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/backends/mem0/mappers_shared.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 104,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/backends/mem0/mappers_validate.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 316,
       "loc_cap": 500,
       "module": "src/synthorg/memory/backends/mem0/shared.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 458,
+      "loc": 461,
       "loc_cap": 500,
       "module": "src/synthorg/memory/backends/mem0/sparse_search.py",
       "owning_feature": "memory"
@@ -9487,7 +9508,7 @@
     },
     {
       "kind": "code",
-      "loc": 154,
+      "loc": 152,
       "loc_cap": 500,
       "module": "src/synthorg/memory/consolidation/composite.py",
       "owning_feature": "memory"
@@ -9536,9 +9557,16 @@
     },
     {
       "kind": "code",
-      "loc": 501,
+      "loc": 471,
       "loc_cap": 500,
       "module": "src/synthorg/memory/consolidation/llm_op.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 50,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/consolidation/llm_op_prompts.py",
       "owning_feature": "memory"
     },
     {
@@ -9550,9 +9578,16 @@
     },
     {
       "kind": "code",
-      "loc": 364,
+      "loc": 362,
       "loc_cap": 500,
       "module": "src/synthorg/memory/consolidation/ops.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 27,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/consolidation/provider_port.py",
       "owning_feature": "memory"
     },
     {
@@ -9571,7 +9606,7 @@
     },
     {
       "kind": "code",
-      "loc": 422,
+      "loc": 424,
       "loc_cap": 500,
       "module": "src/synthorg/memory/consolidation/service.py",
       "owning_feature": "memory"
@@ -9585,14 +9620,14 @@
     },
     {
       "kind": "code",
-      "loc": 248,
+      "loc": 251,
       "loc_cap": 500,
       "module": "src/synthorg/memory/consolidation/two_tier_strategy.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 338,
+      "loc": 336,
       "loc_cap": 500,
       "module": "src/synthorg/memory/consolidation/wiki_export.py",
       "owning_feature": "memory"
@@ -9627,21 +9662,21 @@
     },
     {
       "kind": "code",
-      "loc": 533,
+      "loc": 483,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/fine_tune_orchestrator.py",
       "owning_feature": "memory"
     },
     {
       "kind": "orchestrator",
-      "loc": 167,
+      "loc": 165,
       "loc_cap": 600,
       "module": "src/synthorg/memory/embedding/fine_tune_pipeline.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 95,
+      "loc": 114,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/fine_tune_run_helpers.py",
       "owning_feature": "memory"
@@ -9651,6 +9686,13 @@
       "loc": 268,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/fine_tune_runner.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 57,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/embedding/fine_tune_ws.py",
       "owning_feature": "memory"
     },
     {
@@ -9725,14 +9767,14 @@
     },
     {
       "kind": "code",
-      "loc": 110,
+      "loc": 109,
       "loc_cap": 500,
       "module": "src/synthorg/memory/filter.py",
       "owning_feature": "memory"
     },
     {
       "kind": "complex_service",
-      "loc": 385,
+      "loc": 383,
       "loc_cap": 1100,
       "module": "src/synthorg/memory/fine_tune_admin_service.py",
       "owning_feature": "memory"
@@ -9753,14 +9795,14 @@
     },
     {
       "kind": "code",
-      "loc": 108,
+      "loc": 107,
       "loc_cap": 500,
       "module": "src/synthorg/memory/injection.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 99,
+      "loc": 101,
       "loc_cap": 500,
       "module": "src/synthorg/memory/injection_factory.py",
       "owning_feature": "memory"
@@ -9823,6 +9865,13 @@
     },
     {
       "kind": "code",
+      "loc": 57,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/ports.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
       "loc": 23,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/__init__.py",
@@ -9865,7 +9914,7 @@
     },
     {
       "kind": "code",
-      "loc": 41,
+      "loc": 40,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/capture/protocol.py",
       "owning_feature": "memory"
@@ -9928,42 +9977,42 @@
     },
     {
       "kind": "code",
-      "loc": 86,
+      "loc": 84,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/propagation/department_scoped.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 55,
+      "loc": 53,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/propagation/factory.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 38,
+      "loc": 36,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/propagation/no_propagation.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 38,
+      "loc": 37,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/propagation/protocol.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 87,
+      "loc": 85,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/propagation/role_scoped.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 239,
+      "loc": 238,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/proposer.py",
       "owning_feature": "memory"
@@ -9984,21 +10033,21 @@
     },
     {
       "kind": "code",
-      "loc": 50,
+      "loc": 48,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/pruning/factory.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 62,
+      "loc": 60,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/pruning/hybrid_strategy.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 127,
+      "loc": 126,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/pruning/pareto_strategy.py",
       "owning_feature": "memory"
@@ -10012,21 +10061,21 @@
     },
     {
       "kind": "code",
-      "loc": 47,
+      "loc": 46,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/pruning/ttl_strategy.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 232,
+      "loc": 233,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/success_proposer.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 187,
+      "loc": 190,
       "loc_cap": 500,
       "module": "src/synthorg/memory/procedural/supersession.py",
       "owning_feature": "memory"
@@ -10047,21 +10096,35 @@
     },
     {
       "kind": "code",
-      "loc": 515,
+      "loc": 211,
       "loc_cap": 500,
       "module": "src/synthorg/memory/ranking.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 195,
+      "loc": 187,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/ranking_mmr.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 140,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/ranking_rrf.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 194,
       "loc_cap": 500,
       "module": "src/synthorg/memory/reformulation.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 123,
+      "loc": 131,
       "loc_cap": 500,
       "module": "src/synthorg/memory/registry.py",
       "owning_feature": "memory"
@@ -10075,7 +10138,7 @@
     },
     {
       "kind": "code",
-      "loc": 77,
+      "loc": 75,
       "loc_cap": 500,
       "module": "src/synthorg/memory/retrieval/factory.py",
       "owning_feature": "memory"
@@ -10089,7 +10152,7 @@
     },
     {
       "kind": "code",
-      "loc": 253,
+      "loc": 251,
       "loc_cap": 500,
       "module": "src/synthorg/memory/retrieval/hierarchical/default_retriever.py",
       "owning_feature": "memory"
@@ -10110,7 +10173,7 @@
     },
     {
       "kind": "code",
-      "loc": 483,
+      "loc": 481,
       "loc_cap": 500,
       "module": "src/synthorg/memory/retrieval/hierarchical/workers.py",
       "owning_feature": "memory"
@@ -10166,14 +10229,28 @@
     },
     {
       "kind": "code",
-      "loc": 662,
+      "loc": 459,
       "loc_cap": 500,
       "module": "src/synthorg/memory/retriever.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 697,
+      "loc": 148,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/retriever_fetch.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 116,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/retriever_rrf.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 461,
       "loc_cap": 500,
       "module": "src/synthorg/memory/self_editing.py",
       "owning_feature": "memory"
@@ -10183,6 +10260,13 @@
       "loc": 147,
       "loc_cap": 500,
       "module": "src/synthorg/memory/self_editing_args.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 263,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/self_editing_models.py",
       "owning_feature": "memory"
     },
     {
@@ -10208,42 +10292,42 @@
     },
     {
       "kind": "code",
-      "loc": 35,
+      "loc": 33,
       "loc_cap": 500,
       "module": "src/synthorg/memory/state.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 26,
+      "loc": 24,
       "loc_cap": 500,
       "module": "src/synthorg/memory/store_guard.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 425,
+      "loc": 428,
       "loc_cap": 500,
       "module": "src/synthorg/memory/tool_retriever.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 176,
+      "loc": 174,
       "loc_cap": 500,
       "module": "src/synthorg/memory/tool_retriever_helpers.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 390,
+      "loc": 387,
       "loc_cap": 500,
       "module": "src/synthorg/memory/tool_retriever_reformulation.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 223,
+      "loc": 224,
       "loc_cap": 500,
       "module": "src/synthorg/memory/tools/__init__.py",
       "owning_feature": "memory"
@@ -10264,49 +10348,56 @@
     },
     {
       "kind": "code",
-      "loc": 90,
+      "loc": 89,
       "loc_cap": 500,
       "module": "src/synthorg/memory/tools/archival.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 89,
+      "loc": 88,
       "loc_cap": 500,
       "module": "src/synthorg/memory/tools/core.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 505,
+      "loc": 251,
       "loc_cap": 500,
-      "module": "src/synthorg/memory/tools/knowledge_architect.py",
+      "module": "src/synthorg/memory/tools/knowledge_architect_read_tools.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 89,
+      "loc": 276,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/tools/knowledge_architect_write_tools.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 88,
       "loc_cap": 500,
       "module": "src/synthorg/memory/tools/recall.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 58,
+      "loc": 57,
       "loc_cap": 500,
       "module": "src/synthorg/memory/tools/recall_search.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 62,
+      "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/memory/tools/search.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 22,
+      "loc": 20,
       "loc_cap": 500,
       "module": "src/synthorg/memory/utils.py",
       "owning_feature": "memory"
@@ -14023,7 +14114,7 @@
     },
     {
       "kind": "code",
-      "loc": 180,
+      "loc": 179,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/decorator.py",
       "owning_feature": "ontology"
@@ -14037,42 +14128,42 @@
     },
     {
       "kind": "code",
-      "loc": 39,
+      "loc": 38,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/drift/active.py",
       "owning_feature": "ontology"
     },
     {
       "kind": "code",
-      "loc": 71,
+      "loc": 68,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/drift/layered.py",
       "owning_feature": "ontology"
     },
     {
       "kind": "code",
-      "loc": 31,
+      "loc": 29,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/drift/noop.py",
       "owning_feature": "ontology"
     },
     {
       "kind": "code",
-      "loc": 140,
+      "loc": 139,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/drift/passive.py",
       "owning_feature": "ontology"
     },
     {
       "kind": "code",
-      "loc": 29,
+      "loc": 28,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/drift/protocol.py",
       "owning_feature": "ontology"
     },
     {
       "kind": "code",
-      "loc": 156,
+      "loc": 154,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/drift/service.py",
       "owning_feature": "ontology"
@@ -14107,42 +14198,42 @@
     },
     {
       "kind": "code",
-      "loc": 62,
+      "loc": 60,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/injection/factory.py",
       "owning_feature": "ontology"
     },
     {
       "kind": "code",
-      "loc": 91,
+      "loc": 90,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/injection/hybrid.py",
       "owning_feature": "ontology"
     },
     {
       "kind": "code",
-      "loc": 51,
+      "loc": 49,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/injection/memory.py",
       "owning_feature": "ontology"
     },
     {
       "kind": "code",
-      "loc": 124,
+      "loc": 122,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/injection/prompt.py",
       "owning_feature": "ontology"
     },
     {
       "kind": "code",
-      "loc": 52,
+      "loc": 51,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/injection/protocol.py",
       "owning_feature": "ontology"
     },
     {
       "kind": "code",
-      "loc": 219,
+      "loc": 218,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/injection/tool.py",
       "owning_feature": "ontology"
@@ -14163,7 +14254,7 @@
     },
     {
       "kind": "code",
-      "loc": 261,
+      "loc": 263,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/service.py",
       "owning_feature": "ontology"
@@ -14177,7 +14268,7 @@
     },
     {
       "kind": "code",
-      "loc": 101,
+      "loc": 99,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/sync.py",
       "owning_feature": "ontology"

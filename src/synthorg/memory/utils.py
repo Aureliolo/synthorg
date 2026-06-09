@@ -1,11 +1,8 @@
 """Shared helpers for memory domain models."""
 
-from typing import TYPE_CHECKING
+from collections.abc import Iterable
 
 from synthorg.core.collections import dedupe_preserving_order
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
 
 
 # Implements dedup-and-keep-first semantics. The reject-on-duplicate

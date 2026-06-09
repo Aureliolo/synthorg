@@ -6,17 +6,15 @@ orchestrator (:func:`chunk_raw_document`) wraps pieces into
 :class:`KnowledgeChunk` instances with deterministic positional ids.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.knowledge.models import (
     ChunkText,
     ProvenanceLocator,
+    RawUnit,
 )
-
-if TYPE_CHECKING:
-    from synthorg.knowledge.models import RawUnit
 
 
 class ChunkPiece(BaseModel):

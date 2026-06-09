@@ -8,13 +8,13 @@ defining it here rather than in ``adapter`` avoids the ``adapter`` <->
 ``adapter_shared`` import cycle.
 """
 
-from typing import Any, Protocol
+from typing import Protocol
 
 
 class Mem0Client(Protocol):
     """Subset of ``Memory`` methods used by the adapter."""
 
-    def add(self, **kwargs: Any) -> dict[str, Any]:
+    def add(self, **kwargs: object) -> dict[str, object]:
         """Add.
 
         Returns:
@@ -22,7 +22,7 @@ class Mem0Client(Protocol):
         """
         ...
 
-    def search(self, **kwargs: Any) -> dict[str, Any]:
+    def search(self, **kwargs: object) -> dict[str, object]:
         """Search.
 
         Returns:
@@ -30,7 +30,7 @@ class Mem0Client(Protocol):
         """
         ...
 
-    def get_all(self, **kwargs: Any) -> dict[str, Any]:
+    def get_all(self, **kwargs: object) -> dict[str, object]:
         """Get all.
 
         Returns:
@@ -38,7 +38,7 @@ class Mem0Client(Protocol):
         """
         ...
 
-    def get(self, memory_id: str) -> dict[str, Any] | None:
+    def get(self, memory_id: str) -> dict[str, object] | None:
         """Get.
 
         Returns:

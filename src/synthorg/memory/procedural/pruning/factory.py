@@ -1,20 +1,16 @@
 """Factory for building pruning strategies from configuration."""
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.registry import StrategyRegistry
+from synthorg.memory.procedural.pruning.config import PruningConfig
 from synthorg.memory.procedural.pruning.hybrid_strategy import (
     HybridPruningStrategy,
 )
 from synthorg.memory.procedural.pruning.pareto_strategy import (
     ParetoPruningStrategy,
 )
+from synthorg.memory.procedural.pruning.protocol import PruningStrategy
 from synthorg.memory.procedural.pruning.ttl_strategy import TtlPruningStrategy
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.memory.procedural.pruning.config import PruningConfig
-    from synthorg.memory.procedural.pruning.protocol import PruningStrategy
 
 logger = get_logger(__name__)
 

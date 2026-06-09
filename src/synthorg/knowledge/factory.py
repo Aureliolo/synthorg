@@ -6,19 +6,15 @@ chunk-provenance repositories). Constructed at startup by
 ``_wire_knowledge_engine`` once persistence is connected.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.clock import Clock
+from synthorg.knowledge.config import KnowledgeConfig
 from synthorg.knowledge.indexer import KnowledgeIndexer
+from synthorg.knowledge.loaders.ticket import TicketFetcher
+from synthorg.knowledge.loaders.web import HtmlFetcher
 from synthorg.knowledge.retrieval import KnowledgeRetriever
 from synthorg.knowledge.service import KnowledgeService
-
-if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
-    from synthorg.knowledge.config import KnowledgeConfig
-    from synthorg.knowledge.loaders.ticket import TicketFetcher
-    from synthorg.knowledge.loaders.web import HtmlFetcher
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.persistence.protocol import PersistenceBackend
 
 
 def build_knowledge_service(  # noqa: PLR0913 -- cohesive boot-time wiring

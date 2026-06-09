@@ -5,8 +5,10 @@ tool-based access (extended entities via ``lookup_entity``).  This
 is the default and recommended strategy.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.injection import TokenEstimator
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import ONTOLOGY_INJECTION_PREPARED
 from synthorg.ontology.injection.prompt import PromptInjectionStrategy
@@ -15,12 +17,8 @@ from synthorg.ontology.injection.tool import (
     LookupEntityTool,
     ToolBasedInjectionStrategy,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.injection import TokenEstimator
-    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
-    from synthorg.providers.models import ChatMessage, ToolDefinition
+from synthorg.persistence.ontology_protocol import OntologyEntityRepository
+from synthorg.providers.models import ChatMessage, ToolDefinition
 
 logger = get_logger(__name__)
 _DEFAULT_CORE_TOKEN_BUDGET: Final[int] = 2000

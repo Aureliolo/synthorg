@@ -1,12 +1,8 @@
 """No-op drift detection strategy."""
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.ontology.models import DriftAction, DriftReport
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

@@ -17,10 +17,8 @@ from synthorg.memory.injection_factory import build_memory_injection_strategy
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
-from synthorg.memory.self_editing import (
-    SelfEditingMemoryConfig,
-    SelfEditingMemoryStrategy,
-)
+from synthorg.memory.self_editing import SelfEditingMemoryStrategy
+from synthorg.memory.self_editing_models import SelfEditingMemoryConfig
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from tests._shared import mock_of
 

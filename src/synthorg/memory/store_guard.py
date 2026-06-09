@@ -4,16 +4,12 @@ Advisory guard that warns when memories are stored without the
 ``"non-inferable"`` tag.  Never blocks -- the store always succeeds.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.memory.filter import NON_INFERABLE_TAG
+from synthorg.memory.models import MemoryStoreRequest
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_FILTER_STORE_MISSING_TAG,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.models import MemoryStoreRequest
 
 logger = get_logger(__name__)
 

@@ -4,8 +4,7 @@ Maps ``InjectionStrategy`` config enum values to concrete
 strategy implementations.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.memory.injection import TokenEstimator
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_INJECTION_UNKNOWN_STRATEGY,
@@ -14,12 +13,9 @@ from synthorg.ontology.config import InjectionStrategy, OntologyInjectionConfig
 from synthorg.ontology.injection.hybrid import HybridInjectionStrategy
 from synthorg.ontology.injection.memory import MemoryBasedInjectionStrategy
 from synthorg.ontology.injection.prompt import PromptInjectionStrategy
+from synthorg.ontology.injection.protocol import OntologyInjectionStrategy
 from synthorg.ontology.injection.tool import ToolBasedInjectionStrategy
-
-if TYPE_CHECKING:
-    from synthorg.memory.injection import TokenEstimator
-    from synthorg.ontology.injection.protocol import OntologyInjectionStrategy
-    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
+from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 

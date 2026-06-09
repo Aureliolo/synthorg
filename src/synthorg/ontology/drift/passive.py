@@ -5,9 +5,11 @@ divergence via keyword overlap between stored content and the
 canonical entity definition.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.text_similarity import tokenize_words, word_overlap
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_CHECK_COMPLETED,
@@ -15,11 +17,7 @@ from synthorg.observability.events.ontology import (
 )
 from synthorg.ontology.errors import OntologyNotFoundError
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
+from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 
