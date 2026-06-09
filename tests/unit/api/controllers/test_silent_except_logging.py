@@ -12,7 +12,7 @@ structured fields; the same pattern applies to setup, analytics,
 _department_health, and approvals.
 """
 
-from typing import Any
+from typing import NoReturn
 
 import pytest
 import structlog
@@ -29,7 +29,7 @@ pytestmark = pytest.mark.unit
 class _ExplodingResolver:
     """Stand-in ``ConfigResolver`` that raises on ``get_budget_config``."""
 
-    async def get_budget_config(self) -> Any:
+    async def get_budget_config(self) -> NoReturn:
         msg = "synthetic budget config outage"
         raise RuntimeError(msg)
 

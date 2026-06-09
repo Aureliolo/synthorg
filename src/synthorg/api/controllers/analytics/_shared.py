@@ -8,8 +8,9 @@ trend). The per-endpoint assembly/bucketing helpers live with their
 controllers.
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final, NamedTuple
+from typing import Final, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,15 +28,12 @@ from synthorg.budget.trends import (
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.analytics import ANALYTICS_OVERVIEW_QUERIED
 from synthorg.observability.events.api import API_REQUEST_ERROR
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
-from collections.abc import Sequence
 
 logger = get_logger(__name__)
 _DEFAULT_HORIZON_DAYS: Final[int] = 14
@@ -292,7 +290,9 @@ async def _resolve_agent_counts(
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="analytics.resolve_agent_counts",
-            error="agent_registry_query_failed",
+            reason="agent_registry_query_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return 0, config_agent_count
 

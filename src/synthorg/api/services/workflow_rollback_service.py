@@ -17,6 +17,7 @@ The service is a thin two-method object constructed per request; no
 AppState wiring is required.
 """
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
@@ -43,7 +44,6 @@ if TYPE_CHECKING:
         WorkflowDefinitionRepository,
     )
     from synthorg.versioning.models import RollbackWorkflowRequest, VersionSnapshot
-from datetime import datetime
 
 logger = get_logger(__name__)
 

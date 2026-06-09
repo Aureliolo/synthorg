@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import jwt
+from litestar import Request
 from litestar.connection import ASGIConnection
 from litestar.datastructures import Cookie, State
 from litestar.exceptions import PermissionDeniedException
@@ -47,7 +48,6 @@ if TYPE_CHECKING:
     from synthorg.api.auth.service import AuthService
     from synthorg.api.state import AppState
     from synthorg.core.auth.models import User
-from litestar import Request
 
 logger = get_logger(__name__)
 

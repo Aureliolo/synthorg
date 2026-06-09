@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Literal
 
 from litestar import Controller, get, post
@@ -36,7 +37,6 @@ from synthorg.templates.pack_loader import PackInfo, list_packs, load_pack
 
 if TYPE_CHECKING:
     from synthorg.templates.schema import TemplateDepartmentConfig
-from collections.abc import Sequence
 
 logger = get_logger(__name__)
 

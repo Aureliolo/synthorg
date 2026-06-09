@@ -9,6 +9,7 @@ both import them without an import cycle.
 """
 
 import asyncio
+from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Protocol
 
 from synthorg.observability import (
@@ -27,7 +28,6 @@ if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
-from collections.abc import Awaitable
 
 logger = get_logger(__name__)
 

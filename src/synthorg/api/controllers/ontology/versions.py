@@ -25,7 +25,11 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathName
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.ontology.errors import OntologyNotFoundError
+
+logger = get_logger(__name__)
 
 
 class OntologyVersionsController(Controller):
@@ -57,6 +61,7 @@ class OntologyVersionsController(Controller):
         try:
             await svc.get(name)
         except OntologyNotFoundError:
+            logger.info(API_RESOURCE_NOT_FOUND, resource="entity", name=name)
             msg = "Entity not found"
             raise NotFoundError(msg)  # noqa: B904
 
@@ -118,6 +123,12 @@ class OntologyVersionsController(Controller):
 
         v = await svc.get_version(name, version)
         if v is None:
+            logger.info(
+                API_RESOURCE_NOT_FOUND,
+                resource="entity_version",
+                name=name,
+                version=version,
+            )
             msg = "Version not found"
             raise NotFoundError(msg)
 

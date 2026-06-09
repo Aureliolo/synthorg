@@ -5,7 +5,10 @@ operations that were previously inline in ``setup.py``.
 """
 
 import json
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, cast
+
+from pydantic import JsonValue
 
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.normalization import normalize_optional_string
@@ -33,9 +36,6 @@ if TYPE_CHECKING:
         _ProviderWithModels,
     )
     from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
-from collections.abc import Mapping, Sequence
-
-from pydantic import JsonValue
 
 logger = get_logger(__name__)
 

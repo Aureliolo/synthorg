@@ -9,6 +9,7 @@ re-exported here for the existing import sites.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING
 
 from synthorg.api.lifecycle_runner_shutdown import _run_shutdown
@@ -39,7 +40,6 @@ if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
-from collections.abc import Awaitable, Callable, Sequence
 
 __all__ = [
     "_build_lifecycle",

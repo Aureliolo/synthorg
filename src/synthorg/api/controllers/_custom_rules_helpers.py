@@ -169,6 +169,11 @@ def _build_preview_snapshot(
     Raises:
         ValueError: Raised on the corresponding failure path.
     """
+    if "." not in metric_path:
+        msg = (
+            f"metric_path must be dot-notation '<domain>.<field>', got: {metric_path!r}"
+        )
+        raise ValueError(msg)
     domain, field = metric_path.split(".", maxsplit=1)
 
     # Convert to int for integer-typed metrics so the injected sample

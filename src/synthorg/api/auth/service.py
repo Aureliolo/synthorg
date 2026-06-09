@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import secrets
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, ClassVar
 
@@ -38,7 +39,6 @@ if TYPE_CHECKING:
     from synthorg.core.auth.config import AuthConfig
     from synthorg.persistence.auth_protocol import RefreshTokenRepository
     from synthorg.persistence.user_protocol import UserRepository
-from collections.abc import Callable
 
 logger = get_logger(__name__)
 

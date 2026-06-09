@@ -622,7 +622,6 @@ class CreateApprovalRequest(BaseModel):
     )
     metadata: dict[str, str] = Field(
         default_factory=dict,
-        max_length=_MAX_METADATA_KEYS,
         description=(
             "Optional key-value metadata for the approval "
             f"(max {_MAX_METADATA_KEYS} keys, "
@@ -648,7 +647,12 @@ class CreateApprovalRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_metadata_bounds(self) -> Self:
-        """Enforce per-entry size limits; key-count via Field(max_length=...).
+        """Enforce metadata key-count and per-entry size limits.
+
+        Key-count lives here (not on ``Field(max_length=...)``) because a
+        ``max_length`` on a ``dict`` field makes the OpenAPI generator emit
+        an array schema instead of ``additionalProperties``, drifting the
+        generated client type.
 
         Returns:
             ``Self`` instance.
@@ -656,6 +660,9 @@ class CreateApprovalRequest(BaseModel):
         Raises:
             ValueError: Raised on the corresponding failure path.
         """
+        if len(self.metadata) > _MAX_METADATA_KEYS:
+            msg = f"metadata must have at most {_MAX_METADATA_KEYS} keys"
+            raise ValueError(msg)
         for k, v in self.metadata.items():
             if len(k) > _MAX_METADATA_STR_LEN:
                 msg = f"metadata key must be at most {_MAX_METADATA_STR_LEN} characters"

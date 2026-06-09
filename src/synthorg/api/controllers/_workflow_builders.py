@@ -10,6 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from litestar.datastructures import State
 from pydantic import ValidationError
 
 from synthorg.engine.errors import WorkflowDefinitionValidationError
@@ -45,7 +46,6 @@ if TYPE_CHECKING:
     )
     from synthorg.engine.workflow.blueprint_models import BlueprintData
     from synthorg.engine.workflow.validation import WorkflowValidationError
-from litestar.datastructures import State
 
 logger = get_logger(__name__)
 

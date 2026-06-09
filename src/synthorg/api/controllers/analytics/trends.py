@@ -1,8 +1,9 @@
 # module-kind: controller
 """Analytics time-series trends endpoint at /analytics/trends."""
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from litestar import Controller, get
 from litestar.datastructures import State
@@ -31,15 +32,12 @@ from synthorg.budget.trends import (
     resolve_bucket_size,
 )
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import ANALYTICS_TRENDS_QUERIED
 from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.persistence.state import persistence_of
-
-if TYPE_CHECKING:
-    from synthorg.hr.performance.models import TaskMetricRecord
-from collections.abc import Sequence
 
 logger = get_logger(__name__)
 

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, override
 
 import jwt
+from litestar.connection import ASGIConnection
 from litestar.datastructures import State
 from litestar.enums import ScopeType
 from litestar.exceptions import NotAuthorizedException
@@ -48,7 +49,6 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.core.auth.config import AuthConfig
     from synthorg.core.auth.models import ApiKey
-from litestar.connection import ASGIConnection
 
 logger = get_logger(__name__)
 

@@ -9,6 +9,7 @@ reaches ``_publish_webhook_event_and_log`` module-qualified through
 this module so there is one canonical patch target.
 """
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from litestar import Request
@@ -42,7 +43,6 @@ if TYPE_CHECKING:
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.integrations.connections.catalog import ConnectionCatalog
     from synthorg.integrations.connections.models import Connection, ConnectionType
-from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

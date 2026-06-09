@@ -534,14 +534,14 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 548,
+      "loc": 549,
       "loc_cap": 600,
       "module": "src/synthorg/api/controllers/_conversational_resume.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 196,
+      "loc": 201,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/_custom_rules_helpers.py",
       "owning_feature": "api_core"
@@ -667,7 +667,7 @@
     },
     {
       "kind": "code",
-      "loc": 277,
+      "loc": 278,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/analytics/_shared.py",
       "owning_feature": "api_core"
@@ -681,14 +681,14 @@
     },
     {
       "kind": "controller",
-      "loc": 158,
+      "loc": 156,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/analytics/overview.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "controller",
-      "loc": 185,
+      "loc": 184,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/analytics/trends.py",
       "owning_feature": "api_core"
@@ -933,7 +933,7 @@
     },
     {
       "kind": "code",
-      "loc": 144,
+      "loc": 146,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/events/_shared.py",
       "owning_feature": "api_core"
@@ -1129,7 +1129,7 @@
     },
     {
       "kind": "controller",
-      "loc": 123,
+      "loc": 133,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/ontology/versions.py",
       "owning_feature": "api_core"
@@ -1633,7 +1633,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 688,
+      "loc": 694,
       "loc_cap": null,
       "module": "src/synthorg/api/dto.py",
       "owning_feature": "api_core"
@@ -1724,7 +1724,7 @@
     },
     {
       "kind": "code",
-      "loc": 250,
+      "loc": 255,
       "loc_cap": 500,
       "module": "src/synthorg/api/guards.py",
       "owning_feature": "api_core"

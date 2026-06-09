@@ -3,8 +3,8 @@
 
 import asyncio
 from collections import Counter
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
 
 from litestar import Controller, get
 from litestar.datastructures import State
@@ -19,21 +19,18 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.trends import BucketSize, bucket_cost_records
+from synthorg.config.schema import AgentConfig
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import ANALYTICS_OVERVIEW_QUERIED
 from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import config_resolver_of
-
-if TYPE_CHECKING:
-    from synthorg.budget.cost_record import CostRecord
-    from synthorg.config.schema import AgentConfig
-    from synthorg.core.task import Task
-from collections.abc import Sequence
 
 logger = get_logger(__name__)
 

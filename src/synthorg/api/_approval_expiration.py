@@ -11,6 +11,7 @@ The mixin reaches back into the host store for shared state (``_clock``,
 declares that surface so ``mypy`` type-checks the mixin in isolation.
 """
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
@@ -30,7 +31,6 @@ if TYPE_CHECKING:
     from synthorg.core.clock import Clock
     from synthorg.core.types import NotBlankStr
     from synthorg.persistence.approval_protocol import ApprovalRepository
-from collections.abc import Callable
 
 logger = get_logger(__name__)
 

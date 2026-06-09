@@ -90,7 +90,7 @@ class WorkflowIODeclarationRequest(BaseModel):
     name: NotBlankStr = Field(max_length=128, description="Declaration name")
     type: WorkflowValueType = Field(description="Declared data type")
     required: bool = Field(default=True, description="Whether mandatory")
-    default: object = Field(default=None, description="Default value")
+    default: object | None = Field(default=None, description="Default value")
     description: str = Field(
         default="",
         max_length=1024,

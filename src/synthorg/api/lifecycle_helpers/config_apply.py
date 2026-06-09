@@ -10,6 +10,7 @@ re-entering Litestar lifespan does not churn long-lived clients.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from synthorg.api.api_core_state import ticket_store_of
@@ -32,7 +33,6 @@ if TYPE_CHECKING:
     from synthorg.config.schema import RootConfig
     from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
     from synthorg.settings.bridge_configs import NotificationsBridgeConfig
-from collections.abc import Awaitable, Callable
 
 logger = get_logger(__name__)
 

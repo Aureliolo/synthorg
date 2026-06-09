@@ -58,6 +58,7 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.core.approval import ApprovalItem
     from synthorg.meta.chief_of_staff.group_models import ConversationInvite
+    from synthorg.meta.chief_of_staff.models import ConversationalProposal
 
 logger = get_logger(__name__)
 
@@ -97,7 +98,7 @@ async def _reread_approval_item(
 async def _load_conversational_proposal(
     app_state: AppState,
     approval_id: str,
-) -> tuple[bool, object | None]:
+) -> tuple[bool, ConversationalProposal | None]:
     """Resolve a conversational-intake proposal for *approval_id*.
 
     Returns a (owns_decision, proposal_or_none) tuple:
@@ -121,7 +122,7 @@ async def _load_conversational_proposal(
             strand a decided conversational approval.
 
     Returns:
-        The ``tuple[bool, object]`` value when present, ``None`` otherwise.
+        ``(handled, proposal)``: the proposal when present, ``None`` otherwise.
     """
     from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
     from synthorg.persistence.conversational_proposal_protocol import (  # noqa: PLC0415
@@ -159,7 +160,7 @@ async def _load_conversational_proposal(
 async def _reject_conversational_proposal(
     app_state: AppState,
     approval_id: str,
-    proposal: object,
+    proposal: ConversationalProposal,
 ) -> None:
     """CAS the proposal from PENDING to REJECTED; pipeline never runs."""
     from synthorg.communication.conversation.enums import (  # noqa: PLC0415
@@ -170,7 +171,7 @@ async def _reject_conversational_proposal(
         app_state.slice(MetaStateSlice).conversational_proposal_repo,
         "Conversational Proposal Repository",
     )
-    proposal_id = proposal.id  # type: ignore[attr-defined]
+    proposal_id = proposal.id
     transitioned = await repo.transition_if(
         proposal_id,
         ConversationalProposalStatus.PENDING,
@@ -197,7 +198,7 @@ async def _reject_conversational_proposal(
 async def _execute_conversational_proposal(
     app_state: AppState,
     approval_id: str,
-    proposal: object,
+    proposal: ConversationalProposal,
 ) -> None:
     """Acquire EXECUTING via CAS, run pipeline, finalize EXECUTED.
 
@@ -219,8 +220,8 @@ async def _execute_conversational_proposal(
         app_state.slice(MetaStateSlice).conversational_proposal_repo,
         "Conversational Proposal Repository",
     )
-    proposal_id = proposal.id  # type: ignore[attr-defined]
-    work_item_json = proposal.work_item_json  # type: ignore[attr-defined]
+    proposal_id = proposal.id
+    work_item_json = proposal.work_item_json
 
     if app_state.slice(EngineStateSlice).work_pipeline is None:
         # Approved work can never run without a pipeline. Surface it

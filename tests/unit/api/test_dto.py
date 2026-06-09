@@ -210,7 +210,7 @@ class TestPaginatedResponseErrorDetail:
 class TestCreateApprovalRequestMetadata:
     def test_metadata_too_many_keys(self) -> None:
         many_keys = {f"k{i}": f"v{i}" for i in range(21)}
-        with pytest.raises(ValueError, match="at most 20 items"):
+        with pytest.raises(ValueError, match="at most 20 keys"):
             CreateApprovalRequest(
                 action_type="deploy:release",
                 title="Test",

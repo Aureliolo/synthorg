@@ -7,6 +7,7 @@ focused on building agent dicts rather than cross-checking them against
 live provider config.
 """
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from synthorg.core.domain_errors import NotFoundError, ValidationError
@@ -22,7 +23,6 @@ if TYPE_CHECKING:
         UpdateAgentModelRequest,
     )
     from synthorg.config.schema import ProviderConfig
-from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

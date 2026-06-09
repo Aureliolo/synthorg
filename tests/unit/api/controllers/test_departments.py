@@ -41,7 +41,7 @@ class TestDepartmentController:
         assert resp.status_code == 400
 
 
-@pytest.mark.integration
+@pytest.mark.unit
 class TestDepartmentControllerDbOverride:
     """Test that DB-stored settings override YAML departments."""
 
@@ -89,7 +89,7 @@ class TestDepartmentControllerDbOverride:
             assert detail["data"]["name"] == "db-dept"
 
 
-@pytest.mark.integration
+@pytest.mark.unit
 class TestDepartmentCeremonyPolicyCas:
     """Ceremony-policy overrides use settings-service CAS for cross-worker safety.
 

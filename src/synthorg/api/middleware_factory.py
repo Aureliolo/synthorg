@@ -16,6 +16,7 @@ from litestar.middleware.rate_limit import (
 from litestar.middleware.rate_limit import (
     get_remote_address,
 )
+from litestar.types import Middleware
 
 from synthorg.api.auth.context import AuthContextMiddleware
 from synthorg.api.auth.csrf import create_csrf_middleware_class
@@ -32,7 +33,6 @@ from synthorg.settings.mirrors import parse_str_tuple_json
 if TYPE_CHECKING:
     from synthorg.api.config import ApiConfig
     from synthorg.core.auth.config import AuthConfig
-from litestar.types import Middleware
 
 logger = get_logger(__name__)
 

@@ -32,7 +32,7 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_VALIDATION_FAILED
+from synthorg.observability.events.api import API_REQUEST_ERROR, API_VALIDATION_FAILED
 from synthorg.observability.events.event_stream import EVENT_STREAM_INTERRUPT_NOT_FOUND
 
 logger = get_logger(__name__)
@@ -88,6 +88,7 @@ def _require_interrupt_store(app_state: AppState) -> InterruptStore:
     """
     store = app_state.slice(CommunicationStateSlice).interrupt_store
     if store is None:
+        logger.warning(API_REQUEST_ERROR, reason="interrupt_store_not_configured")
         msg = "Interrupt store not configured"
         raise NotFoundError(msg)
     return store
@@ -101,6 +102,7 @@ def _require_auth(request: Request[object, object, State]) -> AuthenticatedUser:
     """
     auth_user = request.scope.get("user")
     if not isinstance(auth_user, AuthenticatedUser):
+        logger.warning(API_REQUEST_ERROR, reason="interrupt_resume_unauthenticated")
         msg = "Authentication required"
         raise UnauthorizedError(msg)
     return auth_user

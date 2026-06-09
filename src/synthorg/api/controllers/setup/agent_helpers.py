@@ -8,6 +8,7 @@ password length) live in ``setup.company_helpers``.
 
 import asyncio
 import json
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from synthorg.api.controllers.setup.company_helpers import read_name_locales
@@ -53,7 +54,6 @@ if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.settings.service import SettingsService
     from synthorg.templates.schema import CompanyTemplate
-from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

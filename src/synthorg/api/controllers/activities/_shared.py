@@ -10,6 +10,7 @@ these as ``from synthorg.api.controllers.activities._shared import ...``.
 """
 
 import asyncio
+from collections.abc import Awaitable
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -41,7 +42,6 @@ from synthorg.tools.state import ToolsStateSlice
 
 if TYPE_CHECKING:
     from synthorg.hr.models import AgentLifecycleEvent
-from collections.abc import Awaitable
 
 logger = get_logger(__name__)
 

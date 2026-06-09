@@ -8915,7 +8915,9 @@ export type components = {
             /** @description Detailed explanation of the action and why it requires approval. */
             readonly description: string;
             /** @description Optional key-value metadata for the approval (max 20 keys, 256-char keys and values). */
-            readonly metadata?: readonly (string)[];
+            readonly metadata?: {
+                readonly [key: string]: string;
+            };
             readonly risk_level: components["schemas"]["ApprovalRiskLevel"];
             /** @description Optional associated task identifier. */
             readonly task_id?: string | null;
@@ -15985,7 +15987,7 @@ export type components = {
         /** WorkflowIODeclarationRequest */
         readonly WorkflowIODeclarationRequest: {
             /** @description Default value */
-            readonly default: unknown;
+            readonly default?: unknown | null;
             /**
              * @description Human-readable description
              * @default
