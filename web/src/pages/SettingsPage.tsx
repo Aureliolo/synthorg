@@ -11,6 +11,7 @@ import { ToggleField } from '@/components/ui/toggle-field'
 import { NAMESPACE_DISPLAY_NAMES, NAMESPACE_ORDER } from '@/utils/constants'
 import { AdvancedModeBanner } from './settings/AdvancedModeBanner'
 import { NotificationsSection } from './settings/NotificationsSection'
+import { SecurityConfigSection } from './settings/SecurityConfigSection'
 import { CodeEditorPanel } from './settings/CodeEditorPanel'
 import { FloatingSaveBar } from './settings/FloatingSaveBar'
 import { NamespaceSection } from './settings/NamespaceSection'
@@ -56,11 +57,14 @@ const NAMESPACE_ICONS: Partial<Record<SettingNamespace, React.ReactNode>> = {
 function getFooterAction(ns: SettingNamespace): React.ReactNode {
   if (ns === 'security') {
     return (
-      <SettingsActionCard
-        to={ROUTES.SETTINGS_SECURITY_SESSIONS}
-        title="Active Sessions"
-        description="Review and revoke active sessions for your account"
-      />
+      <div className="flex flex-col gap-section-gap">
+        <SettingsActionCard
+          to={ROUTES.SETTINGS_SECURITY_SESSIONS}
+          title="Active Sessions"
+          description="Review and revoke active sessions for your account"
+        />
+        <SecurityConfigSection />
+      </div>
     )
   }
   if (ns === 'backup') {

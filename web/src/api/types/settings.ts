@@ -1,6 +1,8 @@
 /** Settings registry, sink configuration and parsed company-config entries. */
 
 export type {
+  SecurityConfigExportResponse,
+  SecurityConfigImportRequest,
   SettingDefinition,
   SettingEntry,
   SinkInfoResponse as SinkInfo,

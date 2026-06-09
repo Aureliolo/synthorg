@@ -1,6 +1,15 @@
 import { apiClient, paginateAll, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
-import type { SettingDefinition, SettingEntry, SettingNamespace, SinkInfo, TestSinkResult, UpdateSettingRequest } from '../types/settings'
+import type {
+  SecurityConfigExportResponse,
+  SecurityConfigImportRequest,
+  SettingDefinition,
+  SettingEntry,
+  SettingNamespace,
+  SinkInfo,
+  TestSinkResult,
+  UpdateSettingRequest,
+} from '../types/settings'
 
 export async function getSchema(): Promise<SettingDefinition[]> {
   const response = await apiClient.get<ApiResponse<SettingDefinition[]>>('/settings/_schema')
@@ -64,6 +73,23 @@ export async function testSinkConfig(data: {
 }): Promise<TestSinkResult> {
   const response = await apiClient.post<ApiResponse<TestSinkResult>>(
     '/settings/observability/sinks/_test',
+    data,
+  )
+  return unwrap(response)
+}
+
+export async function exportSecurityConfig(): Promise<SecurityConfigExportResponse> {
+  const response = await apiClient.get<ApiResponse<SecurityConfigExportResponse>>(
+    '/settings/security/export',
+  )
+  return unwrap(response)
+}
+
+export async function importSecurityConfig(
+  data: SecurityConfigImportRequest,
+): Promise<SecurityConfigExportResponse> {
+  const response = await apiClient.post<ApiResponse<SecurityConfigExportResponse>>(
+    '/settings/security/import',
     data,
   )
   return unwrap(response)
