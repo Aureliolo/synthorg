@@ -3,7 +3,6 @@
 
 import hashlib
 import json
-from typing import Any
 
 from litestar import Controller, Request, post
 from litestar.datastructures import State
@@ -52,7 +51,7 @@ class WebhooksIngestController(Controller):
     async def receive_webhook(
         self,
         state: State,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         connection_name: PathName,
         event_type: PathEventType,
     ) -> ApiResponse[dict[str, object]]:

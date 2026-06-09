@@ -9,7 +9,6 @@ emitting a log line. This lets ``ws.py`` import individual hooks
 """
 
 import json
-from typing import Any
 
 from pydantic import ValidationError
 
@@ -52,7 +51,7 @@ _MAX_WS_MESSAGE_BYTES: int = 4096
 
 
 def matches_filters(
-    event: dict[str, Any],
+    event: dict[str, object],
     channel: str,
     channel_filters: dict[str, str],
 ) -> bool:
@@ -106,7 +105,7 @@ def channel_allowed(
     return True
 
 
-def parse_event_payload(event_data: bytes) -> dict[str, Any] | None:
+def parse_event_payload(event_data: bytes) -> dict[str, object] | None:
     """Decode the raw channel payload into a dict, logging+dropping on errors.
 
     Enforce UTF-8 explicitly before ``json.loads``: Python's JSON
@@ -117,7 +116,7 @@ def parse_event_payload(event_data: bytes) -> dict[str, Any] | None:
     single ``UnicodeDecodeError``.
 
     Returns:
-        The ``dict[str, Any]`` value when present, ``None`` otherwise.
+        The ``dict[str, object]`` value when present, ``None`` otherwise.
     """
     try:
         text = (
@@ -152,11 +151,11 @@ def parse_event_payload(event_data: bytes) -> dict[str, Any] | None:
     return event
 
 
-def _parse_ws_message(data: str) -> dict[str, Any] | str:
+def _parse_ws_message(data: str) -> dict[str, object] | str:
     """Parse raw JSON from the client, returning a dict or an error string.
 
     Returns:
-        The parsed ``dict[str, Any]`` on success, or a JSON-encoded
+        The parsed ``dict[str, object]`` on success, or a JSON-encoded
         error string (e.g. ``'{"error": "..."}'``) when the payload is
         too large or not a valid JSON object.
     """

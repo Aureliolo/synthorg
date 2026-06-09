@@ -2,7 +2,6 @@
 """Approvals decision endpoints -- create, approve, reject."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from uuid import UUID, uuid4
 
 from litestar import Controller, Request, post
@@ -64,7 +63,7 @@ class ApprovalsDecisionsController(Controller):
         self,
         state: State,
         data: CreateApprovalRequest,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> ApiResponse[ApprovalResponse]:
         """Create a new approval item.
 
@@ -155,7 +154,7 @@ class ApprovalsDecisionsController(Controller):
         state: State,
         approval_id: PathId,
         data: ApproveRequest,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> ApiResponse[ApprovalResponse]:
         """Approve a pending approval item.
 
@@ -237,7 +236,7 @@ class ApprovalsDecisionsController(Controller):
         state: State,
         approval_id: PathId,
         data: RejectRequest,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> ApiResponse[ApprovalResponse]:
         """Reject a pending approval item.
 

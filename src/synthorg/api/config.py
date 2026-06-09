@@ -6,7 +6,7 @@ them all.
 """
 
 from enum import StrEnum
-from typing import Any, ClassVar, Self
+from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -245,21 +245,21 @@ class RateLimitConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
+    def _apply_mirrors(cls, data: object) -> object:
         """Apply the mirrors.
 
         Returns:
-            ``Any`` instance.
+            ``object`` instance.
         """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="before")
     @classmethod
-    def _reject_legacy_max_requests(cls, data: Any) -> Any:
+    def _reject_legacy_max_requests(cls, data: object) -> object:
         """Reject the removed ``max_requests`` field with guidance.
 
         Returns:
-            ``Any`` instance.
+            ``object`` instance.
 
         Raises:
             ValueError: Raised on the corresponding failure path.
@@ -405,10 +405,10 @@ class ApiConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
+    def _apply_mirrors(cls, data: object) -> object:
         """Apply the mirrors.
 
         Returns:
-            ``Any`` instance.
+            ``object`` instance.
         """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)

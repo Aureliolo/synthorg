@@ -12,12 +12,20 @@ requests (no cookie) skip CSRF entirely.
 
 import hmac as _hmac
 import json
+from collections.abc import Iterable
 from http.cookies import SimpleCookie
-from typing import Any
 
-from litestar.types import ASGIApp, Receive, Scope, Send
+from litestar.types import (
+    ASGIApp,
+    HTTPResponseBodyEvent,
+    HTTPResponseStartEvent,
+    Receive,
+    Scope,
+    Send,
+)
 
 from synthorg.core.auth.config import AuthConfig
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_path
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -147,7 +155,7 @@ async def _send_403(send: Send) -> None:
             "error_category": "auth",
         }
     ).encode("utf-8")
-    start: Any = {
+    start: HTTPResponseStartEvent = {
         "type": "http.response.start",
         "status": 403,
         "headers": [
@@ -156,15 +164,16 @@ async def _send_403(send: Send) -> None:
         ],
     }
     await send(start)
-    body_msg: Any = {
+    body_msg: HTTPResponseBodyEvent = {
         "type": "http.response.body",
         "body": body,
+        "more_body": False,
     }
     await send(body_msg)
 
 
 def _parse_cookies(
-    headers: list[tuple[bytes, bytes]] | Any,
+    headers: Iterable[tuple[bytes, bytes]],
 ) -> dict[str, str]:
     """Parse cookies from raw ASGI headers.
 
@@ -181,7 +190,8 @@ def _parse_cookies(
         if name.lower() == b"cookie":
             try:
                 morsel = SimpleCookie(value.decode("latin-1"))
-            except Exception:  # noqa: S112
+            except Exception as exc:
+                reraise_critical(exc)
                 # Malformed cookie header -- treat as absent.
                 continue
             for key, m in morsel.items():
@@ -190,7 +200,7 @@ def _parse_cookies(
 
 
 def _get_header(
-    headers: list[tuple[bytes, bytes]] | Any,
+    headers: Iterable[tuple[bytes, bytes]],
     name: str,
 ) -> str | None:
     """Extract a header value by name (case-insensitive).

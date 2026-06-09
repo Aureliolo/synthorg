@@ -10,9 +10,10 @@ paths in lockstep.
 """
 
 import ipaddress
-from typing import Any, Final, Literal
+from typing import Final, Literal
 
 from litestar.connection import ASGIConnection
+from litestar.datastructures import State
 
 from synthorg.core.normalization import parse_comma_list_stripped
 from synthorg.observability import get_logger
@@ -49,7 +50,7 @@ SCOPE_KEY_TRUSTED_IP: Final[str] = "trusted_client_ip"
 
 
 def extract_subject_key(
-    connection: ASGIConnection[Any, Any, Any, Any],
+    connection: ASGIConnection[object, object, object, State],
     policy: KeyPolicy,
     *,
     guard_name: str,
@@ -91,7 +92,7 @@ def extract_subject_key(
     return f"ip:{client_ip(connection)}"
 
 
-def _peer_ip(connection: ASGIConnection[Any, Any, Any, Any]) -> str | None:
+def _peer_ip(connection: ASGIConnection[object, object, object, State]) -> str | None:
     """Return the immediate peer IP from the ASGI scope.
 
     Returns:
@@ -103,7 +104,7 @@ def _peer_ip(connection: ASGIConnection[Any, Any, Any, Any]) -> str | None:
     return None
 
 
-def client_ip(connection: ASGIConnection[Any, Any, Any, Any]) -> str:
+def client_ip(connection: ASGIConnection[object, object, object, State]) -> str:
     """Extract a proxy-aware best-effort client IP from the connection.
 
     Resolution order:
@@ -173,7 +174,7 @@ def parse_trusted_networks(raw: frozenset[str]) -> TrustedNetworks:
 
 
 def _trusted_networks(
-    connection: ASGIConnection[Any, Any, Any, Any],
+    connection: ASGIConnection[object, object, object, State],
 ) -> TrustedNetworks:
     """Return the cached trusted-network tuple from app state.
 

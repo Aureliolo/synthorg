@@ -8,7 +8,7 @@ password length) live in ``setup.company_helpers``.
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.api.controllers.setup.company_helpers import read_name_locales
 from synthorg.api.controllers.setup_agents import (
@@ -77,7 +77,7 @@ COMPLETE_LOCK = asyncio.Lock()
 
 def validate_agent_index(
     agent_index: int,
-    agents: list[dict[str, Any]],
+    agents: list[dict[str, object]],
 ) -> None:
     """Raise ``NotFoundError`` if *agent_index* is out of range.
 
@@ -353,7 +353,7 @@ async def check_has_agents(
     return validate_agents_value(entry.value, strict=strict)
 
 
-def _validate_tier_coverage(providers: Mapping[str, Any]) -> None:
+def _validate_tier_coverage(providers: Mapping[str, object]) -> None:
     """Reject provider sets that cannot satisfy tier classification.
 
     The model matcher tolerates fewer than three models per provider

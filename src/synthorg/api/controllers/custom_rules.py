@@ -6,7 +6,7 @@ for dry-run evaluation.
 """
 
 from datetime import UTC, datetime
-from typing import Any, Final
+from typing import Final
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State
@@ -164,7 +164,7 @@ class PreviewRuleRequest(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────
 
 
-def rule_to_dict(rule: CustomRuleDefinition) -> dict[str, Any]:
+def rule_to_dict(rule: CustomRuleDefinition) -> dict[str, object]:
     """Serialize a CustomRuleDefinition for API response.
 
     Returns:
@@ -185,7 +185,7 @@ def rule_to_dict(rule: CustomRuleDefinition) -> dict[str, Any]:
     }
 
 
-def _metric_to_dict(metric: MetricDescriptor) -> dict[str, Any]:
+def _metric_to_dict(metric: MetricDescriptor) -> dict[str, object]:
     """Serialize a MetricDescriptor for API response.
 
     Returns:
@@ -223,7 +223,7 @@ class CustomRuleController(Controller):
         state: State,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
-    ) -> PaginatedResponse[dict[str, Any]]:
+    ) -> PaginatedResponse[dict[str, object]]:
         """List all custom rules (paginated).
 
         Args:
@@ -243,14 +243,14 @@ class CustomRuleController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(state.app_state),
         )
-        return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
+        return PaginatedResponse[dict[str, object]](data=page, pagination=meta)
 
     @get("/{rule_id:str}")
     async def get_rule(
         self,
         state: State,
         rule_id: PathId,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Get a single custom rule.
 
         Args:
@@ -273,7 +273,7 @@ class CustomRuleController(Controller):
                 operation="read",
             )
             raise NotFoundError(msg)
-        return ApiResponse[dict[str, Any]](data=rule_to_dict(rule))
+        return ApiResponse[dict[str, object]](data=rule_to_dict(rule))
 
     @post(
         "/",
@@ -287,7 +287,7 @@ class CustomRuleController(Controller):
         self,
         state: State,
         data: CreateCustomRuleRequest,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Create a new custom rule.
 
         Args:
@@ -338,7 +338,7 @@ class CustomRuleController(Controller):
             metric_path=saved.metric_path,
             severity=saved.severity.value,
         )
-        return ApiResponse[dict[str, Any]](
+        return ApiResponse[dict[str, object]](
             data=rule_to_dict(saved),
         )
 
@@ -354,7 +354,7 @@ class CustomRuleController(Controller):
         state: State,
         rule_id: PathId,
         data: UpdateCustomRuleRequest,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Update an existing custom rule.
 
         Args:
@@ -392,7 +392,7 @@ class CustomRuleController(Controller):
             rule=rule_id,
             fields_changed=sorted(data.model_dump(exclude_none=True).keys()),
         )
-        return ApiResponse[dict[str, Any]](
+        return ApiResponse[dict[str, object]](
             data=rule_to_dict(updated),
         )
 
@@ -434,7 +434,7 @@ class CustomRuleController(Controller):
         self,
         state: State,
         rule_id: PathId,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Toggle a custom rule's enabled status.
 
         Args:
@@ -452,7 +452,7 @@ class CustomRuleController(Controller):
             rule=rule_id,
             enabled=toggled.enabled,
         )
-        return ApiResponse[dict[str, Any]](
+        return ApiResponse[dict[str, object]](
             data=rule_to_dict(toggled),
         )
 
@@ -462,7 +462,7 @@ class CustomRuleController(Controller):
         state: State,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
-    ) -> PaginatedResponse[dict[str, Any]]:
+    ) -> PaginatedResponse[dict[str, object]]:
         """List available snapshot metrics for rule building (paginated).
 
         Returns metric descriptors with bounds and metadata. The
@@ -470,7 +470,7 @@ class CustomRuleController(Controller):
         uniform shape with the rest of the list surface.
 
         Returns:
-            ``PaginatedResponse[dict[str, Any]]`` instance.
+            ``PaginatedResponse[dict[str, object]]`` instance.
         """
         entries = tuple(_metric_to_dict(m) for m in METRIC_REGISTRY)
         page, meta = paginate_cursor(
@@ -479,7 +479,7 @@ class CustomRuleController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(state.app_state),
         )
-        return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
+        return PaginatedResponse[dict[str, object]](data=page, pagination=meta)
 
     @post(
         "/preview",
@@ -490,7 +490,7 @@ class CustomRuleController(Controller):
     async def preview_rule(
         self,
         data: PreviewRuleRequest,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Dry-run a rule definition against a sample metric value.
 
         Args:
@@ -519,7 +519,7 @@ class CustomRuleController(Controller):
             data.sample_value,
         )
         match = rule.evaluate(snapshot)
-        result: dict[str, Any] = {
+        result: dict[str, object] = {
             "would_fire": match is not None,
             "match": None,
         }
@@ -530,7 +530,7 @@ class CustomRuleController(Controller):
                 "description": match.description,
                 "signal_context": match.signal_context,
             }
-        return ApiResponse[dict[str, Any]](data=result)
+        return ApiResponse[dict[str, object]](data=result)
 
 
 def _build_preview_snapshot(
@@ -548,62 +548,61 @@ def _build_preview_snapshot(
         ValueError: Raised on the corresponding failure path.
     """
     domain, field = metric_path.split(".", maxsplit=1)
-    perf_kwargs: dict[str, Any] = {
-        "avg_quality_score": 0.0,
-        "avg_success_rate": 0.0,
-        "avg_collaboration_score": 0.0,
-        "agent_count": 0,
-    }
-    budget_kwargs: dict[str, Any] = {
-        "total_spend": 0.0,
-        "productive_ratio": 0.0,
-        "coordination_ratio": 0.0,
-        "system_ratio": 0.0,
-        "forecast_confidence": 0.0,
-        "orchestration_overhead": 0.0,
-    }
-    coord_kwargs: dict[str, Any] = {}
-    scaling_kwargs: dict[str, Any] = {
-        "total_decisions": 0,
-        "success_rate": 0.0,
-    }
-    errors_kwargs: dict[str, Any] = {"total_findings": 0}
-    evolution_kwargs: dict[str, Any] = {}
-    telemetry_kwargs: dict[str, Any] = {}
 
-    # Inject the sample value into the right domain.
-    lookup = {
-        "performance": perf_kwargs,
-        "budget": budget_kwargs,
-        "coordination": coord_kwargs,
-        "scaling": scaling_kwargs,
-        "errors": errors_kwargs,
-        "evolution": evolution_kwargs,
-        "telemetry": telemetry_kwargs,
+    # Convert to int for integer-typed metrics so the injected sample
+    # matches the target field's declared type.
+    registry_entry = next(
+        (m for m in METRIC_REGISTRY if m.path == metric_path),
+        None,
+    )
+    value: float = (
+        int(sample_value)
+        if registry_entry is not None and registry_entry.value_type == "int"
+        else sample_value
+    )
+
+    # Build every summary with safe defaults, then inject the sample into
+    # the target domain via a validated copy.
+    snapshot = OrgSignalSnapshot(
+        performance=OrgPerformanceSummary(
+            avg_quality_score=0.0,
+            avg_success_rate=0.0,
+            avg_collaboration_score=0.0,
+            agent_count=0,
+        ),
+        budget=OrgBudgetSummary(
+            total_spend=0.0,
+            productive_ratio=0.0,
+            coordination_ratio=0.0,
+            system_ratio=0.0,
+            forecast_confidence=0.0,
+            orchestration_overhead=0.0,
+        ),
+        coordination=OrgCoordinationSummary(),
+        scaling=OrgScalingSummary(),
+        errors=OrgErrorSummary(),
+        evolution=OrgEvolutionSummary(),
+        telemetry=OrgTelemetrySummary(),
+    )
+    summaries: dict[str, BaseModel] = {
+        "performance": snapshot.performance,
+        "budget": snapshot.budget,
+        "coordination": snapshot.coordination,
+        "scaling": snapshot.scaling,
+        "errors": snapshot.errors,
+        "evolution": snapshot.evolution,
+        "telemetry": snapshot.telemetry,
     }
-    target = lookup.get(domain)
+    target = summaries.get(domain)
     if target is None:
         msg = (
             f"Internal error: metric domain '{domain}' "
             "not handled in preview snapshot builder"
         )
         raise ValueError(msg)
-    # Convert to int for integer fields.
-    registry_entry = next(
-        (m for m in METRIC_REGISTRY if m.path == metric_path),
-        None,
-    )
-    if registry_entry is not None and registry_entry.value_type == "int":
-        target[field] = int(sample_value)
-    else:
-        target[field] = sample_value
-
-    return OrgSignalSnapshot(
-        performance=OrgPerformanceSummary(**perf_kwargs),
-        budget=OrgBudgetSummary(**budget_kwargs),
-        coordination=OrgCoordinationSummary(**coord_kwargs),
-        scaling=OrgScalingSummary(**scaling_kwargs),
-        errors=OrgErrorSummary(**errors_kwargs),
-        evolution=OrgEvolutionSummary(**evolution_kwargs),
-        telemetry=OrgTelemetrySummary(**telemetry_kwargs),
-    )
+    # model_copy(update=...) bypasses validation, so re-validate the whole
+    # snapshot to preserve the field's range constraints (parity with the
+    # previous construct-and-validate path).
+    updated_target = target.model_copy(update={field: value})
+    injected = snapshot.model_copy(update={domain: updated_target})
+    return OrgSignalSnapshot.model_validate(injected.model_dump())

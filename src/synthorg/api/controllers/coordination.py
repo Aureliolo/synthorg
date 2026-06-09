@@ -1,7 +1,7 @@
 """Coordination controller -- multi-agent coordination endpoint."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from litestar import Controller, Request, post
 from litestar.datastructures import State
@@ -60,7 +60,7 @@ logger = get_logger(__name__)
 
 
 def _publish_ws_event(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     event_type: WsEventType,
     payload: dict[str, object],
 ) -> None:
@@ -142,7 +142,7 @@ class CoordinationController(Controller):
     )
     async def coordinate_task(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         task_id: PathId,
         data: CoordinateTaskRequest,
@@ -282,7 +282,7 @@ class CoordinationController(Controller):
     async def _execute(
         self,
         app_state: AppState,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         context: CoordinationContext,
         task_id: PathId,
     ) -> CoordinationResultWithAttribution:

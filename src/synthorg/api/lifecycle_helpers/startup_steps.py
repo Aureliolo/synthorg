@@ -6,8 +6,6 @@ closing over ``create_app`` locals) and is scheduled into the Litestar
 ``on_startup`` sequence by the composition root.
 """
 
-from typing import Any
-
 from pydantic import ValidationError
 
 from synthorg.api._app_wiring import (
@@ -24,6 +22,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.review_gate_inputs import AutonomyProvider
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -90,7 +89,7 @@ def _publish_red_team_runtime(
 async def install_runtime_services(
     app_state: AppState,
     *,
-    connection_catalog: Any,
+    connection_catalog: ConnectionCatalog | None,
 ) -> None:
     """Install worker-execution + coordinator runtime services at boot.
 

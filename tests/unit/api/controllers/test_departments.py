@@ -158,7 +158,7 @@ class TestDepartmentCeremonyPolicyCas:
         from tests._shared import make_app_state
 
         app_state = make_app_state(settings_service=settings_service)
-        policy = {"strategy": "task_driven"}
+        policy: dict[str, object] = {"strategy": "task_driven"}
 
         original_set = settings_service.set
         call_count = {"n": 0}

@@ -7,7 +7,7 @@ MCP service layer can import them without depending on this controller
 module.
 """
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from litestar import Controller, get
 from litestar.datastructures import State
@@ -47,11 +47,11 @@ class CeremonyPolicyController(Controller):
     async def get_project_policy(
         self,
         state: State,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Return the project-level ceremony policy from settings.
 
         Returns:
-            ``ApiResponse[dict[str, Any]]`` instance.
+            ``ApiResponse[dict[str, object]]`` instance.
         """
         app_state: AppState = state.app_state
         policy = await _fetch_project_policy(app_state)

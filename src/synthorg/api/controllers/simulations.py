@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 from datetime import UTC, datetime
-from typing import Annotated, Any, Final
+from typing import Annotated, Final, cast
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State
@@ -28,6 +28,7 @@ from synthorg.client.models import SimulationConfig, SimulationMetrics
 from synthorg.client.report.detailed import DetailedReport
 from synthorg.client.report.summary import SummaryReport
 from synthorg.client.runner import SimulationRunner
+from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.client.state import client_simulation_state_of
 from synthorg.client.store import SimulationRecord
 from synthorg.core.critical_errors import reraise_critical
@@ -88,7 +89,7 @@ def _to_response(record: SimulationRecord) -> SimulationStatusResponse:
 
 
 def _publish_event(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     event_type: WsEventType,
     record: SimulationRecord,
 ) -> None:
@@ -106,7 +107,7 @@ def _publish_event(
 
 
 async def _mark_failed(
-    sim_state: Any,
+    sim_state: ClientSimulationState,
     simulation_id: str,
     error: str,
 ) -> None:
@@ -127,7 +128,7 @@ async def _mark_failed(
 def _attach_runner_callbacks(
     task: asyncio.Task[None],
     *,
-    sim_state: Any,
+    sim_state: ClientSimulationState,
     simulation_id: str,
 ) -> None:
     """Wire the failure logger + background-task discard to a runner.
@@ -153,7 +154,7 @@ def _attach_runner_callbacks(
 async def _rollback_register_if_absent(
     spawned_task: asyncio.Task[None] | None,
     *,
-    sim_state: Any,
+    sim_state: ClientSimulationState,
     record: SimulationRecord,
 ) -> None:
     """Tear down a partially-constructed simulation start.
@@ -271,6 +272,7 @@ async def _run_in_background(
         )
         return
     except Exception as exc:
+        reraise_critical(exc)
         # Frame-locals on a simulation-run-failed path can carry the
         # entire simulation config; scrub + drop the traceback.
         logger.warning(
@@ -355,7 +357,7 @@ class SimulationController(Controller):
     )
     async def start_simulation(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         data: StartSimulationPayload,
     ) -> ApiResponse[SimulationStatusResponse]:
@@ -413,6 +415,7 @@ class SimulationController(Controller):
                 )
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Drop ``logger.exception`` -- frame-locals on the
                 # simulation-run-failed traceback can carry the
                 # entire simulation config (matches the rationale
@@ -502,7 +505,7 @@ class SimulationController(Controller):
     )
     async def cancel_simulation(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         simulation_id: PathId,
     ) -> ApiResponse[SimulationStatusResponse]:
@@ -545,7 +548,7 @@ class SimulationController(Controller):
         state: State,
         simulation_id: PathId,
         fmt: Annotated[str, QueryParameter()] = "summary",
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Return a generated report for a simulation run.
 
         Args:
@@ -559,7 +562,7 @@ class SimulationController(Controller):
             ConflictError: If ``fmt`` is not a supported format.
 
         Returns:
-            ``ApiResponse[dict[str, Any]]`` instance.
+            ``ApiResponse[dict[str, object]]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = client_simulation_state_of(app_state)
@@ -577,4 +580,4 @@ class SimulationController(Controller):
             raise ConflictError(msg)
         payload["simulation_id"] = record.simulation_id
         payload["status"] = record.status
-        return ApiResponse(data=payload)
+        return ApiResponse(data=cast("dict[str, object]", payload))

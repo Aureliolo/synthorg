@@ -2,7 +2,7 @@
 
 import copy
 import json
-from typing import Any, Final
+from typing import Final
 
 from litestar import Controller, Request, Response, delete, get, patch, post, put
 from litestar.datastructures import State
@@ -102,7 +102,7 @@ async def _load_dept_policies_json(
     app_state: AppState,
     *,
     raise_on_error: bool = False,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Load the dept_ceremony_policies JSON setting.
 
     Args:
@@ -163,7 +163,7 @@ async def _load_dept_policies_json(
 async def _get_dept_ceremony_override(
     app_state: AppState,
     department_name: NotBlankStr,
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     """Get the ceremony policy override for a department.
 
     Checks the settings-based overrides first, then falls back to
@@ -271,7 +271,7 @@ async def _resolve_dept_policy_cas_attempts(app_state: AppState) -> int:
 
 async def _load_dept_policies_versioned(
     app_state: AppState,
-) -> tuple[dict[str, Any], str]:
+) -> tuple[dict[str, object], str]:
     """Load policies JSON with its ``updated_at`` for CAS.
 
     Bypasses the fallback chain -- CAS only cares about DB state.
@@ -332,7 +332,7 @@ async def _load_dept_policies_versioned(
 
 async def _save_dept_policies_with_cas(
     app_state: AppState,
-    policies: dict[str, Any],
+    policies: dict[str, object],
     *,
     expected_updated_at: str,
 ) -> None:
@@ -360,7 +360,7 @@ async def _save_dept_policies_with_cas(
 async def _mutate_dept_policies_with_retry(
     app_state: AppState,
     department_name: NotBlankStr,
-    new_value: dict[str, Any] | None,
+    new_value: dict[str, object] | None,
 ) -> None:
     """Read-modify-write the policies JSON with bounded CAS retry.
 
@@ -371,7 +371,7 @@ async def _mutate_dept_policies_with_retry(
     """
     max_attempts = await _resolve_dept_policy_cas_attempts(app_state)
 
-    async def read() -> tuple[dict[str, Any], str]:
+    async def read() -> tuple[dict[str, object], str]:
         """Return read."""
         policies, expected = await _load_dept_policies_versioned(app_state)
         policies[department_name] = (
@@ -379,7 +379,7 @@ async def _mutate_dept_policies_with_retry(
         )
         return policies, expected
 
-    async def write(policies: dict[str, Any], expected: str) -> None:
+    async def write(policies: dict[str, object], expected: str) -> None:
         """Run write."""
         await _save_dept_policies_with_cas(
             app_state,
@@ -468,7 +468,7 @@ class DepartmentController(Controller):
     )
     async def create_department(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         data: CreateDepartmentRequest,
     ) -> ApiResponse[Department]:
@@ -507,7 +507,7 @@ class DepartmentController(Controller):
     )
     async def update_department(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         name: PathName,
         data: UpdateDepartmentRequest,
@@ -564,7 +564,7 @@ class DepartmentController(Controller):
     )
     async def delete_department(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         name: PathName,
     ) -> None:
@@ -604,7 +604,7 @@ class DepartmentController(Controller):
     )
     async def reorder_agents(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         name: PathName,
         data: ReorderAgentsRequest,
@@ -702,7 +702,7 @@ class DepartmentController(Controller):
         self,
         state: State,
         name: PathName,
-    ) -> ApiResponse[dict[str, Any] | None]:
+    ) -> ApiResponse[dict[str, object] | None]:
         """Get the department-level ceremony policy override.
 
         Returns the override dict if the department has one, or
@@ -737,8 +737,8 @@ class DepartmentController(Controller):
         self,
         state: State,
         name: PathName,
-        data: dict[str, Any],
-    ) -> ApiResponse[dict[str, Any]]:
+        data: dict[str, object],
+    ) -> ApiResponse[dict[str, object]]:
         """Set the ceremony policy override for a department.
 
         Validates the input as a partial ``CeremonyPolicyConfig``.

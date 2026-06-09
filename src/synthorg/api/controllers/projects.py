@@ -1,7 +1,7 @@
 """Project controller -- endpoints for project listing, creation and deletion."""
 
 import uuid
-from typing import Annotated, Any, Final
+from typing import Annotated, Final
 
 from litestar import Controller, Request, Response, delete, get, post
 from litestar.datastructures import State
@@ -164,7 +164,7 @@ class ProjectController(Controller):
     )
     async def delete_project(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         project_id: PathId,
     ) -> None:
@@ -211,7 +211,7 @@ class ProjectController(Controller):
     @post(guards=[require_write_access])
     async def create_project(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         data: CreateProjectRequest,
     ) -> Response[ApiResponse[Project]]:

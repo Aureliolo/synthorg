@@ -1,7 +1,7 @@
 """Agent configuration, performance, activity, history, and CRUD mutations."""
 
 import json
-from typing import Any, Final, Self
+from typing import Final, Self
 
 from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State
@@ -35,6 +35,7 @@ from synthorg.api.ws_models import WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.config.schema import AgentConfig
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
@@ -45,6 +46,7 @@ from synthorg.hr.activity import (
     merge_activity_timeline,
 )
 from synthorg.hr.enums import AgentStatus, TrendDirection
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.hr.performance.summary import (
     AgentPerformanceSummary,
     extract_performance_summary,
@@ -279,7 +281,7 @@ class AgentController(Controller):
     )
     async def create_agent(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         data: CreateAgentOrgRequest,
     ) -> ApiResponse[AgentConfig]:
@@ -316,7 +318,7 @@ class AgentController(Controller):
     )
     async def update_agent(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         agent_id: PathId,
         data: UpdateAgentOrgRequest,
@@ -384,7 +386,7 @@ class AgentController(Controller):
     )
     async def delete_agent(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         agent_id: PathId,
     ) -> None:
@@ -498,6 +500,7 @@ class AgentController(Controller):
             budget_cfg = await config_resolver_of(app_state).get_budget_config()
             currency = budget_cfg.currency
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_REQUEST_ERROR,
                 endpoint="agents.activity",
@@ -637,7 +640,7 @@ class AgentController(Controller):
 
 
 def _extract_quality_trend(
-    snapshot: Any,
+    snapshot: AgentPerformanceSnapshot,
 ) -> TrendDirection | None:
     """Extract the quality trend direction from a performance snapshot.
 

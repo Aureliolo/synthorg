@@ -45,7 +45,7 @@ class TestNullableUnionNormalization:
         schema: dict[str, Any] = {
             "oneOf": [{"type": "string"}, {"type": "null"}],
         }
-        result = _normalize_nullable_unions(schema)
+        result: Any = _normalize_nullable_unions(schema)
         assert result == {"type": ["string", "null"]}
 
     def test_primitive_anyof_flattened(self) -> None:
@@ -53,7 +53,7 @@ class TestNullableUnionNormalization:
         schema: dict[str, Any] = {
             "anyOf": [{"type": "integer"}, {"type": "null"}],
         }
-        result = _normalize_nullable_unions(schema)
+        result: Any = _normalize_nullable_unions(schema)
         assert result == {"type": ["integer", "null"]}
 
     def test_constraints_preserved(self) -> None:
@@ -64,7 +64,7 @@ class TestNullableUnionNormalization:
                 {"type": "null"},
             ],
         }
-        result = _normalize_nullable_unions(schema)
+        result: Any = _normalize_nullable_unions(schema)
         assert result == {"type": ["string", "null"], "format": "date-time"}
 
     def test_enum_ref_inlined(self) -> None:
@@ -83,7 +83,7 @@ class TestNullableUnionNormalization:
                 {"type": "null"},
             ],
         }
-        result = _normalize_nullable_unions(schema, all_schemas=all_schemas)
+        result: Any = _normalize_nullable_unions(schema, all_schemas=all_schemas)
         assert result["type"] == ["string", "null"]
         assert result["enum"] == ["active", "inactive", None]
         assert result["description"] == "Current status"
@@ -103,7 +103,7 @@ class TestNullableUnionNormalization:
                 {"type": "null"},
             ],
         }
-        result = _normalize_nullable_unions(schema, all_schemas=all_schemas)
+        result: Any = _normalize_nullable_unions(schema, all_schemas=all_schemas)
         assert result["type"] == ["string", "null"]
         assert "description" not in result
 
@@ -115,7 +115,7 @@ class TestNullableUnionNormalization:
                 {"type": "null"},
             ],
         }
-        result = _normalize_nullable_unions(schema)
+        result: Any = _normalize_nullable_unions(schema)
         assert "anyOf" in result
         assert "oneOf" not in result
 
@@ -133,7 +133,7 @@ class TestNullableUnionNormalization:
                 {"type": "null"},
             ],
         }
-        result = _normalize_nullable_unions(schema, all_schemas=all_schemas)
+        result: Any = _normalize_nullable_unions(schema, all_schemas=all_schemas)
         assert "anyOf" in result
         assert len(result["anyOf"]) == 2
 
@@ -148,7 +148,7 @@ class TestNullableUnionNormalization:
                 {"type": "null"},
             ],
         }
-        result = _normalize_nullable_unions(schema, all_schemas=all_schemas)
+        result: Any = _normalize_nullable_unions(schema, all_schemas=all_schemas)
         # Falls through to oneOf -> anyOf conversion.
         assert "anyOf" in result
         assert "oneOf" not in result
@@ -162,7 +162,7 @@ class TestNullableUnionNormalization:
                 {"type": "null"},
             ],
         }
-        result = _normalize_nullable_unions(schema)
+        result: Any = _normalize_nullable_unions(schema)
         # All non-null branches are primitives: collapsed to type array.
         assert "oneOf" not in result
         assert result["type"] == ["string", "integer", "null"]
@@ -176,7 +176,7 @@ class TestNullableUnionNormalization:
                 {"type": "null"},
             ],
         }
-        result = _normalize_nullable_unions(schema)
+        result: Any = _normalize_nullable_unions(schema)
         # Mixed branches ($ref + primitive): not flattened to type array.
         assert "anyOf" in result or "oneOf" in result
         assert not isinstance(result.get("type"), list)
@@ -189,7 +189,7 @@ class TestNullableUnionNormalization:
                 {"$ref": "#/components/schemas/TypeB"},
             ],
         }
-        result = _normalize_nullable_unions(schema)
+        result: Any = _normalize_nullable_unions(schema)
         assert "oneOf" in result
         assert "anyOf" not in result
 
@@ -215,7 +215,7 @@ class TestNullableUnionNormalization:
                 {"type": "null"},
             ],
         }
-        result = _normalize_nullable_unions(schema)
+        result: Any = _normalize_nullable_unions(schema)
         assert "anyOf" in result
         assert "oneOf" not in result
         # The structural branches survive intact.
@@ -241,7 +241,7 @@ class TestNullableUnionNormalization:
                 {"type": "null"},
             ],
         }
-        result = _normalize_nullable_unions(schema)
+        result: Any = _normalize_nullable_unions(schema)
         assert "oneOf" in result
         assert "anyOf" not in result
 
@@ -262,7 +262,7 @@ class TestNullableUnionNormalization:
                 {"type": "null"},
             ],
         }
-        result = _normalize_nullable_unions(object_only)
+        result: Any = _normalize_nullable_unions(object_only)
         assert "oneOf" in result
         assert "anyOf" not in result
 
@@ -287,7 +287,7 @@ class TestNullableUnionNormalization:
                 },
             },
         }
-        result = _normalize_nullable_unions(schema)
+        result: Any = _normalize_nullable_unions(schema)
         assert result["properties"]["deadline"] == {
             "type": ["string", "null"],
         }
@@ -303,7 +303,7 @@ class TestNullableUnionNormalization:
             },
             "type": "array",
         }
-        result = _normalize_nullable_unions(schema)
+        result: Any = _normalize_nullable_unions(schema)
         assert result["items"] == {
             "$ref": "#/components/schemas/Phase",
         }
@@ -345,7 +345,7 @@ class TestNullableUnionNormalization:
                 },
             },
         )
-        result = inject_rfc9457_responses(schema)
+        result: dict[str, Any] = inject_rfc9457_responses(schema)
         task = result["components"]["schemas"]["Task"]
         assert task["properties"]["assigned_to"] == {
             "type": ["string", "null"],

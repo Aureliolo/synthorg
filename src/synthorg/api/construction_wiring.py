@@ -18,7 +18,6 @@ edge so dependency-ordered discovery runs the producer first (e.g.
 """
 
 from dataclasses import dataclass
-from typing import Any
 
 from synthorg._core.features import discover_features
 from synthorg.api.auth.service import AuthService
@@ -28,6 +27,7 @@ from synthorg.api.integrations_wiring import IntegrationsBundle
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.coordination_store import CoordinationMetricsStore
+from synthorg.client.models import ClientRequest
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.communication.delegation.record_store import DelegationRecordStore
 from synthorg.communication.event_stream.interrupt import InterruptStore
@@ -95,7 +95,7 @@ class ConstructionDeps:
     artifact_storage: ArtifactStorageBackend | None = None
     coordinator: MultiAgentCoordinator | None = None
     work_pipeline: WorkPipeline | None = None
-    intake_entry_adapter: WorkEntryAdapter[Any] | None = None
+    intake_entry_adapter: WorkEntryAdapter[ClientRequest] | None = None
     task_board_entry_adapter: TaskBoardEntryAdapter | None = None
     client_simulation_state: ClientSimulationState | None = None
 

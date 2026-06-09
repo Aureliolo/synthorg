@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from enum import IntEnum
-from typing import TYPE_CHECKING, Annotated, Any, Final
+from typing import TYPE_CHECKING, Annotated, Final
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -107,11 +107,11 @@ class ActivityWindowHours(IntEnum):
     WEEK = 168
 
 
-def _extract_task_result(
-    task: asyncio.Task[tuple[tuple[Any, ...], bool]] | None,
+def _extract_task_result[T](
+    task: asyncio.Task[tuple[tuple[T, ...], bool]] | None,
     source_name: str,
     degraded: list[str],
-) -> tuple[Any, ...]:
+) -> tuple[T, ...]:
     """Extract a completed task's data, appending to degraded if needed.
 
     Returns:
@@ -163,7 +163,12 @@ async def _run_async_fetchers(
     """
     cost_task: asyncio.Task[tuple[tuple[CostRecord, ...], bool]] | None = None
     tool_task: asyncio.Task[tuple[tuple[ToolInvocationRecord, ...], bool]] | None = None
-    del_task: asyncio.Task[tuple[Any, ...]] | None = None
+    del_task: (
+        asyncio.Task[
+            tuple[tuple[DelegationRecord, ...], tuple[DelegationRecord, ...], bool]
+        ]
+        | None
+    ) = None
     try:
         async with asyncio.TaskGroup() as tg:
             cost_task = tg.create_task(
@@ -349,7 +354,7 @@ class ActivityController(Controller):
     @get()
     async def list_activities(  # noqa: PLR0913
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,

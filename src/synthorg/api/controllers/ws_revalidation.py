@@ -14,14 +14,16 @@ Public surface (re-exported from ``ws.py``):
 """
 
 import asyncio
-from typing import Any
 
 from litestar import WebSocket
+from litestar.datastructures import State
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.guards import _READ_ROLES
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
 from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -40,7 +42,7 @@ _WS_CLOSE_SERVER_ERROR: int = 4011
 
 
 async def _close_socket_safely(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
     *,
     code: int,
     reason: str,
@@ -55,6 +57,7 @@ async def _close_socket_safely(
     try:
         await socket.close(code=code, reason=reason)
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_WS_TRANSPORT_ERROR,
             reason="socket_close_failed_during_revoke",
@@ -67,7 +70,7 @@ async def _close_socket_safely(
 
 
 async def _periodic_revalidate(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
     user: AuthenticatedUser,
     *,
     interval_seconds: int = AUTH_REVALIDATE_INTERVAL_SECONDS,
@@ -135,6 +138,7 @@ async def _periodic_revalidate(
         try:
             db_user = await persistence_of(app_state).users.get(user.user_id)
         except Exception as exc:
+            reraise_critical(exc)
             admitted = await failure_limiter.take(user.user_id)
             logger.warning(
                 API_WS_TRANSPORT_ERROR,
@@ -186,7 +190,7 @@ async def _periodic_revalidate(
 def _revocation_reason(
     db_user: object | None,
     user: AuthenticatedUser,
-    app_state: Any,
+    app_state: AppStateSliceMixin,
 ) -> str | None:
     """Return the rejection reason or None when still authorised.
 

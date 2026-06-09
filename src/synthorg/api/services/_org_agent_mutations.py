@@ -5,10 +5,13 @@ the service orchestration.
 """
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from pydantic import JsonValue
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.config.schema import AgentConfig
+from synthorg.core.company import Department
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.domain_errors import (
     ConflictError,
@@ -50,7 +53,7 @@ class OrgAgentMutationsMixin:
 
     async def _read_departments(  # pragma: no cover - see concrete
         self,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[Department, ...]:
         """Read the company's departments."""
         raise NotImplementedError
 
@@ -76,8 +79,8 @@ class OrgAgentMutationsMixin:
         raise NotImplementedError
 
     def _find_department(  # pragma: no cover - see concrete
-        self, departments: tuple[Any, ...], name: str
-    ) -> Any | None:
+        self, departments: tuple[Department, ...], name: str
+    ) -> Department | None:
         """Find a department by name within the given tuple."""
         raise NotImplementedError
 
@@ -141,7 +144,7 @@ class OrgAgentMutationsMixin:
                 )
                 raise ConflictError(msg)
 
-            model_dict: dict[str, Any] = {}
+            model_dict: dict[str, JsonValue] = {}
             if data.model_provider is not None:
                 model_dict = {
                     "provider": str(data.model_provider),
@@ -184,7 +187,7 @@ class OrgAgentMutationsMixin:
         name: str,
         data: UpdateAgentOrgRequest,
         agents: tuple[AgentConfig, ...],
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Validate agent update and collect field changes.
 
         Returns:
@@ -194,7 +197,7 @@ class OrgAgentMutationsMixin:
             ConflictError: Raised on the corresponding failure path.
             ValidationError: Raised on the corresponding failure path.
         """
-        updates: dict[str, Any] = {}
+        updates: dict[str, object] = {}
         fields_set = data.model_fields_set
 
         if "name" in fields_set and data.name is not None:
@@ -252,7 +255,7 @@ class OrgAgentMutationsMixin:
             NotFoundError: Raised on the corresponding failure path.
         """
         captured: dict[str, AgentConfig] = {}
-        captured_updates: dict[str, Any] = {}
+        captured_updates: dict[str, object] = {}
 
         async def read() -> tuple[tuple[AgentConfig, ...], str]:
             """Return read.

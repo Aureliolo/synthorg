@@ -6,9 +6,10 @@ identifier extractors the rate-limit tiers use.
 
 import ipaddress
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from litestar import Request
+from litestar.datastructures import State
 from litestar.middleware.rate_limit import (
     RateLimitConfig as LitestarRateLimitConfig,
 )
@@ -95,7 +96,7 @@ def _ip_is_trusted(
 
 def _build_unauth_identifier(
     trusted: frozenset[str],
-) -> Callable[[Request[Any, Any, Any]], str]:
+) -> Callable[[Request[object, object, State]], str]:
     """Build a proxy-aware client IP extractor for the unauth tier.
 
     When ``trusted_proxies`` is configured, extracts the real client
@@ -119,7 +120,7 @@ def _build_unauth_identifier(
         return get_remote_address
 
     def _extract_forwarded_ip(
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> str:
         # Only trust X-Forwarded-For when the immediate peer is a
         # known proxy. Otherwise any client can spoof the header.
@@ -141,7 +142,7 @@ def _build_unauth_identifier(
 
 
 def _auth_identifier_for_request(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
 ) -> str:
     """Return the authenticated user's ID as the rate limit key.
 
@@ -162,7 +163,7 @@ def _auth_identifier_for_request(
 
 
 def _throttle_when_anonymous(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
 ) -> bool:
     """Throttle-gate for the anonymous tier.
 
@@ -186,7 +187,7 @@ def _throttle_when_anonymous(
 
 
 def _throttle_when_authenticated(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
 ) -> bool:
     """Throttle-gate for the authenticated tier (per user).
 
@@ -302,7 +303,7 @@ def _build_rate_limits(
     api_config: ApiConfig,
     *,
     ws_path: str,
-    unauth_identifier: Callable[[Request[Any, Any, Any]], str],
+    unauth_identifier: Callable[[Request[object, object, State]], str],
 ) -> tuple[LitestarRateLimitConfig, LitestarRateLimitConfig, LitestarRateLimitConfig]:
     """Build the three rate-limit tiers (IP floor, unauth, auth).
 

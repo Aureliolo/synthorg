@@ -1,7 +1,7 @@
 """Team CRUD controller -- sub-resource of departments."""
 
 import json
-from typing import Annotated, Any
+from typing import Annotated
 
 from litestar import Controller, delete, patch, post
 from litestar.datastructures import State
@@ -93,7 +93,7 @@ class TeamResponse(BaseModel):
 # ── Helpers ────────────────────────────────────────────────
 
 
-def _persisted_name(record: dict[str, Any], record_type: str) -> str:
+def _persisted_name(record: dict[str, object], record_type: str) -> str:
     """Read the ``name`` field from a persisted record, asserting type.
 
     Persisted department / team records should always carry a ``str``
@@ -130,9 +130,9 @@ def _persisted_name(record: dict[str, Any], record_type: str) -> str:
 
 
 def _find_department(
-    depts: list[dict[str, Any]],
+    depts: list[dict[str, object]],
     name: str,
-) -> tuple[int, dict[str, Any]]:
+) -> tuple[int, dict[str, object]]:
     """Find a department by name (case-insensitive).
 
     Args:
@@ -159,10 +159,35 @@ def _find_department(
     raise NotFoundError(msg)
 
 
+def _teams_of(dept: dict[str, object]) -> list[dict[str, object]]:
+    """Return the department's ``teams`` as a fresh list of dicts.
+
+    Narrows the persisted JSON value: a missing or malformed ``teams``
+    entry yields an empty list, and non-dict items are dropped.
+
+    Returns:
+        Mutable list of team dicts.
+    """
+    raw = dept.get("teams", [])
+    if not isinstance(raw, list):
+        return []
+    return [team for team in raw if isinstance(team, dict)]
+
+
+def _member_list(record: dict[str, object]) -> list[object]:
+    """Return the record's ``members`` as a fresh list, narrowing JSON.
+
+    Returns:
+        Mutable list of member entries (empty when absent/malformed).
+    """
+    raw = record.get("members", [])
+    return list(raw) if isinstance(raw, list) else []
+
+
 def _find_team(
-    teams: list[dict[str, Any]],
+    teams: list[dict[str, object]],
     team_name: str,
-) -> tuple[int, dict[str, Any]]:
+) -> tuple[int, dict[str, object]]:
     """Find a team by name within a department's teams list.
 
     Args:
@@ -190,7 +215,7 @@ def _find_team(
 
 
 def _check_team_name_unique(
-    teams: list[dict[str, Any]],
+    teams: list[dict[str, object]],
     name: str,
     *,
     exclude_index: int | None = None,
@@ -221,7 +246,7 @@ def _check_team_name_unique(
             raise ConflictError(msg)
 
 
-def _validate_team_model(team_dict: dict[str, Any]) -> Team:
+def _validate_team_model(team_dict: dict[str, object]) -> Team:
     """Validate a team dict by constructing a Team model.
 
     Args:
@@ -234,7 +259,7 @@ def _validate_team_model(team_dict: dict[str, Any]) -> Team:
         ValidationError: If validation fails.
     """
     try:
-        return Team(**team_dict)
+        return Team.model_validate(team_dict)
     except (ValueError, TypeError) as exc:
         msg = f"Team validation failed: {safe_error_description(exc)}"
         logger.warning(
@@ -247,22 +272,23 @@ def _validate_team_model(team_dict: dict[str, Any]) -> Team:
         raise ValidationError(msg) from exc
 
 
-def _team_to_response(team_dict: dict[str, Any]) -> TeamResponse:
+def _team_to_response(team_dict: dict[str, object]) -> TeamResponse:
     """Convert a team dict to a TeamResponse.
 
     Returns:
         ``TeamResponse`` instance.
     """
+    team = _validate_team_model(team_dict)
     return TeamResponse(
-        name=team_dict["name"],
-        lead=team_dict["lead"],
-        members=tuple(team_dict.get("members", ())),
+        name=team.name,
+        lead=team.lead,
+        members=team.members,
     )
 
 
 async def _persist_departments(
     app_state: AppState,
-    depts: list[dict[str, Any]],
+    depts: list[dict[str, object]],
 ) -> None:
     """Write the full departments list back to settings."""
     await require_service(
@@ -316,10 +342,10 @@ class TeamController(Controller):
             depts = await _read_setting_list(app_state, "departments")
             dept_idx, dept = _find_department(depts, dept_name)
 
-            teams: list[dict[str, Any]] = list(dept.get("teams", []))
+            teams: list[dict[str, object]] = _teams_of(dept)
             _check_team_name_unique(teams, data.name)
 
-            team_dict: dict[str, Any] = {
+            team_dict: dict[str, object] = {
                 "name": data.name,
                 "lead": data.lead,
                 "members": list(data.members),
@@ -372,9 +398,9 @@ class TeamController(Controller):
             depts = await _read_setting_list(app_state, "departments")
             dept_idx, dept = _find_department(depts, dept_name)
 
-            teams: list[dict[str, Any]] = list(dept.get("teams", []))
+            teams: list[dict[str, object]] = _teams_of(dept)
             stored_names = [_persisted_name(t, "Team") for t in teams]
-            team_map: dict[str, dict[str, Any]] = {
+            team_map: dict[str, dict[str, object]] = {
                 normalize_identifier(name): t
                 for name, t in zip(stored_names, teams, strict=True)
             }
@@ -494,7 +520,7 @@ class TeamController(Controller):
             depts = await _read_setting_list(app_state, "departments")
             dept_idx, dept = _find_department(depts, dept_name)
 
-            teams: list[dict[str, Any]] = list(dept.get("teams", []))
+            teams: list[dict[str, object]] = _teams_of(dept)
             team_idx, team = _find_team(teams, team_name)
 
             updated = {**team}
@@ -559,7 +585,7 @@ class TeamController(Controller):
             depts = await _read_setting_list(app_state, "departments")
             dept_idx, dept = _find_department(depts, dept_name)
 
-            teams: list[dict[str, Any]] = list(dept.get("teams", []))
+            teams: list[dict[str, object]] = _teams_of(dept)
             team_idx, team = _find_team(teams, team_name)
 
             if reassign_to is not None:
@@ -575,14 +601,14 @@ class TeamController(Controller):
                     raise ValidationError(msg)
                 target_idx, target = _find_team(teams, reassign_to)
                 # Merge members (deduplicate, case-insensitive).
-                existing_members = list(target.get("members", []))
+                existing_members = _member_list(target)
                 # Coerce to str so a corrupted persisted member (None, int,
                 # ...) raises a 422 via _validate_team_model below rather
                 # than a 500 from normalize_identifier.
                 existing_lower = {
                     normalize_identifier(str(m)) for m in existing_members
                 }
-                for member in team.get("members", []):
+                for member in _member_list(team):
                     member_normalized = normalize_identifier(str(member))
                     if member_normalized not in existing_lower:
                         existing_members.append(member)

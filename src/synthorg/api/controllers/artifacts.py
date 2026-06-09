@@ -1,6 +1,6 @@
 """Artifact controller -- endpoints for artifact management, storage, and retrieval."""
 
-from typing import Annotated, Any, Final
+from typing import Annotated, Final
 
 from litestar import Controller, Request, Response, delete, get, post, put
 from litestar.datastructures import State
@@ -54,6 +54,7 @@ from synthorg.observability.events.persistence.artifact_storage import (
     PERSISTENCE_ARTIFACT_STORE_FAILED,
     PERSISTENCE_ARTIFACT_STORED,
 )
+from synthorg.persistence.artifact_storage import ArtifactStorageBackend
 from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
@@ -133,7 +134,7 @@ TypeFilter = Annotated[
 
 async def _save_metadata_with_rollback(
     service: ArtifactService,
-    storage: Any,
+    storage: ArtifactStorageBackend,
     artifact_id: str,
     updated: Artifact,
 ) -> None:
@@ -294,7 +295,7 @@ class ArtifactController(Controller):
     )
     async def create_artifact(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         data: CreateArtifactRequest,
     ) -> ApiResponse[Artifact]:
@@ -337,7 +338,7 @@ class ArtifactController(Controller):
     )
     async def delete_artifact(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         artifact_id: PathId,
     ) -> ApiResponse[None]:
@@ -403,7 +404,7 @@ class ArtifactController(Controller):
     )
     async def upload_content(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         artifact_id: PathId,
         data: Annotated[

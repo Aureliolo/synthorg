@@ -1,8 +1,9 @@
 """Client request lifecycle endpoints at /requests."""
 
 import asyncio
+import functools
 from collections.abc import Awaitable, Callable
-from typing import Annotated, Any, Final
+from typing import Annotated, Final
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State
@@ -86,7 +87,7 @@ class ScopingPayload(BaseModel):
 
 
 def _publish(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     event_type: WsEventType,
     client_request: ClientRequest,
 ) -> None:
@@ -266,52 +267,79 @@ async def process_intake_pipeline(
                 request_id=request_id,
             )
         await _safe_finalize(
-            _reconcile_cancel,
+            functools.partial(
+                _reconcile_cancel,
+                sim_state,
+                app_state,
+                request_id,
+                reason=safe_error_description(exc),
+                publish=publish,
+            ),
+            request_id=request_id,
+            operation="reconcile_cancel",
+        )
+        return
+
+    async def _cancel_after_success_failure(reason: str) -> None:
+        await _safe_finalize(
+            functools.partial(
+                _reconcile_cancel,
+                sim_state,
+                app_state,
+                request_id,
+                reason=reason,
+                publish=publish,
+            ),
+            request_id=request_id,
+            operation="reconcile_cancel",
+        )
+
+    await _safe_finalize(
+        functools.partial(
+            _reconcile_success,
             sim_state,
             app_state,
             request_id,
-            operation="reconcile_cancel",
-            reason=safe_error_description(exc),
+            task_id=result.task_id,
             publish=publish,
-        )
-        return
-    await _safe_finalize(
-        _reconcile_success,
-        sim_state,
-        app_state,
-        request_id,
+        ),
+        request_id=request_id,
         operation="reconcile_success",
-        task_id=result.task_id,
-        publish=publish,
+        on_failure_reconcile=_cancel_after_success_failure,
     )
 
 
-async def _safe_finalize(  # noqa: PLR0913 -- keyword-only DI + passthrough
-    finalizer: Callable[..., Awaitable[None]],
-    sim_state: ClientSimulationState,
-    app_state: AppState,
-    request_id: str,
+async def _safe_finalize(
+    finalizer: Callable[[], Awaitable[None]],
     *,
+    request_id: str,
     operation: str,
-    publish: _Publisher | None,
-    **kwargs: Any,
+    on_failure_reconcile: Callable[[str], Awaitable[None]] | None = None,
 ) -> None:
     """Run a terminal reconciliation, never leaving the request stuck.
 
     A reconciliation that raises (store / lock / publish failure) must
     not leave the request silently in ``APPROVED`` with only a
-    done-callback WARNING. On a ``reconcile_success`` failure we log
-    ERROR and fall back to cancelling the request so it still reaches a
-    terminal state; on a ``reconcile_cancel`` failure we log ERROR (no
-    further fallback is possible) so the operator has an actionable
-    signal keyed by ``request_id``. ``CancelledError`` /
-    ``MemoryError`` / ``RecursionError`` propagate unchanged.
+    done-callback WARNING. On a ``reconcile_success`` failure the caller
+    supplies ``on_failure_reconcile`` so the request is still cancelled
+    (reaching a terminal state); a ``reconcile_cancel`` failure passes no
+    fallback and only logs ERROR (no further fallback is possible) so the
+    operator has an actionable signal keyed by ``request_id``.
+    ``CancelledError`` / ``MemoryError`` / ``RecursionError`` propagate
+    unchanged.
+
+    Args:
+        finalizer: The bound reconciliation coroutine factory to run.
+        request_id: Request id for the structured failure log.
+        operation: Reconciliation label for the structured failure log.
+        on_failure_reconcile: Optional fallback invoked with the failure
+            reason when ``finalizer`` raises a non-critical error.
 
     Raises:
         CancelledError: Raised on the corresponding failure path.
     """
     try:
-        await finalizer(sim_state, app_state, request_id, publish=publish, **kwargs)
+        await finalizer()
     except asyncio.CancelledError:
         raise
     except Exception as exc:
@@ -323,15 +351,9 @@ async def _safe_finalize(  # noqa: PLR0913 -- keyword-only DI + passthrough
             request_id=request_id,
             operation=operation,
         )
-        if operation == "reconcile_success":
-            await _safe_finalize(
-                _reconcile_cancel,
-                sim_state,
-                app_state,
-                request_id,
-                operation="reconcile_cancel",
-                reason=f"reconciliation failed: {safe_error_description(exc)}",
-                publish=publish,
+        if on_failure_reconcile is not None:
+            await on_failure_reconcile(
+                f"reconciliation failed: {safe_error_description(exc)}"
             )
 
 
@@ -519,7 +541,7 @@ class RequestController(Controller):
     )
     async def submit_request(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         data: CreateRequestPayload,
     ) -> ApiResponse[ClientRequest]:
@@ -555,7 +577,7 @@ class RequestController(Controller):
     )
     async def scope_request(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         request_id: PathId,
         data: ScopingPayload,
@@ -599,13 +621,13 @@ class RequestController(Controller):
             metadata = dict(stored.metadata)
             metadata["scoping_notes"] = data.notes
             requirement = stored.requirement
-            overrides: dict[str, Any] = {}
+            requirement_override: TaskRequirement | None = None
             if (
                 data.refined_title is not None
                 or data.refined_description is not None
                 or data.refined_acceptance_criteria is not None
             ):
-                overrides["requirement"] = requirement.model_copy(
+                requirement_override = requirement.model_copy(
                     update={
                         k: v
                         for k, v in {
@@ -622,11 +644,17 @@ class RequestController(Controller):
                     RequestStatus.TRIAGING,
                     metadata=metadata,
                 )
-            scoped = walked.with_status(
-                RequestStatus.SCOPING,
-                metadata=metadata,
-                **overrides,
-            )
+            if requirement_override is not None:
+                scoped = walked.with_status(
+                    RequestStatus.SCOPING,
+                    metadata=metadata,
+                    requirement=requirement_override,
+                )
+            else:
+                scoped = walked.with_status(
+                    RequestStatus.SCOPING,
+                    metadata=metadata,
+                )
             await sim_state.request_store.save(scoped)
             logger.info(
                 CLIENT_REQUEST_STATUS_TRANSITIONED,
@@ -654,7 +682,7 @@ class RequestController(Controller):
     )
     async def approve_request(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         request_id: PathId,
     ) -> ApiResponse[ClientRequest]:
@@ -730,7 +758,7 @@ class RequestController(Controller):
     )
     async def reject_request(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         request_id: PathId,
         data: RejectionPayload,

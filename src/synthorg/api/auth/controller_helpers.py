@@ -7,10 +7,11 @@ file focused on the Litestar route handlers.
 
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import jwt
 from litestar.connection import ASGIConnection
+from litestar.datastructures import Cookie, State
 from litestar.exceptions import PermissionDeniedException
 from pydantic import ValidationError
 
@@ -62,7 +63,7 @@ async def make_session_cookies(  # noqa: PLR0913
     app_state: AppState | None = None,
     session_id: str = "",
     user_id: str = "",
-) -> list[Any]:
+) -> list[Cookie]:
     """Build the cookie list for a login/setup response.
 
     Returns session cookie + CSRF cookie, plus a refresh
@@ -73,7 +74,7 @@ async def make_session_cookies(  # noqa: PLR0913
     Returns:
         List of the declared element type.
     """
-    cookies: list[Any] = [
+    cookies: list[Cookie] = [
         make_session_cookie(token, expires_in, config),
         make_csrf_cookie(generate_csrf_token(), expires_in, config),
     ]
@@ -184,7 +185,7 @@ def require_password_changed(
 
 
 async def create_session_record(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     app_state: AppState,
     session_id: str,
     user: User,
@@ -225,7 +226,7 @@ async def create_session_record(
         )
 
 
-def extract_jti(request: Request[Any, Any, Any]) -> str | None:
+def extract_jti(request: Request[object, object, State]) -> str | None:
     """Extract the JWT ``jti`` claim from cookie or header.
 
     Returns:
@@ -258,6 +259,7 @@ def extract_jti(request: Request[Any, Any, Any]) -> str | None:
         )
         return None
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             SECURITY_AUTH_FAILED,
             reason="jti_extraction_failed",

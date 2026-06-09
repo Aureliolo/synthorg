@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Final, LiteralString
+from typing import Final, LiteralString
 
 from litestar import Controller, Request, delete, get, patch, post
 from litestar.datastructures import State
@@ -440,7 +440,7 @@ class UserController(Controller):
         self,
         state: State,
         user_id: PathId,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> None:
         """Delete a user account.
 

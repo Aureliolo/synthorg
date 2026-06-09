@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import UUID
 
 import pytest
@@ -14,7 +15,7 @@ from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import stable_agent_id
 from synthorg.hr.enums import LifecycleEventType, TrendDirection
 from synthorg.hr.models import AgentLifecycleEvent
-from synthorg.hr.performance.models import TaskMetricRecord
+from synthorg.hr.performance.models import AgentPerformanceSnapshot, TaskMetricRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.settings.registry import get_registry
@@ -589,7 +590,7 @@ class TestExtractQualityTrend:
                 _Trend("quality", TrendDirection.IMPROVING),
             ]
 
-        result = _extract_quality_trend(_Snap())
+        result = _extract_quality_trend(cast("AgentPerformanceSnapshot", _Snap()))
         assert result is TrendDirection.IMPROVING
 
     def test_returns_none_when_no_quality_trend(self) -> None:
@@ -598,7 +599,7 @@ class TestExtractQualityTrend:
         class _Snap:
             trends: list[object] = []  # noqa: RUF012
 
-        assert _extract_quality_trend(_Snap()) is None
+        assert _extract_quality_trend(cast("AgentPerformanceSnapshot", _Snap())) is None
 
     def test_returns_none_when_only_non_quality_trends(self) -> None:
         from synthorg.api.controllers.agents import _extract_quality_trend
@@ -611,7 +612,7 @@ class TestExtractQualityTrend:
         class _Snap:
             trends = [_Trend("latency"), _Trend("collaboration")]  # noqa: RUF012
 
-        assert _extract_quality_trend(_Snap()) is None
+        assert _extract_quality_trend(cast("AgentPerformanceSnapshot", _Snap())) is None
 
 
 # -- Model validation tests -----------------------------------------------

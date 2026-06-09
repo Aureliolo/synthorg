@@ -5,10 +5,11 @@ creates the Litestar ``ChannelsPlugin`` with an in-memory backend.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
+from litestar.datastructures import State
 
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.critical_errors import reraise_critical
@@ -115,7 +116,7 @@ def extract_user_id(channel: str) -> str | None:
 
 
 def get_channels_plugin(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
 ) -> ChannelsPlugin | None:
     """Extract the ``ChannelsPlugin`` from the application, or ``None``.
 
@@ -132,7 +133,7 @@ def get_channels_plugin(
 
 
 def publish_ws_event(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     event_type: WsEventType,
     channel: str,
     payload: dict[str, object],

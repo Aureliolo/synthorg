@@ -1,8 +1,6 @@
 """Request/response DTOs for personality preset endpoints."""
 
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import (
@@ -92,11 +90,11 @@ class CreatePresetRequest(_PresetFieldsBase):
 
     name: NotBlankStr = Field(max_length=100)
 
-    def to_config_dict(self) -> dict[str, Any]:
+    def to_config_dict(self) -> dict[str, JsonValue]:
         """Convert to a dict suitable for PersonalityConfig validation.
 
         Returns:
-            Mapping matching the ``dict[str, Any]`` annotation.
+            Mapping matching the ``dict[str, JsonValue]`` annotation.
         """
         return self.model_dump(exclude={"name"})
 
@@ -106,10 +104,10 @@ class UpdatePresetRequest(_PresetFieldsBase):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    def to_config_dict(self) -> dict[str, Any]:
+    def to_config_dict(self) -> dict[str, JsonValue]:
         """Convert to a dict suitable for PersonalityConfig validation.
 
         Returns:
-            Mapping matching the ``dict[str, Any]`` annotation.
+            Mapping matching the ``dict[str, JsonValue]`` annotation.
         """
         return self.model_dump()

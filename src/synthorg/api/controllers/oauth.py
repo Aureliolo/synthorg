@@ -4,7 +4,7 @@ Endpoints for initiating OAuth flows, handling callbacks,
 and checking token status.
 """
 
-from typing import Annotated, Any, Final
+from typing import Annotated, Final
 
 from litestar import Controller, get, post
 from litestar.datastructures import State
@@ -50,7 +50,7 @@ _MAX_OAUTH_STATE_LEN: Final[int] = 512
 class InitiateOAuthFlowRequest(BaseModel):
     """Body model for ``POST /oauth/initiate``.
 
-    Replaces the prior ``data: dict[str, Any]`` shape so input
+    Replaces the prior ``data: dict[str, object]`` shape so input
     bounds are enforced by Pydantic at the boundary.
     """
 
@@ -188,7 +188,7 @@ class OAuthController(Controller):
                 max_length=_MAX_OAUTH_STATE_LEN,
             ),
         ],
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Handle OAuth provider callback.
 
         The callback URL itself is unauthenticated because the
@@ -197,7 +197,7 @@ class OAuthController(Controller):
         acts as CSRF protection.
 
         Returns:
-            ``ApiResponse[dict[str, Any]]`` instance.
+            ``ApiResponse[dict[str, object]]`` instance.
 
         Raises:
             ValidationError: Raised on the corresponding failure path.
@@ -248,11 +248,11 @@ class OAuthController(Controller):
         self,
         state: State,
         connection_name: PathName,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Check the OAuth token status for a connection.
 
         Returns:
-            ``ApiResponse[dict[str, Any]]`` instance.
+            ``ApiResponse[dict[str, object]]`` instance.
         """
         # ``ConnectionNotFoundError`` propagates with its class-level
         # 404 + ``CONNECTION_NOT_FOUND`` envelope.

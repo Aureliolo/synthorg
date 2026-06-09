@@ -1,9 +1,8 @@
 # module-kind: controller
 """Session lifecycle endpoints: login, refresh, logout."""
 
-from typing import Any
-
 from litestar import Controller, Request, Response, post
+from litestar.datastructures import State
 
 from synthorg.api.api_core_state import (
     ApiCoreStateSlice,
@@ -72,7 +71,7 @@ class AuthSessionController(Controller):
     async def login(
         self,
         data: LoginRequest,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> Response[ApiResponse[CookieSessionResponse]]:
         """Validate credentials and set session cookie.
 
@@ -183,7 +182,7 @@ class AuthSessionController(Controller):
     )
     async def refresh(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> Response[ApiResponse[CookieSessionResponse]]:
         """Rotate a single-use refresh token into a fresh session JWT.
 
@@ -274,7 +273,7 @@ class AuthSessionController(Controller):
     )
     async def logout(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> Response[None]:
         """Revoke the current session (if any) and clear cookies.
 

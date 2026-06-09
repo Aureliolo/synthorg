@@ -12,7 +12,7 @@ both the nonce and nonce-less branches with the appropriate key
 shape.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -27,6 +27,9 @@ from synthorg.api.controllers.webhooks import ingest as webhooks_ingest
 from synthorg.api.services.idempotency_service import IdempotencyService
 from synthorg.observability.events.integrations import WEBHOOK_ACCEPTED
 from tests._shared import make_app_state
+
+if TYPE_CHECKING:
+    from synthorg.communication.bus_protocol import MessageBus
 
 
 class _FakeBus:
@@ -67,7 +70,7 @@ class TestPublishWebhookEventAndLog:
 
         with structlog.testing.capture_logs() as logs:
             result = await webhooks_shared._publish_webhook_event_and_log(
-                bus=_FakeBus(),
+                bus=cast("MessageBus", _FakeBus()),
                 connection_name="conn-a",
                 event_type="issues.opened",
                 payload={"x": 1},
@@ -151,7 +154,7 @@ class TestPublishWithDurableIdempotency:
             event_type="push",
             nonce="sha256:deadbeef",
             connection_type="github",
-            bus=_FakeBus(),
+            bus=cast("MessageBus", _FakeBus()),
             payload={"y": 2},
             dedup_source="body_sha256",
         )

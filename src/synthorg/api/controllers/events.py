@@ -8,7 +8,7 @@ import asyncio
 import json as _json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Annotated, Any, Final
+from typing import Annotated, Final
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State
@@ -187,6 +187,7 @@ async def _user_revocation_reason(
     try:
         db_user = await persistence_of(app_state).users.get(user_id)
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             EVENT_STREAM_PROJECTION_FAILED,
             note="sse_revalidate_persistence_error",
@@ -281,7 +282,7 @@ def _require_interrupt_store(app_state: AppState) -> InterruptStore:
     return store
 
 
-def _require_auth(request: Request[Any, Any, Any]) -> AuthenticatedUser:
+def _require_auth(request: Request[object, object, State]) -> AuthenticatedUser:
     """Return the auth or raise when unavailable.
 
     Raises:
@@ -607,7 +608,7 @@ class EventStreamController(Controller):
     async def stream(
         self,
         state: State,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         session_id: Annotated[
             NotBlankStr,
             QueryParameter(
@@ -652,7 +653,7 @@ class EventStreamController(Controller):
         state: State,
         interrupt_id: PathId,
         data: ResumeInterruptRequest,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> ApiResponse[dict[str, str]]:
         """Resume a pending interrupt.
 
@@ -738,7 +739,7 @@ class InterruptController(Controller):
         state: State,
         interrupt_id: PathId,
         data: ResumeInterruptRequest,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> ApiResponse[dict[str, str]]:
         """Resume a pending interrupt via polling API.
 

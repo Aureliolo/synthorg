@@ -10,10 +10,10 @@ re-aliased here to preserve the internal API shape for callers.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 
 from litestar import Request
 from litestar.channels import ChannelsPlugin
+from litestar.datastructures import State
 
 from synthorg._core.features import require_service
 from synthorg.api.channels import CHANNEL_APPROVALS, get_channels_plugin
@@ -54,7 +54,7 @@ logger = get_logger(__name__)
 
 
 def _require_channels_plugin(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
 ) -> ChannelsPlugin:
     """Extract the ChannelsPlugin from the application.
 
@@ -76,7 +76,7 @@ def _require_channels_plugin(
 
 
 def _publish_approval_event(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     event_type: WsEventType,
     item: ApprovalItem,
 ) -> None:
@@ -136,7 +136,7 @@ def _decided_attribution() -> tuple[str, str]:
 
 
 def _resolve_decision(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     item: ApprovalItem,
     approval_id: str,
 ) -> AuthenticatedUser:
@@ -279,7 +279,7 @@ def _log_state_transition_and_metrics(
 
 async def _save_decision_and_notify(  # noqa: PLR0913
     app_state: AppState,
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     approval_id: str,
     updated: ApprovalItem,
     *,

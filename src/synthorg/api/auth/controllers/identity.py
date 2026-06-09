@@ -2,9 +2,9 @@
 """Current-user identity endpoints: me + WebSocket ticket."""
 
 import math
-from typing import Any
 
 from litestar import Controller, Request, Response, get, post
+from litestar.datastructures import State
 from litestar.exceptions import PermissionDeniedException
 
 from synthorg.api.api_core_state import ticket_store_of
@@ -36,7 +36,7 @@ class AuthIdentityController(Controller):
     )
     async def me(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> Response[ApiResponse[UserInfoResponse]]:
         """Return information about the authenticated user.
 
@@ -79,7 +79,7 @@ class AuthIdentityController(Controller):
     )
     async def ws_ticket(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> Response[ApiResponse[WsTicketResponse]]:
         """Exchange a valid JWT for a short-lived, single-use WS ticket.
 

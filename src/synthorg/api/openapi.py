@@ -27,7 +27,9 @@ Called by ``scripts/export_openapi.py`` after schema generation.
 """
 
 import copy
-from typing import Any, Final, NamedTuple
+from typing import Final, NamedTuple, cast
+
+from pydantic import JsonValue
 
 from synthorg.api.dto import ProblemDetail
 from synthorg.core.error_taxonomy import (
@@ -189,10 +191,10 @@ _SCHEMAS_PREFIX: Final[str] = "#/components/schemas/"
 
 
 def _flatten_nullable_ref(
-    result: dict[str, Any],
+    result: dict[str, JsonValue],
     keyword: str,
-    branch: dict[str, Any],
-    all_schemas: dict[str, Any],
+    branch: dict[str, JsonValue],
+    all_schemas: dict[str, JsonValue],
 ) -> bool:
     """Inline a nullable ``$ref`` to an enum schema.
 
@@ -205,14 +207,17 @@ def _flatten_nullable_ref(
     Returns:
         ``True`` or ``False`` reflecting the condition.
     """
-    ref: str = branch.get("$ref", "")
-    if not ref.startswith(_SCHEMAS_PREFIX):
+    ref = branch.get("$ref", "")
+    if not isinstance(ref, str) or not ref.startswith(_SCHEMAS_PREFIX):
         return False
 
     target_name = ref.removeprefix(_SCHEMAS_PREFIX)
     target = all_schemas.get(target_name, {})
 
-    if "enum" not in target or "type" not in target:
+    if not isinstance(target, dict) or "enum" not in target or "type" not in target:
+        return False
+    target_enum = target["enum"]
+    if not isinstance(target_enum, list):
         return False
 
     # ``default`` on the enum component schema reflects a default from
@@ -223,11 +228,11 @@ def _flatten_nullable_ref(
     # Litestar's oneOf wrapping, so the correct outcome is "no default"
     # rather than "the enum's default."
     prop_desc = result.get("description")
-    merged = {
+    merged: dict[str, JsonValue] = {
         k: v for k, v in target.items() if k not in ("title", "description", "default")
     }
     merged["type"] = [target["type"], "null"]
-    merged["enum"] = [*target["enum"], None]
+    merged["enum"] = [*target_enum, None]
     del result[keyword]
     result.update(merged)
     if prop_desc:
@@ -236,10 +241,10 @@ def _flatten_nullable_ref(
 
 
 def _flatten_nullable(
-    result: dict[str, Any],
+    result: dict[str, JsonValue],
     keyword: str,
-    items: list[Any],
-    all_schemas: dict[str, Any] | None = None,
+    items: list[JsonValue],
+    all_schemas: dict[str, JsonValue] | None = None,
 ) -> None:
     """Flatten a nullable union (``T | None``) in *result* in place.
 
@@ -263,7 +268,8 @@ def _flatten_nullable(
     if len(non_null) > 1 and all(
         isinstance(b, dict) and "type" in b and len(b) == 1 for b in non_null
     ):
-        types = [b["type"] for b in non_null] + ["null"]
+        types: list[JsonValue] = [b["type"] for b in non_null if isinstance(b, dict)]
+        types.append("null")
         del result[keyword]
         result["type"] = types
         return
@@ -291,7 +297,13 @@ def _flatten_nullable(
         # exclusive structural union (``objectA | objectB | null``, or
         # object+array with no scalars) is NOT a superset, so it stays
         # an exclusive ``oneOf``; likewise a constrained-primitive union.
-        branch_types = {b.get("type") for b in non_null if isinstance(b, dict)}
+        branch_types: set[str] = {
+            t
+            for b in non_null
+            if isinstance(b, dict)
+            for t in (b.get("type"),)
+            if isinstance(t, str)
+        }
         all_ref = all(isinstance(b, dict) and "$ref" in b for b in non_null)
         if keyword == "oneOf" and (all_ref or branch_types > {"object", "array"}):
             result["anyOf"] = result.pop("oneOf")
@@ -321,9 +333,9 @@ _EXPECTED_UNION_BRANCHES: Final[int] = 2
 
 
 def _collapse_redundant_union(
-    result: dict[str, Any],
+    result: dict[str, JsonValue],
     keyword: str,
-    items: list[Any],
+    items: list[JsonValue],
 ) -> None:
     """Collapse a redundant ``oneOf`` with an empty schema.
 
@@ -338,15 +350,15 @@ def _collapse_redundant_union(
     if len(empty_entries) != 1:
         return
     concrete = [i for i in items if i is not empty_entries[0]]
-    if concrete:
+    if concrete and isinstance(concrete[0], dict):
         del result[keyword]
         result.update(concrete[0])
 
 
 def _normalize_nullable_unions(
-    obj: Any,
-    all_schemas: dict[str, Any] | None = None,
-) -> Any:
+    obj: JsonValue,
+    all_schemas: dict[str, JsonValue] | None = None,
+) -> JsonValue:
     """Flatten nullable union schemas to idiomatic JSON Schema 2020-12.
 
     Litestar wraps ``T | None`` fields in ``oneOf``, producing
@@ -381,15 +393,19 @@ def _normalize_nullable_unions(
         ``Any`` instance.
     """
     if isinstance(obj, dict):
-        result = {k: _normalize_nullable_unions(v, all_schemas) for k, v in obj.items()}
+        result: dict[str, JsonValue] = {
+            k: _normalize_nullable_unions(v, all_schemas) for k, v in obj.items()
+        }
 
         for keyword in ("oneOf", "anyOf"):
-            if keyword not in result or not isinstance(result[keyword], list):
+            branch_list = result.get(keyword)
+            if not isinstance(branch_list, list):
                 continue
-            _flatten_nullable(result, keyword, result[keyword], all_schemas)
-            if keyword in result:
-                # Re-fetch: _flatten_nullable may have replaced the list.
-                _collapse_redundant_union(result, keyword, result[keyword])
+            _flatten_nullable(result, keyword, branch_list, all_schemas)
+            # Re-fetch: _flatten_nullable may have replaced the list.
+            new_list = result.get(keyword)
+            if isinstance(new_list, list):
+                _collapse_redundant_union(result, keyword, new_list)
 
         return result
 
@@ -401,7 +417,7 @@ def _normalize_nullable_unions(
 # ── Helpers ───────────────────────────────────────────────────
 
 
-def _build_problem_detail_schema() -> dict[str, Any]:
+def _build_problem_detail_schema() -> dict[str, JsonValue]:
     """Generate the ``ProblemDetail`` JSON Schema from the Pydantic model.
 
     Rewrites internal ``$defs`` references to point at
@@ -426,12 +442,12 @@ def _build_problem_detail_schema() -> dict[str, Any]:
     # Strip $defs -- referenced types already exist in components.schemas.
     raw.pop("$defs", None)
 
-    # Rewrite $ref from '#/$defs/X' to '#/components/schemas/X'.
-    result: dict[str, Any] = _rewrite_refs(raw)
-    return result
+    # Rewrite $ref from '#/$defs/X' to '#/components/schemas/X'. A dict input
+    # yields a dict output, so the cast is sound at this boundary.
+    return cast("dict[str, JsonValue]", _rewrite_refs(raw))
 
 
-def _rewrite_refs(obj: Any) -> Any:
+def _rewrite_refs(obj: JsonValue) -> JsonValue:
     """Recursively rewrite ``$ref`` paths from Pydantic to OpenAPI.
 
     Only rewrites ``#/$defs/``-prefixed refs to
@@ -443,16 +459,32 @@ def _rewrite_refs(obj: Any) -> Any:
         ``Any`` instance.
     """
     if isinstance(obj, dict):
-        if "$ref" in obj:
-            ref: str = obj["$ref"]
-            if ref.startswith("#/$defs/"):
-                return {
-                    "$ref": (f"#/components/schemas/{ref.removeprefix('#/$defs/')}"),
-                }
+        ref = obj.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/$defs/"):
+            return {
+                "$ref": (f"#/components/schemas/{ref.removeprefix('#/$defs/')}"),
+            }
         return {k: _rewrite_refs(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_rewrite_refs(item) for item in obj]
     return obj
+
+
+def _dict_child(parent: dict[str, JsonValue], key: str) -> dict[str, JsonValue]:
+    """Return ``parent[key]`` as a mutable dict, creating one if absent.
+
+    Mirrors ``dict.setdefault(key, {})`` but narrows the JSON value to a
+    concrete object type. A non-object value at *key* is replaced with a
+    fresh empty dict.
+
+    Returns:
+        The child object stored at *key*.
+    """
+    child = parent.get(key)
+    if not isinstance(child, dict):
+        child = {}
+        parent[key] = child
+    return child
 
 
 def _envelope_example(
@@ -461,7 +493,7 @@ def _envelope_example(
     error_code: ErrorCode,
     error_category: ErrorCategory,
     retryable: bool,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Build an ``ApiResponse`` envelope example for an error response.
 
     Returns:
@@ -493,7 +525,7 @@ def _problem_detail_example(
     error_code: ErrorCode,
     error_category: ErrorCategory,
     retryable: bool,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Build a bare RFC 9457 ``ProblemDetail`` example.
 
     Returns:
@@ -514,7 +546,7 @@ def _problem_detail_example(
     }
 
 
-def _build_reusable_response(spec: _ErrorResponseSpec) -> dict[str, Any]:
+def _build_reusable_response(spec: _ErrorResponseSpec) -> dict[str, JsonValue]:
     """Build a reusable response object with dual content types.
 
     Returns:
@@ -564,7 +596,7 @@ def _has_path_params(path: str) -> bool:
     return "{" in path
 
 
-def _response_ref(key: str) -> dict[str, str]:
+def _response_ref(key: str) -> dict[str, JsonValue]:
     """Build a ``$ref`` to a reusable response.
 
     Returns:
@@ -576,11 +608,21 @@ def _response_ref(key: str) -> dict[str, str]:
 # ── Response-to-operation mapping ─────────────────────────────
 
 
+def _has_response_code(operation: dict[str, JsonValue], code: str) -> bool:
+    """Report whether *operation* already declares a response for *code*.
+
+    Returns:
+        ``True`` when the operation's ``responses`` map contains *code*.
+    """
+    responses = operation.get("responses")
+    return isinstance(responses, dict) and code in responses
+
+
 def _should_inject(
     key: str,
     path: str,
     method: str,
-    operation: dict[str, Any],
+    operation: dict[str, JsonValue],
 ) -> bool:
     """Decide whether to inject a response reference into an operation.
 
@@ -608,7 +650,7 @@ def _should_inject(
         "Unauthorized": not is_public,
         "Forbidden": not is_public and is_write,
         # Inject on write methods or replace Litestar's incorrect default.
-        "BadRequest": is_write or "400" in operation.get("responses", {}),
+        "BadRequest": is_write or _has_response_code(operation, "400"),
         "NotFound": has_params,
         # DELETE excluded -- this API's deletes are unconditional removals
         # with no state preconditions, so 409 Conflict does not apply.
@@ -618,7 +660,7 @@ def _should_inject(
     return checks.get(key, False)
 
 
-def _is_litestar_validation_400(response: dict[str, Any]) -> bool:
+def _is_litestar_validation_400(response: dict[str, JsonValue]) -> bool:
     """Detect Litestar's auto-generated ``ValidationException`` 400 response.
 
     Returns ``True`` when the response schema contains the
@@ -629,14 +671,20 @@ def _is_litestar_validation_400(response: dict[str, Any]) -> bool:
     Returns:
         ``True`` or ``False`` reflecting the condition.
     """
-    content: dict[str, Any] = response.get("content", {})
-    json_content: dict[str, Any] = content.get("application/json", {})
-    schema: dict[str, Any] = json_content.get("schema", {})
+    content = response.get("content")
+    if not isinstance(content, dict):
+        return False
+    json_content = content.get("application/json")
+    if not isinstance(json_content, dict):
+        return False
+    schema = json_content.get("schema")
+    if not isinstance(schema, dict):
+        return False
     return str(schema.get("description", "")) == "Validation Exception"
 
 
 def _inject_operation_responses(
-    paths: dict[str, Any],
+    paths: dict[str, JsonValue],
     response_keys: list[str],
     status_for_key: dict[str, str],
 ) -> None:
@@ -646,10 +694,14 @@ def _inject_operation_responses(
     passing a deep-copied schema.
     """
     for path, path_item in paths.items():
+        if not isinstance(path_item, dict):
+            continue
         for method, operation in path_item.items():
             if not isinstance(operation, dict) or "responses" not in operation:
                 continue
             op_responses = operation["responses"]
+            if not isinstance(op_responses, dict):
+                continue
             for key in response_keys:
                 status_code = status_for_key[key]
                 if not _should_inject(key, path, method, operation):
@@ -658,8 +710,9 @@ def _inject_operation_responses(
                     # Only replace Litestar's auto-generated
                     # ValidationException 400; preserve custom 400s.
                     existing = op_responses.get("400")
-                    if existing is None or _is_litestar_validation_400(
-                        existing,
+                    if existing is None or (
+                        isinstance(existing, dict)
+                        and _is_litestar_validation_400(existing)
                     ):
                         op_responses["400"] = _response_ref(key)
                 elif status_code not in op_responses:
@@ -669,7 +722,7 @@ def _inject_operation_responses(
 # ── Extracted steps ───────────────────────────────────────────
 
 
-def _add_problem_detail_schema(schemas: dict[str, Any]) -> None:
+def _add_problem_detail_schema(schemas: dict[str, JsonValue]) -> None:
     """Add ``ProblemDetail`` to ``components.schemas`` if absent."""
     if "ProblemDetail" not in schemas:
         schemas["ProblemDetail"] = _build_problem_detail_schema()
@@ -688,7 +741,7 @@ def _add_problem_detail_schema(schemas: dict[str, Any]) -> None:
 
 
 def _build_all_responses(
-    responses: dict[str, Any],
+    responses: dict[str, JsonValue],
 ) -> tuple[list[str], dict[str, str]]:
     """Build reusable error responses and return keys + status mapping.
 
@@ -704,7 +757,7 @@ def _build_all_responses(
     return response_keys, status_for_key
 
 
-def _update_info_description(info: dict[str, Any]) -> None:
+def _update_info_description(info: dict[str, JsonValue]) -> None:
     """Store RFC 9457 documentation in an extension field.
 
     Uses ``x-documentation`` so the content is preserved in the
@@ -721,7 +774,7 @@ def _update_info_description(info: dict[str, Any]) -> None:
 # ── Main function ─────────────────────────────────────────────
 
 
-def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
+def inject_rfc9457_responses(schema: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """Inject RFC 9457 dual-format error responses into an OpenAPI schema.
 
     Takes the raw schema dict produced by Litestar's
@@ -741,20 +794,18 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Enhanced copy of the schema.
     """
-    result: dict[str, Any] = copy.deepcopy(schema)
+    result: dict[str, JsonValue] = copy.deepcopy(schema)
 
-    components = result.setdefault("components", {})
-    schemas = components.setdefault("schemas", {})
-    responses = components.setdefault("responses", {})
+    components = _dict_child(result, "components")
+    schemas = _dict_child(components, "schemas")
+    responses = _dict_child(components, "responses")
 
     _add_problem_detail_schema(schemas)
     response_keys, status_for_key = _build_all_responses(responses)
-    _inject_operation_responses(
-        result.get("paths", {}),
-        response_keys,
-        status_for_key,
-    )
-    _update_info_description(result.setdefault("info", {}))
+    paths = result.get("paths")
+    if isinstance(paths, dict):
+        _inject_operation_responses(paths, response_keys, status_for_key)
+    _update_info_description(_dict_child(result, "info"))
 
     # Normalize after all schemas are in place (including ProblemDetail).
     # Litestar emits ``oneOf: [{type: "string"}, {type: "null"}]`` for
@@ -763,9 +814,12 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
     # OpenAPI renderers (Scalar, Swagger UI, Redoc) prefer, and converts
     # ``$ref``-based nullable unions to ``anyOf`` so renderers can deref
     # cleanly.
-    result = _normalize_nullable_unions(result, all_schemas=schemas)
+    normalized = _normalize_nullable_unions(result, all_schemas=schemas)
+    if isinstance(normalized, dict):
+        result = normalized
 
-    path_count = len(result.get("paths", {}))
+    final_paths = result.get("paths")
+    path_count = len(final_paths) if isinstance(final_paths, dict) else 0
     logger.debug(
         API_OPENAPI_SCHEMA_ENHANCED,
         paths_processed=path_count,

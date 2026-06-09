@@ -16,10 +16,10 @@ import time
 from collections.abc import Sequence
 from contextlib import suppress
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Final
 
 from litestar import Request
-from litestar.datastructures import MutableScopeHeaders
+from litestar.datastructures import MutableScopeHeaders, State
 from litestar.enums import ScopeType
 from litestar.types import ASGIApp, Message, Receive, Scope, Send
 from opentelemetry import trace
@@ -314,10 +314,10 @@ def _resolve_route_template(scope: Scope) -> str:
     template_hint = scope.get("path_template")
     if isinstance(template_hint, str) and template_hint:
         return template_hint
-    handler: Any = scope.get("route_handler")
+    handler: object = scope.get("route_handler")
     if handler is None:
         return _UNMATCHED_ROUTE
-    paths: Any = getattr(handler, "paths", None)
+    paths = getattr(handler, "paths", None)
     if not paths:
         return _UNMATCHED_ROUTE
     # ``paths`` is a frozenset of route templates for the handler.
@@ -339,10 +339,10 @@ def _record_request_metric(
     interpreter-critical errors (``MemoryError`` / ``RecursionError``)
     propagate via ``reraise_critical``.
     """
-    state: Any = scope.get("state")
+    state: object = scope.get("state")
     if state is None:
         return
-    app_state: Any = state.get("app_state") if isinstance(state, dict) else None
+    app_state = state.get("app_state") if isinstance(state, dict) else None
     if app_state is None:
         return
     # Skip pre-response disconnects entirely rather than synthesising
@@ -412,7 +412,7 @@ class RequestLoggingMiddleware:
             await self.app(scope, receive, send)
             return
 
-        request: Request[Any, Any, Any] = Request(scope)
+        request: Request[object, object, State] = Request(scope)
         method = request.method
         path = str(request.url.path)
 
@@ -424,7 +424,7 @@ class RequestLoggingMiddleware:
         status_code: int | None = None
         original_send = send
 
-        async def capture_send(message: Any) -> None:
+        async def capture_send(message: Message) -> None:
             """Run capture send."""
             nonlocal status_code
             if (
@@ -432,14 +432,14 @@ class RequestLoggingMiddleware:
                 and message.get("type") == "http.response.start"
             ):
                 raw_status = message.get("status")
-                if raw_status is None:
+                if isinstance(raw_status, int):
+                    status_code = raw_status
+                else:
                     logger.warning(
                         API_ASGI_MISSING_STATUS,
                         type=message.get("type"),
                     )
                     status_code = 500
-                else:
-                    status_code = raw_status
             await original_send(message)  # pyright: ignore[reportArgumentType]
 
         with _tracer.start_as_current_span(

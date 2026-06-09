@@ -9,9 +9,10 @@ overrides take effect without a restart.
 
 import math
 from collections.abc import Awaitable, Callable
-from typing import Any, Final, NoReturn, get_args
+from typing import Final, NoReturn, get_args
 
 from litestar.connection import ASGIConnection
+from litestar.datastructures import State
 from litestar.handlers.base import BaseRouteHandler
 
 from synthorg.api.rate_limits._subject import (
@@ -37,7 +38,7 @@ logger = get_logger(__name__)
 _VALID_KEY_POLICIES: Final[tuple[str, ...]] = get_args(KeyPolicy)
 
 
-def _read_live_config(state: Any) -> PerOpRateLimitConfig | None:
+def _read_live_config(state: State) -> PerOpRateLimitConfig | None:
     """Read the current per-op sliding-window config from app state.
 
     Primary source is :class:`AppState` (the settings subscriber
@@ -67,7 +68,7 @@ def _read_live_config(state: Any) -> PerOpRateLimitConfig | None:
 
 
 def _resolve_wiring(
-    state: Any,
+    state: State,
     operation: str,
     config: PerOpRateLimitConfig | None,
 ) -> tuple[SlidingWindowStore, PerOpRateLimitConfig]:
@@ -157,7 +158,7 @@ def per_op_rate_limit(
     window_seconds: int,
     key: KeyPolicy = "user_or_ip",
 ) -> Callable[
-    [ASGIConnection[Any, Any, Any, Any], BaseRouteHandler],
+    [ASGIConnection[object, object, object, State], BaseRouteHandler],
     Awaitable[None],
 ]:
     """Build a Litestar guard that throttles ``operation``.
@@ -244,7 +245,7 @@ def per_op_rate_limit(
     default_window = window_seconds
 
     async def _guard(
-        connection: ASGIConnection[Any, Any, Any, Any],
+        connection: ASGIConnection[object, object, object, State],
         _handler: BaseRouteHandler,
     ) -> None:
         """Run guard."""

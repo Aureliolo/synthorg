@@ -4,7 +4,7 @@ Provides a convenience function to start the API server
 with settings from ``RootConfig``.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypedDict
 
 import uvicorn
 
@@ -24,6 +24,20 @@ if TYPE_CHECKING:
     from synthorg.config.schema import RootConfig
 
 logger = get_logger(__name__)
+
+
+class _OptionalUvicornKwargs(TypedDict, total=False):
+    """Optional ``uvicorn.run`` kwargs set only when configured.
+
+    Splatting a ``TypedDict`` lets mypy validate each key against the
+    ``uvicorn.run`` signature, unlike a ``dict[str, Any]`` splat.
+    """
+
+    ssl_certfile: str
+    ssl_keyfile: str | None
+    ssl_ca_certs: str
+    forwarded_allow_ips: str
+    proxy_headers: bool
 
 
 def run_server(config: RootConfig) -> None:
@@ -82,21 +96,20 @@ def run_server(config: RootConfig) -> None:
         server.ws_ping_timeout if server.ws_ping_timeout > 0 else None
     )
 
-    ssl_kwargs: dict[str, Any] = {}
+    extra: _OptionalUvicornKwargs = {}
     if ssl_certfile:
-        ssl_kwargs["ssl_certfile"] = ssl_certfile
-        ssl_kwargs["ssl_keyfile"] = ssl_keyfile
+        extra["ssl_certfile"] = ssl_certfile
+        extra["ssl_keyfile"] = ssl_keyfile
         if ssl_ca_certs:
-            ssl_kwargs["ssl_ca_certs"] = ssl_ca_certs
+            extra["ssl_ca_certs"] = ssl_ca_certs
         logger.info(
             API_TLS_CONFIGURED,
             certfile=ssl_certfile,
         )
 
-    proxy_kwargs: dict[str, Any] = {}
     if trusted_proxies:
-        proxy_kwargs["forwarded_allow_ips"] = ",".join(trusted_proxies)
-        proxy_kwargs["proxy_headers"] = True
+        extra["forwarded_allow_ips"] = ",".join(trusted_proxies)
+        extra["proxy_headers"] = True
 
     app = create_app(config=config)
     # Wrap the Litestar app in the request-drain middleware as the
@@ -135,6 +148,5 @@ def run_server(config: RootConfig) -> None:
         # Not exposed to the settings registry; see
         # ``docs/design/deployment.md`` for the full math.
         timeout_graceful_shutdown=75,
-        **ssl_kwargs,
-        **proxy_kwargs,
+        **extra,
     )

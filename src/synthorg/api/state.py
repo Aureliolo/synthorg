@@ -16,7 +16,7 @@ keep their once-only / if-absent / hot-replace semantics.
 import asyncio
 import threading
 from collections import OrderedDict
-from typing import TYPE_CHECKING, Any, cast, override
+from typing import TYPE_CHECKING, cast, override
 
 from synthorg.api.state_services_bridge import _BridgeConfigPrimitivesMixin
 from synthorg.api.state_services_locks import _RequestLockPrimitivesMixin
@@ -32,8 +32,11 @@ from synthorg.settings.bridge_configs import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.client.models import ClientRequest
     from synthorg.config.schema import RootConfig
+    from synthorg.engine.brownfield.models import CodebaseImportSubmission
     from synthorg.engine.coordination.service import MultiAgentCoordinator
+    from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveSubmission
     from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
     from synthorg.engine.pipeline.entry.task_board_adapter import (
         TaskBoardEntryAdapter,
@@ -265,14 +268,16 @@ class AppState(
 
     def set_intake_entry_adapter_if_absent(
         self,
-        adapter: WorkEntryAdapter[Any],
+        adapter: WorkEntryAdapter[ClientRequest],
     ) -> None:
         """Install the intake entry adapter only if not already wired."""
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
         self.wire_if_field_absent(EngineStateSlice, "intake_entry_adapter", adapter)
 
-    def swap_intake_entry_adapter(self, adapter: WorkEntryAdapter[Any]) -> None:
+    def swap_intake_entry_adapter(
+        self, adapter: WorkEntryAdapter[ClientRequest]
+    ) -> None:
         """Hot-replace the intake entry adapter (setup-complete reinit)."""
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
@@ -280,7 +285,7 @@ class AppState(
 
     def set_objective_entry_adapter_if_absent(
         self,
-        adapter: WorkEntryAdapter[Any],
+        adapter: WorkEntryAdapter[ObjectiveSubmission],
     ) -> None:
         """Install the objective entry adapter only if not already wired."""
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
@@ -289,7 +294,7 @@ class AppState(
 
     def swap_objective_entry_adapter(
         self,
-        adapter: WorkEntryAdapter[Any],
+        adapter: WorkEntryAdapter[ObjectiveSubmission],
     ) -> None:
         """Hot-replace the objective entry adapter (setup-complete reinit)."""
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
@@ -298,7 +303,7 @@ class AppState(
 
     def set_brownfield_entry_adapter_if_absent(
         self,
-        adapter: WorkEntryAdapter[Any],
+        adapter: WorkEntryAdapter[CodebaseImportSubmission],
     ) -> None:
         """Install the brownfield entry adapter only if not already wired."""
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
@@ -307,7 +312,7 @@ class AppState(
 
     def swap_brownfield_entry_adapter(
         self,
-        adapter: WorkEntryAdapter[Any],
+        adapter: WorkEntryAdapter[CodebaseImportSubmission],
     ) -> None:
         """Hot-replace the brownfield entry adapter (setup-complete reinit)."""
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415

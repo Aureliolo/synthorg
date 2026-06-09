@@ -9,7 +9,7 @@ on version conflict.
 
 import json
 import math
-from typing import TYPE_CHECKING, Any, Final, override
+from typing import TYPE_CHECKING, Final, TypedDict, override
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.services._org_agent_mutations import OrgAgentMutationsMixin
@@ -17,6 +17,7 @@ from synthorg.api.services._org_department_mutations import OrgDepartmentMutatio
 from synthorg.config.schema import AgentConfig
 from synthorg.core.company import Company, Department
 from synthorg.core.concurrency import CASRetryHandler
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.normalization import find_by_name_ci
 from synthorg.core.persistence_errors import PersistenceError
@@ -42,6 +43,17 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _BUDGET_PERCENT_CAP: Final[float] = 100.0
+
+
+class _CompanyUpdateCapture(TypedDict):
+    """Accumulator for the company-update CAS closure.
+
+    Holds the changed-scalar map and the post-write snapshot ETag,
+    captured inside the nested ``write`` callback.
+    """
+
+    updated: dict[str, object]
+    new_etag: str
 
 
 class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
@@ -123,6 +135,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
                 saved_by=saved_by,
             )
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 VERSION_SNAPSHOT_FAILED,
@@ -220,13 +233,13 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
     @staticmethod
     def _collect_department_updates(
         data: UpdateDepartmentRequest,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Extract set fields from an update request.
 
         Returns:
             Mapping with the declared key/value types.
         """
-        updates: dict[str, Any] = {}
+        updates: dict[str, object] = {}
         if "head" in data.model_fields_set:
             updates["head"] = data.head
         if "budget_percent" in data.model_fields_set:
@@ -333,13 +346,13 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         *,
         if_match: str | None = None,
         saved_by: str = "api",
-    ) -> tuple[dict[str, Any], str]:
+    ) -> tuple[dict[str, object], str]:
         """Update individual company scalar settings.
 
         Returns:
             Tuple of the declared element types.
         """
-        captured: dict[str, Any] = {"updated": {}, "new_etag": ""}
+        captured: _CompanyUpdateCapture = {"updated": {}, "new_etag": ""}
 
         async def read() -> tuple[
             tuple[UpdateCompanyRequest, dict[tuple[str, str], str]],
@@ -427,14 +440,14 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
     async def _apply_company_scalars(
         self,
         data: UpdateCompanyRequest,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Atomically write all changed company scalars via set_many.
 
         Returns:
             Mapping with the declared key/value types.
         """
         items: list[tuple[str, str, str]] = []
-        updated: dict[str, Any] = {}
+        updated: dict[str, object] = {}
         if data.company_name is not None:
             items.append(("company", "company_name", data.company_name))
             updated["company_name"] = data.company_name

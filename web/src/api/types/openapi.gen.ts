@@ -5905,21 +5905,6 @@ export type components = {
              */
             readonly success: boolean;
         };
-        /** ApiResponse[dict[str, Any]] */
-        readonly ApiResponse_dict_str_Any_: {
-            readonly data: {
-                readonly [key: string]: unknown;
-            } | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
-            readonly success: boolean;
-        };
         /** ApiResponse[dict[str, int]] */
         readonly ApiResponse_dict_str_int_: {
             readonly data: {
@@ -7152,8 +7137,8 @@ export type components = {
              */
             readonly success: boolean;
         };
-        /** ApiResponse[Union[dict[str, Any], NoneType]] */
-        readonly ApiResponse_Union_dict_str_Any_NoneType_: {
+        /** ApiResponse[Union[dict[str, object], NoneType]] */
+        readonly ApiResponse_Union_dict_str_object_NoneType_: {
             readonly data: {
                 readonly [key: string]: unknown;
             } | null;
@@ -11785,8 +11770,8 @@ export type components = {
              */
             readonly success: boolean;
         };
-        /** PaginatedResponse[dict[str, Any]] */
-        readonly PaginatedResponse_dict_str_Any_: {
+        /** PaginatedResponse[dict[str, object]] */
+        readonly PaginatedResponse_dict_str_object_: {
             /** @default [] */
             readonly data: readonly {
                 readonly [key: string]: unknown;
@@ -18962,7 +18947,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];
@@ -19494,7 +19479,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];
@@ -19522,7 +19507,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -20374,7 +20359,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Union_dict_str_Any_NoneType_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_Union_dict_str_object_NoneType_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -20409,7 +20394,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -21464,7 +21449,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -21492,7 +21477,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -21812,7 +21797,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -21932,7 +21917,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];
@@ -21961,7 +21946,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -21990,7 +21975,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22020,7 +22005,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22081,7 +22066,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22112,7 +22097,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22145,7 +22130,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22174,7 +22159,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22201,7 +22186,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22287,7 +22272,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22317,7 +22302,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22342,7 +22327,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];
@@ -22395,7 +22380,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22454,7 +22439,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -23019,7 +23004,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];
@@ -25940,7 +25925,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

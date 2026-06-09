@@ -12,7 +12,7 @@ list and centralises validation of ``operation`` / ``max_inflight`` /
 silently becoming no-ops at request time.
 """
 
-from typing import Any, Final, get_args
+from typing import Final, get_args
 
 from synthorg.api.rate_limits._subject import KeyPolicy
 from synthorg.api.rate_limits.inflight_middleware import OPT_KEY
@@ -33,7 +33,7 @@ def per_op_concurrency(
     *,
     max_inflight: int,
     key: KeyPolicy = "user",
-) -> dict[str, Any]:
+) -> dict[str, tuple[str, int, KeyPolicy]]:
     """Build the route-handler ``opt`` annotation for inflight capping.
 
     Args:

@@ -2,7 +2,7 @@
 
 import hashlib
 from datetime import UTC, datetime
-from typing import Any, Final
+from typing import Final
 
 from litestar import Controller, Request, delete, get, patch, post
 from litestar.datastructures import State
@@ -216,7 +216,7 @@ def _build_default_client(
 
 
 def _publish_client_event(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     event_type: WsEventType,
     profile: ClientProfile,
 ) -> None:
@@ -307,7 +307,7 @@ class ClientController(Controller):
     )
     async def create_client(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         data: CreateClientRequest,
     ) -> ApiResponse[ClientProfile]:
@@ -349,7 +349,7 @@ class ClientController(Controller):
     @patch("/{client_id:str}", guards=[require_write_access])
     async def update_client(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         client_id: PathId,
         data: UpdateClientRequest,
@@ -396,7 +396,7 @@ class ClientController(Controller):
     @delete("/{client_id:str}", guards=[require_write_access])
     async def deactivate_client(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         client_id: PathId,
     ) -> None:

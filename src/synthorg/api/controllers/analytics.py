@@ -3,7 +3,7 @@
 import asyncio
 from collections import Counter
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Annotated, Any, Final, NamedTuple
+from typing import TYPE_CHECKING, Annotated, Final, NamedTuple
 
 from litestar import Controller, get
 from litestar.datastructures import State
@@ -50,6 +50,9 @@ from synthorg.settings.state import config_resolver_of
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from synthorg.budget.cost_record import CostRecord
+    from synthorg.config.schema import AgentConfig
+    from synthorg.core.task import Task
     from synthorg.hr.performance.models import TaskMetricRecord
 
 logger = get_logger(__name__)
@@ -246,7 +249,7 @@ async def _resolve_budget_context(
 async def _resolve_agent_counts(
     app_state: AppState,
     config_agent_count: int,
-    all_tasks: Sequence[Any] | None = None,
+    all_tasks: Sequence[Task] | None = None,
 ) -> tuple[int, int]:
     """Resolve active and idle agent counts.
 
@@ -448,10 +451,10 @@ async def _fetch_trend_data_points(
 async def _assemble_overview(  # noqa: PLR0913
     app_state: AppState,
     *,
-    all_tasks: Sequence[Any],
+    all_tasks: Sequence[Task],
     total_cost: float,
-    agents: Sequence[Any],
-    records_7d: Sequence[Any],
+    agents: Sequence[AgentConfig],
+    records_7d: Sequence[CostRecord],
     now: datetime,
 ) -> OverviewMetrics:
     """Build overview metrics from parallel query results.

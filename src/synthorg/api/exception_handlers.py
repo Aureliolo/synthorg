@@ -27,10 +27,11 @@ frame-locals out of the sink.
 import math
 from http import HTTPStatus
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Final
 
 import structlog
 from litestar import Request, Response
+from litestar.datastructures import State
 from litestar.exceptions import (
     HTTPException,
     NotAuthorizedException,
@@ -120,7 +121,7 @@ def _get_instance_id() -> str:
     return generate_correlation_id()
 
 
-def _wants_problem_json(request: Request[Any, Any, Any]) -> bool:
+def _wants_problem_json(request: Request[object, object, State]) -> bool:
     """Check whether the client prefers ``application/problem+json``.
 
     Returns ``True`` only when the Accept header explicitly prefers
@@ -218,7 +219,7 @@ def _build_problem_detail_response(  # noqa: PLR0913
 
 
 def _build_response(  # noqa: PLR0913
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     *,
     detail: str,
     error_code: ErrorCode,
@@ -273,7 +274,8 @@ def _build_response(  # noqa: PLR0913
             status_code=status_code,
             headers=headers,
         )
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         # Last-resort fallback when structured-response construction
         # itself fails (e.g. Pydantic validation error from a corrupted
         # ErrorCode, structlog context corruption, enum drift).  Emit a
@@ -295,7 +297,8 @@ def _build_response(  # noqa: PLR0913
         # so the fallback never repeats the same crash.
         try:
             use_problem_json = _wants_problem_json(request)
-        except Exception:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover
+            reraise_critical(exc)
             use_problem_json = False
         instance = _get_instance_id()
         fallback_title = category_title(ErrorCategory.INTERNAL)
@@ -453,7 +456,7 @@ def _clamp_log_value(value: object) -> object:
 
 
 def _log_error(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: Exception,
     *,
     status: int,
@@ -482,7 +485,7 @@ def _log_error(
 
 
 def handle_record_not_found(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: RecordNotFoundError,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``RecordNotFoundError`` to 404.
@@ -501,7 +504,7 @@ def handle_record_not_found(
 
 
 def handle_duplicate_record(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: DuplicateRecordError,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``DuplicateRecordError`` to 409.
@@ -520,7 +523,7 @@ def handle_duplicate_record(
 
 
 def handle_persistence_error(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: PersistenceError,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``PersistenceError`` to 500.
@@ -539,7 +542,7 @@ def handle_persistence_error(
 
 
 def handle_persistence_integrity_error(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: Exception,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``psycopg.errors.IntegrityError`` (and subclasses) to 400.
@@ -685,7 +688,7 @@ def _parse_retry_after(raw: object) -> int | None:
 
 
 def handle_domain_error(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: Exception,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map domain-layer exceptions to RFC 9457 responses.
@@ -735,7 +738,7 @@ def handle_domain_error(
 
 
 def handle_unexpected(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: Exception,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Catch-all for unexpected errors -> 500.
@@ -754,7 +757,7 @@ def handle_unexpected(
 
 
 def handle_permission_denied(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: PermissionDeniedException,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``PermissionDeniedException`` to 403.
@@ -773,7 +776,7 @@ def handle_permission_denied(
 
 
 def handle_validation_error(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: ValidationException,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``ValidationException`` to 400.
@@ -793,7 +796,7 @@ def handle_validation_error(
 
 
 def handle_invalid_cursor(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: InvalidCursorError,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map :class:`InvalidCursorError` to 400.
@@ -823,7 +826,7 @@ def handle_invalid_cursor(
 
 
 def handle_not_authorized(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: NotAuthorizedException,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``NotAuthorizedException`` to 401 with a discriminated error_code.
@@ -851,7 +854,7 @@ def handle_not_authorized(
 
 
 def handle_not_found(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: NotFoundException,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map Litestar ``NotFoundException`` to 404.
@@ -881,7 +884,7 @@ def handle_not_found(
 
 
 def handle_http_exception(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     exc: HTTPException,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Catch-all for unhandled Litestar ``HTTPException`` subclasses.
