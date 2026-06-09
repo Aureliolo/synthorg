@@ -1,6 +1,6 @@
 """Personality preset controller -- discovery and CRUD endpoints."""
 
-from typing import Any, Final
+from typing import Final, cast
 
 from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State
@@ -134,14 +134,14 @@ class PersonalityPresetController(Controller):
         "/schema",
         guards=[require_read_access],
     )
-    async def get_schema(self) -> ApiResponse[dict[str, Any]]:
+    async def get_schema(self) -> ApiResponse[dict[str, object]]:
         """Return the PersonalityConfig JSON schema.
 
         Returns:
-            ``ApiResponse[dict[str, Any]]`` instance.
+            ``ApiResponse[dict[str, object]]`` instance.
         """
         schema = PersonalityPresetService.get_schema()
-        return ApiResponse[dict[str, Any]](data=schema)
+        return ApiResponse[dict[str, object]](data=cast("dict[str, object]", schema))
 
     @post(
         "/presets",

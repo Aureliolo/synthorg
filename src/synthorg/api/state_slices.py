@@ -12,7 +12,7 @@ cross-cutting mutable primitives a frozen slice cannot own.
 """
 
 import threading
-from typing import Any, cast
+from typing import cast
 
 from synthorg._core.features import BaseFeatureStateSlice
 from synthorg.observability import get_logger
@@ -115,7 +115,7 @@ class AppStateSliceMixin:
         self,
         slice_type: type[SliceT],
         /,
-        **updates: Any,
+        **updates: object,
     ) -> None:
         """Wire service references into a feature slice (field-level swap).
 
@@ -137,7 +137,7 @@ class AppStateSliceMixin:
         self,
         slice_type: type[BaseFeatureStateSlice],
         field: str,
-        value: Any,
+        value: object,
         label: str,
     ) -> None:
         """Install a single slice field once, atomically.
@@ -165,7 +165,7 @@ class AppStateSliceMixin:
         self,
         slice_type: type[BaseFeatureStateSlice],
         field: str,
-        value: Any,
+        value: object,
     ) -> bool:
         """Install a single slice field only if currently unset, atomically.
 
@@ -193,8 +193,8 @@ class AppStateSliceMixin:
         self,
         slice_type: type[BaseFeatureStateSlice],
         field: str,
-        value: Any,
-    ) -> Any:
+        value: object,
+    ) -> object:
         """Hot-replace a single slice field, returning the previous value.
 
         Reads the previous value and installs the replacement under one lock

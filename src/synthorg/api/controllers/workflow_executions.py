@@ -1,6 +1,6 @@
 """Workflow execution controller -- activate, list, get, cancel."""
 
-from typing import Any, Final
+from typing import Final
 
 from litestar import Controller, Request, Response, get, post
 from litestar.datastructures import State
@@ -45,7 +45,7 @@ logger = get_logger(__name__)
 _DEFAULT_PAGE_SIZE: Final[int] = 50
 
 
-def _extract_username(request: Request[Any, Any, Any]) -> str:
+def _extract_username(request: Request[object, object, State]) -> str:
     """Extract username from the request, falling back to ``"api"``.
 
     Treats ``None`` and empty-string usernames as missing so the
@@ -122,7 +122,7 @@ class WorkflowExecutionController(Controller):
     )
     async def activate_workflow(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         workflow_id: PathId,
         data: ActivateWorkflowRequest,
@@ -236,7 +236,7 @@ class WorkflowExecutionController(Controller):
     )
     async def cancel_execution(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         execution_id: PathId,
     ) -> Response[ApiResponse[WorkflowExecution]]:

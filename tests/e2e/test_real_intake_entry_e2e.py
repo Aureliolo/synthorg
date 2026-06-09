@@ -23,7 +23,7 @@ from uuid import uuid4
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.controllers.requests import process_intake_pipeline
+from synthorg.api.controllers.requests.pipeline import process_intake_pipeline
 from synthorg.api.state import AppState
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.models import ClientRequest, RequestStatus, TaskRequirement

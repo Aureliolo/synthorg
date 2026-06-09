@@ -1,6 +1,6 @@
 """Request/response models for the first-run setup controller."""
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -278,11 +278,11 @@ class SetupAgentRequest(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_preset_exists(cls, values: Any) -> Any:
+    def _validate_preset_exists(cls, values: object) -> object:
         """Normalize and validate the personality preset before construction.
 
         Returns:
-            ``Any`` instance.
+            ``object`` instance.
         """
         if not isinstance(values, dict):
             return values
@@ -354,11 +354,11 @@ class UpdateAgentPersonalityRequest(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_preset_exists(cls, values: Any) -> Any:
+    def _validate_preset_exists(cls, values: object) -> object:
         """Normalize and validate the personality preset.
 
         Returns:
-            ``Any`` instance.
+            ``object`` instance.
         """
         if not isinstance(values, dict):
             return values

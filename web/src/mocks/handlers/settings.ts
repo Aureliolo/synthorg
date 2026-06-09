@@ -1,13 +1,16 @@
 import { http, HttpResponse } from 'msw'
 import type {
+  exportSecurityConfig,
   getAllSettings,
   getNamespaceSchema,
   getNamespaceSettings,
   getSchema,
+  importSecurityConfig,
   listSinks,
   testSinkConfig,
   updateSetting,
 } from '@/api/endpoints/settings'
+import type { SecurityConfigImportRequest } from '@/api/types/settings'
 import type { SettingEntry } from '@/api/types/settings'
 import {
   emptyPage,
@@ -98,4 +101,23 @@ export const settingsHandlers = [
   http.delete('/api/v1/settings/:namespace/:key', () =>
     HttpResponse.json(voidSuccess()),
   ),
+  http.get('/api/v1/settings/security/export', () =>
+    HttpResponse.json(
+      successFor<typeof exportSecurityConfig>({
+        config: { enabled: true, audit_enabled: true },
+        exported_at: '2026-04-19T00:00:00Z',
+        custom_policies_warning: null,
+      }),
+    ),
+  ),
+  http.post('/api/v1/settings/security/import', async ({ request }) => {
+    const body = (await request.json()) as SecurityConfigImportRequest
+    return HttpResponse.json(
+      successFor<typeof importSecurityConfig>({
+        config: body.config,
+        exported_at: '2026-04-19T00:00:00Z',
+        custom_policies_warning: null,
+      }),
+    )
+  }),
 ]

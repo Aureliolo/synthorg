@@ -101,7 +101,7 @@ class SinkInfoResponse(BaseModel):
 
     Mirrors the frontend ``SinkInfo`` interface field-for-field so the
     pagination wire envelope stays typed end-to-end instead of leaking
-    a ``dict[str, Any]``.
+    a ``dict[str, JsonValue]``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

@@ -44,7 +44,8 @@ drain-timeout fallback.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+
+from litestar.types import ASGIApp, Receive, Scope, Send
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
@@ -54,9 +55,6 @@ from synthorg.observability.events.api import (
     API_APP_DRAIN_STARTED,
     API_APP_DRAIN_TIMEOUT,
 )
-
-if TYPE_CHECKING:
-    from litestar.types import ASGIApp, Receive, Scope, Send
 
 logger = get_logger(__name__)
 

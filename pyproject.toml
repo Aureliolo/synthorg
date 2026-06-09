@@ -577,39 +577,8 @@ ignore_missing_imports = true
 # only the flags / error codes actually firing.
 # ──────────────────────────────────────────────────────────────────────
 
-# The broad api exemption covers the ~70 still-undecomposed controllers and
-# the decomposed controllers that inherited explicit-Any still awaiting a
-# drain. The narrower block below re-enables the bar for the Any-clean
-# composition root and lifecycle modules.
-[[tool.mypy.overrides]]
-module = "synthorg.api.*"
-disallow_any_explicit = false
-
-# The composition root + lifecycle runners + the Any-clean decomposed
-# controller packages hit the FULL strict++ bar (a more-specific override
-# beats the synthorg.api.* wildcard; verified against state.py's Any).
-[[tool.mypy.overrides]]
-module = [
-    "synthorg.api.app",
-    "synthorg.api.auto_wire",
-    "synthorg.api.auto_wire_meetings",
-    "synthorg.api.auto_wire_phase1",
-    "synthorg.api.boot_persistence",
-    "synthorg.api.construction_phase",
-    "synthorg.api.lifecycle",
-    "synthorg.api.lifecycle_assembly",
-    "synthorg.api.lifecycle_builder",
-    "synthorg.api.lifecycle_runner_shutdown",
-    "synthorg.api.lifecycle_runner_startup",
-    "synthorg.api.lifecycle_runner_support",
-    "synthorg.api.lifecycle_shared",
-    "synthorg.api.lifecycle_startup",
-    "synthorg.api.litestar_assembly",
-    "synthorg.api.controllers.providers.*",
-    "synthorg.api.controllers.memory.*",
-]
-disallow_any_explicit = true
-
+# synthorg.api.* and synthorg.approval.* now hit the full strict++ bar
+# (explicit-Any drained in #2253); no override block remains for them.
 [[tool.mypy.overrides]]
 module = "synthorg.budget.*"
 disallow_any_explicit = false

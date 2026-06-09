@@ -6,20 +6,18 @@ serialised to JSON and pushed to WebSocket subscribers.
 
 import copy
 from enum import StrEnum
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
+    TypeAdapter,
     model_validator,
 )
 
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from pydantic import TypeAdapter
 
 # Lazy reference resolved on first use.  Avoids a circular import
 # (``ws_payloads`` imports ``WsEventType`` from this module).
@@ -37,8 +35,6 @@ def _get_payload_adapter() -> TypeAdapter[object]:
     """
     global _PAYLOAD_ADAPTER  # noqa: PLW0603 -- module-level cache by design
     if _PAYLOAD_ADAPTER is None:
-        from pydantic import TypeAdapter  # noqa: PLC0415 -- lazy
-
         from synthorg.api.ws_payloads import WsEventPayload  # noqa: PLC0415 -- lazy
 
         _PAYLOAD_ADAPTER = TypeAdapter(WsEventPayload)

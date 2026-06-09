@@ -48,7 +48,7 @@ class TestExpandTemplateAgentsDictModel:
                 },
             ]
         )
-        agents = expand_template_agents(template)
+        agents: list[dict[str, Any]] = expand_template_agents(template)
         assert len(agents) == 1
         agent = agents[0]
         assert agent["tier"] == "large"
@@ -65,7 +65,7 @@ class TestExpandTemplateAgentsDictModel:
                 {"role": "Developer", "model": "medium"},
             ]
         )
-        agents = expand_template_agents(template)
+        agents: list[dict[str, Any]] = expand_template_agents(template)
         assert len(agents) == 1
         agent = agents[0]
         assert agent["tier"] == "medium"
@@ -82,7 +82,7 @@ class TestExpandTemplateAgentsDictModel:
                 {"role": "Developer", "model": "small"},
             ]
         )
-        agents = expand_template_agents(template)
+        agents: list[dict[str, Any]] = expand_template_agents(template)
         assert len(agents) == 2
 
         ceo = next(a for a in agents if a["role"] == "CEO")
@@ -100,7 +100,7 @@ class TestExpandTemplateAgentsDictModel:
                 {"role": "Dev", "model": {}},
             ]
         )
-        agents = expand_template_agents(template)
+        agents: list[dict[str, Any]] = expand_template_agents(template)
         assert len(agents) == 1
         agent = agents[0]
         assert agent["tier"] == "medium"
@@ -113,7 +113,7 @@ class TestExpandTemplateAgentsDictModel:
 class TestExpandTemplateAgentsCustomPresets:
     def test_custom_preset_resolved(self) -> None:
         """Custom preset is used when passed to expand_template_agents."""
-        custom = {
+        custom: dict[str, dict[str, Any]] = {
             "my_custom": {
                 "traits": ("custom-trait",),
                 "communication_style": "custom",
@@ -126,7 +126,9 @@ class TestExpandTemplateAgentsCustomPresets:
             },
         }
         template = _make_template([{"role": "Dev", "personality_preset": "my_custom"}])
-        agents = expand_template_agents(template, custom_presets=custom)
+        agents: list[dict[str, Any]] = expand_template_agents(
+            template, custom_presets=custom
+        )
         assert len(agents) == 1
         assert agents[0]["personality"]["communication_style"] == "custom"
         assert agents[0]["personality_preset"] == "my_custom"
@@ -136,17 +138,19 @@ class TestExpandTemplateAgentsCustomPresets:
         template = _make_template(
             [{"role": "Dev", "personality_preset": "nonexistent"}]
         )
-        agents = expand_template_agents(template)
+        agents: list[dict[str, Any]] = expand_template_agents(template)
         assert len(agents) == 1
         assert agents[0]["personality_preset"] == "pragmatic_builder"
 
     def test_builtin_preset_works_with_custom_presets(self) -> None:
         """Builtin presets still work when custom_presets dict is passed."""
-        custom = {"other": {"traits": ("a",)}}
+        custom: dict[str, dict[str, Any]] = {"other": {"traits": ("a",)}}
         template = _make_template(
             [{"role": "Dev", "personality_preset": "pragmatic_builder"}]
         )
-        agents = expand_template_agents(template, custom_presets=custom)
+        agents: list[dict[str, Any]] = expand_template_agents(
+            template, custom_presets=custom
+        )
         assert len(agents) == 1
         assert agents[0]["personality"]["communication_style"] == "concise"
 
@@ -170,12 +174,12 @@ class TestBuildAgentConfigCustomPresets:
 
     def test_builtin_preset_resolves(self) -> None:
         data = self._make_request("pragmatic_builder")
-        result = build_agent_config(data)
+        result: dict[str, Any] = build_agent_config(data)
         assert result["personality"]["communication_style"] == "concise"
         assert result["personality_preset"] == "pragmatic_builder"
 
     def test_custom_preset_resolves(self) -> None:
-        custom = {
+        custom: dict[str, dict[str, Any]] = {
             "my_custom": {
                 "traits": ("custom-trait",),
                 "communication_style": "custom",
@@ -188,7 +192,7 @@ class TestBuildAgentConfigCustomPresets:
             },
         }
         data = self._make_request("my_custom")
-        result = build_agent_config(data, custom_presets=custom)
+        result: dict[str, Any] = build_agent_config(data, custom_presets=custom)
         assert result["personality"]["communication_style"] == "custom"
 
     def test_unknown_preset_raises_validation_error(self) -> None:
@@ -226,7 +230,7 @@ class TestMatchAndAssignModels:
         agents: list[dict[str, Any]] = [
             {"name": "Agent-0", "tier": tier},
         ]
-        result = match_and_assign_models(agents, {})
+        result: list[dict[str, Any]] = match_and_assign_models(agents, {})
 
         assert len(result) == 1
         model = result[0]["model"]

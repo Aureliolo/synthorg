@@ -12,18 +12,15 @@ Default TTL is 24 hours (matches Stripe-style retry windows).
 import asyncio
 import hashlib
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.idempotency import (
     IDEMPOTENCY_CLAIM_COMPLETED,
     IDEMPOTENCY_CLAIM_FAILED_REPLAY,
@@ -37,6 +34,9 @@ from synthorg.persistence.idempotency_protocol import (
     IdempotencyOutcome,
     IdempotencyRepository,
 )
+
+if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 
@@ -114,7 +114,7 @@ class IdempotencyResult:
             cleanup to FAILED via ``cleanup_expired``.
     """
 
-    result: Any | None
+    result: object
     fresh: bool
     timed_out: bool
 
@@ -157,7 +157,7 @@ class IdempotencyService:
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-        callback: Callable[[], Awaitable[Any]],
+        callback: Callable[[], Awaitable[object]],
     ) -> IdempotencyResult:
         """Run *callback* exactly once for ``(scope, key)``.
 
@@ -210,8 +210,8 @@ class IdempotencyService:
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-        callback: Callable[[], Awaitable[Any]],
-    ) -> tuple[Any, bool, bool]:
+        callback: Callable[[], Awaitable[object]],
+    ) -> tuple[object, bool, bool]:
         """Single attempt of the claim/run cycle.
 
         Returns ``(result, fresh, timed_out)``. The first element is
@@ -316,7 +316,7 @@ class IdempotencyService:
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-    ) -> tuple[_PollOutcome, Any | None]:
+    ) -> tuple[_PollOutcome, object | None]:
         """Poll until the in-flight claim resolves or timeout.
 
         Uses ``time.monotonic`` rather than wall-clock arithmetic so a
@@ -332,7 +332,7 @@ class IdempotencyService:
         leader, defeating redelivery semantics.
 
         Returns:
-            ``tuple[_PollOutcome, Any | None]``; always a tuple, with
+            ``tuple[_PollOutcome, object | None]``; always a tuple, with
             the second element (cached body) possibly ``None``.
         """
         deadline = self._clock.monotonic() + _IN_FLIGHT_POLL_TIMEOUT_SECONDS
@@ -371,7 +371,7 @@ class IdempotencyService:
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-        result: Any,
+        result: object,
         claim_token: NotBlankStr,
     ) -> str:
         """Persist *result* as the cached response body and return it.
@@ -445,6 +445,7 @@ class IdempotencyService:
             else:
                 logger.info(IDEMPOTENCY_FAIL, scope=scope, key=key)
         except Exception as exc:
+            reraise_critical(exc)
             # The original callback exception is the one the caller
             # cares about; failing to mark the row failed is best-
             # effort. Log at WARNING and let the row's expires_at

@@ -5,9 +5,12 @@ operations that were previously inline in ``setup.py``.
 """
 
 import json
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, cast
 
-from synthorg.core.domain_errors import NotFoundError, ValidationError
+from pydantic import JsonValue
+
+from synthorg.core.domain_errors import ValidationError
 from synthorg.core.normalization import normalize_optional_string
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
@@ -15,24 +18,23 @@ from synthorg.observability.events.setup import (
     SETUP_AGENTS_CORRUPTED,
     SETUP_AGENTS_READ_FALLBACK,
     SETUP_MODEL_FALLBACK_USED,
-    SETUP_MODEL_NOT_FOUND,
     SETUP_PRESET_NOT_FOUND,
-    SETUP_PROVIDER_NOT_FOUND,
     SETUP_TEMPLATE_INVALID,
 )
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
     from synthorg.api.controllers.setup_models import (
         SetupAgentRequest,
         SetupAgentSummary,
-        UpdateAgentModelRequest,
     )
+    from synthorg.config.schema import ProviderConfig
     from synthorg.settings.service import SettingsService
-    from synthorg.templates.model_matcher import ModelMatcherConfig
+    from synthorg.templates.model_matcher import (
+        ModelMatcherConfig,
+        _ProviderWithModels,
+    )
     from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
 
 logger = get_logger(__name__)
@@ -45,8 +47,8 @@ def expand_template_agents(
     template: CompanyTemplate,
     locales: list[str] | None = None,
     *,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
-) -> list[dict[str, Any]]:
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
+) -> list[dict[str, object]]:
     """Expand template agent configs into persistable agent dicts.
 
     Uses the same building blocks as the renderer (personality presets,
@@ -74,7 +76,7 @@ def expand_template_agents(
         get_personality_preset,
     )
 
-    agents: list[dict[str, Any]] = []
+    agents: list[dict[str, object]] = []
     used_names: set[str] = set()
 
     for idx, agent_cfg in enumerate(template.agents):
@@ -120,7 +122,7 @@ def expand_template_agents(
             model_req = None
             tier = agent_cfg.model
 
-        agent_dict: dict[str, Any] = {
+        agent_dict: dict[str, object] = {
             "name": name,
             "role": agent_cfg.role,
             "department": agent_cfg.department or "engineering",
@@ -138,10 +140,10 @@ def expand_template_agents(
 
 
 def match_and_assign_models(
-    agents: list[dict[str, Any]],
-    providers: Mapping[str, Any],
+    agents: list[dict[str, object]],
+    providers: Mapping[str, ProviderConfig],
     matcher_config: ModelMatcherConfig | None = None,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Auto-assign models to template agents using the matching engine.
 
     Returns a new list of agent dicts with ``model.provider`` and
@@ -161,7 +163,14 @@ def match_and_assign_models(
     """
     from synthorg.templates.model_matcher import match_all_agents  # noqa: PLC0415
 
-    matches = match_all_agents(agents, providers, matcher_config)
+    # ProviderConfig structurally exposes ``models`` but its frozen field
+    # is not assignable to the matcher protocol's mutable attribute; the
+    # cast bridges the read-only/mutable gap at this read-only call.
+    matches = match_all_agents(
+        agents,
+        cast("Mapping[str, _ProviderWithModels]", providers),
+        matcher_config,
+    )
     match_map = {
         m.agent_index: {
             "provider": m.provider_name,
@@ -170,7 +179,7 @@ def match_and_assign_models(
         }
         for m in matches
     }
-    result: list[dict[str, Any]] = []
+    result: list[dict[str, object]] = []
     for idx, agent in enumerate(agents):
         if idx in match_map:
             result.append({**agent, "model": match_map[idx]})
@@ -193,141 +202,11 @@ def match_and_assign_models(
     return result
 
 
-def _validate_provider_model_pair(
-    providers: Mapping[str, Any],
-    provider_name: str,
-    model_id: str,
-) -> None:
-    """Validate that a provider exists and contains the given model.
-
-    Args:
-        providers: Provider name -> config mapping.
-        provider_name: Provider to look up.
-        model_id: Model identifier to find within the provider.
-
-    Raises:
-        NotFoundError: If the provider does not exist.
-        ValidationError: If the model is not in the provider.
-    """
-    if provider_name not in providers:
-        msg = f"Provider {provider_name!r} not found"
-        logger.warning(SETUP_PROVIDER_NOT_FOUND, provider=provider_name)
-        raise NotFoundError(msg)
-
-    provider_config = providers[provider_name]
-    known_ids = {m.id for m in provider_config.models}
-    if model_id not in known_ids:
-        msg = f"Model {model_id!r} not found in provider {provider_name!r}"
-        logger.warning(
-            SETUP_MODEL_NOT_FOUND,
-            provider=provider_name,
-            model=model_id,
-        )
-        raise ValidationError(msg)
-
-
-def validate_model_assignment(
-    providers: Mapping[str, Any],
-    data: UpdateAgentModelRequest,
-) -> None:
-    """Validate provider and model for a model reassignment request.
-
-    Args:
-        providers: Provider name -> config mapping.
-        data: Model assignment payload.
-
-    Raises:
-        NotFoundError: If the provider does not exist.
-        ValidationError: If the model is not in the provider.
-    """
-    _validate_provider_model_pair(providers, data.model_provider, data.model_id)
-
-
-def validate_persisted_agents_against_providers(
-    providers: Mapping[str, Any],
-    agents: list[dict[str, Any]],
-) -> None:
-    """Verify every persisted agent points at a real provider+model pair.
-
-    Called from the setup-complete flow so an agent whose provider /
-    model was deleted between agent creation and setup completion
-    cannot land on a "complete" dashboard with broken model references.
-
-    Args:
-        providers: Provider name -> config mapping resolved from
-            provider_management.list_providers().
-        agents: Persisted agent dicts loaded from the ``company.agents``
-            setting (each entry has ``model.provider`` and
-            ``model.model_id`` keys).
-
-    Raises:
-        ValidationError: If any agent references a provider that no
-            longer exists OR a model the provider no longer exposes.
-            The error message names the offending agent + reference so
-            the wizard can highlight the right row.
-    """
-    for idx, agent in enumerate(agents):
-        model = agent.get("model")
-        if not isinstance(model, dict):
-            continue
-        provider_name = model.get("provider")
-        model_id = model.get("model_id")
-        if not isinstance(provider_name, str) or not isinstance(model_id, str):
-            continue
-        agent_label = agent.get("name") or f"agent {idx}"
-        if provider_name not in providers:
-            msg = (
-                f"Agent {agent_label!r} references provider "
-                f"{provider_name!r}, which is no longer configured. "
-                "Re-edit the agent or restore the provider before "
-                "completing setup."
-            )
-            logger.warning(
-                SETUP_PROVIDER_NOT_FOUND,
-                provider=provider_name,
-                agent_index=idx,
-            )
-            raise ValidationError(msg)
-        provider_config = providers[provider_name]
-        known_ids = {m.id for m in provider_config.models}
-        if model_id not in known_ids:
-            msg = (
-                f"Agent {agent_label!r} references model "
-                f"{model_id!r} on provider {provider_name!r}, which "
-                "the provider no longer exposes. Re-edit the agent's "
-                "model before completing setup."
-            )
-            logger.warning(
-                SETUP_MODEL_NOT_FOUND,
-                provider=provider_name,
-                model=model_id,
-                agent_index=idx,
-            )
-            raise ValidationError(msg)
-
-
-def validate_provider_and_model(
-    providers: Mapping[str, Any],
-    data: SetupAgentRequest,
-) -> None:
-    """Validate that the provider and model exist.
-
-    Args:
-        providers: Provider name -> config mapping from management service.
-        data: Agent creation payload.
-
-    Raises:
-        NotFoundError: If the provider does not exist.
-        ValidationError: If the model is not in the provider.
-    """
-    _validate_provider_model_pair(providers, data.model_provider, data.model_id)
-
-
 def build_agent_config(
     data: SetupAgentRequest,
     *,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
+) -> dict[str, object]:
     """Build an agent config dict for settings persistence.
 
     Args:
@@ -355,7 +234,7 @@ def build_agent_config(
         )
         msg = f"Unknown personality preset {data.personality_preset!r}"
         raise ValidationError(msg) from None
-    agent_config: dict[str, Any] = {
+    agent_config: dict[str, object] = {
         "name": data.name,
         "role": data.role,
         "department": data.department,
@@ -374,7 +253,7 @@ def build_agent_config(
 
 async def get_existing_agents(
     settings_svc: SettingsService,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Read the current agents list from settings.
 
     Only the "entry not found" case yields an empty list. JSON parse
@@ -432,7 +311,7 @@ async def get_existing_agents(
     return parsed
 
 
-def _validate_agent_elements(parsed: list[Any]) -> None:
+def _validate_agent_elements(parsed: list[object]) -> None:
     """Validate each element in a parsed agents list.
 
     Raises:
@@ -540,7 +419,7 @@ def departments_to_json(
 
 
 def agents_to_summaries(
-    agents: list[dict[str, Any]],
+    agents: list[dict[str, object]],
 ) -> tuple[SetupAgentSummary, ...]:
     """Convert agent config dicts to summary DTOs.
 
@@ -550,8 +429,27 @@ def agents_to_summaries(
     return tuple(agent_dict_to_summary(a) for a in agents)
 
 
+def _agent_str(agent: Mapping[str, object], key: str) -> str:
+    """Return the stripped string at *key*, or empty when not a string.
+
+    Returns:
+        The stripped value, or an empty string.
+    """
+    value = agent.get(key)
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _agent_opt_str(value: object) -> str | None:
+    """Normalise an optional string field, treating non-strings as absent.
+
+    Returns:
+        The normalised string, or ``None``.
+    """
+    return normalize_optional_string(value) if isinstance(value, str) else None
+
+
 def agent_dict_to_summary(
-    agent: dict[str, Any],
+    agent: dict[str, object],
 ) -> SetupAgentSummary:
     """Convert a single agent config dict to a summary DTO.
 
@@ -564,13 +462,13 @@ def agent_dict_to_summary(
 
     # Normalize string fields so whitespace-only values fall through
     # to defaults (NotBlankStr rejects blank strings).
-    name = (agent.get("name") or "").strip() or "unknown"
-    role = (agent.get("role") or "").strip() or "unknown"
-    department = (agent.get("department") or "").strip() or "general"
+    name = _agent_str(agent, "name") or "unknown"
+    role = _agent_str(agent, "role") or "unknown"
+    department = _agent_str(agent, "department") or "general"
     missing = [
         f
         for f, v in (("name", name), ("role", role), ("department", department))
-        if v in ("unknown", "general") and not (agent.get(f) or "").strip()
+        if v in ("unknown", "general") and not _agent_str(agent, f)
     ]
     if missing:
         logger.warning(
@@ -578,14 +476,19 @@ def agent_dict_to_summary(
             missing_fields=missing,
             agent_keys=list(agent.keys()),
         )
-    model = agent.get("model", {})
-    return SetupAgentSummary(
-        name=name,
-        role=role,
-        department=department,
-        level=normalize_optional_string(agent.get("level")),  # type: ignore[arg-type]
-        model_provider=normalize_optional_string(model.get("provider")),
-        model_id=normalize_optional_string(model.get("model_id")),
-        tier=(agent.get("tier") or "").strip() or "medium",  # type: ignore[arg-type]
-        personality_preset=normalize_optional_string(agent.get("personality_preset")),
+    model = agent.get("model")
+    model_dict = model if isinstance(model, dict) else {}
+    # model_validate coerces the persisted string ``level`` / ``tier``
+    # values against SetupAgentSummary's enum / Literal fields.
+    return SetupAgentSummary.model_validate(
+        {
+            "name": name,
+            "role": role,
+            "department": department,
+            "level": _agent_opt_str(agent.get("level")),
+            "model_provider": _agent_opt_str(model_dict.get("provider")),
+            "model_id": _agent_opt_str(model_dict.get("model_id")),
+            "tier": _agent_str(agent, "tier") or "medium",
+            "personality_preset": _agent_opt_str(agent.get("personality_preset")),
+        },
     )

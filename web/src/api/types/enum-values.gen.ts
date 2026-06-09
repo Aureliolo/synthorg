@@ -1007,6 +1007,15 @@ export const VALIDATION_ERROR_CODE_VALUES = [
 ] as const
 export type ValidationErrorCode = (typeof VALIDATION_ERROR_CODE_VALUES)[number]
 
+export const VELOCITY_CALC_TYPE_VALUES = [
+    'task_driven',
+    'calendar',
+    'multi_dimensional',
+    'budget',
+    'points_per_sprint',
+] as const
+export type VelocityCalcType = (typeof VELOCITY_CALC_TYPE_VALUES)[number]
+
 export const WORKFLOW_EDGE_TYPE_VALUES = [
     'sequential',
     'conditional_true',

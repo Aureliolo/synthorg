@@ -148,7 +148,7 @@ class WsAgentStatusChangedPayload(BaseModel):
 class WsAgentsReorderedPayload(BaseModel):
     """Payload for ``agents.reordered`` -- agent display order changed.
 
-    Emitted by ``api/controllers/departments.py`` ``reorder_agents``.
+    Emitted by ``api/controllers/departments/crud.py`` ``reorder_agents``.
     """
 
     model_config = PAYLOAD_CONFIG
@@ -182,7 +182,7 @@ class WsCompanyUpdatedPayload(BaseModel):
 class WsDepartmentCreatedPayload(BaseModel):
     """Payload for ``department.created``.
 
-    Emitted by ``api/controllers/departments.py`` ``create_department``.
+    Emitted by ``api/controllers/departments/crud.py`` ``create_department``.
     """
 
     model_config = PAYLOAD_CONFIG

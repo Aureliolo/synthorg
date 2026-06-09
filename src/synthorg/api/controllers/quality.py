@@ -1,7 +1,6 @@
 """Quality scoring controller -- overrides for task quality scores."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from litestar import Controller, Request, delete, get, post
 from litestar.datastructures import State
@@ -193,7 +192,7 @@ class QualityController(Controller):
         state: State,
         agent_id: PathId,
         data: SetQualityOverrideRequest,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> ApiResponse[QualityOverrideResponse]:
         """Set a quality score override for an agent.
 

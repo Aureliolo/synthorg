@@ -10,9 +10,12 @@ ingest path.
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any, Final
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Final
 
 from synthorg.api.controllers.webhooks import _shared
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.integrations.connections.models import WebhookReceipt
@@ -26,10 +29,7 @@ from synthorg.observability.events.integrations import (
     WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
     WEBHOOK_REJECTED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from datetime import datetime
+from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 
@@ -70,7 +70,7 @@ def _load_payload_from_receipt(receipt: WebhookReceipt) -> dict[str, object]:
 
 
 async def _transition_webhook_receipt_status(  # noqa: PLR0913
-    persistence: Any,
+    persistence: PersistenceBackend,
     receipt: WebhookReceipt,
     *,
     new_status: str,
@@ -167,8 +167,8 @@ def _assert_receipt_retryable(receipt: WebhookReceipt) -> None:
 
 async def _retry_publish_and_transition(
     *,
-    persistence: Any,
-    bus: Any,
+    persistence: PersistenceBackend,
+    bus: MessageBus,
     receipt: WebhookReceipt,
     payload: Mapping[str, object],
 ) -> dict[str, object]:
@@ -186,8 +186,6 @@ async def _retry_publish_and_transition(
             failed, so a cancelled retry never sticks in ``retrying``.
         Exception: Raised on the corresponding failure path.
     """
-    from datetime import UTC, datetime  # noqa: PLC0415
-
     await _transition_webhook_receipt_status(
         persistence,
         receipt,

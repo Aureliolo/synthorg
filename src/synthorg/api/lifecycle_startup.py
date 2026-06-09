@@ -161,6 +161,7 @@ async def _rebind_connection_catalog(
     except AttributeError:
         return
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             note="Persistence backend connections accessor failed; "

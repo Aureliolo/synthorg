@@ -10,6 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from litestar.datastructures import State
 from pydantic import ValidationError
 
 from synthorg.engine.errors import WorkflowDefinitionValidationError
@@ -39,8 +40,6 @@ from synthorg.persistence.state import persistence_of
 from synthorg.versioning import VersioningService
 
 if TYPE_CHECKING:
-    from litestar.datastructures import State
-
     from synthorg.api.dto_workflow import (
         CreateFromBlueprintRequest,
         UpdateWorkflowDefinitionRequest,

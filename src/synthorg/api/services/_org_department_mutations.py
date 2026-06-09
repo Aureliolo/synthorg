@@ -6,7 +6,7 @@ the service orchestration.
 
 import json
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypedDict
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.config.schema import AgentConfig
@@ -33,14 +33,24 @@ if TYPE_CHECKING:
         ReorderDepartmentsRequest,
         UpdateDepartmentRequest,
     )
+    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
+
+
+class _DeptReassignPayload(TypedDict):
+    """CAS payload for the delete-with-reassign department mutation."""
+
+    departments: tuple[Department, ...]
+    agents: tuple[AgentConfig, ...]
+    dept_version: str
+    agents_version: str
 
 
 class OrgDepartmentMutationsMixin:
     """Department CRUD + reorder for ``OrgMutationService``."""
 
-    _settings: Any
+    _settings: SettingsService
 
     async def _read_setting_versioned(  # pragma: no cover - see concrete
         self, namespace: str, key: str
@@ -86,7 +96,7 @@ class OrgDepartmentMutationsMixin:
     @staticmethod
     def _collect_department_updates(  # pragma: no cover - see concrete
         data: UpdateDepartmentRequest,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Collect the mutable department fields from an update request."""
         raise NotImplementedError
 
@@ -184,7 +194,7 @@ class OrgDepartmentMutationsMixin:
             NotFoundError: Raised on the corresponding failure path.
         """
         captured: dict[str, Department] = {}
-        captured_updates: dict[str, Any] = {}
+        captured_updates: dict[str, object] = {}
 
         async def read() -> tuple[tuple[Department, ...], str]:
             """Return read.
@@ -267,7 +277,7 @@ class OrgDepartmentMutationsMixin:
             json_dump_models as _json_dump_models,
         )
 
-        async def read() -> tuple[dict[str, Any], str]:
+        async def read() -> tuple[_DeptReassignPayload, str]:
             """Return read.
 
             Raises:
@@ -293,7 +303,7 @@ class OrgDepartmentMutationsMixin:
             new_departments = tuple(
                 d for d in departments if not compare_ci(d.name, name)
             )
-            payload = {
+            payload: _DeptReassignPayload = {
                 "departments": new_departments,
                 "agents": agents,
                 "dept_version": dept_version,
@@ -301,7 +311,7 @@ class OrgDepartmentMutationsMixin:
             }
             return payload, ""
 
-        async def write(payload: dict[str, Any], _version: str) -> None:
+        async def write(payload: _DeptReassignPayload, _version: str) -> None:
             """Run write."""
             await self._settings.set_many(
                 [

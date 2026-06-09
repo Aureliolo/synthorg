@@ -12,12 +12,15 @@ MCP domains mounted by the composition root.
 from collections.abc import Mapping
 
 from synthorg._core.features import FeatureManifest, FeatureModule
-from synthorg.api.controllers.activities import ActivityController
+from synthorg.api.controllers.activities.feed import ActivityController
 from synthorg.api.controllers.agent_identity_versions import (
     AgentIdentityVersionController,
 )
 from synthorg.api.controllers.agent_roster import AgentRosterController
-from synthorg.api.controllers.agents import AgentController
+from synthorg.api.controllers.agents.crud import AgentCrudController
+from synthorg.api.controllers.agents.observability import (
+    AgentObservabilityController,
+)
 from synthorg.api.controllers.collaboration import CollaborationController
 from synthorg.api.controllers.personalities import PersonalityPresetController
 from synthorg.api.controllers.quality import QualityController
@@ -58,7 +61,8 @@ FEATURE: FeatureModule = FeatureManifest(
     settings_namespace=SettingNamespace.HR,
     state_slice=HrStateSlice,
     controllers=(
-        AgentController,
+        AgentCrudController,
+        AgentObservabilityController,
         AgentRosterController,
         AgentIdentityVersionController,
         ActivityController,

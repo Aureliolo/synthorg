@@ -1,7 +1,6 @@
 """Company configuration controller."""
 
 import asyncio
-from typing import Any
 
 from litestar import Controller, Request, Response, get, patch, post
 from litestar.datastructures import State
@@ -45,7 +44,7 @@ class CompanyController(Controller):
     async def get_company(
         self,
         state: State,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Return a curated subset of company configuration.
 
         Returns an explicit field dict to control the response
@@ -72,7 +71,7 @@ class CompanyController(Controller):
                 error_count=len(eg.exceptions),
             )
             raise eg.exceptions[0] from eg
-        data: dict[str, Any] = {
+        data: dict[str, object] = {
             "company_name": t_name.result(),
             "agents": [a.model_dump(mode="json") for a in t_agents.result()],
             "departments": [d.model_dump(mode="json") for d in t_depts.result()],
@@ -88,10 +87,10 @@ class CompanyController(Controller):
     )
     async def update_company(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         data: UpdateCompanyRequest,
-    ) -> Response[ApiResponse[dict[str, Any]]]:
+    ) -> Response[ApiResponse[dict[str, object]]]:
         """Update company-level settings.
 
         Supports optimistic concurrency via ``If-Match`` header.
@@ -135,7 +134,7 @@ class CompanyController(Controller):
     )
     async def reorder_departments(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         data: ReorderDepartmentsRequest,
     ) -> ApiResponse[tuple[Department, ...]]:

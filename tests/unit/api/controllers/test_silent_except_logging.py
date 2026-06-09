@@ -12,14 +12,14 @@ structured fields; the same pattern applies to setup, analytics,
 _department_health, and approvals.
 """
 
-from typing import Any
+from typing import NoReturn
 
 import pytest
 import structlog
 from structlog.testing import capture_logs
 from typeguard import suppress_type_checks
 
-from synthorg.api.controllers import activities
+from synthorg.api.controllers.activities import _shared as activities
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from tests._shared import make_app_state
 
@@ -29,7 +29,7 @@ pytestmark = pytest.mark.unit
 class _ExplodingResolver:
     """Stand-in ``ConfigResolver`` that raises on ``get_budget_config``."""
 
-    async def get_budget_config(self) -> Any:
+    async def get_budget_config(self) -> NoReturn:
         msg = "synthetic budget config outage"
         raise RuntimeError(msg)
 

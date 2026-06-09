@@ -652,7 +652,7 @@ class TestWorkflowControllerErrorEnvelope:
             raise ValueError(msg)
 
         monkeypatch.setattr(
-            "synthorg.api.controllers.workflows.export_workflow_yaml",
+            "synthorg.api.controllers.workflows.validation.export_workflow_yaml",
             _raise_value_error,
         )
 

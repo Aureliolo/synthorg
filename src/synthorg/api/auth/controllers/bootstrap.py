@@ -3,9 +3,9 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
 
 from litestar import Controller, Request, Response, post
+from litestar.datastructures import State
 
 from synthorg.api.api_core_state import (
     ApiCoreStateSlice,
@@ -59,7 +59,7 @@ class AuthBootstrapController(Controller):
     async def setup(
         self,
         data: SetupRequest,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> Response[ApiResponse[CookieSessionResponse]]:
         """Create the first admin account (CEO).
 

@@ -10,7 +10,7 @@ import os
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 # ``ChannelsPlugin`` appears in the public signatures of the helpers
 # below. Under PEP 649 lazy annotations, ``typing.get_type_hints()``
@@ -178,16 +178,16 @@ def resolve_agent_workspace_root_env() -> Path | None:
 
 def _make_meeting_publisher(
     channels_plugin: ChannelsPlugin,
-) -> Callable[[str, dict[str, Any]], None]:
+) -> Callable[[str, dict[str, object]], None]:
     """Create a sync callback that publishes meeting events to WS.
 
     Returns:
-        ``Callable[[str, dict[str, Any]], None]`` instance.
+        ``Callable[[str, dict[str, object]], None]`` instance.
     """
 
     def _on_meeting_event(
         event_name: str,
-        payload: dict[str, Any],
+        payload: dict[str, object],
     ) -> None:
         # Construct the WsEvent inside the guarded block: an unknown
         # ``event_name`` raises ``ValueError`` from the enum lookup and

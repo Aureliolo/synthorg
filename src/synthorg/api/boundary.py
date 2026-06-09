@@ -4,7 +4,7 @@ A "boundary" is a typed entry-point where dict payloads from external
 sources (MCP tool invocations, JWT decode, WebSocket frames, A2A RPC,
 audit-chain emissions, settings export) must be validated against their
 corresponding Pydantic models before use. Today these six surfaces
-accept ``dict[str, Any]`` even though typed Pydantic models exist for
+accept ``dict[str, JsonValue]`` even though typed Pydantic models exist for
 each role.
 
 This module ships the canonical entry-point validator. Call sites that

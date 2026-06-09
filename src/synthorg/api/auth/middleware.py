@@ -3,15 +3,18 @@
 import hashlib
 import hmac as _hmac
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, override
 
 import jwt
+from litestar.connection import ASGIConnection
+from litestar.datastructures import State
 from litestar.enums import ScopeType
 from litestar.exceptions import NotAuthorizedException
 from litestar.middleware import (
     AbstractAuthenticationMiddleware,
     AuthenticationResult,
 )
+from litestar.types import ASGIApp
 from pydantic import ValidationError
 
 from synthorg.api.api_core_state import (
@@ -42,8 +45,6 @@ from synthorg.observability.events.security import (
 from synthorg.persistence.state import persistence_of
 
 if TYPE_CHECKING:
-    from litestar.connection import ASGIConnection
-
     from synthorg.api.auth.service import AuthService
     from synthorg.api.state import AppState
     from synthorg.core.auth.config import AuthConfig
@@ -99,7 +100,7 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
     @override
     async def authenticate_request(
         self,
-        connection: ASGIConnection[Any, Any, Any, Any],
+        connection: ASGIConnection[object, object, object, State],
     ) -> AuthenticationResult:
         """Validate the session cookie or Authorization header.
 
@@ -477,7 +478,7 @@ def create_auth_middleware_class(
     class ConfiguredAuthMiddleware(ApiAuthMiddleware):
         """Auth middleware with pre-configured exclude paths."""
 
-        def __init__(self, app: Any) -> None:
+        def __init__(self, app: ASGIApp) -> None:
             super().__init__(
                 app,
                 exclude=exclude_paths,

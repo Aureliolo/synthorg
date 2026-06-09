@@ -23,7 +23,7 @@ from collections.abc import (
 )
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from typing import Any, ClassVar, override
+from typing import ClassVar, override
 
 from litestar.enums import ScopeType
 from litestar.middleware import ASGIMiddleware
@@ -163,7 +163,7 @@ class AuthContextMiddleware(ASGIMiddleware):
         next_app: ASGIApp,
     ) -> None:
         """Bind ``scope["user"]`` for the duration of the inner dispatch."""
-        scope_user: Any = scope.get("user")
+        scope_user = scope.get("user")
         bound_user: AuthenticatedUser | None
         if isinstance(scope_user, AuthenticatedUser):
             bound_user = scope_user

@@ -1,7 +1,6 @@
 """Collaboration scoring controller -- overrides and calibration data."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from litestar import Controller, Request, delete, get, post
 from litestar.datastructures import State
@@ -244,7 +243,7 @@ class CollaborationController(Controller):
         state: State,
         agent_id: PathId,
         data: SetOverrideRequest,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> ApiResponse[OverrideResponse]:
         """Set a collaboration score override for an agent.
 

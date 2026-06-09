@@ -7,15 +7,15 @@ from uuid import uuid4
 import pytest
 import structlog
 
-from synthorg.api.controllers.custom_rules import (
+from synthorg.api.controllers._custom_rules_helpers import (
     CreateCustomRuleRequest,
-    CustomRuleController,
     PreviewRuleRequest,
     UpdateCustomRuleRequest,
     _build_preview_snapshot,
     _metric_to_dict,
     rule_to_dict,
 )
+from synthorg.api.controllers.custom_rules import CustomRuleController
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import (

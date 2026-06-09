@@ -10,7 +10,7 @@ root task as its idempotency key (see
 """
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from litestar import Controller, post
@@ -31,6 +31,9 @@ from synthorg.observability.events.objectives import (
     OBJECTIVE_PIPELINE_FAILED,
     OBJECTIVE_SUBMISSION_RECEIVED,
 )
+
+if TYPE_CHECKING:
+    from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
 
 logger = get_logger(__name__)
 
@@ -180,23 +183,26 @@ def _build_submission(data: SubmitObjectivePayload) -> ObjectiveSubmission:
     Returns:
         ``ObjectiveSubmission`` instance.
     """
-    fields: dict[str, Any] = {
+    # Enum fields arrive as strings; ObjectiveSubmission coerces them
+    # against its enum members. model_validate (not a **splat) keeps that
+    # coercion while staying Any-free.
+    raw: dict[str, str | tuple[NotBlankStr, ...] | None] = {
         "submission_id": str(uuid4()),
         "title": data.title,
         "description": data.description,
         "requested_by": data.requested_by,
         "acceptance_criteria": data.acceptance_criteria,
+        "priority": data.priority,
+        "estimated_complexity": data.estimated_complexity,
+        "task_type": data.task_type,
     }
-    if data.priority is not None:
-        fields["priority"] = data.priority
-    if data.estimated_complexity is not None:
-        fields["estimated_complexity"] = data.estimated_complexity
-    if data.task_type is not None:
-        fields["task_type"] = data.task_type
-    return ObjectiveSubmission(**fields)
+    return ObjectiveSubmission.model_validate(raw)
 
 
-async def _drive_pipeline(adapter: Any, submission: ObjectiveSubmission) -> None:
+async def _drive_pipeline(
+    adapter: WorkEntryAdapter[ObjectiveSubmission],
+    submission: ObjectiveSubmission,
+) -> None:
     """Run the adapter's pipeline submission and discard the result.
 
     Wrapping the awaitable in an ``async def`` lets the controller's

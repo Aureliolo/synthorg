@@ -47,7 +47,7 @@ def test_full_app_schema_enhancement() -> None:
 
     app = create_app()
     schema: dict[str, Any] = app.openapi_schema.to_schema()
-    result = inject_rfc9457_responses(schema)
+    result: dict[str, Any] = inject_rfc9457_responses(schema)
 
     # ProblemDetail schema present.
     assert "ProblemDetail" in result["components"]["schemas"]
@@ -113,7 +113,7 @@ def test_no_oneof_with_null_after_processing() -> None:
 
     app = create_app()
     schema: dict[str, Any] = app.openapi_schema.to_schema()
-    result = inject_rfc9457_responses(schema)
+    result: dict[str, Any] = inject_rfc9457_responses(schema)
 
     violations = _find_oneof_with_null(result)
     assert violations == [], (
@@ -140,7 +140,7 @@ def test_openapi_export_is_live_and_complete(
     from synthorg.api.app import create_app
 
     app = create_app()
-    schema = inject_rfc9457_responses(app.openapi_schema.to_schema())
+    schema: dict[str, Any] = inject_rfc9457_responses(app.openapi_schema.to_schema())
     paths = schema.get("paths") or {}
 
     assert len(paths) >= _MIN_PATH_COUNT, (

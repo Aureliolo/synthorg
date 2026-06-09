@@ -9,6 +9,7 @@ re-exported here for the existing import sites.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING
 
 from synthorg.api.lifecycle_runner_shutdown import _run_shutdown
@@ -29,8 +30,6 @@ from synthorg.observability.events.persistence.webhook_receipt import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Sequence
-
     from synthorg.api.bus_bridge import MessageBusBridge
     from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService

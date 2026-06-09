@@ -9,11 +9,9 @@
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import TYPE_CHECKING, Literal
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+from typing import Literal
 
 from litestar import Controller, Response, get
 from litestar.datastructures import State

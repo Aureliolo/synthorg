@@ -12,9 +12,10 @@ so auth-populated ``scope["user"]`` is already available and the
 permit is held only during actual handler execution.
 """
 
-from typing import Any, Final, override
+from typing import Final, override
 
 from litestar.connection import ASGIConnection
+from litestar.datastructures import State
 from litestar.enums import ScopeType
 from litestar.middleware import ASGIMiddleware
 from litestar.types import ASGIApp, Receive, Scope, Send
@@ -41,7 +42,7 @@ OPT_KEY: Final[str] = "per_op_concurrency"
 _OPT_TUPLE_LEN: Final[int] = 3
 
 
-def _read_live_inflight_config(state: Any) -> PerOpConcurrencyConfig | None:
+def _read_live_inflight_config(state: State | None) -> PerOpConcurrencyConfig | None:
     """Read the current per-op inflight config from app state.
 
     Primary source is :class:`AppState` (the settings subscriber
@@ -71,7 +72,7 @@ def _read_live_inflight_config(state: Any) -> PerOpConcurrencyConfig | None:
 
 
 def _resolve_wiring(
-    state: Any,
+    state: State | None,
     operation: str,
     config: PerOpConcurrencyConfig | None,
 ) -> tuple[InflightStore, PerOpConcurrencyConfig]:
@@ -242,7 +243,7 @@ class PerOpConcurrencyMiddleware(ASGIMiddleware):
             await next_app(scope, receive, send)
             return
 
-        connection: ASGIConnection[Any, Any, Any, Any] = ASGIConnection(
+        connection: ASGIConnection[object, object, object, State] = ASGIConnection(
             scope,
             receive,
             send,

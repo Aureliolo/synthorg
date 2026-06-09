@@ -25,8 +25,13 @@ runtime tuning surface.
 """
 
 import copy
+from collections.abc import Awaitable, Callable, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final
+from typing import Final
+
+from litestar.connection import ASGIConnection
+from litestar.datastructures import State
+from litestar.handlers.base import BaseRouteHandler
 
 from synthorg.api.rate_limits._subject import KeyPolicy
 from synthorg.api.rate_limits.guard import per_op_rate_limit
@@ -45,12 +50,6 @@ from synthorg.settings.definitions.api import (
 )
 
 logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Mapping
-
-    from litestar.connection import ASGIConnection
-    from litestar.handlers.base import BaseRouteHandler
 
 
 # Every rate-limited endpoint registered here.  Keys are stable,
@@ -279,7 +278,7 @@ def per_op_rate_limit_from_policy(
     *,
     key: KeyPolicy = "user_or_ip",
 ) -> Callable[
-    [ASGIConnection[Any, Any, Any, Any], BaseRouteHandler],
+    [ASGIConnection[object, object, object, State], BaseRouteHandler],
     Awaitable[None],
 ]:
     """Build a Litestar guard for ``operation`` using the policy registry.
@@ -320,7 +319,7 @@ def per_op_concurrency_from_policy(
     operation: str,
     *,
     key: KeyPolicy = "user",
-) -> dict[str, Any]:
+) -> dict[str, tuple[str, int, KeyPolicy]]:
     """Build the route ``opt`` annotation for ``operation`` from the registry.
 
     Args:

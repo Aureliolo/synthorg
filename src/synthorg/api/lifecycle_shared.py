@@ -9,6 +9,7 @@ both import them without an import cycle.
 """
 
 import asyncio
+from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Protocol
 
 from synthorg.observability import (
@@ -19,8 +20,6 @@ from synthorg.observability import (
 from synthorg.observability.events.api import API_APP_STARTUP
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
-
     from synthorg.api.bus_bridge import MessageBusBridge
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus

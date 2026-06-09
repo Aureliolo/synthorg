@@ -1,8 +1,6 @@
 # module-kind: controller
 """Core settings CRUD + schema-introspection endpoints."""
 
-from typing import Any
-
 from litestar import Controller, Request, Response, delete, get, put
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_204_NO_CONTENT
@@ -78,7 +76,7 @@ def _validate_namespace(namespace: str) -> None:
 
 
 async def _check_setting_etag(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     app_state: AppState,
     namespace: str,
     key: str,
@@ -303,7 +301,7 @@ class SettingsCoreController(Controller):
     )
     async def update_setting(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         namespace: PathNamespace,
         key: PathKey,

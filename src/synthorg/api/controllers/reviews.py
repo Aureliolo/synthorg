@@ -1,7 +1,6 @@
 """Review pipeline endpoints at /reviews."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State
@@ -31,6 +30,7 @@ from synthorg.engine.review.models import (
     ReviewStageResult,
     ReviewVerdict,
 )
+from synthorg.engine.review.protocol import ReviewStage
 from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.review_pipeline import (
@@ -66,13 +66,13 @@ class StageDecisionResult(BaseModel):
 
 
 def _find_stage(
-    pipeline_stages: tuple[Any, ...],
+    pipeline_stages: tuple[ReviewStage, ...],
     stage_name: str,
-) -> Any | None:
+) -> ReviewStage | None:
     """Return the stage instance matching ``stage_name`` if present.
 
     Returns:
-        The ``Any`` value when present, ``None`` otherwise.
+        The ``ReviewStage`` when present, ``None`` otherwise.
     """
     for stage in pipeline_stages:
         if getattr(stage, "name", None) == stage_name:
@@ -158,7 +158,7 @@ class ReviewController(Controller):
     )
     async def decide_stage(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         task_id: PathId,
         stage_name: PathName,

@@ -1,38 +1,21 @@
-"""Event stream and interrupt controllers.
+"""SSE streaming machinery for the event-stream controller.
 
-Provides SSE event streaming at ``/events/stream`` and a polling
-fallback for interrupts at ``/interrupts``.
+The hub-subscription generator (``_sse_event_stream``) and its support
+code: keepalive-interval resolution, the per-connection sliding-window
+revalidation limiter, the user-revocation check, event serialisation,
+and one-tick revalidation. ``EventStreamController`` imports these from
+``synthorg.api.controllers.events._sse``; kept out of ``stream`` so the
+controller module stays under the controller LOC cap.
 """
 
 import asyncio
 import json as _json
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
-from typing import Annotated, Any, Final
-
-from litestar import Controller, Request, get, post
-from litestar.datastructures import State
-from litestar.params import QueryParameter
-from litestar.response import ServerSentEvent
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Final
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
-from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import _READ_ROLES, require_approval_roles, require_read_access
-from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
-from synthorg.api.rate_limits import (
-    per_op_concurrency_from_policy,
-    per_op_rate_limit_from_policy,
-)
+from synthorg.api.guards import _READ_ROLES
 from synthorg.api.state import AppState
-from synthorg.communication.event_stream.interrupt import (
-    INTERRUPT_FIELD_RULES,
-    Interrupt,
-    InterruptResolution,
-    InterruptStore,
-    InterruptType,
-    ResumeDecision,
-)
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import StreamEvent
 from synthorg.communication.state import CommunicationStateSlice
@@ -40,19 +23,12 @@ from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.clock import SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import (
-    NotFoundError,
-    UnauthorizedError,
-    ValidationError,
-)
-from synthorg.core.types import NotBlankStr
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.event_stream import (
     EVENT_STREAM_CLIENT_CONNECTED,
     EVENT_STREAM_CLIENT_DISCONNECTED,
-    EVENT_STREAM_INTERRUPT_NOT_FOUND,
     EVENT_STREAM_PROJECTION_FAILED,
 )
 from synthorg.observability.metrics_hub import record_client_disconnect
@@ -70,6 +46,12 @@ Mirrors the registry default for ``api.sse_keepalive_seconds`` so a
 test harness or anonymous stream that bypasses :class:`AppState` still
 emits keepalives at the documented cadence.
 """
+
+# Defaults when no AppState/config is wired (anonymous boot, unit
+# harness). Mirror the ``auth_revalidate_*`` registry defaults; the
+# WS revalidation loop uses the same sliding-window model + settings.
+_AUTH_REVALIDATE_WINDOW_FALLBACK_SECONDS: Final[float] = 60.0
+_AUTH_REVALIDATE_MAX_FAILURES_FALLBACK: Final[int] = 5
 
 
 async def _resolve_sse_keepalive_seconds(app_state: AppState | None) -> float:
@@ -104,18 +86,6 @@ async def _resolve_sse_keepalive_seconds(app_state: AppState | None) -> float:
             fallback_seconds=_SSE_KEEPALIVE_FALLBACK_SECONDS,
         )
         return _SSE_KEEPALIVE_FALLBACK_SECONDS
-
-
-# Session IDs flow into a hub keyed on the value -- restrict the alphabet
-# to alphanumerics + dash + underscore to block path-traversal-shaped or
-# control-character session IDs reaching the hub.
-_SESSION_ID_PATTERN = r"^[a-zA-Z0-9_-]{1,128}$"
-
-# Defaults when no AppState/config is wired (anonymous boot, unit
-# harness). Mirror the ``auth_revalidate_*`` registry defaults; the
-# WS revalidation loop uses the same sliding-window model + settings.
-_AUTH_REVALIDATE_WINDOW_FALLBACK_SECONDS: Final[float] = 60.0
-_AUTH_REVALIDATE_MAX_FAILURES_FALLBACK: Final[int] = 5
 
 
 def _build_revalidation_limiter(
@@ -187,6 +157,7 @@ async def _user_revocation_reason(
     try:
         db_user = await persistence_of(app_state).users.get(user_id)
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             EVENT_STREAM_PROJECTION_FAILED,
             note="sse_revalidate_persistence_error",
@@ -212,49 +183,6 @@ async def _user_revocation_reason(
     return None, True
 
 
-# ── DTOs ─────────────────────────────────────────────────────────
-
-
-class ResumeInterruptRequest(BaseModel):
-    """Request body for resuming an interrupt."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    decision: ResumeDecision | None = Field(
-        default=None,
-        description="Approval decision (TOOL_APPROVAL only)",
-    )
-    feedback: NotBlankStr | None = Field(
-        default=None,
-        description="Feedback text (TOOL_APPROVAL only)",
-    )
-    response: NotBlankStr | None = Field(
-        default=None,
-        description="Clarification response (INFO_REQUEST only)",
-    )
-
-
-class InterruptResponse(BaseModel):
-    """Interrupt item returned by the polling API."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    id: NotBlankStr
-    type: InterruptType
-    session_id: NotBlankStr
-    agent_id: NotBlankStr
-    created_at: str
-    timeout_seconds: float
-    tool_name: NotBlankStr | None = None
-    tool_args: dict[str, object] | None = None
-    evidence_package_id: NotBlankStr | None = None
-    question: NotBlankStr | None = None
-    context_snippet: NotBlankStr | None = None
-
-
-# ── Helpers ──────────────────────────────────────────────────────
-
-
 def _require_hub(app_state: AppState) -> EventStreamHub:
     """Return the hub or raise when unavailable.
 
@@ -266,108 +194,6 @@ def _require_hub(app_state: AppState) -> EventStreamHub:
         msg = "Event stream not configured"
         raise NotFoundError(msg)
     return hub
-
-
-def _require_interrupt_store(app_state: AppState) -> InterruptStore:
-    """Return the interrupt store or raise when unavailable.
-
-    Raises:
-        NotFoundError: Raised on the corresponding failure path.
-    """
-    store = app_state.slice(CommunicationStateSlice).interrupt_store
-    if store is None:
-        msg = "Interrupt store not configured"
-        raise NotFoundError(msg)
-    return store
-
-
-def _require_auth(request: Request[Any, Any, Any]) -> AuthenticatedUser:
-    """Return the auth or raise when unavailable.
-
-    Raises:
-        UnauthorizedError: Raised on the corresponding failure path.
-    """
-    auth_user = request.scope.get("user")
-    if not isinstance(auth_user, AuthenticatedUser):
-        msg = "Authentication required"
-        raise UnauthorizedError(msg)
-    return auth_user
-
-
-def _validate_resume_payload(
-    interrupt: Interrupt,
-    data: ResumeInterruptRequest,
-) -> None:
-    """Validate resume payload matches the interrupt type.
-
-    Args:
-        interrupt: The pending interrupt being resumed.
-        data: The client's resume payload.
-
-    Raises:
-        ValidationError: If required fields are missing.
-    """
-    rule = INTERRUPT_FIELD_RULES.get(interrupt.type)
-    if rule is not None and getattr(data, rule.resume_field) is None:
-        msg = f"{interrupt.type.name} interrupts require a {rule.resume_field}"
-        logger.warning(
-            API_VALIDATION_FAILED,
-            reason="resume_payload_missing_field",
-            interrupt_type=interrupt.type.value,
-            missing_field=rule.resume_field,
-        )
-        raise ValidationError(msg)
-
-
-async def _resolve_interrupt(
-    store: InterruptStore,
-    interrupt_id: str,
-    data: ResumeInterruptRequest,
-    resolved_by: str,
-) -> ApiResponse[dict[str, str]]:
-    """Shared logic for both resume endpoints.
-
-    Args:
-        store: The interrupt store.
-        interrupt_id: The interrupt to resume.
-        data: The resume payload.
-        resolved_by: Identity of the resolver.
-
-    Returns:
-        Confirmation envelope.
-
-    Raises:
-        NotFoundError: If interrupt doesn't exist or is no longer pending.
-        ValidationError: If payload doesn't match interrupt type.
-    """
-    interrupt = await store.get(interrupt_id)
-    if interrupt is None:
-        logger.warning(
-            EVENT_STREAM_INTERRUPT_NOT_FOUND,
-            interrupt_id=interrupt_id,
-        )
-        msg = f"Interrupt {interrupt_id!r} not found"
-        raise NotFoundError(msg)
-
-    _validate_resume_payload(interrupt, data)
-
-    resolution = InterruptResolution(
-        interrupt_id=interrupt_id,
-        decision=data.decision,
-        feedback=data.feedback,
-        response=data.response,
-        resolved_at=datetime.now(UTC),
-        resolved_by=resolved_by,
-    )
-    resolved = await store.resolve(resolution)
-    if resolved is None:
-        msg = f"Interrupt {interrupt_id!r} is no longer pending"
-        raise NotFoundError(msg)
-
-    return ApiResponse(data={"status": "resumed"})
-
-
-# ── SSE stream ───────────────────────────────────────────────────
 
 
 async def _serialise_stream_event(
@@ -581,182 +407,3 @@ async def _sse_event_stream(
                 transport="sse",
                 reason=disconnect_reason,
             )
-
-
-# ── Controllers ──────────────────────────────────────────────────
-
-
-class EventStreamController(Controller):
-    """AG-UI SSE event stream and interrupt resume."""
-
-    path = "/events"
-    tags = ("events",)
-
-    @get(
-        "/stream",
-        media_type="text/event-stream",
-        guards=[
-            require_read_access,
-            per_op_rate_limit_from_policy("events.stream", key="user_or_ip"),
-        ],
-        opt=per_op_concurrency_from_policy(
-            "events.stream",
-            key="user",
-        ),
-    )
-    async def stream(
-        self,
-        state: State,
-        request: Request[Any, Any, Any],
-        session_id: Annotated[
-            NotBlankStr,
-            QueryParameter(
-                max_length=QUERY_MAX_LENGTH,
-                pattern=_SESSION_ID_PATTERN,
-                description="Session ID whose AG-UI stream to subscribe to.",
-            ),
-        ],
-    ) -> ServerSentEvent:
-        """SSE stream of AG-UI events for a session.
-
-        Args:
-            state: Application state.
-            request: Incoming HTTP request (for authenticated user).
-            session_id: Session to subscribe to.
-
-        Returns:
-            SSE stream of projected events.
-        """
-        app_state: AppState = state.app_state
-        hub = _require_hub(app_state)
-        user = getattr(request, "user", None)
-        return ServerSentEvent(
-            content=_sse_event_stream(
-                hub,
-                session_id,
-                app_state=app_state,
-                user=user if isinstance(user, AuthenticatedUser) else None,
-            ),
-        )
-
-    @post(
-        "/resume/{interrupt_id:str}",
-        guards=[
-            require_approval_roles,
-            per_op_rate_limit_from_policy("interrupts.resume", key="user"),
-        ],
-        status_code=200,
-    )
-    async def resume_interrupt(
-        self,
-        state: State,
-        interrupt_id: PathId,
-        data: ResumeInterruptRequest,
-        request: Request[Any, Any, Any],
-    ) -> ApiResponse[dict[str, str]]:
-        """Resume a pending interrupt.
-
-        Args:
-            state: Application state.
-            interrupt_id: Interrupt to resume.
-            data: Resume payload.
-            request: The incoming HTTP request.
-
-        Returns:
-            Confirmation envelope.
-        """
-        app_state: AppState = state.app_state
-        store = _require_interrupt_store(app_state)
-        auth_user = _require_auth(request)
-        return await _resolve_interrupt(
-            store,
-            interrupt_id,
-            data,
-            auth_user.username,
-        )
-
-
-class InterruptController(Controller):
-    """Polling fallback for interrupt management."""
-
-    path = "/interrupts"
-    tags = ("interrupts",)
-
-    @get(guards=[require_read_access])
-    async def list_interrupts(
-        self,
-        state: State,
-        session_id: Annotated[
-            NotBlankStr | None,
-            QueryParameter(
-                max_length=QUERY_MAX_LENGTH,
-                pattern=_SESSION_ID_PATTERN,
-                description="Filter to interrupts for this session; omit to list all.",
-            ),
-        ] = None,
-    ) -> ApiResponse[tuple[InterruptResponse, ...]]:
-        """List pending interrupts.
-
-        Args:
-            state: Application state.
-            session_id: Optional session filter.
-
-        Returns:
-            List of pending interrupts.
-        """
-        app_state: AppState = state.app_state
-        store = _require_interrupt_store(app_state)
-        pending = await store.list_pending(session_id=session_id)
-        items = tuple(
-            InterruptResponse(
-                id=i.id,
-                type=i.type,
-                session_id=i.session_id,
-                agent_id=i.agent_id,
-                created_at=i.created_at.isoformat(),
-                timeout_seconds=i.timeout_seconds,
-                tool_name=i.tool_name,
-                tool_args=i.tool_args,
-                evidence_package_id=i.evidence_package_id,
-                question=i.question,
-                context_snippet=i.context_snippet,
-            )
-            for i in pending
-        )
-        return ApiResponse(data=items)
-
-    @post(
-        "/{interrupt_id:str}/resume",
-        guards=[
-            require_approval_roles,
-            per_op_rate_limit_from_policy("interrupts.resume", key="user"),
-        ],
-        status_code=200,
-    )
-    async def resume(
-        self,
-        state: State,
-        interrupt_id: PathId,
-        data: ResumeInterruptRequest,
-        request: Request[Any, Any, Any],
-    ) -> ApiResponse[dict[str, str]]:
-        """Resume a pending interrupt via polling API.
-
-        Args:
-            state: Application state.
-            interrupt_id: Interrupt to resume.
-            data: Resume payload.
-            request: The incoming HTTP request.
-
-        Returns:
-            Confirmation envelope.
-        """
-        app_state: AppState = state.app_state
-        store = _require_interrupt_store(app_state)
-        auth_user = _require_auth(request)
-        return await _resolve_interrupt(
-            store,
-            interrupt_id,
-            data,
-            auth_user.username,
-        )

@@ -10,7 +10,7 @@ asynchronously; the operator polls the project's structure map / tasks.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from litestar import Controller, post
 from litestar.datastructures import State
@@ -156,7 +156,8 @@ class BrownfieldController(Controller):
 
 
 async def _drive_pipeline(
-    adapter: WorkEntryAdapter[Any], submission: CodebaseImportSubmission
+    adapter: WorkEntryAdapter[CodebaseImportSubmission],
+    submission: CodebaseImportSubmission,
 ) -> None:
     """Run the adapter's import + pipeline submission, discarding the result.
 

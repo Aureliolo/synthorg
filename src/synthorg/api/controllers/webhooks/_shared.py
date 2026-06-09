@@ -9,7 +9,8 @@ reaches ``_publish_webhook_event_and_log`` module-qualified through
 this module so there is one canonical patch target.
 """
 
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 from litestar import Request
 from litestar.datastructures import State
@@ -39,23 +40,23 @@ from synthorg.observability.events.integrations import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.integrations.connections.models import ConnectionType
+    from synthorg.communication.bus_protocol import MessageBus
+    from synthorg.integrations.connections.catalog import ConnectionCatalog
+    from synthorg.integrations.connections.models import Connection, ConnectionType
 
 logger = get_logger(__name__)
 
 
-async def _get_connection_or_404(state: State, connection_name: str) -> Any:
+async def _get_connection_or_404(state: State, connection_name: str) -> Connection:
     """Look up the named connection or raise 404 with a logged reason.
 
     Returns:
-        ``Any`` instance.
+        ``Connection`` instance.
 
     Raises:
         NotFoundError: Raised on the corresponding failure path.
     """
-    catalog = require_service(
+    catalog: ConnectionCatalog = require_service(
         state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
         "Connection Catalog",
     )
@@ -72,7 +73,7 @@ async def _get_connection_or_404(state: State, connection_name: str) -> Any:
 
 
 async def _enforce_max_payload(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     *,
     connection_name: str,
     max_payload: int,
@@ -144,7 +145,7 @@ async def _enforce_max_payload(
 
 async def _verify_signature(
     *,
-    catalog: Any,
+    catalog: ConnectionCatalog,
     connection_name: str,
     connection_type: ConnectionType,
     body: bytes,
@@ -270,7 +271,7 @@ async def _check_replay_or_freshness(
 
 async def _publish_webhook_event_and_log(
     *,
-    bus: Any,
+    bus: MessageBus,
     connection_name: str,
     event_type: str,
     payload: Mapping[str, object],
@@ -310,7 +311,7 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
     event_type: str,
     nonce: str,
     connection_type: str,
-    bus: Any,
+    bus: MessageBus,
     payload: Mapping[str, object],
     dedup_source: str,
 ) -> dict[str, object]:

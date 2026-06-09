@@ -16,7 +16,7 @@ from synthorg._core.features import (
     FeatureModule,
 )
 from synthorg.api.controllers.clients import ClientController
-from synthorg.api.controllers.requests import RequestController
+from synthorg.api.controllers.requests.lifecycle import RequestController
 from synthorg.api.controllers.simulations import SimulationController
 from synthorg.client._construction import wire_construction
 from synthorg.client.state import ClientStateSlice, has_simulation_runtime

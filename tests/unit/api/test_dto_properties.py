@@ -139,7 +139,7 @@ class TestCreateApprovalRequestProperties:
         metadata = {f"key-{i}": f"val-{i}" for i in range(num_keys)}
         with pytest.raises(
             ValidationError,
-            match=f"at most {_MAX_METADATA_KEYS} items",
+            match=f"at most {_MAX_METADATA_KEYS} keys",
         ):
             CreateApprovalRequest(
                 action_type="test:action",

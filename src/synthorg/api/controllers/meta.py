@@ -1,6 +1,6 @@
 """Meta improvement controller -- self-improvement proposals and signals."""
 
-from typing import Any, Final
+from typing import Final
 from uuid import UUID
 
 from litestar import Controller, get, post
@@ -8,7 +8,7 @@ from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
-from synthorg.api.controllers.custom_rules import rule_to_dict
+from synthorg.api.controllers._custom_rules_helpers import rule_to_dict
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.pagination import (
@@ -19,6 +19,7 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import AbTestNotFoundError, ServiceUnavailableError
@@ -37,6 +38,7 @@ from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_LIST_FAILED,
 )
 from synthorg.persistence.state import persistence_of
+from synthorg.settings.service import SettingsService
 from synthorg.settings.state import SettingsStateSlice
 
 
@@ -65,16 +67,16 @@ logger = get_logger(__name__)
 _DEFAULT_PAGE_SIZE: Final[int] = 50
 
 
-def _settings_service_from_state(state: State) -> Any:
+def _settings_service_from_state(state: State) -> SettingsService | None:
     """Return the settings service from the app state, or ``None``.
 
     Centralises the ``has_settings_service`` guard used by every
     ``load_self_improvement_config`` call site in this controller.
 
     Returns:
-        ``Any`` instance.
+        The wired ``SettingsService``, or ``None`` when unset.
     """
-    app_state = state.app_state
+    app_state: AppStateSliceMixin = state.app_state
     return app_state.slice(SettingsStateSlice).settings_service
 
 
@@ -94,7 +96,7 @@ class MetaController(Controller):
     async def get_config(
         self,
         state: State,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Get current self-improvement configuration.
 
         Reads the runtime-tunable portion from the ``meta.self_improvement``
@@ -108,7 +110,7 @@ class MetaController(Controller):
         config = await load_self_improvement_config(
             _settings_service_from_state(state),
         )
-        return ApiResponse[dict[str, Any]](
+        return ApiResponse[dict[str, object]](
             data=config.model_dump(),
         )
 
@@ -118,7 +120,7 @@ class MetaController(Controller):
         state: State,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_PAGE_SIZE,
-    ) -> PaginatedResponse[dict[str, Any]]:
+    ) -> PaginatedResponse[dict[str, object]]:
         """List all signal rules (built-in + custom) with status.
 
         Args:
@@ -136,7 +138,7 @@ class MetaController(Controller):
             _settings_service_from_state(state),
         )
         disabled = set(config.rules.disabled_rules)
-        rule_list: list[dict[str, Any]] = [
+        rule_list: list[dict[str, object]] = [
             {
                 "name": r.name,
                 "enabled": r.name not in disabled,
@@ -167,7 +169,7 @@ class MetaController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(state.app_state),
         )
-        return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
+        return PaginatedResponse[dict[str, object]](data=page, pagination=meta)
 
     @get("/mcp/tools")
     async def list_mcp_tools(
@@ -217,7 +219,7 @@ class MetaController(Controller):
         state: State,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_PAGE_SIZE,
-    ) -> PaginatedResponse[dict[str, Any]]:
+    ) -> PaginatedResponse[dict[str, object]]:
         """List active A/B tests with status and current metrics.
 
         Args:
@@ -233,20 +235,20 @@ class MetaController(Controller):
         # runs as a one-shot coroutine today, so there is nothing
         # durable to query.  The empty page is safe while the backlog
         # lands; see HYG-3 PR description for the concrete scope.
-        empty: tuple[dict[str, Any], ...] = ()
+        empty: tuple[dict[str, object], ...] = ()
         page, meta = paginate_cursor(
             empty,
             limit=limit,
             cursor=cursor,
             secret=cursor_secret_of(state.app_state),
         )
-        return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
+        return PaginatedResponse[dict[str, object]](data=page, pagination=meta)
 
     @get("/ab-tests/{proposal_id:str}")
     async def get_ab_test_detail(
         self,
         proposal_id: PathId,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Get detailed A/B test status for a specific proposal.
 
         Always raises until the A/B test registry lands; the typed
@@ -271,7 +273,7 @@ class MetaController(Controller):
         state: State,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_PAGE_SIZE,
-    ) -> PaginatedResponse[dict[str, Any]]:
+    ) -> PaginatedResponse[dict[str, object]]:
         """List improvement proposals from the approval store.
 
         Returns proposals where action_type starts with ``meta.``.
@@ -307,13 +309,13 @@ class MetaController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(state.app_state),
         )
-        return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
+        return PaginatedResponse[dict[str, object]](data=page, pagination=meta)
 
     @get("/signals")
     async def get_signals(
         self,
         state: State,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Get signal domain summaries.
 
         Returns domain names with placeholder data -- real signal
@@ -334,7 +336,7 @@ class MetaController(Controller):
             "evolution",
             "telemetry",
         ]
-        return ApiResponse[dict[str, Any]](
+        return ApiResponse[dict[str, object]](
             data={
                 "enabled": config.enabled,
                 "domains": [{"name": d, "status": "available"} for d in domains],
@@ -357,7 +359,7 @@ class MetaController(Controller):
         self,
         data: ChatRequest,
         state: State,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Ask the Chief of Staff a question.
 
         Routes to the ChiefOfStaffChat backend for LLM-powered
@@ -407,7 +409,7 @@ class MetaController(Controller):
             alert_id=data.alert_id,
         )
         result = await chat_backend.ask(query, snapshot)
-        return ApiResponse[dict[str, Any]](
+        return ApiResponse[dict[str, object]](
             data={
                 "answer": result.answer,
                 "sources": list(result.sources),
@@ -501,12 +503,12 @@ class MetaController(Controller):
     )
     async def trigger_cycle(
         self,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Trigger a manual improvement cycle.
 
         Returns:
             Generated proposals.
         """
-        return ApiResponse[dict[str, Any]](
+        return ApiResponse[dict[str, object]](
             data={"proposals": [], "message": "Cycle triggered"},
         )

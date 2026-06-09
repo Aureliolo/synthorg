@@ -11,19 +11,24 @@ Pre-built constants cover common patterns::
     require_approval_roles   -- CEO, Manager, or Board Member
 """
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from collections.abc import Callable
 
 from litestar.connection import ASGIConnection
+from litestar.datastructures import State
 from litestar.exceptions import PermissionDeniedException
+from litestar.handlers import HTTPRouteHandler
 
 from synthorg.core.auth.roles import HumanRole
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_GUARD_DENIED
 
 logger = get_logger(__name__)
+
+# Guards run on REST routes only; litestar binds ``Request`` to
+# ``ASGIConnection[HTTPRouteHandler, ...]``, so pinning the handler slot
+# keeps the param type Any-free while still accepting the request the
+# framework passes in (and the ``Request`` fakes the guard tests build).
+type GuardConnection = ASGIConnection[HTTPRouteHandler, object, object, State]
 
 
 # --- Role sets --------------------------------------------------------
@@ -40,7 +45,9 @@ _READ_ROLES: frozenset[HumanRole] = _WRITE_ROLES | frozenset(
 )
 
 
-def _get_role(connection: ASGIConnection) -> HumanRole | None:  # type: ignore[type-arg]
+def _get_role(
+    connection: GuardConnection,
+) -> HumanRole | None:
     """Extract the human role from the authenticated user.
 
     Returns:
@@ -74,7 +81,7 @@ def has_write_role(role: HumanRole) -> bool:
 
 
 def require_write_access(
-    connection: ASGIConnection,  # type: ignore[type-arg]
+    connection: GuardConnection,
     _: object,
 ) -> None:
     """Guard that allows only write-capable human roles.
@@ -104,7 +111,7 @@ def require_write_access(
 
 
 def require_read_access(
-    connection: ASGIConnection,  # type: ignore[type-arg]
+    connection: GuardConnection,
     _: object,
 ) -> None:
     """Guard that allows all human roles (excludes SYSTEM).
@@ -137,7 +144,7 @@ def require_read_access(
 
 def require_roles(
     *roles: HumanRole,
-) -> Callable[[ASGIConnection, object], None]:  # type: ignore[type-arg]
+) -> Callable[[GuardConnection, object], None]:
     """Create a guard that allows only the specified roles.
 
     Args:
@@ -157,7 +164,7 @@ def require_roles(
     label = ",".join(sorted(r.value for r in allowed))
 
     def guard(
-        connection: ASGIConnection,  # type: ignore[type-arg]
+        connection: GuardConnection,
         _: object,
     ) -> None:
         """Handle guard.
@@ -207,7 +214,7 @@ _ORG_ROLE_DEPARTMENT_ADMIN = "department_admin"
 
 
 def _get_org_roles(
-    connection: ASGIConnection,  # type: ignore[type-arg]
+    connection: GuardConnection,
 ) -> tuple[str, ...]:
     """Extract OrgRole string values from the authenticated user.
 
@@ -221,7 +228,7 @@ def _get_org_roles(
 
 
 def _get_scoped_departments(
-    connection: ASGIConnection,  # type: ignore[type-arg]
+    connection: GuardConnection,
 ) -> tuple[str, ...]:
     """Extract scoped departments from the authenticated user.
 
@@ -236,7 +243,7 @@ def _get_scoped_departments(
 
 def require_org_mutation(
     department_param: str | None = None,
-) -> Callable[[ASGIConnection, object], None]:  # type: ignore[type-arg]
+) -> Callable[[GuardConnection, object], None]:
     """Guard factory for org config mutations.
 
     Access is granted if the user has one of:
@@ -264,7 +271,7 @@ def require_org_mutation(
     """
 
     def guard(
-        connection: ASGIConnection,  # type: ignore[type-arg]
+        connection: GuardConnection,
         _: object,
     ) -> None:
         """Handle guard.

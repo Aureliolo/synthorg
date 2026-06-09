@@ -261,15 +261,15 @@
     },
     {
       "kind": "code",
-      "loc": 77,
+      "loc": 78,
       "loc_cap": 500,
       "module": "src/synthorg/api/app_overrides.py",
       "owning_feature": "api_core"
     },
     {
-      "kind": "code",
+      "kind": "service",
       "loc": 561,
-      "loc_cap": 500,
+      "loc_cap": 600,
       "module": "src/synthorg/api/approval_store.py",
       "owning_feature": "api_core"
     },
@@ -303,7 +303,7 @@
     },
     {
       "kind": "code",
-      "loc": 266,
+      "loc": 268,
       "loc_cap": 500,
       "module": "src/synthorg/api/auth/controller_helpers.py",
       "owning_feature": "api_core"
@@ -317,7 +317,7 @@
     },
     {
       "kind": "code",
-      "loc": 86,
+      "loc": 89,
       "loc_cap": 500,
       "module": "src/synthorg/api/auth/controllers/_shared.py",
       "owning_feature": "api_core"
@@ -366,14 +366,14 @@
     },
     {
       "kind": "code",
-      "loc": 189,
+      "loc": 199,
       "loc_cap": 500,
       "module": "src/synthorg/api/auth/csrf.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 409,
+      "loc": 411,
       "loc_cap": 500,
       "module": "src/synthorg/api/auth/middleware.py",
       "owning_feature": "api_core"
@@ -477,9 +477,9 @@
       "owning_feature": "api_core"
     },
     {
-      "kind": "code",
-      "loc": 528,
-      "loc_cap": 500,
+      "kind": "service",
+      "loc": 530,
+      "loc_cap": 600,
       "module": "src/synthorg/api/bus_bridge.py",
       "owning_feature": "api_core"
     },
@@ -520,7 +520,7 @@
     },
     {
       "kind": "code",
-      "loc": 384,
+      "loc": 421,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/__init__.py",
       "owning_feature": "api_core"
@@ -534,9 +534,16 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 548,
+      "loc": 549,
       "loc_cap": 600,
       "module": "src/synthorg/api/controllers/_conversational_resume.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 250,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/_custom_rules_helpers.py",
       "owning_feature": "api_core"
     },
     {
@@ -551,6 +558,20 @@
       "loc": 58,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/_provider_helpers.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 194,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/_simulation_runtime.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 181,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/_team_helpers.py",
       "owning_feature": "api_core"
     },
     {
@@ -576,9 +597,23 @@
     },
     {
       "kind": "code",
-      "loc": 598,
+      "loc": 9,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/activities.py",
+      "module": "src/synthorg/api/controllers/activities/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 497,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/activities/_shared.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 121,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/activities/feed.py",
       "owning_feature": "api_core"
     },
     {
@@ -597,16 +632,65 @@
     },
     {
       "kind": "code",
-      "loc": 547,
+      "loc": 12,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/agents.py",
+      "module": "src/synthorg/api/controllers/agents/__init__.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 626,
+      "loc": 62,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/analytics.py",
+      "module": "src/synthorg/api/controllers/agents/_shared.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 216,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/agents/crud.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 314,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/agents/observability.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 12,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/analytics/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 278,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/analytics/_shared.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 91,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/analytics/forecast.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 159,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/analytics/overview.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 184,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/analytics/trends.py",
       "owning_feature": "api_core"
     },
     {
@@ -632,7 +716,7 @@
     },
     {
       "kind": "controller",
-      "loc": 250,
+      "loc": 249,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/approvals/decisions.py",
       "owning_feature": "api_core"
@@ -646,7 +730,7 @@
     },
     {
       "kind": "code",
-      "loc": 497,
+      "loc": 498,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/artifacts.py",
       "owning_feature": "api_core"
@@ -667,14 +751,14 @@
     },
     {
       "kind": "code",
-      "loc": 312,
+      "loc": 311,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/backup.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 138,
+      "loc": 139,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/brownfield.py",
       "owning_feature": "api_core"
@@ -737,14 +821,14 @@
     },
     {
       "kind": "code",
-      "loc": 320,
+      "loc": 319,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/collaboration.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 164,
+      "loc": 163,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/company.py",
       "owning_feature": "api_core"
@@ -786,16 +870,44 @@
     },
     {
       "kind": "code",
-      "loc": 514,
+      "loc": 338,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/custom_rules.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 709,
+      "loc": 7,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/departments.py",
+      "module": "src/synthorg/api/controllers/departments/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 312,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/departments/_shared.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 120,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/departments/ceremony_policy.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 259,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/departments/crud.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 72,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/departments/health.py",
       "owning_feature": "api_core"
     },
     {
@@ -814,9 +926,37 @@
     },
     {
       "kind": "code",
-      "loc": 613,
+      "loc": 12,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/events.py",
+      "module": "src/synthorg/api/controllers/events/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 151,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/events/_shared.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 322,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/events/_sse.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 96,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/events/interrupts.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 110,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/events/stream.py",
       "owning_feature": "api_core"
     },
     {
@@ -828,7 +968,7 @@
     },
     {
       "kind": "code",
-      "loc": 282,
+      "loc": 281,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/health.py",
       "owning_feature": "api_core"
@@ -856,7 +996,7 @@
     },
     {
       "kind": "code",
-      "loc": 380,
+      "loc": 381,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/meetings.py",
       "owning_feature": "api_core"
@@ -912,14 +1052,14 @@
     },
     {
       "kind": "code",
-      "loc": 150,
+      "loc": 151,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/messages.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 431,
+      "loc": 433,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/meta.py",
       "owning_feature": "api_core"
@@ -947,16 +1087,51 @@
     },
     {
       "kind": "code",
-      "loc": 175,
+      "loc": 177,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/objectives.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 590,
+      "loc": 8,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/ontology.py",
+      "module": "src/synthorg/api/controllers/ontology/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 58,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/ontology/_shared.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 72,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/ontology/admin.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 134,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/ontology/drift.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 298,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/ontology/entities.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 133,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/ontology/versions.py",
       "owning_feature": "api_core"
     },
     {
@@ -1038,7 +1213,7 @@
     },
     {
       "kind": "controller",
-      "loc": 293,
+      "loc": 292,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/providers/local_models.py",
       "owning_feature": "api_core"
@@ -1059,7 +1234,7 @@
     },
     {
       "kind": "code",
-      "loc": 253,
+      "loc": 252,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/quality.py",
       "owning_feature": "api_core"
@@ -1073,9 +1248,23 @@
     },
     {
       "kind": "code",
-      "loc": 681,
+      "loc": 13,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/requests.py",
+      "module": "src/synthorg/api/controllers/requests/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 386,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/requests/lifecycle.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 336,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/requests/pipeline.py",
       "owning_feature": "api_core"
     },
     {
@@ -1115,7 +1304,7 @@
     },
     {
       "kind": "controller",
-      "loc": 370,
+      "loc": 369,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/settings/core.py",
       "owning_feature": "api_core"
@@ -1129,7 +1318,7 @@
     },
     {
       "kind": "controller",
-      "loc": 176,
+      "loc": 175,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/settings/security.py",
       "owning_feature": "api_core"
@@ -1150,7 +1339,7 @@
     },
     {
       "kind": "controller",
-      "loc": 312,
+      "loc": 315,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/setup/agents.py",
       "owning_feature": "api_core"
@@ -1171,7 +1360,7 @@
     },
     {
       "kind": "controller",
-      "loc": 209,
+      "loc": 211,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/setup/completion.py",
       "owning_feature": "api_core"
@@ -1192,7 +1381,14 @@
     },
     {
       "kind": "code",
-      "loc": 493,
+      "loc": 134,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/setup_agent_validation.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 403,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/setup_agents.py",
       "owning_feature": "api_core"
@@ -1213,7 +1409,7 @@
     },
     {
       "kind": "code",
-      "loc": 498,
+      "loc": 331,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/simulations.py",
       "owning_feature": "api_core"
@@ -1241,7 +1437,7 @@
     },
     {
       "kind": "code",
-      "loc": 490,
+      "loc": 354,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/teams.py",
       "owning_feature": "api_core"
@@ -1269,9 +1465,30 @@
     },
     {
       "kind": "code",
-      "loc": 604,
+      "loc": 7,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/users.py",
+      "module": "src/synthorg/api/controllers/users/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 75,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/users/_shared.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 353,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/users/account.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 227,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/users/org_roles.py",
       "owning_feature": "api_core"
     },
     {
@@ -1290,7 +1507,7 @@
     },
     {
       "kind": "code",
-      "loc": 344,
+      "loc": 346,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/webhooks/_shared.py",
       "owning_feature": "api_core"
@@ -1304,7 +1521,7 @@
     },
     {
       "kind": "controller",
-      "loc": 148,
+      "loc": 147,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/webhooks/ingest.py",
       "owning_feature": "api_core"
@@ -1332,28 +1549,56 @@
     },
     {
       "kind": "code",
-      "loc": 536,
+      "loc": 7,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/workflows.py",
+      "module": "src/synthorg/api/controllers/workflows/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 19,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/workflows/_shared.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 105,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/workflows/blueprints.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 289,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/workflows/crud.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 190,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/workflows/validation.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "complex_service",
-      "loc": 848,
+      "loc": 857,
       "loc_cap": 1100,
       "module": "src/synthorg/api/controllers/ws.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 281,
+      "loc": 280,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/ws_protocol.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 179,
+      "loc": 183,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/ws_revalidation.py",
       "owning_feature": "api_core"
@@ -1381,15 +1626,15 @@
     },
     {
       "kind": "code",
-      "loc": 218,
+      "loc": 216,
       "loc_cap": 500,
       "module": "src/synthorg/api/drain.py",
       "owning_feature": "api_core"
     },
     {
-      "kind": "code",
-      "loc": 688,
-      "loc_cap": 500,
+      "kind": "declarative",
+      "loc": 694,
+      "loc_cap": null,
       "module": "src/synthorg/api/dto.py",
       "owning_feature": "api_core"
     },
@@ -1416,7 +1661,7 @@
     },
     {
       "kind": "code",
-      "loc": 82,
+      "loc": 81,
       "loc_cap": 500,
       "module": "src/synthorg/api/dto_personalities.py",
       "owning_feature": "api_core"
@@ -1451,21 +1696,21 @@
     },
     {
       "kind": "code",
-      "loc": 418,
+      "loc": 416,
       "loc_cap": 500,
       "module": "src/synthorg/api/etag.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "complex_service",
-      "loc": 822,
+      "loc": 825,
       "loc_cap": 1100,
       "module": "src/synthorg/api/exception_handlers.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "feature",
-      "loc": 65,
+      "loc": 67,
       "loc_cap": 100,
       "module": "src/synthorg/api/feature.py",
       "owning_feature": "api_core"
@@ -1479,7 +1724,7 @@
     },
     {
       "kind": "code",
-      "loc": 252,
+      "loc": 255,
       "loc_cap": 500,
       "module": "src/synthorg/api/guards.py",
       "owning_feature": "api_core"
@@ -1548,9 +1793,9 @@
       "owning_feature": "api_core"
     },
     {
-      "kind": "code",
+      "kind": "orchestrator",
       "loc": 542,
-      "loc_cap": 500,
+      "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/config_apply.py",
       "owning_feature": "api_core"
     },
@@ -1675,14 +1920,14 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 432,
+      "loc": 433,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_startup.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 118,
+      "loc": 116,
       "loc_cap": 500,
       "module": "src/synthorg/api/litestar_assembly.py",
       "owning_feature": "api_core"
@@ -1696,16 +1941,30 @@
     },
     {
       "kind": "code",
-      "loc": 366,
+      "loc": 367,
       "loc_cap": 500,
       "module": "src/synthorg/api/middleware_factory.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 574,
+      "loc": 86,
       "loc_cap": 500,
       "module": "src/synthorg/api/openapi.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 175,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/openapi_normalize.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 392,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/openapi_responses.py",
       "owning_feature": "api_core"
     },
     {
@@ -1731,7 +1990,7 @@
     },
     {
       "kind": "code",
-      "loc": 165,
+      "loc": 166,
       "loc_cap": 500,
       "module": "src/synthorg/api/rate_limits/_subject.py",
       "owning_feature": "api_core"
@@ -1752,7 +2011,7 @@
     },
     {
       "kind": "code",
-      "loc": 244,
+      "loc": 245,
       "loc_cap": 500,
       "module": "src/synthorg/api/rate_limits/guard.py",
       "owning_feature": "api_core"
@@ -1794,7 +2053,7 @@
     },
     {
       "kind": "code",
-      "loc": 189,
+      "loc": 190,
       "loc_cap": 500,
       "module": "src/synthorg/api/rate_limits/inflight_middleware.py",
       "owning_feature": "api_core"
@@ -1836,7 +2095,7 @@
     },
     {
       "kind": "code",
-      "loc": 101,
+      "loc": 109,
       "loc_cap": 500,
       "module": "src/synthorg/api/server.py",
       "owning_feature": "api_core"
@@ -1850,35 +2109,35 @@
     },
     {
       "kind": "code",
-      "loc": 369,
+      "loc": 371,
       "loc_cap": 500,
       "module": "src/synthorg/api/services/_org_agent_mutations.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 347,
+      "loc": 354,
       "loc_cap": 500,
       "module": "src/synthorg/api/services/_org_department_mutations.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 15,
+      "loc": 13,
       "loc_cap": 500,
       "module": "src/synthorg/api/services/_org_serialization.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 358,
+      "loc": 360,
       "loc_cap": 500,
       "module": "src/synthorg/api/services/idempotency_service.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 400,
+      "loc": 409,
       "loc_cap": 500,
       "module": "src/synthorg/api/services/org_mutations.py",
       "owning_feature": "api_core"
@@ -1913,21 +2172,21 @@
     },
     {
       "kind": "code",
-      "loc": 274,
+      "loc": 279,
       "loc_cap": 500,
       "module": "src/synthorg/api/state.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 334,
+      "loc": 332,
       "loc_cap": 500,
       "module": "src/synthorg/api/state_services_bridge.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 360,
+      "loc": 358,
       "loc_cap": 500,
       "module": "src/synthorg/api/state_services_locks.py",
       "owning_feature": "api_core"
@@ -1955,7 +2214,7 @@
     },
     {
       "kind": "code",
-      "loc": 172,
+      "loc": 170,
       "loc_cap": 500,
       "module": "src/synthorg/api/ws_models.py",
       "owning_feature": "api_core"
@@ -5350,7 +5609,7 @@
     },
     {
       "kind": "feature",
-      "loc": 85,
+      "loc": 93,
       "loc_cap": 100,
       "module": "src/synthorg/engine/feature.py",
       "owning_feature": "engine"
@@ -7842,7 +8101,7 @@
     },
     {
       "kind": "feature",
-      "loc": 73,
+      "loc": 77,
       "loc_cap": 100,
       "module": "src/synthorg/hr/feature.py",
       "owning_feature": "hr"
@@ -11041,7 +11300,7 @@
     },
     {
       "kind": "feature",
-      "loc": 79,
+      "loc": 83,
       "loc_cap": 100,
       "module": "src/synthorg/meta/feature.py",
       "owning_feature": "meta"
@@ -14303,7 +14562,7 @@
     },
     {
       "kind": "feature",
-      "loc": 19,
+      "loc": 27,
       "loc_cap": 100,
       "module": "src/synthorg/ontology/feature.py",
       "owning_feature": "ontology"
@@ -14422,7 +14681,7 @@
     },
     {
       "kind": "feature",
-      "loc": 51,
+      "loc": 57,
       "loc_cap": 100,
       "module": "src/synthorg/organization/feature.py",
       "owning_feature": "organization"

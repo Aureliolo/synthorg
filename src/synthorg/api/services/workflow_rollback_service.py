@@ -17,6 +17,7 @@ The service is a thin two-method object constructed per request; no
 AppState wiring is required.
 """
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
@@ -38,8 +39,6 @@ from synthorg.observability.events.workflow_version import (
 from synthorg.versioning import VersioningService
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from synthorg.persistence.version_protocol import VersionRepository
     from synthorg.persistence.workflow_definition_protocol import (
         WorkflowDefinitionRepository,

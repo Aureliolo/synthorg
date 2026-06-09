@@ -4,10 +4,8 @@ All endpoints require CEO or the internal SYSTEM role
 (used by the CLI for ``synthorg backup`` / ``synthorg wipe``).
 """
 
-from typing import TYPE_CHECKING, Annotated, Final
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Annotated, Final
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State

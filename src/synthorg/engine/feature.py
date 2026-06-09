@@ -32,7 +32,13 @@ from synthorg.api.controllers.workflow_executions import (
     WorkflowExecutionController,
 )
 from synthorg.api.controllers.workflow_versions import WorkflowVersionController
-from synthorg.api.controllers.workflows import WorkflowController
+from synthorg.api.controllers.workflows.blueprints import (
+    WorkflowBlueprintController,
+)
+from synthorg.api.controllers.workflows.crud import WorkflowController
+from synthorg.api.controllers.workflows.validation import (
+    WorkflowValidationController,
+)
 from synthorg.api.route_predicates import (
     brownfield_controller_ready,
     objective_controller_ready,
@@ -50,6 +56,8 @@ FEATURE: FeatureModule = FeatureManifest(
         ProjectController,
         TaskController,
         WorkflowController,
+        WorkflowBlueprintController,
+        WorkflowValidationController,
         WorkflowVersionController,
         WorkflowExecutionController,
         SubworkflowController,

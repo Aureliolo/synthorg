@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from synthorg.api.controllers.teams import (
+from synthorg.api.controllers._team_helpers import (
     _check_team_name_unique,
     _find_department,
     _find_team,

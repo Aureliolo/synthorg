@@ -1,9 +1,8 @@
 # module-kind: controller
 """Session-management endpoints: list + revoke active sessions."""
 
-from typing import Any
-
 from litestar import Controller, Request, Response, delete, get
+from litestar.datastructures import State
 
 from synthorg.api.api_core_state import session_store_of
 from synthorg.api.auth.controller_dtos import SessionResponse
@@ -44,7 +43,7 @@ class AuthSessionsController(Controller):
     )
     async def list_sessions(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         scope: str = "own",
     ) -> Response[ApiResponse[list[SessionResponse]]]:
         """List active sessions. CEO: ``?scope=all`` for all users.
@@ -117,7 +116,7 @@ class AuthSessionsController(Controller):
     )
     async def revoke_session(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         session_id: PathId,
     ) -> None:
         """Revoke a session. Own sessions or CEO any.

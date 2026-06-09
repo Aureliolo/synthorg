@@ -43,13 +43,11 @@ validator-friendly policy and clients would not retain ETags.
 
 import hashlib
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+
+from litestar.types import ASGIApp, Receive, Scope, Send
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_ETAG_CACHE_HIT
-
-if TYPE_CHECKING:
-    from litestar.types import ASGIApp, Receive, Scope, Send
 
 logger = get_logger(__name__)
 

@@ -3,7 +3,8 @@
 
 import asyncio
 import json as _json
-from typing import TYPE_CHECKING, Annotated
+from collections.abc import AsyncIterator
+from typing import Annotated
 
 from litestar import Controller, delete, post, put
 from litestar.datastructures import State
@@ -46,9 +47,6 @@ from synthorg.providers.errors import (
     ProviderValidationError,
 )
 from synthorg.providers.state import provider_management_of
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
 
 logger = get_logger(__name__)
 

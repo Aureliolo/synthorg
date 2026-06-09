@@ -1,7 +1,7 @@
 """Meeting controller -- list, get, and trigger meetings."""
 
 import asyncio
-from typing import Annotated, Any, Final, Self
+from typing import Annotated, Final, Self
 
 from litestar import Controller, Request, delete, get, post
 from litestar.datastructures import State
@@ -23,6 +23,7 @@ from synthorg.api.state import AppState
 from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.communication.meeting.models import MeetingRecord
 from synthorg.communication.state import CommunicationStateSlice
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr
@@ -348,7 +349,7 @@ class MeetingController(Controller):
     async def delete_meeting(
         self,
         state: State,
-        request: Request[Any, Any, Any],
+        request: Request[AuthenticatedUser, object, State],
         meeting_id: PathId,
     ) -> ApiResponse[None]:
         """Delete a meeting record by id.

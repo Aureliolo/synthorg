@@ -1,6 +1,6 @@
 """Message controller -- read + operator-driven DELETE via MessageService."""
 
-from typing import Annotated, Any, Final
+from typing import Annotated, Final
 
 from litestar import Controller, Request, delete, get
 from litestar.datastructures import State
@@ -21,6 +21,7 @@ from synthorg.api.state import AppState
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message
 from synthorg.communication.state import CommunicationStateSlice
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import ResourceNotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -92,7 +93,7 @@ class MessageController(Controller):
     async def delete_message(
         self,
         state: State,
-        request: Request[Any, Any, Any],
+        request: Request[AuthenticatedUser, object, State],
         message_id: PathId,
     ) -> ApiResponse[None]:
         """Delete a single message by id.

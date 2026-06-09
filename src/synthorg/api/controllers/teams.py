@@ -1,7 +1,6 @@
 """Team CRUD controller -- sub-resource of departments."""
 
-import json
-from typing import Annotated, Any
+from typing import Annotated
 
 from litestar import Controller, delete, patch, post
 from litestar.datastructures import State
@@ -9,28 +8,33 @@ from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg._core.features import require_service
+from synthorg.api.controllers._team_helpers import (
+    _check_team_name_unique,
+    _find_department,
+    _find_team,
+    _member_list,
+    _persist_departments,
+    _persisted_name,
+    _teams_of,
+    _validate_team_model,
+)
 from synthorg.api.controllers.setup.agent_helpers import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.controllers.template_packs import _read_setting_list
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName
 from synthorg.api.state import AppState
-from synthorg.core.company import Team
-from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.domain_errors import ValidationError
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
-    API_RESOURCE_CONFLICT,
-    API_RESOURCE_NOT_FOUND,
     API_TEAM_CREATED,
     API_TEAM_DELETED,
     API_TEAM_REORDERED,
     API_TEAM_UPDATED,
     API_VALIDATION_FAILED,
 )
-from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
 
@@ -93,184 +97,17 @@ class TeamResponse(BaseModel):
 # ── Helpers ────────────────────────────────────────────────
 
 
-def _persisted_name(record: dict[str, Any], record_type: str) -> str:
-    """Read the ``name`` field from a persisted record, asserting type.
-
-    Persisted department / team records should always carry a ``str``
-    ``name`` (model validation runs at write time). If a record reaches
-    this layer with a non-string name, the data is corrupted: surface
-    a clear validation error instead of silently coercing through
-    ``str()`` and producing a misleading ``NotFoundError`` downstream.
-
-    Args:
-        record: Raw persisted dict (department or team).
-        record_type: Human-readable label used in error messages
-            (e.g. ``"Department"``, ``"Team"``).
-
-    Returns:
-        The ``name`` field as a ``str``.
-
-    Raises:
-        ValidationError: If ``name`` is missing or not a string.
-    """
-    value = record.get("name")
-    if not isinstance(value, str):
-        logger.warning(
-            API_VALIDATION_FAILED,
-            record_type=record_type,
-            reason="non_string_persisted_name",
-            value_type=type(value).__name__,
-        )
-        msg = (
-            f"Persisted {record_type.lower()} record has a non-string "
-            f"name (got {type(value).__name__})"
-        )
-        raise ValidationError(msg)
-    return value
-
-
-def _find_department(
-    depts: list[dict[str, Any]],
-    name: str,
-) -> tuple[int, dict[str, Any]]:
-    """Find a department by name (case-insensitive).
-
-    Args:
-        depts: Department dict list.
-        name: Department name to find.
-
-    Returns:
-        Tuple of (index, department dict).
-
-    Raises:
-        NotFoundError: If not found.
-        ValidationError: If a persisted record has a non-string name.
-    """
-    target = normalize_identifier(name)
-    for idx, dept in enumerate(depts):
-        if normalize_identifier(_persisted_name(dept, "Department")) == target:
-            return idx, dept
-    msg = f"Department {name!r} not found"
-    logger.warning(
-        API_RESOURCE_NOT_FOUND,
-        resource="department",
-        name=name,
-    )
-    raise NotFoundError(msg)
-
-
-def _find_team(
-    teams: list[dict[str, Any]],
-    team_name: str,
-) -> tuple[int, dict[str, Any]]:
-    """Find a team by name within a department's teams list.
-
-    Args:
-        teams: Team dict list.
-        team_name: Team name to find (case-insensitive).
-
-    Returns:
-        Tuple of (index, team dict).
-
-    Raises:
-        NotFoundError: If not found.
-        ValidationError: If a persisted record has a non-string name.
-    """
-    target = normalize_identifier(team_name)
-    for idx, team in enumerate(teams):
-        if normalize_identifier(_persisted_name(team, "Team")) == target:
-            return idx, team
-    msg = f"Team {team_name!r} not found"
-    logger.warning(
-        API_RESOURCE_NOT_FOUND,
-        resource="team",
-        name=team_name,
-    )
-    raise NotFoundError(msg)
-
-
-def _check_team_name_unique(
-    teams: list[dict[str, Any]],
-    name: str,
-    *,
-    exclude_index: int | None = None,
-) -> None:
-    """Raise ConflictError if a team with this name already exists.
-
-    Args:
-        teams: Team dict list.
-        name: Name to check.
-        exclude_index: Optional index to skip (for rename checks).
-
-    Raises:
-        ConflictError: If a name collision is detected.
-        ValidationError: If a persisted record has a non-string name.
-    """
-    target = normalize_identifier(name)
-    for idx, team in enumerate(teams):
-        if idx == exclude_index:
-            continue
-        if normalize_identifier(_persisted_name(team, "Team")) == target:
-            msg = f"Team {name!r} already exists in this department"
-            logger.warning(
-                API_RESOURCE_CONFLICT,
-                resource="team",
-                name=name,
-                reason="duplicate_team_name",
-            )
-            raise ConflictError(msg)
-
-
-def _validate_team_model(team_dict: dict[str, Any]) -> Team:
-    """Validate a team dict by constructing a Team model.
-
-    Args:
-        team_dict: Raw team dict.
-
-    Returns:
-        Validated Team instance.
-
-    Raises:
-        ValidationError: If validation fails.
-    """
-    try:
-        return Team(**team_dict)
-    except (ValueError, TypeError) as exc:
-        msg = f"Team validation failed: {safe_error_description(exc)}"
-        logger.warning(
-            API_VALIDATION_FAILED,
-            reason="team_model_validation_failed",
-            team_name=team_dict.get("name"),
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise ValidationError(msg) from exc
-
-
-def _team_to_response(team_dict: dict[str, Any]) -> TeamResponse:
+def _team_to_response(team_dict: dict[str, object]) -> TeamResponse:
     """Convert a team dict to a TeamResponse.
 
     Returns:
         ``TeamResponse`` instance.
     """
+    team = _validate_team_model(team_dict)
     return TeamResponse(
-        name=team_dict["name"],
-        lead=team_dict["lead"],
-        members=tuple(team_dict.get("members", ())),
-    )
-
-
-async def _persist_departments(
-    app_state: AppState,
-    depts: list[dict[str, Any]],
-) -> None:
-    """Write the full departments list back to settings."""
-    await require_service(
-        app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
-    ).set(
-        "company",
-        "departments",
-        json.dumps(depts),
+        name=team.name,
+        lead=team.lead,
+        members=team.members,
     )
 
 
@@ -316,10 +153,10 @@ class TeamController(Controller):
             depts = await _read_setting_list(app_state, "departments")
             dept_idx, dept = _find_department(depts, dept_name)
 
-            teams: list[dict[str, Any]] = list(dept.get("teams", []))
+            teams: list[dict[str, object]] = _teams_of(dept)
             _check_team_name_unique(teams, data.name)
 
-            team_dict: dict[str, Any] = {
+            team_dict: dict[str, object] = {
                 "name": data.name,
                 "lead": data.lead,
                 "members": list(data.members),
@@ -372,9 +209,9 @@ class TeamController(Controller):
             depts = await _read_setting_list(app_state, "departments")
             dept_idx, dept = _find_department(depts, dept_name)
 
-            teams: list[dict[str, Any]] = list(dept.get("teams", []))
+            teams: list[dict[str, object]] = _teams_of(dept)
             stored_names = [_persisted_name(t, "Team") for t in teams]
-            team_map: dict[str, dict[str, Any]] = {
+            team_map: dict[str, dict[str, object]] = {
                 normalize_identifier(name): t
                 for name, t in zip(stored_names, teams, strict=True)
             }
@@ -494,7 +331,7 @@ class TeamController(Controller):
             depts = await _read_setting_list(app_state, "departments")
             dept_idx, dept = _find_department(depts, dept_name)
 
-            teams: list[dict[str, Any]] = list(dept.get("teams", []))
+            teams: list[dict[str, object]] = _teams_of(dept)
             team_idx, team = _find_team(teams, team_name)
 
             updated = {**team}
@@ -559,7 +396,7 @@ class TeamController(Controller):
             depts = await _read_setting_list(app_state, "departments")
             dept_idx, dept = _find_department(depts, dept_name)
 
-            teams: list[dict[str, Any]] = list(dept.get("teams", []))
+            teams: list[dict[str, object]] = _teams_of(dept)
             team_idx, team = _find_team(teams, team_name)
 
             if reassign_to is not None:
@@ -575,14 +412,14 @@ class TeamController(Controller):
                     raise ValidationError(msg)
                 target_idx, target = _find_team(teams, reassign_to)
                 # Merge members (deduplicate, case-insensitive).
-                existing_members = list(target.get("members", []))
+                existing_members = _member_list(target)
                 # Coerce to str so a corrupted persisted member (None, int,
                 # ...) raises a 422 via _validate_team_model below rather
                 # than a 500 from normalize_identifier.
                 existing_lower = {
                     normalize_identifier(str(m)) for m in existing_members
                 }
-                for member in team.get("members", []):
+                for member in _member_list(team):
                     member_normalized = normalize_identifier(str(member))
                     if member_normalized not in existing_lower:
                         existing_members.append(member)

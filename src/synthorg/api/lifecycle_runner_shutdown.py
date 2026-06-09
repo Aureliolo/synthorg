@@ -7,6 +7,7 @@ health-prober / training-backend state now lives on the shared
 :class:`_LifecycleTasks` container threaded in by the builder.
 """
 
+from collections.abc import Awaitable
 from typing import TYPE_CHECKING, cast
 
 from synthorg.a2a.state import A2aStateSlice
@@ -26,8 +27,6 @@ from synthorg.observability.events.api import API_APP_SHUTDOWN
 from synthorg.workers.state import RuntimeStateSlice
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
-
     from synthorg.api.bus_bridge import MessageBusBridge
     from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService

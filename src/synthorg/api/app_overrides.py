@@ -16,13 +16,14 @@ dataclass needs only the field names + ``None`` defaults at runtime.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from synthorg.api.auth.service import AuthService
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.coordination_store import CoordinationMetricsStore
     from synthorg.budget.tracker import CostTracker
+    from synthorg.client.models import ClientRequest
     from synthorg.client.simulation_state import ClientSimulationState
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.communication.delegation.record_store import DelegationRecordStore
@@ -65,7 +66,7 @@ class AppOverrides:
     task_engine: TaskEngine | None = None
     coordinator: MultiAgentCoordinator | None = None
     work_pipeline: WorkPipeline | None = None
-    intake_entry_adapter: WorkEntryAdapter[Any] | None = None
+    intake_entry_adapter: WorkEntryAdapter[ClientRequest] | None = None
     task_board_entry_adapter: TaskBoardEntryAdapter | None = None
     agent_registry: AgentRegistryService | None = None
     meeting_orchestrator: MeetingOrchestrator | None = None

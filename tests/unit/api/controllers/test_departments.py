@@ -41,7 +41,7 @@ class TestDepartmentController:
         assert resp.status_code == 400
 
 
-@pytest.mark.integration
+@pytest.mark.unit
 class TestDepartmentControllerDbOverride:
     """Test that DB-stored settings override YAML departments."""
 
@@ -89,7 +89,7 @@ class TestDepartmentControllerDbOverride:
             assert detail["data"]["name"] == "db-dept"
 
 
-@pytest.mark.integration
+@pytest.mark.unit
 class TestDepartmentCeremonyPolicyCas:
     """Ceremony-policy overrides use settings-service CAS for cross-worker safety.
 
@@ -105,7 +105,7 @@ class TestDepartmentCeremonyPolicyCas:
         """Writer A and writer B both complete; final state contains both."""
         import asyncio
 
-        from synthorg.api.controllers.departments import (
+        from synthorg.api.controllers.departments._shared import (
             _load_dept_policies_versioned,
             _mutate_dept_policies_with_retry,
         )
@@ -118,8 +118,8 @@ class TestDepartmentCeremonyPolicyCas:
 
         app_state = make_app_state(settings_service=settings_service)
 
-        policy_a: dict[str, Any] = {"strategy": "task_driven"}
-        policy_b: dict[str, Any] = {"strategy": "calendar"}
+        policy_a: dict[str, object] = {"strategy": "task_driven"}
+        policy_b: dict[str, object] = {"strategy": "calendar"}
 
         # Drive both mutations concurrently.  One must win CAS first; the
         # loser observes VersionConflictError internally and retries.
@@ -145,7 +145,7 @@ class TestDepartmentCeremonyPolicyCas:
         """
         from unittest.mock import AsyncMock
 
-        from synthorg.api.controllers.departments import (
+        from synthorg.api.controllers.departments._shared import (
             _load_dept_policies_versioned,
             _mutate_dept_policies_with_retry,
         )
@@ -158,7 +158,7 @@ class TestDepartmentCeremonyPolicyCas:
         from tests._shared import make_app_state
 
         app_state = make_app_state(settings_service=settings_service)
-        policy = {"strategy": "task_driven"}
+        policy: dict[str, object] = {"strategy": "task_driven"}
 
         original_set = settings_service.set
         call_count = {"n": 0}
@@ -202,7 +202,7 @@ class TestDepartmentCeremonyPolicyCas:
         """
         from unittest.mock import AsyncMock
 
-        from synthorg.api.controllers.departments import (
+        from synthorg.api.controllers.departments._shared import (
             _DEPT_POLICY_CAS_FALLBACK_ATTEMPTS,
             _mutate_dept_policies_with_retry,
         )
@@ -247,7 +247,7 @@ class TestDepartmentCeremonyPolicyCas:
         """
         from unittest.mock import AsyncMock
 
-        from synthorg.api.controllers.departments import (
+        from synthorg.api.controllers.departments._shared import (
             _mutate_dept_policies_with_retry,
         )
         from synthorg.core.domain_errors import VersionConflictError

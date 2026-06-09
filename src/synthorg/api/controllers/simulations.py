@@ -1,9 +1,8 @@
 """Simulation run lifecycle endpoints at /simulations."""
 
 import asyncio
-import contextlib
 from datetime import UTC, datetime
-from typing import Annotated, Any, Final
+from typing import Annotated, Final, cast
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State
@@ -11,6 +10,11 @@ from litestar.params import QueryParameter
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.api.channels import CHANNEL_SIMULATIONS, publish_ws_event
+from synthorg.api.controllers._simulation_runtime import (
+    attach_runner_callbacks,
+    rollback_register_if_absent,
+    run_in_background,
+)
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
@@ -23,24 +27,19 @@ from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
-from synthorg.client.config import SimulationRunnerConfig
 from synthorg.client.models import SimulationConfig, SimulationMetrics
 from synthorg.client.report.detailed import DetailedReport
 from synthorg.client.report.summary import SummaryReport
-from synthorg.client.runner import SimulationRunner
 from synthorg.client.state import client_simulation_state_of
 from synthorg.client.store import SimulationRecord
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.client import (
     SIMULATION_RUN_CANCELLED,
     SIMULATION_RUN_FAILED,
 )
-from synthorg.settings.errors import SettingNotFoundError
-from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -88,7 +87,7 @@ def _to_response(record: SimulationRecord) -> SimulationStatusResponse:
 
 
 def _publish_event(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     event_type: WsEventType,
     record: SimulationRecord,
 ) -> None:
@@ -102,192 +101,6 @@ def _publish_event(
             "status": record.status,
             "progress": record.progress,
         },
-    )
-
-
-async def _mark_failed(
-    sim_state: Any,
-    simulation_id: str,
-    error: str,
-) -> None:
-    """Mark a simulation run failed with a stable error message.
-
-    Wraps ``simulation_store.update_status`` in ``contextlib.suppress``
-    so a missing record (race with cancellation) does not propagate;
-    the failure has already been logged by the caller.
-    """
-    with contextlib.suppress(ValueError):
-        await sim_state.simulation_store.update_status(
-            simulation_id,
-            status="failed",
-            error=error,
-        )
-
-
-def _attach_runner_callbacks(
-    task: asyncio.Task[None],
-    *,
-    sim_state: Any,
-    simulation_id: str,
-) -> None:
-    """Wire the failure logger + background-task discard to a runner.
-
-    The exception logger is registered FIRST so a task that finishes
-    between ``create_task`` and the ``add`` below still has its
-    failure surfaced -- asyncio invokes done-callbacks in the order
-    they were registered. Adding the task to the set before attaching
-    the logger would let a fast-completing failure fire ``discard``
-    first and silently drop the error.
-    """
-    task.add_done_callback(
-        log_task_exceptions(
-            logger,
-            SIMULATION_RUN_FAILED,
-            simulation_id=simulation_id,
-        ),
-    )
-    task.add_done_callback(sim_state.background_tasks.discard)
-    sim_state.background_tasks.add(task)
-
-
-async def _rollback_register_if_absent(
-    spawned_task: asyncio.Task[None] | None,
-    *,
-    sim_state: Any,
-    record: SimulationRecord,
-) -> None:
-    """Tear down a partially-constructed simulation start.
-
-    If the runner task was spawned before the post-claim setup raised,
-    cancel and drain it before unregistering -- otherwise the orphan
-    runner would race the unregister and either re-claim the
-    ``simulation_id`` via ``update_status`` or silently corrupt the
-    store. ``shield`` is unnecessary here because the caller is the
-    request handler, not a coroutine guarding against external
-    cancellation.
-
-    Passes the claimed ``record`` to ``unregister`` so the
-    compare-and-delete semantics protect a fresh retry that might have
-    won the slot between the failure and this rollback running.
-    """
-    simulation_id = record.simulation_id
-    if spawned_task is not None:
-        spawned_task.cancel()
-        try:
-            await spawned_task
-        except asyncio.CancelledError:
-            pass
-        except Exception as drain_exc:
-            reraise_critical(drain_exc)
-            logger.warning(
-                SIMULATION_RUN_FAILED,
-                simulation_id=simulation_id,
-                stage="rollback_drain",
-                error_type=type(drain_exc).__name__,
-                error=safe_error_description(drain_exc),
-            )
-    await sim_state.simulation_store.unregister(simulation_id, expected=record)
-
-
-async def _run_in_background(
-    *,
-    app_state: AppState,
-    record: SimulationRecord,
-) -> None:
-    """Execute a simulation run and update the store with results.
-
-    Raises:
-        CancelledError: Raised on the corresponding failure path.
-    """
-    sim_state = client_simulation_state_of(app_state)
-    if sim_state.intake_engine is None:
-        await _mark_failed(
-            sim_state, record.simulation_id, "Intake engine not configured"
-        )
-        return
-    clients = await sim_state.pool.list_clients()
-    if not clients:
-        await _mark_failed(sim_state, record.simulation_id, "No clients in pool")
-        return
-    resolver = config_resolver_of(app_state)
-    try:
-        task_timeout_sec = await resolver.get_float(
-            "simulations", "task_timeout_seconds"
-        )
-        review_timeout_sec = await resolver.get_float(
-            "simulations", "review_timeout_seconds"
-        )
-    except (SettingNotFoundError, ValueError) as exc:
-        # Surface the specific simulation_id that aborted so the
-        # broad ``except Exception`` below does not collapse this
-        # path into "failed unexpectedly". Resolver already logged
-        # the underlying lookup failure at WARNING.
-        logger.warning(
-            SIMULATION_RUN_FAILED,
-            simulation_id=record.simulation_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            stage="config_resolution",
-        )
-        await _mark_failed(
-            sim_state,
-            record.simulation_id,
-            "Simulation timeout configuration error",
-        )
-        return
-    runner = SimulationRunner(
-        config=SimulationRunnerConfig(
-            max_concurrent_tasks=4,
-            task_timeout_sec=task_timeout_sec,
-            review_timeout_sec=review_timeout_sec,
-        ),
-        intake_engine=sim_state.intake_engine,
-        feedback_sink=sim_state.feedback_store.record,
-    )
-    try:
-        metrics, _ = await runner.run(
-            sim_config=record.config,
-            clients=clients,
-        )
-    except asyncio.CancelledError:
-        logger.info(
-            SIMULATION_RUN_CANCELLED,
-            simulation_id=record.simulation_id,
-        )
-        await sim_state.simulation_store.update_status(
-            record.simulation_id,
-            status="cancelled",
-        )
-        raise
-    except (ValueError, KeyError) as exc:
-        logger.warning(
-            SIMULATION_RUN_FAILED,
-            simulation_id=record.simulation_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        await _mark_failed(
-            sim_state, record.simulation_id, "Simulation configuration error"
-        )
-        return
-    except Exception as exc:
-        # Frame-locals on a simulation-run-failed path can carry the
-        # entire simulation config; scrub + drop the traceback.
-        logger.warning(
-            SIMULATION_RUN_FAILED,
-            simulation_id=record.simulation_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        await _mark_failed(
-            sim_state, record.simulation_id, "Simulation failed unexpectedly"
-        )
-        return
-    await sim_state.simulation_store.update_status(
-        record.simulation_id,
-        status="completed",
-        metrics=metrics,
-        progress=1.0,
     )
 
 
@@ -355,7 +168,7 @@ class SimulationController(Controller):
     )
     async def start_simulation(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         data: StartSimulationPayload,
     ) -> ApiResponse[SimulationStatusResponse]:
@@ -405,7 +218,7 @@ class SimulationController(Controller):
                 CancelledError: Raised on the corresponding failure path.
             """
             try:
-                await _run_in_background(app_state=app_state, record=record)
+                await run_in_background(app_state=app_state, record=record)
             except asyncio.CancelledError:
                 logger.info(
                     SIMULATION_RUN_CANCELLED,
@@ -413,6 +226,7 @@ class SimulationController(Controller):
                 )
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Drop ``logger.exception`` -- frame-locals on the
                 # simulation-run-failed traceback can carry the
                 # entire simulation config (matches the rationale
@@ -464,7 +278,7 @@ class SimulationController(Controller):
                 runner_task(),
                 name=f"simulation-runner[{record.simulation_id}]",
             )
-            _attach_runner_callbacks(
+            attach_runner_callbacks(
                 spawned_task,
                 sim_state=sim_state,
                 simulation_id=record.simulation_id,
@@ -485,7 +299,7 @@ class SimulationController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            await _rollback_register_if_absent(
+            await rollback_register_if_absent(
                 spawned_task,
                 sim_state=sim_state,
                 record=record,
@@ -502,7 +316,7 @@ class SimulationController(Controller):
     )
     async def cancel_simulation(
         self,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         state: State,
         simulation_id: PathId,
     ) -> ApiResponse[SimulationStatusResponse]:
@@ -545,7 +359,7 @@ class SimulationController(Controller):
         state: State,
         simulation_id: PathId,
         fmt: Annotated[str, QueryParameter()] = "summary",
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[dict[str, object]]:
         """Return a generated report for a simulation run.
 
         Args:
@@ -559,7 +373,7 @@ class SimulationController(Controller):
             ConflictError: If ``fmt`` is not a supported format.
 
         Returns:
-            ``ApiResponse[dict[str, Any]]`` instance.
+            ``ApiResponse[dict[str, object]]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = client_simulation_state_of(app_state)
@@ -577,4 +391,4 @@ class SimulationController(Controller):
             raise ConflictError(msg)
         payload["simulation_id"] = record.simulation_id
         payload["status"] = record.status
-        return ApiResponse(data=payload)
+        return ApiResponse(data=cast("dict[str, object]", payload))

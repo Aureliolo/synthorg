@@ -2,9 +2,9 @@
 """Password-change endpoint (``POST /auth/change-password``)."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 from litestar import Controller, Request, Response, post
+from litestar.datastructures import State
 from litestar.exceptions import PermissionDeniedException
 
 from synthorg.api.api_core_state import (
@@ -87,7 +87,7 @@ async def _verify_current_password(
 
 async def _revoke_old_session(
     app_state: AppState,
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     updated_user: User,
 ) -> None:
     """Revoke the caller's current session before a new one is issued.
@@ -114,7 +114,7 @@ async def _revoke_old_session(
 
 async def _rotate_session_and_build_response(
     app_state: AppState,
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
     auth_service: AuthService,
     updated_user: User,
 ) -> Response[ApiResponse[UserInfoResponse]]:
@@ -185,7 +185,7 @@ class AuthCredentialsController(Controller):
     async def change_password(
         self,
         data: ChangePasswordRequest,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
     ) -> Response[ApiResponse[UserInfoResponse]]:
         """Validate current password and set new one.
 

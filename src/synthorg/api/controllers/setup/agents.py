@@ -28,13 +28,15 @@ from synthorg.api.controllers.setup.company_helpers import (
 from synthorg.api.controllers.setup.company_helpers import (
     read_name_locales as _read_name_locales,
 )
+from synthorg.api.controllers.setup_agent_validation import (
+    validate_model_assignment,
+    validate_provider_and_model,
+)
 from synthorg.api.controllers.setup_agents import (
     agent_dict_to_summary,
     agents_to_summaries,
     build_agent_config,
     get_existing_agents,
-    validate_model_assignment,
-    validate_provider_and_model,
 )
 from synthorg.api.controllers.setup_models import (
     SetupAgentRequest,
@@ -351,7 +353,8 @@ class SetupAgentsController(Controller):
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
 
-            role = agents[agent_index].get("role", "Agent")
+            role_value = agents[agent_index].get("role", "Agent")
+            role = role_value if isinstance(role_value, str) else "Agent"
             new_name = generate_auto_name(role, locales=locales)
 
             updated_agent = {

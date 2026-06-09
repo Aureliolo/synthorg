@@ -2,7 +2,8 @@
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any, Literal
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Literal
 
 from litestar import Controller, get, post
 from litestar.datastructures import State
@@ -35,8 +36,6 @@ from synthorg.templates.errors import TemplateNotFoundError
 from synthorg.templates.pack_loader import PackInfo, list_packs, load_pack
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from synthorg.templates.schema import TemplateDepartmentConfig
 
 logger = get_logger(__name__)
@@ -119,7 +118,7 @@ def _pack_info_to_response(info: PackInfo) -> PackInfoResponse:
 async def _read_setting_list(
     app_state: AppState,
     key: str,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Read a JSON list setting from the company namespace.
 
     Returns:
@@ -172,15 +171,15 @@ async def _read_setting_list(
 
 def _serialize_departments(
     pack_depts: Sequence[TemplateDepartmentConfig],
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Serialize pack departments preserving all fields.
 
     Returns:
         List of the declared element type.
     """
-    result: list[dict[str, Any]] = []
+    result: list[dict[str, object]] = []
     for dept in pack_depts:
-        entry: dict[str, Any] = {
+        entry: dict[str, object] = {
             "name": dept.name,
             "budget_percent": dept.budget_percent,
         }
@@ -195,8 +194,8 @@ def _serialize_departments(
 def _deduplicate_departments(
     pack_name: str,
     pack_depts: Sequence[TemplateDepartmentConfig],
-    current_depts: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    current_depts: list[dict[str, object]],
+) -> list[dict[str, object]]:
     """Return pack departments that don't conflict with existing ones.
 
     Returns:
@@ -217,9 +216,9 @@ def _deduplicate_departments(
 
 
 def _deduplicate_agents(
-    pack_agents: list[dict[str, Any]],
-    current_agents: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    pack_agents: list[dict[str, object]],
+    current_agents: list[dict[str, object]],
+) -> list[dict[str, object]]:
     """Return pack agents not already present (by name).
 
     Returns:

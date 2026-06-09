@@ -1,3 +1,4 @@
+# module-kind: service
 """Message bus → Litestar channels bridge.
 
 Subscribes to internal ``MessageBus`` channels and forwards
@@ -6,7 +7,7 @@ events to Litestar's ``ChannelsPlugin`` for WebSocket delivery.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from litestar.channels import ChannelsPlugin
 
@@ -347,7 +348,8 @@ class MessageBusBridge:
                                 _SUBSCRIBER_ID,
                             )
                             subscribed_channels.remove(channel_name)
-                        except Exception:
+                        except Exception as exc:
+                            reraise_critical(exc)
                             logger.warning(
                                 API_BUS_BRIDGE_SUBSCRIBE_FAILED,
                                 channel=channel_name,
@@ -383,7 +385,8 @@ class MessageBusBridge:
                             channel_name,
                             _SUBSCRIBER_ID,
                         )
-                    except Exception:
+                    except Exception as exc:
+                        reraise_critical(exc)
                         rollback_unsubscribe_failed = True
                         orphaned_channels.append(channel_name)
                         logger.warning(
@@ -704,7 +707,7 @@ class MessageBusBridge:
         Returns:
             ``WsEvent`` instance.
         """
-        payload: dict[str, Any] = {
+        payload: dict[str, object] = {
             "message_id": str(message.id),
             "sender": message.sender,
             "to": message.to,

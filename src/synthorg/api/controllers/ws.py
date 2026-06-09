@@ -22,10 +22,10 @@ import asyncio
 import json
 import time
 from dataclasses import dataclass
-from typing import Any
 
 from litestar import WebSocket
-from litestar.channels import ChannelsPlugin
+from litestar.channels import ChannelsPlugin, Subscriber
+from litestar.datastructures import State
 from litestar.exceptions import WebSocketDisconnect
 from litestar.handlers import websocket
 
@@ -98,7 +98,7 @@ _WS_CLOSE_FORBIDDEN: int = 4003
 
 
 async def _validate_ticket(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
 ) -> AuthenticatedUser | None:
     """Validate the one-time ticket and return the user.
 
@@ -148,7 +148,7 @@ async def _validate_ticket(
 
 
 async def _reject_auth(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
     log_reason: str,
     close_reason: str,
     *,
@@ -161,7 +161,7 @@ async def _reject_auth(
 
 
 async def _read_auth_message(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
 ) -> str | None:
     """Read and validate the first-message auth payload.
 
@@ -217,7 +217,7 @@ async def _read_auth_message(
 
 
 async def _auth_from_first_message(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
 ) -> AuthenticatedUser | None:
     """Authenticate via the first message after accept.
 
@@ -260,7 +260,7 @@ async def _auth_from_first_message(
 
 
 async def _check_ws_role(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
     user: AuthenticatedUser,
 ) -> bool:
     """Verify the user has a role permitted for WebSocket access.
@@ -362,9 +362,9 @@ class _BackpressureTracker:
 async def _trip_breaker_and_close(
     *,
     backpressure: _BackpressureTracker,
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
     clock: Clock | None,
-    log_context: dict[str, Any],
+    log_context: dict[str, object],
 ) -> None:
     """Record a backpressure drop and, if the breaker trips, close the socket.
 
@@ -430,7 +430,7 @@ async def _on_event(  # noqa: PLR0913
     queue: asyncio.Queue[bytes],
     conn_user: AuthenticatedUser,
     backpressure: _BackpressureTracker | None = None,
-    socket: WebSocket[Any, Any, Any] | None = None,
+    socket: WebSocket[object, object, State] | None = None,
     clock: Clock | None = None,
 ) -> None:
     """Filter a channel event and enqueue it for the outbound consumer.
@@ -511,7 +511,7 @@ async def _on_event(  # noqa: PLR0913
 
 
 async def _outbound_consumer(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
     queue: asyncio.Queue[bytes],
 ) -> None:
     """Drain the per-client outbound queue and forward to the socket.
@@ -539,7 +539,7 @@ async def _outbound_consumer(
             queue.task_done()
 
 
-async def _send_auth_ok(socket: WebSocket[Any, Any, Any]) -> None:
+async def _send_auth_ok(socket: WebSocket[object, object, State]) -> None:
     """Send the ``auth_ok`` acknowledgement after ticket validation.
 
     Closes the client-side auth-state flash: clients SHOULD only set
@@ -573,7 +573,7 @@ async def _send_auth_ok(socket: WebSocket[Any, Any, Any]) -> None:
 
 
 async def _authenticate_ws(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
 ) -> tuple[AuthenticatedUser, bool] | None:
     """Run the two-path auth flow.
 
@@ -600,7 +600,7 @@ async def _authenticate_ws(
 
 
 def _resolve_channels_plugin(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
 ) -> ChannelsPlugin | None:
     """Resolve the ChannelsPlugin from app.plugins.
 
@@ -619,11 +619,11 @@ def _resolve_channels_plugin(
 
 
 async def _setup_connection(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
     user: AuthenticatedUser,
     *,
     already_accepted: bool,
-) -> tuple[ChannelsPlugin, Any] | None:
+) -> tuple[ChannelsPlugin, Subscriber] | None:
     """Resolve plugin, accept the connection, and subscribe to channels.
 
     Returns ``(channels_plugin, subscriber)`` on success, or ``None``
@@ -635,7 +635,8 @@ async def _setup_connection(
     to reading over an established WS connection.
 
     Returns:
-        The ``tuple[ChannelsPlugin, Any]`` value when present, ``None`` otherwise.
+        The ``tuple[ChannelsPlugin, Subscriber]`` value when present,
+        ``None`` otherwise.
     """
     channels_plugin = _resolve_channels_plugin(socket)
     if channels_plugin is None:
@@ -661,7 +662,8 @@ async def _setup_connection(
     all_subs = [*ALL_CHANNELS, user_ch]
     try:
         subscriber = await channels_plugin.subscribe(all_subs)
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.error(
             API_WS_TRANSPORT_ERROR,
             reason="subscribe_failed",
@@ -680,7 +682,8 @@ async def _setup_connection(
         require_service(
             app_state.slice(ApiCoreStateSlice).user_presence, "User Presence"
         ).connect(user.user_id)
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.error(
             API_WS_TRANSPORT_ERROR,
             reason="presence_connect_failed",
@@ -689,7 +692,8 @@ async def _setup_connection(
         )
         try:
             await channels_plugin.unsubscribe(subscriber)
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.error(
                 API_WS_TRANSPORT_ERROR,
                 reason="unsubscribe_after_presence_connect_failure",
@@ -706,10 +710,12 @@ async def _setup_connection(
     # don't leak past a half-open connection.
     try:
         await _send_auth_ok(socket)
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         try:
             await channels_plugin.unsubscribe(subscriber)
-        except Exception:
+        except Exception as unsub_exc:
+            reraise_critical(unsub_exc)
             logger.error(
                 API_WS_TRANSPORT_ERROR,
                 reason="unsubscribe_after_auth_ok_failure",
@@ -728,7 +734,7 @@ async def _setup_connection(
     return channels_plugin, subscriber
 
 
-def _record_ws_connection_opened(socket: WebSocket[Any, Any, Any]) -> None:
+def _record_ws_connection_opened(socket: WebSocket[object, object, State]) -> None:
     """Increment the WS active-connection gauge.
 
     The Prometheus collector lives on ``app_state``; the helper checks
@@ -746,7 +752,7 @@ def _record_ws_connection_opened(socket: WebSocket[Any, Any, Any]) -> None:
 
 
 def _record_ws_connection_closed(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
     *,
     duration_sec: float,
 ) -> None:
@@ -763,10 +769,10 @@ def _record_ws_connection_closed(
 
 
 async def _teardown_connection(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
     user: AuthenticatedUser,
     channels_plugin: ChannelsPlugin,
-    subscriber: Any,
+    subscriber: Subscriber,
     consumer_task: asyncio.Task[None],
 ) -> None:
     """Cancel the consumer, unsubscribe, disconnect, and log.
@@ -792,7 +798,8 @@ async def _teardown_connection(
             outer_cancelled_exc = exc
     except WebSocketDisconnect:
         pass
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.error(
             API_WS_TRANSPORT_ERROR,
             reason="outbound_consumer_failed",
@@ -800,7 +807,8 @@ async def _teardown_connection(
         )
     try:
         await channels_plugin.unsubscribe(subscriber)
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.error(
             API_WS_TRANSPORT_ERROR,
             error="Failed to unsubscribe",
@@ -815,7 +823,8 @@ async def _teardown_connection(
         require_service(
             app_state.slice(ApiCoreStateSlice).user_presence, "User Presence"
         ).disconnect(user.user_id)
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_WS_TRANSPORT_ERROR,
             reason="presence_disconnect_failed",
@@ -832,7 +841,7 @@ async def _teardown_connection(
 # and the WS path is regex-excluded, so this is a tertiary safeguard.
 @websocket("/ws", opt={"exclude_from_auth": True})
 async def ws_handler(
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
 ) -> None:
     """Handle WebSocket connections with channel subscriptions.
 
@@ -966,7 +975,7 @@ async def ws_handler(
 
 
 async def _receive_loop(  # noqa: PLR0913 -- optional backpressure + clock + timeout kwargs
-    socket: WebSocket[Any, Any, Any],
+    socket: WebSocket[object, object, State],
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
     conn_user: AuthenticatedUser,

@@ -2,7 +2,6 @@
 """Security-configuration export / import settings endpoints."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 from litestar import Controller, get, post
 from litestar.datastructures import State
@@ -44,7 +43,7 @@ class SecurityConfigExportResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    config: dict[str, Any]
+    config: dict[str, object]
     exported_at: AwareDatetime
     custom_policies_warning: NotBlankStr | None = None
 
@@ -54,7 +53,7 @@ class SecurityConfigImportRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    config: dict[str, Any]
+    config: dict[str, object]
 
 
 async def _persist_security_settings(

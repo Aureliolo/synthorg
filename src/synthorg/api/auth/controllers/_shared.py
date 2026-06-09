@@ -7,9 +7,10 @@ counter store; the login-attempt helpers + constant-time dummy hash are
 used by the session controller's login flow.
 """
 
-from typing import Any, Final
+from typing import TYPE_CHECKING, Final
 
 from litestar import Request
+from litestar.datastructures import State
 from litestar.middleware.rate_limit import RateLimitConfig as LitestarRateLimitConfig
 
 from synthorg.api.api_core_state import ApiCoreStateSlice, lockout_store_of
@@ -19,6 +20,9 @@ from synthorg.observability.events.security import (
     SECURITY_AUTH_ACCOUNT_LOCKED,
     SECURITY_AUTH_LOCKOUT_CLEARED,
 )
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -58,9 +62,9 @@ not collide with the global rate limiter.
 
 
 async def _record_failed_login(
-    app_state: Any,
+    app_state: AppState,
     username: str,
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
 ) -> None:
     """Record a failed login attempt and raise on lockout.
 
@@ -94,7 +98,7 @@ async def _record_failed_login(
     )
 
 
-async def _record_successful_login(app_state: Any, username: str) -> None:
+async def _record_successful_login(app_state: AppState, username: str) -> None:
     """Clear the lockout state and emit the audit event when warranted.
 
     Repo returns whether a lock was actually cleared; we only emit

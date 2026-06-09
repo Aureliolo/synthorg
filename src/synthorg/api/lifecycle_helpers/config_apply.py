@@ -1,3 +1,4 @@
+# module-kind: orchestrator
 """Apply operator-tuned bridge config at startup.
 
 Snapshots ``ApiBridgeConfig`` onto ``AppState``, validates cross-
@@ -9,6 +10,7 @@ re-entering Litestar lifespan does not churn long-lived clients.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from synthorg.api.api_core_state import ticket_store_of
@@ -27,8 +29,6 @@ from synthorg.settings.registry import registered_default_float
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from synthorg.api.state import AppState
     from synthorg.config.schema import RootConfig
     from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler

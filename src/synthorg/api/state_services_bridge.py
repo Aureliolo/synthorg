@@ -8,7 +8,9 @@ by the settings subscribers under their per-config locks). Mixed into
 ``AppState.__slots__`` and initialised in ``AppState.__init__``.
 """
 
-from typing import TYPE_CHECKING
+import threading
+
+from pydantic import BaseModel
 
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig
 from synthorg.api.rate_limits.inflight_config import (
@@ -21,11 +23,6 @@ from synthorg.settings.bridge_configs import (
     MemoryBridgeConfig,
     WorkersBridgeConfig,
 )
-
-if TYPE_CHECKING:
-    import threading
-
-    from pydantic import BaseModel
 
 logger = get_logger(__name__)
 

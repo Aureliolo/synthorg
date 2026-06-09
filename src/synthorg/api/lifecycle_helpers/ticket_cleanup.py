@@ -12,7 +12,8 @@ Also resolves the EventStreamHub janitor settings used by the
 
 import asyncio
 import inspect
-from typing import TYPE_CHECKING, Any
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from synthorg.api.api_core_state import (
     ApiCoreStateSlice,
@@ -41,8 +42,6 @@ from synthorg.settings.registry import (
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
@@ -125,7 +124,7 @@ async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
 
 
 async def _run_cleanup_step(
-    action: Callable[[], Awaitable[Any] | Any],
+    action: Callable[[], Awaitable[object] | object],
     *,
     event: str,
     failure_message: str,
