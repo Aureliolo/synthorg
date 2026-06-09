@@ -2207,7 +2207,7 @@
     },
     {
       "kind": "code",
-      "loc": 297,
+      "loc": 298,
       "loc_cap": 500,
       "module": "src/synthorg/budget/_optimizer_routing.py",
       "owning_feature": "budget"
@@ -12602,7 +12602,7 @@
     },
     {
       "kind": "code",
-      "loc": 16,
+      "loc": 17,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/cfo.py",
       "owning_feature": "observability"
@@ -17040,7 +17040,7 @@
     },
     {
       "kind": "code",
-      "loc": 256,
+      "loc": 258,
       "loc_cap": 500,
       "module": "src/synthorg/security/_llm_evaluator_support.py",
       "owning_feature": "security"

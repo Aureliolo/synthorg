@@ -33,6 +33,7 @@ from synthorg.observability.events.cfo import (
     CFO_DOWNGRADE_RECOMMENDED,
     CFO_DOWNGRADE_SKIPPED,
     CFO_EFFICIENCY_ANALYSIS_COMPLETE,
+    CFO_INVALID_TIME_RANGE,
     CFO_RESOLVER_MISSING,
     CFO_ROUTING_OPTIMIZATION_COMPLETE,
 )
@@ -80,7 +81,7 @@ class _CostOptimizerRoutingMixin:
         """
         if start >= end:
             logger.warning(
-                CFO_DOWNGRADE_RECOMMENDED,
+                CFO_INVALID_TIME_RANGE,
                 error="start_after_end",
                 start=start.isoformat(),
                 end=end.isoformat(),
@@ -164,7 +165,7 @@ class _CostOptimizerRoutingMixin:
         """
         if start >= end:
             logger.warning(
-                CFO_ROUTING_OPTIMIZATION_COMPLETE,
+                CFO_INVALID_TIME_RANGE,
                 error="start_after_end",
                 start=start.isoformat(),
                 end=end.isoformat(),
@@ -318,7 +319,7 @@ class _CostOptimizerRoutingMixin:
                             f"({cur_fmt}/1k) to "
                             f"{candidate.model_id!r} "
                             f"({cand_fmt}/1k) "
-                            f"-- same context window, lower cost"
+                            f"-- sufficient context window, lower cost"
                         ),
                     ),
                 )

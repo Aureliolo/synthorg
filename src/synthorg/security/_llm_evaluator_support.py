@@ -10,9 +10,10 @@ and the ``wrap_untrusted`` fence) stays on the evaluator itself.
 import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.config.schema import ProviderConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_LLM_EVAL_CROSS_FAMILY,
@@ -20,9 +21,12 @@ from synthorg.observability.events.security import (
     SECURITY_LLM_EVAL_NO_PROVIDER,
     SECURITY_LLM_EVAL_SAME_FAMILY_FALLBACK,
 )
+from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.family import get_family, providers_excluding_family
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.config import (
     ArgumentTruncationStrategy,
+    LlmFallbackConfig,
     LlmFallbackErrorPolicy,
     VerdictReasonVisibility,
 )
@@ -31,12 +35,6 @@ from synthorg.security.models import (
     SecurityVerdict,
     SecurityVerdictType,
 )
-
-if TYPE_CHECKING:
-    from synthorg.config.schema import ProviderConfig
-    from synthorg.providers.base import BaseCompletionProvider
-    from synthorg.providers.registry import ProviderRegistry
-    from synthorg.security.config import LlmFallbackConfig
 
 logger = get_logger(__name__)
 
@@ -217,7 +215,14 @@ class _LlmEvaluatorSupportMixin:
                 truncated[key] = str_val[:_MAX_VALUE_LENGTH] + "...[cut]"
             else:
                 truncated[key] = value
-        return self._safe_json_dumps(truncated)
+        # Cap the total too: per-value truncation alone lets many keys
+        # produce an unbounded blob, which would let the caller slice
+        # through the untrusted-content fence applied downstream in
+        # _build_messages.
+        raw = self._safe_json_dumps(truncated)
+        if len(raw) > _MAX_ARGS_DISPLAY:
+            return raw[:_MAX_ARGS_DISPLAY] + "... [truncated]"
+        return raw
 
     def _safe_json_dumps(self, obj: object) -> str:
         """JSON-serialize with fallback to str() on failure.
