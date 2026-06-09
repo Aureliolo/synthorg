@@ -28,12 +28,11 @@ from synthorg.settings.registry import registered_default_float
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from synthorg.api.state import AppState
     from synthorg.config.schema import RootConfig
     from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
     from synthorg.settings.bridge_configs import NotificationsBridgeConfig
+from collections.abc import Awaitable, Callable
 
 logger = get_logger(__name__)
 

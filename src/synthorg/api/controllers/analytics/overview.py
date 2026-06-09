@@ -30,11 +30,10 @@ from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from synthorg.budget.cost_record import CostRecord
     from synthorg.config.schema import AgentConfig
     from synthorg.core.task import Task
+from collections.abc import Sequence
 
 logger = get_logger(__name__)
 

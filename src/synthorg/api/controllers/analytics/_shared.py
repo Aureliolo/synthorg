@@ -34,9 +34,8 @@ from synthorg.observability.events.analytics import ANALYTICS_OVERVIEW_QUERIED
 from synthorg.observability.events.api import API_REQUEST_ERROR
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from synthorg.core.task import Task
+from collections.abc import Sequence
 
 logger = get_logger(__name__)
 _DEFAULT_HORIZON_DAYS: Final[int] = 14

@@ -44,12 +44,12 @@ from synthorg.observability.events.security import (
 from synthorg.persistence.state import persistence_of
 
 if TYPE_CHECKING:
-    from litestar.connection import ASGIConnection
-
-    from synthorg.api.auth.service import AuthService
     from synthorg.api.state import AppState
     from synthorg.core.auth.config import AuthConfig
-    from synthorg.core.auth.models import ApiKey
+from litestar.connection import ASGIConnection
+
+from synthorg.api.auth.service import AuthService
+from synthorg.core.auth.models import ApiKey
 
 logger = get_logger(__name__)
 

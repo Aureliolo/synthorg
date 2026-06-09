@@ -35,11 +35,10 @@ from synthorg.observability.events.security import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from synthorg.core.auth.config import AuthConfig
     from synthorg.persistence.auth_protocol import RefreshTokenRepository
     from synthorg.persistence.user_protocol import UserRepository
+from collections.abc import Callable
 
 logger = get_logger(__name__)
 

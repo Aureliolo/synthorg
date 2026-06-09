@@ -39,14 +39,14 @@ from synthorg.persistence.state import persistence_of
 from synthorg.versioning import VersioningService
 
 if TYPE_CHECKING:
-    from litestar.datastructures import State
-
     from synthorg.api.dto_workflow import (
         CreateFromBlueprintRequest,
         UpdateWorkflowDefinitionRequest,
     )
     from synthorg.engine.workflow.blueprint_models import BlueprintData
-    from synthorg.engine.workflow.validation import WorkflowValidationError
+from litestar.datastructures import State
+
+from synthorg.engine.workflow.validation import WorkflowValidationError
 
 logger = get_logger(__name__)
 

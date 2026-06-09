@@ -17,13 +17,12 @@ from synthorg.observability.events.setup import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.api.controllers.setup_models import (
         SetupAgentRequest,
         UpdateAgentModelRequest,
     )
     from synthorg.config.schema import ProviderConfig
+from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

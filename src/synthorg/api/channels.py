@@ -5,8 +5,9 @@ creates the Litestar ``ChannelsPlugin`` with an in-memory backend.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from litestar import Request
 from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
 from litestar.datastructures import State
@@ -15,9 +16,6 @@ from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_WS_SEND_FAILED
-
-if TYPE_CHECKING:
-    from litestar import Request
 
 logger = get_logger(__name__)
 

@@ -8,19 +8,16 @@ auth-service themselves live on ``ApiCoreStateSlice``.
 """
 
 import asyncio
+import threading
+from collections import OrderedDict
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_BRIDGE_CONFIG_REJECTED,
     REQUEST_LOCK_RELEASE_SKIPPED_WHILE_HELD,
 )
-
-if TYPE_CHECKING:
-    import threading
-    from collections import OrderedDict
-    from collections.abc import AsyncIterator
 
 logger = get_logger(__name__)
 

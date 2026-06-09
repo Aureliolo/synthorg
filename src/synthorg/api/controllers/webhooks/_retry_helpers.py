@@ -28,11 +28,10 @@ from synthorg.observability.events.integrations import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from datetime import datetime
-
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.persistence.protocol import PersistenceBackend
+from collections.abc import Mapping
+from datetime import datetime
 
 logger = get_logger(__name__)
 

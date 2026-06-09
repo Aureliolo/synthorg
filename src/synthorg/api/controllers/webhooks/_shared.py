@@ -39,11 +39,10 @@ from synthorg.observability.events.integrations import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.integrations.connections.catalog import ConnectionCatalog
     from synthorg.integrations.connections.models import Connection, ConnectionType
+from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

@@ -44,11 +44,11 @@ from synthorg.observability.events.security import (
 )
 
 if TYPE_CHECKING:
-    from litestar import Request
-
     from synthorg.api.auth.service import AuthService
     from synthorg.api.state import AppState
-    from synthorg.core.auth.models import User
+from litestar import Request
+
+from synthorg.core.auth.models import User
 
 logger = get_logger(__name__)
 

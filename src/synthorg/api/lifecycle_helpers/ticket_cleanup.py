@@ -41,9 +41,8 @@ from synthorg.settings.registry import (
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from synthorg.api.state import AppState
+from collections.abc import Awaitable, Callable
 
 logger = get_logger(__name__)
 

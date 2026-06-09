@@ -1,5 +1,6 @@
 """API controllers for all resource groups."""
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from litestar import Controller
@@ -275,8 +276,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from synthorg.api.state import AppState
 
 

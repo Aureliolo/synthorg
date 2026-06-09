@@ -30,10 +30,9 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_str_tuple_json
 
 if TYPE_CHECKING:
-    from litestar.types import Middleware
-
     from synthorg.api.config import ApiConfig
     from synthorg.core.auth.config import AuthConfig
+from litestar.types import Middleware
 
 logger = get_logger(__name__)
 

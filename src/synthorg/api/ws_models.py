@@ -6,20 +6,18 @@ serialised to JSON and pushed to WebSocket subscribers.
 
 import copy
 from enum import StrEnum
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
+    TypeAdapter,
     model_validator,
 )
 
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from pydantic import TypeAdapter
 
 # Lazy reference resolved on first use.  Avoids a circular import
 # (``ws_payloads`` imports ``WsEventType`` from this module).

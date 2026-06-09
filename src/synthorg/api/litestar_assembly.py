@@ -8,14 +8,15 @@ orchestrator that hands over the already-built collaborators.
 """
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
 
 from litestar import Litestar, Router
+from litestar.channels import ChannelsPlugin
 from litestar.config.compression import CompressionConfig
 from litestar.config.cors import CORSConfig
 from litestar.datastructures import State
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import ScalarRenderPlugin
+from litestar.types import Middleware
 
 from synthorg import __version__
 from synthorg.api.config import ApiConfig
@@ -34,10 +35,6 @@ from synthorg.api.rate_limits._subject import parse_trusted_networks
 from synthorg.api.rate_limits.inflight_protocol import InflightStore
 from synthorg.api.rate_limits.protocol import SlidingWindowStore
 from synthorg.api.state import AppState
-
-if TYPE_CHECKING:
-    from litestar.channels import ChannelsPlugin
-    from litestar.types import Middleware
 
 type LifespanHooks = list[Callable[[], Awaitable[None]]]
 

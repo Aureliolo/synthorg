@@ -38,9 +38,8 @@ from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.persistence.state import persistence_of
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from synthorg.hr.performance.models import TaskMetricRecord
+from collections.abc import Sequence
 
 logger = get_logger(__name__)
 

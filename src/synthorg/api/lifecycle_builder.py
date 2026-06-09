@@ -29,8 +29,6 @@ from synthorg.observability.events.persistence.webhook_receipt import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Sequence
-
     from synthorg.api.bus_bridge import MessageBusBridge
     from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
@@ -41,6 +39,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from collections.abc import Awaitable, Callable, Sequence
 
 __all__ = [
     "_build_lifecycle",

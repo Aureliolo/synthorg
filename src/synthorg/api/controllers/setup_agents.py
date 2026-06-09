@@ -22,10 +22,6 @@ from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
-    from pydantic import JsonValue
-
     from synthorg.api.controllers.setup_models import (
         SetupAgentRequest,
         SetupAgentSummary,
@@ -37,6 +33,9 @@ if TYPE_CHECKING:
         _ProviderWithModels,
     )
     from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
+from collections.abc import Mapping, Sequence
+
+from pydantic import JsonValue
 
 logger = get_logger(__name__)
 

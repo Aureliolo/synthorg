@@ -35,9 +35,8 @@ from synthorg.templates.errors import TemplateNotFoundError
 from synthorg.templates.pack_loader import PackInfo, list_packs, load_pack
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from synthorg.templates.schema import TemplateDepartmentConfig
+from collections.abc import Sequence
 
 logger = get_logger(__name__)
 

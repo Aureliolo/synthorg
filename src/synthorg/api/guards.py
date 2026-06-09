@@ -11,10 +11,7 @@ Pre-built constants cover common patterns::
     require_approval_roles   -- CEO, Manager, or Board Member
 """
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from collections.abc import Callable
 
 from litestar.connection import ASGIConnection
 from litestar.exceptions import PermissionDeniedException

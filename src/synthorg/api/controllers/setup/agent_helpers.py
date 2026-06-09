@@ -48,13 +48,12 @@ from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.api.controllers.setup_models import SetupAgentSummary
     from synthorg.api.state import AppState
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.settings.service import SettingsService
     from synthorg.templates.schema import CompanyTemplate
+from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

@@ -22,9 +22,9 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from synthorg.core.types import NotBlankStr
+from collections.abc import Awaitable, Callable
+
 from synthorg.observability.events.idempotency import (
     IDEMPOTENCY_CLAIM_COMPLETED,
     IDEMPOTENCY_CLAIM_FAILED_REPLAY,

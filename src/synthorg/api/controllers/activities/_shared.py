@@ -40,9 +40,8 @@ from synthorg.tools.invocation_record import ToolInvocationRecord
 from synthorg.tools.state import ToolsStateSlice
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
-
     from synthorg.hr.models import AgentLifecycleEvent
+from collections.abc import Awaitable
 
 logger = get_logger(__name__)
 
