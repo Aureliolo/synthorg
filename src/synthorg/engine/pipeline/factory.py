@@ -7,21 +7,21 @@ switch) and the symbol the ghost-wiring manifest enforces.
 
 from typing import TYPE_CHECKING
 
+from synthorg.budget.tracker import CostTracker
+from synthorg.core.clock import Clock
+from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.pipeline.policy import build_work_routing_policy
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
+from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.core.clock import Clock
-    from synthorg.engine.coordination.service import MultiAgentCoordinator
-    from synthorg.engine.intake.engine import IntakeEngine
-    from synthorg.engine.routing.scorer import AgentTaskScorer
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.persistence.project_protocol import ProjectRepository
-    from synthorg.providers.protocol import CompletionProvider
     from synthorg.workers.execution_service import WorkerExecutionService
 
 logger = get_logger(__name__)

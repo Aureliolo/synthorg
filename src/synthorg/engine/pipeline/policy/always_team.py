@@ -5,15 +5,11 @@ when an operator mandates team execution and as a deterministic
 fixture for the team-branch acceptance test.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
 from synthorg.engine.pipeline.models import RoutingVerdict
 from synthorg.observability import get_logger
 from synthorg.observability.events.pipeline import PIPELINE_ROUTING_DECIDED
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
 
 logger = get_logger(__name__)
 

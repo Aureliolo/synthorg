@@ -6,15 +6,13 @@ strategy; ``leaf-threshold`` is the shipped safe default.
 
 from typing import TYPE_CHECKING, Final
 
+from synthorg.budget.tracker import CostTracker
 from synthorg.engine.pipeline.errors import WorkRoutingUndecidableError
 from synthorg.engine.pipeline.policy.always_team import AlwaysTeamRoutingPolicy
 from synthorg.engine.pipeline.policy.llm_judged import LlmJudgedRoutingPolicy
 from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
 from synthorg.engine.pipeline.policy.threshold import LeafThresholdRoutingPolicy
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider
 
 ROUTING_POLICY_LEAF_THRESHOLD: Final[str] = "leaf-threshold"
 ROUTING_POLICY_ALWAYS_TEAM: Final[str] = "always-team"

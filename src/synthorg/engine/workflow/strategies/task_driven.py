@@ -5,8 +5,10 @@ reach terminal status, not on a timer. This is the reference
 implementation for the ``CeremonySchedulingStrategy`` protocol.
 """
 
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
+from typing import cast
 
+from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
     TRIGGER_EVERY_N,
     TRIGGER_SPRINT_END,
@@ -14,6 +16,10 @@ from synthorg.engine.workflow.ceremony_policy import (
     TRIGGER_SPRINT_PERCENTAGE,
     TRIGGER_SPRINT_START,
     CeremonyStrategyType,
+)
+from synthorg.engine.workflow.sprint_config import (
+    SprintCeremonyConfig,
+    SprintConfig,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.strategies._helpers import get_ceremony_config
@@ -23,15 +29,6 @@ from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_SKIPPED,
     SPRINT_CEREMONY_TRIGGERED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
-    from synthorg.engine.workflow.sprint_config import (
-        SprintCeremonyConfig,
-        SprintConfig,
-    )
 
 logger = get_logger(__name__)
 
@@ -105,7 +102,7 @@ class TaskDrivenStrategy:
         if trigger is None:
             return False
 
-        result = self._evaluate_trigger(trigger, config, context)
+        result = self._evaluate_trigger(cast("str", trigger), config, context)
 
         if result:
             logger.info(
@@ -202,7 +199,7 @@ class TaskDrivenStrategy:
         self,
         sprint: Sprint,
         event_name: str,
-        payload: Mapping[str, Any],
+        payload: Mapping[str, object],
     ) -> None:
         """No-op."""
 
@@ -217,7 +214,7 @@ class TaskDrivenStrategy:
 
     def validate_strategy_config(
         self,
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
     ) -> None:
         """Validate task-driven strategy config.
 
@@ -261,7 +258,7 @@ class TaskDrivenStrategy:
     @staticmethod
     def _evaluate_trigger(
         trigger: str,
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
         context: CeremonyEvalContext,
     ) -> bool:
         """Evaluate a single trigger condition.
@@ -285,13 +282,14 @@ class TaskDrivenStrategy:
             return has_tasks and pct >= _MIDPOINT_THRESHOLD
 
         if trigger == TRIGGER_EVERY_N:
-            n: int = config.get(_KEY_EVERY_N, _DEFAULT_EVERY_N)
+            # Upstream config validation guarantees these are numeric.
+            n = cast("int", config.get(_KEY_EVERY_N, _DEFAULT_EVERY_N))
             return context.completions_since_last_trigger >= n
 
         if trigger == TRIGGER_SPRINT_PERCENTAGE:
-            threshold: float = config.get(
-                _KEY_SPRINT_PERCENTAGE,
-                _DEFAULT_SPRINT_PCT,
+            threshold = cast(
+                "float",
+                config.get(_KEY_SPRINT_PERCENTAGE, _DEFAULT_SPRINT_PCT),
             )
             return has_tasks and pct >= (threshold / _MAX_SPRINT_PCT)
 

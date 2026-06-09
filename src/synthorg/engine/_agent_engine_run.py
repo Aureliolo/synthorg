@@ -5,16 +5,19 @@ best-effort flight-recorder frame recording run after the loop. Both
 sit off the per-turn hot path and are mixed into the engine.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
+from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import FLIGHT_RECORDER_RECORD_FAILED
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.loop_protocol import ExecutionResult
+    from synthorg.core.clock import Clock
+    from synthorg.engine.flight_recording import FlightRecorderSink
+    from synthorg.engine.routing_policy.router import StakesRouter
 
 logger = get_logger(__name__)
 
@@ -22,12 +25,12 @@ logger = get_logger(__name__)
 class AgentEngineRunMixin:
     """Stakes routing and flight-frame recording for the engine run."""
 
-    # Populated on the concrete ``AgentEngine`` in ``__init__``; typed
-    # ``Any`` because the mixin only reads them. The concrete class
-    # carries the authoritative types.
-    _stakes_router: Any
-    _flight_recorder_sink: Any
-    _clock: Any
+    # Populated on the concrete ``AgentEngine`` in ``__init__``; declared
+    # here so the type checker sees them when the mixin reads them. The
+    # concrete class owns the assignment.
+    _stakes_router: StakesRouter | None
+    _flight_recorder_sink: FlightRecorderSink | None
+    _clock: Clock
 
     async def _route_stakes(
         self,

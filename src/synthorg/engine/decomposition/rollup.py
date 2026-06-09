@@ -3,17 +3,13 @@
 Pure function for aggregating subtask statuses into a parent status.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import SubtaskStatusRollup
 from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_ROLLUP_COMPUTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

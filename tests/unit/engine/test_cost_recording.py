@@ -1,11 +1,12 @@
 """Tests for per-turn cost recording."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import pytest
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.tracker import CostTracker
 from synthorg.engine.cost_recording import (
     record_execution_costs,
     resolve_tracker_currency,
@@ -68,14 +69,19 @@ def _identity() -> AgentIdentity:
     )
 
 
-class _FakeTracker:
-    """In-memory tracker that records submitted CostRecords."""
+class _FakeTracker(CostTracker):
+    """In-memory tracker that records submitted CostRecords.
+
+    Subclasses the real ``CostTracker`` (bypassing its ``__init__``) so the
+    runtime-resolved ``tracker: CostTracker`` boundary accepts it.
+    """
 
     def __init__(self, *, fail_on: int | None = None) -> None:
         self.records: list[CostRecord] = []
         self._fail_on = fail_on
         self._call_count = 0
 
+    @override
     async def record(self, cost_record: CostRecord) -> None:
         self._call_count += 1
         if self._fail_on is not None and self._call_count == self._fail_on:
@@ -109,7 +115,7 @@ class TestRecordExecutionCosts:
             _identity(),
             "agent-1",
             "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
+            tracker=tracker,
         )
         assert len(tracker.records) == 2
         assert tracker.records[0].cost == 0.01
@@ -123,7 +129,7 @@ class TestRecordExecutionCosts:
             _identity(),
             "agent-1",
             "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
+            tracker=tracker,
         )
         assert len(tracker.records) == 0
 
@@ -136,7 +142,7 @@ class TestRecordExecutionCosts:
             _identity(),
             "agent-1",
             "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
+            tracker=tracker,
         )
         assert len(tracker.records) == 1
         assert tracker.records[0].cost == 0.0
@@ -153,7 +159,7 @@ class TestRecordExecutionCosts:
             _identity(),
             "agent-1",
             "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
+            tracker=tracker,
         )
         assert tracker.records[0].call_category == LLMCallCategory.PRODUCTIVE
         assert tracker.records[1].call_category == LLMCallCategory.SYSTEM
@@ -171,7 +177,7 @@ class TestRecordExecutionCosts:
             _identity(),
             "agent-1",
             "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
+            tracker=tracker,
         )
         # Second turn still recorded despite first failure
         assert len(tracker.records) == 1
@@ -179,8 +185,13 @@ class TestRecordExecutionCosts:
     async def test_memory_error_propagates(self) -> None:
         """MemoryError in tracker.record() propagates unconditionally."""
 
-        class _MemoryErrorTracker:
-            async def record(self, _: CostRecord) -> None:
+        class _MemoryErrorTracker(CostTracker):
+            def __init__(self) -> None:
+                """Bypass the real CostTracker init."""
+
+            @override
+            async def record(self, cost_record: CostRecord) -> None:
+                del cost_record
                 raise MemoryError
 
         with pytest.raises(MemoryError):
@@ -189,14 +200,19 @@ class TestRecordExecutionCosts:
                 _identity(),
                 "agent-1",
                 "task-1",
-                tracker=_MemoryErrorTracker(),  # type: ignore[arg-type]
+                tracker=_MemoryErrorTracker(),
             )
 
     async def test_recursion_error_propagates(self) -> None:
         """RecursionError in tracker.record() propagates unconditionally."""
 
-        class _RecursionErrorTracker:
-            async def record(self, _: CostRecord) -> None:
+        class _RecursionErrorTracker(CostTracker):
+            def __init__(self) -> None:
+                """Bypass the real CostTracker init."""
+
+            @override
+            async def record(self, cost_record: CostRecord) -> None:
+                del cost_record
                 raise RecursionError
 
         with pytest.raises(RecursionError):
@@ -205,7 +221,7 @@ class TestRecordExecutionCosts:
                 _identity(),
                 "agent-1",
                 "task-1",
-                tracker=_RecursionErrorTracker(),  # type: ignore[arg-type]
+                tracker=_RecursionErrorTracker(),
             )
 
 
@@ -244,7 +260,7 @@ class TestAnalyticsFieldPropagation:
             _identity(),
             "agent-1",
             "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
+            tracker=tracker,
         )
         assert tracker.records[0].latency_ms == 250.5
 
@@ -256,7 +272,7 @@ class TestAnalyticsFieldPropagation:
             _identity(),
             "agent-1",
             "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
+            tracker=tracker,
         )
         assert tracker.records[0].cache_hit is True
 
@@ -268,7 +284,7 @@ class TestAnalyticsFieldPropagation:
             _identity(),
             "agent-1",
             "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
+            tracker=tracker,
         )
         assert tracker.records[0].retry_count == 2
 
@@ -280,7 +296,7 @@ class TestAnalyticsFieldPropagation:
             _identity(),
             "agent-1",
             "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
+            tracker=tracker,
         )
         assert tracker.records[0].retry_reason == "RateLimitError"
 
@@ -300,7 +316,7 @@ class TestAnalyticsFieldPropagation:
             _identity(),
             "agent-1",
             "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
+            tracker=tracker,
         )
         assert tracker.records[0].finish_reason == FinishReason.ERROR
         assert tracker.records[0].success is False
@@ -314,7 +330,7 @@ class TestAnalyticsFieldPropagation:
             _identity(),
             "agent-1",
             "task-1",
-            tracker=tracker,  # type: ignore[arg-type]
+            tracker=tracker,
         )
         assert tracker.records[0].latency_ms is None
         assert tracker.records[0].cache_hit is None

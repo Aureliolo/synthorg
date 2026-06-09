@@ -1,9 +1,10 @@
 """Tests for LLM decomposition strategy."""
 
 import json
-from typing import Any
+from typing import cast
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import (
@@ -70,7 +71,7 @@ def _valid_plan_args(
     subtask_count: int = 2,
     task_structure: str = "sequential",
     coordination_topology: str = "auto",
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Build valid tool call arguments for a decomposition plan."""
     subtasks = [
         {
@@ -91,7 +92,7 @@ def _valid_plan_args(
 
 
 def _make_tool_call_response(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     *,
     tool_name: str = "submit_decomposition_plan",
 ) -> CompletionResponse:
@@ -101,7 +102,7 @@ def _make_tool_call_response(
             ToolCall(
                 id="tc-1",
                 name=tool_name,
-                arguments=arguments,
+                arguments=cast("dict[str, JsonValue]", arguments),
             ),
         ),
         finish_reason=FinishReason.TOOL_USE,

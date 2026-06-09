@@ -6,7 +6,6 @@ results, and the review verdict enum.
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -51,7 +50,7 @@ class ReviewStageResult(BaseModel):
         ge=0,
         description="Stage execution duration in milliseconds",
     )
-    metadata: dict[str, Any] = Field(
+    metadata: dict[str, object] = Field(
         default_factory=dict,
         description="Additional stage-specific metadata",
     )

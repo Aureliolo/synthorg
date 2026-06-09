@@ -10,7 +10,7 @@ implementation -- full semantic analysis is planned for future iterations.
 
 import re
 from collections import defaultdict
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.budget.coordination_config import ErrorCategory
 from synthorg.core.normalization import (
@@ -21,16 +21,14 @@ from synthorg.engine.classification.models import (
     ErrorFinding,
     ErrorSeverity,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.classification import (
     DETECTOR_COMPLETE,
     DETECTOR_START,
 )
 from synthorg.providers.enums import FinishReason, MessageRole
-
-if TYPE_CHECKING:
-    from synthorg.execution.turn import TurnRecord
-    from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ChatMessage
 
 logger = get_logger(__name__)
 

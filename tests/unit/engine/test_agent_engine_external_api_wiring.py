@@ -10,7 +10,7 @@ behaviour of the tool itself is covered end-to-end in
 ``tests/e2e/test_external_api_governance_e2e.py``.
 """
 
-from typing import Any, override
+from typing import override
 
 import pytest
 
@@ -77,7 +77,7 @@ class _StubProvider:
 
 class _StubTool(BaseTool):
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         del arguments
         return ToolExecutionResult(content="stub")
 

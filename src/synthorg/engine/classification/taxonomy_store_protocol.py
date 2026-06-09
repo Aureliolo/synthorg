@@ -15,15 +15,12 @@ Design:
   matter which caller (signals, analytics, dashboards) reads them.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from datetime import datetime
+from typing import Protocol, runtime_checkable
 
+from synthorg.engine.classification.models import ErrorFinding
 from synthorg.engine.classification.protocol import ClassificationSink
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.engine.classification.models import ErrorFinding
-    from synthorg.meta.signal_models import OrgErrorSummary
+from synthorg.meta.signal_models import OrgErrorSummary
 
 
 @runtime_checkable

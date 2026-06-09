@@ -13,32 +13,30 @@ hybrid selections are downgraded to plan_execute.  An optional
 ``hybrid_fallback`` can redirect hybrid to another loop type.
 """
 
-from typing import TYPE_CHECKING, Final, Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.task_enums import Complexity
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.checkpoint.callback import CheckpointCallback
+from synthorg.engine.compaction import CompactionCallback
 from synthorg.engine.hybrid_loop import HybridLoop
+from synthorg.engine.hybrid_models import HybridLoopConfig
+from synthorg.engine.intervention.inbox import SteeringInbox
+from synthorg.engine.loop_protocol import ExecutionLoop
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
+from synthorg.engine.plan_models import PlanExecuteConfig
 from synthorg.engine.react_loop import ReactLoop
+from synthorg.engine.stagnation import StagnationDetector
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_DOWNGRADE,
     EXECUTION_LOOP_HYBRID_FALLBACK,
     EXECUTION_LOOP_NO_RULE_MATCH,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.approval_gate import ApprovalGate
-    from synthorg.engine.checkpoint.callback import CheckpointCallback
-    from synthorg.engine.compaction import CompactionCallback
-    from synthorg.engine.hybrid_models import HybridLoopConfig
-    from synthorg.engine.intervention.inbox import SteeringInbox
-    from synthorg.engine.loop_protocol import ExecutionLoop
-    from synthorg.engine.plan_models import PlanExecuteConfig
-    from synthorg.engine.stagnation import StagnationDetector
 
 logger = get_logger(__name__)
 

@@ -1,21 +1,17 @@
 """Direct intake strategy: unconditionally create a task."""
 
-from typing import TYPE_CHECKING
-
 from synthorg.client.models import (
     ClientRequest,
     TaskRequirement,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.models import IntakeResult
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.observability import get_logger
 from synthorg.observability.events.review_pipeline import (
     INTAKE_DIRECT_TASK_CREATED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.task_engine import TaskEngine
 
 logger = get_logger(__name__)
 

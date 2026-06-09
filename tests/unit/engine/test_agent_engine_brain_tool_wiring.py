@@ -8,7 +8,7 @@ factory is resolved through a provider because the brain wires after the
 boot engine is built. No project / no brain factory means no brain tools.
 """
 
-from typing import Any, override
+from typing import override
 
 import pytest
 
@@ -34,7 +34,7 @@ _BRAIN_TOOL_NAMES = ("write_brain_entry", "search_brain")
 
 class _StubTool(BaseTool):
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         del arguments
         return ToolExecutionResult(content="stub")
 

@@ -6,6 +6,7 @@ immediate / finish-tool / checkpoint strategies defined in their own
 sibling modules.
 """
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock
@@ -23,8 +24,6 @@ from synthorg.observability.events.execution import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from synthorg.config.schema import GracefulShutdownConfig
 
 logger = get_logger(__name__)

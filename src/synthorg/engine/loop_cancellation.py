@@ -7,9 +7,8 @@ safe boundary so a task cancelled externally halts its running agent cleanly
 instead of running an obsolete task to completion.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_helpers import build_result
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
@@ -22,9 +21,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_TASK_CANCELLED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.context import AgentContext
 
 logger = get_logger(__name__)
 

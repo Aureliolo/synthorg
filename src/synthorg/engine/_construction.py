@@ -3,11 +3,11 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.api.state import AppState
 from synthorg.engine.state import EngineStateSlice
 
 if TYPE_CHECKING:
     from synthorg.api.construction_wiring import ConstructionDeps
-    from synthorg.api.state import AppState
 
 
 def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:

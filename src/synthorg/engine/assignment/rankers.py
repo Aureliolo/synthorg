@@ -5,8 +5,13 @@ Each ranker takes the score-descending list produced by
 per the strategy's ranking rule.
 """
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Sequence
+from typing import Final
 
+from synthorg.engine.assignment.models import (
+    AssignmentCandidate,
+    AssignmentRequest,
+)
 from synthorg.engine.assignment.ranker_protocol import RankingResult
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_assignment import (
@@ -16,14 +21,6 @@ from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_COST_OPTIMIZED,
     TASK_ASSIGNMENT_WORKLOAD_BALANCED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.engine.assignment.models import (
-        AssignmentCandidate,
-        AssignmentRequest,
-    )
 
 logger = get_logger(__name__)
 

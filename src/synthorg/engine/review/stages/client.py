@@ -1,7 +1,6 @@
 """Client-delegated review stage."""
 
 import time
-from typing import TYPE_CHECKING
 
 from synthorg.client.models import (
     PoolConstraints,
@@ -11,11 +10,9 @@ from synthorg.client.protocols import (
     ClientInterface,
     ClientPoolStrategy,
 )
+from synthorg.core.task import Task
 from synthorg.engine.review.models import ReviewStageResult, ReviewVerdict
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
 
 logger = get_logger(__name__)
 

@@ -10,15 +10,19 @@ shared collector already threaded into the boot ``AgentEngine`` and
 the coordinator; the spine records the stage but never re-collects.
 """
 
+from collections.abc import Awaitable
 from typing import TYPE_CHECKING, TypeVar
 
 from synthorg.client.models import ClientRequest, TaskRequirement
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.coordination.models import CoordinationContext
+from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.models import SubtaskDefinition
+from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.pipeline.errors import (
     WorkIntakeRejectedError,
     WorkPipelineError,
@@ -34,7 +38,12 @@ from synthorg.engine.pipeline.models import (
     WorkPipelineResult,
 )
 from synthorg.engine.pipeline.narrator_port import RunNarrator
+from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
+from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.stakes import build_stakes_assessor
+from synthorg.engine.stakes.protocol import StakesAssessor
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_NARRATIVE_GENERATION_FAILED,
@@ -49,19 +58,9 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_SOLO_AGENT_SELECTED,
 )
 from synthorg.observability.events.stakes_routing import STAKES_ASSESSED
+from synthorg.persistence.project_protocol import ProjectRepository
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
-
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.coordination.service import MultiAgentCoordinator
-    from synthorg.engine.intake.engine import IntakeEngine
-    from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
-    from synthorg.engine.routing.scorer import AgentTaskScorer
-    from synthorg.engine.stakes.protocol import StakesAssessor
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.workers.execution_service import WorkerExecutionService
 
 logger = get_logger(__name__)

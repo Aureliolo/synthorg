@@ -8,7 +8,7 @@ performs field-by-field 3-level resolution.
 from collections.abc import Mapping
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any, ClassVar, Self
+from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -142,7 +142,7 @@ class CeremonyPolicyConfig(BaseModel):
         default=None,
         description="Scheduling strategy type",
     )
-    strategy_config: Mapping[str, Any] | None = Field(
+    strategy_config: Mapping[str, object] | None = Field(
         default=None,
         description="Strategy-specific configuration parameters",
     )
@@ -163,7 +163,7 @@ class CeremonyPolicyConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
+    def _apply_mirrors(cls, data: object) -> object:
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
@@ -186,7 +186,7 @@ class ResolvedCeremonyPolicy(BaseModel):
     strategy: CeremonyStrategyType = Field(
         description="Resolved scheduling strategy type",
     )
-    strategy_config: Mapping[str, Any] = Field(
+    strategy_config: Mapping[str, object] = Field(
         description="Resolved strategy-specific configuration",
     )
     velocity_calculator: VelocityCalcType = Field(
@@ -245,7 +245,9 @@ def resolve_ceremony_policy(
     # Resolve each field: iterate layers from most specific (last) to
     # least specific (first), taking the first non-None value.
     strategy = _resolve_field(layers, "strategy", _DEFAULT_STRATEGY)
-    strategy_config: Mapping[str, Any] = _resolve_field(layers, "strategy_config", {})
+    strategy_config: Mapping[str, object] = _resolve_field(
+        layers, "strategy_config", {}
+    )
     default_vel_calc = STRATEGY_DEFAULT_VELOCITY_CALC[strategy]
     velocity_calculator = _resolve_field(
         layers,

@@ -6,22 +6,21 @@ LLM message and invokes ``provider.complete`` with a pinned
 ``CompletionConfig``. These tests pin the contract.
 """
 
-from typing import cast
+from typing import override
 
 import pytest
 
 from synthorg.client.models import ClientRequest, TaskRequirement
+from synthorg.core.task import Task
 from synthorg.engine.intake.strategies.agent_intake import AgentIntake
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.providers.enums import FinishReason
+from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
-    CompletionResponse,
-    TokenUsage,
-    ToolDefinition,
 )
-from synthorg.providers.protocol import CompletionProvider
+from tests._shared import as_uuid
+from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 
 pytestmark = pytest.mark.unit
 
@@ -29,51 +28,57 @@ pytestmark = pytest.mark.unit
 # -- Fakes ----------------------------------------------------------------
 
 
-class _FakeTask:
-    def __init__(self, *, task_id: str) -> None:
-        self.id = task_id
+class _FakeTaskEngine(TaskEngine):
+    """Minimal ``TaskEngine`` subclass recording ``create_task`` calls.
 
-
-class _FakeTaskEngine:
-    """Minimal stand-in for ``TaskEngine``; records ``create_task`` calls."""
+    Subclasses the real ``TaskEngine`` (bypassing its ``__init__``) so the
+    runtime-resolved ``task_engine: TaskEngine`` boundary accepts it.
+    """
 
     def __init__(self, *, next_id: str = "task-1") -> None:
         self.next_id = next_id
-        self.captured_data: object = None
+        self.captured_data: CreateTaskData | None = None
 
-    async def create_task(self, data: object, *, requested_by: str) -> _FakeTask:
+    @override
+    async def create_task(self, data: CreateTaskData, *, requested_by: str) -> Task:
         del requested_by
         self.captured_data = data
-        return _FakeTask(task_id=self.next_id)
+        return Task(
+            id=as_uuid(self.next_id),
+            title=data.title,
+            description=data.description,
+            type=data.type,
+            priority=data.priority,
+            project=data.project,
+            created_by=data.created_by,
+            dependencies=data.dependencies,
+            estimated_complexity=data.estimated_complexity,
+            budget_limit=data.budget_limit,
+        )
 
 
-class _StubProvider:
-    """Captures messages + config so tests can assert the call shape."""
+class _StubProvider(ScriptedProvider):
+    """Scripted provider exposing the captured call shape for assertions.
+
+    Subclasses the canonical ``ScriptedProvider`` (a conformant
+    ``CompletionProvider``) and surfaces its recorded calls via the
+    ``captured_*`` accessors the triage tests assert against.
+    """
 
     def __init__(self, *, content: str) -> None:
-        self._content = content
-        self.captured_messages: list[ChatMessage] | None = None
-        self.captured_model: str | None = None
-        self.captured_config: CompletionConfig | None = None
+        super().__init__(response=make_text_response(content))
 
-    async def complete(
-        self,
-        messages: list[ChatMessage],
-        model: str,
-        *,
-        tools: list[ToolDefinition] | None = None,
-        config: CompletionConfig | None = None,
-    ) -> CompletionResponse:
-        del tools
-        self.captured_messages = messages
-        self.captured_model = model
-        self.captured_config = config
-        return CompletionResponse(
-            content=self._content,
-            finish_reason=FinishReason.STOP,
-            usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.0),
-            model=model,
-        )
+    @property
+    def captured_messages(self) -> list[ChatMessage] | None:
+        return self.received_messages[-1] if self.received_messages else None
+
+    @property
+    def captured_model(self) -> str | None:
+        return self.complete_calls[-1][1] if self.complete_calls else None
+
+    @property
+    def captured_config(self) -> CompletionConfig | None:
+        return self.complete_calls[-1][3] if self.complete_calls else None
 
 
 def _request(
@@ -99,8 +104,8 @@ def _intake(
 ) -> AgentIntake:
     fake_task_engine = task_engine or _FakeTaskEngine()
     kwargs: dict[str, object] = {
-        "task_engine": cast(TaskEngine, fake_task_engine),
-        "provider": cast(CompletionProvider, provider),
+        "task_engine": fake_task_engine,
+        "provider": provider,
         "model": "test-small-001",
     }
     if temperature is not None:
@@ -124,7 +129,7 @@ class TestAgentIntakeBaseline:
         intake = _intake(provider, task_engine=task_engine)
         result = await intake.process(_request())
         assert result.accepted is True
-        assert result.task_id == "task-accept-1"
+        assert result.task_id == str(as_uuid("task-accept-1"))
         # Assert the side effect: TaskEngine.create_task was actually
         # invoked. Guards against a regression where process() stops
         # calling create_task but still synthesizes an id.
@@ -251,8 +256,8 @@ class TestSec1AgentIntakeFences:
         custom_persona = "You are a minimalist triage agent. Return JSON only."
         assert "untrusted input from external sources" not in custom_persona
         intake = AgentIntake(
-            task_engine=cast(TaskEngine, _FakeTaskEngine()),
-            provider=cast(CompletionProvider, provider),
+            task_engine=_FakeTaskEngine(),
+            provider=provider,
             model="test-small-001",
             persona=custom_persona,
         )
@@ -281,8 +286,8 @@ class TestSec1AgentIntakeFences:
         custom_persona = f"You are a minimalist triage agent.\n\n{directive}"
         provider = _StubProvider(content='{"accepted": true}')
         intake = AgentIntake(
-            task_engine=cast(TaskEngine, _FakeTaskEngine()),
-            provider=cast(CompletionProvider, provider),
+            task_engine=_FakeTaskEngine(),
+            provider=provider,
             model="test-small-001",
             persona=custom_persona,
         )

@@ -6,7 +6,7 @@ estimates tokens, and progressively trims optional sections to fit a
 token budget. Composes the result via :mod:`synthorg.engine.prompt_result`.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.budget.currency import (
     DEFAULT_CURRENCY,
@@ -14,6 +14,10 @@ from synthorg.budget.currency import (
     format_cost,
     get_currency_symbol,
 )
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.role import Role
+from synthorg.core.task import Task
+from synthorg.core.tool_disclosure import ToolL1Metadata
 from synthorg.engine._prompt_helpers import SECTION_COMPANY as _SECTION_COMPANY
 from synthorg.engine._prompt_helpers import (
     SECTION_ORG_POLICIES as _SECTION_ORG_POLICIES,
@@ -29,16 +33,12 @@ from synthorg.engine.prompt_validation import (
     log_trim_results,
     render_template,
 )
+from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.token_estimation import PromptTokenEstimator
+from synthorg.providers.models import ToolDefinition
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
     from synthorg.core.company import Company
-    from synthorg.core.role import Role
-    from synthorg.core.task import Task
-    from synthorg.core.tool_disclosure import ToolL1Metadata
-    from synthorg.engine.strategy.models import StrategyConfig
-    from synthorg.providers.models import ToolDefinition
     from synthorg.security.autonomy.models import EffectiveAutonomy
 
 
@@ -58,7 +58,7 @@ def build_template_context(  # noqa: PLR0913
     trimming_enabled: bool = True,
     estimator: PromptTokenEstimator | None = None,
     strategy_config: StrategyConfig | None = None,
-) -> tuple[dict[str, Any], PersonalityTrimInfo | None]:
+) -> tuple[dict[str, object], PersonalityTrimInfo | None]:
     """Assemble the full Jinja2 template context from agent and optional inputs.
 
     Args:

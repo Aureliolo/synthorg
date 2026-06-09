@@ -11,10 +11,9 @@ The shared contract is narrow on purpose: expose the originating
 that returns the terminal pipeline result.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.engine.pipeline.models import WorkPipelineResult, WorkSource
+from synthorg.engine.pipeline.models import WorkPipelineResult, WorkSource
 
 
 @runtime_checkable

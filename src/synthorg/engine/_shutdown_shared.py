@@ -8,7 +8,7 @@ and ``CheckpointAndStopStrategy``.
 """
 
 import asyncio
-from typing import Any, Final
+from typing import Final
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
@@ -22,7 +22,7 @@ _DEFAULT_GRACE_SECONDS: Final[float] = 30.0
 
 
 def _count_cooperative_exits(
-    done: set[asyncio.Task[Any]],
+    done: set[asyncio.Task[object]],
 ) -> tuple[int, int]:
     """Count tasks that exited cooperatively and those that errored.
 

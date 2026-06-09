@@ -5,7 +5,7 @@ Wraps the existing pure-function detectors from ``detectors.py`` as
 and dispatched by the pluggable classification pipeline.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.budget.coordination_config import (
     DetectionScope,
@@ -17,10 +17,8 @@ from synthorg.engine.classification.detectors import (
     detect_logical_contradictions,
     detect_numerical_drift,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.classification.models import ErrorFinding
-    from synthorg.engine.classification.protocol import DetectionContext
+from synthorg.engine.classification.models import ErrorFinding
+from synthorg.engine.classification.protocol import DetectionContext
 
 _SAME_TASK_ONLY: frozenset[DetectionScope] = frozenset(
     {DetectionScope.SAME_TASK},

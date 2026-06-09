@@ -3,10 +3,11 @@
 import asyncio
 import contextlib
 from types import MappingProxyType
-from typing import Any
+from typing import cast
 
 import pytest
 
+from synthorg.communication.message import Message
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import (
     TaskEngineNotRunningError,
@@ -306,7 +307,7 @@ class TestSnapshotPublishingTaskId:
         await message_bus.stop()
 
         assert len(message_bus.published) >= 1
-        msg: Any = message_bus.published[0]
+        msg = cast("Message", message_bus.published[0])
         event = TaskStateChanged.model_validate_json(msg.text)
         assert event.task_id == str(task.id)
 
@@ -333,7 +334,7 @@ class TestSnapshotPublishingTaskId:
 
         # Second message is the delete event
         assert len(message_bus.published) >= 2
-        msg: Any = message_bus.published[1]
+        msg = cast("Message", message_bus.published[1])
         event = TaskStateChanged.model_validate_json(msg.text)
         assert event.task_id == str(task.id)
         assert event.task is None
@@ -673,7 +674,7 @@ class TestSnapshotNewStatusNone:
 
         # The delete event should have new_status=None
         assert len(message_bus.published) >= 2
-        delete_msg: Any = message_bus.published[1]
+        delete_msg = cast("Message", message_bus.published[1])
         event = TaskStateChanged.model_validate_json(delete_msg.text)
         assert event.new_status is None
         assert event.task is None

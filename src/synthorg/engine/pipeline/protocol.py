@@ -5,12 +5,10 @@ The single coherent path every entry adapter feeds: a typed
 :class:`WorkItem` in, a :class:`WorkPipelineResult` out.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
+from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
 from synthorg.engine.pipeline.narrator_port import RunNarrator
-
-if TYPE_CHECKING:
-    from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
 
 
 @runtime_checkable

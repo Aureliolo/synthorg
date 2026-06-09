@@ -1,7 +1,5 @@
 """Tests for CeremonyEvalContext dataclass."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
@@ -101,7 +99,7 @@ class TestCeremonyEvalContext:
 
     @pytest.mark.unit
     def test_equality(self) -> None:
-        kwargs: dict[str, Any] = {
+        kwargs: dict[str, object] = {
             "completions_since_last_trigger": 1,
             "total_completions_this_sprint": 5,
             "total_tasks_in_sprint": 10,
@@ -114,12 +112,12 @@ class TestCeremonyEvalContext:
             "story_points_completed": 25.0,
             "story_points_committed": 50.0,
         }
-        a = CeremonyEvalContext(**kwargs)
-        b = CeremonyEvalContext(**kwargs)
+        a = CeremonyEvalContext(**kwargs)  # type: ignore[arg-type]
+        b = CeremonyEvalContext(**kwargs)  # type: ignore[arg-type]
         assert a == b
 
 
-_VALID_KWARGS: dict[str, Any] = {
+_VALID_KWARGS: dict[str, object] = {
     "completions_since_last_trigger": 0,
     "total_completions_this_sprint": 0,
     "total_tasks_in_sprint": 10,
@@ -157,7 +155,7 @@ class TestCeremonyEvalContextValidation:
     ) -> None:
         kwargs = {**_VALID_KWARGS, field: value}
         with pytest.raises(ValueError, match="must be"):
-            CeremonyEvalContext(**kwargs)
+            CeremonyEvalContext(**kwargs)  # type: ignore[arg-type]
 
     @pytest.mark.unit
     @pytest.mark.parametrize(
@@ -176,7 +174,7 @@ class TestCeremonyEvalContextValidation:
     ) -> None:
         kwargs = {**_VALID_KWARGS, field: value}
         with pytest.raises(ValueError, match="must be"):
-            CeremonyEvalContext(**kwargs)
+            CeremonyEvalContext(**kwargs)  # type: ignore[arg-type]
 
     @pytest.mark.unit
     @pytest.mark.parametrize(
@@ -193,7 +191,7 @@ class TestCeremonyEvalContextValidation:
     def test_nan_rejected(self, field: str) -> None:
         kwargs = {**_VALID_KWARGS, field: float("nan")}
         with pytest.raises(ValueError, match="finite"):
-            CeremonyEvalContext(**kwargs)
+            CeremonyEvalContext(**kwargs)  # type: ignore[arg-type]
 
     @pytest.mark.unit
     @pytest.mark.parametrize(
@@ -208,4 +206,4 @@ class TestCeremonyEvalContextValidation:
     def test_inf_rejected(self, field: str) -> None:
         kwargs = {**_VALID_KWARGS, field: float("inf")}
         with pytest.raises(ValueError, match="finite"):
-            CeremonyEvalContext(**kwargs)
+            CeremonyEvalContext(**kwargs)  # type: ignore[arg-type]

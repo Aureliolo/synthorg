@@ -1,7 +1,7 @@
 """Unit tests for AgentEngine post-execution transitions, timeout, and metrics."""
 
 import asyncio
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -315,7 +315,7 @@ class TestAgentEngineTimeout:
     ) -> None:
         """Slow provider triggers timeout → ERROR result."""
 
-        async def slow_execute(**kwargs: Any) -> ExecutionResult:
+        async def slow_execute(**kwargs: object) -> ExecutionResult:
             await asyncio.Event().wait()  # blocks until cancelled by timeout
             msg = "Should not reach here"
             raise AssertionError(msg)
@@ -429,7 +429,7 @@ class TestAgentEngineTimeoutEdgeCases:
     ) -> None:
         """TimeoutError from inside the loop is treated as a fatal error."""
 
-        async def raises_timeout(**kwargs: Any) -> ExecutionResult:
+        async def raises_timeout(**kwargs: object) -> ExecutionResult:
             msg = "inner timeout"
             raise TimeoutError(msg)
 
@@ -457,7 +457,7 @@ class TestAgentEngineTimeoutEdgeCases:
     ) -> None:
         """Timeout result has no turns, so no costs are recorded."""
 
-        async def slow_execute(**kwargs: Any) -> ExecutionResult:
+        async def slow_execute(**kwargs: object) -> ExecutionResult:
             await asyncio.Event().wait()  # blocks until cancelled by timeout
             msg = "Should not reach here"
             raise AssertionError(msg)
@@ -486,7 +486,7 @@ class TestAgentEngineTimeoutEdgeCases:
         )
 
         assert result.termination_reason == TerminationReason.ERROR
-        cast(Any, mock_tracker.record).assert_not_called()
+        cast("AsyncMock", mock_tracker.record).assert_not_called()
 
 
 @pytest.mark.unit

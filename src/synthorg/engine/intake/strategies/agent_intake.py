@@ -1,11 +1,12 @@
 """Agent-driven intake strategy using a completion provider."""
 
 import json
-from typing import TYPE_CHECKING, Any, Final
+from typing import Final
 
 from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.tracker import CostTracker
 from synthorg.client.models import (
     ClientRequest,
     TaskRequirement,
@@ -17,6 +18,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.review_pipeline import (
@@ -27,11 +29,7 @@ from synthorg.observability.events.review_pipeline import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_TOKENS: Final[int] = 512
@@ -233,7 +231,7 @@ class AgentIntake:
         ]
 
     @staticmethod
-    def _parse_decision(content: str) -> dict[str, Any] | None:
+    def _parse_decision(content: str) -> dict[str, object] | None:
         stripped = content.strip()
         if not stripped:
             return None
@@ -255,7 +253,7 @@ class AgentIntake:
     @staticmethod
     def _refine_requirement(
         original: TaskRequirement,
-        decision: dict[str, Any],
+        decision: dict[str, object],
     ) -> TaskRequirement:
         refined_title = decision.get("refined_title")
         refined_description = decision.get("refined_description")

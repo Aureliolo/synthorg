@@ -9,7 +9,7 @@ import re
 from importlib import resources
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import yaml
 from pydantic import ValidationError as PydanticValidationError
@@ -122,7 +122,7 @@ def _parse_pack_yaml(
         raise StrategyPackValidationError(msg)
 
     try:
-        principles_raw: list[dict[str, Any]] = data.get("principles", [])
+        principles_raw = data.get("principles", [])
         principles = tuple(ConstitutionalPrinciple(**p) for p in principles_raw)
         return PrinciplePack(
             name=data.get("name", "unknown"),
@@ -297,7 +297,7 @@ def load_and_merge(
     existing_ids = {p.id for p in principles}
     for i, raw in enumerate(config.custom):
         try:
-            principle = ConstitutionalPrinciple(**raw)
+            principle = ConstitutionalPrinciple.model_validate(raw)
         except (TypeError, PydanticValidationError) as exc:
             msg = (
                 f"Invalid custom principle at index {i}: {safe_error_description(exc)}"

@@ -8,17 +8,12 @@ scope flow is preserved by folding any reviewer ``scoping_notes`` from
 the request metadata into the work item's intent body.
 """
 
-from typing import TYPE_CHECKING
-
-from synthorg.engine.pipeline.models import WorkItem, WorkSource
+from synthorg.client.models import ClientRequest
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult, WorkSource
+from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.observability import get_logger
 from synthorg.observability.events.review_pipeline import INTAKE_REQUEST_RECEIVED
-
-if TYPE_CHECKING:
-    from synthorg.client.models import ClientRequest
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.pipeline.models import WorkPipelineResult
-    from synthorg.engine.pipeline.protocol import WorkPipeline
 
 logger = get_logger(__name__)
 

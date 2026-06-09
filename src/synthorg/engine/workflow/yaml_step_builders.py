@@ -17,7 +17,7 @@ import copy
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Final, cast
 
 from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
 
@@ -54,8 +54,8 @@ class StepBuildContext:
             tuples for branch enumeration.
     """
 
-    step: dict[str, Any]
-    config: Mapping[str, Any]
+    step: dict[str, object]
+    config: Mapping[str, object]
     outgoing_edges: Sequence[tuple[str, WorkflowEdgeType]]
 
     def __post_init__(self) -> None:
@@ -79,14 +79,14 @@ class StepBuildContext:
 type StepBuilder = Callable[[StepBuildContext], None]
 
 
-def _assignment_fields(config: Mapping[str, Any]) -> dict[str, Any]:
+def _assignment_fields(config: Mapping[str, object]) -> dict[str, object]:
     """Return remapped assignment fields, preserving original value types.
 
     Skips keys whose value is ``None`` or a blank/whitespace-only string so
     callers can rely on the result being safe to splat into the YAML output
     without surfacing ``"None"`` placeholders or empty fields.
     """
-    out: dict[str, Any] = {}
+    out: dict[str, object] = {}
     for key in _ASSIGNMENT_KEYS:
         if key not in config:
             continue
@@ -143,9 +143,13 @@ def _build_subworkflow(ctx: StepBuildContext) -> None:
     if "version" in ctx.config:
         ctx.step["version"] = ctx.config["version"]
     if ctx.config.get("input_bindings"):
-        ctx.step["input_bindings"] = dict(ctx.config["input_bindings"])
+        ctx.step["input_bindings"] = dict(
+            cast("Mapping[str, object]", ctx.config["input_bindings"]),
+        )
     if ctx.config.get("output_bindings"):
-        ctx.step["output_bindings"] = dict(ctx.config["output_bindings"])
+        ctx.step["output_bindings"] = dict(
+            cast("Mapping[str, object]", ctx.config["output_bindings"]),
+        )
 
 
 def _build_verification(ctx: StepBuildContext) -> None:

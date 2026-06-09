@@ -4,12 +4,14 @@ Extracts common config resolution, validation, and trigger evaluation
 logic used by multiple strategy implementations.
 """
 
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
+from typing import cast
 
 from synthorg.communication.meeting.frequency import (
     MeetingFrequency,
     frequency_to_seconds,
 )
+from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
     TRIGGER_EVERY_N,
     TRIGGER_SPRINT_END,
@@ -17,17 +19,12 @@ from synthorg.engine.workflow.ceremony_policy import (
     TRIGGER_SPRINT_PERCENTAGE,
     TRIGGER_SPRINT_START,
 )
+from synthorg.engine.workflow.sprint_config import (
+    SprintCeremonyConfig,
+    SprintConfig,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import SPRINT_CEREMONY_SKIPPED
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
-    from synthorg.engine.workflow.sprint_config import (
-        SprintCeremonyConfig,
-        SprintConfig,
-    )
 
 logger = get_logger(__name__)
 
@@ -78,7 +75,7 @@ STICKY_TRIGGERS: frozenset[str] = frozenset(
 
 def get_ceremony_config(
     ceremony: SprintCeremonyConfig,
-) -> Mapping[str, Any]:
+) -> Mapping[str, object]:
     """Extract strategy config from a ceremony's policy override.
 
     Returns:
@@ -111,7 +108,7 @@ def resolve_interval(
     freq_str = config.get(KEY_FREQUENCY)
     if freq_str is not None:
         try:
-            freq = MeetingFrequency(freq_str)
+            freq = MeetingFrequency(cast("str", freq_str))
         except ValueError:
             logger.warning(
                 SPRINT_CEREMONY_SKIPPED,
@@ -164,7 +161,7 @@ def resolve_duration_days(
 
 def evaluate_task_trigger(
     trigger: str,
-    config: Mapping[str, Any],
+    config: Mapping[str, object],
     context: CeremonyEvalContext,
 ) -> bool:
     """Evaluate a single task-driven trigger condition.

@@ -1,9 +1,11 @@
+# module-kind: service
 """Post-execution pipeline mixin for :class:`AgentEngine`."""
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.coordination_collector import CollectionInputs
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.checkpoint.resume import (
@@ -11,12 +13,21 @@ from synthorg.engine.checkpoint.resume import (
     make_loop_with_callback,
 )
 from synthorg.engine.classification.pipeline import classify_execution_errors
+from synthorg.engine.context import AgentContext
 from synthorg.engine.cost_recording import (
     record_execution_costs,
     resolve_tracker_currency,
 )
-from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
-from synthorg.engine.recovery import RecoveryResult
+from synthorg.engine.loop_protocol import (
+    BudgetChecker,
+    ExecutionLoop,
+    ExecutionResult,
+    ShutdownChecker,
+    TaskCancellationChecker,
+    TerminationReason,
+)
+from synthorg.engine.prompt import SystemPrompt
+from synthorg.engine.recovery import RecoveryResult, RecoveryStrategy
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.task_sync import (
@@ -30,20 +41,30 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_RECOVERY_DIAGNOSIS,
 )
+from synthorg.providers.models import CompletionConfig
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.tools.protocol import ToolInvokerProtocol
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.context import AgentContext
-    from synthorg.engine.loop_protocol import (
-        BudgetChecker,
-        ExecutionLoop,
-        TaskCancellationChecker,
+    from collections.abc import Callable
+
+    from synthorg.approval.protocol import ApprovalStoreProtocol
+    from synthorg.budget.coordination_collector import CoordinationMetricsCollector
+    from synthorg.budget.coordination_config import ErrorTaxonomyConfig
+    from synthorg.budget.tracker import CostTracker
+    from synthorg.core.clock import Clock
+    from synthorg.engine._agent_engine_callables import ApplyRecovery
+    from synthorg.engine.checkpoint.models import CheckpointConfig
+    from synthorg.engine.task_engine import TaskEngine
+    from synthorg.memory.procedural.capture.protocol import CaptureStrategy
+    from synthorg.memory.procedural.models import ProceduralMemoryConfig
+    from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
+    from synthorg.memory.protocol import MemoryBackend
+    from synthorg.persistence.checkpoint_protocol import (
+        CheckpointRepository,
+        HeartbeatRepository,
     )
-    from synthorg.engine.prompt import SystemPrompt
-    from synthorg.providers.models import CompletionConfig
-    from synthorg.providers.protocol import CompletionProvider
     from synthorg.security.autonomy.models import EffectiveAutonomy
-    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 
@@ -60,28 +81,28 @@ _CANCEL_GRACE_SECONDS: Final[float] = 2.0
 class AgentEnginePostExecMixin:
     """Mixin providing post-execution, timeout wrapper, and result builder."""
 
-    _cost_tracker: Any
-    _task_engine: Any
-    _approval_store: Any
-    _apply_recovery: Any
-    _recovery_strategy: Any
-    _checkpoint_repo: Any
-    _heartbeat_repo: Any
-    _error_taxonomy_config: Any
-    _checkpoint_config: Any
-    _coordination_metrics_collector: Any
-    _distillation_capture_enabled: Any
-    _log_completion: Any
-    _memory_backend: Any
-    _procedural_memory_config: Any
-    _procedural_proposer: Any
-    _capture_strategy: Any
-    _provider: Any
-    _shutdown_checker: Any
+    _cost_tracker: CostTracker | None
+    _task_engine: TaskEngine | None
+    _approval_store: ApprovalStoreProtocol | None
+    _apply_recovery: ApplyRecovery
+    _recovery_strategy: RecoveryStrategy | None
+    _checkpoint_repo: CheckpointRepository | None
+    _heartbeat_repo: HeartbeatRepository | None
+    _error_taxonomy_config: ErrorTaxonomyConfig | None
+    _checkpoint_config: CheckpointConfig
+    _coordination_metrics_collector: CoordinationMetricsCollector | None
+    _distillation_capture_enabled: bool
+    _log_completion: Callable[[AgentRunResult, str, str, float], None]
+    _memory_backend: MemoryBackend | None
+    _procedural_memory_config: ProceduralMemoryConfig | None
+    _procedural_proposer: ProceduralMemoryProposer | None
+    _capture_strategy: CaptureStrategy | None
+    _provider: CompletionProvider
+    _shutdown_checker: ShutdownChecker | None
     # Injected by ``AgentEngine.__init__``; declared on the mixin so
     # type checkers see the attribute when the helper accesses it
     # below. The concrete class owns the assignment.
-    _clock: Any
+    _clock: Clock
 
     async def _post_execution_pipeline(  # noqa: PLR0913
         self,
@@ -253,8 +274,8 @@ class AgentEnginePostExecMixin:
         *,
         agent_id: str,
         task_id: str,
-        from_status: Any,
-        to_status: Any,
+        from_status: TaskStatus,
+        to_status: TaskStatus,
     ) -> None:
         """Log the post-recovery task-status transition + sync to task engine."""
         logger.info(

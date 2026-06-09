@@ -4,21 +4,17 @@ Takes a pre-built ``DecompositionPlan`` at construction and returns it
 from ``decompose()``, validating against context limits.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.task import Task
+from synthorg.engine.decomposition.models import (
+    DecompositionContext,
+    DecompositionPlan,
+)
 from synthorg.engine.errors import DecompositionDepthError, DecompositionError
 from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_VALIDATION_ERROR,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.engine.decomposition.models import (
-        DecompositionContext,
-        DecompositionPlan,
-    )
 
 logger = get_logger(__name__)
 

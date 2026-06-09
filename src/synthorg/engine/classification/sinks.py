@@ -7,14 +7,17 @@ results into the performance tracker and notification dispatcher.
 import asyncio
 import copy
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.budget.coordination_config import ErrorCategory
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.classification.models import ErrorSeverity
+from synthorg.engine.classification.models import ClassificationResult, ErrorSeverity
 from synthorg.hr.performance.models import CollaborationMetricRecord
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import (
     Notification,
     NotificationCategory,
@@ -25,13 +28,6 @@ from synthorg.observability.events.classification import (
     CLASSIFICATION_SINK_ERROR,
     NOTIFICATION_RATE_LIMITED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from synthorg.engine.classification.models import ClassificationResult
-    from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.notifications.dispatcher import NotificationDispatcher
 
 logger = get_logger(__name__)
 _DEFAULT_WINDOW_SECONDS: Final[float] = 60.0

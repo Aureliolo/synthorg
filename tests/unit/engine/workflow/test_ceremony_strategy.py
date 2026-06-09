@@ -1,7 +1,6 @@
 """Tests for CeremonySchedulingStrategy protocol conformance."""
 
 from collections.abc import Mapping
-from typing import Any
 
 import pytest
 
@@ -81,7 +80,7 @@ class _StubStrategy:
         self,
         sprint: Sprint,
         event_name: str,
-        payload: Mapping[str, Any],
+        payload: Mapping[str, object],
     ) -> None:
         pass
 
@@ -94,7 +93,7 @@ class _StubStrategy:
 
     def validate_strategy_config(
         self,
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
     ) -> None:
         pass
 

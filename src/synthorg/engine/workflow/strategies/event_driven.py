@@ -17,10 +17,15 @@ subscriptions.
   auto-transition.
 """
 
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
 
+from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyStrategyType,
+)
+from synthorg.engine.workflow.sprint_config import (
+    SprintCeremonyConfig,
+    SprintConfig,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.strategies._helpers import get_ceremony_config
@@ -34,15 +39,6 @@ from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_TRIGGERED,
     SPRINT_STRATEGY_CONFIG_INVALID,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
-    from synthorg.engine.workflow.sprint_config import (
-        SprintCeremonyConfig,
-        SprintConfig,
-    )
 
 logger = get_logger(__name__)
 
@@ -333,7 +329,7 @@ class EventDrivenStrategy:
         self,
         sprint: Sprint,  # noqa: ARG002
         event_name: str,
-        payload: Mapping[str, Any],  # noqa: ARG002
+        payload: Mapping[str, object],  # noqa: ARG002
     ) -> None:
         """Increment the counter for the named external event.
 
@@ -373,7 +369,7 @@ class EventDrivenStrategy:
 
     def validate_strategy_config(
         self,
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
     ) -> None:
         """Validate event-driven strategy config.
 
@@ -401,7 +397,7 @@ class EventDrivenStrategy:
 
     @staticmethod
     def _validate_string_key(
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
         key: str,
     ) -> None:
         """Validate that *key* is a non-empty string if present.
@@ -429,7 +425,7 @@ class EventDrivenStrategy:
 
     @staticmethod
     def _validate_debounce_keys(
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
     ) -> None:
         """Validate debounce and debounce_default if present.
 
@@ -463,7 +459,7 @@ class EventDrivenStrategy:
 
     def _resolve_debounce(
         self,
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
         ceremony_name: str,
     ) -> int:
         """Resolve debounce value with type validation.

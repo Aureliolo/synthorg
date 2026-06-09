@@ -6,7 +6,8 @@ strategy-specific velocity implementations must satisfy.
 See ``docs/design/ceremony-scheduling.md`` for the full design.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from collections.abc import Sequence
+from typing import Protocol, runtime_checkable
 
 from synthorg.engine.workflow.sprint_velocity import (
     VelocityRecord,
@@ -15,9 +16,6 @@ from synthorg.engine.workflow.velocity_types import (
     VelocityCalcType,
     VelocityMetrics,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 
 @runtime_checkable

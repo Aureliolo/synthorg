@@ -11,7 +11,7 @@ approval decisions flow through the lifecycle.
 
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any, Self
+from typing import Self
 
 from pydantic import (
     AwareDatetime,
@@ -108,7 +108,7 @@ class DecisionRecord(BaseModel):
     )
     recorded_at: AwareDatetime = Field(description="When the decision was recorded")
     version: int = Field(ge=1, description="Monotonic version per task")
-    metadata: MappingProxyType[str, Any] = Field(
+    metadata: MappingProxyType[str, object] = Field(
         default_factory=lambda: MappingProxyType({}),
         description="Forward-compatible metadata (read-only view)",
     )

@@ -4,17 +4,13 @@ Converts ``SprintCeremonyConfig`` instances into ``MeetingTypeConfig``
 instances that the ``MeetingScheduler`` can execute.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.communication.meeting.config import (
     MeetingProtocolConfig,
     MeetingTypeConfig,
 )
+from synthorg.engine.workflow.sprint_config import SprintCeremonyConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import SPRINT_CEREMONY_BRIDGE_CREATED
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.sprint_config import SprintCeremonyConfig
 
 logger = get_logger(__name__)
 

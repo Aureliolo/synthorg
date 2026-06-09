@@ -2,8 +2,8 @@
 
 import time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
+from synthorg.core.task import Task
 from synthorg.engine.review.models import (
     PipelineResult,
     ReviewStageResult,
@@ -16,9 +16,6 @@ from synthorg.observability.events.review_pipeline import (
     REVIEW_PIPELINE_STAGE_COMPLETED,
     REVIEW_PIPELINE_STARTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
 
 logger = get_logger(__name__)
 

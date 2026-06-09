@@ -4,17 +4,13 @@ Proxy overhead metrics for an agent run, computed from
 ``AgentRunResult`` data per the Operations design page.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.quality.models import AccuracyEffortRatio
+from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import EXECUTION_METRICS_UNEXPECTED_TYPE
-
-if TYPE_CHECKING:
-    from synthorg.engine.run_result import AgentRunResult
 
 logger = get_logger(__name__)
 

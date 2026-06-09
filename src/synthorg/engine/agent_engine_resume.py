@@ -7,13 +7,17 @@ decision injected, so the agent picks the original work back up
 exactly where it left off (design D21 / Park-Resume).
 """
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
+from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
-from synthorg.engine.prompt import build_system_prompt
+from synthorg.engine.prompt import SystemPrompt, build_system_prompt
+from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import get_logger
 from synthorg.observability.correlation import correlation_scope
 from synthorg.observability.events.approval_gate import (
@@ -23,15 +27,19 @@ from synthorg.observability.events.approval_gate import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
+from synthorg.tools.protocol import ToolInvokerProtocol
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.context import AgentContext
-    from synthorg.engine.prompt import SystemPrompt
-    from synthorg.engine.run_result import AgentRunResult
+    from synthorg.budget.enforcer import BudgetEnforcer
+    from synthorg.core.clock import Clock
+    from synthorg.engine._agent_engine_callables import (
+        Execute,
+        HandleBudgetError,
+        HandleFatalError,
+        MakeToolInvoker,
+    )
+    from synthorg.providers.protocol import CompletionProvider
     from synthorg.security.autonomy.models import EffectiveAutonomy
-    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 
@@ -54,13 +62,13 @@ class AgentEngineResumeMixin:
     ``tests/unit/engine/test_loop_helpers_approval.py``.
     """
 
-    _clock: Any
-    _provider: Any
-    _budget_enforcer: Any
-    _make_tool_invoker: Any
-    _execute: Any
-    _handle_fatal_error: Any
-    _handle_budget_error: Any
+    _clock: Clock
+    _provider: CompletionProvider
+    _budget_enforcer: BudgetEnforcer | None
+    _make_tool_invoker: MakeToolInvoker
+    _execute: Execute
+    _handle_fatal_error: HandleFatalError
+    _handle_budget_error: HandleBudgetError
 
     async def resume_parked_run(
         self,
@@ -250,20 +258,17 @@ class AgentEngineResumeMixin:
             )
         except Exception as exc:
             reraise_critical(exc)
-            return cast(
-                "AgentRunResult",
-                await self._handle_fatal_error(
-                    exc=exc,
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    duration_seconds=self._clock.monotonic() - start,
-                    ctx=ctx,
-                    system_prompt=system_prompt,
-                    effective_autonomy=effective_autonomy,
-                    provider=self._provider,
-                ),
+            return await self._handle_fatal_error(
+                exc=exc,
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                duration_seconds=self._clock.monotonic() - start,
+                ctx=ctx,
+                system_prompt=system_prompt,
+                effective_autonomy=effective_autonomy,
+                provider=self._provider,
             )
         logger.info(
             APPROVAL_GATE_RESUME_COMPLETED,
@@ -272,4 +277,4 @@ class AgentEngineResumeMixin:
             task_id=task_id,
             termination_reason=result.termination_reason.value,
         )
-        return cast("AgentRunResult", result)
+        return result

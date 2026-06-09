@@ -11,16 +11,14 @@ assignment strategies: each one filters then scores identically,
 and differs only in how the resulting list is ordered.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.engine.assignment.models import (
-        AssignmentCandidate,
-        AssignmentRequest,
-    )
+from synthorg.engine.assignment.models import (
+    AssignmentCandidate,
+    AssignmentRequest,
+)
 
 
 @dataclass(frozen=True, slots=True)

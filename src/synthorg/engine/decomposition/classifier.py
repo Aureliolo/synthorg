@@ -5,16 +5,14 @@ based on the Engine design page.
 """
 
 import re
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStructure
 from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_STRUCTURE_CLASSIFIED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
 
 logger = get_logger(__name__)
 

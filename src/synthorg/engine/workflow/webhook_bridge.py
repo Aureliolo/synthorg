@@ -8,7 +8,7 @@ sprints.
 import asyncio
 import contextlib
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -37,9 +37,7 @@ from synthorg.observability.events.integrations import (
     WEBHOOK_BRIDGE_STOPPED,
 )
 from synthorg.settings.enums import SettingNamespace
-
-if TYPE_CHECKING:
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -391,6 +389,7 @@ class WebhookEventBridge:
                             _SUBSCRIBER_ID,
                         )
                     except Exception as unsub_exc:
+                        reraise_critical(unsub_exc)
                         logger.warning(
                             WEBHOOK_BRIDGE_STOPPED,
                             subscriber_id=_SUBSCRIBER_ID,

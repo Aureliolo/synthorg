@@ -5,10 +5,8 @@ limits and the ``check_wip_limit`` function for enforcement.
 """
 
 from collections import Counter
-from typing import TYPE_CHECKING, Self
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from collections.abc import Mapping
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 

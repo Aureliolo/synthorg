@@ -5,8 +5,9 @@ across reachability, edges, configs, and subworkflows.
 """
 
 from collections import defaultdict
-from typing import TYPE_CHECKING
 
+from synthorg.engine.workflow.definition import WorkflowDefinition
+from synthorg.engine.workflow.enums import WorkflowEdgeType
 from synthorg.engine.workflow.validate_configs import (
     check_task_configs,
     check_verification_configs,
@@ -35,10 +36,6 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_VALIDATED,
     WORKFLOW_DEF_VALIDATION_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.definition import WorkflowDefinition
-    from synthorg.engine.workflow.enums import WorkflowEdgeType
 
 logger = get_logger(__name__)
 

@@ -6,7 +6,7 @@ acceptance e2e (``test_direct_mcp_e2e``), so they live here to keep the
 two in lockstep (mirrors ``group_chat_fakes`` for the group-chat tests).
 """
 
-from typing import Any, override
+from typing import override
 
 from synthorg.core.types import NotBlankStr
 from synthorg.security.autonomy.enums import ToolCategory
@@ -73,9 +73,9 @@ class QueryTool(BaseTool):
                 "additionalProperties": True,
             },
         )
-        self.calls: list[dict[str, Any]] = []
+        self.calls: list[dict[str, object]] = []
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         self.calls.append(dict(arguments))
         return ToolExecutionResult(content="revenue up 4%", is_error=False)

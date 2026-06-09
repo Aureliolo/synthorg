@@ -4,17 +4,13 @@ Measures raw story points completed per sprint with no time or task
 normalization.  The simplest calculator in the system.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
 
+from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 from synthorg.engine.workflow.velocity_types import (
     VelocityCalcType,
     VelocityMetrics,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 
 _UNIT: str = "pts/sprint"
 

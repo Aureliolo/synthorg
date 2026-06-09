@@ -5,11 +5,9 @@ level of strategic analysis (cost tier).  Pluggable behind the
 :class:`ImpactScorer` protocol.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from typing import Protocol, runtime_checkable
 
 from synthorg.engine.strategy.models import (
     CostTierPreset,

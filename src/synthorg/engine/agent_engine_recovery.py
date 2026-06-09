@@ -1,9 +1,11 @@
 """Recovery and checkpoint-resume mixin for :class:`AgentEngine`."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     deserialize_and_reconcile,
@@ -15,11 +17,16 @@ from synthorg.engine.errors import (
     ProjectNotFoundError,
 )
 from synthorg.engine.loop_protocol import (
+    BudgetChecker,
     ExecutionResult,
     TerminationReason,
     make_budget_checker,
 )
-from synthorg.engine.recovery import RecoveryResult
+from synthorg.engine.recovery import (
+    FailureCategory,
+    RecoveryResult,
+    RecoveryStrategy,
+)
 from synthorg.engine.task_sync import apply_post_execution_transitions
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
@@ -28,14 +35,25 @@ from synthorg.observability.events.execution import (
     EXECUTION_RESUME_FAILED,
     EXECUTION_RESUME_START,
 )
+from synthorg.providers.models import CompletionConfig
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.loop_protocol import BudgetChecker
-    from synthorg.engine.recovery import FailureCategory
-    from synthorg.providers.models import CompletionConfig
-    from synthorg.providers.protocol import CompletionProvider
+    from synthorg.budget.enforcer import BudgetEnforcer
+    from synthorg.budget.tracker import CostTracker
+    from synthorg.engine._agent_engine_callables import (
+        MakeLoopWithCallback,
+        MakeToolInvoker,
+        ResolveLoop,
+        ValidateProject,
+    )
+    from synthorg.engine.loop_protocol import ExecutionLoop, ShutdownChecker
+    from synthorg.engine.task_engine import TaskEngine
+    from synthorg.persistence.checkpoint_protocol import (
+        CheckpointRepository,
+        HeartbeatRepository,
+    )
+    from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
@@ -44,20 +62,20 @@ logger = get_logger(__name__)
 class AgentEngineRecoveryMixin:
     """Mixin providing recovery and checkpoint-resume helpers."""
 
-    _recovery_strategy: Any
-    _project_repo: Any
-    _validate_project: Any
-    _budget_enforcer: Any
-    _loop: Any
-    _resolve_loop: Any
-    _make_loop_with_callback: Any
-    _provider: Any
-    _make_tool_invoker: Any
-    _shutdown_checker: Any
-    _cost_tracker: Any
-    _task_engine: Any
-    _checkpoint_repo: Any
-    _heartbeat_repo: Any
+    _recovery_strategy: RecoveryStrategy | None
+    _project_repo: ProjectRepository | None
+    _validate_project: ValidateProject
+    _budget_enforcer: BudgetEnforcer | None
+    _loop: ExecutionLoop
+    _resolve_loop: ResolveLoop
+    _make_loop_with_callback: MakeLoopWithCallback
+    _provider: CompletionProvider
+    _make_tool_invoker: MakeToolInvoker
+    _shutdown_checker: ShutdownChecker | None
+    _cost_tracker: CostTracker | None
+    _task_engine: TaskEngine | None
+    _checkpoint_repo: CheckpointRepository | None
+    _heartbeat_repo: HeartbeatRepository | None
 
     async def _apply_recovery(  # noqa: PLR0913
         self,

@@ -11,12 +11,19 @@ declared they support.
 
 import asyncio
 import hashlib
-from typing import TYPE_CHECKING
 
+from synthorg.budget.coordination_config import (
+    DetectionScope,
+    ErrorCategory,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.classification.models import (
     ErrorFinding,
     ErrorSeverity,
+)
+from synthorg.engine.classification.protocol import (
+    DetectionContext,
+    Detector,
 )
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.classification import (
@@ -26,16 +33,6 @@ from synthorg.observability.events.classification import (
     DETECTOR_SCOPE_FILTERED,
     DETECTOR_START,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.coordination_config import (
-        DetectionScope,
-        ErrorCategory,
-    )
-    from synthorg.engine.classification.protocol import (
-        DetectionContext,
-        Detector,
-    )
 
 logger = get_logger(__name__)
 

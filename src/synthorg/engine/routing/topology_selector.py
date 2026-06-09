@@ -4,19 +4,15 @@ Implements the Engine design page auto-selection heuristics
 for coordination topologies.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.task import Task
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
+from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.routing.models import AutoTopologyConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_routing import (
     TASK_ROUTING_TOPOLOGY_AUTO_RESOLVED,
     TASK_ROUTING_TOPOLOGY_SELECTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.engine.decomposition.models import DecompositionPlan
 
 logger = get_logger(__name__)
 

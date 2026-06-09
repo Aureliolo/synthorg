@@ -1,7 +1,5 @@
 """Shared test helpers for ceremony scheduling strategy tests."""
 
-from typing import Any
-
 from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 
@@ -33,7 +31,7 @@ def make_sprint(  # noqa: PLR0913
         if story_points_completed is not None
         else float(completed_count * 3)
     )
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, object] = {
         "id": "sprint-1",
         "name": "Sprint 1",
         "sprint_number": 1,
@@ -48,7 +46,7 @@ def make_sprint(  # noqa: PLR0913
         kwargs["start_date"] = "2026-04-01T00:00:00"
     if status is SprintStatus.COMPLETED:
         kwargs["end_date"] = "2026-04-14T00:00:00"
-    return Sprint(**kwargs)
+    return Sprint.model_validate(kwargs)
 
 
 def make_context(  # noqa: PLR0913

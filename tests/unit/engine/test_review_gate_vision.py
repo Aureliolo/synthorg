@@ -6,7 +6,7 @@ COMPLETED target and routes to IN_PROGRESS; a missing vision_input SKIPs
 (the gate is conditional on a GUI deliverable); no gate passes through.
 """
 
-from typing import Any
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -51,8 +51,8 @@ def _task() -> Task:
     )
 
 
-def _mock_task_engine(task: Task) -> Any:
-    return mock_of[TaskEngine](
+def _mock_task_engine(task: Task) -> TaskEngine:
+    engine: TaskEngine = mock_of[TaskEngine](
         submit=AsyncMock(
             return_value=TaskMutationResult(
                 request_id="req",
@@ -62,6 +62,7 @@ def _mock_task_engine(task: Task) -> Any:
         ),
         get_task=AsyncMock(return_value=task),
     )
+    return engine
 
 
 def _vision_input() -> VisionReviewInput:
@@ -102,10 +103,11 @@ def _block_result() -> VisionGateResult:
     )
 
 
-def _gate(result: VisionGateResult) -> Any:
-    return mock_of[VisionVerifierGate](
+def _gate(result: VisionGateResult) -> VisionVerifierGate:
+    gate: VisionVerifierGate = mock_of[VisionVerifierGate](
         evaluate=AsyncMock(spec=VisionVerifierGate.evaluate, return_value=result),
     )
+    return gate
 
 
 def _pipeline() -> ReviewPipeline:
@@ -137,7 +139,7 @@ async def test_block_routes_to_in_progress() -> None:
         requested_by="bob",
         vision_input=_vision_input(),
     )
-    call = task_engine.submit.call_args[0][0]
+    call = cast("AsyncMock", task_engine.submit).call_args[0][0]
     assert call.target_status is TaskStatus.IN_PROGRESS
     assert "Vision review blocked" in call.reason
 
@@ -156,7 +158,7 @@ async def test_missing_vision_input_skips() -> None:
         requested_by="bob",
         # no vision_input -> non-GUI deliverable -> gate SKIPs
     )
-    call = task_engine.submit.call_args[0][0]
+    call = cast("AsyncMock", task_engine.submit).call_args[0][0]
     assert call.target_status is TaskStatus.COMPLETED
 
 
@@ -171,7 +173,7 @@ async def test_no_gate_passes_through() -> None:
         requested_by="bob",
         vision_input=_vision_input(),
     )
-    call = task_engine.submit.call_args[0][0]
+    call = cast("AsyncMock", task_engine.submit).call_args[0][0]
     assert call.target_status is TaskStatus.COMPLETED
 
 
@@ -187,5 +189,5 @@ async def test_set_vision_gate_seam() -> None:
         requested_by="bob",
         vision_input=_vision_input(),
     )
-    call = task_engine.submit.call_args[0][0]
+    call = cast("AsyncMock", task_engine.submit).call_args[0][0]
     assert call.target_status is TaskStatus.IN_PROGRESS

@@ -3,11 +3,10 @@
 Defines the pluggable interface for intake processing strategies.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.client.models import ClientRequest
-    from synthorg.engine.intake.models import IntakeResult
+from synthorg.client.models import ClientRequest
+from synthorg.engine.intake.models import IntakeResult
 
 
 @runtime_checkable

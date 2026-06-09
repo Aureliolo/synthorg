@@ -6,12 +6,15 @@ structured logging.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
+from synthorg.budget.tracker import CostTracker
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.loop_protocol import ExecutionResult
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_COST_FAILED,
@@ -19,12 +22,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_COST_SKIPPED,
 )
 from synthorg.observability.metrics_hub import record_provider_usage
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.loop_protocol import ExecutionResult
-    from synthorg.execution.turn import TurnRecord
 
 logger = get_logger(__name__)
 

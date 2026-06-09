@@ -9,8 +9,8 @@ exceptions -- all errors are caught and logged.
 """
 
 import copy
+from collections.abc import Callable, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.budget.coordination_config import (
     DetectionScope,
@@ -20,6 +20,7 @@ from synthorg.budget.coordination_config import (
     ErrorTaxonomyConfig,
 )
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.classification.budget_tracker import (
     ClassificationBudgetTracker,
 )
@@ -38,6 +39,12 @@ from synthorg.engine.classification.models import (
     ClassificationResult,
     ErrorFinding,
 )
+from synthorg.engine.classification.protocol import (
+    ClassificationSink,
+    DetectionContext,
+    Detector,
+    ScopedContextLoader,
+)
 from synthorg.engine.classification.protocol_detectors import (
     AuthorityBreachDetector,
     DelegationProtocolDetector,
@@ -49,6 +56,7 @@ from synthorg.engine.classification.semantic_detectors import (
     SemanticMissingReferenceDetector,
     SemanticNumericalVerificationDetector,
 )
+from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.engine.timeout_enforcement import engine_timeout
 from synthorg.observability import (
     get_logger,
@@ -67,20 +75,8 @@ from synthorg.observability.events.classification import (
     DETECTOR_SCOPE_MISMATCH,
     DETECTOR_TIMEOUT,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.classification.protocol import (
-        ClassificationSink,
-        DetectionContext,
-        Detector,
-        ScopedContextLoader,
-    )
-    from synthorg.engine.loop_protocol import ExecutionResult
-    from synthorg.persistence.task_protocol import TaskRepository
-    from synthorg.providers.base import BaseCompletionProvider
+from synthorg.persistence.task_protocol import TaskRepository
+from synthorg.providers.base import BaseCompletionProvider
 
 logger = get_logger(__name__)
 

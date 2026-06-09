@@ -6,7 +6,7 @@ like ``personality.risk_tolerance``.
 """
 
 import json
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -107,14 +107,14 @@ class AgentIdentityDiff(BaseModel):
         return f"{n} fields changed"
 
 
-def _serialize(value: Any) -> str:
+def _serialize(value: object) -> str:
     """Return a compact JSON string for a leaf value."""
     return json.dumps(value, sort_keys=True, default=str)
 
 
 def _diff_dicts(
-    old: dict[str, Any],
-    new: dict[str, Any],
+    old: dict[str, object],
+    new: dict[str, object],
     prefix: str,
     changes: list[IdentityFieldChange],
 ) -> None:
@@ -147,17 +147,20 @@ def _diff_dicts(
                     new_value=None,
                 )
             )
-        elif isinstance(old[key], dict) and isinstance(new[key], dict):
-            _diff_dicts(old[key], new[key], path, changes)
-        elif old[key] != new[key]:
-            changes.append(
-                IdentityFieldChange(
-                    field_path=path,
-                    change_type="modified",
-                    old_value=_serialize(old[key]),
-                    new_value=_serialize(new[key]),
+        else:
+            old_value = old[key]
+            new_value = new[key]
+            if isinstance(old_value, dict) and isinstance(new_value, dict):
+                _diff_dicts(old_value, new_value, path, changes)
+            elif old_value != new_value:
+                changes.append(
+                    IdentityFieldChange(
+                        field_path=path,
+                        change_type="modified",
+                        old_value=_serialize(old_value),
+                        new_value=_serialize(new_value),
+                    )
                 )
-            )
 
 
 def compute_diff(
@@ -179,8 +182,8 @@ def compute_diff(
     Returns:
         An :class:`AgentIdentityDiff` listing every changed field.
     """
-    old_dict: dict[str, Any] = old_snapshot.model_dump(mode="json")
-    new_dict: dict[str, Any] = new_snapshot.model_dump(mode="json")
+    old_dict: dict[str, object] = old_snapshot.model_dump(mode="json")
+    new_dict: dict[str, object] = new_snapshot.model_dump(mode="json")
 
     changes: list[IdentityFieldChange] = []
     _diff_dicts(old_dict, new_dict, "", changes)

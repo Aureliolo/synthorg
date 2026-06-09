@@ -6,8 +6,6 @@ pipeline spine. It owns no request-store / lock / reconciliation
 (that stays in the controller background task).
 """
 
-from typing import Any
-
 import pytest
 
 from synthorg.client.models import ClientRequest, TaskRequirement
@@ -31,8 +29,8 @@ pytestmark = pytest.mark.unit
 _DEFAULT_PROJECT = "client-intake"
 
 
-def _request(**overrides: Any) -> ClientRequest:
-    base: dict[str, Any] = {
+def _request(**overrides: object) -> ClientRequest:
+    base: dict[str, object] = {
         "request_id": "req-42",
         "client_id": "acme-co",
         "requirement": TaskRequirement(
@@ -45,7 +43,7 @@ def _request(**overrides: Any) -> ClientRequest:
         ),
     }
     base.update(overrides)
-    return ClientRequest(**base)
+    return ClientRequest.model_validate(base)
 
 
 def _result(work_item: WorkItem) -> WorkPipelineResult:

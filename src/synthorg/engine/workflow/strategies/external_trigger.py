@@ -17,11 +17,16 @@ real-world development workflows.
 """
 
 import copy
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
 
+from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyStrategyType,
+)
+from synthorg.engine.workflow.sprint_config import (
+    SprintCeremonyConfig,
+    SprintConfig,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.strategies._helpers import get_ceremony_config
@@ -37,15 +42,6 @@ from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_TRIGGERED,
     SPRINT_STRATEGY_CONFIG_INVALID,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
-    from synthorg.engine.workflow.sprint_config import (
-        SprintCeremonyConfig,
-        SprintConfig,
-    )
 
 logger = get_logger(__name__)
 
@@ -103,7 +99,7 @@ class ExternalTriggerStrategy:
         self._received_events: set[str] = set()
         self._event_counts: dict[str, int] = {}
         self._ceremony_last_fired_counts: dict[tuple[str, str], int] = {}
-        self._sources: tuple[MappingProxyType[str, Any], ...] = ()
+        self._sources: tuple[MappingProxyType[str, object], ...] = ()
 
     # -- Core evaluation -------------------------------------------------------
 
@@ -290,7 +286,7 @@ class ExternalTriggerStrategy:
         self,
         sprint: Sprint,  # noqa: ARG002
         event_name: str,
-        payload: Mapping[str, Any],  # noqa: ARG002
+        payload: Mapping[str, object],  # noqa: ARG002
     ) -> None:
         """Buffer an external event for evaluation.
 
@@ -349,7 +345,7 @@ class ExternalTriggerStrategy:
 
     def validate_strategy_config(
         self,
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
     ) -> None:
         """Validate external-trigger strategy config.
 
@@ -453,7 +449,7 @@ class ExternalTriggerStrategy:
 
     @staticmethod
     def _validate_string_key(
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
         key: str,
     ) -> None:
         """Validate that *key* is a non-empty string if present.
@@ -487,7 +483,7 @@ class ExternalTriggerStrategy:
             raise ValueError(msg)
 
     @staticmethod
-    def _validate_sources(config: Mapping[str, Any]) -> None:
+    def _validate_sources(config: Mapping[str, object]) -> None:
         """Validate the sources list if present.
 
         Raises:

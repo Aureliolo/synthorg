@@ -34,16 +34,14 @@ boolean.  Parse errors are logged at WARNING level.
 """
 
 import re
-from typing import TYPE_CHECKING, Final
+from collections.abc import Mapping
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.condition_eval import (
     CONDITION_EVAL_PARSE_ERROR,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

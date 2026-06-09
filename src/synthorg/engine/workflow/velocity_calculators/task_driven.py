@@ -3,8 +3,9 @@
 Reference implementation for the ``VelocityCalculator`` protocol.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
 
+from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 from synthorg.engine.workflow.velocity_types import (
     VelocityCalcType,
     VelocityMetrics,
@@ -13,11 +14,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     VELOCITY_TASK_DRIVEN_NO_TASK_COUNT,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 
 logger = get_logger(__name__)
 

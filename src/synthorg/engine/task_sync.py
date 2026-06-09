@@ -8,14 +8,17 @@ execution is never blocked by a ``TaskEngine`` issue.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from uuid import uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
-from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
@@ -27,12 +30,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_TASK_SYNCED,
     EXECUTION_ENGINE_TASK_TRANSITION,
 )
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.engine.context import AgentContext
-    from synthorg.engine.loop_protocol import ExecutionResult
-    from synthorg.engine.task_engine import TaskEngine
 
 logger = get_logger(__name__)
 

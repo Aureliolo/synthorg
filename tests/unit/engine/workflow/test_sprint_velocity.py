@@ -1,7 +1,5 @@
 """Tests for sprint velocity tracking."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
@@ -112,7 +110,7 @@ class TestVelocityRecord:
         field: str,
         value: int | float,
     ) -> None:
-        kwargs: dict[str, Any] = {
+        kwargs: dict[str, object] = {
             "sprint_id": "sprint-1",
             "sprint_number": 1,
             "story_points_committed": 50.0,
@@ -121,7 +119,7 @@ class TestVelocityRecord:
             field: value,
         }
         with pytest.raises(ValueError, match="greater than or equal"):
-            VelocityRecord(**kwargs)
+            VelocityRecord.model_validate(kwargs)
 
 
 # ── record_velocity ────────────────────────────────────────────

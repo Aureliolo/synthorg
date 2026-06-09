@@ -11,7 +11,7 @@ See the Crash Recovery section of the Engine design page.
 
 import json
 from enum import StrEnum
-from typing import Any, Final, Protocol, Self, runtime_checkable
+from typing import Final, Protocol, Self, runtime_checkable
 
 from pydantic import (
     BaseModel,
@@ -192,7 +192,7 @@ class RecoveryResult(BaseModel):
     failure_category: FailureCategory = Field(
         description="Machine-readable failure classification",
     )
-    failure_context: dict[str, Any] = Field(
+    failure_context: dict[str, object] = Field(
         default_factory=dict,
         description="Structured metadata for the failure",
     )

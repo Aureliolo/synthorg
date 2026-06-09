@@ -5,11 +5,9 @@ used by both the YAML export and workflow execution subsystems.
 """
 
 from collections import defaultdict, deque
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.definition import WorkflowDefinition
-    from synthorg.engine.workflow.enums import WorkflowEdgeType
+from synthorg.engine.workflow.definition import WorkflowDefinition
+from synthorg.engine.workflow.enums import WorkflowEdgeType
 
 
 def topological_sort(

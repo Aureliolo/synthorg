@@ -16,11 +16,18 @@ detection.
 import asyncio
 import copy
 from collections import deque
-from typing import TYPE_CHECKING, Final
+from collections.abc import Sequence
+from datetime import datetime
+from typing import Final
 
+from synthorg.budget.coordination_config import ErrorCategory
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.classification.models import ErrorSeverity
+from synthorg.engine.classification.models import (
+    ClassificationResult,
+    ErrorFinding,
+    ErrorSeverity,
+)
 from synthorg.meta.signal_models import (
     ErrorCategorySummary,
     OrgErrorSummary,
@@ -32,16 +39,6 @@ from synthorg.observability.events.classification import (
     TAXONOMY_STORE_APPENDED,
     TAXONOMY_STORE_EVICTED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import datetime
-
-    from synthorg.budget.coordination_config import ErrorCategory
-    from synthorg.engine.classification.models import (
-        ClassificationResult,
-        ErrorFinding,
-    )
 
 logger = get_logger(__name__)
 

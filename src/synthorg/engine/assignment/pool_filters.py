@@ -9,6 +9,9 @@ task's delegator, and is used by the ``hierarchical`` strategy.
 
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.assignment.models import AssignmentRequest
 from synthorg.engine.assignment.pool_filter_protocol import PoolFilterResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.task_assignment import (
@@ -19,8 +22,6 @@ from synthorg.observability.events.task_assignment import (
 
 if TYPE_CHECKING:
     from synthorg.communication.delegation.hierarchy import HierarchyResolver
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.assignment.models import AssignmentRequest
 
 logger = get_logger(__name__)
 
@@ -97,6 +98,7 @@ class HierarchicalPoolFilter:
         try:
             known = self._is_known_delegator(delegator)
         except Exception as exc:
+            reraise_critical(exc)
             return self._hierarchy_lookup_failure(
                 request,
                 delegator,
@@ -111,6 +113,7 @@ class HierarchicalPoolFilter:
         try:
             subordinates = self._filter_by_hierarchy(request, delegator)
         except Exception as exc:
+            reraise_critical(exc)
             return self._hierarchy_lookup_failure(
                 request,
                 delegator,

@@ -7,34 +7,39 @@ the activation service stays focused on graph traversal and frame
 management.
 """
 
+from collections.abc import Coroutine
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.quality.verification import VerificationVerdict
-from synthorg.engine.workflow.enums import WorkflowNodeExecutionStatus, WorkflowNodeType
+from synthorg.engine.workflow.definition import WorkflowNode
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeExecutionStatus,
+    WorkflowNodeType,
+)
 from synthorg.engine.workflow.execution_activation_helpers import (
     find_downstream_task_ids,
     process_conditional_node,
     process_verification_node,
 )
-from synthorg.engine.workflow.execution_models import WorkflowNodeExecution
+from synthorg.engine.workflow.execution_models import (
+    ExecutionFrame,
+    WorkflowNodeExecution,
+)
+from synthorg.engine.workflow.execution_walk_state import WalkState
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_NODE_COMPLETED,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-
-    from synthorg.engine.workflow.definition import WorkflowNode
-    from synthorg.engine.workflow.enums import WorkflowEdgeType
-    from synthorg.engine.workflow.execution_models import ExecutionFrame
+    # Cycle-breaker: execution_service imports this module for its node
+    # dispatch registry, so a module-level import here would cycle.
     from synthorg.engine.workflow.execution_service import (
         WorkflowExecutionService,
     )
-    from synthorg.engine.workflow.execution_walk_state import WalkState
-
 
 logger = get_logger(__name__)
 

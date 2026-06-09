@@ -1,7 +1,6 @@
 """Tests for SubworkflowService."""
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -220,7 +219,3 @@ class TestSubworkflowServiceDelete:
             )
         assert excinfo.value.parents
         registry.delete.assert_not_called()
-
-
-# Silence unused imports when only used as type-checker hints.
-_ = Any

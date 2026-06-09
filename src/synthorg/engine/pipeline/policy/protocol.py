@@ -6,12 +6,11 @@ The solo-vs-team decision is owned by the decomposition layer: a
 coordinator). Never a user choice.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.pipeline.models import RoutingVerdict
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
+from synthorg.engine.pipeline.models import RoutingVerdict
 
 
 @runtime_checkable

@@ -21,9 +21,10 @@ simulation runtime).
 """
 
 import os
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from synthorg.api.state import AppState
 from synthorg.budget.forecast_roles import CompanyRoleSkeletonProvider
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.client.state import (
@@ -35,6 +36,7 @@ from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.entry.factory import (
     build_brownfield_entry_adapter,
     build_work_entry_adapter,
@@ -53,12 +55,6 @@ from synthorg.observability.events.objectives import OBJECTIVE_ENTRY_WIRED
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.api.state import AppState
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

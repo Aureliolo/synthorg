@@ -1,7 +1,7 @@
 """Tests for WorkflowExecutionService."""
 
 import copy
-from typing import Any, override
+from typing import override
 from uuid import uuid4
 
 import pytest
@@ -17,6 +17,7 @@ from synthorg.engine.errors import (
     WorkflowExecutionAlreadyTerminalError,
     WorkflowExecutionNotFoundError,
 )
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.engine.workflow.enums import (
@@ -197,12 +198,18 @@ class FakeExecutionRepo:
         return self._store.pop(execution_id, None) is not None
 
 
-class FakeTaskEngine:
-    """Minimal fake for TaskEngine.create_task()."""
+class FakeTaskEngine(TaskEngine):
+    """Minimal fake for TaskEngine.create_task().
+
+    Subclasses the real ``TaskEngine`` (bypassing its ``__init__``) so the
+    runtime-resolved ``task_engine: TaskEngine`` boundary accepts it, while
+    overriding only ``create_task`` to record calls and return a real Task.
+    """
 
     def __init__(self) -> None:
         self.created_tasks: list[tuple[CreateTaskData, str]] = []
 
+    @override
     async def create_task(
         self,
         data: CreateTaskData,
@@ -249,11 +256,10 @@ def service(
     exec_repo: FakeExecutionRepo,
     task_engine: FakeTaskEngine,
 ) -> WorkflowExecutionService:
-    engine: Any = task_engine
     return WorkflowExecutionService(
         definition_repo=def_repo,
         execution_repo=exec_repo,
-        task_engine=engine,
+        task_engine=task_engine,
         max_subworkflow_depth=16,
     )
 
@@ -860,11 +866,10 @@ class TestCancelExecution:
                 await super().save(execution)
 
         racing_repo = _RacingExecRepo()
-        engine: Any = task_engine
         service = WorkflowExecutionService(
             definition_repo=def_repo,
             execution_repo=racing_repo,
-            task_engine=engine,
+            task_engine=task_engine,
             max_subworkflow_depth=16,
         )
 

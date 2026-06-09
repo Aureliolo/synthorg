@@ -3,11 +3,10 @@
 Defines the pluggable interface for review pipeline stages.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.engine.review.models import ReviewStageResult
+from synthorg.core.task import Task
+from synthorg.engine.review.models import ReviewStageResult
 
 
 # Pluggable pipeline stage: 2 impls (ClientReviewStage, InternalReviewStage)

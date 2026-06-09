@@ -6,8 +6,9 @@ Designed for hybrid strategies that blend calendar and task-driven
 scheduling.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
 
+from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 from synthorg.engine.workflow.velocity_types import (
     VelocityCalcType,
     VelocityMetrics,
@@ -17,11 +18,6 @@ from synthorg.observability.events.workflow import (
     VELOCITY_MULTI_NO_DURATION,
     VELOCITY_MULTI_NO_TASK_COUNT,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 
 logger = get_logger(__name__)
 

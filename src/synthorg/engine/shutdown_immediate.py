@@ -6,7 +6,7 @@ Satisfies the ``ShutdownStrategy`` protocol from
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping, Sequence
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine._shutdown_shared import _DEFAULT_CLEANUP_SECONDS
@@ -22,9 +22,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_SHUTDOWN_IMMEDIATE_CANCEL,
     EXECUTION_SHUTDOWN_TASK_ERROR,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
 
 logger = get_logger(__name__)
 
@@ -87,7 +84,7 @@ class ImmediateCancelStrategy:
     async def execute_shutdown(
         self,
         *,
-        running_tasks: Mapping[str, asyncio.Task[Any]],
+        running_tasks: Mapping[str, asyncio.Task[object]],
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
         """Cancel all tasks immediately, then run cleanup.

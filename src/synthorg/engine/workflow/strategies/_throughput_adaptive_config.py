@@ -7,16 +7,13 @@ default with a warning) and the strict ``validate_*`` functions used by
 """
 
 import math
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_SKIPPED,
     SPRINT_STRATEGY_CONFIG_INVALID,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 
@@ -43,7 +40,7 @@ _DEFAULT_TRANSITION_THRESHOLD: float = 1.0
 
 
 def resolve_bool(
-    config: Mapping[str, Any],
+    config: Mapping[str, object],
     key: str,
     *,
     default: bool,
@@ -71,7 +68,7 @@ def resolve_bool(
 
 
 def resolve_threshold(
-    config: Mapping[str, Any],
+    config: Mapping[str, object],
     key: str,
     default: float,
 ) -> float:
@@ -111,7 +108,7 @@ def resolve_threshold(
     return result
 
 
-def resolve_window_size(config: Mapping[str, Any]) -> int:
+def resolve_window_size(config: Mapping[str, object]) -> int:
     """Resolve the measurement window size with lenient validation.
 
     Returns:
@@ -145,7 +142,7 @@ def resolve_window_size(config: Mapping[str, Any]) -> int:
 
 
 def validate_threshold_key(
-    config: Mapping[str, Any],
+    config: Mapping[str, object],
     key: str,
 ) -> None:
     """Validate a percentage threshold key (strict).
@@ -185,7 +182,7 @@ def validate_threshold_key(
         raise ValueError(msg)
 
 
-def validate_window_key(config: Mapping[str, Any]) -> None:
+def validate_window_key(config: Mapping[str, object]) -> None:
     """Validate measurement_window_tasks key (strict).
 
     Raises:

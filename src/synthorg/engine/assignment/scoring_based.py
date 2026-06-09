@@ -9,34 +9,29 @@ same shared ``AgentTaskScorer`` for all of them (the previous
 are pool filtering and ranking).
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
 
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.assignment._shared import (
     build_subtask_definition,
     score_and_filter_candidates,
 )
-from synthorg.engine.assignment.models import AssignmentRequest, AssignmentResult
+from synthorg.engine.assignment.models import (
+    AssignmentCandidate,
+    AssignmentRequest,
+    AssignmentResult,
+)
+from synthorg.engine.assignment.pool_filter_protocol import CandidatePoolFilter
+from synthorg.engine.assignment.ranker_protocol import CandidateRanker, RankingResult
+from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_NO_ELIGIBLE,
     TASK_ASSIGNMENT_REASON_REWRITER_FAILED,
 )
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.assignment.models import AssignmentCandidate
-    from synthorg.engine.assignment.pool_filter_protocol import (
-        CandidatePoolFilter,
-    )
-    from synthorg.engine.assignment.ranker_protocol import (
-        CandidateRanker,
-        RankingResult,
-    )
-    from synthorg.engine.routing.scorer import AgentTaskScorer
-
-    ReasonRewriter = Callable[[AssignmentCandidate], str]
+ReasonRewriter = Callable[[AssignmentCandidate], str]
 
 logger = get_logger(__name__)
 
@@ -139,6 +134,7 @@ class ScoringBasedAssignmentStrategy:
         try:
             return rewriter(ranking.selected)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TASK_ASSIGNMENT_REASON_REWRITER_FAILED,
                 task_id=str(request.task.id),

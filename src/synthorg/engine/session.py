@@ -13,7 +13,7 @@ Terminology follows the managed-agents engineering pattern:
 """
 
 import copy
-from typing import Any, Protocol, Self, runtime_checkable
+from typing import Protocol, Self, cast, runtime_checkable
 
 from pydantic import (
     AwareDatetime,
@@ -73,7 +73,7 @@ class SessionEvent(BaseModel):
     execution_id: NotBlankStr = Field(
         description="Execution run this event belongs to",
     )
-    data: dict[str, Any] = Field(
+    data: dict[str, object] = Field(
         default_factory=dict,
         description="Structured event payload",
     )
@@ -270,11 +270,11 @@ def _apply_turn_event(
     if turn is None:
         msg = "Missing 'turn' in EXECUTION_CONTEXT_TURN event"
         raise KeyError(msg)
-    turn = int(turn)
+    turn = int(cast("int | str", turn))
     if turn < 1:
         msg = f"Turn number must be >= 1, got {turn}"
         raise ValueError(msg)
-    cost = float(event.data.get("cost", 0.0))
+    cost = float(cast("float | str", event.data.get("cost", 0.0)))
 
     usage = TokenUsage(input_tokens=0, output_tokens=0, cost=cost)
     replay_msg = ChatMessage(
@@ -378,7 +378,10 @@ def _replay_from_events(
             elif name == EXECUTION_CONTEXT_TURN:
                 # Parse turn number before applying to skip duplicates.
                 raw_turn = event.data.get("turn")
-                if raw_turn is not None and int(raw_turn) in seen_turns:
+                if (
+                    raw_turn is not None
+                    and int(cast("int | str", raw_turn)) in seen_turns
+                ):
                     continue
                 ctx, turn, cost = _apply_turn_event(ctx, event)
                 seen_turns.add(turn)

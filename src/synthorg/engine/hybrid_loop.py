@@ -15,8 +15,13 @@ residual orchestrator is the cohesive driver.
 """
 
 import copy
-from typing import TYPE_CHECKING
 
+from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.checkpoint.callback import CheckpointCallback
+from synthorg.engine.compaction.protocol import CompactionCallback
+from synthorg.engine.context import AgentContext
+from synthorg.engine.intervention.inbox import SteeringInbox
+from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
@@ -34,7 +39,10 @@ from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
+    ToolDefinition,
 )
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.tools.protocol import ToolInvokerProtocol
 
 from .hybrid.replan_helpers import attempt_replan, do_replan, run_progress_summary
 from .hybrid.step_helpers import (
@@ -81,17 +89,6 @@ from .plan_models import (
     StepStatus,
 )
 from .plan_parsing import _PLANNING_PROMPT
-
-if TYPE_CHECKING:
-    from synthorg.engine.approval_gate import ApprovalGate
-    from synthorg.engine.checkpoint.callback import CheckpointCallback
-    from synthorg.engine.compaction.protocol import CompactionCallback
-    from synthorg.engine.context import AgentContext
-    from synthorg.engine.intervention.inbox import SteeringInbox
-    from synthorg.engine.stagnation.protocol import StagnationDetector
-    from synthorg.providers.models import ToolDefinition
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 

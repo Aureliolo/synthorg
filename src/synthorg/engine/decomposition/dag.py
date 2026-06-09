@@ -6,8 +6,8 @@ Returns immutable tuples for all results.
 
 import heapq
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
+from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.errors import DecompositionCycleError, DecompositionError
 from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
@@ -16,9 +16,6 @@ from synthorg.observability.events.decomposition import (
     DECOMPOSITION_GRAPH_VALIDATED,
     DECOMPOSITION_REFERENCE_ERROR,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.decomposition.models import SubtaskDefinition
 
 logger = get_logger(__name__)
 

@@ -7,8 +7,7 @@ Assigns a task to its pre-designated agent identified by
 forms are accepted.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.agent import AgentIdentity
 from synthorg.engine.assignment._shared import STRATEGY_NAME_MANUAL
 from synthorg.engine.assignment.models import (
     AssignmentCandidate,
@@ -22,9 +21,6 @@ from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_FAILED,
     TASK_ASSIGNMENT_MANUAL_VALIDATED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

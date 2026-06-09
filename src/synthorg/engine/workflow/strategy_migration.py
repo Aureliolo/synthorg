@@ -6,7 +6,8 @@ a ``StrategyMigrationInfo`` result.  A separate ``notify_strategy_migration()``
 function sends best-effort notifications via the communication system.
 """
 
-from typing import TYPE_CHECKING, Any, Self
+from collections.abc import Awaitable
+from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -22,8 +23,6 @@ from synthorg.observability.events.workflow import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
-
     from synthorg.communication.messenger import AgentMessenger
 
 logger = get_logger(__name__)
@@ -171,7 +170,7 @@ def format_reorder_prompt(info: StrategyMigrationInfo) -> str:
 
 
 async def _send_best_effort(
-    coro: Awaitable[Any],
+    coro: Awaitable[object],
     info: StrategyMigrationInfo,
     note: str,
     **extra_context: str,

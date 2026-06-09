@@ -5,8 +5,8 @@ Dispatches on ``StakesRoutingConfig.strategy`` via a ``StrategyRegistry``
 requires a benchmark provider; ``flat`` needs no dependencies.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.budget.benchmark_protocol import BenchmarkScoreProvider
+from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
 from synthorg.engine.routing_policy.protocol import (
@@ -14,11 +14,7 @@ from synthorg.engine.routing_policy.protocol import (
 )
 from synthorg.engine.routing_policy.router import StakesRouter
 from synthorg.engine.routing_policy.strategies import FlatStrategy, StakesAwareStrategy
-
-if TYPE_CHECKING:
-    from synthorg.budget.benchmark_protocol import BenchmarkScoreProvider
-    from synthorg.budget.coordination_store import CoordinationMetricsStore
-    from synthorg.providers.routing.resolver import ModelResolver
+from synthorg.providers.routing.resolver import ModelResolver
 
 
 def _build_flat(

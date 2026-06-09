@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine_models import (
     DeleteTaskMutation,
+    TaskMutation,
     TaskMutationResult,
     TaskStateChanged,
 )
@@ -21,7 +22,6 @@ from synthorg.observability.events.task_engine import (
 
 if TYPE_CHECKING:
     from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.engine.task_engine_models import TaskMutation
 
 logger = get_logger(__name__)
 

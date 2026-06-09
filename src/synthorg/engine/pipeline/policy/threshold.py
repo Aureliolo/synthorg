@@ -6,17 +6,13 @@ artifact count does not exceed the configured threshold is a leaf
 (single agent); everything else is splittable (coordinator).
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStructure
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.pipeline.models import RoutingVerdict
 from synthorg.observability import get_logger
 from synthorg.observability.events.pipeline import PIPELINE_ROUTING_DECIDED
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
 
 logger = get_logger(__name__)
 

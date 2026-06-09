@@ -23,15 +23,12 @@ enforcement on.
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING
+from collections.abc import AsyncIterator
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_TIMEOUT_ENFORCEMENT_SET,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
 
 logger = get_logger(__name__)
 

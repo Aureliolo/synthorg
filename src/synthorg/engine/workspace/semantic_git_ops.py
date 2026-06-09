@@ -7,9 +7,8 @@ keep the worktree strategy module under the 800-line budget.
 
 import asyncio
 import re
-from collections.abc import Callable, Coroutine
 from types import MappingProxyType
-from typing import cast
+from typing import Protocol, cast
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.workspace.config import SemanticAnalysisConfig
@@ -21,7 +20,24 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_SEMANTIC_CONFLICT,
 )
 
-type GitRunner = Callable[..., Coroutine[object, object, tuple[int, str, str]]]
+
+class GitRunner(Protocol):
+    """Bound ``_run_git`` callable: run a git command, return ``(rc, out, err)``.
+
+    Captures only the contract these helpers rely on -- positional git
+    arguments plus an optional ``log_event`` -- so the strategy's bound
+    method (which also carries impl-only ``cwd`` / ``cmd_timeout``
+    defaults) and test doubles both satisfy it.
+    """
+
+    async def __call__(
+        self,
+        *args: str,
+        log_event: str = ...,
+    ) -> tuple[int, str, str]:
+        """Run ``git *args`` and return ``(returncode, stdout, stderr)``."""
+        ...
+
 
 logger = get_logger(__name__)
 

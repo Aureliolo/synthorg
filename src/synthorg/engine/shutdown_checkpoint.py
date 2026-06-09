@@ -7,7 +7,8 @@ cancelled. Satisfies the ``ShutdownStrategy`` protocol from
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Final
+from collections.abc import Mapping, Sequence
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -31,9 +32,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_SHUTDOWN_GRACE_START,
     EXECUTION_SHUTDOWN_TASK_ERROR,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
 
 logger = get_logger(__name__)
 
@@ -122,7 +120,7 @@ class CheckpointAndStopStrategy:
     async def execute_shutdown(
         self,
         *,
-        running_tasks: Mapping[str, asyncio.Task[Any]],
+        running_tasks: Mapping[str, asyncio.Task[object]],
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
         """Checkpoint tasks, then stop.
@@ -211,8 +209,8 @@ class CheckpointAndStopStrategy:
 
     async def _checkpoint_and_cancel_pending(
         self,
-        pending: set[asyncio.Task[Any]],
-        running_tasks: Mapping[str, asyncio.Task[Any]],
+        pending: set[asyncio.Task[object]],
+        running_tasks: Mapping[str, asyncio.Task[object]],
     ) -> tuple[int, int]:
         """Checkpoint straggler tasks concurrently, then cancel.
 
@@ -230,7 +228,7 @@ class CheckpointAndStopStrategy:
         tasks_interrupted = 0
 
         # Identify tasks with valid IDs vs unknown.
-        checkpointable: list[tuple[asyncio.Task[Any], str]] = []
+        checkpointable: list[tuple[asyncio.Task[object], str]] = []
         for task in pending:
             task_id = task_to_id.get(task)
             if task_id is None:

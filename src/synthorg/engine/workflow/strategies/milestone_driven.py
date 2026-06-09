@@ -14,10 +14,15 @@ hooks (``milestone_assign`` / ``milestone_unassign`` events).
   auto-transition.
 """
 
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
 
+from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyStrategyType,
+)
+from synthorg.engine.workflow.sprint_config import (
+    SprintCeremonyConfig,
+    SprintConfig,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.strategies._milestone_driven_config import (
@@ -41,15 +46,6 @@ from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_TRIGGERED,
     SPRINT_STRATEGY_CONFIG_INVALID,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
-    from synthorg.engine.workflow.sprint_config import (
-        SprintCeremonyConfig,
-        SprintConfig,
-    )
 
 logger = get_logger(__name__)
 
@@ -333,7 +329,7 @@ class MilestoneDrivenStrategy:
         self,
         sprint: Sprint,
         event_name: str,
-        payload: Mapping[str, Any],
+        payload: Mapping[str, object],
     ) -> None:
         """Handle milestone_assign / milestone_unassign events.
 
@@ -364,7 +360,7 @@ class MilestoneDrivenStrategy:
 
     def validate_strategy_config(
         self,
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
     ) -> None:
         """Validate milestone-driven strategy config.
 
@@ -394,7 +390,7 @@ class MilestoneDrivenStrategy:
     def _handle_assign(
         self,
         sprint: Sprint,
-        payload: Mapping[str, Any],
+        payload: Mapping[str, object],
     ) -> None:
         """Validate, guard, and delegate a milestone assignment."""
         normalized = self._normalize_payload(payload, "assign")
@@ -416,7 +412,7 @@ class MilestoneDrivenStrategy:
 
     def _normalize_payload(
         self,
-        payload: Mapping[str, Any],
+        payload: Mapping[str, object],
         event_kind: str,
     ) -> tuple[str, str] | None:
         """Extract and validate ``(task_id, milestone)`` from payload.
@@ -492,7 +488,7 @@ class MilestoneDrivenStrategy:
                 strategy="milestone_driven",
             )
 
-    def _handle_unassign(self, payload: Mapping[str, Any]) -> None:
+    def _handle_unassign(self, payload: Mapping[str, object]) -> None:
         """Remove a task from a milestone.
 
         No sprint guard -- unassign is always allowed so that stale

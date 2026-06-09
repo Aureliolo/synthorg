@@ -9,16 +9,13 @@ untrusted content identically.
 """
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.engine.prompt_safety import (
     TAG_PEER_CONTRIBUTION,
     TAG_TASK_DATA,
     untrusted_content_directive,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
 
 # The fences a persona-driven turn may receive: agenda / history /
 # human content in ``<task-data>`` and upstream agent turns in

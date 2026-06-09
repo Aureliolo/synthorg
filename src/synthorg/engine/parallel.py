@@ -13,10 +13,10 @@ execution), extended with fail-fast, progress tracking, and
 import asyncio
 from collections.abc import Callable
 from contextlib import nullcontext
-from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.errors import ParallelExecutionError
 from synthorg.engine.parallel_locks import (
     acquire_all_locks,
@@ -33,6 +33,8 @@ from synthorg.engine.parallel_models import (
 )
 from synthorg.engine.parallel_progress import _ProgressState
 from synthorg.engine.resource_lock import ResourceLock
+from synthorg.engine.run_result import AgentRunResult
+from synthorg.engine.shutdown import ShutdownManager
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.parallel import (
     PARALLEL_AGENT_CANCELLED,
@@ -45,11 +47,6 @@ from synthorg.observability.events.parallel import (
     PARALLEL_LOCK_RELEASE_ERROR,
     PARALLEL_PROGRESS_UPDATE,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.agent_engine import AgentEngine
-    from synthorg.engine.run_result import AgentRunResult
-    from synthorg.engine.shutdown import ShutdownManager
 
 logger = get_logger(__name__)
 

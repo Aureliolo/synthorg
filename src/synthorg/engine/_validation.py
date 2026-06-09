@@ -5,8 +5,10 @@ the main orchestrator under the 800-line limit.
 """
 
 import re
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.hr.enums import AgentStatus
@@ -15,10 +17,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_CREDENTIAL_ISOLATION_VIOLATION,
     EXECUTION_ENGINE_INVALID_INPUT,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
 
 logger = get_logger(__name__)
 

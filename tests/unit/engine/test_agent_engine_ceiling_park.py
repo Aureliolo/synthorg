@@ -15,11 +15,12 @@ missing repo or a missing forecast id degrades silently.
 """
 
 from datetime import UTC, date, datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
 import pytest
 
+from synthorg.approval.models import EscalationInfo
 from synthorg.budget.errors import (
     BudgetExhaustedError,
     RunHardCeilingExceededError,
@@ -29,8 +30,12 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
+from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
 from tests._shared import as_uuid, sid
+
+if TYPE_CHECKING:
+    from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
 
 pytestmark = pytest.mark.unit
 
@@ -39,18 +44,18 @@ class _FakeApprovalGate:
     """Async ApprovalGate double recording park_context calls."""
 
     def __init__(self, *, fail: bool = False) -> None:
-        self.calls: list[dict[str, Any]] = []
+        self.calls: list[dict[str, object]] = []
         self.fail = fail
 
     async def park_context(
         self,
         *,
-        escalation: Any,
-        context: Any,
+        escalation: EscalationInfo,
+        context: AgentContext,
         agent_id: str,
         task_id: str | None = None,
         session_id: str | None = None,
-    ) -> Any:
+    ) -> None:
         self.calls.append(
             {
                 "escalation": escalation,
@@ -63,7 +68,6 @@ class _FakeApprovalGate:
         if self.fail:
             msg = "fake park failure"
             raise RuntimeError(msg)
-        return None
 
 
 class _FakeForecastRepo:
@@ -93,7 +97,9 @@ class _MockEngine(AgentEngineErrorsMixin):
     ) -> None:
         self._approval_gate = approval_gate
         self._cost_tracker = None
-        self._cost_forecast_repo = cost_forecast_repo
+        self._cost_forecast_repo = cast(
+            "CostForecastRepository | None", cost_forecast_repo
+        )
 
 
 def _forecast(forecast_id: UUID) -> Forecast:
@@ -154,16 +160,13 @@ async def test_hard_ceiling_with_approval_gate_routes_to_parked() -> None:
         task_id=sid("task-x"),
     )
 
-    result = cast(
-        "Any",
-        await engine._handle_budget_error(
-            exc=exc,
-            identity=_identity(),
-            task=_task(),
-            agent_id="agent-1",
-            task_id=sid("task-x"),
-            duration_seconds=0.1,
-        ),
+    result = await engine._handle_budget_error(
+        exc=exc,
+        identity=_identity(),
+        task=_task(),
+        agent_id="agent-1",
+        task_id=sid("task-x"),
+        duration_seconds=0.1,
     )
 
     assert result.execution_result.termination_reason is TerminationReason.PARKED
@@ -171,7 +174,10 @@ async def test_hard_ceiling_with_approval_gate_routes_to_parked() -> None:
     parked_call = gate.calls[0]
     assert parked_call["agent_id"] == "agent-1"
     assert parked_call["task_id"] == sid("task-x")
-    assert parked_call["escalation"].action_type == "budget:hard_ceiling_exceeded"
+    assert (
+        cast("EscalationInfo", parked_call["escalation"]).action_type
+        == "budget:hard_ceiling_exceeded"
+    )
 
 
 @pytest.mark.asyncio
@@ -221,16 +227,13 @@ async def test_park_without_forecast_id_skips_stamp() -> None:
         task_id=sid("task-x"),
     )
 
-    result = cast(
-        "Any",
-        await engine._handle_budget_error(
-            exc=exc,
-            identity=_identity(),
-            task=_task(),
-            agent_id="agent-1",
-            task_id=sid("task-x"),
-            duration_seconds=0.1,
-        ),
+    result = await engine._handle_budget_error(
+        exc=exc,
+        identity=_identity(),
+        task=_task(),
+        agent_id="agent-1",
+        task_id=sid("task-x"),
+        duration_seconds=0.1,
     )
 
     assert result.execution_result.termination_reason is TerminationReason.PARKED
@@ -249,16 +252,13 @@ async def test_park_context_failure_falls_back_to_exhausted() -> None:
         currency="USD",
     )
 
-    result = cast(
-        "Any",
-        await engine._handle_budget_error(
-            exc=exc,
-            identity=_identity(),
-            task=_task(),
-            agent_id="agent-1",
-            task_id=sid("task-x"),
-            duration_seconds=0.1,
-        ),
+    result = await engine._handle_budget_error(
+        exc=exc,
+        identity=_identity(),
+        task=_task(),
+        agent_id="agent-1",
+        task_id=sid("task-x"),
+        duration_seconds=0.1,
     )
 
     assert (
@@ -278,16 +278,13 @@ async def test_hard_ceiling_without_approval_gate_falls_back_to_exhausted() -> N
         currency="USD",
     )
 
-    result = cast(
-        "Any",
-        await engine._handle_budget_error(
-            exc=exc,
-            identity=_identity(),
-            task=_task(),
-            agent_id="agent-1",
-            task_id=sid("task-x"),
-            duration_seconds=0.1,
-        ),
+    result = await engine._handle_budget_error(
+        exc=exc,
+        identity=_identity(),
+        task=_task(),
+        agent_id="agent-1",
+        task_id=sid("task-x"),
+        duration_seconds=0.1,
     )
 
     assert (
@@ -301,16 +298,13 @@ async def test_other_budget_errors_still_route_to_exhausted() -> None:
     engine = _MockEngine(approval_gate=_FakeApprovalGate())
     exc = BudgetExhaustedError("monthly hard stop crossed")
 
-    result = cast(
-        "Any",
-        await engine._handle_budget_error(
-            exc=exc,
-            identity=_identity(),
-            task=_task(),
-            agent_id="agent-1",
-            task_id=sid("task-x"),
-            duration_seconds=0.1,
-        ),
+    result = await engine._handle_budget_error(
+        exc=exc,
+        identity=_identity(),
+        task=_task(),
+        agent_id="agent-1",
+        task_id=sid("task-x"),
+        duration_seconds=0.1,
     )
 
     assert (
