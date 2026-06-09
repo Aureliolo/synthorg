@@ -17,7 +17,10 @@ from synthorg.api.controllers.agent_identity_versions import (
     AgentIdentityVersionController,
 )
 from synthorg.api.controllers.agent_roster import AgentRosterController
-from synthorg.api.controllers.agents import AgentController
+from synthorg.api.controllers.agents.crud import AgentCrudController
+from synthorg.api.controllers.agents.observability import (
+    AgentObservabilityController,
+)
 from synthorg.api.controllers.collaboration import CollaborationController
 from synthorg.api.controllers.personalities import PersonalityPresetController
 from synthorg.api.controllers.quality import QualityController
@@ -58,7 +61,8 @@ FEATURE: FeatureModule = FeatureManifest(
     settings_namespace=SettingNamespace.HR,
     state_slice=HrStateSlice,
     controllers=(
-        AgentController,
+        AgentCrudController,
+        AgentObservabilityController,
         AgentRosterController,
         AgentIdentityVersionController,
         ActivityController,

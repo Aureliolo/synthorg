@@ -14,7 +14,8 @@ from synthorg.api.controllers.agent_identity_versions import (
     AgentIdentityVersionController,
 )
 from synthorg.api.controllers.agent_roster import AgentRosterController
-from synthorg.api.controllers.agents import AgentController
+from synthorg.api.controllers.agents.crud import AgentCrudController
+from synthorg.api.controllers.agents.observability import AgentObservabilityController
 from synthorg.api.controllers.analytics import AnalyticsController
 from synthorg.api.controllers.approvals.decisions import ApprovalsDecisionsController
 from synthorg.api.controllers.approvals.query import ApprovalsQueryController
@@ -162,7 +163,8 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     MetricsController,
     CapabilitiesController,
     CompanyController,
-    AgentController,
+    AgentCrudController,
+    AgentObservabilityController,
     AgentRosterController,
     AgentIdentityVersionController,
     ActivityController,
@@ -322,8 +324,9 @@ __all__ = [
     "INTEGRATION_CONTROLLERS",
     "OPTIONAL_CONTROLLERS",
     "ActivityController",
-    "AgentController",
+    "AgentCrudController",
     "AgentIdentityVersionController",
+    "AgentObservabilityController",
     "AgentRosterController",
     "AnalyticsController",
     "ApprovalsDecisionsController",
