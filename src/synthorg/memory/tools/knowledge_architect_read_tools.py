@@ -254,13 +254,13 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        args = KnowledgeArchitectBrowseWikiArgs.model_validate(arguments)
         if self._wiki_exporter is None:
             return ToolExecutionResult(
                 content="Wiki export is not configured.",
                 is_error=True,
             )
         try:
+            args = KnowledgeArchitectBrowseWikiArgs.model_validate(arguments)
             result = await self._wiki_exporter.export(self._agent_id)
         except Exception as exc:
             reraise_critical(exc)

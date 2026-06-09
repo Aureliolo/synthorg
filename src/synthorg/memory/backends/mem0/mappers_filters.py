@@ -27,15 +27,14 @@ def _matches_metadata(entry: MemoryEntry, query: MemoryQuery) -> bool:
     """Check namespace, category, and tag filters.
 
     Returns:
-        ``True`` if the operation succeeds, ``False`` otherwise.
+        ``True`` if the entry matches the namespace/category/tag
+        filters, ``False`` otherwise.
     """
     if query.namespaces and entry.namespace not in query.namespaces:
         return False
     if query.categories and entry.category not in query.categories:
         return False
-    return not (
-        query.tags and not all(tag in entry.metadata.tags for tag in query.tags)
-    )
+    return not query.tags or all(tag in entry.metadata.tags for tag in query.tags)
 
 
 def _matches_filters(
@@ -46,7 +45,8 @@ def _matches_filters(
     """Return True if *entry* passes all query filters.
 
     Returns:
-        ``True`` if the operation succeeds, ``False`` otherwise.
+        ``True`` if the entry passes every query filter, ``False``
+        otherwise.
     """
     if _is_expired(entry, now):
         return False
@@ -56,10 +56,10 @@ def _matches_filters(
         return False
     if query.until is not None and entry.created_at >= query.until:
         return False
-    return not (
-        query.min_relevance > 0.0
-        and entry.relevance_score is not None
-        and entry.relevance_score < query.min_relevance
+    return (
+        query.min_relevance <= 0.0
+        or entry.relevance_score is None
+        or entry.relevance_score >= query.min_relevance
     )
 
 

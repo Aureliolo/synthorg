@@ -49,8 +49,8 @@ async def execute_rrf_pipeline(
         Fused, filtered, and truncated memories.
 
     Raises:
-        MemoryError: If the related operation fails.
-        RecursionError: If the related operation fails.
+        builtins.MemoryError: Re-raised (system-level).
+        RecursionError: Re-raised (system-level).
     """
     dense_coro = fetch_memories(
         backend=backend,

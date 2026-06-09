@@ -41,6 +41,59 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 logger = get_logger(__name__)
 
 
+def _check_architect_autonomy(
+    *,
+    autonomy_level: AutonomyLevel,
+    architect_writes_enabled: bool,
+    agent_id: NotBlankStr,
+    action: str,
+) -> ToolExecutionResult | None:
+    """Enforce the FULL/SEMI autonomy gate shared by the write tools.
+
+    ``FULL`` disables architect mutations outright; ``SEMI`` requires
+    the explicit ``architect_writes_enabled`` opt-in.  ``SUPERVISED``
+    and ``LOCKED`` pass here (their gating fires in the agent runtime).
+
+    Args:
+        autonomy_level: Active autonomy level for the agent.
+        architect_writes_enabled: SEMI opt-in flag from the tool config.
+        agent_id: Agent identifier for log context.
+        action: Mutation verb (``"write"`` / ``"delete"``) for messages.
+
+    Returns:
+        A denial ``ToolExecutionResult`` when blocked, else ``None``.
+    """
+    if autonomy_level == AutonomyLevel.FULL:
+        logger.warning(
+            KNOWLEDGE_ARCHITECT_WRITE_DENIED,
+            agent_id=agent_id,
+            autonomy=autonomy_level.value,
+            reason=f"FULL autonomy disables architect {action}s",
+        )
+        return ToolExecutionResult(
+            content=(
+                f"{action.capitalize()} denied: FULL autonomy level "
+                f"disables architect {action}s to org memory"
+            ),
+            is_error=True,
+        )
+    if autonomy_level == AutonomyLevel.SEMI and not architect_writes_enabled:
+        logger.warning(
+            KNOWLEDGE_ARCHITECT_WRITE_DENIED,
+            agent_id=agent_id,
+            autonomy=autonomy_level.value,
+            reason="SEMI requires architect_writes_enabled opt-in",
+        )
+        return ToolExecutionResult(
+            content=(
+                f"{action.capitalize()} denied: SEMI autonomy requires "
+                "explicit architect_writes_enabled opt-in"
+            ),
+            is_error=True,
+        )
+    return None
+
+
 class KnowledgeArchitectWriteTool(BaseTool):
     """``memory.write`` -- write to org memory with autonomy gating.
 
@@ -95,37 +148,14 @@ class KnowledgeArchitectWriteTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        if self._autonomy_level == AutonomyLevel.FULL:
-            logger.warning(
-                KNOWLEDGE_ARCHITECT_WRITE_DENIED,
-                agent_id=self._agent_id,
-                autonomy=self._autonomy_level.value,
-                reason="FULL autonomy disables architect writes",
-            )
-            return ToolExecutionResult(
-                content=(
-                    "Write denied: FULL autonomy level "
-                    "disables architect writes to org memory"
-                ),
-                is_error=True,
-            )
-        if (
-            self._autonomy_level == AutonomyLevel.SEMI
-            and not self._architect_writes_enabled
-        ):
-            logger.warning(
-                KNOWLEDGE_ARCHITECT_WRITE_DENIED,
-                agent_id=self._agent_id,
-                autonomy=self._autonomy_level.value,
-                reason="SEMI requires architect_writes_enabled opt-in",
-            )
-            return ToolExecutionResult(
-                content=(
-                    "Write denied: SEMI autonomy requires explicit "
-                    "architect_writes_enabled opt-in"
-                ),
-                is_error=True,
-            )
+        denial = _check_architect_autonomy(
+            autonomy_level=self._autonomy_level,
+            architect_writes_enabled=self._architect_writes_enabled,
+            agent_id=self._agent_id,
+            action="write",
+        )
+        if denial is not None:
+            return denial
 
         try:
             args = KnowledgeArchitectWriteArgs.model_validate(arguments)
@@ -225,34 +255,14 @@ class KnowledgeArchitectDeleteTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        if self._autonomy_level == AutonomyLevel.FULL:
-            logger.warning(
-                KNOWLEDGE_ARCHITECT_WRITE_DENIED,
-                agent_id=self._agent_id,
-                autonomy=self._autonomy_level.value,
-                reason="FULL autonomy disables architect deletes",
-            )
-            return ToolExecutionResult(
-                content="Delete denied: FULL autonomy level",
-                is_error=True,
-            )
-        if (
-            self._autonomy_level == AutonomyLevel.SEMI
-            and not self._architect_writes_enabled
-        ):
-            logger.warning(
-                KNOWLEDGE_ARCHITECT_WRITE_DENIED,
-                agent_id=self._agent_id,
-                autonomy=self._autonomy_level.value,
-                reason="SEMI requires architect_writes_enabled opt-in",
-            )
-            return ToolExecutionResult(
-                content=(
-                    "Delete denied: SEMI autonomy requires explicit "
-                    "architect_writes_enabled opt-in"
-                ),
-                is_error=True,
-            )
+        denial = _check_architect_autonomy(
+            autonomy_level=self._autonomy_level,
+            architect_writes_enabled=self._architect_writes_enabled,
+            agent_id=self._agent_id,
+            action="delete",
+        )
+        if denial is not None:
+            return denial
         if self._fact_store is None:
             return ToolExecutionResult(
                 content="Delete not available: fact store not configured",

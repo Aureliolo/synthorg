@@ -43,9 +43,9 @@ async def _safe_call(
         Tuple of entries, or empty on failure.
 
     Raises:
-        builtins.MemoryError: Re-raised (system-level).
+        builtins.MemoryError: Re-raised (system-level). Domain
+            ``memory_errors.MemoryError`` is caught and yields ``()``.
         RecursionError: Re-raised (system-level).
-        MemoryError: If the related operation fails.
     """
     try:
         return await coro

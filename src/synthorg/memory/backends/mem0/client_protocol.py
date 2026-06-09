@@ -18,7 +18,7 @@ class Mem0Client(Protocol):
         """Add.
 
         Returns:
-            Mapping from ``str`` to ``Any``.
+            Mapping from ``str`` to ``object``.
         """
         ...
 
@@ -26,7 +26,7 @@ class Mem0Client(Protocol):
         """Search.
 
         Returns:
-            Mapping from ``str`` to ``Any``.
+            Mapping from ``str`` to ``object``.
         """
         ...
 
@@ -34,7 +34,7 @@ class Mem0Client(Protocol):
         """Get all.
 
         Returns:
-            Mapping from ``str`` to ``Any``.
+            Mapping from ``str`` to ``object``.
         """
         ...
 
@@ -42,7 +42,7 @@ class Mem0Client(Protocol):
         """Get.
 
         Returns:
-            The matching ``dict[str, Any]``, or ``None`` when no match is found.
+            The matching ``dict[str, object]``, or ``None`` when no match is found.
         """
         ...
 
