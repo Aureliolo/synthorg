@@ -256,8 +256,8 @@ def _partition_violations(
         Tuple of (failing, warning) violation lists.
     """
     min_rank = _A11Y_RANK[min_impact]
-    violations: list[Violation] = []
-    warnings: list[Violation] = []
+    violations: list["Violation"] = []
+    warnings: list["Violation"] = []
     for entry in raw_violations:
         impact = entry.get("impact") or "minor"
         if impact not in _A11Y_RANK:
