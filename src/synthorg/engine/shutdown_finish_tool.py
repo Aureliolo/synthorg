@@ -6,7 +6,7 @@ from ``synthorg.engine.shutdown``.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping, Sequence
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine._shutdown_shared import (
@@ -26,9 +26,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_SHUTDOWN_TASK_ERROR,
     EXECUTION_SHUTDOWN_TOOL_WAIT,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
 
 logger = get_logger(__name__)
 
@@ -108,7 +105,7 @@ class FinishCurrentToolStrategy:
     async def execute_shutdown(
         self,
         *,
-        running_tasks: Mapping[str, asyncio.Task[Any]],
+        running_tasks: Mapping[str, asyncio.Task[object]],
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
         """Wait for current tool, then cancel stragglers.

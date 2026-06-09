@@ -6,21 +6,24 @@ handling into a mixin so the main module stays under the size limit.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.budget.degradation import PreFlightResult
 from synthorg.budget.errors import (
     BudgetExhaustedError,
     QuotaExhaustedError,
     RunHardCeilingExceededError,
 )
 from synthorg.budget.quota import DegradationAction
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.cost_recording import resolve_tracker_currency
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.metrics import TaskCompletionMetrics
-from synthorg.engine.prompt import build_error_prompt
+from synthorg.engine.prompt import SystemPrompt, build_error_prompt
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.task_sync import sync_to_task_engine
@@ -36,15 +39,15 @@ from synthorg.observability.events.execution import (
 )
 from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from synthorg.providers.errors import DriverNotRegisteredError
+from synthorg.providers.models import CompletionConfig
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
-    from synthorg.budget.degradation import PreFlightResult
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.prompt import SystemPrompt
-    from synthorg.providers.models import CompletionConfig
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.providers.registry import ProviderRegistry
+    from synthorg.engine._agent_engine_callables import ApplyRecovery
+    from synthorg.engine.approval_gate import ApprovalGate
+    from synthorg.engine.task_engine import TaskEngine
+    from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
     from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
@@ -56,9 +59,9 @@ class AgentEngineErrorsMixin:
     """Mixin providing completion logging + error/degradation handlers."""
 
     _provider_registry: ProviderRegistry | None
-    _task_engine: Any
-    _apply_recovery: Any
-    _cost_forecast_repo: Any
+    _task_engine: TaskEngine | None
+    _apply_recovery: ApplyRecovery
+    _cost_forecast_repo: CostForecastRepository | None
 
     def _log_completion(
         self,
@@ -298,7 +301,7 @@ class AgentEngineErrorsMixin:
             EscalationInfo,
         )
 
-        gate: Any = getattr(self, "_approval_gate", None)
+        gate: ApprovalGate | None = getattr(self, "_approval_gate", None)
         if gate is None:
             return False
         try:
@@ -544,4 +547,4 @@ class AgentEngineErrorsMixin:
             effective_autonomy=effective_autonomy,
             provider=provider,
         )
-        return result  # type: ignore[no-any-return]
+        return result

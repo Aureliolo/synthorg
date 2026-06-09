@@ -16,8 +16,9 @@ and inherit the forecast workflow without learning about the
 underlying ``CostForecaster`` / ``CostForecastRepository`` machinery.
 """
 
-from typing import TYPE_CHECKING, NoReturn
+from typing import NoReturn
 
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.errors import (
     CostForecastApprovalRequiredError,
     CostForecastRejectedError,
@@ -28,9 +29,13 @@ from synthorg.budget.forecast_roles import (
     BriefRoleSkeleton,
     RoleSkeletonProvider,
 )
-from synthorg.budget.forecaster import BriefSignal, compute_brief_hash
+from synthorg.budget.forecaster import BriefSignal, CostForecaster, compute_brief_hash
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
+from synthorg.engine.pipeline.narrator_port import RunNarrator
+from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_FORECAST_APPROVAL_REQUIRED,
@@ -38,16 +43,10 @@ from synthorg.observability.events.budget import (
     BUDGET_FORECAST_SUPERSEDED,
     BUDGET_PREFLIGHT_ERROR,
 )
-from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
-
-if TYPE_CHECKING:
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.budget.forecaster import CostForecaster
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
-    from synthorg.engine.pipeline.narrator_port import RunNarrator
-    from synthorg.engine.pipeline.protocol import WorkPipeline
-    from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
+from synthorg.persistence.cost_forecast_protocol import (
+    CostForecastFilterSpec,
+    CostForecastRepository,
+)
 
 logger = get_logger(__name__)
 

@@ -10,24 +10,24 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.communication.async_tasks.models import AsyncTaskStateChannel
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
 from synthorg.engine._prompt_helpers import PersonalityTrimInfo
 from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
 from synthorg.engine._prompt_helpers import compute_sections as _compute_sections
+from synthorg.engine.prompt_profiles import PromptProfile
 from synthorg.engine.prompt_template import PROMPT_TEMPLATE_VERSION
 from synthorg.engine.prompt_validation import (
     inject_async_task_section,
     log_prompt_build_success,
 )
+from synthorg.engine.strategy.models import StrategyConfig
+from synthorg.engine.token_estimation import PromptTokenEstimator
+from synthorg.providers.models import ToolDefinition
 
 if TYPE_CHECKING:
-    from synthorg.communication.async_tasks.models import AsyncTaskStateChannel
-    from synthorg.core.agent import AgentIdentity
     from synthorg.core.company import Company
-    from synthorg.core.task import Task
-    from synthorg.engine.prompt_profiles import PromptProfile
-    from synthorg.engine.strategy.models import StrategyConfig
-    from synthorg.engine.token_estimation import PromptTokenEstimator
-    from synthorg.providers.models import ToolDefinition
 
 
 class SystemPrompt(BaseModel):

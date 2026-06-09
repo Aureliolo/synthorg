@@ -19,10 +19,11 @@ re-escalate a re-issued autonomy-gated tool).
 """
 
 from datetime import date
-from typing import Any
+from typing import cast
 from uuid import uuid4
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig, ToolPermissions
@@ -66,11 +67,17 @@ def _acting_identity() -> AgentIdentity:
     )
 
 
-def _tool_call(name: str, **arguments: Any) -> CompletionResponse:
+def _tool_call(name: str, **arguments: object) -> CompletionResponse:
     return CompletionResponse(
         content=f"calling {name}",
         finish_reason=FinishReason.TOOL_USE,
-        tool_calls=(ToolCall(id=f"tc-{name}", name=name, arguments=arguments),),
+        tool_calls=(
+            ToolCall(
+                id=f"tc-{name}",
+                name=name,
+                arguments=cast("dict[str, JsonValue]", arguments),
+            ),
+        ),
         usage=ZERO_TOKEN_USAGE,
         model="test-model-001",
     )

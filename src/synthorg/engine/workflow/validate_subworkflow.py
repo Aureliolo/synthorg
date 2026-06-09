@@ -1,9 +1,13 @@
 """Subworkflow I/O binding and cycle-detection validation."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
+from synthorg.engine.workflow.definition import (
+    WorkflowDefinition,
+    WorkflowIODeclaration,
+)
 from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowValueType
+from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 from synthorg.engine.workflow.validation_types import (
     ValidationErrorCode,
     WorkflowValidationError,
@@ -14,13 +18,6 @@ from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_CYCLE_DETECTED,
     SUBWORKFLOW_IO_INVALID,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.definition import (
-        WorkflowDefinition,
-        WorkflowIODeclaration,
-    )
-    from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 
 logger = get_logger(__name__)
 

@@ -5,10 +5,9 @@ steps with dependency references that the engine's coordination/
 decomposition subsystem can consume.
 """
 
-from typing import TYPE_CHECKING, Any
-
 import yaml
 
+from synthorg.engine.workflow.definition import WorkflowDefinition, WorkflowNode
 from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.graph_utils import (
     build_adjacency_maps,
@@ -24,19 +23,16 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_EXPORTED,
 )
 
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.definition import WorkflowDefinition
-
 logger = get_logger(__name__)
 
 
 def _build_step(
     node_id: str,
     node_type: WorkflowNodeType,
-    config: dict[str, Any],
+    config: dict[str, object],
     incoming_node_ids: list[str],
     outgoing_edges: list[tuple[str, WorkflowEdgeType]],
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Build a single step dict for the YAML output.
 
     Returns:
@@ -44,7 +40,7 @@ def _build_step(
         per-type fields produced by the registered builder, and a
         ``depends_on`` list when the step has predecessors.
     """
-    step: dict[str, Any] = {"id": node_id, "type": node_type.value}
+    step: dict[str, object] = {"id": node_id, "type": node_type.value}
 
     STEP_BUILDERS[node_type](
         StepBuildContext(step=step, config=config, outgoing_edges=outgoing_edges),
@@ -59,15 +55,15 @@ def _build_step(
 
 def _assemble_document(
     definition: WorkflowDefinition,
-    steps: list[dict[str, Any]],
-) -> dict[str, Any]:
+    steps: list[dict[str, object]],
+) -> dict[str, object]:
     """Assemble the top-level YAML document structure.
 
     Returns:
         A dict shaped ``{"workflow_definition": {...}}`` carrying the
         definition metadata and the supplied step list.
     """
-    body: dict[str, Any] = {
+    body: dict[str, object] = {
         "name": definition.name,
         "workflow_type": definition.workflow_type.value,
         "version": definition.version,
@@ -85,10 +81,10 @@ def _assemble_document(
 
 def _generate_steps(
     sorted_ids: list[str],
-    node_map: dict[str, Any],
+    node_map: dict[str, WorkflowNode],
     reverse_adj: dict[str, list[str]],
     outgoing_edges: dict[str, list[tuple[str, WorkflowEdgeType]]],
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Build step dicts from topologically sorted node IDs.
 
     Returns:
@@ -96,7 +92,7 @@ def _generate_steps(
         are skipped since YAML output expresses dependencies directly).
     """
     skip = {WorkflowNodeType.START, WorkflowNodeType.END}
-    steps: list[dict[str, Any]] = []
+    steps: list[dict[str, object]] = []
     for node_id in sorted_ids:
         node = node_map[node_id]
         if node.type in skip:
@@ -119,7 +115,7 @@ def _generate_steps(
 
 
 def _serialize_yaml(
-    document: dict[str, Any],
+    document: dict[str, object],
     workflow_id: str,
 ) -> str:
     """Serialize document to YAML, wrapping errors as ValueError.

@@ -5,9 +5,12 @@ helpers module under the project size limit.
 """
 
 import re
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.approval.models import EscalationInfo
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -47,14 +50,8 @@ from synthorg.observability.events.tool import (
     TOOL_L3_FETCHED,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, ToolResult
-
-if TYPE_CHECKING:
-    from synthorg.approval.models import EscalationInfo
-    from synthorg.engine.approval_gate import ApprovalGate
-    from synthorg.engine.context import AgentContext
-    from synthorg.providers.models import CompletionResponse
-    from synthorg.tools.protocol import ToolInvokerProtocol
+from synthorg.providers.models import ChatMessage, CompletionResponse, ToolResult
+from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 

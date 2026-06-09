@@ -7,14 +7,10 @@ that elevate stakes for consequential or irreversible work. The result
 is the highest level any signal produces (fail-safe upward bias).
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, Stakes, compare_stakes
+from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.stakes.config import StakesAssessmentConfig
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.engine.decomposition.models import SubtaskDefinition
 
 
 def _max_stakes(a: Stakes, b: Stakes) -> Stakes:

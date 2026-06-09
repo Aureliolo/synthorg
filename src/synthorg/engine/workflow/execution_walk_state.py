@@ -6,15 +6,11 @@ and terminal-task-id collection used by
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
+from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.engine.workflow.enums import WorkflowNodeType
+from synthorg.engine.workflow.execution_models import WorkflowNodeExecution
 from synthorg.engine.workflow.graph_utils import build_adjacency_maps
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.definition import WorkflowDefinition
-    from synthorg.engine.workflow.execution_models import WorkflowNodeExecution
-
 
 QUALIFIED_ID_SEPARATOR = "::"
 

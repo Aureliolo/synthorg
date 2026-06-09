@@ -8,9 +8,10 @@ loudly so schema drift is caught in dev/CI.
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.task import Task
 from synthorg.engine.decisions import DecisionOutcome
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
@@ -22,7 +23,7 @@ from synthorg.observability.events.security import (
 from synthorg.observability.events.versioning import VERSION_FETCH_FAILED
 
 if TYPE_CHECKING:
-    from synthorg.core.task import Task
+    from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 
@@ -30,10 +31,10 @@ logger = get_logger(__name__)
 class ReviewGateRecordMixin:
     """Decision-record drop-box append for the review gate service."""
 
-    # Populated on the concrete ``ReviewGateService``; typed ``Any``
-    # because the mixin only reads it. The concrete class carries the
-    # authoritative type.
-    _persistence: Any
+    # Populated on the concrete ``ReviewGateService``; declared here so the
+    # type checker sees it when the mixin reads it. The concrete class owns
+    # the assignment.
+    _persistence: PersistenceBackend | None
 
     async def _record_decision(
         self,

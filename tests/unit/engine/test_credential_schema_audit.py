@@ -22,7 +22,7 @@ def _matches_credential_pattern(name: str) -> bool:
     return any(p.search(name) for p in _PATTERNS)
 
 
-def _could_carry_credential(annotation: Any) -> bool:
+def _could_carry_credential(annotation: object) -> bool:
     """Return True if the annotation could hold a credential.
 
     Numeric fields (int, float, bool) and enum fields cannot carry
@@ -40,7 +40,7 @@ def _could_carry_credential(annotation: Any) -> bool:
     )
 
 
-def _contains_base_model(annotation: Any) -> bool:
+def _contains_base_model(annotation: object) -> bool:
     """Return True if the annotation contains a BaseModel subclass.
 
     Walks into unions, optionals, and generic containers so that
@@ -82,7 +82,7 @@ def _check_model_recursive(
 
         # Recurse into nested BaseModel subclasses, fully unpacking
         # generic containers (e.g. list[list[SomeModel]]).
-        stack: list[Any] = [annotation]
+        stack: list[object] = [annotation]
         while stack:
             item = stack.pop()
             item_origin = get_origin(item)
@@ -121,7 +121,7 @@ class TestCredentialSchemaAudit:
     ) -> None:
         """Task.metadata is the only dict/Mapping field on Task."""
 
-        def _is_mapping_type(annotation: Any) -> bool:
+        def _is_mapping_type(annotation: object) -> bool:
             origin = get_origin(annotation)
             if origin is not None:
                 if isinstance(origin, type) and issubclass(origin, Mapping):

@@ -4,8 +4,8 @@ Encapsulates strategy-specific imports, principle loading, and
 error handling so that ``prompt.py`` delegates to a single call.
 """
 
-from typing import TYPE_CHECKING, Any
-
+from synthorg.core.agent import AgentIdentity
+from synthorg.engine.strategy.models import ConstitutionalPrinciple, StrategyConfig
 from synthorg.engine.strategy.principles import (
     StrategyPackNotFoundError,
     StrategyPackValidationError,
@@ -17,10 +17,6 @@ from synthorg.engine.strategy.prompt_injection import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.strategy import STRATEGY_PRINCIPLES_LOAD_FAILED
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.strategy.models import ConstitutionalPrinciple, StrategyConfig
 
 logger = get_logger(__name__)
 
@@ -36,7 +32,7 @@ _NULL_SECTIONS: dict[str, object] = {
 
 
 def inject_strategy_context(
-    context: dict[str, Any],
+    context: dict[str, object],
     agent: AgentIdentity,
     strategy_config: StrategyConfig | None,
 ) -> None:

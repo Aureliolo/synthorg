@@ -1,7 +1,5 @@
 """Tests for BehaviorTag enum and TurnRecord behavior extensions."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.execution.turn import BehaviorTag, TurnRecord
@@ -39,8 +37,8 @@ class TestBehaviorTag:
 class TestTurnRecordBehaviorExtensions:
     """TurnRecord behavior_tags and related fields."""
 
-    def _make_turn(self, **overrides: Any) -> TurnRecord:
-        defaults: dict[str, Any] = {
+    def _make_turn(self, **overrides: object) -> TurnRecord:
+        defaults: dict[str, object] = {
             "turn_number": 1,
             "input_tokens": 100,
             "output_tokens": 50,
@@ -48,7 +46,7 @@ class TestTurnRecordBehaviorExtensions:
             "finish_reason": FinishReason.STOP,
         }
         defaults.update(overrides)
-        return TurnRecord(**defaults)
+        return TurnRecord.model_validate(defaults)
 
     def test_behavior_tags_default_empty(self) -> None:
         turn = self._make_turn()

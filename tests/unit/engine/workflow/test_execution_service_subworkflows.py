@@ -11,13 +11,15 @@ Covers:
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import override
 
 import pytest
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.errors import SubworkflowDepthExceededError
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -155,13 +157,18 @@ def _make_parent_definition(
     )
 
 
-class _FakeTaskEngine:
-    """Minimal task engine stub that records created tasks."""
+class _FakeTaskEngine(TaskEngine):
+    """Minimal task engine stub that records created tasks.
+
+    Subclasses the real ``TaskEngine`` (bypassing its ``__init__``) so the
+    runtime-resolved ``task_engine: TaskEngine`` boundary accepts it.
+    """
 
     def __init__(self) -> None:
         self.created: list[str] = []
 
-    async def create_task(self, data: Any, requested_by: str) -> Task:
+    @override
+    async def create_task(self, data: CreateTaskData, *, requested_by: str) -> Task:
         task_id = f"task-{len(self.created)}"
         self.created.append(task_id)
         return Task(
@@ -213,7 +220,7 @@ async def _build_service(
     service = WorkflowExecutionService(
         definition_repo=definition_repo,  # type: ignore[arg-type]
         execution_repo=execution_repo,  # type: ignore[arg-type]
-        task_engine=task_engine,  # type: ignore[arg-type]
+        task_engine=task_engine,
         subworkflow_registry=registry,
         max_subworkflow_depth=max_depth,
     )
@@ -289,7 +296,7 @@ class TestSubworkflowExecution:
         service = WorkflowExecutionService(
             definition_repo=definition_repo,  # type: ignore[arg-type]
             execution_repo=execution_repo,  # type: ignore[arg-type]
-            task_engine=task_engine,  # type: ignore[arg-type]
+            task_engine=task_engine,
             max_subworkflow_depth=16,
             subworkflow_registry=None,
         )

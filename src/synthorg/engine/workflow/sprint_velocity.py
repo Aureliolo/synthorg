@@ -4,12 +4,10 @@ Provides the ``VelocityRecord`` model and functions for recording
 velocity from completed sprints and computing rolling averages.
 """
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Sequence
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus

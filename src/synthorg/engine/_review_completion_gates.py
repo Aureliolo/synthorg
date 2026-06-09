@@ -16,8 +16,10 @@ service. Each gate returns the (possibly rerouted) transition tuple
 
 from typing import TYPE_CHECKING, Literal
 
+from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskStatus, compare_stakes
 from synthorg.engine.review.models import PipelineResult, ReviewVerdict
+from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_REVIEW_COMPLETED,
@@ -35,14 +37,12 @@ from synthorg.observability.events.vision_verify import (
     VISION_GATE_SKIPPED,
     VISION_REWORK_ROUTED,
 )
+from synthorg.security.redteam.protocol import RedTeamGate
+from synthorg.security.visionverify.models import VisionReviewInput
+from synthorg.security.visionverify.protocol import VisionVerifierGate
 
 if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
     from synthorg.security.redteam.models import RedTeamReviewInput
-    from synthorg.security.redteam.protocol import RedTeamGate
-    from synthorg.security.visionverify.models import VisionReviewInput
-    from synthorg.security.visionverify.protocol import VisionVerifierGate
 
 logger = get_logger(__name__)
 

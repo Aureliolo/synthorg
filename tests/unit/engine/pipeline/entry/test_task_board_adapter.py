@@ -9,7 +9,6 @@ inside its intake phase).
 """
 
 import uuid
-from typing import Any
 
 import pytest
 
@@ -33,8 +32,8 @@ from tests._shared import mock_of
 pytestmark = pytest.mark.unit
 
 
-def _filing(**overrides: Any) -> TaskBoardFiling:
-    base: dict[str, Any] = {
+def _filing(**overrides: object) -> TaskBoardFiling:
+    base: dict[str, object] = {
         "title": "Ship the status endpoint",
         "description": "Return a JSON status body from /status.",
         "task_type": TaskType.DEVELOPMENT,
@@ -44,7 +43,7 @@ def _filing(**overrides: Any) -> TaskBoardFiling:
         "estimated_complexity": Complexity.COMPLEX,
     }
     base.update(overrides)
-    return TaskBoardFiling(**base)
+    return TaskBoardFiling.model_validate(base)
 
 
 def _result(work_item: WorkItem) -> WorkPipelineResult:

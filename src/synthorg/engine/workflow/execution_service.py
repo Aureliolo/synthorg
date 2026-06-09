@@ -7,6 +7,7 @@ order, creating concrete tasks for TASK nodes, and wiring
 upstream task dependencies from the graph edges.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -21,7 +22,13 @@ from synthorg.engine.errors import (
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.engine.workflow import execution_lifecycle as lifecycle
+from synthorg.engine.workflow.definition import (
+    WorkflowDefinition,
+    WorkflowNode,
+)
 from synthorg.engine.workflow.enums import (
     WorkflowEdgeType,
     WorkflowExecutionStatus,
@@ -53,6 +60,9 @@ from synthorg.engine.workflow.subworkflow_binding import (
     project_output_bindings,
     resolve_input_bindings,
 )
+from synthorg.engine.workflow.subworkflow_registry import (
+    SubworkflowRegistry,
+)
 from synthorg.engine.workflow.validation import validate_workflow
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
@@ -69,24 +79,12 @@ from synthorg.observability.events.workflow_execution import (
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.engine.task_engine_models import TaskStateChanged
-    from synthorg.engine.workflow.definition import (
-        WorkflowDefinition,
-        WorkflowNode,
-    )
-    from synthorg.engine.workflow.subworkflow_registry import (
-        SubworkflowRegistry,
-    )
     from synthorg.persistence.workflow_definition_protocol import (
         WorkflowDefinitionRepository,
     )
     from synthorg.persistence.workflow_execution_protocol import (
         WorkflowExecutionRepository,
     )
-
 
 logger = get_logger(__name__)
 

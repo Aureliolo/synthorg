@@ -6,11 +6,13 @@ main module under the project size limit.
 
 import asyncio
 import contextlib
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine_apply import dispatch as _dispatch_mutation
+from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.task_engine_events import (
     build_state_changed_event,
     publish_snapshot,
@@ -37,10 +39,7 @@ from synthorg.observability.events.task_engine import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.engine.task_engine_config import TaskEngineConfig
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)

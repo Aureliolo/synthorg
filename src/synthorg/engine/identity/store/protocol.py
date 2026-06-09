@@ -5,13 +5,11 @@ rollback support, used by the evolution system to manage
 agent identity mutations and reversions.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.versioning.models import VersionSnapshot
+from synthorg.versioning.models import VersionSnapshot
 
 
 @runtime_checkable

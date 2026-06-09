@@ -4,7 +4,7 @@ Extracted to keep individual test files under 800 lines.
 """
 
 import json
-from typing import Any, override
+from typing import override
 
 from pydantic import JsonValue
 
@@ -146,7 +146,7 @@ class _StubTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         return ToolExecutionResult(
             content=f"echoed: {arguments}",

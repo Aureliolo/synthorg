@@ -5,17 +5,13 @@ per-assignment resource locks for a :class:`ParallelExecutionGroup`.
 ``ParallelExecutor`` delegates its locking concern here.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.engine.errors import ResourceConflictError
+from synthorg.engine.parallel_models import ParallelExecutionGroup
 from synthorg.engine.resource_lock import InMemoryResourceLock, ResourceLock
 from synthorg.observability import get_logger
 from synthorg.observability.events.parallel import (
     PARALLEL_VALIDATION_ERROR,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.parallel_models import ParallelExecutionGroup
 
 logger = get_logger(__name__)
 

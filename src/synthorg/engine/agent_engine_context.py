@@ -1,19 +1,21 @@
 """Context preparation mixin for :class:`AgentEngine`."""
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
+from typing import TYPE_CHECKING, Final, Literal, TypedDict, cast
 
 from pydantic import TypeAdapter
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
     ProjectAgentNotMemberError,
     ProjectNotFoundError,
 )
-from synthorg.engine.prompt import build_system_prompt
+from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.task_sync import transition_task_if_needed
 from synthorg.observability import get_logger, safe_error_description
@@ -31,13 +33,16 @@ from synthorg.observability.events.prompt import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
+from synthorg.tools.protocol import ToolInvokerProtocol
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.prompt import SystemPrompt
+    from synthorg.budget.enforcer import BudgetEnforcer
+    from synthorg.engine.agent_engine import PersonalityTrimNotifier
+    from synthorg.engine.task_engine import TaskEngine
+    from synthorg.memory.injection import MemoryInjectionStrategy
+    from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.security.autonomy.models import EffectiveAutonomy
-    from synthorg.tools.protocol import ToolInvokerProtocol
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -68,15 +73,15 @@ class PersonalityTrimPayload(TypedDict):
 class AgentEngineContextMixin:
     """Mixin providing context preparation and project validation."""
 
-    # Slot attrs populated on the concrete ``AgentEngine``; typed as
-    # ``Any`` here because the mixin only reads them. The concrete
-    # class carries the authoritative type.
-    _budget_enforcer: Any
-    _config_resolver: Any
-    _task_engine: Any
-    _personality_trim_notifier: Any
-    _project_repo: Any
-    _memory_injection_strategy: Any
+    # Slot attrs populated on the concrete ``AgentEngine``; declared here
+    # so the type checker sees them when this mixin reads them. The
+    # concrete class owns the assignment.
+    _budget_enforcer: BudgetEnforcer | None
+    _config_resolver: ConfigResolver | None
+    _task_engine: TaskEngine | None
+    _personality_trim_notifier: PersonalityTrimNotifier | None
+    _project_repo: ProjectRepository | None
+    _memory_injection_strategy: MemoryInjectionStrategy | None
 
     async def _prepare_context(  # noqa: PLR0913
         self,
@@ -331,7 +336,10 @@ class AgentEngineContextMixin:
         """
         if not task.project:
             return 0.0
-        project = await self._project_repo.get(task.project)
+        # Project validation is only reached on the wired-repo path; the
+        # concrete engine assigns ``_project_repo`` before this runs.
+        repo = cast("ProjectRepository", self._project_repo)
+        project = await repo.get(task.project)
         if project is None:
             logger.warning(
                 EXECUTION_PROJECT_VALIDATION_FAILED,
@@ -355,7 +363,7 @@ class AgentEngineContextMixin:
             )
         if self._budget_enforcer is not None and project.budget > 0:
             await self._budget_enforcer.check_project_budget(
-                project_id=project.id,
+                project_id=str(project.id),
                 project_budget=project.budget,
             )
         return float(project.budget)

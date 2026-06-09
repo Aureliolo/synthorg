@@ -6,11 +6,15 @@ LLM responses into ``DecompositionPlan`` objects.
 
 import json
 import re
-from typing import TYPE_CHECKING, Any, Final
+from typing import Final
 from uuid import uuid4
 
+from pydantic import JsonValue
+
+from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, CoordinationTopology, TaskStructure
 from synthorg.engine.decomposition.models import (
+    DecompositionContext,
     DecompositionPlan,
     SubtaskDefinition,
 )
@@ -30,12 +34,6 @@ from synthorg.providers.models import (
     CompletionResponse,
     ToolDefinition,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.engine.decomposition.models import (
-        DecompositionContext,
-    )
 
 logger = get_logger(__name__)
 
@@ -65,7 +63,7 @@ def build_decomposition_tool() -> ToolDefinition:
         structure, including subtask definitions with dependencies
         and complexity metadata.
     """
-    subtask_schema: dict[str, Any] = {
+    subtask_schema: dict[str, JsonValue] = {
         "type": "object",
         "properties": {
             "id": {
@@ -102,7 +100,7 @@ def build_decomposition_tool() -> ToolDefinition:
         },
         "required": ["id", "title", "description"],
     }
-    schema: dict[str, Any] = {
+    schema: dict[str, JsonValue] = {
         "type": "object",
         "properties": {
             "subtasks": {
@@ -226,7 +224,7 @@ def build_retry_message(error: str) -> ChatMessage:
     return ChatMessage(role=MessageRole.USER, content=content)
 
 
-def _parse_subtask(raw: dict[str, Any]) -> SubtaskDefinition:
+def _parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
     """Convert a raw subtask dict into a ``SubtaskDefinition``.
 
     Args:
@@ -276,19 +274,21 @@ def _parse_subtask(raw: dict[str, Any]) -> SubtaskDefinition:
             error=msg,
         )
         raise DecompositionError(msg)
-    return SubtaskDefinition(
-        id=raw["id"],
-        title=raw["title"],
-        description=raw["description"],
-        dependencies=tuple(deps),
-        estimated_complexity=complexity,
-        required_skills=tuple(skills),
-        required_role=raw.get("required_role"),
+    return SubtaskDefinition.model_validate(
+        {
+            "id": raw["id"],
+            "title": raw["title"],
+            "description": raw["description"],
+            "dependencies": tuple(deps),
+            "estimated_complexity": complexity,
+            "required_skills": tuple(skills),
+            "required_role": raw.get("required_role"),
+        }
     )
 
 
 def _args_to_plan(
-    args: dict[str, Any],
+    args: dict[str, JsonValue],
     parent_task_id: str,
 ) -> DecompositionPlan:
     """Convert parsed arguments dict into a ``DecompositionPlan``.
@@ -330,7 +330,7 @@ def _args_to_plan(
     # to express the dependency DAG; remap them to fresh UUIDs so each
     # child task carries a globally unique identifier while preserving the
     # dependency edges between siblings.
-    parsed = tuple(_parse_subtask(s) for s in raw_subtasks)
+    parsed = tuple(_parse_subtask(s) for s in raw_subtasks if isinstance(s, dict))
     # Duplicate LLM ids would collapse to a single UUID and corrupt the
     # dependency DAG (distinct subtasks sharing one id), so reject them.
     id_map: dict[str, str] = {}

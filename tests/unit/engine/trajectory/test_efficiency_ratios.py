@@ -1,7 +1,6 @@
 """Tests for efficiency ratio models and computation."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -13,8 +12,8 @@ from synthorg.execution.efficiency import (
 )
 
 
-def _make_baseline(**overrides: Any) -> IdealTrajectoryBaseline:
-    defaults: dict[str, Any] = {
+def _make_baseline(**overrides: object) -> IdealTrajectoryBaseline:
+    defaults: dict[str, object] = {
         "task_type": "test-task",
         "ideal_step_count": 10,
         "ideal_tool_call_count": 5,
@@ -27,7 +26,7 @@ def _make_baseline(**overrides: Any) -> IdealTrajectoryBaseline:
         "model_tier": "medium",
     }
     defaults.update(overrides)
-    return IdealTrajectoryBaseline(**defaults)
+    return IdealTrajectoryBaseline.model_validate(defaults)
 
 
 @pytest.mark.unit
@@ -74,8 +73,8 @@ class TestIdealTrajectoryBaseline:
 class TestEfficiencyRatios:
     """EfficiencyRatios frozen model validation."""
 
-    def _make_ratios(self, **overrides: Any) -> EfficiencyRatios:
-        defaults: dict[str, Any] = {
+    def _make_ratios(self, **overrides: object) -> EfficiencyRatios:
+        defaults: dict[str, object] = {
             "step_ratio": 1.0,
             "tool_call_ratio": 1.0,
             "latency_ratio": 1.0,
@@ -86,7 +85,7 @@ class TestEfficiencyRatios:
             "baseline_version": "test-task:20260101",
         }
         defaults.update(overrides)
-        return EfficiencyRatios(**defaults)
+        return EfficiencyRatios.model_validate(defaults)
 
     def test_valid_construction(self) -> None:
         ratios = self._make_ratios()

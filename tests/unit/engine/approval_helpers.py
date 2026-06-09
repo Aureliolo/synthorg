@@ -5,13 +5,11 @@ The ``make_escalation`` factory is used by ``test_approval_gate.py``,
 so each suite stays DRY without copy-pasting the same builder.
 """
 
-from typing import Any
-
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.models import EscalationInfo
 
 
-def make_escalation(**overrides: Any) -> EscalationInfo:
+def make_escalation(**overrides: object) -> EscalationInfo:
     """Build an ``EscalationInfo`` with safe defaults.
 
     Any field can be overridden via keyword arguments.  Unknown keys
@@ -23,7 +21,7 @@ def make_escalation(**overrides: Any) -> EscalationInfo:
     if unknown:
         msg = f"Unknown EscalationInfo override(s): {sorted(unknown)}"
         raise KeyError(msg)
-    defaults: dict[str, Any] = {
+    defaults: dict[str, object] = {
         "approval_id": "approval-1",
         "tool_call_id": "tc-1",
         "tool_name": "deploy_to_prod",
@@ -32,4 +30,4 @@ def make_escalation(**overrides: Any) -> EscalationInfo:
         "reason": "Needs approval",
     }
     defaults.update(overrides)
-    return EscalationInfo(**defaults)
+    return EscalationInfo.model_validate(defaults)

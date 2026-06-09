@@ -108,11 +108,11 @@ class _InMemoryForecastRepo:
         return True
 
     async def query(
-        self, _filter: object, *, limit: int = 100, offset: int = 0
+        self, filter_spec: object, *, limit: int = 100, offset: int = 0
     ) -> tuple[Forecast, ...]:
         return await self.list_items(limit=limit, offset=offset)
 
-    async def count(self, _filter: object) -> int:
+    async def count(self, filter_spec: object) -> int:
         return len(self.rows)
 
 

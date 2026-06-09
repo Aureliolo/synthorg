@@ -1,16 +1,13 @@
 """Reachability and cycle detection for workflow graphs."""
 
 from collections import deque
-from typing import TYPE_CHECKING
 
+from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.engine.workflow.enums import WorkflowNodeType
 from synthorg.engine.workflow.validation_types import (
     ValidationErrorCode,
     WorkflowValidationError,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.definition import WorkflowDefinition
 
 
 def reachable_from(

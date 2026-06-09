@@ -6,9 +6,12 @@ top-level loop file stays under the project's size limit.
 """
 
 import copy
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.checkpoint.callback import CheckpointCallback
+from synthorg.engine.context import AgentContext
+from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.intervention.loop_hook import check_steering
 from synthorg.engine.loop_cancellation import check_task_cancelled
 from synthorg.engine.loop_control_helpers import (
@@ -45,19 +48,13 @@ from synthorg.observability.events.execution import (
     EXECUTION_PLAN_STEP_TRUNCATED,
 )
 from synthorg.providers.enums import FinishReason
-
-if TYPE_CHECKING:
-    from synthorg.engine.approval_gate import ApprovalGate
-    from synthorg.engine.checkpoint.callback import CheckpointCallback
-    from synthorg.engine.context import AgentContext
-    from synthorg.engine.intervention.inbox import SteeringInbox
-    from synthorg.providers.models import (
-        CompletionConfig,
-        CompletionResponse,
-        ToolDefinition,
-    )
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.protocol import ToolInvokerProtocol
+from synthorg.providers.models import (
+    CompletionConfig,
+    CompletionResponse,
+    ToolDefinition,
+)
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 

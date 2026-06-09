@@ -8,6 +8,7 @@ hierarchical composition) or a custom ``AgentTaskScorer`` is
 needed.
 """
 
+from collections.abc import Callable
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -24,6 +25,10 @@ from synthorg.engine.assignment.pool_filters import (
     HierarchicalPoolFilter,
     IdentityPoolFilter,
 )
+from synthorg.engine.assignment.protocol import (
+    TaskAssignmentStrategy,
+)
+from synthorg.engine.assignment.ranker_protocol import CandidateRanker
 from synthorg.engine.assignment.rankers import (
     AuctionBidRanker,
     CostDescendingRanker,
@@ -38,15 +43,9 @@ from synthorg.observability.events.task_assignment import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from synthorg.communication.delegation.hierarchy import (
         HierarchyResolver,
     )
-    from synthorg.engine.assignment.protocol import (
-        TaskAssignmentStrategy,
-    )
-    from synthorg.engine.assignment.ranker_protocol import CandidateRanker
 
 logger = get_logger(__name__)
 

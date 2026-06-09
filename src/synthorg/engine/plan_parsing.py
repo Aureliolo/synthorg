@@ -7,17 +7,14 @@ stripping), then falls back to structured text parsing.
 
 import json
 import re
-from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_PLAN_PARSE_ERROR,
 )
+from synthorg.providers.models import CompletionResponse
 
 from .plan_models import ExecutionPlan, PlanStep
-
-if TYPE_CHECKING:
-    from synthorg.providers.models import CompletionResponse
 
 logger = get_logger(__name__)
 

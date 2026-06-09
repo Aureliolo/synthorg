@@ -5,9 +5,10 @@ consumed.  Primary unit: ``pts/<DEFAULT_CURRENCY>`` where
 ``DEFAULT_CURRENCY`` is the configured display currency.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 from synthorg.engine.workflow.velocity_types import (
     VelocityCalcType,
     VelocityMetrics,
@@ -16,11 +17,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     VELOCITY_BUDGET_NO_BUDGET_CONSUMED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 
 logger = get_logger(__name__)
 

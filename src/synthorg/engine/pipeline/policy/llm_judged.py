@@ -7,11 +7,15 @@ parsed, so the spine never stalls on an ambiguous answer.
 """
 
 import re
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.tracker import CostTracker
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import RoutingVerdict
+from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     untrusted_content_directive,
@@ -22,13 +26,7 @@ from synthorg.observability.events.pipeline import PIPELINE_ROUTING_DECIDED
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

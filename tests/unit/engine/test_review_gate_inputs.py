@@ -6,7 +6,6 @@ flight-recorder frame and returns ``None`` (so the gate applies its
 exists.
 """
 
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -61,8 +60,8 @@ def _frame_repo(
     *,
     latest_execution_id: str | None,
     frames: tuple[FlightRecorderFrame, ...] = (),
-) -> Any:
-    return mock_of[FlightRecorderFrameRepository](
+) -> FlightRecorderFrameRepository:
+    repo: FlightRecorderFrameRepository = mock_of[FlightRecorderFrameRepository](
         get_aggregate=AsyncMock(
             return_value=FlightRecorderFrameAggregate(
                 latest_execution_id=latest_execution_id,
@@ -70,6 +69,7 @@ def _frame_repo(
         ),
         query=AsyncMock(return_value=frames),
     )
+    return repo
 
 
 async def _supervised() -> AutonomyLevel:

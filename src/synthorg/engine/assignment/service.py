@@ -4,9 +4,12 @@ Orchestrates task assignment by delegating to a pluggable
 ``TaskAssignmentStrategy`` with logging and validation.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine.assignment.models import (
+    AssignmentRequest,
+    AssignmentResult,
+)
+from synthorg.engine.assignment.protocol import TaskAssignmentStrategy
 from synthorg.engine.errors import TaskAssignmentError
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.task_assignment import (
@@ -18,13 +21,6 @@ from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_PROJECT_NO_ELIGIBLE,
     TASK_ASSIGNMENT_STARTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.assignment.models import (
-        AssignmentRequest,
-        AssignmentResult,
-    )
-    from synthorg.engine.assignment.protocol import TaskAssignmentStrategy
 
 logger = get_logger(__name__)
 
@@ -85,10 +81,6 @@ class TaskAssignmentService:
 
         # Filter to project team members when specified.
         if request.project_team:
-            from synthorg.engine.assignment.models import (  # noqa: PLC0415
-                AssignmentResult,
-            )
-
             team_set = frozenset(request.project_team)
             filtered = tuple(
                 a for a in request.available_agents if str(a.id) in team_set

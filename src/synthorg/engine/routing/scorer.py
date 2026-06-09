@@ -7,12 +7,14 @@ under ``engine.routing.*`` and reach the scorer via
 :class:`RoutingScorerConfig` (resolved at construction time).
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.normalization import compare_ci
 from synthorg.core.task_enums import Complexity
+from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.routing.models import RoutingCandidate
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.seniority import SeniorityLevel
@@ -21,11 +23,7 @@ from synthorg.observability.events.task_routing import (
     TASK_ROUTING_AGENT_SCORED,
     TASK_ROUTING_SCORER_INVALID_CONFIG,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.decomposition.models import SubtaskDefinition
-    from synthorg.settings.bridge_configs import EngineBridgeConfig
+from synthorg.settings.bridge_configs import EngineBridgeConfig
 
 logger = get_logger(__name__)
 

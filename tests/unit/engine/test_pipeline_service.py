@@ -1,10 +1,11 @@
 """Unit tests for the default work pipeline service."""
 
-from typing import Any
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
@@ -40,8 +41,8 @@ pytestmark = pytest.mark.unit
 _MIN_SCORE = 0.1
 
 
-def _work_item(**overrides: Any) -> WorkItem:
-    base: dict[str, Any] = {
+def _work_item(**overrides: object) -> WorkItem:
+    base: dict[str, object] = {
         "origin_adapter_id": "harness",
         "source": WorkSource.SIMULATION,
         "title": "Add health endpoint",
@@ -51,7 +52,7 @@ def _work_item(**overrides: Any) -> WorkItem:
         "correlation_id": "corr-1",
     }
     base.update(overrides)
-    return WorkItem(**base)
+    return WorkItem.model_validate(base)
 
 
 def _task(
@@ -84,10 +85,10 @@ def _pipeline(  # noqa: PLR0913 -- test builder with keyword-only knobs
     project: Project | None,
     verdict: RoutingVerdict,
     coordinator: MultiAgentCoordinator | None,
-    agents: tuple[Any, ...],
+    agents: tuple[AgentIdentity, ...],
     candidate_score: float = 0.9,
     post_task: Task | None = None,
-) -> tuple[DefaultWorkPipeline, dict[str, Any]]:
+) -> tuple[DefaultWorkPipeline, dict[str, object]]:
     identity = make_e2e_identity()
     intake_engine = mock_of[IntakeEngine]()
     intake_engine.process.return_value = (None, intake_result)
@@ -192,7 +193,7 @@ class TestSoloPath:
         assert result.verdict is RoutingVerdict.LEAF
         assert result.final_task_status is TaskStatus.IN_REVIEW
         assert result.is_success is True
-        handles["worker"].execute_once.assert_awaited_once()
+        cast("AsyncMock", handles["worker"]).execute_once.assert_awaited_once()
         coordinator.coordinate.assert_not_called()
 
     async def test_no_agents_raises_undecidable(self) -> None:
@@ -243,7 +244,7 @@ class TestTeamPath:
         assert result.execution_path is ExecutionPath.TEAM
         assert result.final_task_status is TaskStatus.COMPLETED
         coordinator.coordinate.assert_awaited_once()
-        handles["worker"].execute_once.assert_not_called()
+        cast("AsyncMock", handles["worker"]).execute_once.assert_not_called()
 
     async def test_splittable_without_coordinator_raises(self) -> None:
         pipeline, _ = _pipeline(

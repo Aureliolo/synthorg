@@ -10,11 +10,15 @@ dependency; the steering directive and flight recorder are owned by the
 cockpit slice (``CockpitStateSlice``), the only reader of either.
 """
 
-from typing import TYPE_CHECKING, Any
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.state_slices import AppStateSliceMixin
+from synthorg.client.models import ClientRequest
+from synthorg.engine.brownfield.models import CodebaseImportSubmission
+from synthorg.engine.pipeline.entry.objective_adapter import (
+    ObjectiveSubmission,
+)
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
 from synthorg.engine.pipeline.entry.task_board_adapter import (
     TaskBoardEntryAdapter,
@@ -41,9 +45,6 @@ from synthorg.tools.structure_map.tool_factory import (
     StructureMapToolFactory,
 )
 
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
-
 
 class EngineStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the engine feature."""
@@ -58,9 +59,9 @@ class EngineStateSlice(BaseFeatureStateSlice):
     subworkflow_service: SubworkflowService | None = None
     evaluation_version_service: EvaluationVersionService | None = None
     ceremony_scheduler: CeremonyScheduler | None = None
-    intake_entry_adapter: WorkEntryAdapter[Any] | None = None
-    objective_entry_adapter: WorkEntryAdapter[Any] | None = None
-    brownfield_entry_adapter: WorkEntryAdapter[Any] | None = None
+    intake_entry_adapter: WorkEntryAdapter[ClientRequest] | None = None
+    objective_entry_adapter: WorkEntryAdapter[ObjectiveSubmission] | None = None
+    brownfield_entry_adapter: WorkEntryAdapter[CodebaseImportSubmission] | None = None
     task_board_entry_adapter: TaskBoardEntryAdapter | None = None
     structure_map_tool_factory: StructureMapToolFactory | None = None
 
@@ -149,7 +150,9 @@ def evaluation_version_service_of(
     )
 
 
-def intake_entry_adapter_of(app_state: AppStateSliceMixin) -> WorkEntryAdapter[Any]:
+def intake_entry_adapter_of(
+    app_state: AppStateSliceMixin,
+) -> WorkEntryAdapter[ClientRequest]:
     """Resolve the intake entry adapter from its slice, or raise 503.
 
     Returns:
@@ -163,7 +166,7 @@ def intake_entry_adapter_of(app_state: AppStateSliceMixin) -> WorkEntryAdapter[A
 
 def objective_entry_adapter_of(
     app_state: AppStateSliceMixin,
-) -> WorkEntryAdapter[Any]:
+) -> WorkEntryAdapter[ObjectiveSubmission]:
     """Resolve the objective entry adapter from its slice, or raise 503.
 
     Returns:
@@ -177,7 +180,7 @@ def objective_entry_adapter_of(
 
 def brownfield_entry_adapter_of(
     app_state: AppStateSliceMixin,
-) -> WorkEntryAdapter[Any]:
+) -> WorkEntryAdapter[CodebaseImportSubmission]:
     """Resolve the brownfield entry adapter from its slice, or raise 503.
 
     Returns:

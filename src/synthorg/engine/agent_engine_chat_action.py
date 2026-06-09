@@ -14,8 +14,9 @@ resumes via the worker's taskless branch into
 :meth:`resume_parked_chat_action`.
 """
 
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.chat_action import ChatActionResult, ExecutedToolCall
 from synthorg.engine.context import AgentContext
@@ -36,7 +37,10 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.core.clock import Clock
+    from synthorg.engine._agent_engine_callables import MakeToolInvoker
+    from synthorg.engine.approval_gate import ApprovalGate
+    from synthorg.providers.protocol import CompletionProvider
     from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
@@ -50,10 +54,10 @@ _UNKNOWN_TOOL_NAME: Final[str] = "unknown"
 class AgentEngineChatActionMixin:
     """Run and resume short, governed, taskless chat-driven actions."""
 
-    _clock: Any
-    _provider: Any
-    _approval_gate: Any
-    _make_tool_invoker: Any
+    _clock: Clock
+    _provider: CompletionProvider
+    _approval_gate: ApprovalGate | None
+    _make_tool_invoker: MakeToolInvoker
 
     async def run_chat_action(
         self,

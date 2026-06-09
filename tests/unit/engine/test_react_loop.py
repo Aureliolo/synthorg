@@ -1,9 +1,10 @@
 """Tests for the ReAct execution loop."""
 
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, cast, override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.engine.context import AgentContext
@@ -22,6 +23,7 @@ from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
+from tests._shared.scripted_provider import ScriptedProvider
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
@@ -51,7 +53,7 @@ def _stop_response(content: str = "Done.") -> CompletionResponse:
 def _tool_use_response(
     tool_name: str = "echo",
     tool_call_id: str = "tc-1",
-    arguments: dict[str, Any] | None = None,
+    arguments: dict[str, object] | None = None,
 ) -> CompletionResponse:
     return CompletionResponse(
         content=None,
@@ -59,7 +61,7 @@ def _tool_use_response(
             ToolCall(
                 id=tool_call_id,
                 name=tool_name,
-                arguments=arguments or {},
+                arguments=cast("dict[str, JsonValue]", arguments or {}),
             ),
         ),
         finish_reason=FinishReason.TOOL_USE,
@@ -100,7 +102,7 @@ class _StubTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         return ToolExecutionResult(
             content=f"echoed: {arguments}",
@@ -590,15 +592,10 @@ class TestReactLoopProviderException:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
 
-        class _FailingProvider:
-            async def complete(self, *_args: Any, **_kwargs: Any) -> None:
-                msg = "connection refused"
-                raise ConnectionError(msg)
-
         loop = ReactLoop()
         result = await loop.execute(
             context=ctx,
-            provider=_FailingProvider(),  # type: ignore[arg-type]
+            provider=ScriptedProvider(error=ConnectionError("connection refused")),
         )
 
         assert result.termination_reason == TerminationReason.ERROR
@@ -611,15 +608,11 @@ class TestReactLoopProviderException:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
 
-        class _OOMProvider:
-            async def complete(self, *_args: Any, **_kwargs: Any) -> None:
-                raise MemoryError
-
         loop = ReactLoop()
         with pytest.raises(MemoryError):
             await loop.execute(
                 context=ctx,
-                provider=_OOMProvider(),  # type: ignore[arg-type]
+                provider=ScriptedProvider(error=MemoryError()),
             )
 
 
@@ -647,7 +640,7 @@ class TestReactLoopToolExecutionException:
             async def execute(
                 self,
                 *,
-                arguments: dict[str, Any],
+                arguments: dict[str, object],
             ) -> ToolExecutionResult:
                 msg = "kaboom"
                 raise RuntimeError(msg)
@@ -760,15 +753,11 @@ class TestReactLoopRecursionErrorPropagation:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
 
-        class _RecursionProvider:
-            async def complete(self, *_args: Any, **_kwargs: Any) -> None:
-                raise RecursionError
-
         loop = ReactLoop()
         with pytest.raises(RecursionError):
             await loop.execute(
                 context=ctx,
-                provider=_RecursionProvider(),  # type: ignore[arg-type]
+                provider=ScriptedProvider(error=RecursionError()),
             )
 
     async def test_tool_invoke_all_recursion_error_propagates(

@@ -1,15 +1,12 @@
 """Internal automated review stage."""
 
 import time
-from typing import TYPE_CHECKING
 
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.review.models import ReviewStageResult, ReviewVerdict
 from synthorg.observability import get_logger
 from synthorg.observability.events.review_pipeline import REVIEW_STAGE_DECIDED
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
 
 logger = get_logger(__name__)
 

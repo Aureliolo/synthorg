@@ -14,7 +14,7 @@ that the caller can inject into the conversation.
 
 import contextlib
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from uuid import uuid4
 
 from synthorg.approval.models import EscalationInfo
@@ -28,6 +28,7 @@ from synthorg.communication.event_stream.interrupt import (
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, log_exception_redacted
@@ -48,9 +49,6 @@ from synthorg.persistence.parked_context_protocol import (
 )
 from synthorg.security.timeout.park_service import ParkService
 from synthorg.security.timeout.parked_context import ParkedContext
-
-if TYPE_CHECKING:
-    from synthorg.engine.context import AgentContext
 
 logger = get_logger(__name__)
 _DEFAULT_INTERRUPT_TIMEOUT_SECONDS: Final[float] = 300.0

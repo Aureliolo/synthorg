@@ -125,13 +125,11 @@ class TestTaskEngineConfig:
         ],
     )
     def test_rejects_out_of_range(self, field: str, value: object) -> None:
-        from typing import Any
-
         from pydantic import ValidationError
 
-        kwargs: dict[str, Any] = {field: value}
+        kwargs: dict[str, object] = {field: value}
         with pytest.raises(ValidationError):
-            TaskEngineConfig(**kwargs)
+            TaskEngineConfig.model_validate(kwargs)
 
     def test_zero_queue_size_allowed(self) -> None:
         """Zero means unbounded -- should be accepted."""

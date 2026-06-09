@@ -1,7 +1,5 @@
 """Unit tests for ``CandidatePoolFilter`` implementations."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.engine.assignment.models import AssignmentRequest
@@ -158,8 +156,8 @@ class TestHierarchicalPoolFilter:
 
     def test_unknown_delegator_returns_empty_with_reason(self) -> None:
         # Stub hierarchy knows nothing; ``_is_known_delegator`` returns False.
-        hierarchy: Any = _StubHierarchy()
-        flt = HierarchicalPoolFilter(hierarchy)
+        hierarchy = _StubHierarchy()
+        flt = HierarchicalPoolFilter(hierarchy)  # type: ignore[arg-type]
         request = self._request(agent_names=["dev-1"], created_by="ghost")
         result = flt.filter(request)
         assert result.agents == ()
@@ -169,10 +167,10 @@ class TestHierarchicalPoolFilter:
 
     def test_no_subordinates_returns_empty_with_reason(self) -> None:
         # Manager exists in hierarchy (has reports) but none are in the pool.
-        hierarchy: Any = _StubHierarchy(
+        hierarchy = _StubHierarchy(
             direct_reports={"manager": ["someone-not-in-pool"]},
         )
-        flt = HierarchicalPoolFilter(hierarchy)
+        flt = HierarchicalPoolFilter(hierarchy)  # type: ignore[arg-type]
         request = self._request(agent_names=["dev-1"], created_by="manager")
         result = flt.filter(request)
         assert result.agents == ()
@@ -180,10 +178,10 @@ class TestHierarchicalPoolFilter:
         assert "No subordinates of 'manager'" in result.reason
 
     def test_direct_report_selected(self) -> None:
-        hierarchy: Any = _StubHierarchy(
+        hierarchy = _StubHierarchy(
             direct_reports={"manager": ["dev-1", "dev-2"]},
         )
-        flt = HierarchicalPoolFilter(hierarchy)
+        flt = HierarchicalPoolFilter(hierarchy)  # type: ignore[arg-type]
         request = self._request(agent_names=["dev-1", "dev-3"], created_by="manager")
         result = flt.filter(request)
         # Only dev-1 is a direct report and in the pool.
@@ -195,11 +193,11 @@ class TestHierarchicalPoolFilter:
 
     def test_transitive_subordinate_fallback(self) -> None:
         # No direct reports of "ceo" are in the pool -> transitive lookup.
-        hierarchy: Any = _StubHierarchy(
+        hierarchy = _StubHierarchy(
             direct_reports={"ceo": ["vp"]},
             subordinates={"ceo": {"dev-1"}},
         )
-        flt = HierarchicalPoolFilter(hierarchy)
+        flt = HierarchicalPoolFilter(hierarchy)  # type: ignore[arg-type]
         request = self._request(agent_names=["dev-1"], created_by="ceo")
         result = flt.filter(request)
         names = [a.name for a in result.agents]
@@ -207,10 +205,10 @@ class TestHierarchicalPoolFilter:
 
     def test_delegation_chain_takes_precedence_over_created_by(self) -> None:
         # delegation_chain[-1] should be used as the delegator.
-        hierarchy: Any = _StubHierarchy(
+        hierarchy = _StubHierarchy(
             direct_reports={"lead": ["dev-1"], "ceo": ["lead"]},
         )
-        flt = HierarchicalPoolFilter(hierarchy)
+        flt = HierarchicalPoolFilter(hierarchy)  # type: ignore[arg-type]
         request = self._request(
             agent_names=["dev-1"],
             created_by="ceo",
@@ -226,19 +224,19 @@ class TestHierarchicalPoolFilter:
         # Used so the empty-direct-reports leaf delegators still get
         # the no-subordinates reason rather than the unknown-delegator
         # reason.
-        hierarchy: Any = _StubHierarchy(
+        hierarchy = _StubHierarchy(
             direct_reports={},  # no reports
             supervisors={"leaf": "manager"},  # supervised
         )
-        flt = HierarchicalPoolFilter(hierarchy)
+        flt = HierarchicalPoolFilter(hierarchy)  # type: ignore[arg-type]
         request = self._request(agent_names=["dev-1"], created_by="leaf")
         result = flt.filter(request)
         # Known but no subordinates -> "No subordinates" reason.
         assert "No subordinates of 'leaf'" in (result.reason or "")
 
     def test_hierarchy_lookup_failure_in_is_known_returns_empty(self) -> None:
-        hierarchy: Any = _StubHierarchy(raise_on="get_direct_reports")
-        flt = HierarchicalPoolFilter(hierarchy)
+        hierarchy = _StubHierarchy(raise_on="get_direct_reports")
+        flt = HierarchicalPoolFilter(hierarchy)  # type: ignore[arg-type]
         request = self._request(agent_names=["dev-1"], created_by="manager")
         result = flt.filter(request)
         assert result.agents == ()
@@ -271,10 +269,10 @@ class TestHierarchicalPoolFilter:
         """
         dev = make_assignment_agent("dev-1")
         # Stub returns the agent's UUID string as the reporting key.
-        hierarchy: Any = _StubHierarchy(
+        hierarchy = _StubHierarchy(
             direct_reports={"manager": [str(dev.id)]},
         )
-        flt = HierarchicalPoolFilter(hierarchy)
+        flt = HierarchicalPoolFilter(hierarchy)  # type: ignore[arg-type]
         request = AssignmentRequest(
             task=make_assignment_task(created_by="manager"),
             available_agents=(dev,),
@@ -286,11 +284,11 @@ class TestHierarchicalPoolFilter:
     def test_resolves_transitive_via_agent_id(self) -> None:
         """Transitive subordinate lookup also matches by agent ID."""
         dev = make_assignment_agent("dev-1")
-        hierarchy: Any = _StubHierarchy(
+        hierarchy = _StubHierarchy(
             direct_reports={"ceo": ["lead"]},  # not in the pool
             subordinates={"ceo": {str(dev.id)}},  # transitive by ID
         )
-        flt = HierarchicalPoolFilter(hierarchy)
+        flt = HierarchicalPoolFilter(hierarchy)  # type: ignore[arg-type]
         request = AssignmentRequest(
             task=make_assignment_task(created_by="ceo"),
             available_agents=(dev,),
@@ -300,10 +298,10 @@ class TestHierarchicalPoolFilter:
         assert names == ["dev-1"]
 
     def test_rewrite_success_reason_includes_delegator(self) -> None:
-        hierarchy: Any = _StubHierarchy(
+        hierarchy = _StubHierarchy(
             direct_reports={"manager": ["dev-1"]},
         )
-        flt = HierarchicalPoolFilter(hierarchy)
+        flt = HierarchicalPoolFilter(hierarchy)  # type: ignore[arg-type]
         request = self._request(agent_names=["dev-1"], created_by="manager")
         result = flt.filter(request)
         assert result.rewrite_success_reason is not None

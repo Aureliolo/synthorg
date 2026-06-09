@@ -10,18 +10,16 @@ re-exported here for callers.
 import copy
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.execution.turn import TurnRecord
-
-if TYPE_CHECKING:
-    from synthorg.providers.models import CompletionConfig
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.protocol import ToolInvokerProtocol
+from synthorg.providers.models import CompletionConfig
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.tools.protocol import ToolInvokerProtocol
 
 
 class TerminationReason(StrEnum):

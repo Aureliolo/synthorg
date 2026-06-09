@@ -5,20 +5,19 @@ recording collaborators once the runtime services they depend on exist,
 plus the ``has_completion_gates`` query and the background-task drain.
 """
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Literal
 
 from synthorg.core.task_enums import Stakes
 
-if TYPE_CHECKING:
-    # Deferred to break a genuine import cycle: these collaborators live in
-    # engine/security packages whose graph (via engine.coordination -> budget)
-    # re-enters the review-gate module that imports this mixin. PEP 649 keeps
-    # them resolvable for typing without the runtime import.
-    from synthorg.engine._review_gate_receipt import DeliverableReceiptSeam
-    from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
-    from synthorg.observability.background_tasks import BackgroundTaskRegistry
-    from synthorg.security.redteam.protocol import RedTeamGate
-    from synthorg.security.visionverify.protocol import VisionVerifierGate
+# Deferred to break a genuine import cycle: these collaborators live in
+# engine/security packages whose graph (via engine.coordination -> budget)
+# re-enters the review-gate module that imports this mixin. PEP 649 keeps
+# them resolvable for typing without the runtime import.
+from synthorg.engine._review_gate_receipt import DeliverableReceiptSeam
+from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
+from synthorg.observability.background_tasks import BackgroundTaskRegistry
+from synthorg.security.redteam.protocol import RedTeamGate
+from synthorg.security.visionverify.protocol import VisionVerifierGate
 
 
 class ReviewGateWiringMixin:
@@ -27,13 +26,13 @@ class ReviewGateWiringMixin:
     # Slot attrs populated on the concrete ``ReviewGateService``; typed
     # as ``Any`` here because the mixin only reads/assigns them. The
     # concrete class carries the authoritative type.
-    _receipt_service: Any
-    _vision_gate: Any
-    _red_team_gate: Any
-    _red_team_input_builder: Any
-    _background_tasks: Any
-    _red_team_on_missing_deliverable: Any
-    _red_team_min_stakes: Any
+    _receipt_service: DeliverableReceiptSeam | None
+    _vision_gate: VisionVerifierGate | None
+    _red_team_gate: RedTeamGate | None
+    _red_team_input_builder: DeliverableReviewInputBuilder | None
+    _background_tasks: BackgroundTaskRegistry | None
+    _red_team_on_missing_deliverable: Literal["block", "skip"]
+    _red_team_min_stakes: Stakes
 
     def set_receipt_service(self, receipt_service: DeliverableReceiptSeam) -> None:
         """Attach the receipt service after construction (boot wiring seam)."""

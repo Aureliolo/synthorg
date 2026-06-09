@@ -7,10 +7,11 @@ pipeline is absent (empty company).
 """
 
 from collections.abc import Mapping
-from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.engine.pipeline.entry.boot import (
@@ -31,7 +32,7 @@ def _app_state(
     *,
     has_work_pipeline: bool,
     project: Project | None = None,
-) -> tuple[Any, Any]:
+) -> tuple[AppState, MagicMock]:
     projects = mock_of[ProjectRepository]()
     projects.get.return_value = project
     app_state = make_app_state(

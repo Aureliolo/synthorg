@@ -1,7 +1,8 @@
 """Unit tests for the WorkflowNodeType step-builder registry."""
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any
+from typing import cast
 
 import pytest
 
@@ -12,13 +13,13 @@ from synthorg.engine.workflow.yaml_step_builders import (
 )
 
 
-def _new_step(node_id: str, node_type: WorkflowNodeType) -> dict[str, Any]:
+def _new_step(node_id: str, node_type: WorkflowNodeType) -> dict[str, object]:
     return {"id": node_id, "type": node_type.value}
 
 
 def _ctx(
-    step: dict[str, Any],
-    config: dict[str, Any] | None = None,
+    step: dict[str, object],
+    config: Mapping[str, object] | None = None,
     outgoing: list[tuple[str, WorkflowEdgeType]] | None = None,
 ) -> StepBuildContext:
     return StepBuildContext(
@@ -36,7 +37,7 @@ class TestStepBuildContextImmutability:
     """Read-only inputs are frozen at construction time."""
 
     def test_config_is_wrapped_in_mappingproxy(self) -> None:
-        original: dict[str, Any] = {"k": "v"}
+        original: dict[str, object] = {"k": "v"}
         ctx = _ctx(_new_step("n", WorkflowNodeType.TASK), original)
         assert isinstance(ctx.config, MappingProxyType)
 
@@ -46,7 +47,7 @@ class TestStepBuildContextImmutability:
             ctx.config["k"] = "mutated"  # type: ignore[index]
 
     def test_config_caller_mutation_after_construction_does_not_leak(self) -> None:
-        original: dict[str, Any] = {"k": "v"}
+        original: dict[str, object] = {"k": "v"}
         ctx = _ctx(_new_step("n", WorkflowNodeType.TASK), original)
         original["k"] = "mutated"
         original["new"] = "value"
@@ -62,14 +63,16 @@ class TestStepBuildContextImmutability:
 
     def test_nested_config_is_deepcopied_so_mutation_does_not_leak(self) -> None:
         """Mutating nested values via ctx.config must not touch caller data."""
-        nested: dict[str, Any] = {"x": "v"}
-        original: dict[str, Any] = {"input_bindings": nested}
+        nested: dict[str, object] = {"x": "v"}
+        original: dict[str, object] = {"input_bindings": nested}
         ctx = _ctx(_new_step("n", WorkflowNodeType.SUBWORKFLOW), original)
         # The proxy returns a deep clone; mutating it leaves the caller alone.
-        ctx.config["input_bindings"]["x"] = "mutated"
-        ctx.config["input_bindings"]["new_key"] = "leaked"
-        assert original["input_bindings"]["x"] == "v"
-        assert "new_key" not in original["input_bindings"]
+        ctx_bindings = cast("dict[str, object]", ctx.config["input_bindings"])
+        ctx_bindings["x"] = "mutated"
+        ctx_bindings["new_key"] = "leaked"
+        original_bindings = cast("dict[str, object]", original["input_bindings"])
+        assert original_bindings["x"] == "v"
+        assert "new_key" not in original_bindings
         assert nested == {"x": "v"}
 
 

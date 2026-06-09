@@ -11,17 +11,15 @@ a reason) so the calling strategy can produce a rich
 context.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.assignment.models import (
-        AssignmentCandidate,
-        AssignmentRequest,
-    )
+from synthorg.core.agent import AgentIdentity
+from synthorg.engine.assignment.models import (
+    AssignmentCandidate,
+    AssignmentRequest,
+)
 
 
 @dataclass(frozen=True, slots=True)

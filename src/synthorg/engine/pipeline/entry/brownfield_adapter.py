@@ -11,18 +11,13 @@ follow-up directives arrive via the task-board adapter and retrieve the
 indexed structure map + analysis.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.task_enums import TaskType
-from synthorg.engine.pipeline.models import WorkItem, WorkSource
+from synthorg.engine.brownfield.models import CodebaseImportSubmission
+from synthorg.engine.brownfield.service import BrownfieldImportService
+from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult, WorkSource
+from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.observability import get_logger
 from synthorg.observability.events.brownfield import BROWNFIELD_IMPORT_COMPLETED
-
-if TYPE_CHECKING:
-    from synthorg.engine.brownfield.models import CodebaseImportSubmission
-    from synthorg.engine.brownfield.service import BrownfieldImportService
-    from synthorg.engine.pipeline.models import WorkPipelineResult
-    from synthorg.engine.pipeline.protocol import WorkPipeline
 
 logger = get_logger(__name__)
 

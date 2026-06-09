@@ -4,13 +4,11 @@ Each ``apply_*`` function takes the mutation, a persistence backend,
 and a :class:`VersionTracker`, returning a :class:`TaskMutationResult`.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 from uuid import uuid4
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -40,6 +38,9 @@ from synthorg.observability.events.task_engine import (
 )
 from synthorg.observability.metrics_hub import record_task_run
 from synthorg.observability.tracing.instrumentation import get_tracer
+
+if TYPE_CHECKING:
+    from synthorg.persistence.protocol import PersistenceBackend
 
 _tracer = get_tracer(__name__)
 
@@ -79,9 +80,6 @@ _TRULY_TERMINAL_STATUSES: frozenset[TaskStatus] = frozenset(
     {TaskStatus.COMPLETED, TaskStatus.CANCELLED, TaskStatus.REJECTED},
 )
 
-
-if TYPE_CHECKING:
-    from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 

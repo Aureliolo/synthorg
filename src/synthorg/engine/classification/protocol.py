@@ -5,7 +5,7 @@ context model, context loader protocol, and downstream classification
 sink protocol.
 """
 
-from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -17,12 +17,9 @@ from synthorg.communication.delegation.models import (
     DelegationRequest,
 )
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.classification.models import ErrorFinding
+from synthorg.engine.classification.models import ClassificationResult, ErrorFinding
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.engine.review.models import PipelineResult
-
-if TYPE_CHECKING:
-    from synthorg.engine.classification.models import ClassificationResult
 
 
 class DetectionContext(BaseModel):

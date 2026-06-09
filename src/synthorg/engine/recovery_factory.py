@@ -7,24 +7,21 @@ connected :class:`CheckpointRepository`; absence raises
 rather than at recovery time.
 """
 
-from typing import TYPE_CHECKING, assert_never
+from typing import assert_never
 
+from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.errors import RecoveryConfigError
-from synthorg.engine.recovery import FailAndReassignStrategy
+from synthorg.engine.recovery import FailAndReassignStrategy, RecoveryStrategy
 from synthorg.engine.recovery_config import (
     EngineRecoveryConfig,
     RecoveryStrategyType,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import EXECUTION_RECOVERY_FAILED
-
-if TYPE_CHECKING:
-    from synthorg.engine.checkpoint.models import CheckpointConfig
-    from synthorg.engine.recovery import RecoveryStrategy
-    from synthorg.persistence.checkpoint_protocol import (
-        CheckpointRepository,
-        HeartbeatRepository,
-    )
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,
+    HeartbeatRepository,
+)
 
 logger = get_logger(__name__)
 

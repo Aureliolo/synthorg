@@ -8,18 +8,23 @@ via ``DetectorVariant.LLM_SEMANTIC`` in the per-category config.
 
 import json
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, override
+from typing import Final, override
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.coordination_config import (
     DetectionScope,
     ErrorCategory,
 )
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.classification.budget_tracker import (
+    ClassificationBudgetTracker,
+)
 from synthorg.engine.classification.models import (
     ErrorFinding,
     ErrorSeverity,
 )
+from synthorg.engine.classification.protocol import DetectionContext
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     untrusted_content_directive,
@@ -33,17 +38,10 @@ from synthorg.observability.events.classification import (
     DETECTOR_PARSE_ERROR,
     DETECTOR_START,
 )
+from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.engine.classification.budget_tracker import (
-        ClassificationBudgetTracker,
-    )
-    from synthorg.engine.classification.protocol import DetectionContext
-    from synthorg.providers.base import BaseCompletionProvider
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_TOKENS: Final[int] = 1024

@@ -1,13 +1,16 @@
 """Factory mixin for :class:`AgentEngine`: approval gate, loop, tool invoker."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity, ToolPermissions
+from synthorg.core.task import Task
 from synthorg.engine._security_factory import (
     make_security_interceptor,
     registry_with_approval_tool,
     registry_with_external_api_tool,
 )
 from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.loop_protocol import ExecutionLoop
 from synthorg.engine.loop_selector import (
     build_execution_loop,
     select_loop_type,
@@ -21,6 +24,7 @@ from synthorg.observability.events.trust import (
     TRUST_AGENT_AUTO_INITIALIZED,
     TRUST_TOOLS_NARROWED,
 )
+from synthorg.security.protocol import SecurityInterceptionStrategy
 from synthorg.security.trust.enforcement import (
     resolve_effective_tool_permissions,
 )
@@ -28,11 +32,36 @@ from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity, ToolPermissions
-    from synthorg.core.task import Task
-    from synthorg.engine.loop_protocol import ExecutionLoop
+    from collections.abc import Mapping
+
+    from synthorg.approval.protocol import ApprovalStoreProtocol
+    from synthorg.budget.enforcer import BudgetEnforcer
+    from synthorg.budget.tracker import CostTracker
+    from synthorg.communication.event_stream.interrupt import InterruptStore
+    from synthorg.communication.event_stream.stream import EventStreamHub
+    from synthorg.config.schema import ProviderConfig
+    from synthorg.engine.agent_engine import BrainToolFactoryProvider
+    from synthorg.engine.compaction import CompactionCallback
+    from synthorg.engine.hybrid_models import HybridLoopConfig
+    from synthorg.engine.intervention.inbox import SteeringInbox
+    from synthorg.engine.loop_selector import AutoLoopConfig
+    from synthorg.engine.mcp_self_consumer import MCPSelfConsumerProvider
+    from synthorg.engine.plan_models import PlanExecuteConfig
+    from synthorg.engine.stagnation.protocol import StagnationDetector
+    from synthorg.memory.injection import MemoryInjectionStrategy
+    from synthorg.ontology.injection.protocol import OntologyInjectionStrategy
+    from synthorg.persistence.parked_context_protocol import (
+        ParkedContextRepository,
+    )
+    from synthorg.providers.registry import ProviderRegistry
+    from synthorg.providers.routing.resolver import ModelResolver
+    from synthorg.security.audit import AuditLog
     from synthorg.security.autonomy.models import EffectiveAutonomy
-    from synthorg.security.protocol import SecurityInterceptionStrategy
+    from synthorg.security.config import SecurityConfig
+    from synthorg.security.trust.service import TrustService
+    from synthorg.tools.external_api._runtime import ExternalApiRuntime
+    from synthorg.tools.invocation_tracker import ToolInvocationTracker
+    from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
 
@@ -40,35 +69,35 @@ logger = get_logger(__name__)
 class AgentEngineFactoriesMixin:
     """Mixin providing approval-gate, loop, and tool-invoker factories."""
 
-    _approval_store: Any
-    _external_api_runtime: Any
-    _brain_tool_factory_provider: Any
-    _parked_context_repo: Any
-    _event_stream_hub: Any
-    _interrupt_store: Any
-    _injected_approval_gate: Any
-    _approval_gate: Any
-    _trust_service: Any
-    _mcp_self_consumer: Any
+    _approval_store: ApprovalStoreProtocol | None
+    _external_api_runtime: ExternalApiRuntime | None
+    _brain_tool_factory_provider: BrainToolFactoryProvider | None
+    _parked_context_repo: ParkedContextRepository | None
+    _event_stream_hub: EventStreamHub | None
+    _interrupt_store: InterruptStore | None
+    _injected_approval_gate: ApprovalGate | None
+    _approval_gate: ApprovalGate | None
+    _trust_service: TrustService | None
+    _mcp_self_consumer: MCPSelfConsumerProvider | None
     _approval_interrupt_timeout_seconds: float | None
-    _stagnation_detector: Any
-    _compaction_callback: Any
-    _steering_inbox: Any
-    _auto_loop_config: Any
-    _loop: Any
-    _hybrid_loop_config: Any
-    _plan_execute_config: Any
-    _memory_injection_strategy: Any
-    _ontology_injection_strategy: Any
-    _model_resolver: Any
-    _provider_configs: Any
-    _provider_registry: Any
-    _tool_registry: Any
-    _tool_invocation_tracker: Any
-    _security_config: Any
-    _budget_enforcer: Any
-    _audit_log: Any
-    _cost_tracker: Any
+    _stagnation_detector: StagnationDetector | None
+    _compaction_callback: CompactionCallback | None
+    _steering_inbox: SteeringInbox | None
+    _auto_loop_config: AutoLoopConfig | None
+    _loop: ExecutionLoop
+    _hybrid_loop_config: HybridLoopConfig | None
+    _plan_execute_config: PlanExecuteConfig | None
+    _memory_injection_strategy: MemoryInjectionStrategy | None
+    _ontology_injection_strategy: OntologyInjectionStrategy | None
+    _model_resolver: ModelResolver | None
+    _provider_configs: Mapping[str, ProviderConfig] | None
+    _provider_registry: ProviderRegistry | None
+    _tool_registry: ToolRegistry | None
+    _tool_invocation_tracker: ToolInvocationTracker | None
+    _security_config: SecurityConfig | None
+    _budget_enforcer: BudgetEnforcer | None
+    _audit_log: AuditLog
+    _cost_tracker: CostTracker | None
 
     def _make_approval_gate(self) -> ApprovalGate | None:
         """Build an ApprovalGate if an approval store is configured.
@@ -92,7 +121,7 @@ class AgentEngineFactoriesMixin:
             an approval store is configured; ``None`` when neither.
         """
         if self._injected_approval_gate is not None:
-            return self._injected_approval_gate  # type: ignore[no-any-return]
+            return self._injected_approval_gate
 
         if self._approval_store is None:
             return None
@@ -101,17 +130,23 @@ class AgentEngineFactoriesMixin:
             ParkService,
         )
 
-        kwargs: dict[str, Any] = {
-            "park_service": ParkService(),
-            "parked_context_repo": self._parked_context_repo,
-            "event_hub": self._event_stream_hub,
-            "interrupt_store": self._interrupt_store,
-        }
-        if self._approval_interrupt_timeout_seconds is not None:
-            kwargs["interrupt_timeout_seconds"] = (
-                self._approval_interrupt_timeout_seconds
+        # The gate's own default interrupt timeout applies when the engine
+        # was built without an explicit override (omit, never pass None).
+        timeout = self._approval_interrupt_timeout_seconds
+        if timeout is not None:
+            return ApprovalGate(
+                park_service=ParkService(),
+                parked_context_repo=self._parked_context_repo,
+                event_hub=self._event_stream_hub,
+                interrupt_store=self._interrupt_store,
+                interrupt_timeout_seconds=timeout,
             )
-        return ApprovalGate(**kwargs)
+        return ApprovalGate(
+            park_service=ParkService(),
+            parked_context_repo=self._parked_context_repo,
+            event_hub=self._event_stream_hub,
+            interrupt_store=self._interrupt_store,
+        )
 
     def _make_default_loop(self) -> ExecutionLoop:
         """Build the default ``react`` loop via the shared factory.
@@ -144,7 +179,7 @@ class AgentEngineFactoriesMixin:
             utilisation.
         """
         if self._auto_loop_config is None:
-            return self._loop  # type: ignore[no-any-return]
+            return self._loop
 
         cfg = self._auto_loop_config
         preliminary = select_loop_type(

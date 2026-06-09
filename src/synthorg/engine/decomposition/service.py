@@ -4,20 +4,24 @@ Orchestrates strategy, classifier, DAG validation, and task creation
 to decompose a parent task into executable subtasks.
 """
 
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.dag import DependencyGraph
 from synthorg.engine.decomposition.models import (
+    DecompositionContext,
     DecompositionResult,
     SubtaskStatusRollup,
 )
+from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.rollup import StatusRollup
 from synthorg.engine.errors import DecompositionError
 from synthorg.engine.stakes import build_stakes_assessor
+from synthorg.engine.stakes.protocol import StakesAssessor
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
@@ -25,13 +29,6 @@ from synthorg.observability.events.decomposition import (
     DECOMPOSITION_STARTED,
     DECOMPOSITION_SUBTASK_CREATED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.decomposition.classifier import TaskStructureClassifier
-    from synthorg.engine.decomposition.models import DecompositionContext
-    from synthorg.engine.decomposition.protocol import DecompositionStrategy
-    from synthorg.engine.stakes.protocol import StakesAssessor
 
 logger = get_logger(__name__)
 

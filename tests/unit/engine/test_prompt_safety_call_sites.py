@@ -11,7 +11,6 @@ production.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -266,12 +265,13 @@ class TestSafetyClassifierWraps:
     def test_build_messages_wraps_description(self) -> None:
         """The description appears inside a ``<task-data>`` fence."""
         from synthorg.approval.enums import ApprovalRiskLevel
+        from synthorg.config.schema import ProviderConfig
         from synthorg.providers.registry import ProviderRegistry
         from synthorg.security.config import SafetyClassifierConfig
         from synthorg.security.safety_classifier import SafetyClassifier
 
         registry = MagicMock(spec=ProviderRegistry)
-        configs: dict[str, Any] = {}
+        configs: dict[str, ProviderConfig] = {}
         config = SafetyClassifierConfig()
         classifier = SafetyClassifier(
             provider_registry=registry,

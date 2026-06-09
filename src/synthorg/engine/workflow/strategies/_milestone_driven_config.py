@@ -5,15 +5,12 @@ Holds the strategy-config key constants and the pure validators that
 validator raises ``ValueError`` / ``TypeError`` on a malformed config.
 """
 
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_STRATEGY_CONFIG_INVALID,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 
@@ -28,7 +25,7 @@ _MAX_MILESTONES: int = 32
 _MAX_NAME_LEN: int = 128
 
 
-def validate_milestones(config: Mapping[str, Any]) -> None:
+def validate_milestones(config: Mapping[str, object]) -> None:
     """Validate the ``milestones`` config key.
 
     Raises:
@@ -66,7 +63,7 @@ def validate_milestones(config: Mapping[str, Any]) -> None:
         _validate_single_milestone(entry, i, seen_names)
 
 
-def validate_transition_milestone(config: Mapping[str, Any]) -> None:
+def validate_transition_milestone(config: Mapping[str, object]) -> None:
     """Validate the ``transition_milestone`` config key.
 
     Raises:
@@ -136,7 +133,7 @@ def _validate_single_milestone(
 
 
 def _validate_milestone_string(
-    entry: dict[str, Any],
+    entry: dict[str, object],
     key: str,
     index: int,
 ) -> None:

@@ -619,7 +619,13 @@ module = "synthorg.core.*"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
-module = "synthorg.engine.*"
+# Heterogeneous middleware-factory registry: each registered factory is a
+# distinct middleware class with its own ``__init__`` deps, dispatched via
+# ``inspect.signature(factory).bind(**deps)``. ``Callable[..., X]`` is the
+# correct type -- no precise signature or Protocol can express "any factory
+# unified only by its return type" (a ``**deps: object`` Protocol fails
+# contravariance against the concrete classes' specific keyword params).
+module = "synthorg.engine.middleware.registry"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]

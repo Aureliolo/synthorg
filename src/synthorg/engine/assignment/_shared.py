@@ -5,22 +5,20 @@
 are shared by all scorer-based strategies.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.engine.assignment.models import (
     AssignmentCandidate,
     AssignmentRequest,
 )
 from synthorg.engine.decomposition.models import SubtaskDefinition
+from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.hr.enums import AgentStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_AGENT_SCORED,
     TASK_ASSIGNMENT_WORKLOAD_MISSING,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.routing.scorer import AgentTaskScorer
 
 logger = get_logger(__name__)
 

@@ -6,11 +6,15 @@ template context, metadata dicts, and section tracking.  Separated to keep
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Self, get_args
+from typing import TYPE_CHECKING, Final, Self, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.role import Role
+from synthorg.core.task import Task
 from synthorg.core.types import AutonomyDetailLevel, PersonalityMode
+from synthorg.engine.prompt_profiles import PromptProfile
 from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
     AUTONOMY_MINIMAL,
@@ -20,14 +24,10 @@ from synthorg.engine.token_estimation import DefaultTokenEstimator, PromptTokenE
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.prompt import PROMPT_PERSONALITY_TRIMMED
+from synthorg.providers.models import ToolDefinition
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
     from synthorg.core.company import Company
-    from synthorg.core.role import Role
-    from synthorg.core.task import Task
-    from synthorg.engine.prompt_profiles import PromptProfile
-    from synthorg.providers.models import ToolDefinition
     from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
@@ -153,7 +153,7 @@ def _resolve_profile_flags(
 
 
 def _estimate_personality_tokens(
-    ctx: dict[str, Any],
+    ctx: dict[str, object],
     personality_mode: PersonalityMode,
     estimator: PromptTokenEstimator,
 ) -> int:
@@ -173,7 +173,7 @@ def _estimate_personality_tokens(
         Estimated token count.
     """
     parts: list[str] = ["## Personality"]
-    desc = ctx.get("personality_description", "")
+    desc = cast("str", ctx.get("personality_description", ""))
     style = ctx.get("communication_style", "")
 
     if personality_mode == "full":
@@ -188,14 +188,14 @@ def _estimate_personality_tokens(
             f"- **Collaboration preference**: {ctx.get('collaboration', '')}",
         )
         parts.append(f"- **Conflict approach**: {ctx.get('conflict_approach', '')}")
-        traits = ctx.get("personality_traits", ())
+        traits = cast("tuple[str, ...]", ctx.get("personality_traits", ()))
         if traits:
             parts.append(f"- **Traits**: {', '.join(traits)}")
     elif personality_mode == "condensed":
         if desc:
             parts.append(desc)
         parts.append(f"- **Style**: {style}")
-        traits = ctx.get("personality_traits", ())
+        traits = cast("tuple[str, ...]", ctx.get("personality_traits", ()))
         if traits:
             parts.append(f"- **Traits**: {', '.join(traits)}")
     else:
@@ -241,7 +241,7 @@ def _truncate_description(description: str, max_chars: int) -> str:
 
 
 def _try_condensed(
-    ctx: dict[str, Any],
+    ctx: dict[str, object],
     max_tokens: int,
     estimator: PromptTokenEstimator,
 ) -> int | None:
@@ -261,7 +261,7 @@ def _try_condensed(
 
 
 def _try_truncate_description(
-    ctx: dict[str, Any],
+    ctx: dict[str, object],
     mode: PersonalityMode,
     max_tokens: int,
     estimator: PromptTokenEstimator,
@@ -276,7 +276,7 @@ def _try_truncate_description(
         The new token count when the truncated description fits the
         budget; ``None`` when even the truncated form exceeds.
     """
-    saved_desc = ctx["personality_description"]
+    saved_desc = cast("str", ctx["personality_description"])
     ctx["personality_description"] = ""
     tokens_without = _estimate_personality_tokens(ctx, mode, estimator)
     remaining = max_tokens - tokens_without
@@ -293,7 +293,7 @@ def _try_truncate_description(
 
 
 def _trim_personality(
-    ctx: dict[str, Any],
+    ctx: dict[str, object],
     profile: PromptProfile,
     estimator: PromptTokenEstimator | None = None,
 ) -> PersonalityTrimInfo | None:
@@ -320,7 +320,7 @@ def _trim_personality(
     if estimator is None:
         estimator = DefaultTokenEstimator()
     max_tokens = profile.max_personality_tokens
-    mode: PersonalityMode = ctx["personality_mode"]
+    mode = cast("PersonalityMode", ctx["personality_mode"])
     before = _estimate_personality_tokens(ctx, mode, estimator)
 
     if before <= max_tokens:
@@ -399,7 +399,7 @@ def build_core_context(  # noqa: PLR0913
     *,
     trimming_enabled: bool = True,
     estimator: PromptTokenEstimator | None = None,
-) -> tuple[dict[str, Any], PersonalityTrimInfo | None]:
+) -> tuple[dict[str, object], PersonalityTrimInfo | None]:
     """Build core template variables from agent identity and profile.
 
     Args:
@@ -423,7 +423,7 @@ def build_core_context(  # noqa: PLR0913
     )
     autonomy_map = _AUTONOMY_LOOKUP[autonomy_detail]
 
-    ctx: dict[str, Any] = {
+    ctx: dict[str, object] = {
         "agent_name": agent.name,
         "agent_role": agent.role,
         "agent_department": agent.department,

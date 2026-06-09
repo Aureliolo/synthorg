@@ -1,6 +1,6 @@
 """Tests for CeremonyScheduler service."""
 
-from typing import Any, override
+from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -34,7 +34,7 @@ def _make_sprint(
 ) -> Sprint:
     task_ids = tuple(f"task-{i}" for i in range(task_count))
     completed_ids = tuple(f"task-{i}" for i in range(completed_count))
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, object] = {
         "id": "sprint-1",
         "name": "Sprint 1",
         "sprint_number": 1,
@@ -48,7 +48,7 @@ def _make_sprint(
         kwargs["start_date"] = "2026-04-01T00:00:00"
     if status is SprintStatus.COMPLETED:
         kwargs["end_date"] = "2026-04-14T00:00:00"
-    return Sprint(**kwargs)
+    return Sprint.model_validate(kwargs)
 
 
 def _make_config(
@@ -71,7 +71,7 @@ def _ceremony_with_trigger(
     every_n: int = 5,
     sprint_percentage: float | None = None,
 ) -> SprintCeremonyConfig:
-    config: dict[str, Any] = {"trigger": trigger}
+    config: dict[str, object] = {"trigger": trigger}
     if trigger == "every_n_completions":
         config["every_n_completions"] = every_n
     if sprint_percentage is not None:

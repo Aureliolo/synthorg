@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import Literal
 
 import yaml
 from pydantic import ValidationError
@@ -305,7 +305,7 @@ def _parse_blueprint_yaml(yaml_text: str, source_name: str) -> BlueprintData:
         )
         raise BlueprintValidationError(msg)
 
-    blueprint_dict: dict[str, Any] = raw["blueprint"]
+    blueprint_dict: object = raw["blueprint"]
     try:
         return BlueprintData.model_validate(blueprint_dict)
     except (ValueError, TypeError, ValidationError) as exc:

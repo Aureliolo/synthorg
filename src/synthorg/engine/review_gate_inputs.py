@@ -17,9 +17,9 @@ configured security gate never depends on the flight recorder being on.
 """
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.task import Task
 from synthorg.observability import get_logger
 from synthorg.observability.events.red_team import RED_TEAM_NO_DELIVERABLE
 from synthorg.persistence.flight_recorder_protocol import (
@@ -27,9 +27,6 @@ from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameRepository,
 )
 from synthorg.security.redteam.models import RedTeamReviewInput
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
 
 logger = get_logger(__name__)
 

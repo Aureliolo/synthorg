@@ -11,6 +11,8 @@ from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
+    # Cycle-breaker: coordination.models imports engine.errors, so a
+    # module-level import here would close an import cycle.
     from synthorg.engine.coordination.models import CoordinationPhaseResult
 
 

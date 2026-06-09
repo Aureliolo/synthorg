@@ -17,21 +17,18 @@ hand the right concrete adapter to the right ``AppState`` seam
 without a manual cast.
 """
 
-from typing import TYPE_CHECKING, Any, Literal, overload
+from typing import Literal, overload
 
 from synthorg.client.factory import UnknownStrategyError
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.brownfield.service import BrownfieldImportService
 from synthorg.engine.pipeline.entry.brownfield_adapter import BrownfieldEntryAdapter
 from synthorg.engine.pipeline.entry.intake_adapter import IntakeEntryAdapter
 from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveEntryAdapter
 from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter
+from synthorg.engine.pipeline.forecast_gate import ForecastGate
 from synthorg.engine.pipeline.models import WorkSource
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.brownfield.service import BrownfieldImportService
-    from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
-    from synthorg.engine.pipeline.forecast_gate import ForecastGate
-    from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.engine.pipeline.protocol import WorkPipeline
 
 
 @overload
@@ -71,7 +68,7 @@ def build_work_entry_adapter(
     work_pipeline: WorkPipeline,
     default_project: NotBlankStr,
     forecast_gate: ForecastGate | None = ...,
-) -> WorkEntryAdapter[Any]: ...
+) -> IntakeEntryAdapter | ObjectiveEntryAdapter | TaskBoardEntryAdapter: ...
 
 
 def build_work_entry_adapter(
@@ -80,7 +77,7 @@ def build_work_entry_adapter(
     work_pipeline: WorkPipeline,
     default_project: NotBlankStr,
     forecast_gate: ForecastGate | None = None,
-) -> WorkEntryAdapter[Any]:
+) -> IntakeEntryAdapter | ObjectiveEntryAdapter | TaskBoardEntryAdapter:
     """Construct the work-entry adapter for ``source``.
 
     Args:

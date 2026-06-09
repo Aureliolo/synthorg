@@ -5,10 +5,9 @@ in system prompts, and ``estimate_context_fill`` for computing the
 estimated token fill level of an agent's context window.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from synthorg.engine.context import AgentContext
 from synthorg.engine.token_estimation import (
     DefaultTokenEstimator,
     PromptTokenEstimator,
@@ -19,9 +18,6 @@ from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_INDICATOR_INJECTED,
 )
 from synthorg.providers.models import ChatMessage
-
-if TYPE_CHECKING:
-    from synthorg.engine.context import AgentContext
 
 logger = get_logger(__name__)
 

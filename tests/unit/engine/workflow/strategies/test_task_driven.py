@@ -1,7 +1,5 @@
 """Tests for the TaskDrivenStrategy reference implementation."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.communication.meeting.enums import MeetingProtocolType
@@ -55,7 +53,7 @@ def _make_sprint(
     """Create a sprint with the given task/completion counts."""
     task_ids = tuple(f"task-{i}" for i in range(task_count))
     completed_ids = tuple(f"task-{i}" for i in range(completed_count))
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, object] = {
         "id": "sprint-1",
         "name": "Sprint 1",
         "sprint_number": 1,
@@ -69,7 +67,7 @@ def _make_sprint(
         kwargs["start_date"] = "2026-04-01T00:00:00"
     if status is SprintStatus.COMPLETED:
         kwargs["end_date"] = "2026-04-14T00:00:00"
-    return Sprint(**kwargs)
+    return Sprint.model_validate(kwargs)
 
 
 def _make_context(

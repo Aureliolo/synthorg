@@ -1,7 +1,9 @@
 """Stakes-aware and flat routing strategies."""
 
-from typing import TYPE_CHECKING
-
+from synthorg.budget.benchmark_protocol import BenchmarkScoreProvider
+from synthorg.budget.coordination_store import CoordinationMetricsStore
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, compare_stakes
 from synthorg.core.types import ModelTier
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
@@ -17,14 +19,8 @@ from synthorg.observability.events.stakes_routing import (
     STAKES_ROUTING_TIER_UNRESOLVABLE,
 )
 from synthorg.providers.errors import ProviderError
-
-if TYPE_CHECKING:
-    from synthorg.budget.benchmark_protocol import BenchmarkScoreProvider
-    from synthorg.budget.coordination_store import CoordinationMetricsStore
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.providers.routing.models import ResolvedModel
-    from synthorg.providers.routing.resolver import ModelResolver
+from synthorg.providers.routing.models import ResolvedModel
+from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
 

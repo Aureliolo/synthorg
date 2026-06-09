@@ -9,12 +9,15 @@ Observer notifications are dispatched via a separate background queue.
 
 import asyncio
 import contextlib
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Never
 from uuid import uuid4
 
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import (
     TaskEngineNotRunningError,
     TaskEngineQueueFullError,
@@ -60,11 +63,7 @@ from synthorg.observability.events.task_engine import (
 from synthorg.observability.tracing.instrumentation import get_tracer
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.core.task import Task
-    from synthorg.core.task_enums import TaskStatus
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)

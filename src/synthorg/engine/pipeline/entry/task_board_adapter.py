@@ -9,18 +9,14 @@ performs no task-lifecycle reconciliation. The board's column moves
 remain pure status walks of the spine-created task.
 """
 
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.pipeline.models import WorkItem, WorkSource
-
-if TYPE_CHECKING:
-    from synthorg.engine.pipeline.models import WorkPipelineResult
-    from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult, WorkSource
+from synthorg.engine.pipeline.protocol import WorkPipeline
 
 _ORIGIN_ADAPTER_ID = "task-board-entry-adapter"
 

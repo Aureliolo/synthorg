@@ -4,17 +4,24 @@ Extracted from ``agent_engine.py`` to keep that module within the
 800-line limit.
 """
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
+from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.budget.tracker import CostTracker
+from synthorg.core.agent import AgentIdentity
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_CONFIG_LOADED,
     SECURITY_DISABLED,
 )
+from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.routing.resolver import ModelResolver
 from synthorg.security.audit import AuditLog
 from synthorg.security.config import SecurityConfig
 from synthorg.security.output_scanner import OutputScanner
+from synthorg.security.protocol import SecurityInterceptionStrategy
 from synthorg.security.rules.credential_detector import CredentialDetector
 from synthorg.security.rules.custom_policy_rule import CustomPolicyRule
 from synthorg.security.rules.data_leak_detector import DataLeakDetector
@@ -29,20 +36,12 @@ from synthorg.security.rules.policy_validator import PolicyValidator
 from synthorg.security.rules.risk_classifier import RiskClassifier
 from synthorg.security.service import SecOpsService
 from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
+from synthorg.tools.external_api._runtime import ExternalApiRuntime
+from synthorg.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import ProviderConfig
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.providers.registry import ProviderRegistry
-    from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.autonomy.models import EffectiveAutonomy
-    from synthorg.security.protocol import SecurityInterceptionStrategy
-    from synthorg.tools.external_api._runtime import ExternalApiRuntime
-    from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
 

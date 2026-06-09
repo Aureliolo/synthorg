@@ -17,6 +17,7 @@ or a broadcast WebSocket event behind.
 from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.actor_context import resolve_decided_by
+from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskStatus, compare_stakes
 from synthorg.engine._review_completion_gates import (
     map_pipeline_verdict,
@@ -27,8 +28,12 @@ from synthorg.engine._review_gate_record import ReviewGateRecordMixin
 from synthorg.engine._review_gate_wiring import ReviewGateWiringMixin
 from synthorg.engine.errors import SelfReviewError, TaskNotFoundError
 from synthorg.engine.review.models import PipelineResult
+from synthorg.engine.review.pipeline import ReviewPipeline
+from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_sync import sync_to_task_engine
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_REVIEW_COMPLETED,
     APPROVAL_GATE_REVIEW_REWORK,
@@ -40,17 +45,12 @@ from synthorg.observability.events.red_team import RED_TEAM_GATE_DISPATCHED
 from synthorg.observability.events.security import (
     SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
 )
+from synthorg.security.redteam.protocol import RedTeamGate
+from synthorg.security.visionverify.models import VisionReviewInput
+from synthorg.security.visionverify.protocol import VisionVerifierGate
 
 if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.engine.review.pipeline import ReviewPipeline
-    from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.observability.background_tasks import BackgroundTaskRegistry
     from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.security.redteam.protocol import RedTeamGate
-    from synthorg.security.visionverify.models import VisionReviewInput
-    from synthorg.security.visionverify.protocol import VisionVerifierGate
 
 logger = get_logger(__name__)
 
@@ -282,7 +282,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
                 decided_by=decided_by,
                 approval_id=approval_id,
             )
-            self._background_tasks.spawn(
+            _ = self._background_tasks.spawn(
                 self.complete_review(
                     task_id=task_id,
                     requested_by=requested_by,

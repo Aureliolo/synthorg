@@ -1,13 +1,12 @@
 """Decomposition strategy protocol."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.engine.decomposition.models import (
-        DecompositionContext,
-        DecompositionPlan,
-    )
+from synthorg.core.task import Task
+from synthorg.engine.decomposition.models import (
+    DecompositionContext,
+    DecompositionPlan,
+)
 
 
 @runtime_checkable

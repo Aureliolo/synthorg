@@ -15,10 +15,15 @@ the budget module (cost tracking, quota degradation).
 """
 
 import math
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
 
+from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyStrategyType,
+)
+from synthorg.engine.workflow.sprint_config import (
+    SprintCeremonyConfig,
+    SprintConfig,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.strategies._helpers import get_ceremony_config
@@ -31,15 +36,6 @@ from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_SKIPPED,
     SPRINT_STRATEGY_CONFIG_INVALID,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
-    from synthorg.engine.workflow.sprint_config import (
-        SprintCeremonyConfig,
-        SprintConfig,
-    )
 
 logger = get_logger(__name__)
 
@@ -289,7 +285,7 @@ class BudgetDrivenStrategy:
         self,
         sprint: Sprint,
         event_name: str,
-        payload: Mapping[str, Any],
+        payload: Mapping[str, object],
     ) -> None:
         """No-op.
 
@@ -312,7 +308,7 @@ class BudgetDrivenStrategy:
 
     def validate_strategy_config(
         self,
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
     ) -> None:
         """Validate budget-driven strategy config.
 

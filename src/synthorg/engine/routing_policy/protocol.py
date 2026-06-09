@@ -1,11 +1,10 @@
 """Pluggable stakes-aware routing strategy protocol."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.routing_policy.models import StakesRoutingDecision
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
+from synthorg.engine.routing_policy.models import StakesRoutingDecision
 
 
 @runtime_checkable

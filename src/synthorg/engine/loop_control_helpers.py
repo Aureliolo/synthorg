@@ -11,9 +11,10 @@ fence responsibility lives upstream of the loop (see
 :mod:`synthorg.engine.loop_helpers` for the full wrap-ownership note).
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.compaction.protocol import CompactionCallback
+from synthorg.engine.context import AgentContext
+from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.context_budget import (
@@ -39,11 +40,6 @@ from .loop_protocol import (
     TerminationReason,
 )
 from .stagnation.models import StagnationResult, StagnationVerdict
-
-if TYPE_CHECKING:
-    from synthorg.engine.compaction.protocol import CompactionCallback
-    from synthorg.engine.context import AgentContext
-    from synthorg.engine.stagnation.protocol import StagnationDetector
 
 logger = get_logger(__name__)
 

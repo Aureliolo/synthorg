@@ -20,6 +20,9 @@ from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.engine.workflow.enums import WorkflowType
+from synthorg.engine.workflow.validation_types import (
+    WorkflowValidationResult,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_CREATE_CONFLICT,
@@ -33,16 +36,13 @@ from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_SNAPSHOT_FAILED,
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence.version_protocol import VersionRepository
+from synthorg.versioning.service import VersioningService
 
 if TYPE_CHECKING:
-    from synthorg.engine.workflow.validation_types import (
-        WorkflowValidationResult,
-    )
-    from synthorg.persistence.version_protocol import VersionRepository
     from synthorg.persistence.workflow_definition_protocol import (
         WorkflowDefinitionRepository,
     )
-    from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
 

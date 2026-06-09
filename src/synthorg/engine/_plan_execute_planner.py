@@ -6,8 +6,7 @@ budget orchestration. Built on :class:`PlanExecuteStepMixin` so it can
 reuse the per-turn checkpoint seam.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.engine.context import AgentContext
 from synthorg.engine.plan_execute_step_mixin import PlanExecuteStepMixin
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
@@ -21,6 +20,7 @@ from synthorg.observability.events.execution import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.protocol import CompletionProvider
 
 from .loop_control_helpers import check_budget, check_shutdown
 from .loop_helpers import (
@@ -40,10 +40,6 @@ from .loop_protocol import (
 from .plan_helpers import extract_task_summary, update_step_status
 from .plan_models import ExecutionPlan, PlanExecuteConfig, PlanStep, StepStatus
 from .plan_parsing import _PLANNING_PROMPT, _REPLAN_JSON_EXAMPLE, parse_plan
-
-if TYPE_CHECKING:
-    from synthorg.engine.context import AgentContext
-    from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

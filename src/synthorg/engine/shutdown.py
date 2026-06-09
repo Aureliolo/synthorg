@@ -17,8 +17,8 @@ import contextlib
 import signal
 import sys
 import types
-from collections.abc import Callable, Coroutine, Mapping, Sequence
-from typing import Any, Final, Protocol, runtime_checkable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -43,10 +43,10 @@ logger = get_logger(__name__)
 _DEFAULT_GRACE_SECONDS: Final[float] = 30.0
 _DEFAULT_CLEANUP_SECONDS: Final[float] = 5.0
 
-CleanupCallback = Callable[[], Coroutine[Any, Any, None]]
+CleanupCallback = Callable[[], Awaitable[None]]
 """Async callback invoked during shutdown cleanup phase."""
 
-CheckpointSaver = Callable[[str], Coroutine[Any, Any, bool]]
+CheckpointSaver = Callable[[str], Awaitable[bool]]
 """Async callback: given task_id, save checkpoint. Returns True on success."""
 
 
@@ -111,7 +111,7 @@ class ShutdownStrategy(Protocol):
     async def execute_shutdown(
         self,
         *,
-        running_tasks: Mapping[str, asyncio.Task[Any]],
+        running_tasks: Mapping[str, asyncio.Task[object]],
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
         """Execute the full shutdown sequence.
@@ -174,7 +174,7 @@ class CooperativeTimeoutStrategy:
     async def execute_shutdown(
         self,
         *,
-        running_tasks: Mapping[str, asyncio.Task[Any]],
+        running_tasks: Mapping[str, asyncio.Task[object]],
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
         """Execute the cooperative timeout shutdown sequence.
@@ -221,7 +221,7 @@ class CooperativeTimeoutStrategy:
 
     async def _wait_and_cancel(
         self,
-        running_tasks: Mapping[str, asyncio.Task[Any]],
+        running_tasks: Mapping[str, asyncio.Task[object]],
     ) -> tuple[int, int]:
         """Wait for cooperative exit, then force-cancel stragglers.
 
@@ -277,7 +277,7 @@ class CooperativeTimeoutStrategy:
 # ── Shared helpers ───────────────────────────────────────────────
 
 
-def _log_post_cancel_exceptions(tasks: set[asyncio.Task[Any]]) -> None:
+def _log_post_cancel_exceptions(tasks: set[asyncio.Task[object]]) -> None:
     """Retrieve and log exceptions from post-cancel tasks.
 
     Retrieving the exception prevents asyncio's "Task exception was
@@ -374,7 +374,7 @@ class ShutdownManager:
         strategy: ShutdownStrategy | None = None,
     ) -> None:
         self._strategy: ShutdownStrategy = strategy or CooperativeTimeoutStrategy()
-        self._running_tasks: dict[str, asyncio.Task[Any]] = {}
+        self._running_tasks: dict[str, asyncio.Task[object]] = {}
         self._cleanup_callbacks: list[CleanupCallback] = []
         self._signals_installed = False
         logger.debug(
@@ -471,19 +471,20 @@ class ShutdownManager:
             # stderr for last-resort visibility.
             try:
                 self._strategy.request_shutdown()
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 try:
                     sys.stderr.write(
                         f"[shutdown] request_shutdown() failed for signal {sig_name}\n"
                     )
                     sys.stderr.flush()
-                except Exception:  # noqa: S110
+                except Exception:  # noqa: S110 -- signal-handler last resort
                     pass
 
     def register_task(
         self,
         task_id: str,
-        asyncio_task: asyncio.Task[Any],
+        asyncio_task: asyncio.Task[object],
     ) -> None:
         """Track a running agent task.
 

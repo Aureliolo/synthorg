@@ -5,20 +5,16 @@ Every identity mutation creates a new version snapshot. Rollback
 snapshot content, preserving the full audit trail.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
     EVOLUTION_ROLLBACK_TRIGGERED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.types import NotBlankStr
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.persistence.version_protocol import VersionRepository
-    from synthorg.versioning.models import VersionSnapshot
-    from synthorg.versioning.service import VersioningService
+from synthorg.persistence.version_protocol import VersionRepository
+from synthorg.versioning.models import VersionSnapshot
+from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
 

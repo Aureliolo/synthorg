@@ -11,15 +11,12 @@ is created on every task-completion event.
 import copy
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
+from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_EVAL_CONTEXT_INVALID,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 
 logger = get_logger(__name__)
 

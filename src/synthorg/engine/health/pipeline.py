@@ -6,28 +6,24 @@ the ``HealthJudge`` (sensitive) emits tickets, the ``TriageFilter``
 dispatched to the ``NotificationDispatcher``.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.health.judge import HealthJudge
 from synthorg.engine.health.models import (
     EscalationCause,
     EscalationSeverity,
     EscalationTicket,
 )
+from synthorg.engine.health.triage import TriageFilter
+from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.notifications.models import (
     Notification,
     NotificationCategory,
     NotificationSeverity,
 )
+from synthorg.notifications.protocol import NotificationSink
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.health import HEALTH_PIPELINE_ERROR
-
-if TYPE_CHECKING:
-    from synthorg.engine.health.judge import HealthJudge
-    from synthorg.engine.health.triage import TriageFilter
-    from synthorg.engine.loop_protocol import TerminationReason
-    from synthorg.engine.quality.models import StepQualitySignal
-    from synthorg.notifications.protocol import NotificationSink
 
 logger = get_logger(__name__)
 

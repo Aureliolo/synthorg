@@ -9,7 +9,7 @@ See ``docs/design/ceremony-scheduling.md`` for the full design.
 """
 
 from collections.abc import Mapping
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.engine.workflow.ceremony_context import (
     CeremonyEvalContext,
@@ -187,7 +187,7 @@ class CeremonySchedulingStrategy(Protocol):
         self,
         sprint: Sprint,
         event_name: str,
-        payload: Mapping[str, Any],
+        payload: Mapping[str, object],
     ) -> None:
         """Called when an external event is received.
 
@@ -211,7 +211,7 @@ class CeremonySchedulingStrategy(Protocol):
 
     def validate_strategy_config(
         self,
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
     ) -> None:
         """Validate strategy-specific configuration parameters.
 

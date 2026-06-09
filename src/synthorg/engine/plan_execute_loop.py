@@ -9,9 +9,13 @@ Re-planning is triggered when a step fails, up to a configurable
 limit.  When re-planning is exhausted, the loop terminates with ERROR.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.engine._plan_execute_planner import PlanExecutePlannerMixin
+from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.checkpoint.callback import CheckpointCallback
+from synthorg.engine.compaction.protocol import CompactionCallback
+from synthorg.engine.context import AgentContext
+from synthorg.engine.intervention.inbox import SteeringInbox
+from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
@@ -23,7 +27,10 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
+    ToolDefinition,
 )
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.tools.protocol import ToolInvokerProtocol
 
 from .intervention.plan_steering import steering_replan
 from .loop_cancellation import check_task_cancelled
@@ -49,17 +56,6 @@ from .plan_models import (
     PlanStep,
     StepStatus,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.approval_gate import ApprovalGate
-    from synthorg.engine.checkpoint.callback import CheckpointCallback
-    from synthorg.engine.compaction.protocol import CompactionCallback
-    from synthorg.engine.context import AgentContext
-    from synthorg.engine.intervention.inbox import SteeringInbox
-    from synthorg.engine.stagnation.protocol import StagnationDetector
-    from synthorg.providers.models import ToolDefinition
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 

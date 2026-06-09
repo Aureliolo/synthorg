@@ -8,6 +8,7 @@ parked context with no task is rejected.
 
 import pytest
 
+from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
@@ -79,6 +80,41 @@ class TestResumeParkedRun:
             m.role == MessageRole.SYSTEM and _DECISION_MESSAGE in (m.content or "")
             for m in sent
         )
+
+    async def test_budget_exhausted_during_resume_returns_terminal_result(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A budget error mid-resume awaits the handler, yielding a result.
+
+        The ``except BudgetExhaustedError`` branch must ``await``
+        ``_handle_budget_error``; without the await it returns an
+        un-awaited coroutine, which fails the ``isinstance`` check.
+        """
+        provider = mock_provider_factory([_make_completion_response()])
+        engine = AgentEngine(provider=provider)
+
+        async def _exhaust(**_kwargs: object) -> AgentRunResult:
+            msg = "monthly hard stop crossed"
+            raise BudgetExhaustedError(msg)
+
+        monkeypatch.setattr(engine, "_execute", _exhaust)
+        parked = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        result = await engine.resume_parked_run(
+            parked_context=parked,
+            approval_id="approval-1",
+            decision_message=_DECISION_MESSAGE,
+        )
+
+        assert isinstance(result, AgentRunResult)
+        assert result.termination_reason == TerminationReason.BUDGET_EXHAUSTED
 
     async def test_taskless_parked_context_raises(
         self,

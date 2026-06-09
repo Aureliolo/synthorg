@@ -1,5 +1,6 @@
 """Integration tests for the intake engine lifecycle."""
 
+from collections.abc import AsyncIterator, Mapping
 from typing import cast
 
 import pytest
@@ -15,13 +16,15 @@ from synthorg.engine.intake import (
     IntakeEngine,
     IntakeResult,
     IntakeStrategy,
+    TaskCreator,
 )
-from synthorg.engine.task_engine import TaskEngine
+from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
+    StreamChunk,
     TokenUsage,
     ToolDefinition,
 )
@@ -117,7 +120,7 @@ class TestDirectIntake:
     async def test_creates_task_on_accept(self) -> None:
         task_engine = _FakeTaskEngine(next_id="task-xyz")
         strategy = DirectIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
             project="sim",
         )
         result = await strategy.process(_request(title="Build feature"))
@@ -128,7 +131,7 @@ class TestDirectIntake:
     async def test_full_lifecycle_with_direct(self) -> None:
         task_engine = _FakeTaskEngine(next_id="task-abc")
         strategy = DirectIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
         )
         engine = IntakeEngine(strategy=strategy)
         final, result = await engine.process(_request())
@@ -159,6 +162,36 @@ class _StubProvider:
             model=model,
         )
 
+    async def stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        del messages, model, tools, config
+        msg = "intake stub provider does not stream"
+        raise NotImplementedError(msg)
+
+    async def get_model_capabilities(self, model: str) -> ModelCapabilities:
+        return ModelCapabilities(
+            model_id=model,
+            provider="test-provider",
+            supports_tools=True,
+            supports_streaming=False,
+            max_context_tokens=8192,
+            max_output_tokens=4096,
+            cost_per_1k_input=0.01,
+            cost_per_1k_output=0.03,
+        )
+
+    async def batch_get_capabilities(
+        self,
+        models: tuple[str, ...],
+    ) -> Mapping[str, ModelCapabilities | None]:
+        return {m: await self.get_model_capabilities(m) for m in models}
+
 
 class TestAgentIntake:
     async def test_accepts_when_provider_returns_accept(self) -> None:
@@ -167,7 +200,7 @@ class TestAgentIntake:
         )
         task_engine = _FakeTaskEngine(next_id="task-ag")
         strategy = AgentIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
             provider=cast(CompletionProvider, provider),
             model="test-model",
         )
@@ -181,7 +214,7 @@ class TestAgentIntake:
         )
         task_engine = _FakeTaskEngine()
         strategy = AgentIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
             provider=cast(CompletionProvider, provider),
             model="test-model",
         )
@@ -194,7 +227,7 @@ class TestAgentIntake:
         provider = _StubProvider(content="not json")
         task_engine = _FakeTaskEngine()
         strategy = AgentIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
             provider=cast(CompletionProvider, provider),
             model="test-model",
         )
@@ -209,7 +242,7 @@ class TestAgentIntake:
         provider = _StubProvider(content='{"accepted": false}')
         task_engine = _FakeTaskEngine()
         strategy = AgentIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
             provider=cast(CompletionProvider, provider),
             model="test-model",
         )
@@ -228,7 +261,7 @@ class TestAgentIntake:
         )
         task_engine = _FakeTaskEngine(next_id="task-r")
         strategy = AgentIntake(
-            task_engine=cast(TaskEngine, task_engine),
+            task_engine=cast(TaskCreator, task_engine),
             provider=cast(CompletionProvider, provider),
             model="test-model",
         )

@@ -3,13 +3,12 @@
 Defines the pluggable interface for assignment strategies.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.engine.assignment.models import (
-        AssignmentRequest,
-        AssignmentResult,
-    )
+from synthorg.engine.assignment.models import (
+    AssignmentRequest,
+    AssignmentResult,
+)
 
 
 @runtime_checkable

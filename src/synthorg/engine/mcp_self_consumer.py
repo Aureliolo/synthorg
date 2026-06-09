@@ -14,16 +14,18 @@ default: ``McpSelfConsumerMode.DISABLED`` -> no provider, no MCP
 surface exposed to agents.
 """
 
-from typing import TYPE_CHECKING, Any, Protocol, cast, override
+from typing import TYPE_CHECKING, Protocol, override
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.tool_constraints import ToolAccessLevel
+from synthorg.meta.mcp.registry import MCPToolDef
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.config import McpSelfConsumerConfig, McpSelfConsumerMode
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.meta.mcp.registry import MCPToolDef
+    from synthorg.api.state import AppState
+    from synthorg.meta.mcp.invoker import MCPToolInvoker
 
 
 class MCPSelfConsumerProvider(Protocol):
@@ -55,8 +57,8 @@ class _SynthOrgMCPToolAdapter(BaseTool):
         self,
         *,
         mcp_def: MCPToolDef,
-        invoker: Any,
-        app_state: Any,
+        invoker: MCPToolInvoker,
+        app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         super().__init__(
@@ -74,7 +76,7 @@ class _SynthOrgMCPToolAdapter(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Invoke the MCP tool, threading app_state + actor.
 
@@ -82,20 +84,17 @@ class _SynthOrgMCPToolAdapter(BaseTool):
             The :class:`ToolExecutionResult` from the underlying MCP
             tool invoker.
         """
-        return cast(
-            "ToolExecutionResult",
-            await self._invoker.invoke(
-                self._mcp_def.name,
-                arguments,
-                app_state=self._app_state,
-                actor=self._actor,
-            ),
+        return await self._invoker.invoke(
+            self._mcp_def.name,
+            arguments,
+            app_state=self._app_state,
+            actor=self._actor,
         )
 
 
 def build_mcp_self_consumer(
     config: McpSelfConsumerConfig,
-    app_state: Any,
+    app_state: AppState,
 ) -> MCPSelfConsumerProvider | None:
     """Build the agent -> SynthOrg-MCP provider, or ``None`` if disabled.
 

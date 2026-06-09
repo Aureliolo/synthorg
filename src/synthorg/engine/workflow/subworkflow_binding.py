@@ -26,15 +26,12 @@ Binding expression language (minimal, deliberately):
 import copy
 from collections.abc import Mapping
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from synthorg.engine.errors import SubworkflowIOError
+from synthorg.engine.workflow.definition import WorkflowIODeclaration
 from synthorg.engine.workflow.enums import WorkflowValueType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import SUBWORKFLOW_IO_INVALID
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.definition import WorkflowIODeclaration
 
 logger = get_logger(__name__)
 

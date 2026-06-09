@@ -27,9 +27,10 @@ untrusted-content fence contract. Every LLM message build site under
 import copy
 import hashlib
 import json
-from typing import TYPE_CHECKING
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.context import AgentContext
 from synthorg.execution.turn import BehaviorTag, NodeType, TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
@@ -47,17 +48,13 @@ from synthorg.providers.models import (
     ToolDefinition,
     add_token_usage,
 )
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.tools.protocol import ToolInvokerProtocol
 
 from .loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.call_category import LLMCallCategory
-    from synthorg.engine.context import AgentContext
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 

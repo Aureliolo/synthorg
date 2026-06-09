@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any, Final, Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -289,7 +289,7 @@ class Sprint(BaseModel):
         {"start_date", "end_date"},
     )
 
-    def with_transition(self, target: SprintStatus, **overrides: Any) -> Sprint:
+    def with_transition(self, target: SprintStatus, **overrides: object) -> Sprint:
         """Create a new Sprint with a validated lifecycle transition.
 
         Only ``start_date`` and ``end_date`` may be passed as overrides;

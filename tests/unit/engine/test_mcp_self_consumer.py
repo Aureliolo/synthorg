@@ -8,20 +8,25 @@ fails closed via ``require_admin_guardrails``.
 """
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.security.config import McpSelfConsumerConfig, McpSelfConsumerMode
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from tests._shared.scripted_provider import make_e2e_identity
 
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
+    from synthorg.meta.mcp.invoker import MCPToolInvoker
+
 pytestmark = pytest.mark.unit
 
 
-def make_test_actor() -> Any:
+def make_test_actor() -> AgentIdentity:
     """Minimal AgentIdentity actor for bridge tests."""
     return make_e2e_identity()
 
@@ -29,20 +34,26 @@ def make_test_actor() -> Any:
 _READ_TOOL = "synthorg_tasks_list"
 _ADMIN_TOOL = "synthorg_agents_delete"
 
+# Identity-only sentinel: the adapter and builder thread ``app_state``
+# through opaquely (the bridge never inspects it), and the real
+# ``AppState`` is TYPE_CHECKING-guarded in the source so typeguard
+# skips the runtime check.
+_SENTINEL_STATE = cast("AppState", object())
+
 
 class _RecordingInvoker:
     """Captures invoke() args; not a MagicMock (typed-boundary safe)."""
 
     def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
+        self.calls: list[dict[str, object]] = []
 
     async def invoke(
         self,
         tool_name: str,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
         *,
-        app_state: Any,
-        actor: Any,
+        app_state: object,
+        actor: AgentIdentity | None,
     ) -> ToolExecutionResult:
         self.calls.append(
             {
@@ -59,14 +70,14 @@ class TestBuildMcpSelfConsumer:
     def test_disabled_returns_none(self) -> None:
         provider = build_mcp_self_consumer(
             McpSelfConsumerConfig(mode=McpSelfConsumerMode.DISABLED),
-            app_state=object(),
+            app_state=_SENTINEL_STATE,
         )
         assert provider is None
 
     def test_sub_elevated_empty_allowlist_yields_nothing(self) -> None:
         provider = build_mcp_self_consumer(
             McpSelfConsumerConfig(mode=McpSelfConsumerMode.TRUST_SCOPED),
-            app_state=object(),
+            app_state=_SENTINEL_STATE,
         )
         assert provider is not None
         tools = provider(make_test_actor(), ToolAccessLevel.STANDARD)
@@ -78,7 +89,7 @@ class TestBuildMcpSelfConsumer:
                 mode=McpSelfConsumerMode.TRUST_SCOPED,
                 read_tool_allowlist=(_READ_TOOL,),
             ),
-            app_state=object(),
+            app_state=_SENTINEL_STATE,
         )
         assert provider is not None
         tools = provider(make_test_actor(), ToolAccessLevel.STANDARD)
@@ -92,7 +103,7 @@ class TestBuildMcpSelfConsumer:
                 mode=McpSelfConsumerMode.TRUST_SCOPED,
                 elevated_capabilities=("*",),
             ),
-            app_state=object(),
+            app_state=_SENTINEL_STATE,
         )
         assert provider is not None
         tools = provider(make_test_actor(), ToolAccessLevel.ELEVATED)
@@ -107,7 +118,7 @@ class TestBuildMcpSelfConsumer:
                 elevated_capabilities=("*",),
                 denied_tools=(_ADMIN_TOOL,),
             ),
-            app_state=object(),
+            app_state=_SENTINEL_STATE,
         )
         assert provider is not None
         tools = provider(make_test_actor(), ToolAccessLevel.ELEVATED)
@@ -122,10 +133,10 @@ class TestAdapterThreading:
         tool_def = get_registry().get(_READ_TOOL)
         invoker = _RecordingInvoker()
         actor = make_test_actor()
-        sentinel_state = object()
+        sentinel_state = _SENTINEL_STATE
         adapter = _SynthOrgMCPToolAdapter(
             mcp_def=tool_def,
-            invoker=invoker,
+            invoker=cast("MCPToolInvoker", invoker),
             app_state=sentinel_state,
             actor=actor,
         )
@@ -154,7 +165,7 @@ class TestAdminGuardrailFailsClosed:
                 mode=McpSelfConsumerMode.TRUST_SCOPED,
                 read_tool_allowlist=(_ADMIN_TOOL,),
             ),
-            app_state=object(),
+            app_state=_SENTINEL_STATE,
         )
         assert provider is not None
         tools = provider(make_test_actor(), ToolAccessLevel.STANDARD)

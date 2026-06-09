@@ -8,10 +8,11 @@ since the board filing carries its own project). Both are no-ops
 when the pipeline / simulation runtime is absent (empty company).
 """
 
-from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
@@ -37,7 +38,7 @@ def _app_state(
     has_simulation_runtime: bool = True,
     project: Project | None = None,
     default_project: str | None = "client-intake",
-) -> tuple[Any, Any]:
+) -> tuple[AppState, MagicMock]:
     projects = mock_of[ProjectRepository]()
     projects.get.return_value = project
     sim_state = mock_of[ClientSimulationState](

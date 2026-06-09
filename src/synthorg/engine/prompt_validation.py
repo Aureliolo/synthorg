@@ -4,8 +4,6 @@ Extracted from :mod:`synthorg.engine.prompt` to keep the main module
 focused on the public :func:`build_system_prompt` orchestration.
 """
 
-from typing import TYPE_CHECKING, Any
-
 from jinja2 import TemplateError as Jinja2TemplateError
 from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
@@ -15,9 +13,13 @@ from synthorg.budget.currency import (
     CurrencyCode,
     format_cost,
 )
+from synthorg.communication.async_tasks.models import AsyncTaskStateChannel
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.prompt_template import DEFAULT_TEMPLATE
+from synthorg.engine.token_estimation import PromptTokenEstimator
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.prompt import (
     PROMPT_BUILD_BUDGET_EXCEEDED,
@@ -29,12 +31,6 @@ from synthorg.observability.events.prompt import (
 )
 
 _SANDBOX_ENV = SandboxedEnvironment()
-
-if TYPE_CHECKING:
-    from synthorg.communication.async_tasks.models import AsyncTaskStateChannel
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.token_estimation import PromptTokenEstimator
 
 logger = get_logger(__name__)
 
@@ -210,7 +206,7 @@ def resolve_template(custom_template: str | None) -> str:
     return custom_template
 
 
-def render_template(template_str: str, context: dict[str, Any]) -> str:
+def render_template(template_str: str, context: dict[str, object]) -> str:
     """Render a Jinja2 template string with the given context.
 
     Returns:

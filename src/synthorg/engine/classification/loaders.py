@@ -5,12 +5,15 @@ Provides ``SameTaskLoader`` (wraps a single execution result) and
 to enrich the detection context with delegation chain data).
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.budget.coordination_config import DetectionScope
 from synthorg.communication.delegation.models import DelegationRequest
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.classification.protocol import DetectionContext
+from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.classification import (
@@ -18,13 +21,7 @@ from synthorg.observability.events.classification import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import paginate
-from synthorg.persistence.task_protocol import TaskFilterSpec
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.loop_protocol import ExecutionResult
-    from synthorg.persistence.task_protocol import TaskRepository
+from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 
 logger = get_logger(__name__)
 

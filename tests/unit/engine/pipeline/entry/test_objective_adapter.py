@@ -6,8 +6,6 @@ human-stated objective onto a :class:`WorkItem` with
 no persistence, no lifecycle, no decomposition logic.
 """
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
@@ -34,15 +32,15 @@ pytestmark = pytest.mark.unit
 _DEFAULT_PROJECT = "objectives"
 
 
-def _submission(**overrides: Any) -> ObjectiveSubmission:
-    base: dict[str, Any] = {
+def _submission(**overrides: object) -> ObjectiveSubmission:
+    base: dict[str, object] = {
         "submission_id": "obj-1",
         "title": "Ship the v0.8 release",
         "description": "Cut a stable v0.8 release with full release notes.",
         "requested_by": "human-operator",
     }
     base.update(overrides)
-    return ObjectiveSubmission(**base)
+    return ObjectiveSubmission.model_validate(base)
 
 
 def _result(work_item: WorkItem) -> WorkPipelineResult:

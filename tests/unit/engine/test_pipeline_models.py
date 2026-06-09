@@ -1,7 +1,5 @@
 """Unit tests for work pipeline domain models."""
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
@@ -18,8 +16,8 @@ from synthorg.engine.pipeline.models import (
 pytestmark = pytest.mark.unit
 
 
-def _work_item(**overrides: Any) -> WorkItem:
-    base: dict[str, Any] = {
+def _work_item(**overrides: object) -> WorkItem:
+    base: dict[str, object] = {
         "origin_adapter_id": "simulation-harness",
         "source": WorkSource.SIMULATION,
         "title": "Add a health endpoint",
@@ -28,7 +26,7 @@ def _work_item(**overrides: Any) -> WorkItem:
         "requested_by": "operator-1",
     }
     base.update(overrides)
-    return WorkItem(**base)
+    return WorkItem.model_validate(base)
 
 
 class TestWorkSourceAndVerdict:
@@ -119,8 +117,8 @@ class TestWorkPhaseResult:
 
 
 class TestWorkPipelineResult:
-    def _result(self, **overrides: Any) -> WorkPipelineResult:
-        base: dict[str, Any] = {
+    def _result(self, **overrides: object) -> WorkPipelineResult:
+        base: dict[str, object] = {
             "work_item": _work_item(),
             "verdict": RoutingVerdict.LEAF,
             "execution_path": ExecutionPath.SOLO,
@@ -132,7 +130,7 @@ class TestWorkPipelineResult:
             "total_duration_seconds": 0.2,
         }
         base.update(overrides)
-        return WorkPipelineResult(**base)
+        return WorkPipelineResult.model_validate(base)
 
     def test_construction(self) -> None:
         result = self._result()

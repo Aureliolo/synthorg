@@ -1,7 +1,5 @@
 """Unit tests for intake engine domain models."""
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
@@ -81,11 +79,11 @@ class TestIntakeResult:
     )
     def test_invalid_combinations_rejected(
         self,
-        kwargs: dict[str, Any],
+        kwargs: dict[str, object],
         match: str,
     ) -> None:
         with pytest.raises(ValidationError, match=match):
-            IntakeResult(**kwargs)
+            IntakeResult.model_validate(kwargs)
 
     def test_frozen(self) -> None:
         result = IntakeResult.accepted_result(

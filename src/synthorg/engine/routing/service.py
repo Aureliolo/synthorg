@@ -4,12 +4,15 @@ Routes decomposed subtasks to appropriate agents based on
 scoring, then selects coordination topology.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
+from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.routing.models import (
     RoutingDecision,
     RoutingResult,
 )
+from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.routing.topology_selector import TopologySelector
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.task_routing import (
     TASK_ROUTING_COMPLETE,
@@ -19,13 +22,6 @@ from synthorg.observability.events.task_routing import (
     TASK_ROUTING_SUBTASK_ROUTED,
     TASK_ROUTING_SUBTASK_UNROUTABLE,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.decomposition.models import DecompositionResult
-    from synthorg.engine.routing.scorer import AgentTaskScorer
-    from synthorg.engine.routing.topology_selector import TopologySelector
 
 logger = get_logger(__name__)
 

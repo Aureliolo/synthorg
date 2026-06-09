@@ -1,10 +1,11 @@
 """Tests for LLM decomposition prompt building and response parsing."""
 
 import json
-from typing import Any, cast
+from typing import cast
 from uuid import UUID
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import (
@@ -70,7 +71,7 @@ def _make_context(
 
 
 def _make_tool_call_response(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     *,
     tool_name: str = "submit_decomposition_plan",
 ) -> CompletionResponse:
@@ -80,7 +81,7 @@ def _make_tool_call_response(
             ToolCall(
                 id="tc-1",
                 name=tool_name,
-                arguments=arguments,
+                arguments=cast("dict[str, JsonValue]", arguments),
             ),
         ),
         finish_reason=FinishReason.TOOL_USE,
@@ -112,7 +113,7 @@ def _valid_plan_args(
     subtask_count: int = 2,
     task_structure: str = "sequential",
     coordination_topology: str = "auto",
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Build valid tool call arguments for a decomposition plan."""
     subtasks = [
         {
@@ -146,15 +147,15 @@ class TestBuildDecompositionTool:
     def test_tool_schema_structure(self) -> None:
         """Tool schema contains subtasks array and enum fields."""
         tool = build_decomposition_tool()
-        schema = cast("dict[str, Any]", tool.parameters_schema)
+        schema = cast("dict[str, object]", tool.parameters_schema)
         assert schema["type"] == "object"
-        props = schema["properties"]
+        props = cast("dict[str, object]", schema["properties"])
         assert "subtasks" in props
-        assert props["subtasks"]["type"] == "array"
+        assert cast("dict[str, object]", props["subtasks"])["type"] == "array"
         assert "task_structure" in props
-        assert "enum" in props["task_structure"]
+        assert "enum" in cast("dict[str, object]", props["task_structure"])
         assert "coordination_topology" in props
-        assert "enum" in props["coordination_topology"]
+        assert "enum" in cast("dict[str, object]", props["coordination_topology"])
 
 
 class TestBuildSystemMessage:
@@ -334,7 +335,9 @@ class TestParseToolCallResponse:
     def test_complexity_mapping(self) -> None:
         """String complexity values map to Complexity enum."""
         args = _valid_plan_args(subtask_count=1)
-        args["subtasks"][0]["estimated_complexity"] = "simple"
+        cast("list[dict[str, object]]", args["subtasks"])[0]["estimated_complexity"] = (
+            "simple"
+        )
         response = _make_tool_call_response(args)
         plan = parse_tool_call_response(response, "task-1")
         assert plan.subtasks[0].estimated_complexity is Complexity.SIMPLE
@@ -343,7 +346,9 @@ class TestParseToolCallResponse:
     def test_unrecognized_complexity_defaults_medium(self) -> None:
         """Unrecognized complexity string defaults to MEDIUM."""
         args = _valid_plan_args(subtask_count=1)
-        args["subtasks"][0]["estimated_complexity"] = "ultra-hard"
+        cast("list[dict[str, object]]", args["subtasks"])[0]["estimated_complexity"] = (
+            "ultra-hard"
+        )
         response = _make_tool_call_response(args)
         plan = parse_tool_call_response(response, "task-1")
         assert plan.subtasks[0].estimated_complexity is Complexity.MEDIUM
@@ -351,7 +356,7 @@ class TestParseToolCallResponse:
     @pytest.mark.unit
     def test_optional_fields_use_defaults(self) -> None:
         """Missing optional fields use sensible defaults."""
-        args: dict[str, Any] = {
+        args: dict[str, object] = {
             "subtasks": [
                 {
                     "id": "sub-0",
@@ -373,7 +378,7 @@ class TestParseToolCallResponse:
     @pytest.mark.unit
     def test_missing_required_subtask_field_raises(self) -> None:
         """Subtask missing a required field raises DecompositionError."""
-        args: dict[str, Any] = {
+        args: dict[str, object] = {
             "subtasks": [
                 {
                     "id": "sub-0",
@@ -388,7 +393,7 @@ class TestParseToolCallResponse:
     @pytest.mark.unit
     def test_non_array_dependencies_raises(self) -> None:
         """Non-array dependencies field raises DecompositionError."""
-        args: dict[str, Any] = {
+        args: dict[str, object] = {
             "subtasks": [
                 {
                     "id": "sub-0",
@@ -405,7 +410,7 @@ class TestParseToolCallResponse:
     @pytest.mark.unit
     def test_non_array_required_skills_raises(self) -> None:
         """Non-array required_skills field raises DecompositionError."""
-        args: dict[str, Any] = {
+        args: dict[str, object] = {
             "subtasks": [
                 {
                     "id": "sub-0",
@@ -422,7 +427,7 @@ class TestParseToolCallResponse:
     @pytest.mark.unit
     def test_subtasks_not_list_raises(self) -> None:
         """Non-array subtasks field raises DecompositionError."""
-        args: dict[str, Any] = {
+        args: dict[str, object] = {
             "subtasks": "not-a-list",
         }
         response = _make_tool_call_response(args)
@@ -432,7 +437,7 @@ class TestParseToolCallResponse:
     @pytest.mark.unit
     def test_subtask_not_dict_raises(self) -> None:
         """Non-object subtask entry raises DecompositionError."""
-        args: dict[str, Any] = {
+        args: dict[str, object] = {
             "subtasks": ["not-a-dict"],
         }
         response = _make_tool_call_response(args)
@@ -442,7 +447,7 @@ class TestParseToolCallResponse:
     @pytest.mark.unit
     def test_duplicate_subtask_id_raises(self) -> None:
         """Duplicate LLM subtask ids raise rather than collapse to one UUID."""
-        args: dict[str, Any] = {
+        args: dict[str, object] = {
             "subtasks": [
                 {
                     "id": "sub-dup",

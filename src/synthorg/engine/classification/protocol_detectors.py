@@ -6,8 +6,6 @@ integrity, review pipeline consistency, and authority boundary
 adherence.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.budget.coordination_config import (
     DetectionScope,
     ErrorCategory,
@@ -17,16 +15,14 @@ from synthorg.engine.classification.models import (
     ErrorFinding,
     ErrorSeverity,
 )
+from synthorg.engine.classification.protocol import DetectionContext
+from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.engine.review.models import ReviewVerdict
 from synthorg.observability import get_logger
 from synthorg.observability.events.classification import (
     DETECTOR_COMPLETE,
     DETECTOR_START,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.classification.protocol import DetectionContext
-    from synthorg.engine.loop_protocol import ExecutionResult
 
 logger = get_logger(__name__)
 

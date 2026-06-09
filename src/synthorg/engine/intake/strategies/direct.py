@@ -1,21 +1,17 @@
 """Direct intake strategy: unconditionally create a task."""
 
-from typing import TYPE_CHECKING
-
 from synthorg.client.models import (
     ClientRequest,
     TaskRequirement,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.models import IntakeResult
+from synthorg.engine.intake.protocol import TaskCreator
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.observability import get_logger
 from synthorg.observability.events.review_pipeline import (
     INTAKE_DIRECT_TASK_CREATED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.task_engine import TaskEngine
 
 logger = get_logger(__name__)
 
@@ -24,7 +20,7 @@ class DirectIntake:
     """Intake strategy that creates a task for every incoming request.
 
     No triage logic; every request is accepted as-is and a task is
-    created via the injected :class:`TaskEngine`. Suitable for
+    created via the injected :class:`TaskCreator`. Suitable for
     simulation backends that want to exercise the task lifecycle
     without an intake-agent round-trip.
     """
@@ -32,7 +28,7 @@ class DirectIntake:
     def __init__(
         self,
         *,
-        task_engine: TaskEngine,
+        task_engine: TaskCreator,
         project: NotBlankStr = "simulation",
         requested_by: NotBlankStr = "intake-direct",
     ) -> None:

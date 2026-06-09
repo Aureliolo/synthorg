@@ -1,18 +1,14 @@
 """Stakes router service: delegates to a strategy and logs decisions."""
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
+from synthorg.engine.routing_policy.models import StakesRoutingDecision
+from synthorg.engine.routing_policy.protocol import StakesRoutingStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.stakes_routing import (
     STAKES_ROUTING_DECIDED,
     STAKES_ROUTING_RED_TEAM_MARKED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.routing_policy.models import StakesRoutingDecision
-    from synthorg.engine.routing_policy.protocol import StakesRoutingStrategy
 
 logger = get_logger(__name__)
 

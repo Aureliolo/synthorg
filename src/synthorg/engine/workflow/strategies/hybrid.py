@@ -7,12 +7,16 @@ throughput milestones.
 """
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import cast
 
 from synthorg.engine.workflow.ceremony_context import (
     CeremonyEvalContext,
 )
 from synthorg.engine.workflow.ceremony_policy import CeremonyStrategyType
+from synthorg.engine.workflow.sprint_config import (
+    SprintCeremonyConfig,
+    SprintConfig,
+)
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.strategies._helpers import (
     DEFAULT_TRANSITION_THRESHOLD,
@@ -39,12 +43,6 @@ from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_SKIPPED,
     SPRINT_CEREMONY_TRIGGERED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.sprint_config import (
-        SprintCeremonyConfig,
-        SprintConfig,
-    )
 
 logger = get_logger(__name__)
 
@@ -245,7 +243,7 @@ class HybridStrategy:
         self,
         sprint: Sprint,
         event_name: str,
-        payload: Mapping[str, Any],
+        payload: Mapping[str, object],
     ) -> None:
         """No-op."""
 
@@ -260,7 +258,7 @@ class HybridStrategy:
 
     def validate_strategy_config(
         self,
-        config: Mapping[str, Any],
+        config: Mapping[str, object],
     ) -> None:
         """Validate hybrid strategy config.
 
@@ -342,4 +340,4 @@ class HybridStrategy:
                 if context.elapsed_seconds - last_fire < interval:
                     return False
 
-        return evaluate_task_trigger(trigger, config, context)
+        return evaluate_task_trigger(cast("str", trigger), config, context)

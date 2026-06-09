@@ -1,6 +1,6 @@
 """Tests for extracted loop helper functions."""
 
-from typing import Any, override
+from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -38,6 +38,7 @@ from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
+from tests._shared.scripted_provider import ScriptedProvider
 
 
 def _usage(
@@ -85,7 +86,7 @@ class _StubTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         return ToolExecutionResult(
             content=f"echoed: {arguments}",
@@ -267,14 +268,9 @@ class TestCallProvider:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
 
-        class _Failing:
-            async def complete(self, *a: Any, **kw: Any) -> None:
-                msg = "connection refused"
-                raise ConnectionError(msg)
-
         result = await call_provider(
             ctx,
-            _Failing(),  # type: ignore[arg-type]
+            ScriptedProvider(error=ConnectionError("connection refused")),
             "m",
             None,
             CompletionConfig(),
@@ -292,14 +288,10 @@ class TestCallProvider:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
 
-        class _OOM:
-            async def complete(self, *a: Any, **kw: Any) -> None:
-                raise MemoryError
-
         with pytest.raises(MemoryError):
             await call_provider(
                 ctx,
-                _OOM(),  # type: ignore[arg-type]
+                ScriptedProvider(error=MemoryError()),
                 "m",
                 None,
                 CompletionConfig(),

@@ -13,7 +13,7 @@ import asyncio
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -28,7 +28,15 @@ from synthorg.engine.workflow.ceremony_policy import (
     TRIGGER_SPRINT_START,
     CeremonyStrategyType,
 )
+from synthorg.engine.workflow.ceremony_strategy import (
+    CeremonySchedulingStrategy,
+)
+from synthorg.engine.workflow.sprint_config import (
+    SprintCeremonyConfig,
+    SprintConfig,
+)
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 from synthorg.engine.workflow.strategy_migration import (
     StrategyMigrationInfo,
     detect_strategy_migration,
@@ -50,21 +58,11 @@ from synthorg.observability.events.workflow import (
 )
 from synthorg.persistence.ceremony_scheduler_state_protocol import (
     CeremonySchedulerStateRecord,
+    CeremonySchedulerStateRepository,
 )
 
 if TYPE_CHECKING:
     from synthorg.communication.meeting.scheduler import MeetingScheduler
-    from synthorg.engine.workflow.ceremony_strategy import (
-        CeremonySchedulingStrategy,
-    )
-    from synthorg.engine.workflow.sprint_config import (
-        SprintCeremonyConfig,
-        SprintConfig,
-    )
-    from synthorg.engine.workflow.sprint_velocity import VelocityRecord
-    from synthorg.persistence.ceremony_scheduler_state_protocol import (
-        CeremonySchedulerStateRepository,
-    )
 
 logger = get_logger(__name__)
 
@@ -334,9 +332,6 @@ class CeremonyScheduler:
             return
         if record is None:
             return
-        from synthorg.engine.workflow.sprint_velocity import (  # noqa: PLC0415
-            VelocityRecord,
-        )
 
         # Decode AND validate before mutating any state: a partially
         # corrupt or stale row must leave the freshly-seeded zeroed
@@ -829,7 +824,7 @@ class CeremonyScheduler:
             ``False`` if the trigger failed (logged and swallowed).
         """
         event_name = build_trigger_event_name(ceremony_name, sprint.id)
-        context: dict[str, Any] = {
+        context: dict[str, object] = {
             "sprint_id": sprint.id,
             "ceremony": ceremony_name,
             "completed_tasks": len(sprint.completed_task_ids),
@@ -873,4 +868,4 @@ def _get_trigger(ceremony: SprintCeremonyConfig) -> str | None:
     if ceremony.policy_override is None:
         return None
     sc = ceremony.policy_override.strategy_config or {}
-    return sc.get("trigger")
+    return cast("str | None", sc.get("trigger"))

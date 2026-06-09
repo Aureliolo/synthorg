@@ -1,6 +1,8 @@
 """Tests for SQLiteDecisionRepository."""
 
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -321,7 +323,9 @@ class TestSQLiteDecisionRepositorySerialization:
         assert fetched is not None
         assert fetched.criteria_snapshot == ("a", "b", "c")
         assert fetched.metadata["key"] == "value"
-        assert dict(fetched.metadata["nested"]) == {"x": 1}
+        assert dict(cast("Mapping[str, object]", fetched.metadata["nested"])) == {
+            "x": 1
+        }
 
     async def test_corrupted_criteria_raises_query_error(
         self, migrated_db: aiosqlite.Connection

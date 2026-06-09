@@ -7,15 +7,13 @@ COMPLETED transition.  Kept out of ``review_gate.py`` so the gate module
 stays within its size budget and does not import the feature package.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable_receipts import RECEIPT_BUILD_FAILED
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
 
 logger = get_logger(__name__)
 

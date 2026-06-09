@@ -8,10 +8,11 @@ persistence boundary stays honored (handlers never reach into
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_NOT_FOUND,
@@ -19,11 +20,8 @@ from synthorg.observability.events.workflow_definition import (
 from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_INVALID_REQUEST,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.definition import WorkflowDefinition
-    from synthorg.persistence.version_protocol import VersionRepository
-    from synthorg.versioning.models import VersionSnapshot
+from synthorg.persistence.version_protocol import VersionRepository
+from synthorg.versioning.models import VersionSnapshot
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50

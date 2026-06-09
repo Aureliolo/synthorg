@@ -12,7 +12,7 @@ references it.
 import copy
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -424,7 +424,7 @@ class ConstitutionalPrincipleConfig(BaseModel):
         default="default",
         description="Principle pack name to load",
     )
-    custom: tuple[dict[str, Any], ...] = Field(
+    custom: tuple[dict[str, object], ...] = Field(
         default=(),
         description="Custom principles appended to the pack",
     )

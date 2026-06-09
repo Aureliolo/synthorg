@@ -24,7 +24,12 @@ from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.communication.async_tasks.models import (
     AsyncTaskStateChannel,
 )
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.role import Role
+from synthorg.core.task import Task
+from synthorg.core.tool_disclosure import ToolL1Metadata
+from synthorg.core.types import ModelTier
 from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.policy_validation import validate_policy_quality
@@ -41,6 +46,7 @@ from synthorg.engine.prompt_validation import (
     validate_org_policies,
 )
 from synthorg.engine.sanitization import sanitize_message
+from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.token_estimation import (
     DefaultTokenEstimator,
     PromptTokenEstimator,
@@ -53,16 +59,10 @@ from synthorg.observability.events.prompt import (
     PROMPT_PROFILE_SELECTED,
 )
 from synthorg.observability.events.tool import TOOL_L1_INJECTED
+from synthorg.providers.models import ToolDefinition
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
     from synthorg.core.company import Company
-    from synthorg.core.role import Role
-    from synthorg.core.task import Task
-    from synthorg.core.tool_disclosure import ToolL1Metadata
-    from synthorg.core.types import ModelTier
-    from synthorg.engine.strategy.models import StrategyConfig
-    from synthorg.providers.models import ToolDefinition
     from synthorg.security.autonomy.models import EffectiveAutonomy
 
 __all__ = ["SystemPrompt", "build_error_prompt", "build_system_prompt"]

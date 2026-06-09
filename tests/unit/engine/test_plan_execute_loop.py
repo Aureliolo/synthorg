@@ -1,7 +1,8 @@
 """Tests for the Plan-and-Execute execution loop."""
 
 import json
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, override
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -19,10 +20,13 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import mock_of
+from tests._shared.scripted_provider import ScriptedProvider
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
@@ -43,7 +47,7 @@ def _usage(
     )
 
 
-def _plan_response(steps: list[dict[str, Any]]) -> CompletionResponse:
+def _plan_response(steps: list[dict[str, object]]) -> CompletionResponse:
     """Build a plan response with JSON-formatted steps."""
     plan = {"steps": steps}
     return CompletionResponse(
@@ -145,7 +149,7 @@ class _StubTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         return ToolExecutionResult(
             content=f"echoed: {arguments}",
@@ -686,15 +690,10 @@ class TestPlanExecuteLoopProviderException:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
 
-        class _FailingProvider:
-            async def complete(self, *_a: Any, **_kw: Any) -> None:
-                msg = "connection refused"
-                raise ConnectionError(msg)
-
         loop = PlanExecuteLoop()
         result = await loop.execute(
             context=ctx,
-            provider=_FailingProvider(),  # type: ignore[arg-type]
+            provider=ScriptedProvider(error=ConnectionError("connection refused")),
         )
 
         assert result.termination_reason == TerminationReason.ERROR
@@ -704,26 +703,23 @@ class TestPlanExecuteLoopProviderException:
     async def test_provider_error_during_step_execution(
         self,
         sample_agent_context: AgentContext,
-        mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
-        call_count = 0
 
-        class _PartialProvider:
-            """Returns plan on first call, errors on second."""
-
-            async def complete(self, *_a: Any, **_kw: Any) -> Any:
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
-                    return _single_step_plan()
-                msg = "model overloaded"
-                raise ConnectionError(msg)
+        # Plan on the first call, then error on the step-execution call.
+        provider = mock_of[CompletionProvider](
+            complete=AsyncMock(
+                side_effect=[
+                    _single_step_plan(),
+                    ConnectionError("model overloaded"),
+                ],
+            ),
+        )
 
         loop = PlanExecuteLoop()
         result = await loop.execute(
             context=ctx,
-            provider=_PartialProvider(),  # type: ignore[arg-type]
+            provider=provider,
         )
 
         assert result.termination_reason == TerminationReason.ERROR
