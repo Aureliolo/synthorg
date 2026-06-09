@@ -932,92 +932,92 @@
     },
     "src/synthorg/persistence/postgres/audit_repository.py": {
       "cap": 500,
-      "loc": 413,
-      "ratio": 0.826,
-      "tier": "code"
-    },
-    "src/synthorg/persistence/postgres/conversation_repo.py": {
-      "cap": 500,
-      "loc": 468,
-      "ratio": 0.936,
-      "tier": "code"
-    },
-    "src/synthorg/persistence/postgres/escalation_repo.py": {
-      "cap": 500,
-      "loc": 478,
-      "ratio": 0.956,
-      "tier": "repository"
-    },
-    "src/synthorg/persistence/postgres/hr_repositories.py": {
-      "cap": 500,
-      "loc": 426,
-      "ratio": 0.852,
-      "tier": "code"
-    },
-    "src/synthorg/persistence/postgres/ontology_entity_repo.py": {
-      "cap": 500,
       "loc": 410,
       "ratio": 0.82,
       "tier": "code"
     },
+    "src/synthorg/persistence/postgres/conversation_repo.py": {
+      "cap": 500,
+      "loc": 466,
+      "ratio": 0.932,
+      "tier": "code"
+    },
+    "src/synthorg/persistence/postgres/escalation_repo.py": {
+      "cap": 500,
+      "loc": 477,
+      "ratio": 0.954,
+      "tier": "repository"
+    },
+    "src/synthorg/persistence/postgres/hr_repositories.py": {
+      "cap": 500,
+      "loc": 424,
+      "ratio": 0.848,
+      "tier": "code"
+    },
+    "src/synthorg/persistence/postgres/ontology_entity_repo.py": {
+      "cap": 500,
+      "loc": 408,
+      "ratio": 0.816,
+      "tier": "code"
+    },
     "src/synthorg/persistence/postgres/org_fact_repo.py": {
       "cap": 500,
-      "loc": 489,
-      "ratio": 0.978,
+      "loc": 488,
+      "ratio": 0.976,
       "tier": "repository"
     },
     "src/synthorg/persistence/postgres/project_brain_repo.py": {
       "cap": 500,
-      "loc": 493,
-      "ratio": 0.986,
+      "loc": 491,
+      "ratio": 0.982,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/session_repo.py": {
       "cap": 500,
-      "loc": 414,
-      "ratio": 0.828,
+      "loc": 412,
+      "ratio": 0.824,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/tool_blueprint_repo.py": {
       "cap": 500,
-      "loc": 462,
-      "ratio": 0.924,
+      "loc": 461,
+      "ratio": 0.922,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/training_plan_repo.py": {
       "cap": 500,
-      "loc": 449,
-      "ratio": 0.898,
+      "loc": 447,
+      "ratio": 0.894,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/version_repo.py": {
       "cap": 500,
-      "loc": 413,
-      "ratio": 0.826,
+      "loc": 411,
+      "ratio": 0.822,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/webhook_receipt_repo.py": {
       "cap": 500,
-      "loc": 420,
-      "ratio": 0.84,
+      "loc": 418,
+      "ratio": 0.836,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/workflow_definition_repo.py": {
       "cap": 500,
-      "loc": 481,
-      "ratio": 0.962,
+      "loc": 479,
+      "ratio": 0.958,
       "tier": "repository"
     },
     "src/synthorg/persistence/postgres/workflow_execution_repo.py": {
       "cap": 500,
-      "loc": 469,
-      "ratio": 0.938,
+      "loc": 467,
+      "ratio": 0.934,
       "tier": "repository"
     },
     "src/synthorg/persistence/sqlite/cost_forecast_repo.py": {
       "cap": 500,
-      "loc": 409,
-      "ratio": 0.818,
+      "loc": 407,
+      "ratio": 0.814,
       "tier": "repository"
     },
     "src/synthorg/persistence/sqlite/escalation_repo.py": {
@@ -1046,8 +1046,8 @@
     },
     "src/synthorg/persistence/sqlite/project_brain_repo.py": {
       "cap": 500,
-      "loc": 488,
-      "ratio": 0.976,
+      "loc": 486,
+      "ratio": 0.972,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/project_repo.py": {
@@ -1070,8 +1070,8 @@
     },
     "src/synthorg/persistence/sqlite/tool_blueprint_repo.py": {
       "cap": 500,
-      "loc": 493,
-      "ratio": 0.986,
+      "loc": 492,
+      "ratio": 0.984,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/training_plan_repo.py": {
@@ -1082,8 +1082,8 @@
     },
     "src/synthorg/persistence/sqlite/version_repo.py": {
       "cap": 500,
-      "loc": 407,
-      "ratio": 0.814,
+      "loc": 405,
+      "ratio": 0.81,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/webhook_receipt_repo.py": {
@@ -1094,14 +1094,14 @@
     },
     "src/synthorg/persistence/sqlite/workflow_definition_repo.py": {
       "cap": 500,
-      "loc": 474,
-      "ratio": 0.948,
+      "loc": 472,
+      "ratio": 0.944,
       "tier": "repository"
     },
     "src/synthorg/persistence/sqlite/workflow_execution_repo.py": {
       "cap": 500,
-      "loc": 492,
-      "ratio": 0.984,
+      "loc": 490,
+      "ratio": 0.98,
       "tier": "repository"
     },
     "src/synthorg/project_brain/service.py": {
@@ -1254,16 +1254,10 @@
       "ratio": 1.316,
       "tier": "code"
     },
-    "src/synthorg/tools/_git_base.py": {
-      "cap": 500,
-      "loc": 539,
-      "ratio": 1.078,
-      "tier": "code"
-    },
     "src/synthorg/tools/browser/browser_tool.py": {
       "cap": 1100,
-      "loc": 1067,
-      "ratio": 0.97,
+      "loc": 1065,
+      "ratio": 0.968,
       "tier": "complex_service"
     },
     "src/synthorg/tools/desktop/_executor.py": {
@@ -1274,14 +1268,8 @@
     },
     "src/synthorg/tools/external_api/external_api_tool.py": {
       "cap": 500,
-      "loc": 528,
-      "ratio": 1.056,
-      "tier": "code"
-    },
-    "src/synthorg/tools/git_tools.py": {
-      "cap": 500,
-      "loc": 535,
-      "ratio": 1.07,
+      "loc": 480,
+      "ratio": 0.96,
       "tier": "code"
     },
     "src/synthorg/tools/git_url_validator.py": {
@@ -1292,20 +1280,14 @@
     },
     "src/synthorg/tools/mcp/client.py": {
       "cap": 500,
-      "loc": 489,
-      "ratio": 0.978,
+      "loc": 488,
+      "ratio": 0.976,
       "tier": "code"
     },
     "src/synthorg/tools/sandbox/docker_config.py": {
       "cap": 500,
       "loc": 451,
       "ratio": 0.902,
-      "tier": "code"
-    },
-    "src/synthorg/tools/sandbox/subprocess_sandbox.py": {
-      "cap": 500,
-      "loc": 663,
-      "ratio": 1.326,
       "tier": "code"
     },
     "src/synthorg/workers/claim.py": {
@@ -1366,12 +1348,12 @@
     "synthorg.core.auth.roles": 25,
     "synthorg.core.autonomy_enums": 34,
     "synthorg.core.clock": 154,
-    "synthorg.core.critical_errors": 472,
+    "synthorg.core.critical_errors": 463,
     "synthorg.core.domain_errors": 176,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 47,
     "synthorg.core.normalization": 72,
-    "synthorg.core.persistence_errors": 190,
+    "synthorg.core.persistence_errors": 192,
     "synthorg.core.project_enums": 28,
     "synthorg.core.registry": 27,
     "synthorg.core.task": 91,
@@ -1413,7 +1395,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 63,
-    "synthorg.observability": 1480,
+    "synthorg.observability": 1484,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 149,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1454,7 +1436,7 @@
     "synthorg.providers.registry": 30,
     "synthorg.providers.state": 25,
     "synthorg.research.models": 22,
-    "synthorg.security.autonomy.enums": 72,
+    "synthorg.security.autonomy.enums": 73,
     "synthorg.security.autonomy.models": 31,
     "synthorg.security.models": 27,
     "synthorg.settings.enums": 109,
@@ -1465,7 +1447,7 @@
     "synthorg.settings.resolver": 33,
     "synthorg.settings.service": 30,
     "synthorg.settings.state": 71,
-    "synthorg.tools.base": 74
+    "synthorg.tools.base": 76
   },
   "lcom": {
     "synthorg.budget.coordination_collector:CoordinationMetricsCollector": {
