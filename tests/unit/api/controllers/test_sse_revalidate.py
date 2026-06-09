@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock
 import pytest
 from typeguard import suppress_type_checks
 
-from synthorg.api.controllers.events import (
+from synthorg.api.controllers.events._sse import (
     _run_revalidation_tick,
     _user_revocation_reason,
 )
@@ -130,7 +130,7 @@ async def test_sse_event_stream_emits_revoked_when_role_demoted(
 ) -> None:
     """End-to-end: feed the generator a role-demoted user mid-stream
     and assert it yields a final 'revoked' event before terminating."""
-    from synthorg.api.controllers import events as events_mod
+    from synthorg.api.controllers.events import _sse as events_mod
 
     # Fast-path: shrink keepalive + revalidate cadence so the test
     # does not wait minutes for the revalidation tick.

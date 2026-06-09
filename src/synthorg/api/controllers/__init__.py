@@ -55,10 +55,8 @@ from synthorg.api.controllers.escalations import EscalationsController
 from synthorg.api.controllers.evaluation_config_versions import (
     EvaluationConfigVersionController,
 )
-from synthorg.api.controllers.events import (
-    EventStreamController,
-    InterruptController,
-)
+from synthorg.api.controllers.events.interrupts import InterruptController
+from synthorg.api.controllers.events.stream import EventStreamController
 from synthorg.api.controllers.experiments import ExperimentsController
 from synthorg.api.controllers.health import (
     LivenessController,

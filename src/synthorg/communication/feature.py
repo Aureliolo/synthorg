@@ -14,9 +14,9 @@ from collections.abc import Mapping
 from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.ceremony_policy import CeremonyPolicyController
 from synthorg.api.controllers.escalations import EscalationsController
-from synthorg.api.controllers.events import (
+from synthorg.api.controllers.events.interrupts import InterruptController
+from synthorg.api.controllers.events.stream import (
     EventStreamController,
-    InterruptController,
 )
 from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.messages import MessageController

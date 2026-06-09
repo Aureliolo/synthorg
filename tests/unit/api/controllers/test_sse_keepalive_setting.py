@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.api.controllers import events as events_mod
+from synthorg.api.controllers.events import _sse as events_mod
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import make_app_state, mock_of
 
