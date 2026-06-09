@@ -8,6 +8,8 @@ ingest / reindex / delete are admin (their handlers call
 
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
+
 from synthorg.knowledge.constants import (
     KNOWLEDGE_LIST_MAX_LIMIT,
     KNOWLEDGE_SEARCH_MAX_LIMIT,
@@ -25,7 +27,7 @@ from synthorg.meta.mcp.tool_builder import admin_tool, read_tool
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
 
-_SOURCE_TYPES = ["pdf", "web", "repo", "ticket", "design_doc"]
+_SOURCE_TYPES: list[JsonValue] = ["pdf", "web", "repo", "ticket", "design_doc"]
 
 
 KNOWLEDGE_TOOLS: tuple[MCPToolDef, ...] = (

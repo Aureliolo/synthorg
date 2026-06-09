@@ -219,7 +219,7 @@ class TestAlert:
             "emitted_at": _NOW,
         }
         defaults.update(overrides)
-        return Alert(**defaults)
+        return Alert.model_validate(defaults)
 
     def test_auto_id(self) -> None:
         alert = self._make()

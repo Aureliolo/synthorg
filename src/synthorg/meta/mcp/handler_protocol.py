@@ -10,11 +10,14 @@ the circular-import risk that otherwise surfaces when every handler
 module tries to import ``ToolHandler`` from the invoker.
 """
 
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from synthorg.core.agent import (
     AgentIdentity,
 )
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 
 class ToolHandler(Protocol):
@@ -32,7 +35,7 @@ class ToolHandler(Protocol):
     **before** calling the handler.  Failed validation surfaces as
     an ``invalid_argument`` envelope without
     invoking the handler.  Successful validation: the handler still
-    receives a ``dict[str, Any]`` (the validated model's
+    receives a ``dict[str, object]`` (the validated model's
     :meth:`model_dump` output) so existing handler signatures stay
     stable; handlers that want typed access call
     ``args_model.model_validate(arguments)`` locally -- a no-op
@@ -43,8 +46,8 @@ class ToolHandler(Protocol):
     async def __call__(
         self,
         *,
-        app_state: Any,
-        arguments: dict[str, Any],
+        app_state: AppState,
+        arguments: dict[str, object],
         actor: AgentIdentity | None = None,
     ) -> str:
         """Execute the tool logic.

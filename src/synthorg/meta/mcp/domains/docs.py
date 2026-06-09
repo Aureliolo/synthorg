@@ -8,6 +8,8 @@ read-only and don't require admin scope.
 
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
+
 from synthorg.meta.mcp.domains._docs_args import (
     DocsHistoryArgs,
     DocsListArgs,
@@ -21,7 +23,7 @@ if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
 
 
-_BLOCK_SCHEMA: dict[str, object] = {
+_BLOCK_SCHEMA: dict[str, JsonValue] = {
     "type": "object",
     "description": (
         "Doc body block (heading / prose / bullet_list / code / "

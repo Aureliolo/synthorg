@@ -1,11 +1,13 @@
 """Meeting MCP handlers (communication sub-domain)."""
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.communication.state import meeting_service_of
+from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -36,9 +38,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -48,7 +48,7 @@ _ARG_MEETING_ID = "meeting_id"
 _TY_STATUS = "MeetingStatus string"
 
 
-def _parse_meeting_status(arguments: dict[str, Any]) -> MeetingStatus | None:
+def _parse_meeting_status(arguments: dict[str, object]) -> MeetingStatus | None:
     """Return parse meeting status.
 
     Raises:
@@ -67,8 +67,8 @@ def _parse_meeting_status(arguments: dict[str, Any]) -> MeetingStatus | None:
 
 async def _meetings_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List meeting records (paginated, optionally filtered).
@@ -98,8 +98,8 @@ async def _meetings_list(
 
 async def _meetings_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single meeting record by ID.
@@ -126,8 +126,8 @@ async def _meetings_get(
 
 async def _meetings_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Capability gap: meetings are produced by the engine, not ad-hoc created.
@@ -148,8 +148,8 @@ async def _meetings_create(
 
 async def _meetings_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Capability gap: meeting records are updated by the engine only.
@@ -170,8 +170,8 @@ async def _meetings_update(
 
 async def _meetings_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Delete a single meeting record by id.

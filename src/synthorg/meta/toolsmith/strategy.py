@@ -10,13 +10,15 @@ an authored tool cannot widen its own isolation.
 """
 
 import json
-from typing import TYPE_CHECKING, Any, Final
+from collections.abc import Sequence
+from typing import Final
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from synthorg.api.boundary import parse_typed
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -41,13 +43,8 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_AUTHOR_FAILED,
     TOOLSMITH_AUTHOR_STARTED,
 )
+from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.cost_recording import cost_recording_scope
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.providers.base import BaseCompletionProvider
 
 logger = get_logger(__name__)
 
@@ -279,7 +276,7 @@ class _AuthoredBlueprintArgs(BaseModel):
     description: NotBlankStr
     action_type: NotBlankStr
     script_body: NotBlankStr
-    parameters_schema: dict[str, Any]
+    parameters_schema: dict[str, JsonValue]
 
 
 __all__ = ["LLMToolBlueprintGenerator"]

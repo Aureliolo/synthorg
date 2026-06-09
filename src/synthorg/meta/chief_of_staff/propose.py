@@ -10,7 +10,7 @@ autonomous acting).
 
 import asyncio
 import uuid
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from pydantic import ValidationError
 
@@ -80,9 +80,6 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 logger = get_logger(__name__)
 

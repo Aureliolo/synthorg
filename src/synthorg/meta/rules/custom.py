@@ -10,15 +10,11 @@ domain, bounds, unit, nullability).
 """
 
 import operator as _operator
+from collections.abc import Callable
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid4
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
 
 from pydantic import (
     AwareDatetime,
@@ -38,6 +34,9 @@ from synthorg.meta.models import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import META_CUSTOM_RULE_LISTED
+
+if TYPE_CHECKING:
+    from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
 
 logger = get_logger(__name__)
 
@@ -350,11 +349,20 @@ def resolve_metric(
 
     Raises:
         AttributeError: If the path does not exist on the snapshot.
+        TypeError: If the path resolves to a non-numeric, non-None value
+            (callers perform arithmetic on the result, so a clear error
+            here beats a ``TypeError`` raised deep in the operator layer).
     """
-    obj: Any = snapshot
+    obj: object = snapshot
     for part in path.split("."):
         obj = getattr(obj, part)
-    return obj  # type: ignore[no-any-return]
+    if obj is None or (isinstance(obj, (int, float)) and not isinstance(obj, bool)):
+        return obj
+    msg = (
+        f"Metric path '{path}' resolved to a non-numeric "
+        f"{type(obj).__name__}; expected float, int, or None."
+    )
+    raise TypeError(msg)
 
 
 # ── CustomRuleDefinition ─────────────────────────────────────────

@@ -12,7 +12,7 @@ app_states).  All budget tools are reads; none are destructive.
 import copy
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING
 
 from synthorg.budget.state import cost_tracker_of
 from synthorg.budget.version_service import BudgetConfigVersionsService
@@ -44,6 +44,9 @@ from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import config_resolver_of
 
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
+
 logger = get_logger(__name__)
 
 
@@ -54,7 +57,7 @@ _ARG_TASK_ID = "task_id"
 _ARG_VERSION = "version_num"
 
 
-def _versions_service(app_state: Any) -> BudgetConfigVersionsService:
+def _versions_service(app_state: AppState) -> BudgetConfigVersionsService:
     """Return the budget-versions service facade.
 
     Prefers ``app_state.budget_versions_service`` when bootstrap has
@@ -88,8 +91,8 @@ class _NotFoundError(
 
 async def _budget_get_config(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_budget_get_config`` MCP tool.
@@ -109,8 +112,8 @@ async def _budget_get_config(
 
 async def _budget_list_records(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_budget_list_records`` MCP tool.
@@ -153,8 +156,8 @@ async def _budget_list_records(
 
 async def _budget_get_agent_spending(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_budget_get_agent_spending`` MCP tool.
@@ -187,8 +190,8 @@ async def _budget_get_agent_spending(
 
 async def _budget_versions_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_budget_versions_list`` MCP tool.
@@ -220,8 +223,8 @@ async def _budget_versions_list(
 
 async def _budget_versions_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_budget_versions_get`` MCP tool.

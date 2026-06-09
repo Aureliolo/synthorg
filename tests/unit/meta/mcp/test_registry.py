@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from synthorg.meta.mcp.errors import ToolRegistryFrozenError
 from synthorg.meta.mcp.registry import DomainToolRegistry
 from tests.unit.meta.mcp.conftest import make_tool
 
@@ -87,7 +88,7 @@ class TestDomainToolRegistry:
     def test_freeze_prevents_registration(self) -> None:
         registry = DomainToolRegistry()
         registry.freeze()
-        with pytest.raises(RuntimeError, match="frozen"):
+        with pytest.raises(ToolRegistryFrozenError, match="frozen"):
             registry.register(make_tool())
 
     def test_freeze_idempotent(self) -> None:

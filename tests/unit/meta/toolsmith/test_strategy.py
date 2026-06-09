@@ -1,9 +1,8 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the LLM tool blueprint generator."""
 
 import json
 from datetime import UTC, datetime
-from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -19,7 +18,8 @@ from synthorg.meta.toolsmith.models import (
     ToolSandboxBackend,
 )
 from synthorg.meta.toolsmith.strategy import LLMToolBlueprintGenerator
-from tests._shared import FakeClock
+from synthorg.providers.base import BaseCompletionProvider
+from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -49,21 +49,6 @@ class _FakeResponse:
         self.content = content
 
 
-class _FakeProvider:
-    """Structural BaseCompletionProvider stand-in returning canned content."""
-
-    def __init__(self, content: str) -> None:
-        self._content = content
-        self.calls = 0
-
-    async def complete(
-        self, *, messages: Any, model: str, config: Any
-    ) -> _FakeResponse:
-        del messages, model, config
-        self.calls += 1
-        return _FakeResponse(self._content)
-
-
 def _gap(signature: str = "textkit:slugify", occurrences: int = 3) -> CapabilityGap:
     return CapabilityGap(
         signature=NotBlankStr(signature),
@@ -85,7 +70,9 @@ def _generator(
     )
     return LLMToolBlueprintGenerator(
         config=config,
-        provider=_FakeProvider(content),  # type: ignore[arg-type]
+        provider=mock_of[BaseCompletionProvider](
+            complete=AsyncMock(return_value=_FakeResponse(content)),
+        ),
         clock=FakeClock(start=_NOW),
     )
 

@@ -4,17 +4,15 @@ Compares two consecutive ``OrgSignalSnapshot`` objects and detects
 significant metric changes that exceed configurable thresholds.
 """
 
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import OrgInflection
 from synthorg.meta.models import OrgSignalSnapshot, RuleSeverity
 from synthorg.observability import get_logger
 from synthorg.observability.events.chief_of_staff import COS_INFLECTION_DETECTED
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 logger = get_logger(__name__)
 _DEFAULT_WARNING_THRESHOLD: Final[float] = 0.15

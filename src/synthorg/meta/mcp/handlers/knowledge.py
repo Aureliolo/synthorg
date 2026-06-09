@@ -7,9 +7,11 @@ chunk text is wrapped via ``wrap_untrusted`` because corpus content may
 carry injected instructions.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
@@ -20,6 +22,8 @@ from synthorg.knowledge.constants import (
 )
 from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.errors import KnowledgeSourceNotFoundError
+from synthorg.knowledge.models import KnowledgeHit
+from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
@@ -35,10 +39,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.knowledge.models import KnowledgeHit
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -67,7 +68,7 @@ _TY_BOOL = "boolean"
 _TY_OPT_STR = "string or null"
 
 
-def _require_service(app_state: Any) -> Any:
+def _require_service(app_state: AppState) -> KnowledgeService:
     """Return the service or raise when unavailable.
 
     Raises:
@@ -80,7 +81,7 @@ def _require_service(app_state: Any) -> Any:
     return svc
 
 
-def _opt_project_id(arguments: dict[str, Any]) -> NotBlankStr | None:
+def _opt_project_id(arguments: dict[str, object]) -> NotBlankStr | None:
     """Return opt project id.
 
     Raises:
@@ -94,7 +95,7 @@ def _opt_project_id(arguments: dict[str, Any]) -> NotBlankStr | None:
     return NotBlankStr(raw)
 
 
-def _source_type(arguments: dict[str, Any]) -> SourceType:
+def _source_type(arguments: dict[str, object]) -> SourceType:
     """Return source type.
 
     Raises:
@@ -107,7 +108,7 @@ def _source_type(arguments: dict[str, Any]) -> SourceType:
         raise ArgumentValidationError(_ARG_SOURCE_TYPE, _TY_SOURCE_TYPE) from exc
 
 
-def _positive_int(arguments: dict[str, Any], key: str, *, default: int) -> int:
+def _positive_int(arguments: dict[str, object], key: str, *, default: int) -> int:
     """Return positive int.
 
     Raises:
@@ -121,7 +122,7 @@ def _positive_int(arguments: dict[str, Any], key: str, *, default: int) -> int:
     return raw
 
 
-def _nonneg_int(arguments: dict[str, Any], key: str, *, default: int) -> int:
+def _nonneg_int(arguments: dict[str, object], key: str, *, default: int) -> int:
     """Return nonneg int.
 
     Raises:
@@ -135,7 +136,7 @@ def _nonneg_int(arguments: dict[str, Any], key: str, *, default: int) -> int:
     return raw
 
 
-def _flag(arguments: dict[str, Any], key: str) -> bool:
+def _flag(arguments: dict[str, object], key: str) -> bool:
     """Return flag.
 
     Raises:
@@ -147,7 +148,7 @@ def _flag(arguments: dict[str, Any], key: str) -> bool:
     return raw
 
 
-def _hit_dict(hit: KnowledgeHit) -> dict[str, Any]:
+def _hit_dict(hit: KnowledgeHit) -> dict[str, object]:
     """Serialise a hit, wrapping the untrusted chunk text.
 
     Returns:
@@ -162,8 +163,8 @@ def _hit_dict(hit: KnowledgeHit) -> dict[str, Any]:
 
 async def _knowledge_search(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return knowledge search."""
@@ -188,8 +189,8 @@ async def _knowledge_search(
 
 async def _knowledge_ingest(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return knowledge ingest."""
@@ -219,8 +220,8 @@ async def _knowledge_ingest(
 
 async def _knowledge_reindex(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return knowledge reindex."""
@@ -245,8 +246,8 @@ async def _knowledge_reindex(
 
 async def _knowledge_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return knowledge list."""
@@ -279,8 +280,8 @@ async def _knowledge_list(
 
 async def _knowledge_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return knowledge get."""
@@ -304,8 +305,8 @@ async def _knowledge_get(
 
 async def _knowledge_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return knowledge delete."""

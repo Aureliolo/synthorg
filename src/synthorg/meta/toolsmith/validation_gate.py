@@ -15,7 +15,9 @@ when the brief passes and ``require_golden_delta`` is set.
 """
 
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final, cast
+
+from pydantic import JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -38,6 +40,7 @@ from synthorg.observability.events.toolsmith import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
+    from synthorg.api.state import AppState
     from synthorg.tools.sandbox.protocol import SandboxBackend
 
     SandboxResolver = Callable[[ToolBlueprint], SandboxBackend]
@@ -48,7 +51,7 @@ _BRIEF_PASS_SCORE: Final[int] = 100
 _BRIEF_FAIL_SCORE: Final[int] = 0
 _DEFAULT_BRIEF_TIMEOUT_SECONDS: Final[float] = 30.0
 
-_PROBE_VALUES: Mapping[str, Any] = {
+_PROBE_VALUES: Mapping[str, object] = {
     "string": "probe",
     "integer": 1,
     "number": 1.0,
@@ -58,7 +61,7 @@ _PROBE_VALUES: Mapping[str, Any] = {
 }
 
 
-def _synthesize_probe(parameters_schema: dict[str, Any]) -> dict[str, Any]:
+def _synthesize_probe(parameters_schema: dict[str, JsonValue]) -> dict[str, object]:
     """Build a minimal valid argument payload from required schema fields.
 
     Honours the schema keywords that fully determine a valid value --
@@ -74,7 +77,7 @@ def _synthesize_probe(parameters_schema: dict[str, Any]) -> dict[str, Any]:
     """
     properties = parameters_schema.get("properties")
     required = parameters_schema.get("required") or ()
-    probe: dict[str, Any] = {}
+    probe: dict[str, object] = {}
     if not isinstance(properties, dict) or not isinstance(required, (list, tuple)):
         return probe
     for name in required:
@@ -87,7 +90,7 @@ def _synthesize_probe(parameters_schema: dict[str, Any]) -> dict[str, Any]:
     return probe
 
 
-def _probe_value_for(prop: object) -> Any:
+def _probe_value_for(prop: object) -> object:
     """Pick a probe value for a single property schema.
 
     ``const`` / ``default`` / ``enum`` pin an exact valid value when
@@ -150,7 +153,10 @@ class SandboxBriefRunner:
         # (sandbox failure, runtime error) must fail the brief, not
         # propagate out of the gate. System-critical errors still escape.
         try:
-            raw = await handler(app_state=None, arguments=probe)
+            # The probe runs a dynamic-tool handler that ignores app_state
+            # (it executes ``script_body`` in the sandbox), so ``None`` is the
+            # honest runtime value; the cast satisfies the ToolHandler contract.
+            raw = await handler(app_state=cast("AppState", None), arguments=probe)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

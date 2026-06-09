@@ -6,7 +6,7 @@ plumbing; the strategy owns one structured model turn. The default
 strict ``InterviewDecision`` JSON contract.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pydantic import ValidationError
 
@@ -19,6 +19,7 @@ from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.models import InterviewDecision
 from synthorg.meta.charter.prompts import CHARTER_INTERVIEW_PROMPT
+from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.errors import CharterInterviewResponseInvalidError
 from synthorg.observability import (
     get_logger,
@@ -33,9 +34,6 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
-
-if TYPE_CHECKING:
-    from synthorg.meta.chief_of_staff.models import ConversationTurn
 
 logger = get_logger(__name__)
 

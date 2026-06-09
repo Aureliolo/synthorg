@@ -10,7 +10,7 @@ use the GitHub API, making this safe to run inside containers.
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
@@ -25,6 +25,7 @@ from synthorg.meta.appliers._code_validation import (
     _check_proposal_shape,
     _validate_change_preconditions,
 )
+from synthorg.meta.config import CodeModificationConfig
 from synthorg.meta.models import (
     ApplyResult,
     CIValidationResult,
@@ -33,6 +34,7 @@ from synthorg.meta.models import (
     ImprovementProposal,
     ProposalAltitude,
 )
+from synthorg.meta.protocol import CIValidator, GitHubAPI
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -45,10 +47,6 @@ from synthorg.observability.events.meta import (
     META_CI_VALIDATION_FAILED,
     META_CODE_FILE_WRITTEN,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.config import CodeModificationConfig
-    from synthorg.meta.protocol import CIValidator, GitHubAPI
 
 logger = get_logger(__name__)
 
@@ -472,7 +470,13 @@ class CodeApplier:
                 _apply_single_change(change, file_path)
             except MemoryError, RecursionError:
                 raise
-            except (OSError, RuntimeError) as exc:
+            except (OSError, RuntimeError, UnicodeDecodeError) as exc:
+                # ``UnicodeDecodeError`` (a ``ValueError`` subclass) is raised
+                # when a change targets a non-UTF-8 file via ``read_text``;
+                # without it here the decode failure escapes the per-change
+                # guard and the partial-write revert never fires, leaving the
+                # workspace dirty.
+                #
                 # Without this, the ``msg`` and chained-exception
                 # paths leak raw ``str(exc)`` into the
                 # PartialWriteError that the caller logs via

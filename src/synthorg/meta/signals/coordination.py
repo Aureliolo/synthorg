@@ -4,15 +4,12 @@ Wraps the 9 composable coordination metrics to produce an
 OrgCoordinationSummary.
 """
 
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import OrgCoordinationSummary
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import META_SIGNAL_AGGREGATION_COMPLETED
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 logger = get_logger(__name__)
 

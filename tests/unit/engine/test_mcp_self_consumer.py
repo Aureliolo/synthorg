@@ -196,7 +196,7 @@ class TestAdminGuardrailFailsClosed:
                 "reason": "valid reason",
                 "agent_name": "some-agent",
             },
-            app_state=object(),
+            app_state=cast("AppState", object()),
             actor=None,
         )
 

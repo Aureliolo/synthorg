@@ -7,19 +7,16 @@ aggregates them for the communication feature's deferred loader and the
 MCP dispatch table.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.handlers.communication.connections import CONNECTIONS_HANDLERS
 from synthorg.meta.mcp.handlers.communication.meetings import MEETINGS_HANDLERS
 from synthorg.meta.mcp.handlers.communication.messages import MESSAGES_HANDLERS
 from synthorg.meta.mcp.handlers.communication.tunnel import TUNNEL_HANDLERS
 from synthorg.meta.mcp.handlers.communication.webhooks import WEBHOOKS_HANDLERS
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.mcp.handler_protocol import ToolHandler
 
 COMMUNICATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {

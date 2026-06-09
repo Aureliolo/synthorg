@@ -1,8 +1,10 @@
 """External-connection MCP handlers (communication sub-domain)."""
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.state import connection_service_of
 from synthorg.meta.mcp.errors import (
@@ -37,9 +39,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -52,7 +52,7 @@ _ARG_METADATA = "metadata"
 _TY_CONNECTION_TYPE = "ConnectionType string"
 
 
-def _parse_connection_type(arguments: dict[str, Any]) -> ConnectionType:
+def _parse_connection_type(arguments: dict[str, object]) -> ConnectionType:
     """Return parse connection type."""
     raw = require_arg(arguments, _ARG_CONNECTION_TYPE, str)
     try:
@@ -64,8 +64,8 @@ def _parse_connection_type(arguments: dict[str, Any]) -> ConnectionType:
 
 async def _connections_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List external-system connections (paginated).
@@ -91,8 +91,8 @@ async def _connections_list(
 
 async def _connections_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single connection by name.
@@ -119,8 +119,8 @@ async def _connections_get(
 
 async def _connections_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Create a new external connection (admin op; enforces guardrails).
@@ -134,7 +134,7 @@ async def _connections_create(
         name = _require_str(arguments, _ARG_NAME)
         connection_type = _parse_connection_type(arguments)
         auth_method = _require_str(arguments, _ARG_AUTH_METHOD)
-        credentials = require_dict(arguments, _ARG_CREDENTIALS)
+        credentials = require_dict(arguments, _ARG_CREDENTIALS, value_type=str)
         base_url = get_optional_str(arguments, _ARG_BASE_URL)
         metadata = _get_dict(arguments, _ARG_METADATA)
         actor_id = require_actor_id(resolved_actor)
@@ -168,8 +168,8 @@ async def _connections_create(
 
 async def _connections_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Delete a connection (destructive; enforces guardrails).
@@ -208,8 +208,8 @@ async def _connections_delete(
 
 async def _connections_check_health(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Run an on-demand health probe against a connection.

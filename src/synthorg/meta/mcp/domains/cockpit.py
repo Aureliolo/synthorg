@@ -9,6 +9,8 @@ controllers.
 
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
+
 from synthorg.meta.mcp.domains._cockpit_args import (
     SteerArgs,
     SteerListArgs,
@@ -25,16 +27,16 @@ from synthorg.meta.mcp.tool_builder import (
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
 
-_EXECUTION_ID_PROP = {
+_EXECUTION_ID_PROP: dict[str, JsonValue] = {
     "execution_id": {"type": "string", "description": "Execution run identifier"},
 }
-_TASK_PROP = {
+_TASK_PROP: dict[str, JsonValue] = {
     "task_id": {"type": "string", "description": "Task to act on"},
 }
-_PROJECT_PROP = {
+_PROJECT_PROP: dict[str, JsonValue] = {
     "project_id": {"type": "string", "description": "Project the directive targets"},
 }
-_STEER_PROPS = {
+_STEER_PROPS: dict[str, JsonValue] = {
     **_PROJECT_PROP,
     "kind": {
         "type": "string",
@@ -63,7 +65,7 @@ _STEER_PROPS = {
         "description": "How obsolete tasks are handled",
     },
 }
-_STEER_SUPERSEDE_PROPS = {
+_STEER_SUPERSEDE_PROPS: dict[str, JsonValue] = {
     **_PROJECT_PROP,
     "directive_id": {"type": "string", "description": "Directive to confirm for"},
     "task_ids": {

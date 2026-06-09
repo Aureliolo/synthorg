@@ -81,7 +81,7 @@ class TestTasksSmoke:
 
 
 class TestTasksList:
-    async def test_happy(self, task_app_state: SimpleNamespace) -> None:
+    async def test_happy(self, task_app_state: AppState) -> None:
         body = _parse(
             await TASK_HANDLERS["synthorg_tasks_list"](
                 app_state=task_app_state,
@@ -240,7 +240,7 @@ class TestWorkflowsSmoke:
 
 
 class TestWorkflowsList:
-    async def test_happy(self, workflow_app_state: SimpleNamespace) -> None:
+    async def test_happy(self, workflow_app_state: AppState) -> None:
         body = _parse(
             await WORKFLOW_HANDLERS["synthorg_workflows_list"](
                 app_state=workflow_app_state,

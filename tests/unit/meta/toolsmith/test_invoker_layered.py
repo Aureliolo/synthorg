@@ -3,10 +3,11 @@
 
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.invoker import MCPToolInvoker
 from synthorg.meta.mcp.registry import DomainToolRegistry
@@ -68,7 +69,7 @@ class TestInvokerLayeredDispatch:
         result = await invoker.invoke(
             "synthorg_textkit_slugify",
             {"text": "Hello"},
-            app_state=None,
+            app_state=cast("AppState", None),
         )
         assert result.is_error is False
         envelope = json.loads(result.content)
@@ -81,7 +82,7 @@ class TestInvokerLayeredDispatch:
         result = await invoker.invoke(
             "synthorg_textkit_slugify",
             {"text": "Hello", "bogus": 1},
-            app_state=None,
+            app_state=cast("AppState", None),
         )
         assert result.is_error is True
         envelope = json.loads(result.content)
@@ -94,11 +95,13 @@ class TestInvokerLayeredDispatch:
         result = await invoker.invoke(
             "synthorg_textkit_slugify",
             {},
-            app_state=None,
+            app_state=cast("AppState", None),
         )
         assert result.is_error is True
 
     async def test_unknown_tool_is_error(self) -> None:
         invoker, _ = await _build_invoker()
-        result = await invoker.invoke("synthorg_nope_nope", {}, app_state=None)
+        result = await invoker.invoke(
+            "synthorg_nope_nope", {}, app_state=cast("AppState", None)
+        )
         assert result.is_error is True

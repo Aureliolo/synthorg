@@ -10,11 +10,13 @@ seam they care about, but the helper itself is one file.
 """
 
 import json
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import BaseModel
+from typeguard import suppress_type_checks
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -155,10 +157,17 @@ class _StubActor:
         self.id = None  # id missing -- name fallback exercised
 
 
+@suppress_type_checks
 class TestGuardrails:
-    """Tests for destructive-op guardrail enforcement."""
+    """Tests for destructive-op guardrail enforcement.
 
-    _ACTOR = _StubActor()
+    These exercise the runtime defensive path that rejects malformed
+    or unattributable actors, which can only be expressed with doubles
+    that deliberately violate the ``AgentIdentity`` annotation; typeguard
+    is suppressed at the class so it does not pre-empt that path.
+    """
+
+    _ACTOR = cast("AgentIdentity", _StubActor())
 
     def test_returns_reason_and_actor_on_success(self) -> None:
         reason, actor = require_admin_guardrails(
@@ -218,7 +227,7 @@ class TestGuardrails:
         # Opaque actors without ``.id`` or a non-blank ``.name`` produce
         # destructive-op audit entries with no real attribution; the
         # guardrail must reject them the same way it rejects ``None``.
-        opaque = object()
+        opaque = cast("AgentIdentity", object())
         with pytest.raises(GuardrailViolationError) as ei:
             require_admin_guardrails(
                 {"confirm": True, "reason": "approved"},
@@ -228,7 +237,7 @@ class TestGuardrails:
 
     def test_rejects_blank_name_actor(self) -> None:
         # A ``name`` attribute of whitespace is not a usable identifier.
-        blank = _StubActor(name="   ")
+        blank = cast("AgentIdentity", _StubActor(name="   "))
         with pytest.raises(GuardrailViolationError) as ei:
             require_admin_guardrails(
                 {"confirm": True, "reason": "approved"},
@@ -245,7 +254,7 @@ class TestGuardrails:
 
         reason, actor = require_admin_guardrails(
             {"confirm": True, "reason": "approved"},
-            _IdOnly(),
+            cast("AgentIdentity", _IdOnly()),
         )
         assert reason == "approved"
         assert actor.id == "actor-uuid-1234"

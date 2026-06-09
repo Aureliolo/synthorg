@@ -9,6 +9,8 @@ guardrail fields).
 
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
+
 from synthorg.meta.mcp.domains._brain_args import (
     BrainAppendArgs,
     BrainClearBlockerArgs,
@@ -52,7 +54,7 @@ _STATUS_VALUES = [
     "retired",
 ]
 
-_PAYLOAD_SCHEMA: dict[str, object] = {
+_PAYLOAD_SCHEMA: dict[str, JsonValue] = {
     "type": "object",
     "description": (
         "Kind-specific payload, discriminated on entry_kind (decision / "

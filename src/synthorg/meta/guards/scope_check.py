@@ -4,9 +4,8 @@ Rejects proposals whose altitude is not enabled in the
 self-improvement configuration.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
     GuardResult,
     GuardVerdict,
@@ -18,9 +17,6 @@ from synthorg.observability.events.meta import (
     META_PROPOSAL_GUARD_PASSED,
     META_PROPOSAL_GUARD_REJECTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.config import SelfImprovementConfig
 
 logger = get_logger(__name__)
 

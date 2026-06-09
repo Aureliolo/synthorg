@@ -19,11 +19,13 @@ etc.) already use.
 import copy
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from synthorg.core.agent import AgentIdentity
+from synthorg.meta.rules.service import CustomRulesService
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.meta.rules.service import CustomRulesService
+    from synthorg.api.state import AppState
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.errors import SelfImprovementTriggerError
@@ -66,7 +68,7 @@ _WHY_SELF_IMPROVEMENT = (
 )
 
 
-def _custom_rules_service(app_state: Any) -> CustomRulesService:
+def _custom_rules_service(app_state: AppState) -> CustomRulesService:
     """Return the custom-rules service facade.
 
     Prefers ``app_state.custom_rules_service`` when bootstrap has wired
@@ -98,8 +100,8 @@ def _custom_rules_service(app_state: Any) -> CustomRulesService:
 
 async def _meta_get_config(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_meta_get_config`` MCP tool.
@@ -122,8 +124,8 @@ async def _meta_get_config(
 
 async def _meta_list_rules(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_meta_list_rules`` MCP tool.
@@ -156,8 +158,8 @@ async def _meta_list_rules(
 
 async def _meta_list_mcp_tools(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,  # noqa: ARG001
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_meta_list_mcp_tools`` MCP tool.
@@ -184,8 +186,8 @@ async def _meta_list_mcp_tools(
 
 async def _meta_get_mcp_server_config(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,  # noqa: ARG001
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_meta_get_mcp_server_config`` MCP tool.
@@ -208,8 +210,8 @@ async def _meta_get_mcp_server_config(
 
 async def _meta_trigger_cycle(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_meta_trigger_cycle`` MCP tool.
@@ -252,8 +254,8 @@ async def _meta_trigger_cycle(
 
 async def _meta_query_feature_map(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],
+    app_state: AppState,  # noqa: ARG001
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_meta_query_feature_map`` MCP tool.

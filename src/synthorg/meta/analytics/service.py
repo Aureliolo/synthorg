@@ -14,8 +14,9 @@ growing this module.
 """
 
 import asyncio
+from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.analytics.models import (
@@ -27,17 +28,10 @@ from synthorg.meta.analytics.models import (
     MetricsSnapshot,
     MetricTrend,
 )
+from synthorg.meta.signal_models import OrgBudgetSummary, OrgPerformanceSummary
+from synthorg.meta.signals.service import SignalsService
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import META_SIGNAL_AGGREGATION_COMPLETED
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.meta.signal_models import (
-        OrgBudgetSummary,
-        OrgPerformanceSummary,
-    )
-    from synthorg.meta.signals.service import SignalsService
 
 logger = get_logger(__name__)
 _DEFAULT_HORIZON_DAYS: Final[int] = 30

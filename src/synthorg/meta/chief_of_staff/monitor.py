@@ -8,10 +8,15 @@ consumers.
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, ClassVar, Final
+from typing import ClassVar, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
+from synthorg.meta.chief_of_staff.inflection import OrgInflectionDetector
+from synthorg.meta.chief_of_staff.models import OrgInflection
+from synthorg.meta.chief_of_staff.protocol import OrgInflectionSink
+from synthorg.meta.models import OrgSignalSnapshot
+from synthorg.meta.signals.snapshot import SnapshotBuilder
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.chief_of_staff import (
@@ -21,13 +26,6 @@ from synthorg.observability.events.chief_of_staff import (
     COS_MONITOR_STARTED,
     COS_MONITOR_STOPPED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.chief_of_staff.inflection import OrgInflectionDetector
-    from synthorg.meta.chief_of_staff.models import OrgInflection
-    from synthorg.meta.chief_of_staff.protocol import OrgInflectionSink
-    from synthorg.meta.models import OrgSignalSnapshot
-    from synthorg.meta.signals.snapshot import SnapshotBuilder
 
 logger = get_logger(__name__)
 _DEFAULT_CHECK_INTERVAL_MINUTES: Final[int] = 15

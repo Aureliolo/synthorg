@@ -205,7 +205,7 @@ class BackgroundTaskRegistry:
         return len(self._tasks)
 
 
-def log_task_exceptions(  # type: ignore[explicit-any]  # structlog proxy; see log_exception_redacted
+def log_task_exceptions(  # structlog proxy; see log_exception_redacted
     logger_: Any,
     event: str,
     **context: object,

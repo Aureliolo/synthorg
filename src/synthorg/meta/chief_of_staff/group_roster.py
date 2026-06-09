@@ -12,10 +12,11 @@ helpers it calls through.
 """
 
 import uuid
-from datetime import timedelta
-from typing import TYPE_CHECKING
+from datetime import datetime, timedelta
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.chief_of_staff.enums import ConversationParticipantStatus
 from synthorg.meta.chief_of_staff.group_models import ConversationParticipant
 from synthorg.meta.chief_of_staff.models import ConversationTurn
@@ -30,12 +31,6 @@ from synthorg.persistence.conversation_protocol import (
     ConversationTurnFilterSpec,
     ConversationTurnRepository,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.hr.registry import AgentRegistryService
 
 logger = get_logger(__name__)
 

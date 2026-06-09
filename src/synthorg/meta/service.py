@@ -6,15 +6,21 @@ and Chief of Staff confidence learning.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any
 
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.meta._service_config import _SECRET_PATHS, _redact_secrets
 from synthorg.meta._service_lifecycle import SelfImprovementLifecycleMixin
 from synthorg.meta._service_rollout import SelfImprovementRolloutMixin
+from synthorg.meta.appliers.architecture_applier import ArchitectureApplierContext
+from synthorg.meta.appliers.config_applier import ConfigProvider
+from synthorg.meta.appliers.prompt_applier import PromptApplierContext
 from synthorg.meta.chief_of_staff.outcome_store import MemoryBackendOutcomeStore
+from synthorg.meta.chief_of_staff.protocol import ConfidenceAdjuster
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.errors import SelfImprovementTriggerError
 from synthorg.meta.factory import (
     build_appliers,
@@ -30,9 +36,15 @@ from synthorg.meta.models import (
     ImprovementCycleResult,
     ImprovementProposal,
     OrgSignalSnapshot,
+    RuleMatch,
 )
+from synthorg.meta.protocol import ImprovementStrategy
+from synthorg.meta.rollout.before_after import SnapshotBuilder
+from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
+from synthorg.meta.rollout.roster import OrgRoster
 from synthorg.meta.rules.builtin import default_rules
 from synthorg.meta.telemetry.factory import build_analytics_emitter
+from synthorg.meta.telemetry.protocol import AnalyticsEmitter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_CONFIDENCE_ADJUSTMENT_FAILED,
@@ -47,28 +59,9 @@ from synthorg.observability.events.meta import (
     META_CYCLE_TRIGGERED,
     META_PROPOSAL_GUARD_REJECTED,
 )
+from synthorg.providers.base import BaseCompletionProvider
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.meta.appliers.architecture_applier import (
-        ArchitectureApplierContext,
-    )
-    from synthorg.meta.appliers.config_applier import ConfigProvider
-    from synthorg.meta.appliers.prompt_applier import PromptApplierContext
-    from synthorg.meta.chief_of_staff.protocol import ConfidenceAdjuster
-    from synthorg.meta.config import SelfImprovementConfig
-    from synthorg.meta.models import RuleMatch
-    from synthorg.meta.protocol import (
-        ImprovementStrategy,
-    )
-    from synthorg.meta.rollout.before_after import SnapshotBuilder
-    from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
-    from synthorg.meta.rollout.roster import OrgRoster
-    from synthorg.meta.telemetry.protocol import AnalyticsEmitter
-    from synthorg.providers.base import BaseCompletionProvider
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -353,7 +346,7 @@ class SelfImprovementService(
 
         return results
 
-    def get_config(self) -> dict[str, Any]:
+    def get_config(self) -> dict[str, object]:
         """Return the active self-improvement config with secrets redacted.
 
         The dump preserves the exact field structure of

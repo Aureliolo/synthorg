@@ -1,5 +1,7 @@
 """Unit tests for MCP tool builder helpers."""
 
+from typing import cast
+
 import pytest
 from pydantic import ValidationError
 
@@ -46,7 +48,7 @@ class TestToolDef:
             "List tasks",
             {"status": {"type": "string"}},
         )
-        assert "status" in t.parameters["properties"]
+        assert "status" in cast("dict[str, object]", t.parameters["properties"])
 
     def test_with_required(self) -> None:
         t = tool_def(

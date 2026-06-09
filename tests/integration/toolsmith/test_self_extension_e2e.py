@@ -26,12 +26,14 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast, override
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.config import SelfImprovementConfig
@@ -44,6 +46,18 @@ from synthorg.meta.toolsmith.dynamic_registry import (
 )
 from synthorg.meta.toolsmith.factory import build_toolsmith
 from synthorg.meta.toolsmith.models import ToolBlueprint, ToolSandboxBackend
+from synthorg.persistence.tool_blueprint_protocol import ToolBlueprintFilterSpec
+from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    StreamChunk,
+    TokenUsage,
+    ToolDefinition,
+)
 from synthorg.tools.sandbox.result import SandboxResult
 from tests._shared import FakeClock
 
@@ -112,18 +126,64 @@ class _LocalPythonSandbox:
     async def cleanup(self) -> None:
         return None
 
+    async def release_owner(
+        self,
+        owner_id: Any,
+        *,
+        project_id: Any = None,
+        image_override: str | None = None,
+    ) -> None:
+        del owner_id, project_id, image_override
 
-class _FakeResponse:
-    def __init__(self, content: str) -> None:
-        self.content = content
+    async def health_check(self) -> bool:
+        return True
+
+    def get_backend_type(self) -> NotBlankStr:
+        return NotBlankStr("subprocess")
 
 
-class _FakeProvider:
-    async def complete(
-        self, *, messages: Any, model: str, config: Any
-    ) -> _FakeResponse:
-        del messages, model, config
-        return _FakeResponse(_AUTHORING_RESPONSE)
+class _FakeProvider(BaseCompletionProvider):
+    """Authoring provider stub: returns the canned tool-authoring response.
+
+    Subclasses the concrete base so the ``build_toolsmith`` boundary's
+    runtime type check (``provider`` must be a ``BaseCompletionProvider``)
+    is satisfied; the inherited ``complete`` wrapper drives
+    ``_do_complete``.
+    """
+
+    @override
+    async def _do_complete(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> CompletionResponse:
+        del messages, tools, config
+        return CompletionResponse(
+            content=_AUTHORING_RESPONSE,
+            finish_reason=FinishReason.STOP,
+            usage=TokenUsage(input_tokens=8, output_tokens=4, cost=0.0),
+            model=model,
+        )
+
+    @override
+    async def _do_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        del messages, model, tools, config
+        raise NotImplementedError
+
+    @override
+    async def _do_get_model_capabilities(self, model: str) -> ModelCapabilities:
+        del model
+        raise NotImplementedError
 
 
 class _FakeScorecard:
@@ -153,6 +213,41 @@ class _InMemoryRepo:
         self.rows[entity_id] = row.model_copy(update={"state": to_state, **updates})
         return True
 
+    async def delete(self, entity_id: str) -> bool:
+        return self.rows.pop(entity_id, None) is not None
+
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[ToolBlueprint, ...]:
+        rows = tuple(self.rows.values())
+        return rows[offset : offset + limit]
+
+    async def query(
+        self,
+        filter_spec: ToolBlueprintFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ToolBlueprint, ...]:
+        rows = [
+            bp
+            for bp in self.rows.values()
+            if (filter_spec.state is None or bp.state is filter_spec.state)
+            and (
+                filter_spec.capability is None
+                or bp.capability == filter_spec.capability
+            )
+            and (
+                filter_spec.sandbox_backend is None
+                or bp.sandbox_backend is filter_spec.sandbox_backend
+            )
+        ]
+        return tuple(rows)[offset : offset + limit]
+
+    async def count(self, filter_spec: ToolBlueprintFilterSpec) -> int:
+        rows = await self.query(filter_spec, limit=len(self.rows) + 1)
+        return len(rows)
+
 
 class _InMemoryApprovalStore:
     """Minimal ApprovalStoreProtocol: records enqueued approval items."""
@@ -162,6 +257,36 @@ class _InMemoryApprovalStore:
 
     async def add(self, item: ApprovalItem) -> None:
         self.items[str(item.id)] = item
+
+    async def clear(self) -> None:
+        self.items.clear()
+
+    async def delete(self, approval_id: str) -> bool:
+        return self.items.pop(str(approval_id), None) is not None
+
+    async def get(self, approval_id: str) -> ApprovalItem | None:
+        return self.items.get(str(approval_id))
+
+    async def list_items(
+        self,
+        *,
+        status: Any = None,
+        risk_level: Any = None,
+        action_type: Any = None,
+    ) -> tuple[ApprovalItem, ...]:
+        del status, risk_level, action_type
+        return tuple(self.items.values())
+
+    async def save(self, item: ApprovalItem) -> ApprovalItem | None:
+        self.items[str(item.id)] = item
+        return item
+
+    async def save_if_pending(self, item: ApprovalItem) -> ApprovalItem | None:
+        self.items[str(item.id)] = item
+        return item
+
+    async def consume_if_approved(self, approval_id: str) -> ApprovalItem | None:
+        return self.items.get(str(approval_id))
 
 
 def _config() -> SelfImprovementConfig:
@@ -187,7 +312,7 @@ class TestSelfExtensionE2E:
         approvals = _InMemoryApprovalStore()
         runtime = build_toolsmith(
             si_config=_config(),
-            provider=_FakeProvider(),  # type: ignore[arg-type]
+            provider=_FakeProvider(),
             repo=repo,  # type: ignore[arg-type]
             sandbox_resolver=lambda _bp: _LocalPythonSandbox(),  # type: ignore[arg-type,return-value]
             scorecard_provider=_FakeScorecard(),
@@ -231,7 +356,7 @@ class TestSelfExtensionE2E:
         result = await invoker.invoke(
             "synthorg_textkit_slugify",
             {"text": "Hello Brave World"},
-            app_state=None,
+            app_state=cast("AppState", None),
         )
         assert result.is_error is False
         envelope = json.loads(result.content)
@@ -242,7 +367,7 @@ class TestSelfExtensionE2E:
         clock = FakeClock(start=_NOW)
         runtime = build_toolsmith(
             si_config=_config(),
-            provider=_FakeProvider(),  # type: ignore[arg-type]
+            provider=_FakeProvider(),
             repo=_InMemoryRepo(),  # type: ignore[arg-type]
             sandbox_resolver=lambda _bp: _LocalPythonSandbox(),  # type: ignore[arg-type,return-value]
             scorecard_provider=_FakeScorecard(),
@@ -268,7 +393,7 @@ class TestSelfExtensionE2E:
 
         runtime = build_toolsmith(
             si_config=_config(),
-            provider=_FakeProvider(),  # type: ignore[arg-type]
+            provider=_FakeProvider(),
             repo=repo,  # type: ignore[arg-type]
             sandbox_resolver=lambda _bp: _LocalPythonSandbox(),  # type: ignore[arg-type,return-value]
             scorecard_provider=_RegressingScorecard(),

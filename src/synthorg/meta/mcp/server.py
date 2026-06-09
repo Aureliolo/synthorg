@@ -5,18 +5,14 @@ and external users connect to. Each agent sees a capability-scoped
 subset of the full tool catalog.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.meta.mcp.invoker import MCPToolInvoker
+from synthorg.meta.mcp.registry import DomainToolRegistry
 from synthorg.meta.mcp.scoping import MCPToolScoper
+from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
+from synthorg.meta.toolsmith.protocol import CapabilityGapSink
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.meta.mcp.registry import DomainToolRegistry
-    from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
-    from synthorg.meta.toolsmith.protocol import CapabilityGapSink
 
 logger = get_logger(__name__)
 

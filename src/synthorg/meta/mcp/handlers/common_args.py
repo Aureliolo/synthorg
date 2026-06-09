@@ -27,7 +27,7 @@ rather than the description text.
 
 import copy
 from datetime import UTC, datetime
-from typing import Any, Final
+from typing import Final, cast, overload
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError
@@ -53,7 +53,7 @@ _DEFAULT_ACTOR_FALLBACK: NotBlankStr = NotBlankStr("mcp-anonymous")
 """Module-level default for ``actor_label`` -- avoids B008 in the signature."""
 
 
-def require_arg[T](arguments: dict[str, Any], key: str, ty: type[T]) -> T:
+def require_arg[T](arguments: dict[str, object], key: str, ty: type[T]) -> T:
     """Extract a typed required argument or raise ``ArgumentValidationError``.
 
     ``bool`` is explicitly rejected when ``ty is int`` so that a sloppy
@@ -81,7 +81,7 @@ def require_arg[T](arguments: dict[str, Any], key: str, ty: type[T]) -> T:
     return value
 
 
-def require_non_blank(arguments: dict[str, Any], key: str) -> str:
+def require_non_blank(arguments: dict[str, object], key: str) -> str:
     """Extract a non-blank, stripped string argument or raise.
 
     Centralised so every handler does the same validation: missing,
@@ -105,7 +105,7 @@ def require_non_blank(arguments: dict[str, Any], key: str) -> str:
     return raw.strip()
 
 
-def require_non_blank_value(value: Any, arg_name: str) -> str:
+def require_non_blank_value(value: object, arg_name: str) -> str:
     """Validate an already-extracted value is a non-blank stripped string.
 
     Companion to :func:`require_non_blank` for cases where the value
@@ -132,7 +132,7 @@ def require_non_blank_value(value: Any, arg_name: str) -> str:
 
 
 def get_optional_str(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     key: str,
 ) -> NotBlankStr | None:
     """Extract an optional non-blank string argument; ``None`` when absent.
@@ -168,13 +168,33 @@ def get_optional_str(
     return NotBlankStr(raw)
 
 
+@overload
 def require_dict(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
+    key: str,
+    *,
+    value_type: type[str],
+    deep_copy: bool = ...,
+) -> dict[str, str]: ...
+
+
+@overload
+def require_dict(
+    arguments: dict[str, object],
+    key: str,
+    *,
+    value_type: None = ...,
+    deep_copy: bool = ...,
+) -> dict[str, object]: ...
+
+
+def require_dict(
+    arguments: dict[str, object],
     key: str,
     *,
     value_type: type | None = None,
     deep_copy: bool = True,
-) -> dict[str, Any]:
+) -> dict[str, str] | dict[str, object]:
     """Require a dict argument; optionally enforce uniform value type + copy.
 
     Subsumes the two divergent ``_require_dict`` duplicates:
@@ -221,7 +241,7 @@ def require_dict(
 
 
 def parse_str_sequence(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     key: str,
 ) -> tuple[NotBlankStr, ...] | None:
     """Parse an optional sequence-of-non-blank-strings argument.
@@ -265,7 +285,7 @@ def _now_utc() -> datetime:
     return datetime.now(UTC)
 
 
-def _parse_iso_datetime(raw: Any, arg_name: str) -> datetime:
+def _parse_iso_datetime(raw: object, arg_name: str) -> datetime:
     """Parse a timezone-aware ISO 8601 datetime arg or raise.
 
     Shared by :func:`parse_time_window` for both ``since`` and ``until``
@@ -289,7 +309,7 @@ def _parse_iso_datetime(raw: Any, arg_name: str) -> datetime:
 
 
 def parse_time_window(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     *,
     until_required: bool = True,
 ) -> tuple[datetime, datetime]:
@@ -330,7 +350,7 @@ _DEFAULT_DEFAULT_LIMIT: Final[int] = 50
 
 
 def coerce_pagination(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     *,
     default_limit: int = _DEFAULT_DEFAULT_LIMIT,
 ) -> tuple[int, int]:
@@ -361,8 +381,8 @@ def coerce_pagination(
     Raises:
         ArgumentValidationError: On any of the failure modes above.
     """
-    raw_offset: Any = arguments.get(_ARG_OFFSET)
-    raw_limit: Any = arguments.get(_ARG_LIMIT)
+    raw_offset: object = arguments.get(_ARG_OFFSET)
+    raw_limit: object = arguments.get(_ARG_LIMIT)
     offset = _coerce_bounded_int(
         raw_offset,
         arg_name=_ARG_OFFSET,
@@ -381,7 +401,7 @@ def coerce_pagination(
 
 
 def _coerce_bounded_int(
-    raw: Any,
+    raw: object,
     *,
     arg_name: str,
     expected: str,
@@ -409,7 +429,7 @@ def _coerce_bounded_int(
     if isinstance(raw, bool):
         raise ArgumentValidationError(arg_name, expected)
     try:
-        value = int(raw)
+        value = int(cast("str | int | float", raw))
     except (TypeError, ValueError) as exc:
         raise ArgumentValidationError(arg_name, expected) from exc
     if value < lower:
@@ -417,7 +437,7 @@ def _coerce_bounded_int(
     return value
 
 
-def actor_id(actor: Any) -> str | None:
+def actor_id(actor: object) -> str | None:
     """Return a stable audit identifier for ``actor`` (prefers ``.id``).
 
     Returns ``None`` when ``actor`` is ``None`` or carries neither a
@@ -443,7 +463,7 @@ def actor_id(actor: Any) -> str | None:
     return None
 
 
-def require_actor_id(actor: Any) -> str:
+def require_actor_id(actor: object) -> str:
     """Raising counterpart of :func:`actor_id`.
 
     Used by handlers that record actor attribution into a service call
@@ -470,7 +490,7 @@ def require_actor_id(actor: Any) -> str:
 
 
 def actor_label(
-    actor: Any,
+    actor: object,
     *,
     fallback: NotBlankStr = _DEFAULT_ACTOR_FALLBACK,
 ) -> NotBlankStr:

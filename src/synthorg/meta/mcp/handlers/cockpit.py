@@ -7,10 +7,12 @@ Read handlers shim through ``app_state.cockpit_service`` and
 the ``/cockpit`` REST controller.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from synthorg._core.features import require_service
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
@@ -42,9 +44,7 @@ from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -71,7 +71,7 @@ _EXPECTED_SUPERSEDE_MODE: Final[str] = (
 )
 
 
-def _str_tuple(arguments: dict[str, Any], key: str) -> tuple[NotBlankStr, ...]:
+def _str_tuple(arguments: dict[str, object], key: str) -> tuple[NotBlankStr, ...]:
     """Parse an optional array-of-strings argument into a tuple.
 
     Returns:
@@ -94,7 +94,7 @@ def _str_tuple(arguments: dict[str, Any], key: str) -> tuple[NotBlankStr, ...]:
     return tuple(out)
 
 
-def _parse_turn_index(arguments: dict[str, Any]) -> int:
+def _parse_turn_index(arguments: dict[str, object]) -> int:
     """Return parse turn index.
 
     Raises:
@@ -114,8 +114,8 @@ def _parse_turn_index(arguments: dict[str, Any]) -> int:
 
 async def _get_live_activity(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the live activity."""
@@ -144,8 +144,8 @@ async def _get_live_activity(
 
 async def _get_frames(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return the frames."""
@@ -176,8 +176,8 @@ async def _get_frames(
 
 async def _seek(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return seek."""
@@ -204,8 +204,8 @@ async def _seek(
 
 async def _intervene_pause(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return intervene pause."""
@@ -233,8 +233,8 @@ async def _intervene_pause(
 
 async def _intervene_kill(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return intervene kill."""
@@ -261,8 +261,8 @@ async def _intervene_kill(
 
 async def _steer(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Issue a project-scoped steering directive.
@@ -284,7 +284,7 @@ async def _steer(
         text = require_arg(arguments, _ARG_TEXT, str)
         raw_mode = arguments.get(_ARG_SUPERSEDE_MODE, SupersedeMode.NONE.value)
         try:
-            mode = SupersedeMode(raw_mode)
+            mode = SupersedeMode(cast("str", raw_mode))
         except ValueError as exc:
             raise ArgumentValidationError(
                 _ARG_SUPERSEDE_MODE, _EXPECTED_SUPERSEDE_MODE
@@ -314,8 +314,8 @@ async def _steer(
 
 async def _steer_supersede(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Confirm the obsolete-task set for a steering directive.
@@ -359,8 +359,8 @@ async def _steer_supersede(
 
 async def _steer_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List the active steering directives for a project.

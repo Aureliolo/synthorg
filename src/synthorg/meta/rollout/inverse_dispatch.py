@@ -7,11 +7,13 @@ the rollout subsystem stays decoupled from the concrete config,
 prompt, architecture, and code services.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.models import RollbackOperation
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_ROLLBACK_ARCHITECTURE_REVERTED,
@@ -20,11 +22,6 @@ from synthorg.observability.events.meta import (
     META_ROLLBACK_OPERATION_FAILED,
     META_ROLLBACK_PROMPT_REVERTED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.models import RollbackOperation
 
 logger = get_logger(__name__)
 
@@ -56,7 +53,7 @@ class RollbackHandler(Protocol):
 class ConfigMutator(Protocol):
     """Writes a value at a dotted config path."""
 
-    async def set(self, *, path: str, value: Any) -> None:
+    async def set(self, *, path: str, value: object) -> None:
         """Restore the config leaf at ``path`` to ``value``."""
         ...
 
@@ -74,7 +71,7 @@ class PromptMutator(Protocol):
 class ArchitectureMutator(Protocol):
     """Restores an org-structure entity (role, department, workflow)."""
 
-    async def restore(self, *, target: str, previous_value: Any) -> None:
+    async def restore(self, *, target: str, previous_value: object) -> None:
         """Restore entity ``target`` to ``previous_value``."""
         ...
 

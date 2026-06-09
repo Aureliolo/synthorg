@@ -10,11 +10,13 @@ re-raised :class:`ValidationError` into the wire response.
 """
 
 import json
+from typing import cast
 
 import pytest
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.invoker import MCPToolInvoker
@@ -64,7 +66,7 @@ class TestMcpInvokerBoundary:
         result = await invoker.invoke(
             _TOOL_NAME,
             {"name": "alice", "count": 7},
-            app_state=None,
+            app_state=cast("AppState", None),
         )
         assert result.is_error is False
         body = json.loads(result.content)
@@ -75,7 +77,7 @@ class TestMcpInvokerBoundary:
         result = await invoker.invoke(
             _TOOL_NAME,
             {"count": 7},
-            app_state=None,
+            app_state=cast("AppState", None),
         )
         assert result.is_error is True
         body = json.loads(result.content)
@@ -87,7 +89,7 @@ class TestMcpInvokerBoundary:
         result = await invoker.invoke(
             _TOOL_NAME,
             {"name": "alice", "count": 7, "extra": "boom"},
-            app_state=None,
+            app_state=cast("AppState", None),
         )
         assert result.is_error is True
 
@@ -97,7 +99,7 @@ class TestMcpInvokerBoundary:
             await invoker.invoke(
                 _TOOL_NAME,
                 {"name": "alice", "count": -1},
-                app_state=None,
+                app_state=cast("AppState", None),
             )
         boundary_logs = [
             log for log in logs if log.get("event") == "api.boundary.validation_failed"

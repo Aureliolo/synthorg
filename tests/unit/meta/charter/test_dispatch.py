@@ -92,6 +92,22 @@ class _FakeCharterRepo:
         self.items[entity_id] = current.model_copy(update=patch)
         return True
 
+    async def delete(self, entity_id: str) -> bool:
+        raise NotImplementedError
+
+    async def list_items(
+        self, *, limit: int = 0, offset: int = 0
+    ) -> tuple[ProjectCharter, ...]:
+        raise NotImplementedError
+
+    async def query(
+        self, filter_spec: object, *, limit: int = 0, offset: int = 0
+    ) -> tuple[ProjectCharter, ...]:
+        raise NotImplementedError
+
+    async def count(self, filter_spec: object) -> int:
+        raise NotImplementedError
+
 
 class _FakeForecastRepo:
     def __init__(self) -> None:
@@ -108,6 +124,31 @@ class _FakeForecastRepo:
     async def get(self, entity_id: object) -> Forecast | None:
         return self.items.get(str(entity_id))
 
+    async def delete(self, entity_id: object) -> bool:
+        raise NotImplementedError
+
+    async def list_items(
+        self, *, limit: int = 0, offset: int = 0
+    ) -> tuple[Forecast, ...]:
+        raise NotImplementedError
+
+    async def transition_if(
+        self,
+        entity_id: object,
+        from_state: object,
+        to_state: object,
+        **updates: object,
+    ) -> bool:
+        raise NotImplementedError
+
+    async def query(
+        self, filter_spec: object, *, limit: int = 0, offset: int = 0
+    ) -> tuple[Forecast, ...]:
+        raise NotImplementedError
+
+    async def count(self, filter_spec: object) -> int:
+        raise NotImplementedError
+
 
 class _FakeProjectRepo:
     def __init__(self, existing: dict[str, Project] | None = None) -> None:
@@ -121,6 +162,28 @@ class _FakeProjectRepo:
         self.items[str(project.id)] = project
         self.created.append(project)
 
+    async def update(self, project: Project) -> None:
+        raise NotImplementedError
+
+    async def save(self, entity: Project) -> None:
+        raise NotImplementedError
+
+    async def list_items(
+        self, *, limit: int = 0, offset: int = 0
+    ) -> tuple[Project, ...]:
+        raise NotImplementedError
+
+    async def query(
+        self, filter_spec: object, *, limit: int = 0, offset: int = 0
+    ) -> tuple[Project, ...]:
+        raise NotImplementedError
+
+    async def count(self, filter_spec: object) -> int:
+        raise NotImplementedError
+
+    async def delete(self, entity_id: str) -> bool:
+        raise NotImplementedError
+
 
 class _FakeWorkPipeline:
     def __init__(self) -> None:
@@ -129,6 +192,9 @@ class _FakeWorkPipeline:
     async def run(self, work_item: WorkItem) -> object:
         self.ran.append(work_item)
         return SimpleResult(task_id=NotBlankStr("task-1"), is_success=True)
+
+    def attach_narrator(self, narrator: object) -> None:
+        raise NotImplementedError
 
 
 class SimpleResult:
@@ -141,9 +207,29 @@ class _FakeConversationRepo:
     def __init__(self) -> None:
         self.closed: list[str] = []
 
-    async def transition_if(self, entity_id: str, **kwargs: object) -> bool:
+    async def transition_if(
+        self,
+        entity_id: str,
+        from_state: object = None,
+        to_state: object = None,
+        **updates: object,
+    ) -> bool:
         self.closed.append(entity_id)
         return True
+
+    async def save(self, entity: object) -> None:
+        raise NotImplementedError
+
+    async def get(self, entity_id: str) -> object:
+        raise NotImplementedError
+
+    async def delete(self, entity_id: str) -> bool:
+        raise NotImplementedError
+
+    async def list_items(
+        self, *, limit: int = 0, offset: int = 0
+    ) -> tuple[object, ...]:
+        raise NotImplementedError
 
 
 def _dispatcher(
@@ -311,6 +397,9 @@ class TestApprove:
                 msg = "spine boom"
                 raise RuntimeError(msg)
 
+            def attach_narrator(self, narrator: object) -> None:
+                raise NotImplementedError
+
         charter_repo = _FakeCharterRepo(_charter())
         forecast_repo = _FakeForecastRepo()
         proj_repo = _FakeProjectRepo()
@@ -381,7 +470,13 @@ class TestApprove:
         # approval still succeeds (the spine ran, the charter is APPROVED).
         class _ClosedConvRepo(_FakeConversationRepo):
             @override
-            async def transition_if(self, entity_id: str, **kwargs: object) -> bool:
+            async def transition_if(
+                self,
+                entity_id: str,
+                from_state: object = None,
+                to_state: object = None,
+                **updates: object,
+            ) -> bool:
                 # Simulate already-closed: transition returns False.
                 self.closed.append(entity_id)
                 return False

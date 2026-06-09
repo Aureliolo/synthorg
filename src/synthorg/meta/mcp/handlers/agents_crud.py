@@ -6,7 +6,7 @@ handler enforces the admin guardrail triple and emits
 ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -55,6 +55,9 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
+
 logger = get_logger(__name__)
 
 _ARG_AGENT_NAME = "agent_name"
@@ -73,8 +76,8 @@ _WHY_HEALTH = "agent health aggregation has no dedicated service method"
 
 async def _agents_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_agents_list`` MCP tool.
@@ -101,8 +104,8 @@ async def _agents_list(
 
 async def _agents_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_agents_get`` MCP tool.
@@ -132,8 +135,8 @@ async def _agents_get(
 
 async def _agents_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_agents_create`` MCP tool.
@@ -170,8 +173,8 @@ async def _agents_create(
 
 async def _agents_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_agents_update`` MCP tool.
@@ -211,8 +214,8 @@ async def _agents_update(
 
 async def _agents_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_agents_delete`` MCP tool.
@@ -257,8 +260,8 @@ async def _agents_delete(
 
 async def _agents_get_performance(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_agents_get_performance`` MCP tool.
@@ -291,8 +294,8 @@ async def _agents_get_performance(
 
 async def _agents_get_activity(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_agents_get_activity`` MCP tool.
@@ -331,8 +334,8 @@ async def _agents_get_activity(
 
 async def _agents_get_history(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_agents_get_history`` MCP tool.
@@ -371,8 +374,8 @@ async def _agents_get_history(
 
 async def _agents_get_health(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_agents_get_health`` MCP tool.

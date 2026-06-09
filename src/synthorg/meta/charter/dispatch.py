@@ -15,6 +15,8 @@ exists for audit and in-loop ceiling enforcement.
 
 import asyncio
 import uuid
+from collections.abc import Callable
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from synthorg.budget.errors import MixedCurrencyAggregationError
@@ -30,6 +32,7 @@ from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.errors import WorkProjectNotFoundError
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
+from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import CharterApprovalResult, ProjectCharter
 from synthorg.meta.errors import (
@@ -49,16 +52,12 @@ from synthorg.observability.events.charter import (
     CHARTER_PROJECT_ALREADY_EXISTS,
     CHARTER_STATE_INCONSISTENT,
 )
+from synthorg.persistence.charter_protocol import CharterRepository
+from synthorg.persistence.conversation_protocol import ConversationRepository
+from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from datetime import datetime
-
     from synthorg.api.services.project_service import ProjectService
-    from synthorg.engine.pipeline.protocol import WorkPipeline
-    from synthorg.persistence.charter_protocol import CharterRepository
-    from synthorg.persistence.conversation_protocol import ConversationRepository
-    from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
 
 logger = get_logger(__name__)
 

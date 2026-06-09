@@ -4,7 +4,7 @@ Wraps budget analytics pure functions to produce an OrgBudgetSummary
 with spend patterns, category breakdowns, and forecasts.
 """
 
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -14,9 +14,6 @@ from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 logger = get_logger(__name__)
 

@@ -7,10 +7,10 @@ per-window metric summaries across all configured rolling windows.
 
 import re
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.meta.models import (
     MetricSummary,
     OrgPerformanceSummary,
@@ -20,9 +20,6 @@ from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
 

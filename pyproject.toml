@@ -633,7 +633,7 @@ module = "synthorg.memory.*"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
-module = "synthorg.meta.*"
+module = "synthorg.observability.*"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]

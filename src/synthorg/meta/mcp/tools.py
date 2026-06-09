@@ -6,7 +6,9 @@ signals. This is the first slice of the broader API-as-MCP vision.
 """
 
 from copy import deepcopy
-from typing import Any
+from typing import TypedDict
+
+from pydantic import JsonValue
 
 from synthorg.observability import get_logger
 
@@ -15,8 +17,22 @@ logger = get_logger(__name__)
 # Tool name prefix for all meta signal tools.
 TOOL_PREFIX = "synthorg_signals"
 
+
+class MCPToolDefinitionDict(TypedDict):
+    """Wire shape of a single MCP tool definition.
+
+    Mirrors the ``{name, description, parameters}`` triple the MCP
+    ``tools/list`` response carries, so consumers read typed fields
+    instead of narrowing from ``object``.
+    """
+
+    name: str
+    description: str
+    parameters: dict[str, JsonValue]
+
+
 # Tool definitions (name, description, parameter schema).
-SIGNAL_TOOLS: tuple[dict[str, Any], ...] = (
+SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
     {
         "name": f"{TOOL_PREFIX}_get_org_snapshot",
         "description": (
@@ -153,7 +169,7 @@ SIGNAL_TOOLS: tuple[dict[str, Any], ...] = (
 )
 
 
-def get_tool_definitions() -> tuple[dict[str, Any], ...]:
+def get_tool_definitions() -> tuple[MCPToolDefinitionDict, ...]:
     """Return all MCP tool definitions for the signal server.
 
     Returns:

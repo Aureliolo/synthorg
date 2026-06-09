@@ -7,21 +7,20 @@ blueprint from ``VALIDATED`` to ``ACTIVE``.
 
 import itertools
 import re
+from datetime import datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final, Self
+from typing import Final, Self
 
 from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     model_validator,
 )
 
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 # Authored tools reuse the MCP tool-surface contract verbatim so a
 # blueprint can be promoted into an ``MCPToolDef`` without re-validation
@@ -192,7 +191,7 @@ class ToolBlueprint(BaseModel):
     name: NotBlankStr
     description: NotBlankStr
     capability: NotBlankStr
-    parameters_schema: dict[str, Any]
+    parameters_schema: dict[str, JsonValue]
     script_body: NotBlankStr = Field(max_length=_MAX_SCRIPT_BODY_CHARS)
     sandbox_backend: ToolSandboxBackend = ToolSandboxBackend.DOCKER
     requires_network: bool = False

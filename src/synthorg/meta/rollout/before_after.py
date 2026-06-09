@@ -8,7 +8,7 @@ the observed elapsed time.
 """
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -20,15 +20,13 @@ from synthorg.meta.models import (
     RolloutOutcome,
     RolloutResult,
 )
+from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 from synthorg.meta.rollout._observation import observe_until_verdict
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_ROLLOUT_FAILED,
     META_ROLLOUT_STARTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 
 logger = get_logger(__name__)
 _DEFAULT_CHECK_INTERVAL_HOURS: Final[float] = 4.0
@@ -123,13 +121,13 @@ class BeforeAfterRollout:
                 proposal_id=str(proposal.id),
                 stage="baseline_capture",
                 error=type(exc).__name__,
-                details=str(exc),
+                details=safe_error_description(exc),
             )
             return RolloutResult(
                 proposal_id=proposal.id,
                 outcome=RolloutOutcome.FAILED,
                 observation_hours_elapsed=0.0,
-                details=str(exc),
+                details=safe_error_description(exc),
             )
 
         apply_result = await applier.apply(proposal)
@@ -161,13 +159,13 @@ class BeforeAfterRollout:
                 proposal_id=str(proposal.id),
                 stage="observation",
                 error=type(exc).__name__,
-                details=str(exc),
+                details=safe_error_description(exc),
             )
             return RolloutResult(
                 proposal_id=proposal.id,
                 outcome=RolloutOutcome.FAILED,
                 observation_hours_elapsed=0.0,
-                details=str(exc),
+                details=safe_error_description(exc),
             )
 
     async def _observe_window(

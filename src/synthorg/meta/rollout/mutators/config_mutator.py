@@ -9,15 +9,11 @@ log records the refused operation; misconfigured paths surface as
 category.
 """
 
-from typing import TYPE_CHECKING, Any
-
 from synthorg.meta.errors import RollbackMutationDeniedError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_ROLLBACK_OPERATION_FAILED
 from synthorg.settings.errors import SettingNotFoundError, SettingReadOnlyError
-
-if TYPE_CHECKING:
-    from synthorg.settings.service import SettingsService
+from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -40,7 +36,7 @@ class SettingsServiceConfigMutator:
     def __init__(self, *, settings_service: SettingsService) -> None:
         self._settings_service = settings_service
 
-    async def set(self, *, path: str, value: Any) -> None:
+    async def set(self, *, path: str, value: object) -> None:
         """Restore the setting at *path* to *value*.
 
         Args:

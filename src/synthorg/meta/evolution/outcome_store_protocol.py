@@ -17,16 +17,14 @@ Design:
   behind the same protocol without changing any caller.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from datetime import datetime
+from typing import Final, Protocol, runtime_checkable
+
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.evolution.outcome_models import EvolutionOutcomeRecord
+from synthorg.meta.signal_models import OrgEvolutionSummary
 
 _DEFAULT_MAX_RECENT: Final[int] = 10
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.meta.evolution.outcome_models import EvolutionOutcomeRecord
-    from synthorg.meta.signal_models import OrgEvolutionSummary
 
 
 @runtime_checkable

@@ -7,7 +7,6 @@ handler helper modules. Domain-specific extractors (optional / list /
 int variants) stay in their respective ``_*_helpers`` modules.
 """
 
-from typing import Any
 from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
@@ -41,7 +40,7 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
     return err(exc, domain_code=exc.domain_code)
 
 
-def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
+def _require_str(arguments: dict[str, object], key: str) -> NotBlankStr:
     """Extract a required non-blank string or raise ``ArgumentValidationError``.
 
     Returns:
@@ -56,7 +55,7 @@ def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
     return value
 
 
-def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
+def _require_uuid(arguments: dict[str, object], key: str) -> NotBlankStr:
     """Extract a required UUID-shaped string or raise ``ArgumentValidationError``.
 
     Returns:
@@ -73,11 +72,11 @@ def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
     return NotBlankStr(value)
 
 
-def _to_jsonable(value: Any) -> Any:
+def _to_jsonable(value: object) -> object:
     """Coerce a Pydantic / ``to_dict`` value into a JSON-serialisable form.
 
     Returns:
-        ``Any`` instance.
+        JSON-serialisable representation of ``value``.
     """
     dump_fn = getattr(value, "model_dump", None)
     if callable(dump_fn):

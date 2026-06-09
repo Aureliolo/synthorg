@@ -6,9 +6,11 @@ write handler is admin-gated at the registry layer (``docs:write`` uses
 ``docs:search``, ``docs:history``) need only the standard read scope.
 """
 
+from collections.abc import Iterable, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
@@ -24,6 +26,7 @@ from synthorg.docs_engine.errors import (
     DocNotFoundError,
     DocValidationError,
 )
+from synthorg.docs_engine.service import DocsService
 from synthorg.docs_engine.state import DocsStateSlice
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
@@ -44,9 +47,7 @@ from synthorg.tools.docs._args import (
 from synthorg.tools.docs.write_living_doc import _materialise_body
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -79,7 +80,7 @@ _TY_NONNEG_INT = "non-negative int"
 _TY_OPT_STR = "string or null"
 
 
-def _require_docs_service(app_state: Any) -> Any:
+def _require_docs_service(app_state: AppState) -> DocsService:
     """Return the docs service or raise when unavailable.
 
     Raises:
@@ -92,7 +93,7 @@ def _require_docs_service(app_state: Any) -> Any:
     return svc
 
 
-def _parse_doc_type(arguments: dict[str, Any], key: str) -> DocType:
+def _parse_doc_type(arguments: dict[str, object], key: str) -> DocType:
     """Return parse doc type.
 
     Raises:
@@ -105,7 +106,7 @@ def _parse_doc_type(arguments: dict[str, Any], key: str) -> DocType:
         raise ArgumentValidationError(key, _TY_DOC_TYPE) from exc
 
 
-def _parse_opt_doc_type(arguments: dict[str, Any], key: str) -> DocType | None:
+def _parse_opt_doc_type(arguments: dict[str, object], key: str) -> DocType | None:
     """Return parse opt doc type.
 
     Raises:
@@ -122,7 +123,7 @@ def _parse_opt_doc_type(arguments: dict[str, Any], key: str) -> DocType | None:
         raise ArgumentValidationError(key, _TY_DOC_TYPE) from exc
 
 
-def _parse_str_tuple(arguments: dict[str, Any], key: str) -> tuple[NotBlankStr, ...]:
+def _parse_str_tuple(arguments: dict[str, object], key: str) -> tuple[NotBlankStr, ...]:
     """Return parse str tuple.
 
     Raises:
@@ -132,7 +133,7 @@ def _parse_str_tuple(arguments: dict[str, Any], key: str) -> tuple[NotBlankStr, 
     if isinstance(raw, str):
         raise ArgumentValidationError(key, _TY_STR_SEQ)
     try:
-        items: Sequence[Any] = tuple(raw)
+        items = tuple(cast("Iterable[object]", raw))
     except TypeError as exc:
         raise ArgumentValidationError(key, _TY_STR_SEQ) from exc
     out: list[NotBlankStr] = []
@@ -144,7 +145,7 @@ def _parse_str_tuple(arguments: dict[str, Any], key: str) -> tuple[NotBlankStr, 
 
 
 def _parse_block_list(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
 ) -> tuple[WriteLivingDocBlockArg, ...]:
     """Return parse block list.
 
@@ -166,7 +167,7 @@ def _parse_block_list(
 
 
 def _parse_positive_int(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     key: str,
     *,
     default: int,
@@ -185,7 +186,7 @@ def _parse_positive_int(
 
 
 def _parse_nonneg_int(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     key: str,
     *,
     default: int,
@@ -204,7 +205,7 @@ def _parse_nonneg_int(
 
 
 def _parse_opt_nonblank_str(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     key: str,
 ) -> NotBlankStr | None:
     """Return a ``NotBlankStr`` for *key*, or ``None`` for null / blank.
@@ -229,7 +230,7 @@ def _parse_opt_nonblank_str(
 
 
 def _parse_doc_type_filter(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
 ) -> frozenset[DocType] | None:
     """Return parse doc type filter.
 
@@ -254,8 +255,8 @@ def _parse_doc_type_filter(
 
 async def _docs_write(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return docs write."""
@@ -297,8 +298,8 @@ async def _docs_write(
 
 async def _docs_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return docs get."""
@@ -328,8 +329,8 @@ async def _docs_get(
 
 async def _docs_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return docs list."""
@@ -362,8 +363,8 @@ async def _docs_list(
 
 async def _docs_search(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return docs search."""
@@ -394,8 +395,8 @@ async def _docs_search(
 
 async def _docs_history(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return docs history."""

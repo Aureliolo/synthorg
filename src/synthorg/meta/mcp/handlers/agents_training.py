@@ -7,7 +7,7 @@ is not wired on ``app_state``.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
@@ -44,6 +44,9 @@ from synthorg.meta.mcp.handlers.common_logging import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
+
 logger = get_logger(__name__)
 
 _WHY_PERSONALITIES = (
@@ -62,8 +65,8 @@ _WHY_TRAINING_START = (
 
 async def _personalities_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_personalities_list`` MCP tool.
@@ -95,8 +98,8 @@ async def _personalities_list(
 
 async def _personalities_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_personalities_get`` MCP tool.
@@ -130,8 +133,8 @@ async def _personalities_get(
 
 async def _training_list_sessions(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_training_list_sessions`` MCP tool.
@@ -163,8 +166,8 @@ async def _training_list_sessions(
 
 async def _training_get_session(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_training_get_session`` MCP tool.
@@ -200,8 +203,8 @@ async def _training_get_session(
 
 async def _training_start_session(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_training_start_session`` MCP tool.
@@ -227,7 +230,7 @@ async def _training_start_session(
     return ok(data=result.model_dump(mode="json"))
 
 
-def _parse_training_plan(arguments: dict[str, Any]) -> TrainingPlan:
+def _parse_training_plan(arguments: dict[str, object]) -> TrainingPlan:
     """Construct a :class:`TrainingPlan` from MCP arguments.
 
     The MCP tool only surfaces the fields a caller needs to launch a

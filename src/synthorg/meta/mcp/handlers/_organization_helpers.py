@@ -7,7 +7,6 @@ the capability-gap mapper, and the JSON-coercion helper live in
 :mod:`synthorg.meta.mcp.handlers._mcp_handler_common`.
 """
 
-from typing import Any
 from uuid import UUID
 
 from synthorg.core.types import NotBlankStr
@@ -17,7 +16,7 @@ _TY_UUID = "UUID string"
 _TY_LIST = "sequence of strings"
 
 
-def _require_str_list(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
+def _require_str_list(arguments: dict[str, object], key: str) -> tuple[str, ...]:
     """Extract a required sequence of non-blank strings, or raise on error.
 
     Returns:
@@ -36,7 +35,7 @@ def _require_str_list(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
 
 
 def _require_uuid_list(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     key: str,
 ) -> tuple[NotBlankStr, ...]:
     """Extract a required sequence of UUID-shaped strings.

@@ -9,10 +9,11 @@ bypassing review.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.types import NotBlankStr
@@ -27,9 +28,6 @@ from synthorg.observability.events.meta import (
     META_PROPOSAL_GUARD_PASSED,
     META_PROPOSAL_GUARD_REJECTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
 
 logger = get_logger(__name__)
 

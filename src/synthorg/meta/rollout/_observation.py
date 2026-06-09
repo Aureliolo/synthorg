@@ -9,6 +9,7 @@ log tag and baseline-capture semantics.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock
 from synthorg.meta.models import (
     ImprovementProposal,
     OrgSignalSnapshot,
@@ -18,6 +19,7 @@ from synthorg.meta.models import (
     RolloutOutcome,
     RolloutResult,
 )
+from synthorg.meta.protocol import RegressionDetector
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_ROLLOUT_COMPLETED,
@@ -27,8 +29,6 @@ from synthorg.observability.events.meta import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
-    from synthorg.meta.protocol import RegressionDetector
     from synthorg.meta.rollout.before_after import SnapshotBuilder
 
 logger = get_logger(__name__)

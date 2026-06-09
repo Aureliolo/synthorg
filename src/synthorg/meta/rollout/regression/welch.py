@@ -13,14 +13,12 @@ where ``I_x(a, b)`` is the regularized incomplete beta function.
 """
 
 import math
-from typing import TYPE_CHECKING, Final
+from collections.abc import Sequence
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.observability import get_logger, safe_error_description
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 logger = get_logger(__name__)
 

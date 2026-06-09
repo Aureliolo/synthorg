@@ -13,8 +13,8 @@ helpers live in ``_integrations_helpers``. This module aggregates them
 into the read-only ``INTEGRATION_HANDLERS`` map.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.handlers.integrations_artifacts_ontology import (
@@ -44,10 +44,6 @@ from synthorg.meta.mcp.handlers.integrations_oauth_clients import (
     _oauth_list_providers,
     _oauth_remove_provider,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
 
 INTEGRATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {

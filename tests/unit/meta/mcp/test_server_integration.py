@@ -4,9 +4,11 @@ Tests the full stack: registry + scoping + handlers + invoker together.
 """
 
 import json
+from typing import cast
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.meta.chief_of_staff.role import (
     MCP_CAPABILITIES,
     TOOL_ACCESS,
@@ -125,7 +127,7 @@ class TestFullStackInvocation:
         result = await invoker.invoke(
             "synthorg_does_not_exist",
             {},
-            app_state=None,
+            app_state=cast("AppState", None),
         )
         assert result.is_error is True
         body = json.loads(result.content)

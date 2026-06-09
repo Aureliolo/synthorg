@@ -8,19 +8,15 @@ override without rewriting the YAML packs.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.errors import RollbackMutationDeniedError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_ROLLBACK_OPERATION_FAILED
-
-if TYPE_CHECKING:
-    from synthorg.persistence.principle_override_protocol import (
-        PrincipleOverrideRepository,
-    )
-
-from synthorg.persistence.principle_override_protocol import PrincipleOverride
+from synthorg.persistence.principle_override_protocol import (
+    PrincipleOverride,
+    PrincipleOverrideRepository,
+)
 
 logger = get_logger(__name__)
 

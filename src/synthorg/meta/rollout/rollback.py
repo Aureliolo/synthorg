@@ -6,22 +6,18 @@ operation types fail loudly; per-operation failures stop the loop
 immediately rather than silently partial-applying.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ApplyResult,
     ImprovementProposal,
 )
 from synthorg.meta.rollout.inverse_dispatch import (
+    RollbackHandler,
     UnknownRollbackOperationError,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.meta.rollout.inverse_dispatch import RollbackHandler
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,

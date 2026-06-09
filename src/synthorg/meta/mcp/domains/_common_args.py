@@ -44,7 +44,7 @@ allowlist; reach for a typed nested model first.
 """
 
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
@@ -142,7 +142,7 @@ class AdminGuardrailFields(_ArgsBase):
 
     @field_validator("confirm", mode="before")
     @classmethod
-    def _confirm_must_be_python_bool(cls, value: Any) -> Any:
+    def _confirm_must_be_python_bool(cls, value: object) -> object:
         """Reject non-bool ``confirm`` values.
 
         Pydantic's ``Literal[True]`` validator coerces any truthy

@@ -5,8 +5,9 @@ inflections, proactive alerts, and chat query/response models
 that flow through the CoS learning and monitoring pipelines.
 """
 
+from collections.abc import Mapping
 from copy import deepcopy
-from typing import Any, Literal, Self
+from typing import Literal, Self
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -196,14 +197,25 @@ class Alert(BaseModel):
     alert_type: Literal["inflection", "threshold", "trend"]
     description: NotBlankStr
     affected_domains: tuple[NotBlankStr, ...]
-    signal_context: dict[str, Any] = Field(default_factory=dict)
+    signal_context: dict[str, object] = Field(default_factory=dict)
     recommended_action: NotBlankStr | None = None
     emitted_at: AwareDatetime
 
-    def __init__(self, **data: Any) -> None:
-        if "signal_context" in data:
-            data["signal_context"] = deepcopy(data["signal_context"])
-        super().__init__(**data)
+    @model_validator(mode="before")
+    @classmethod
+    def _deepcopy_signal_context(cls, data: object) -> object:
+        """Deep-copy ``signal_context`` so callers cannot alias internals.
+
+        Runs on every construction path (``Alert(...)`` and
+        ``model_validate``) and copies rather than mutating the caller's
+        input, which a fragile ``__init__`` override could not guarantee.
+
+        Returns:
+            The input data with ``signal_context`` deep-copied when present.
+        """
+        if isinstance(data, Mapping) and "signal_context" in data:
+            return {**data, "signal_context": deepcopy(data["signal_context"])}
+        return data
 
 
 # ── Chat interface ────────────────────────────────────────────────

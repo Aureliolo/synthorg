@@ -15,12 +15,14 @@ through ``reports_service_of(app_state)``.  Both services are wired once
 at app startup.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from pydantic import TypeAdapter, ValidationError
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError
@@ -49,9 +51,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -87,7 +87,7 @@ _NOT_BLANK_STR_ADAPTER = TypeAdapter(NotBlankStr)
 
 
 def _parse_required_str_sequence(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     key: str,
 ) -> tuple[str, ...]:
     """Parse a required ``Sequence[str]`` argument.
@@ -105,7 +105,7 @@ def _parse_required_str_sequence(
 
 
 def _parse_positive_int(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     key: str,
     *,
     default: int,
@@ -132,7 +132,7 @@ def _parse_positive_int(
 
 
 def _parse_str_dict(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     key: str,
 ) -> dict[str, str] | None:
     """Return parse str dict.
@@ -153,7 +153,7 @@ def _parse_str_dict(
     return out
 
 
-def _parse_report_id(arguments: dict[str, Any]) -> UUID:
+def _parse_report_id(arguments: dict[str, object]) -> UUID:
     """Return parse report id.
 
     Raises:
@@ -171,8 +171,8 @@ def _parse_report_id(arguments: dict[str, Any]) -> UUID:
 
 async def _analytics_overview(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return analytics overview."""
@@ -198,8 +198,8 @@ async def _analytics_overview(
 
 async def _analytics_trends(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return analytics trends."""
@@ -227,8 +227,8 @@ async def _analytics_trends(
 
 async def _analytics_forecast(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return analytics forecast."""
@@ -260,8 +260,8 @@ async def _analytics_forecast(
 
 async def _metrics_current(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return metrics current."""
@@ -289,8 +289,8 @@ async def _metrics_current(
 
 async def _metrics_history(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return metrics history."""
@@ -331,8 +331,8 @@ async def _metrics_history(
 
 async def _reports_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return reports list."""
@@ -365,8 +365,8 @@ async def _reports_list(
 
 async def _reports_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return reports get."""
@@ -403,8 +403,8 @@ async def _reports_get(
 
 async def _reports_generate(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Return reports generate.

@@ -17,8 +17,8 @@ the benchmark gate and live-registers the tool on pass.
 """
 
 import asyncio
-from datetime import timedelta
-from typing import TYPE_CHECKING, Final
+from datetime import datetime, timedelta
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
@@ -31,9 +31,19 @@ from synthorg.meta.models import (
     RollbackOperation,
     RollbackPlan,
 )
+from synthorg.meta.protocol import ProposalGuard
+from synthorg.meta.toolsmith.applier import ToolCreationApplier
+from synthorg.meta.toolsmith.config import ToolsmithConfig
+from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
 from synthorg.meta.toolsmith.errors import (
     ToolAuthoringError,
     ToolCapabilityNotAllowedError,
+)
+from synthorg.meta.toolsmith.models import CapabilityGap, ToolBlueprint
+from synthorg.meta.toolsmith.protocol import (
+    CapabilityGapStore,
+    ToolBlueprintGenerator,
+    ToolCreationOverflowHandler,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.toolsmith import (
@@ -43,20 +53,6 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_CYCLE_STARTED,
     TOOLSMITH_PROPOSAL_GUARD_REJECTED,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.meta.protocol import ProposalGuard
-    from synthorg.meta.toolsmith.applier import ToolCreationApplier
-    from synthorg.meta.toolsmith.config import ToolsmithConfig
-    from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
-    from synthorg.meta.toolsmith.models import CapabilityGap, ToolBlueprint
-    from synthorg.meta.toolsmith.protocol import (
-        CapabilityGapStore,
-        ToolBlueprintGenerator,
-        ToolCreationOverflowHandler,
-    )
 
 logger = get_logger(__name__)
 

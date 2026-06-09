@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the living-documentation MCP handlers.
 
 The generic error-path sweep in
@@ -10,7 +9,7 @@ argument validation for the read handlers.
 
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import override
 
 import pytest
 
@@ -26,6 +25,7 @@ from synthorg.docs_engine.models import (
     LivingDocument,
     ProseBlock,
 )
+from synthorg.docs_engine.service import DocsService
 from synthorg.docs_engine.state import DocsStateSlice
 from synthorg.meta.mcp.handlers.docs import (
     _docs_get,
@@ -66,24 +66,27 @@ def _document() -> LivingDocument:
     )
 
 
-class _FakeDocsService:
+class _FakeDocsService(DocsService):
     """Captures calls and returns canned models for the handler tests."""
 
     def __init__(self) -> None:
         self.write_called = False
         self.not_found = False
 
-    async def write_doc(self, **_: Any) -> DocMetadata:
+    @override
+    async def write_doc(self, **_: object) -> DocMetadata:
         self.write_called = True
         return _metadata()
 
-    async def read_doc(self, **_: Any) -> LivingDocument:
+    @override
+    async def read_doc(self, **_: object) -> LivingDocument:
         if self.not_found:
             msg = "missing"
             raise DocNotFoundError(msg)
         return _document()
 
-    async def list_docs(self, **_: Any) -> tuple[DocSummary, ...]:
+    @override
+    async def list_docs(self, **_: object) -> tuple[DocSummary, ...]:
         return (
             DocSummary(
                 project_id=NotBlankStr("proj-1"),
@@ -94,7 +97,8 @@ class _FakeDocsService:
             ),
         )
 
-    async def search(self, **_: Any) -> tuple[DocSearchHit, ...]:
+    @override
+    async def search(self, **_: object) -> tuple[DocSearchHit, ...]:
         return (
             DocSearchHit(
                 project_id=NotBlankStr("proj-1"),
@@ -105,7 +109,8 @@ class _FakeDocsService:
             ),
         )
 
-    async def history(self, **_: Any) -> tuple[DocVersion, ...]:
+    @override
+    async def history(self, **_: object) -> tuple[DocVersion, ...]:
         return (
             DocVersion(
                 commit_sha=NotBlankStr("b" * 40),

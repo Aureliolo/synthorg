@@ -5,19 +5,17 @@ Every collaborator in the toolsmith pipeline is defined here as a
 interfaces (protocol + strategy + factory + config discriminator).
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from collections.abc import Sequence
+from datetime import datetime, timedelta
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import datetime, timedelta
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.meta.models import ImprovementProposal
-    from synthorg.meta.toolsmith.models import (
-        CapabilityGap,
-        ToolBlueprint,
-        ToolValidationResult,
-    )
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.models import ImprovementProposal
+from synthorg.meta.toolsmith.models import (
+    CapabilityGap,
+    ToolBlueprint,
+    ToolValidationResult,
+)
 
 
 @runtime_checkable

@@ -6,12 +6,14 @@ patterns and rule context.
 """
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import Final
 from uuid import uuid4
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -20,6 +22,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
     CodeChange,
     CodeOperation,
@@ -31,6 +34,7 @@ from synthorg.meta.models import (
     RollbackPlan,
     RuleMatch,
 )
+from synthorg.meta.validation.scope_validator import ScopeValidator
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CODE_GEN_COMPLETED,
@@ -40,14 +44,9 @@ from synthorg.observability.events.meta import (
     META_CODE_SCOPE_VIOLATION,
     META_PROPOSAL_GENERATED,
 )
+from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.errors import ProviderError
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.meta.config import SelfImprovementConfig
-    from synthorg.meta.validation.scope_validator import ScopeValidator
-    from synthorg.providers.base import BaseCompletionProvider
 
 logger = get_logger(__name__)
 
@@ -421,7 +420,7 @@ class CodeModificationStrategy:
 def _parse_json_array(
     response: str,
     rule_name: str,
-) -> list[Any] | None:
+) -> list[object] | None:
     """Parse and validate the LLM response as a JSON array.
 
     Args:
@@ -452,7 +451,7 @@ def _parse_json_array(
 
 
 def _parse_items(
-    data: list[Any],
+    data: list[object],
     rule_name: str,
 ) -> list[CodeChange]:
     """Parse individual items from the JSON array into CodeChange models.
@@ -540,7 +539,7 @@ def _build_file_manifest(
     return "\n".join(lines)
 
 
-def _summarize_context(ctx: dict[str, Any]) -> str:
+def _summarize_context(ctx: Mapping[str, object]) -> str:
     """Build a one-line signal summary from context dict.
 
     Args:

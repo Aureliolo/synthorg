@@ -5,7 +5,7 @@ disabled by default, mandatory approval gate, conservative
 thresholds.
 """
 
-from typing import TYPE_CHECKING, Literal, Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -18,9 +18,7 @@ from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 from synthorg.meta.toolsmith.config import ToolsmithConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_SELF_IMPROVEMENT_LOAD_FAILED
-
-if TYPE_CHECKING:
-    from synthorg.settings.service import SettingsService
+from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 

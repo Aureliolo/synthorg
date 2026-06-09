@@ -6,14 +6,17 @@ registered handler functions, with structured error mapping.
 
 import json
 import time
+from collections.abc import Mapping
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.registry import ToolDefReader
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_SERVER_INVOKE_FAILED,
@@ -25,10 +28,7 @@ from synthorg.observability.prometheus_labels import register_mcp_tool_names
 from synthorg.tools.base import ToolExecutionResult
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.meta.mcp.registry import ToolDefReader
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -84,9 +84,9 @@ class MCPToolInvoker:
     async def invoke(
         self,
         tool_name: str,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
         *,
-        app_state: Any,
+        app_state: AppState,
         actor: AgentIdentity | None = None,
     ) -> ToolExecutionResult:
         """Dispatch a tool invocation to its handler.
@@ -162,7 +162,7 @@ class MCPToolInvoker:
         # reaching the handler.  Tools without an ``args_model``
         # receive the deepcopied raw dict, validated by the handler's
         # own ``common_args`` calls.
-        handler_arguments: dict[str, Any]
+        handler_arguments: dict[str, object]
         if tool_def.args_model is not None:
             # Reject non-mapping payloads up front. Otherwise
             # ``model_validate`` would still raise, but only after
@@ -170,7 +170,7 @@ class MCPToolInvoker:
             # accepts (e.g. a list of pairs), which is not part of the
             # MCP contract.  An explicit shape check keeps the
             # ``invalid_argument`` envelope as the only escape route.
-            # The static type is ``dict[str, Any]``, but the MCP wire
+            # The static type is ``dict[str, object]``, but the MCP wire
             # surface can in practice deliver any JSON value, so the
             # runtime guard erases the static narrowing via ``cast``.
             raw_arguments = cast("object", arguments)

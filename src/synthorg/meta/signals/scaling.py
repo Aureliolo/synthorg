@@ -7,10 +7,12 @@ derived success-rate / most-common-signal metrics.
 
 import asyncio
 from collections import Counter
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingOutcome
+from synthorg.hr.scaling.models import ScalingDecision
+from synthorg.hr.scaling.service import ScalingService
 from synthorg.meta.signal_models import (
     OrgScalingSummary,
     ScalingDecisionSummary,
@@ -20,12 +22,6 @@ from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.hr.scaling.models import ScalingDecision
-    from synthorg.hr.scaling.service import ScalingService
 
 logger = get_logger(__name__)
 

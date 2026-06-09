@@ -22,17 +22,13 @@ so handler-layer log assertions in tests have a single, stable event
 source regardless of which domain emitted the event.
 """
 
-from typing import TYPE_CHECKING, Any
-
+from synthorg.meta.mcp.errors import GuardrailViolationError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_ARGUMENT_INVALID,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.mcp.errors import GuardrailViolationError
 
 logger = get_logger("synthorg.meta.mcp.handlers")
 
@@ -71,7 +67,7 @@ kwarg whose key (case-insensitively) contains one of these fragments.
 """
 
 
-def _reject_sensitive_context_keys(context: dict[str, Any]) -> None:
+def _reject_sensitive_context_keys(context: dict[str, object]) -> None:
     """Raise ``ValueError`` if any context key looks like a credential field.
 
     Defensive check on top of the reserved-kwarg guard. Catches mistakes
@@ -122,7 +118,7 @@ def log_handler_argument_invalid(tool: str, exc: Exception) -> None:
 def log_handler_invoke_failed(
     tool: str,
     exc: Exception,
-    **context: Any,
+    **context: object,
 ) -> None:
     """Emit ``MCP_HANDLER_INVOKE_FAILED`` at WARNING with safe error context.
 

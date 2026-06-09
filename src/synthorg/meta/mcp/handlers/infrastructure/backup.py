@@ -1,10 +1,12 @@
 """Backup MCP handlers (infrastructure sub-domain)."""
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.backup.models import BackupTrigger
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.agent import AgentIdentity
 from synthorg.infrastructure.state import backup_facade_service_of
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -38,17 +40,15 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
 
 async def _backup_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List persistence backups recorded by the backup service.
@@ -77,8 +77,8 @@ async def _backup_list(
 
 async def _backup_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single backup record by ID.
@@ -105,8 +105,8 @@ async def _backup_get(
 
 async def _backup_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Trigger a new backup run (admin op; records a new manifest).
@@ -151,8 +151,8 @@ async def _backup_create(
 
 async def _backup_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Delete a backup manifest (destructive; enforces guardrails).
@@ -193,8 +193,8 @@ async def _backup_delete(
 
 async def _backup_restore(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Restore persistence state from a backup (destructive; enforces guardrails).

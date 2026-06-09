@@ -8,9 +8,11 @@ aggregates them for the facades feature's deferred loader and the MCP
 dispatch table.
 """
 
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.handlers.infrastructure.audit_events import (
     AUDIT_EVENTS_HANDLERS,
 )
@@ -29,11 +31,6 @@ from synthorg.meta.mcp.handlers.infrastructure.template_packs import (
     TEMPLATE_PACKS_HANDLERS,
 )
 from synthorg.meta.mcp.handlers.infrastructure.users import USERS_HANDLERS
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.mcp.handler_protocol import ToolHandler
 
 INFRASTRUCTURE_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {

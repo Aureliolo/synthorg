@@ -14,7 +14,8 @@ distribution.
 
 import asyncio
 from collections import deque
-from typing import TYPE_CHECKING, Final
+from datetime import datetime
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -27,9 +28,6 @@ from synthorg.observability.events.evolution import (
     EVOLUTION_OUTCOME_RECORDED,
     EVOLUTION_OUTCOME_STORE_EVICTED,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_RECENT: Final[int] = 10

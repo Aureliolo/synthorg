@@ -9,7 +9,9 @@ as failures (POST may not have been stored).
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Final, Self
+from collections.abc import Collection
+from types import TracebackType
+from typing import Final, Self
 
 import httpx
 
@@ -17,7 +19,11 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.resilience import GeneralRetryHandler
+from synthorg.meta.chief_of_staff.models import ProposalOutcome
+from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.models import ImprovementProposal, RolloutResult
 from synthorg.meta.telemetry.anonymizer import anonymize_decision, anonymize_rollout
+from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 from synthorg.meta.telemetry.models import AnonymizedOutcomeEvent, EventBatch
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cross_deployment import (
@@ -29,16 +35,8 @@ from synthorg.observability.events.cross_deployment import (
     XDEPLOY_EMITTER_INITIALIZED,
     XDEPLOY_EVENT_EMIT_FAILED,
     XDEPLOY_EVENT_QUEUED,
+    XDEPLOY_RESPONSE_BODY_UNREADABLE,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Collection
-    from types import TracebackType
-
-    from synthorg.meta.chief_of_staff.models import ProposalOutcome
-    from synthorg.meta.config import SelfImprovementConfig
-    from synthorg.meta.models import ImprovementProposal, RolloutResult
-    from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 
 logger = get_logger(__name__)
 
@@ -499,7 +497,14 @@ def _safe_response_text(response: httpx.Response) -> str:
     """
     try:
         text = response.text
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
+        logger.warning(
+            XDEPLOY_RESPONSE_BODY_UNREADABLE,
+            status_code=response.status_code,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return "(unable to read response body)"
     if len(text) > _LOG_BODY_MAX_LEN:
         return text[: _LOG_BODY_MAX_LEN - 3] + "..."

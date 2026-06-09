@@ -1,11 +1,13 @@
 """Webhook-definition MCP handlers (communication sub-domain)."""
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from pydantic import ValidationError
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.integrations.state import webhook_service_of
 from synthorg.integrations.webhooks.models import WebhookDefinition
 from synthorg.meta.mcp.errors import (
@@ -31,9 +33,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -43,7 +43,7 @@ _TY_WEBHOOK_OBJ = "WebhookDefinition object"
 
 
 def _parse_webhook_definition(
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     *,
     require_id: bool,
 ) -> WebhookDefinition:
@@ -66,8 +66,8 @@ def _parse_webhook_definition(
 
 async def _webhooks_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List registered webhook definitions (paginated).
@@ -93,8 +93,8 @@ async def _webhooks_list(
 
 async def _webhooks_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single webhook definition by ID.
@@ -121,8 +121,8 @@ async def _webhooks_get(
 
 async def _webhooks_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Register a new webhook definition (admin op; enforces guardrails).
@@ -166,8 +166,8 @@ async def _webhooks_create(
 
 async def _webhooks_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Update an existing webhook definition (admin op; enforces guardrails).
@@ -200,8 +200,8 @@ async def _webhooks_update(
 async def _apply_webhook_update(
     *,
     tool: str,
-    app_state: Any,
-    definition: Any,
+    app_state: AppState,
+    definition: WebhookDefinition,
     reason: str,
     actor_id: str,
 ) -> str:
@@ -237,8 +237,8 @@ async def _apply_webhook_update(
 
 async def _webhooks_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Delete a webhook definition (destructive; enforces guardrails).

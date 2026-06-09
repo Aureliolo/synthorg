@@ -4,23 +4,19 @@ Runs all enabled rules against an OrgSignalSnapshot and returns
 matched rules sorted by severity (critical first).
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.models import (
     OrgSignalSnapshot,
     RuleMatch,
     RuleSeverity,
 )
+from synthorg.meta.protocol import SignalRule
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_RULE_EVALUATED,
     META_RULE_EVALUATION_FAILED,
     META_RULE_FIRED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.protocol import SignalRule
 
 logger = get_logger(__name__)
 

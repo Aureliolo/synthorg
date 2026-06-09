@@ -7,20 +7,16 @@ timestamps. All free text, UUIDs, and PII are dropped.
 """
 
 import hashlib
-from typing import TYPE_CHECKING
+from collections.abc import Collection
+from datetime import datetime
 
 from synthorg import __version__
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.chief_of_staff.models import ProposalOutcome
+from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.models import ImprovementProposal, RolloutResult
+from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 from synthorg.meta.telemetry.models import AnonymizedOutcomeEvent
-
-if TYPE_CHECKING:
-    from collections.abc import Collection
-    from datetime import datetime
-
-    from synthorg.meta.chief_of_staff.models import ProposalOutcome
-    from synthorg.meta.config import SelfImprovementConfig
-    from synthorg.meta.models import ImprovementProposal, RolloutResult
-    from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 
 
 def anonymize_decision(

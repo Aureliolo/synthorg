@@ -7,19 +7,16 @@ severity meets the configured threshold.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.chief_of_staff.models import Alert, OrgInflection
+from synthorg.meta.chief_of_staff.protocol import AlertSink
 from synthorg.meta.models import RuleSeverity
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.chief_of_staff import (
     COS_ALERT_EMITTED,
     COS_ALERT_SUPPRESSED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.chief_of_staff.protocol import AlertSink
 
 logger = get_logger(__name__)
 

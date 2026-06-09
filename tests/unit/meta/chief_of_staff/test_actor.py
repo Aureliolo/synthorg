@@ -27,6 +27,7 @@ from synthorg.meta.chief_of_staff.actor import (
     ConversationalActor,
 )
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.security.autonomy.resolver import AutonomyResolver
 from tests._shared import mock_of
 
@@ -139,7 +140,7 @@ class TestConversationalActor:
 
     async def test_resolves_autonomy_from_resolver(self) -> None:
         identity = _identity()
-        sentinel = object()
+        sentinel = mock_of[EffectiveAutonomy]()
         resolver = mock_of[AutonomyResolver](
             resolve=MagicMock(return_value=sentinel),
         )

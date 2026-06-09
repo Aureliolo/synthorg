@@ -7,8 +7,9 @@ emit ``MCP_ADMIN_OP_EXECUTED`` on success. ``MemoryBackendUnsupportedError``
 is forwarded to the ``not_supported`` envelope.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import FineTuneRunActiveError
 from synthorg.core.types import NotBlankStr
@@ -52,15 +53,15 @@ from synthorg.observability.events.mcp import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
 
 async def _memory_start_fine_tune(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_memory_start_fine_tune`` MCP tool.
@@ -110,8 +111,8 @@ async def _memory_start_fine_tune(
 
 async def _memory_resume_fine_tune(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_memory_resume_fine_tune`` MCP tool.
@@ -164,8 +165,8 @@ async def _memory_resume_fine_tune(
 
 async def _memory_get_fine_tune_status(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_memory_get_fine_tune_status`` MCP tool.
@@ -200,8 +201,8 @@ async def _memory_get_fine_tune_status(
 
 async def _memory_cancel_fine_tune(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Handle the ``synthorg_memory_cancel_fine_tune`` MCP tool.
@@ -247,8 +248,8 @@ async def _memory_cancel_fine_tune(
 
 async def _memory_run_preflight(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- preflight is read-only validation, not a mutation
 ) -> str:
     """Handle the ``synthorg_memory_run_preflight`` MCP tool.
@@ -277,8 +278,8 @@ async def _memory_run_preflight(
 
 async def _memory_list_runs(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_memory_list_runs`` MCP tool.
@@ -308,8 +309,8 @@ async def _memory_list_runs(
 
 async def _memory_get_active_embedder(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handle the ``synthorg_memory_get_active_embedder`` MCP tool.

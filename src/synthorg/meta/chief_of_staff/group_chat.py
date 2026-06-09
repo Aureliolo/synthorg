@@ -27,7 +27,7 @@ injection defence.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from synthorg.budget.tracker import CostTracker
 from synthorg.communication.conversation.enums import (
@@ -91,9 +91,6 @@ from synthorg.persistence.conversation_protocol import (
     ConversationRepository,
     ConversationTurnRepository,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 logger = get_logger(__name__)
 

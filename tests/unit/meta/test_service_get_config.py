@@ -1,5 +1,6 @@
 """Tests for SelfImprovementService.get_config()."""
 
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -40,13 +41,18 @@ class TestGetConfig:
     def test_redacts_github_token(self) -> None:
         service = _service(code_token="ghp_super_secret_token_xyz")
         dump = service.get_config()
-        assert dump["code_modification"]["github_token"] == "***redacted***"
+        assert (
+            cast("dict[str, object]", dump["code_modification"])["github_token"]
+            == "***redacted***"
+        )
 
     @pytest.mark.unit
     def test_no_redaction_when_secret_unset(self) -> None:
         service = _service(code_token=None)
         dump = service.get_config()
-        assert dump["code_modification"]["github_token"] is None
+        assert (
+            cast("dict[str, object]", dump["code_modification"])["github_token"] is None
+        )
 
     @pytest.mark.unit
     def test_does_not_mutate_internal_config(self) -> None:

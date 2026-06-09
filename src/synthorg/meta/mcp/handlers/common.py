@@ -28,11 +28,13 @@ call it.  The placeholder logs at WARNING via the
 
 import asyncio
 import json
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError, GuardrailViolationError
@@ -47,9 +49,7 @@ from synthorg.observability.events.mcp import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
-
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -87,7 +87,7 @@ class PaginationMeta(BaseModel):
 
 
 def ok(
-    data: Any = None,
+    data: object = None,
     *,
     pagination: PaginationMeta | None = None,
 ) -> str:
@@ -109,7 +109,7 @@ def ok(
         JSON-encoded envelope suitable for direct return from an MCP
         tool handler.
     """
-    body: dict[str, Any] = {"status": "ok", "data": data}
+    body: dict[str, object] = {"status": "ok", "data": data}
     if pagination is not None:
         body["pagination"] = pagination.model_dump(mode="json")
     return json.dumps(body)
@@ -134,7 +134,7 @@ def err(
     Returns:
         JSON-encoded envelope with ``status="error"``.
     """
-    body: dict[str, Any] = {
+    body: dict[str, object] = {
         "status": "error",
         "error_type": type(exc).__name__,
         "message": safe_error_description(exc),
@@ -153,7 +153,7 @@ def err(
     return json.dumps(body)
 
 
-def _actor_has_identifier(actor: Any) -> bool:
+def _actor_has_identifier(actor: object) -> bool:
     """Return ``True`` when ``actor`` carries an audit-usable identifier.
 
     The destructive-op audit trail is meaningless without a stable
@@ -176,9 +176,9 @@ def _actor_has_identifier(actor: Any) -> bool:
 
 
 def require_admin_guardrails(
-    arguments: dict[str, Any],
-    actor: Any,
-) -> tuple[str, Any]:
+    arguments: dict[str, object],
+    actor: AgentIdentity | None,
+) -> tuple[str, AgentIdentity]:
     """Enforce the admin-op precondition triple.
 
     Every handler registered through :func:`admin_tool` calls this
@@ -215,7 +215,7 @@ def require_admin_guardrails(
     return reason, actor
 
 
-def dump_many(models: Iterable[BaseModel]) -> list[dict[str, Any]]:
+def dump_many(models: Iterable[BaseModel]) -> list[dict[str, object]]:
     """Serialise a batch of Pydantic models to JSON-mode dicts.
 
     Args:
@@ -273,7 +273,7 @@ def _not_supported_envelope(reason: str) -> str:
     Returns:
         Resulting string.
     """
-    body: dict[str, Any] = {
+    body: dict[str, object] = {
         "status": "error",
         "error_type": "NotSupportedInMCP",
         "message": reason,
@@ -450,8 +450,8 @@ def make_placeholder_handler(tool_name: str) -> ToolHandler:
 
     async def handler(
         *,
-        app_state: Any,  # noqa: ARG001
-        arguments: dict[str, Any],  # noqa: ARG001
+        app_state: AppState,  # noqa: ARG001
+        arguments: dict[str, object],  # noqa: ARG001
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
         """Return handler."""

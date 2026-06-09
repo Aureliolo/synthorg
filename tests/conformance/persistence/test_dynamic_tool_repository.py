@@ -14,6 +14,7 @@ from typing import cast
 
 import aiosqlite
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.toolsmith.models import (
@@ -37,7 +38,7 @@ from synthorg.persistence.tool_blueprint_protocol import (
 pytestmark = pytest.mark.integration
 
 _NOW = datetime(2026, 5, 21, 12, 0, tzinfo=UTC)
-_SCHEMA = {
+_SCHEMA: dict[str, JsonValue] = {
     "type": "object",
     "properties": {"text": {"type": "string"}},
     "required": ["text"],

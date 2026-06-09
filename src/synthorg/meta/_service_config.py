@@ -6,8 +6,6 @@ can return an auditable config readout without leaking GitHub PATs or
 the cross-deployment salt into telemetry.
 """
 
-from typing import Any
-
 _SECRET_PATHS: frozenset[str] = frozenset(
     {
         "code_modification.github_token",
@@ -25,9 +23,9 @@ _REDACTED: str = "***redacted***"
 
 
 def _redact_secrets(
-    dump: dict[str, Any],
+    dump: dict[str, object],
     paths: frozenset[str],
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Return a copy of *dump* with each path in *paths* masked.
 
     Operates on a copy so the caller's source data is never mutated.
@@ -40,7 +38,8 @@ def _redact_secrets(
     redacted = dict(dump)
     for path in paths:
         keys = path.split(".")
-        node: Any = redacted
+        node: dict[str, object] = redacted
+        aborted = False
         # Walk down a copy at each level. Each ``cloned`` dict replaces
         # the parent's reference in ``redacted`` so the mutation stays
         # local; the corresponding nested dict on the caller's original
@@ -49,12 +48,12 @@ def _redact_secrets(
         for key in keys[:-1]:
             child = node.get(key)
             if not isinstance(child, dict):
-                node = None
+                aborted = True
                 break
-            cloned = dict(child)
+            cloned: dict[str, object] = dict(child)
             node[key] = cloned
             node = cloned
-        if node is None:
+        if aborted:
             continue
         leaf = keys[-1]
         if leaf in node and node[leaf] is not None:

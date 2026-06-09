@@ -6,10 +6,10 @@ serialiser shared across the infrastructure sub-domain handler modules
 requests, setup, simulations, template-packs, integration-health).
 """
 
-from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers.common import err
 from synthorg.meta.mcp.handlers.common_args import (
@@ -19,9 +19,6 @@ from synthorg.meta.mcp.handlers.common_args import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_CAPABILITY_GAP
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 
@@ -48,7 +45,7 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
     return err(exc, domain_code=exc.domain_code)
 
 
-def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
+def _require_str(arguments: dict[str, object], key: str) -> NotBlankStr:
     """Extract a required non-blank string or raise ``ArgumentValidationError``.
 
     Returns:
@@ -63,7 +60,7 @@ def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
     return value
 
 
-def _get_dict(arguments: dict[str, Any], key: str) -> dict[str, str] | None:
+def _get_dict(arguments: dict[str, object], key: str) -> dict[str, str] | None:
     """Extract an optional ``dict[str, str]`` argument; ``None`` when absent.
 
     Returns:
@@ -75,7 +72,7 @@ def _get_dict(arguments: dict[str, Any], key: str) -> dict[str, str] | None:
     return require_dict(arguments, key, value_type=str)
 
 
-def _require_uuid(arguments: dict[str, Any], key: str) -> str:
+def _require_uuid(arguments: dict[str, object], key: str) -> str:
     """Extract a required UUID-shaped string or raise ``ArgumentValidationError``.
 
     Returns:
@@ -92,7 +89,7 @@ def _require_uuid(arguments: dict[str, Any], key: str) -> str:
     return value
 
 
-def _to_jsonable(value: Any) -> Any:
+def _to_jsonable(value: object) -> object:
     """Best-effort JSON-safe serialisation for facade returns.
 
     Pydantic models are dumped via ``model_dump``; other values pass

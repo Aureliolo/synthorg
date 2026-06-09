@@ -1,10 +1,12 @@
 """Health-check MCP handler (infrastructure sub-domain)."""
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.core.agent import AgentIdentity
 from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import HrStateSlice
 from synthorg.meta.mcp.handler_protocol import ToolHandler
@@ -14,17 +16,15 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
 
 async def _health_check(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: AppState,
+    arguments: dict[str, object],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return lightweight health status for the AppState subsystems.

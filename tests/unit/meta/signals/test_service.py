@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
@@ -237,7 +238,13 @@ class TestSignalsServiceProposals:
             id = None
             name = ""
 
-        with pytest.raises(ValueError, match="non-blank name or id"):
+        # ``_AnonActor`` deliberately violates the ``AgentIdentity``
+        # annotation to exercise the service's runtime attribution
+        # guard, so typeguard is suppressed around the awaited call.
+        with (
+            suppress_type_checks(),
+            pytest.raises(ValueError, match="non-blank name or id"),
+        ):
             await service.submit_proposal(
                 proposal=proposal,
                 actor=_AnonActor(),  # type: ignore[arg-type]

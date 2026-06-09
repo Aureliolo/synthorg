@@ -5,17 +5,15 @@ collecting and querying them, and generating threshold
 recommendations. All protocols are runtime-checkable.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.meta.chief_of_staff.models import ProposalOutcome
-    from synthorg.meta.models import ImprovementProposal, RolloutResult
-    from synthorg.meta.telemetry.models import (
-        AggregatedPattern,
-        AnonymizedOutcomeEvent,
-        ThresholdRecommendation,
-    )
-
+from synthorg.meta.chief_of_staff.models import ProposalOutcome
+from synthorg.meta.models import ImprovementProposal, RolloutResult
+from synthorg.meta.telemetry.models import (
+    AggregatedPattern,
+    AnonymizedOutcomeEvent,
+    ThresholdRecommendation,
+)
 
 _DEFAULT_MIN_DEPLOYMENTS: Final[int] = 3
 

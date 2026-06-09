@@ -1,8 +1,10 @@
 """Project MCP handlers (infrastructure sub-domain)."""
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.infrastructure.state import project_facade_service_of
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -34,17 +36,15 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
 
 async def _projects_list(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List projects (paginated).
@@ -71,8 +71,8 @@ async def _projects_list(
 
 async def _projects_get(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Fetch a single project by ID.
@@ -100,8 +100,8 @@ async def _projects_get(
 
 async def _projects_create(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Create a new project (non-destructive write).
@@ -131,8 +131,8 @@ async def _projects_create(
 
 async def _projects_update(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Update an existing project (partial patch).
@@ -169,8 +169,8 @@ async def _projects_update(
 
 async def _projects_delete(
     *,
-    app_state: Any,
-    arguments: dict[str, Any],
+    app_state: AppState,
+    arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
     """Delete a project (destructive; enforces guardrails).
