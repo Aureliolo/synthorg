@@ -138,7 +138,8 @@ from synthorg.api.controllers.teams import TeamController
 from synthorg.api.controllers.template_packs import TemplatePackController
 from synthorg.api.controllers.training import TrainingController
 from synthorg.api.controllers.tunnel import TunnelController
-from synthorg.api.controllers.users import UserController
+from synthorg.api.controllers.users.account import UserController
+from synthorg.api.controllers.users.org_roles import UserOrgRolesController
 from synthorg.api.controllers.webhooks.activity import WebhooksActivityController
 from synthorg.api.controllers.webhooks.ingest import WebhooksIngestController
 from synthorg.api.controllers.webhooks.retry import WebhooksRetryController
@@ -240,6 +241,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     TeamController,
     TemplatePackController,
     UserController,
+    UserOrgRolesController,
     SubworkflowController,
     WorkflowController,
     WorkflowBlueprintController,
@@ -436,6 +438,7 @@ __all__ = [
     "TrainingController",
     "TunnelController",
     "UserController",
+    "UserOrgRolesController",
     "WebhooksActivityController",
     "WebhooksIngestController",
     "WebhooksRetryController",

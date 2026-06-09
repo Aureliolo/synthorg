@@ -28,7 +28,8 @@ from synthorg.api.controllers.setup.completion import SetupCompletionController
 from synthorg.api.controllers.setup.locales import SetupLocalesController
 from synthorg.api.controllers.setup.status import SetupStatusController
 from synthorg.api.controllers.setup_personality import SetupPersonalityController
-from synthorg.api.controllers.users import UserController
+from synthorg.api.controllers.users.account import UserController
+from synthorg.api.controllers.users.org_roles import UserOrgRolesController
 from synthorg.api.controllers.ws import ws_handler
 from synthorg.settings.enums import SettingNamespace
 
@@ -46,6 +47,7 @@ FEATURE: FeatureModule = FeatureManifest(
         AuthIdentityController,
         AuthSessionsController,
         UserController,
+        UserOrgRolesController,
         SetupStatusController,
         SetupCompanyController,
         SetupAgentsController,
