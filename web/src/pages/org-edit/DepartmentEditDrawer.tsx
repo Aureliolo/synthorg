@@ -92,7 +92,7 @@ function useDepartmentEditForm(props: DepartmentEditDrawerProps): DepartmentEdit
     // managed by the dedicated agent autonomy editor on every save.
     const result = await onUpdate(department.name, {
       budget_percent: pct,
-      ceremony_policy: ceremonyPolicy as Record<string, unknown> | null,
+      ceremony_policy: ceremonyPolicy,
     })
     // Store owns the toast; close only on success.
     if (result !== null) onClose()
