@@ -23,8 +23,13 @@ logger = get_logger(__name__)
 
 # ── Agent middleware registry ─────────────────────────────────────
 
-# Factory signature: (**deps) -> AgentMiddleware
-type AgentMiddlewareFactory = Callable[..., AgentMiddleware]
+# Factory signature: (**deps) -> AgentMiddleware. Each registered factory
+# is a distinct middleware class with its own ``__init__`` deps, dispatched
+# via ``inspect.signature(factory).bind(**deps)``; ``Callable[..., X]`` is
+# the correct type because no Protocol can express "any factory unified
+# only by its return type" (a ``**deps: object`` Protocol fails
+# contravariance against the concrete classes' specific keyword params).
+type AgentMiddlewareFactory = Callable[..., AgentMiddleware]  # type: ignore[explicit-any]
 
 _AGENT_REGISTRY: dict[str, AgentMiddlewareFactory] = {}
 
@@ -103,7 +108,8 @@ def clear_agent_registry() -> None:
 
 # ── Coordination middleware registry ──────────────────────────────
 
-type CoordinationMiddlewareFactory = Callable[
+# Same heterogeneous-factory shape as ``AgentMiddlewareFactory`` above.
+type CoordinationMiddlewareFactory = Callable[  # type: ignore[explicit-any]
     ...,
     CoordinationMiddleware,
 ]
