@@ -284,8 +284,8 @@
     },
     "src/synthorg/communication/bus/_nats_receive.py": {
       "cap": 500,
-      "loc": 437,
-      "ratio": 0.874,
+      "loc": 441,
+      "ratio": 0.882,
       "tier": "code"
     },
     "src/synthorg/communication/config.py": {
@@ -302,8 +302,8 @@
     },
     "src/synthorg/communication/conflict_resolution/human_strategy.py": {
       "cap": 500,
-      "loc": 521,
-      "ratio": 1.042,
+      "loc": 446,
+      "ratio": 0.892,
       "tier": "code"
     },
     "src/synthorg/communication/event_stream/stream.py": {
@@ -312,22 +312,22 @@
       "ratio": 0.952,
       "tier": "code"
     },
+    "src/synthorg/communication/meeting/_phase_runners.py": {
+      "cap": 500,
+      "loc": 438,
+      "ratio": 0.876,
+      "tier": "code"
+    },
     "src/synthorg/communication/meeting/orchestrator.py": {
       "cap": 600,
-      "loc": 604,
-      "ratio": 1.007,
+      "loc": 584,
+      "ratio": 0.973,
       "tier": "orchestrator"
     },
     "src/synthorg/communication/meeting/round_robin.py": {
       "cap": 500,
       "loc": 433,
       "ratio": 0.866,
-      "tier": "code"
-    },
-    "src/synthorg/communication/meeting/structured_phases.py": {
-      "cap": 500,
-      "loc": 696,
-      "ratio": 1.392,
       "tier": "code"
     },
     "src/synthorg/config/loader.py": {
@@ -674,8 +674,8 @@
     },
     "src/synthorg/integrations/connections/catalog.py": {
       "cap": 500,
-      "loc": 685,
-      "ratio": 1.37,
+      "loc": 411,
+      "ratio": 0.822,
       "tier": "code"
     },
     "src/synthorg/integrations/feature.py": {
@@ -683,12 +683,6 @@
       "loc": 94,
       "ratio": 0.94,
       "tier": "feature"
-    },
-    "src/synthorg/integrations/mcp_services.py": {
-      "cap": 500,
-      "loc": 644,
-      "ratio": 1.288,
-      "tier": "code"
     },
     "src/synthorg/integrations/oauth/flows/device_flow.py": {
       "cap": 500,
@@ -1088,14 +1082,8 @@
     },
     "src/synthorg/providers/base.py": {
       "cap": 500,
-      "loc": 572,
-      "ratio": 1.144,
-      "tier": "code"
-    },
-    "src/synthorg/providers/cassette/provider.py": {
-      "cap": 500,
-      "loc": 515,
-      "ratio": 1.03,
+      "loc": 481,
+      "ratio": 0.962,
       "tier": "code"
     },
     "src/synthorg/providers/cassette/store.py": {
@@ -1106,8 +1094,8 @@
     },
     "src/synthorg/providers/drivers/litellm_driver.py": {
       "cap": 700,
-      "loc": 721,
-      "ratio": 1.03,
+      "loc": 694,
+      "ratio": 0.991,
       "tier": "adapter"
     },
     "src/synthorg/providers/health_prober.py": {
@@ -1124,20 +1112,14 @@
     },
     "src/synthorg/providers/management/capability_dtos.py": {
       "cap": 500,
-      "loc": 548,
-      "ratio": 1.096,
-      "tier": "code"
-    },
-    "src/synthorg/providers/management/dtos.py": {
-      "cap": 500,
-      "loc": 733,
-      "ratio": 1.466,
+      "loc": 471,
+      "ratio": 0.942,
       "tier": "code"
     },
     "src/synthorg/providers/management/service.py": {
       "cap": 1100,
-      "loc": 1004,
-      "ratio": 0.913,
+      "loc": 1008,
+      "ratio": 0.916,
       "tier": "complex_service"
     },
     "src/synthorg/providers/models.py": {
@@ -1148,14 +1130,14 @@
     },
     "src/synthorg/providers/presets.py": {
       "cap": 500,
-      "loc": 666,
-      "ratio": 1.332,
+      "loc": 443,
+      "ratio": 0.886,
       "tier": "code"
     },
     "src/synthorg/providers/routing/strategies.py": {
       "cap": 500,
-      "loc": 526,
-      "ratio": 1.052,
+      "loc": 400,
+      "ratio": 0.8,
       "tier": "code"
     },
     "src/synthorg/research/models.py": {
@@ -1289,7 +1271,7 @@
   "fan_in": {
     "synthorg._core.features": 139,
     "synthorg.api.api_core_state": 28,
-    "synthorg.api.boundary": 26,
+    "synthorg.api.boundary": 27,
     "synthorg.api.construction_wiring": 20,
     "synthorg.api.cursor": 25,
     "synthorg.api.dto": 100,
@@ -1305,7 +1287,7 @@
     "synthorg.budget.call_category": 43,
     "synthorg.budget.config": 25,
     "synthorg.budget.cost_record": 23,
-    "synthorg.budget.currency": 64,
+    "synthorg.budget.currency": 65,
     "synthorg.budget.errors": 24,
     "synthorg.budget.state": 23,
     "synthorg.budget.tracker": 76,
@@ -1314,17 +1296,17 @@
     "synthorg.communication.conversation.enums": 20,
     "synthorg.communication.enums": 29,
     "synthorg.communication.errors": 23,
-    "synthorg.communication.mcp_errors": 25,
+    "synthorg.communication.mcp_errors": 27,
     "synthorg.communication.message": 29,
     "synthorg.communication.state": 20,
-    "synthorg.config.schema": 59,
+    "synthorg.config.schema": 63,
     "synthorg.core.agent": 154,
     "synthorg.core.approval": 35,
     "synthorg.core.auth.models": 27,
     "synthorg.core.auth.roles": 25,
     "synthorg.core.autonomy_enums": 34,
-    "synthorg.core.clock": 158,
-    "synthorg.core.critical_errors": 472,
+    "synthorg.core.clock": 159,
+    "synthorg.core.critical_errors": 473,
     "synthorg.core.domain_errors": 176,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 48,
@@ -1334,7 +1316,7 @@
     "synthorg.core.registry": 27,
     "synthorg.core.task": 93,
     "synthorg.core.task_enums": 85,
-    "synthorg.core.types": 1061,
+    "synthorg.core.types": 1068,
     "synthorg.engine.context": 40,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 80,
@@ -1354,8 +1336,8 @@
     "synthorg.hr.state": 32,
     "synthorg.hr.training.models": 24,
     "synthorg.integrations.connections.catalog": 21,
-    "synthorg.integrations.connections.models": 54,
-    "synthorg.integrations.errors": 33,
+    "synthorg.integrations.connections.models": 57,
+    "synthorg.integrations.errors": 36,
     "synthorg.integrations.state": 22,
     "synthorg.knowledge.models": 24,
     "synthorg.memory.errors": 23,
@@ -1371,29 +1353,29 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 63,
-    "synthorg.observability": 1496,
+    "synthorg.observability": 1507,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 149,
     "synthorg.observability.events.chief_of_staff": 29,
     "synthorg.observability.events.client": 22,
     "synthorg.observability.events.communication": 25,
-    "synthorg.observability.events.config": 20,
+    "synthorg.observability.events.config": 21,
     "synthorg.observability.events.evolution": 22,
     "synthorg.observability.events.execution": 38,
     "synthorg.observability.events.hr": 37,
-    "synthorg.observability.events.integrations": 55,
+    "synthorg.observability.events.integrations": 60,
     "synthorg.observability.events.mcp": 60,
     "synthorg.observability.events.memory": 54,
     "synthorg.observability.events.meta": 55,
     "synthorg.observability.events.ontology": 20,
-    "synthorg.observability.events.provider": 26,
+    "synthorg.observability.events.provider": 28,
     "synthorg.observability.events.security": 66,
     "synthorg.observability.events.settings": 32,
     "synthorg.observability.events.tool": 24,
     "synthorg.observability.events.training": 23,
     "synthorg.observability.events.workflow": 26,
     "synthorg.observability.events.workspace": 28,
-    "synthorg.observability.metrics_hub": 28,
+    "synthorg.observability.metrics_hub": 29,
     "synthorg.ontology.models": 23,
     "synthorg.persistence._generics": 182,
     "synthorg.persistence._shared": 144,
@@ -1405,9 +1387,9 @@
     "synthorg.persistence.state": 61,
     "synthorg.project_brain.models": 23,
     "synthorg.providers.cost_recording": 36,
-    "synthorg.providers.enums": 80,
-    "synthorg.providers.errors": 34,
-    "synthorg.providers.models": 112,
+    "synthorg.providers.enums": 82,
+    "synthorg.providers.errors": 36,
+    "synthorg.providers.models": 114,
     "synthorg.providers.protocol": 65,
     "synthorg.providers.registry": 31,
     "synthorg.providers.state": 25,
@@ -1444,7 +1426,7 @@
     },
     "synthorg.communication.meeting.orchestrator:MeetingOrchestrator": {
       "lcom4": 1,
-      "loc": 529
+      "loc": 507
     },
     "synthorg.communication.meeting.scheduler:MeetingScheduler": {
       "lcom4": 1,
