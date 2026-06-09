@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the cassette document model and session.
 
 Covers outcome validation, atomic persistence, malformed-file

@@ -1,7 +1,7 @@
 """Communication configuration models (see Communication design page)."""
 
 from collections import Counter
-from typing import Any, ClassVar, Final, Literal, Self
+from typing import ClassVar, Final, Literal, Self, cast
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -316,13 +316,13 @@ class MeetingsConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
+    def _apply_mirrors(cls, data: object) -> object:
         """Overlay setting-namespace mirrors onto the raw input.
 
         Returns:
             The input data with mirrored settings applied.
         """
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
 
     @model_validator(mode="after")
     def _validate_unique_meeting_names(self) -> Self:

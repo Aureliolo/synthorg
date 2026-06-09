@@ -27,6 +27,9 @@ from synthorg.providers.discovery_policy import (
 )
 
 if TYPE_CHECKING:
+    # ConfigResolver / SettingsService are concrete classes injected
+    # duck-typed via ``mock_of[...]`` in tests; a runtime import would
+    # make typeguard enforce a nominal isinstance the mocks fail.
     from synthorg.settings.resolver import ConfigResolver
     from synthorg.settings.service import SettingsService
 

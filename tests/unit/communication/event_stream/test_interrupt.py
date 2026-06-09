@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for interrupt models."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -41,8 +39,8 @@ class TestResumeDecision:
         assert len(ResumeDecision) == 3
 
 
-def _make_interrupt(**overrides: Any) -> Interrupt:
-    defaults: dict[str, Any] = {
+def _make_interrupt(**overrides: object) -> Interrupt:
+    defaults: dict[str, object] = {
         "id": "int-001",
         "type": InterruptType.TOOL_APPROVAL,
         "session_id": "session-abc",
@@ -52,11 +50,11 @@ def _make_interrupt(**overrides: Any) -> Interrupt:
         "tool_name": "deploy_service",
     }
     defaults.update(overrides)
-    return Interrupt(**defaults)
+    return Interrupt(**defaults)  # type: ignore[arg-type]
 
 
-def _make_info_interrupt(**overrides: Any) -> Interrupt:
-    defaults: dict[str, Any] = {
+def _make_info_interrupt(**overrides: object) -> Interrupt:
+    defaults: dict[str, object] = {
         "id": "int-002",
         "type": InterruptType.INFO_REQUEST,
         "session_id": "session-abc",
@@ -66,7 +64,7 @@ def _make_info_interrupt(**overrides: Any) -> Interrupt:
         "question": "Which database should I target?",
     }
     defaults.update(overrides)
-    return Interrupt(**defaults)
+    return Interrupt(**defaults)  # type: ignore[arg-type]
 
 
 @pytest.mark.unit
@@ -129,15 +127,15 @@ class TestInterrupt:
         assert interrupt.tool_args["nested"]["inner"] == "original"  # type: ignore[index]
 
 
-def _make_resolution(**overrides: Any) -> InterruptResolution:
-    defaults: dict[str, Any] = {
+def _make_resolution(**overrides: object) -> InterruptResolution:
+    defaults: dict[str, object] = {
         "interrupt_id": "int-001",
         "decision": ResumeDecision.APPROVE,
         "resolved_at": datetime(2026, 4, 13, 0, 5, tzinfo=UTC),
         "resolved_by": "admin-user",
     }
     defaults.update(overrides)
-    return InterruptResolution(**defaults)
+    return InterruptResolution(**defaults)  # type: ignore[arg-type]
 
 
 @pytest.mark.unit

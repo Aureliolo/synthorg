@@ -14,7 +14,7 @@ import structlog.testing
 from synthorg.api.state import AppState
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.infrastructure.state import FacadesStateSlice
-from synthorg.integrations.mcp_services import (
+from synthorg.integrations.mcp_facades import (
     ArtifactFacadeService,
     ClientFacadeService,
     OAuthFacadeService,

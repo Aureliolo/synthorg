@@ -1,8 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for delegation circuit breaker."""
 
 import threading
-from typing import Any
+from types import TracebackType
 from unittest.mock import MagicMock
 
 import pytest
@@ -495,7 +494,7 @@ class TestCheckAtomicity:
         recorded_during_check: list[bool] = []
 
         class _TrackingLock:
-            def __enter__(self) -> Any:
+            def __enter__(self) -> object:
                 result = underlying.__enter__()
                 if not recorded_during_check:
                     recorded_during_check.append(True)
@@ -511,11 +510,16 @@ class TestCheckAtomicity:
                     )
                 return result
 
-            def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            def __exit__(
+                self,
+                exc_type: type[BaseException] | None,
+                exc: BaseException | None,
+                tb: TracebackType | None,
+            ) -> None:
                 underlying.__exit__(exc_type, exc, tb)
 
-            def acquire(self, *args: Any, **kwargs: Any) -> Any:
-                return underlying.acquire(*args, **kwargs)
+            def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+                return underlying.acquire(blocking, timeout)
 
             def release(self) -> None:
                 underlying.release()

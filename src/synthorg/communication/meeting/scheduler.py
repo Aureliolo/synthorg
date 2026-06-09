@@ -16,8 +16,8 @@ shared state owner and lock graph, which just relocates complexity.
 
 import asyncio
 import time
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Mapping
+from typing import TYPE_CHECKING
 
 from synthorg.communication.meeting.errors import (
     NoParticipantsResolvedError,
@@ -54,6 +54,9 @@ from synthorg.observability.events.meeting import (
 )
 
 if TYPE_CHECKING:
+    # communication.config is a cycle hub (communication.__init__ -> bus ->
+    # config reaches back here); MeetingCooldownRepository is a mock-injected
+    # protocol whose runtime import would make typeguard reject the fake.
     from synthorg.communication.config import MeetingsConfig
     from synthorg.communication.meeting.config import MeetingTypeConfig
     from synthorg.persistence.meeting_cooldown_protocol import (
@@ -122,7 +125,7 @@ class MeetingScheduler:
         config: MeetingsConfig,
         orchestrator: MeetingOrchestrator,
         participant_resolver: ParticipantResolver,
-        event_publisher: Callable[[str, dict[str, Any]], None] | None = None,
+        event_publisher: Callable[[str, dict[str, object]], None] | None = None,
         clock: Callable[[], float] | None = None,
         cooldown_repo: MeetingCooldownRepository | None = None,
     ) -> None:
@@ -544,7 +547,7 @@ class MeetingScheduler:
         self,
         event_name: str,
         *,
-        context: dict[str, Any] | None = None,
+        context: Mapping[str, object] | None = None,
     ) -> tuple[MeetingRecord, ...]:
         """Trigger all meeting types matching the given event name.
 
@@ -677,7 +680,7 @@ class MeetingScheduler:
     async def _execute_meeting(
         self,
         meeting_type: MeetingTypeConfig,
-        context: dict[str, Any] | None = None,
+        context: Mapping[str, object] | None = None,
     ) -> MeetingRecord | None:
         """Resolve participants, build agenda, and delegate to orchestrator.
 
@@ -722,7 +725,7 @@ class MeetingScheduler:
     async def _resolve_participants(
         self,
         meeting_type: MeetingTypeConfig,
-        context: dict[str, Any] | None,
+        context: Mapping[str, object] | None,
     ) -> tuple[str, ...] | None:
         """Resolve and validate participants for a meeting.
 
@@ -869,7 +872,7 @@ class MeetingScheduler:
     @staticmethod
     def _build_default_agenda(
         meeting_type: MeetingTypeConfig,
-        context: dict[str, Any] | None,
+        context: Mapping[str, object] | None,
     ) -> MeetingAgenda:
         """Create a default agenda from meeting type name and context.
 
@@ -892,7 +895,7 @@ class MeetingScheduler:
         )
 
 
-def _format_ctx_value(value: Any) -> str:
+def _format_ctx_value(value: object) -> str:
     """Format a context value as a human-readable string.
 
     Lists/tuples/sets are comma-joined; scalars use ``str()``.

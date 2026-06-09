@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Property-based tests for Message model roundtrips and alias handling."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 from hypothesis import given
@@ -80,7 +78,7 @@ _message_kwargs_st = st.fixed_dictionaries(
 )
 
 
-def _kwargs_to_message_dict(kwargs: dict[str, Any]) -> dict[str, Any]:
+def _kwargs_to_message_dict(kwargs: dict[str, object]) -> dict[str, object]:
     return {
         "from": kwargs["sender"],
         "to": kwargs["to"],
@@ -92,7 +90,7 @@ def _kwargs_to_message_dict(kwargs: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _make_default_message_kwargs() -> dict[str, Any]:
+def _make_default_message_kwargs() -> dict[str, object]:
     return {
         "from": "agent-sender",
         "to": "agent-receiver",
@@ -132,15 +130,15 @@ class TestPartRoundtripProperties:
 
 class TestMessageRoundtripProperties:
     @given(data=_message_kwargs_st)
-    def test_model_dump_validate_roundtrip(self, data: dict[str, Any]) -> None:
-        msg = Message(**_kwargs_to_message_dict(data))
+    def test_model_dump_validate_roundtrip(self, data: dict[str, object]) -> None:
+        msg = Message(**_kwargs_to_message_dict(data))  # type: ignore[arg-type]
         dumped = msg.model_dump(by_alias=True)
         restored = Message.model_validate(dumped)
         assert restored == msg
 
     @given(data=_message_kwargs_st)
-    def test_roundtrip_preserves_sender_alias(self, data: dict[str, Any]) -> None:
-        msg = Message(**_kwargs_to_message_dict(data))
+    def test_roundtrip_preserves_sender_alias(self, data: dict[str, object]) -> None:
+        msg = Message(**_kwargs_to_message_dict(data))  # type: ignore[arg-type]
         sender = data["sender"]
 
         # Dump with alias -> "from" key
@@ -159,7 +157,7 @@ class TestFromAliasProperties:
     def test_from_alias_works(self, sender: str) -> None:
         kwargs = _make_default_message_kwargs()
         kwargs["from"] = sender
-        msg = Message(**kwargs)
+        msg = Message(**kwargs)  # type: ignore[arg-type]
         assert msg.sender == sender
 
     @given(sender=_not_blank)
@@ -167,7 +165,7 @@ class TestFromAliasProperties:
         kwargs = _make_default_message_kwargs()
         del kwargs["from"]
         kwargs["sender"] = sender
-        msg = Message(**kwargs)
+        msg = Message(**kwargs)  # type: ignore[arg-type]
         assert msg.sender == sender
 
 
@@ -175,7 +173,7 @@ class TestTextPropertyProperties:
     @given(text=_not_blank)
     def test_text_property_returns_first_text_part(self, text: str) -> None:
         msg = Message(
-            **{
+            **{  # type: ignore[arg-type]
                 **_make_default_message_kwargs(),
                 "parts": (TextPart(text=text),),
             }

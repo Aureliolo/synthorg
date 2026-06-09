@@ -9,12 +9,14 @@ reset the probe interval for that provider.
 
 import asyncio
 import contextlib
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
 
 import httpx
 
+from synthorg.config.schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
@@ -40,9 +42,9 @@ from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracke
 from synthorg.settings.enums import SettingNamespace
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from synthorg.config.schema import ProviderConfig
+    # ConfigResolver is a concrete class injected duck-typed via
+    # ``MagicMock(spec=ConfigResolver)`` in tests; a runtime import
+    # would make typeguard enforce a nominal isinstance the mock fails.
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)

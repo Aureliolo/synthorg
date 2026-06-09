@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """NATS subscriber bounding parity tests.
 
 The in-memory bus bounds each subscriber's in-flight queue via
@@ -9,7 +8,6 @@ JetStream pauses delivery to a consumer whose unacked count hits this
 cap, preventing unbounded broker-side accumulation per subscriber.
 """
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -24,7 +22,7 @@ from synthorg.communication.config import (
 from synthorg.communication.enums import ChannelType, MessageBusBackend
 
 
-def _state_stub(max_subscriber_queue_size: int) -> Any:
+def _state_stub(max_subscriber_queue_size: int) -> MagicMock:
     """Build a minimal ``_NatsState`` stub exposing the attributes
     ``create_pull_consumer`` reads: ``js``, ``nats_config``,
     ``stream_name``, ``config.retention``.
@@ -64,7 +62,7 @@ class TestNatsConsumerConfig:
         channel = Channel(name="#engineering", type=ChannelType.TOPIC)
 
         await create_pull_consumer(
-            state,
+            state,  # type: ignore[arg-type]
             channel_name=channel.name,
             subscriber_id="agent-alice",
             channel=channel,

@@ -7,6 +7,7 @@ sprints.
 
 import asyncio
 import contextlib
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Final
 
 from synthorg.communication.bus_protocol import MessageBus
@@ -419,14 +420,18 @@ class WebhookEventBridge:
         for part in message.parts:
             if not isinstance(part, DataPart):
                 continue
-            data = dict(part.data) if part.data is not None else {}
+            data = dict(part.data)
             event_type = data.get("event_type", "")
-            if not event_type:
+            if not isinstance(event_type, str) or not event_type:
                 continue
+            raw_payload = data.get("payload", {})
+            payload: Mapping[str, object] = (
+                raw_payload if isinstance(raw_payload, Mapping) else {}
+            )
             await strategy.on_external_event(
                 sprint,
                 event_type,
-                data.get("payload", {}),
+                payload,
             )
             logger.debug(
                 WEBHOOK_BRIDGE_EVENT_FORWARDED,

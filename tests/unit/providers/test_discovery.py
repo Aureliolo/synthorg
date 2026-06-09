@@ -1,9 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for provider model auto-discovery."""
 
 import socket
 from collections.abc import Generator
-from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
@@ -23,7 +21,7 @@ from synthorg.providers.probing import (
 pytestmark = pytest.mark.unit
 
 
-def _mock_response(json_data: Any, status_code: int = 200) -> httpx.Response:
+def _mock_response(json_data: object, status_code: int = 200) -> httpx.Response:
     """Build a fake httpx.Response."""
     return httpx.Response(
         status_code=status_code,
@@ -494,7 +492,7 @@ class TestProbePresetUrls:
             {"models": [{"name": "phi3"}, {"name": "llama3"}]},
         )
 
-        async def side_effect_get(url: str, **kwargs: Any) -> httpx.Response:
+        async def side_effect_get(url: str, **kwargs: object) -> httpx.Response:
             if "host.docker.internal" in url:
                 msg = "refused"
                 raise httpx.ConnectError(msg)

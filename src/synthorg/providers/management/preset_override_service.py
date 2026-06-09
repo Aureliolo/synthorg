@@ -23,12 +23,14 @@ from typing import TYPE_CHECKING
 
 from pydantic import JsonValue
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_PRESET_OVERRIDE_DELETED,
     PROVIDER_PRESET_OVERRIDE_UPDATED,
 )
 from synthorg.providers.errors import ProviderValidationError
+from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.capability_dtos import (
     PresetOverride,
     PresetOverrideUpdateRequest,
@@ -37,9 +39,10 @@ from synthorg.providers.management.capability_dtos import (
 from synthorg.providers.presets import CloudPreset, LocalPreset, get_preset
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
+    # PresetOverrideRepo is a runtime_checkable protocol; tests inject a
+    # duck-typed fake whose ``delete`` positional name differs, so a runtime
+    # import would make typeguard reject the fake (concrete-faked collaborator).
     from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
-    from synthorg.providers.management.audit_service import ProviderAuditService
 
 logger = get_logger(__name__)
 

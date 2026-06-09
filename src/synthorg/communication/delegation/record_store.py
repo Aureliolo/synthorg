@@ -8,8 +8,10 @@ count exceeds ``max_records``, oldest entries are evicted (FIFO).
 import asyncio
 import threading
 from collections import deque
-from typing import TYPE_CHECKING, Final
+from datetime import datetime
+from typing import Final
 
+from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
     DELEGATION_RECORD_EVICTED,
@@ -18,11 +20,6 @@ from synthorg.observability.events.delegation import (
     DELEGATION_RECORDS_QUERIED,
     DELEGATION_TIME_RANGE_INVALID,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.communication.delegation.models import DelegationRecord
 
 logger = get_logger(__name__)
 

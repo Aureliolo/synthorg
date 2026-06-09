@@ -1,13 +1,10 @@
 """Shared prompt builders for meeting protocol implementations."""
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
 
+from synthorg.communication.meeting.models import MeetingAgenda
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.communication.meeting.models import MeetingAgenda
 
 logger = get_logger(__name__)
 

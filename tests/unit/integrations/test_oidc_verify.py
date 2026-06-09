@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """OIDC id_token verification: signature, claims, and nonce binding.
 
 These tests own a module-scope RSA keypair and stub the JWKS lookup so
@@ -12,7 +11,6 @@ stored value is accepted.
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import patch
 
 import jwt
@@ -36,9 +34,9 @@ _PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 _OTHER_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
 
-def _claims(**overrides: Any) -> dict[str, Any]:
+def _claims(**overrides: object) -> dict[str, object]:
     now = datetime.now(UTC)
-    base: dict[str, Any] = {
+    base: dict[str, object] = {
         "iss": _ISSUER,
         "aud": _CLIENT_ID,
         "sub": "user-1",
@@ -50,7 +48,7 @@ def _claims(**overrides: Any) -> dict[str, Any]:
     return base
 
 
-def _sign(claims: dict[str, Any], *, key: Any = _PRIVATE_KEY) -> str:
+def _sign(claims: dict[str, object], *, key: rsa.RSAPrivateKey = _PRIVATE_KEY) -> str:
     return jwt.encode(claims, key, algorithm="RS256")
 
 
@@ -60,7 +58,7 @@ def _stub_jwks() -> Iterator[None]:
     oidc_verify._reset_jwks_cache_for_tests()
 
     class _FakeJWKClient:
-        def __init__(self, *_a: Any, **_kw: Any) -> None:
+        def __init__(self, *_a: object, **_kw: object) -> None:
             pass
 
         def get_signing_key_from_jwt(self, _token: str) -> SimpleNamespace:

@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Edge-case tests for :class:`PendingFuturesRegistry`."""
 
 import asyncio

@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for ConnectionCatalog.rebind_repository.
 
 The catalog is built with an in-memory stub before persistence is
@@ -9,7 +8,6 @@ the cache so subsequent reads observe the new backend.
 """
 
 from collections.abc import Iterator
-from typing import Any
 
 import pytest
 from typeguard import suppress_type_checks
@@ -43,15 +41,15 @@ class _StubRepo:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[object, ...]:
         del limit, offset
         self.list_all_calls += 1
         return ()
 
-    async def save(self, _connection: Any) -> Any:  # pragma: no cover
+    async def save(self, _connection: object) -> object:  # pragma: no cover
         raise NotImplementedError
 
-    async def get(self, _name: str) -> Any:  # pragma: no cover
+    async def get(self, _name: str) -> object:  # pragma: no cover
         raise NotImplementedError
 
     async def delete(self, _name: str) -> bool:  # pragma: no cover
@@ -61,13 +59,21 @@ class _StubRepo:
 class _StubSecretBackend:
     """No-op secret backend; rebind doesn't touch it."""
 
-    async def store(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
+    async def store(  # pragma: no cover
+        self,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
         raise NotImplementedError
 
-    async def fetch(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
+    async def fetch(  # pragma: no cover
+        self,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
         raise NotImplementedError
 
-    async def delete(self, *args: Any, **kwargs: Any) -> bool:  # pragma: no cover
+    async def delete(self, *args: object, **kwargs: object) -> bool:  # pragma: no cover
         raise NotImplementedError
 
 

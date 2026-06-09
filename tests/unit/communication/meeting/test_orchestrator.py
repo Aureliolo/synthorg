@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.communication.meeting._meeting_utils import format_exception
 from synthorg.communication.meeting.config import (
     MeetingProtocolConfig,
 )
@@ -23,7 +24,6 @@ from synthorg.communication.meeting.models import (
 )
 from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,
-    _format_exception,
 )
 from synthorg.communication.meeting.position_papers import (
     PositionPapersProtocol,
@@ -61,20 +61,20 @@ def _make_orchestrator(
 
 @pytest.mark.unit
 class TestFormatException:
-    """Tests for _format_exception helper."""
+    """Tests for the format_exception helper."""
 
     def test_simple_exception(self) -> None:
         exc = RuntimeError("something broke")
-        # ``_format_exception`` routes through ``safe_error_description``
+        # ``format_exception`` routes through ``safe_error_description``
         # so the redacted output prefixes the exception type name.
-        assert _format_exception(exc) == "RuntimeError: something broke"
+        assert format_exception(exc) == "RuntimeError: something broke"
 
     def test_exception_group(self) -> None:
         group = ExceptionGroup(
             "errors",
             [RuntimeError("err1"), ValueError("err2")],
         )
-        result = _format_exception(group)
+        result = format_exception(group)
         assert "Multiple errors:" in result
         assert "RuntimeError: err1" in result
         assert "ValueError: err2" in result
@@ -85,7 +85,7 @@ class TestFormatException:
             "outer",
             [RuntimeError("outer err"), inner],
         )
-        result = _format_exception(outer)
+        result = format_exception(outer)
         assert "RuntimeError: outer err" in result
         assert "TypeError: bad type" in result
 

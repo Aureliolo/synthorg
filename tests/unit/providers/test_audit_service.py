@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for ``ProviderAuditService``."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -10,6 +8,7 @@ from synthorg.api.dto_provider_capabilities import (
     ProviderAuditActor,
     ProviderAuditEvent,
 )
+from synthorg.persistence.provider_audit_protocol import ProviderAuditFilterSpec
 from synthorg.providers.management.audit_service import ProviderAuditService
 
 
@@ -75,7 +74,7 @@ class _FakeRepo:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: ProviderAuditFilterSpec,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- canonical ADR-0001 page size
         offset: int = 0,
@@ -89,7 +88,7 @@ class _FakeRepo:
             rows = [e for e in rows if _row_id(e) < filter_spec.after_id]
         return tuple(rows[offset : offset + limit])
 
-    async def purge_before(self, threshold: Any) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         before = len(self.records)
         self.records = [e for e in self.records if e.occurred_at >= threshold]
         return before - len(self.records)

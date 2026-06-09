@@ -9,7 +9,6 @@ operation, which would mislead telemetry consumers into seeing both a
 import asyncio
 from collections.abc import Iterator
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 from typeguard import suppress_type_checks
@@ -42,18 +41,18 @@ class _RecordingLogger:
 
     def __init__(self) -> None:
         self.info_events: list[str] = []
-        self.warning_events: list[tuple[str, dict[str, Any]]] = []
+        self.warning_events: list[tuple[str, dict[str, object]]] = []
 
-    def info(self, event: str, **kwargs: Any) -> None:
+    def info(self, event: str, **kwargs: object) -> None:
         self.info_events.append(event)
 
-    def warning(self, event: str, **kwargs: Any) -> None:
+    def warning(self, event: str, **kwargs: object) -> None:
         self.warning_events.append((event, kwargs))
 
-    def debug(self, event: str, **kwargs: Any) -> None:
+    def debug(self, event: str, **kwargs: object) -> None:
         pass
 
-    def error(self, event: str, **kwargs: Any) -> None:
+    def error(self, event: str, **kwargs: object) -> None:
         pass
 
 

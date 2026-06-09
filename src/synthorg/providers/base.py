@@ -6,14 +6,12 @@ automatic retry, rate limiting, and provides a cost-computation helper.
 """
 
 import asyncio
-import math
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
 from typing import Final, ParamSpec, TypeVar
 
 from opentelemetry.trace import Status, StatusCode
 
-from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
@@ -31,15 +29,15 @@ from synthorg.observability.events.provider import (
 from synthorg.observability.metrics_hub import record_provider_error
 from synthorg.observability.tracing.instrumentation import get_tracer
 
+from ._validation import validate_messages, validate_model
 from .capabilities import ModelCapabilities
 from .cost_recording import current_cost_context, emit_cost_record_from_context
-from .errors import InvalidRequestError, RateLimitError, classify_provider_error
+from .errors import RateLimitError, classify_provider_error
 from .models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
     StreamChunk,
-    TokenUsage,
     ToolDefinition,
 )
 from .resilience.errors import RetryExhaustedError
@@ -67,8 +65,8 @@ class BaseCompletionProvider(ABC):
     The public methods validate inputs before delegating to hooks.
     When a ``retry_handler`` and/or ``rate_limiter`` are provided,
     calls are automatically wrapped with retry and rate-limiting logic.
-    A static ``compute_cost`` helper is available for subclasses to
-    build ``TokenUsage`` records from raw token counts.
+    Subclasses build ``TokenUsage`` records from raw token counts via
+    ``compute_token_cost`` (``synthorg.providers._cost``).
 
     Args:
         retry_handler: Optional retry handler for transient errors.
@@ -134,8 +132,8 @@ class BaseCompletionProvider(ABC):
             InvalidRequestError: If messages are empty or model is blank.
             RetryExhaustedError: If all retries are exhausted.
         """
-        self._validate_messages(messages)
-        self._validate_model(model)
+        validate_messages(messages)
+        validate_model(model)
         logger.debug(
             PROVIDER_CALL_START,
             model=model,
@@ -302,8 +300,8 @@ class BaseCompletionProvider(ABC):
             InvalidRequestError: If messages are empty or model is blank.
             RetryExhaustedError: If all retries are exhausted.
         """
-        self._validate_messages(messages)
-        self._validate_model(model)
+        validate_messages(messages)
+        validate_model(model)
         logger.debug(
             PROVIDER_STREAM_START,
             model=model,
@@ -361,7 +359,7 @@ class BaseCompletionProvider(ABC):
             InvalidRequestError: If model is blank.
             RetryExhaustedError: If all retries are exhausted.
         """
-        self._validate_model(model)
+        validate_model(model)
 
         async def _attempt() -> ModelCapabilities:
             """Run one rate-limited capability lookup for the retry handler.
@@ -606,104 +604,3 @@ class BaseCompletionProvider(ABC):
         finally:
             if acquired and not streaming_owns_release:
                 self._rate_limiter.release()  # type: ignore[union-attr]
-
-    # -- Helpers ------------------------------------------------------
-
-    @staticmethod
-    def compute_cost(
-        input_tokens: int,
-        output_tokens: int,
-        *,
-        cost_per_1k_input: float,
-        cost_per_1k_output: float,
-    ) -> TokenUsage:
-        """Build a ``TokenUsage`` from raw token counts and per-1k rates.
-
-        Args:
-            input_tokens: Number of input tokens (must be >= 0).
-            output_tokens: Number of output tokens (must be >= 0).
-            cost_per_1k_input: Cost per 1,000 input tokens in the configured
-                currency (finite and >= 0).
-            cost_per_1k_output: Cost per 1,000 output tokens in the configured
-                currency (finite and >= 0).
-
-        Returns:
-            Populated ``TokenUsage`` with computed cost.
-
-        Raises:
-            InvalidRequestError: If any parameter is negative or
-                non-finite.
-        """
-        if input_tokens < 0:
-            msg = "input_tokens must be non-negative"
-            raise InvalidRequestError(
-                msg,
-                context={"input_tokens": input_tokens},
-            )
-        if output_tokens < 0:
-            msg = "output_tokens must be non-negative"
-            raise InvalidRequestError(
-                msg,
-                context={"output_tokens": output_tokens},
-            )
-        if cost_per_1k_input < 0 or not math.isfinite(cost_per_1k_input):
-            msg = "cost_per_1k_input must be a finite non-negative number"
-            raise InvalidRequestError(
-                msg,
-                context={"cost_per_1k_input": cost_per_1k_input},
-            )
-        if cost_per_1k_output < 0 or not math.isfinite(cost_per_1k_output):
-            msg = "cost_per_1k_output must be a finite non-negative number"
-            raise InvalidRequestError(
-                msg,
-                context={"cost_per_1k_output": cost_per_1k_output},
-            )
-        cost = (input_tokens / 1000) * cost_per_1k_input + (
-            output_tokens / 1000
-        ) * cost_per_1k_output
-        return TokenUsage(
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost=round(cost, BUDGET_ROUNDING_PRECISION),
-        )
-
-    @staticmethod
-    def _validate_messages(messages: list[ChatMessage]) -> None:
-        """Reject empty message lists.
-
-        Args:
-            messages: Conversation messages.
-
-        Raises:
-            InvalidRequestError: If no messages are provided.
-        """
-        if not messages:
-            msg = "messages must not be empty"
-            logger.error(PROVIDER_CALL_ERROR, error="messages must not be empty")
-            raise InvalidRequestError(msg, context={"field": "messages"})
-
-    @staticmethod
-    def _validate_model(model: str) -> None:
-        """Reject blank, empty, or non-string model identifiers.
-
-        Args:
-            model: Model identifier string.
-
-        Raises:
-            InvalidRequestError: If model is not a string, empty,
-                or whitespace-only.
-        """
-        if not isinstance(model, str) or not model.strip():
-            msg = "model must be a non-blank string"
-            logger.error(
-                PROVIDER_CALL_ERROR,
-                error="model must be a non-blank string",
-                received_type=type(model).__name__,
-            )
-            raise InvalidRequestError(
-                msg,
-                context={
-                    "field": "model",
-                    "received_type": type(model).__name__,
-                },
-            )

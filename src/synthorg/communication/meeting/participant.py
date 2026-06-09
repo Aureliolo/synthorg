@@ -4,7 +4,8 @@ Resolves participant reference strings (department names, agent names,
 special values like ``"all"``, literal IDs) into agent ID tuples.
 """
 
-from typing import Any, Protocol, runtime_checkable
+from collections.abc import Mapping
+from typing import Protocol, runtime_checkable
 
 from synthorg.communication.meeting.errors import NoParticipantsResolvedError
 from synthorg.core.normalization import compare_ci
@@ -18,7 +19,7 @@ from synthorg.observability.events.meeting import (
 logger = get_logger(__name__)
 
 
-def _resolve_context_value(entry: str, val: Any) -> list[str]:
+def _resolve_context_value(entry: str, val: object) -> list[str]:
     """Resolve a participant entry from an event context value.
 
     Shared logic for both ``PassthroughParticipantResolver`` and
@@ -61,7 +62,7 @@ class ParticipantResolver(Protocol):
     async def resolve(
         self,
         participant_refs: tuple[str, ...],
-        context: dict[str, Any] | None = None,
+        context: Mapping[str, object] | None = None,
     ) -> tuple[str, ...]:
         """Resolve participant reference strings to agent ID strings.
 
@@ -94,7 +95,7 @@ class PassthroughParticipantResolver:
     async def resolve(
         self,
         participant_refs: tuple[str, ...],
-        context: dict[str, Any] | None = None,
+        context: Mapping[str, object] | None = None,
     ) -> tuple[str, ...]:
         """Resolve participant references to agent IDs.
 
@@ -160,7 +161,7 @@ class RegistryParticipantResolver:
     async def resolve(
         self,
         participant_refs: tuple[str, ...],
-        context: dict[str, Any] | None = None,
+        context: Mapping[str, object] | None = None,
     ) -> tuple[str, ...]:
         """Resolve participant references to agent IDs.
 
@@ -208,7 +209,7 @@ class RegistryParticipantResolver:
     async def _resolve_entry(
         self,
         entry: str,
-        ctx: dict[str, Any],
+        ctx: Mapping[str, object],
     ) -> list[str]:
         """Resolve a single participant entry via context then registry.
 
@@ -224,7 +225,7 @@ class RegistryParticipantResolver:
         return await self._resolve_from_registry(entry)
 
     @staticmethod
-    def _resolve_from_context(entry: str, val: Any) -> list[str]:
+    def _resolve_from_context(entry: str, val: object) -> list[str]:
         """Resolve a participant entry from event context.
 
         Delegates to the shared ``_resolve_context_value`` helper.

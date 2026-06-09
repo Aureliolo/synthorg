@@ -29,6 +29,9 @@ from synthorg.observability.metrics_hub import record_escalation_outcome
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
 
 if TYPE_CHECKING:
+    # ConfigResolver is concrete and injected via mocks in tests; a runtime
+    # import would make typeguard reject the fake (and closes the escalation
+    # config cycle).
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)

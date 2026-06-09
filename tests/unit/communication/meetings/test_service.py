@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for :class:`MeetingService`.
 
 Focus on the rewritten ``delete_meeting`` path: routes through the
@@ -7,7 +6,7 @@ unchanged, and emits the audit-grade
 ``COMMUNICATION_MEETING_DELETED`` event on success only.
 """
 
-from typing import Any
+from unittest.mock import Mock
 
 import pytest
 import structlog.testing
@@ -23,7 +22,7 @@ from tests._shared import mock_of
 pytestmark = pytest.mark.unit
 
 
-def _make_service(*, deleted: bool) -> tuple[MeetingService, Any]:
+def _make_service(*, deleted: bool) -> tuple[MeetingService, Mock]:
     orch = mock_of[MeetingOrchestrator]()
     orch.delete_record.return_value = deleted
     service = MeetingService(orchestrator=orch)

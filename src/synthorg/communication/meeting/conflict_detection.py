@@ -12,7 +12,6 @@ Strategies include:
 """
 
 import re
-from typing import Any
 
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.observability import get_logger
@@ -54,7 +53,7 @@ _IDENTITY_KEYS: frozenset[str] = frozenset(
 )
 
 
-def _extract_json_object(text: str) -> dict[str, Any] | None:
+def _extract_json_object(text: str) -> dict[str, object] | None:
     """Extract a JSON object from text via the shared LLM JSON helper.
 
     Returns:
@@ -132,7 +131,7 @@ class StructuredComparisonDetector:
             )
             return False
 
-    def _extract_json(self, text: str) -> dict[str, Any] | None:
+    def _extract_json(self, text: str) -> dict[str, object] | None:
         """Extract JSON object from text.
 
         Returns:
@@ -142,8 +141,8 @@ class StructuredComparisonDetector:
 
     def _get_positions(
         self,
-        data: dict[str, Any],
-    ) -> list[dict[str, Any]]:
+        data: dict[str, object],
+    ) -> list[dict[str, object]]:
         """Extract positions from parsed JSON.
 
         Looks for "positions" (plural) or "position" (singular) fields.
@@ -165,7 +164,7 @@ class StructuredComparisonDetector:
 
     def _has_field_conflicts(
         self,
-        positions: list[dict[str, Any]],
+        positions: list[dict[str, object]],
     ) -> bool:
         """Check if any top-level field differs between positions.
 
@@ -263,7 +262,7 @@ class LlmJudgeDetector:
         # Fallback to whitespace-tolerant keyword detection
         return KeywordConflictDetector().detect(response_content)
 
-    def _extract_json(self, text: str) -> dict[str, Any] | None:
+    def _extract_json(self, text: str) -> dict[str, object] | None:
         """Extract JSON object from text.
 
         Returns:

@@ -1,23 +1,19 @@
 """WebhookService -- facade for ``synthorg_webhooks_*`` MCP tools."""
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
+from synthorg.integrations.webhooks.definition_store_protocol import (
+    WebhookDefinitionStore,
+)
+from synthorg.integrations.webhooks.models import WebhookDefinition
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMMUNICATION_WEBHOOK_CREATED,
     COMMUNICATION_WEBHOOK_DELETED,
     COMMUNICATION_WEBHOOK_UPDATED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.integrations.webhooks.definition_store_protocol import (
-        WebhookDefinitionStore,
-    )
-    from synthorg.integrations.webhooks.models import WebhookDefinition
 
 logger = get_logger(__name__)
 

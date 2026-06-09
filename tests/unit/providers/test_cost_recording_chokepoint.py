@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Conformance tests for the BaseCompletionProvider cost-recording chokepoint.
 
 A successful ``provider.complete()`` call inside an open

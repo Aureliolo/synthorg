@@ -28,6 +28,11 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from synthorg.communication.conflict_resolution._escalation_builders import (
+    build_escalation_notification,
+    cancelled_resolution,
+    timeout_resolution,
+)
 from synthorg.communication.conflict_resolution.escalation.models import (
     Escalation,
     EscalationStatus,
@@ -42,16 +47,10 @@ from synthorg.communication.conflict_resolution.escalation.registry import (
 from synthorg.communication.conflict_resolution.models import (
     Conflict,
     ConflictResolution,
-    ConflictResolutionOutcome,
     DissentRecord,
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.notifications.dispatcher import NotificationDispatcher
-from synthorg.notifications.models import (
-    Notification,
-    NotificationCategory,
-    NotificationSeverity,
-)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.conflict import (
@@ -228,10 +227,10 @@ class HumanEscalationResolver:
             if late_decision is not None:
                 return late_decision
             await self._handle_timeout_cleanup(escalation, conflict)
-            return self._timeout_resolution(conflict)
+            return timeout_resolution(conflict)
         except asyncio.CancelledError:
             await self._handle_cancelled_cleanup(escalation, conflict)
-            return self._cancelled_resolution(conflict)
+            return cancelled_resolution(conflict)
 
         # The decision endpoint is responsible for persisting the
         # DECIDED row and then resolving the Future -- the resolver
@@ -272,7 +271,7 @@ class HumanEscalationResolver:
         try:
             await asyncio.wait_for(
                 self._notifier.dispatch(
-                    self._build_notification(escalation, conflict),
+                    build_escalation_notification(escalation, conflict),
                 ),
                 timeout=_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS,
             )
@@ -515,84 +514,4 @@ class HumanEscalationResolver:
             status=EscalationStatus.PENDING,
             created_at=now,
             expires_at=expires_at,
-        )
-
-    def _build_notification(
-        self,
-        escalation: Escalation,
-        conflict: Conflict,
-    ) -> Notification:
-        """Render an operator-facing notification for the new escalation.
-
-        Returns:
-            The escalation ``Notification`` for operator delivery.
-        """
-        summary_lines = [f"Conflict subject: {conflict.subject}"]
-        summary_lines.extend(
-            f"- {position.agent_id} ({position.agent_department}, "
-            f"{position.agent_level}): {position.position}"
-            for position in conflict.positions
-        )
-        body = "\n".join(summary_lines)
-        metadata: dict[str, object] = {
-            "escalation_id": escalation.id,
-            "conflict_id": conflict.id,
-            "conflict_type": conflict.type.value,
-            "subject": conflict.subject,
-        }
-        if conflict.task_id is not None:
-            metadata["task_id"] = conflict.task_id
-        if escalation.expires_at is not None:
-            metadata["expires_at"] = escalation.expires_at.isoformat()
-        return Notification(
-            category=NotificationCategory.ESCALATION,
-            severity=NotificationSeverity.WARNING,
-            title=f"Conflict escalation pending: {conflict.id}",
-            body=body,
-            source="conflict_resolution.human_strategy",
-            metadata=metadata,
-        )
-
-    def _timeout_resolution(self, conflict: Conflict) -> ConflictResolution:
-        """Resolution returned when no decision arrives in time.
-
-        Returns:
-            An ESCALATED_TO_HUMAN resolution carrying the timeout reason.
-        """
-        reason = (
-            "No human decision was collected before the escalation timeout. "
-            "Conflict remains ESCALATED_TO_HUMAN; operators may still decide "
-            "via the REST API."
-        )
-        record_escalation_outcome(outcome="escalated_to_human")
-        return ConflictResolution(
-            conflict_id=str(conflict.id),
-            outcome=ConflictResolutionOutcome.ESCALATED_TO_HUMAN,
-            winning_agent_id=None,
-            winning_position=None,
-            decided_by="human",
-            reasoning=reason,
-            resolved_at=datetime.now(UTC),
-        )
-
-    def _cancelled_resolution(self, conflict: Conflict) -> ConflictResolution:
-        """Resolution returned when the resolver coroutine is cancelled.
-
-        Returns:
-            An ESCALATED_TO_HUMAN resolution carrying the cancellation
-            reason.
-        """
-        reason = (
-            "Escalation resolver was cancelled before a human decision "
-            "could be collected."
-        )
-        record_escalation_outcome(outcome="escalated_to_human")
-        return ConflictResolution(
-            conflict_id=str(conflict.id),
-            outcome=ConflictResolutionOutcome.ESCALATED_TO_HUMAN,
-            winning_agent_id=None,
-            winning_position=None,
-            decided_by="human",
-            reasoning=reason,
-            resolved_at=datetime.now(UTC),
         )

@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for EvidencePackage and RecommendedAction models."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -16,18 +14,18 @@ from synthorg.core.evidence import (
 from synthorg.core.structured_artifact import StructuredArtifact
 
 
-def _make_action(**overrides: Any) -> RecommendedAction:
-    defaults: dict[str, Any] = {
+def _make_action(**overrides: object) -> RecommendedAction:
+    defaults: dict[str, object] = {
         "action_type": "approve",
         "label": "Approve",
         "description": "Approve this action",
     }
     defaults.update(overrides)
-    return RecommendedAction(**defaults)
+    return RecommendedAction(**defaults)  # type: ignore[arg-type]
 
 
-def _make_evidence(**overrides: Any) -> EvidencePackage:
-    defaults: dict[str, Any] = {
+def _make_evidence(**overrides: object) -> EvidencePackage:
+    defaults: dict[str, object] = {
         "id": "ep-001",
         "title": "Tool execution approval",
         "narrative": "Agent requests permission to execute deploy tool.",
@@ -39,7 +37,7 @@ def _make_evidence(**overrides: Any) -> EvidencePackage:
         "risk_level": ApprovalRiskLevel.MEDIUM,
     }
     defaults.update(overrides)
-    return EvidencePackage(**defaults)
+    return EvidencePackage(**defaults)  # type: ignore[arg-type]
 
 
 @pytest.mark.unit

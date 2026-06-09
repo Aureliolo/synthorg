@@ -7,18 +7,14 @@ contract (``start`` / ``stop`` / ``get_url``):
 * ``synthorg_tunnel_connect`` -- idempotent ``start()`` returning URL.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.integrations.tunnel.protocol import TunnelProvider
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMMUNICATION_TUNNEL_CONNECTED,
     COMMUNICATION_TUNNEL_PROVIDER_ERROR,
     COMMUNICATION_TUNNEL_STATUS_CHECKED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.integrations.tunnel.protocol import TunnelProvider
 
 logger = get_logger(__name__)
 

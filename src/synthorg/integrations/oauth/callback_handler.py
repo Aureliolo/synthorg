@@ -18,6 +18,7 @@ from synthorg.integrations.oauth.flows.authorization_code import (
     AuthorizationCodeFlow,
 )
 from synthorg.integrations.oauth.oidc_verify import verify_id_token
+from synthorg.integrations.oauth.state_service import OAuthStateService
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     OAUTH_CALLBACK_RECEIVED,
@@ -28,7 +29,8 @@ from synthorg.observability.events.integrations import (
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 
 if TYPE_CHECKING:
-    from synthorg.integrations.oauth.state_service import OAuthStateService
+    # ConfigResolver is concrete and injected via mocks in tests; a runtime
+    # import would make typeguard reject the fake.
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)

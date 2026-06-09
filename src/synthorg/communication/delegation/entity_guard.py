@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.communication.delegation.models import DelegationRequest
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -23,7 +24,9 @@ from synthorg.observability.events.ontology import (
 from synthorg.ontology.config import GuardMode
 
 if TYPE_CHECKING:
-    from synthorg.communication.delegation.models import DelegationRequest
+    # DelegationGuardConfig (ontology.config) and the OntologyEntityRepository
+    # protocol are mock-injected collaborators; a runtime import would make
+    # typeguard reject the fakes.
     from synthorg.ontology.config import DelegationGuardConfig
     from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 

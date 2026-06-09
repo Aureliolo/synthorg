@@ -2,35 +2,39 @@
 
 Central registry for external service connections.  Provides CRUD,
 lookup, credential resolution, and health status management.
+
+Behaviour is composed from cohesive mixins: cache + per-name locks
+(``_cache.py``), credential resolution (``_credential_resolver.py``),
+the create pipeline (``_create_pipeline.py``), and OAuth token rotation
+(``_oauth_rotation.py``). This module keeps the orchestration: create,
+update, delete, health, and lookup.
 """
 
 import asyncio
 import copy
-import json
 from datetime import UTC, datetime
 from typing import override
 from uuid import uuid4
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections._cache import ConnectionCacheMixin
+from synthorg.integrations.connections._create_pipeline import ConnectionCreateMixin
+from synthorg.integrations.connections._credential_resolver import (
+    CredentialResolverMixin,
+)
 from synthorg.integrations.connections._oauth_rotation import OAuthRotationMixin
 from synthorg.integrations.connections.models import (
-    AuthMethod,
     Connection,
     ConnectionStatus,
     ConnectionType,
-    SecretRef,
 )
-from synthorg.integrations.connections.types import get_authenticator
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     DuplicateConnectionError,
-    InvalidConnectionAuthError,
-    SecretRetrievalError,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
-    CONNECTION_CREATE_FAILED,
     CONNECTION_CREATED,
     CONNECTION_DELETED,
     CONNECTION_DUPLICATE,
@@ -41,10 +45,7 @@ from synthorg.observability.events.integrations import (
     HEALTH_STATUS_TRANSITIONED,
     SECRET_DELETE_FAILED,
     SECRET_DELETED,
-    SECRET_RETRIEVAL_FAILED,
 )
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import paginate
 from synthorg.persistence.connection_protocol import (
     ConnectionRepository,
 )
@@ -68,7 +69,12 @@ _UNSET = _UnsetType()
 """Sentinel value to distinguish 'not provided' from None."""
 
 
-class ConnectionCatalog(OAuthRotationMixin):
+class ConnectionCatalog(
+    ConnectionCacheMixin,
+    CredentialResolverMixin,
+    ConnectionCreateMixin,
+    OAuthRotationMixin,
+):
     """Central registry for external service connections.
 
     Thread-safe via ``asyncio.Lock`` for cache invalidation.
@@ -95,226 +101,6 @@ class ConnectionCatalog(OAuthRotationMixin):
         # would otherwise leave orphaned secrets or repo rows.
         self._name_locks: dict[str, asyncio.Lock] = {}
         self._name_locks_lock = asyncio.Lock()
-
-    async def rebind_repository(self, repository: ConnectionRepository) -> None:
-        """Swap the underlying repository and invalidate the cache.
-
-        Used by the API lifecycle hook to graduate the catalog from the
-        startup-window ``InMemoryConnectionRepository`` stub (installed
-        before ``persistence.connect()`` succeeds) to the real
-        backend-bound repository once persistence is live.
-
-        Args:
-            repository: The newly-available persistence-backed
-                ``ConnectionRepository`` to take over from this point on.
-        """
-        # Hold ``_cache_lock`` for the swap so a concurrent
-        # ``_ensure_cache`` cannot observe a half-swapped state where
-        # ``self._repo`` is already the new backend but ``self._cache``
-        # still carries entries seeded from the in-memory stub.
-        async with self._cache_lock:
-            self._repo = repository
-            self._cache = {}
-            self._cache_valid = False
-
-    async def _ensure_cache(self) -> None:
-        """Populate the cache from persistence if invalid."""
-        if self._cache_valid:
-            return
-        async with self._cache_lock:
-            # Re-check under lock (double-checked locking)
-            if not self._cache_valid:
-                # The catalog needs every persisted connection to
-                # satisfy synchronous ``by_name`` lookups, so page
-                # through the full set: a single capped read would
-                # silently drop connections past the backend page cap.
-                collected: list[Connection] = []
-                async for page in paginate(
-                    lambda limit, offset: self._repo.list_items(
-                        limit=limit, offset=offset
-                    ),
-                    page_size=DEFAULT_PAGE_SIZE,
-                ):
-                    collected.extend(page)
-                self._cache = {c.name: c for c in collected}
-                self._cache_valid = True
-
-    @override
-    def _invalidate_cache(self) -> None:
-        """Mark the cached connection snapshot stale (forces a reload)."""
-        self._cache_valid = False
-
-    def get_cached(self, name: str) -> Connection | None:
-        """Return the cached connection for ``name`` without populating.
-
-        Synchronous peek into the in-memory cache; returns ``None`` when
-        the cache has not been primed yet or the name is unknown. Use
-        when callers prefer a best-effort read over forcing a
-        repository fetch (e.g. boot-time rate-limit coordinators).
-        """
-        if not self._cache_valid:
-            return None
-        return self._cache.get(name)
-
-    @override
-    async def _lock_for(self, name: str) -> asyncio.Lock:
-        """Return (or create) the mutation lock for a connection name."""
-        async with self._name_locks_lock:
-            lock = self._name_locks.get(name)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._name_locks[name] = lock
-            return lock
-
-    def _validate_credentials_for_create(
-        self,
-        name: str,
-        connection_type: ConnectionType,
-        credentials: dict[str, str],
-    ) -> None:
-        """Validate credentials via the type's authenticator before persist.
-
-        Raises:
-            InvalidConnectionAuthError: If the type's authenticator
-                rejects the supplied credentials.
-        """
-        authenticator = get_authenticator(connection_type)
-        try:
-            authenticator.validate_credentials(credentials)
-        except InvalidConnectionAuthError:
-            logger.warning(
-                CONNECTION_VALIDATION_FAILED,
-                connection_name=name,
-                connection_type=connection_type,
-            )
-            raise
-
-    def _build_connection(  # noqa: PLR0913
-        self,
-        *,
-        name: str,
-        connection_type: ConnectionType,
-        auth_method: str,
-        base_url: str | None,
-        secret_id: str,
-        metadata: dict[str, str] | None,
-        health_check_enabled: bool,
-        webhook_receipt_retention_days: int | None,
-        sensitive: bool = False,
-    ) -> Connection:
-        """Build and validate the ``Connection`` model BEFORE secret writes.
-
-        ``NotBlankStr`` rejections, ``AuthMethod`` rejections, and
-        Pydantic ``@model_validator`` failures are caught here so we
-        never leave an orphaned secret behind with no row to clean it
-        up from.
-
-        Returns:
-            The fully constructed and validated ``Connection`` model,
-            ready for secret write and persistence.
-        """
-        secret_ref = SecretRef(
-            secret_id=NotBlankStr(secret_id),
-            backend=NotBlankStr(self._secret_backend.backend_name),
-        )
-        now = datetime.now(UTC)
-        try:
-            return Connection(
-                name=NotBlankStr(name),
-                connection_type=connection_type,
-                auth_method=AuthMethod(auth_method),
-                base_url=NotBlankStr(base_url) if base_url else None,
-                secret_refs=(secret_ref,),
-                health_check_enabled=health_check_enabled,
-                metadata=metadata or {},
-                webhook_receipt_retention_days=webhook_receipt_retention_days,
-                sensitive=sensitive,
-                created_at=now,
-                updated_at=now,
-            )
-        except Exception as exc:
-            reraise_critical(exc)
-            # Surface ``connection_name`` context on model-construction
-            # failures.  Without this the resulting 500 carries the
-            # exception's raw message but no resource attribution.
-            logger.warning(
-                CONNECTION_VALIDATION_FAILED,
-                connection_name=name,
-                connection_type=connection_type,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
-
-    @override
-    async def _store_secret(
-        self,
-        secret_id: str,
-        credentials: dict[str, str],
-        *,
-        connection_name: str,
-        failure_event: str = CONNECTION_CREATE_FAILED,
-    ) -> None:
-        """Store credentials via the secret backend with structured error log.
-
-        ``failure_event`` lets callers route store-failure logs to the
-        right operation taxonomy (``CONNECTION_CREATE_FAILED`` for the
-        create path, ``OAUTH_TOKEN_EXCHANGE_FAILED`` for the rotation
-        path) so dashboards keyed by event type stay consistent.
-        """
-        try:
-            await self._secret_backend.store(
-                secret_id,
-                json.dumps(credentials).encode("utf-8"),
-            )
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                failure_event,
-                connection_name=connection_name,
-                secret_id=secret_id,
-                note="secret_backend_store_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
-
-    async def _persist_connection_with_cleanup(
-        self,
-        connection: Connection,
-        *,
-        secret_id: str,
-    ) -> None:
-        """Persist the connection row; on failure, delete the orphaned secret.
-
-        Uses a structured warning with a redacted error rather than
-        ``logger.exception`` so a raw traceback cannot leak repo /
-        secret-backend internals into the log sink.
-        """
-        try:
-            await self._repo.save(connection)
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                CONNECTION_CREATE_FAILED,
-                connection_name=connection.name,
-                note="repo_save_failed_deleting_orphaned_secret",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            try:
-                await self._secret_backend.delete(secret_id)
-            except Exception as cleanup_exc:
-                reraise_critical(cleanup_exc)
-                logger.warning(
-                    CONNECTION_CREATE_FAILED,
-                    connection_name=connection.name,
-                    secret_id=secret_id,
-                    note="rollback_delete_failed_manual_cleanup_required",
-                    error_type=type(cleanup_exc).__name__,
-                    error=safe_error_description(cleanup_exc),
-                )
-            raise
 
     async def create(  # noqa: PLR0913
         self,
@@ -723,104 +509,3 @@ class ConnectionCatalog(OAuthRotationMixin):
                     )
             self._invalidate_cache()
             logger.info(CONNECTION_DELETED, connection_name=name)
-
-    async def get_credentials(self, name: str) -> dict[str, str]:
-        """Retrieve decrypted credentials for a connection.
-
-        Resolves all ``SecretRef`` entries and returns the merged
-        credential dict.
-
-        Returns:
-            A merged dict of plaintext credential key-value pairs from
-            all of the connection's ``SecretRef`` entries.
-
-        Raises:
-            ConnectionNotFoundError: If the connection does not exist.
-            SecretRetrievalError: If a referenced secret is missing
-                or cannot be decoded.
-        """
-        conn = await self.get_or_raise(name)
-        return await self._resolve_credentials_for(conn)
-
-    @override
-    async def _resolve_credentials_for(
-        self,
-        conn: Connection,
-    ) -> dict[str, str]:
-        """Decrypt and merge credentials for a pre-loaded ``Connection``.
-
-        Extracted from :meth:`get_credentials` so callers that have
-        already loaded the connection under a lock can reuse the
-        merge logic without hitting the cache a second time.
-
-        Returns:
-            A deep-copied dict of merged plaintext credential key-value
-            pairs from all of the connection's ``SecretRef`` entries.
-
-        Raises:
-            SecretRetrievalError: If a referenced secret is missing or
-                cannot be decoded by the backend.
-        """
-        name = conn.name
-        merged: dict[str, str] = {}
-        for ref in conn.secret_refs:
-            raw = await self._secret_backend.retrieve(ref.secret_id)
-            if raw is None:
-                logger.warning(
-                    SECRET_RETRIEVAL_FAILED,
-                    connection_name=name,
-                    secret_id=ref.secret_id,
-                    error="secret not found",
-                )
-                msg = (
-                    f"Secret '{ref.secret_id}' for connection "
-                    f"'{name}' not found in backend"
-                )
-                raise SecretRetrievalError(msg)
-            try:
-                data = json.loads(raw.decode("utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                # Raw exception messages on this code path may contain
-                # secret material (the malformed payload was the
-                # connection's stored secret); route the description
-                # through ``safe_error_description`` so the credential
-                # scrubber masks any embedded tokens before logging.
-                logger.warning(
-                    SECRET_RETRIEVAL_FAILED,
-                    connection_name=name,
-                    secret_id=ref.secret_id,
-                    note="malformed_secret",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                msg = f"Secret '{ref.secret_id}' for connection '{name}' is malformed"
-                raise SecretRetrievalError(msg) from exc
-            if not isinstance(data, dict):
-                logger.warning(
-                    SECRET_RETRIEVAL_FAILED,
-                    connection_name=name,
-                    secret_id=ref.secret_id,
-                    error="secret payload is not a dict",
-                )
-                msg = (
-                    f"Secret '{ref.secret_id}' for connection "
-                    f"'{name}' is not a credential dict"
-                )
-                raise SecretRetrievalError(msg)
-            if not all(
-                isinstance(key, str) and isinstance(value, str)
-                for key, value in data.items()
-            ):
-                logger.warning(
-                    SECRET_RETRIEVAL_FAILED,
-                    connection_name=name,
-                    secret_id=ref.secret_id,
-                    error="secret payload contains non-string entries",
-                )
-                msg = (
-                    f"Secret '{ref.secret_id}' for connection "
-                    f"'{name}' contains non-string credential entries"
-                )
-                raise SecretRetrievalError(msg)
-            merged.update(data)
-        return copy.deepcopy(merged)

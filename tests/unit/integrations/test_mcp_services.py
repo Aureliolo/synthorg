@@ -1,6 +1,6 @@
 """Unit tests for the integrations MCP facade capability guards.
 
-Each facade in :mod:`synthorg.integrations.mcp_services` wraps a
+Each facade in :mod:`synthorg.integrations.mcp_facades` wraps a
 primitive that may not implement every method.  When the backing
 object lacks the needed callable the facade raises
 :class:`CapabilityNotSupportedError` instead of silently degrading.
@@ -15,7 +15,7 @@ import pytest
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
-from synthorg.integrations.mcp_services import (
+from synthorg.integrations.mcp_facades import (
     ArtifactFacadeService,
     MCPCatalogFacadeService,
     OntologyFacadeService,

@@ -5,7 +5,7 @@ consumer. This module handles creation and teardown of those consumers.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.bus._nats_channels import (
     durable_name,
@@ -30,6 +30,15 @@ from synthorg.observability.events.communication import (
     COMM_SUBSCRIPTION_REMOVED,
 )
 
+if TYPE_CHECKING:
+    # nats-py is an optional dependency, so these stay guarded for clean import
+    # when it is absent.
+    from nats.js import JetStreamContext
+
+    # PullSubscription is a nested class on JetStreamContext, not a
+    # module-level export, so it cannot be imported directly.
+    PullSubscription = JetStreamContext.PullSubscription
+
 logger = get_logger(__name__)
 
 
@@ -38,7 +47,7 @@ async def create_pull_consumer(
     channel_name: str,
     subscriber_id: str,
     channel: Channel,
-) -> Any:
+) -> PullSubscription:
     """Create a durable pull consumer for (channel, subscriber).
 
     Does NOT acquire ``state.lock`` so callers can perform the network
@@ -181,7 +190,7 @@ async def unsubscribe(
         )
         state.channels[channel_name] = updated
         key = (channel_name, subscriber_id)
-        sub: Any = state.subscriptions.pop(key, None)
+        sub: PullSubscription | None = state.subscriptions.pop(key, None)
         # Clear the overflow-log rate-limit entry alongside the
         # subscription so repeatedly subscribing and unsubscribing the
         # same ``(channel, subscriber)`` key cannot leak stale entries

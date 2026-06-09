@@ -7,7 +7,7 @@ and makes the data dependencies between modules explicit.
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import (
@@ -58,7 +58,7 @@ class _NatsState:
     channels: dict[str, Channel] = field(default_factory=dict)
     subscriptions: dict[tuple[str, str], PullSubscription] = field(default_factory=dict)
     known_agents: set[str] = field(default_factory=set)
-    in_flight_fetches: set[asyncio.Task[Any]] = field(default_factory=set)
+    in_flight_fetches: set[asyncio.Task[object]] = field(default_factory=set)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     shutdown_event: asyncio.Event = field(default_factory=asyncio.Event)
     running: bool = False

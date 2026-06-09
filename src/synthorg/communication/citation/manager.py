@@ -7,7 +7,7 @@ returns a new ``CitationManager``, never mutates in place.
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -171,20 +171,31 @@ class CitationManager(BaseModel):
         Returns:
             Reconstructed ``CitationManager`` with all citations
             and the URL-to-number index rebuilt.
+
+        Raises:
+            TypeError: If the payload's ``citations`` is not a list of
+                mappings.
         """
-        raw_list: Any = data.get("citations", [])
-        raw_citations: list[dict[str, Any]] = list(raw_list)
+        raw_list = data.get("citations", [])
+        if not isinstance(raw_list, list):
+            msg = "handoff payload 'citations' must be a list"
+            raise TypeError(msg)
 
         citations: list[Citation] = []
         url_map: dict[str, int] = {}
-        for raw in raw_citations:
-            citation = Citation(
-                number=raw["number"],
-                url=raw["url"],
-                title=raw["title"],
-                first_seen_at=raw["first_seen_at"],
-                first_seen_by_agent_id=raw["first_seen_by_agent_id"],
-                accessed_via=raw["accessed_via"],
+        for raw in raw_list:
+            if not isinstance(raw, Mapping):
+                msg = "handoff citation entry must be a mapping"
+                raise TypeError(msg)
+            citation = Citation.model_validate(
+                {
+                    "number": raw["number"],
+                    "url": raw["url"],
+                    "title": raw["title"],
+                    "first_seen_at": raw["first_seen_at"],
+                    "first_seen_by_agent_id": raw["first_seen_by_agent_id"],
+                    "accessed_via": raw["accessed_via"],
+                },
             )
             citations.append(citation)
             url_map[normalize_url(str(citation.url))] = citation.number

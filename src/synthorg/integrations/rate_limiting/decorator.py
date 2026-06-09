@@ -6,7 +6,7 @@ the existing ``RateLimiter`` from the provider resilience layer.
 
 import functools
 from collections.abc import Callable, Coroutine
-from typing import Any, TypeVar
+from typing import ParamSpec, TypeVar
 
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.observability import get_logger
@@ -17,6 +17,7 @@ from synthorg.providers.resilience.rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
 
+P = ParamSpec("P")
 T = TypeVar("T")
 
 _limiters: dict[tuple[str, str], RateLimiter] = {}
@@ -60,8 +61,8 @@ def with_connection_rate_limit(
     *,
     config: RateLimiterConfig | None = None,
 ) -> Callable[
-    [Callable[..., Coroutine[Any, Any, T]]],
-    Callable[..., Coroutine[Any, Any, T]],
+    [Callable[P, Coroutine[object, object, T]]],
+    Callable[P, Coroutine[object, object, T]],
 ]:
     """Decorator that applies connection-level rate limiting to a tool.
 
@@ -87,11 +88,11 @@ def with_connection_rate_limit(
     config_was_explicit = config is not None
 
     def decorator(
-        fn: Callable[..., Coroutine[Any, Any, T]],
-    ) -> Callable[..., Coroutine[Any, Any, T]]:
+        fn: Callable[P, Coroutine[object, object, T]],
+    ) -> Callable[P, Coroutine[object, object, T]]:
 
         @functools.wraps(fn)
-        async def wrapper(*args: Any, **kwargs: Any) -> T:
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             """Acquire the connection's rate-limit slot, then run ``fn``.
 
             Returns:

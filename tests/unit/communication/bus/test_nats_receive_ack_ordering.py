@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Regression coverage: NATS receive defers JetStream ack until delivery.
 
 The previous implementation called ``msg.ack()`` from inside
@@ -17,7 +16,6 @@ These tests pin two invariants:
 """
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -56,7 +54,7 @@ class TestNatsReceiveAckOrdering:
     async def test_build_envelope_does_not_ack_on_success_path(self) -> None:
         msg = _FakeNatsMessage(_envelope_bytes())
         envelope = await build_envelope(
-            [msg],
+            [msg],  # type: ignore[list-item]
             channel_name="#general",
             subscriber_id="agent-b",
         )
@@ -68,7 +66,7 @@ class TestNatsReceiveAckOrdering:
     async def test_envelope_ack_forwards_to_msg_ack(self) -> None:
         msg = _FakeNatsMessage(_envelope_bytes())
         envelope = await build_envelope(
-            [msg],
+            [msg],  # type: ignore[list-item]
             channel_name="#general",
             subscriber_id="agent-b",
         )
@@ -82,7 +80,7 @@ class TestNatsReceiveOversizedAckImmediately:
         oversized = b"\x00" * (10 * 1024 * 1024)
         msg = _FakeNatsMessage(oversized)
         envelope = await build_envelope(
-            [msg],
+            [msg],  # type: ignore[list-item]
             channel_name="#general",
             subscriber_id="agent-b",
         )
@@ -93,4 +91,4 @@ class TestNatsReceiveOversizedAckImmediately:
 
 
 # Force pytest-asyncio to pick up the coroutine fixtures above.
-__all__: tuple[Any, ...] = ()
+__all__: tuple[str, ...] = ()

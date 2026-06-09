@@ -12,7 +12,7 @@ the tunnel feature simply do not call the start endpoint.
 
 import asyncio
 import os
-from typing import Any, Final
+from typing import Final
 
 from pyngrok import conf, ngrok  # type: ignore[import-untyped]
 
@@ -136,25 +136,29 @@ class NgrokAdapter:
             # so the cleanup branch below can reference it
             # unconditionally without ``locals()`` introspection or
             # ``UnboundLocalError`` if ``ngrok.connect`` itself raises.
-            # Typed ``Any`` because ``pyngrok`` ships untyped stubs and
-            # the returned object exposes ``public_url``.
-            tunnel: Any = None
+            # ``tunnel`` is held as ``object`` for the cleanup branch;
+            # ``connected`` keeps the untyped ``pyngrok`` handle (the
+            # library ships no stubs, so its return type is inferred
+            # ``Any``) just long enough to read ``public_url``.
+            tunnel: object = None
             try:
-                tunnel = await asyncio.to_thread(
+                connected = await asyncio.to_thread(
                     ngrok.connect,
                     self._port,
                     "http",
                     pyngrok_config=pyngrok_config,
                 )
+                # Capture the handle immediately so the cleanup branch
+                # can disconnect it even if the ``public_url`` read
+                # below raises -- otherwise a converter / attribute
+                # failure would orphan an open tunnel on the ngrok side.
+                tunnel = connected
                 # Materialise the public URL BEFORE assigning the
-                # tunnel handle so a converter / attribute-access
-                # failure on ``tunnel.public_url`` cannot leave the
-                # adapter in a half-started state where ``_tunnel``
-                # exists but ``_public_url`` is still ``None``. Such a
-                # half-state would later cause ``stop()`` to call
-                # ``ngrok.disconnect(None)`` on a tunnel the adapter
-                # never fully owned.
-                public_url = str(tunnel.public_url)
+                # tunnel handle to ``self._tunnel`` so a failure here
+                # cannot leave the adapter in a half-started state
+                # where ``_tunnel`` exists but ``_public_url`` is still
+                # ``None``.
+                public_url = str(connected.public_url)
             except Exception as exc:
                 reraise_critical(exc)
                 # ngrok auth token env var may be echoed in exception

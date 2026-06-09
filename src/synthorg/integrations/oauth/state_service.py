@@ -17,7 +17,7 @@ a bare repository.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -29,9 +29,7 @@ from synthorg.observability.events.security import (
     SECURITY_OAUTH_STATE_PERSIST_FAILED,
     SECURITY_OAUTH_STATE_PERSISTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.connection_protocol import OAuthStateRepository
+from synthorg.persistence.connection_protocol import OAuthStateRepository
 
 logger = get_logger(__name__)
 

@@ -31,6 +31,9 @@ from synthorg.observability.events.conflict import (
 )
 
 if TYPE_CHECKING:
+    # escalation imports close the documented communication.__init__ -> bus ->
+    # _nats_state -> config -> conflict_resolution cycle; ConfigResolver is a
+    # concrete collaborator injected via mocks in tests.
     from synthorg.communication.conflict_resolution.escalation.protocol import (
         EscalationQueueStore,
     )

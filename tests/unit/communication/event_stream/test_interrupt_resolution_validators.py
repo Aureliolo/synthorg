@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the InterruptType resolution-validator registry."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -19,15 +17,15 @@ from synthorg.core.registry import StrategyFactoryNotFoundError
 _TS = datetime(2026, 5, 10, tzinfo=UTC)
 
 
-def _make_resolution(**overrides: Any) -> InterruptResolution:
-    defaults: dict[str, Any] = {
+def _make_resolution(**overrides: object) -> InterruptResolution:
+    defaults: dict[str, object] = {
         "interrupt_id": "int-001",
         "decision": ResumeDecision.APPROVE,
         "resolved_at": _TS,
         "resolved_by": "operator",
     }
     defaults.update(overrides)
-    return InterruptResolution(**defaults)
+    return InterruptResolution(**defaults)  # type: ignore[arg-type]
 
 
 # ── Registry exhaustiveness ──────────────────────────────────────

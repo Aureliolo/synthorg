@@ -1,6 +1,8 @@
 """Protocols for the escalation queue backend and decision processor."""
 
-from typing import TYPE_CHECKING, Final, Literal, Protocol, runtime_checkable
+from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager
+from typing import Final, Literal, Protocol, runtime_checkable
 
 from synthorg.communication.conflict_resolution.escalation.models import (
     Escalation,
@@ -14,10 +16,6 @@ from synthorg.communication.conflict_resolution.models import (
 )
 from synthorg.core.clock import Clock
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-    from contextlib import AbstractAsyncContextManager
 
 _DEFAULT_LIMIT: Final[int] = 50
 _DEFAULT_OFFSET = 0

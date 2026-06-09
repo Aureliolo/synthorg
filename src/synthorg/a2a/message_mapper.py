@@ -8,6 +8,7 @@ directly; ``UriPart`` (no A2A equivalent) is converted to text.
 import copy
 from datetime import UTC, datetime
 from types import MappingProxyType
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 from synthorg.a2a.models import (
@@ -29,6 +30,9 @@ from synthorg.communication.message import (
 )
 from synthorg.observability import get_logger
 
+if TYPE_CHECKING:
+    from pydantic import JsonValue
+
 logger = get_logger(__name__)
 
 
@@ -46,7 +50,11 @@ def _internal_part_to_a2a(part: Part) -> A2AMessagePart:
     if isinstance(part, DataPart):
         raw = part.data
         source = dict(raw) if isinstance(raw, MappingProxyType) else raw
-        return A2ADataPart(data=copy.deepcopy(source))
+        # Message ``DataPart.data`` holds opaque JSON (typed ``object``);
+        # the A2A wire model narrows it to ``JsonValue`` at this boundary.
+        return A2ADataPart(
+            data=cast("dict[str, JsonValue]", copy.deepcopy(source)),
+        )
     if isinstance(part, FilePart):
         return A2AFilePart(
             uri=part.uri,

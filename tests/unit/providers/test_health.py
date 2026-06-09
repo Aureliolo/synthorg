@@ -1,12 +1,11 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for provider health tracking."""
 
 import asyncio
 import operator
-from collections.abc import Callable
+from collections.abc import Callable, MutableMapping
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
-from typing import Any
+from typing import cast
 
 import pytest
 from pydantic import ValidationError
@@ -383,7 +382,7 @@ class TestGetAllSummaries:
     )
     async def test_returned_mapping_is_immutable(
         self,
-        mutation: Callable[[Any], object],
+        mutation: Callable[[MutableMapping[str, ProviderHealthSummary]], object],
         expected_exception: type[Exception],
     ) -> None:
         tracker = ProviderHealthTracker()
@@ -395,7 +394,7 @@ class TestGetAllSummaries:
 
         assert isinstance(result, MappingProxyType)
         with pytest.raises(expected_exception):
-            mutation(result)
+            mutation(cast("MutableMapping[str, ProviderHealthSummary]", result))
 
     async def test_single_provider(self) -> None:
         tracker = ProviderHealthTracker()

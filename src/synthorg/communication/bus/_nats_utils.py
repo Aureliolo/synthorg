@@ -11,7 +11,7 @@ use by external code such as ``workers/claim.py``.
 
 import asyncio
 import base64
-from typing import Any, Final, NoReturn
+from typing import Final, NoReturn
 from urllib.parse import urlparse
 
 from synthorg.communication.bus._nats_state import _NatsState
@@ -137,7 +137,7 @@ def raise_not_subscribed(
     )
 
 
-async def cancel_if_pending(task: asyncio.Task[Any]) -> None:
+async def cancel_if_pending(task: asyncio.Task[object]) -> None:
     """Cancel a task, await completion, and suppress CancelledError.
 
     Any exception other than ``CancelledError`` is logged at WARNING

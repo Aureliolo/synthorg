@@ -27,6 +27,8 @@ from synthorg.observability.events.provider import PROVIDER_LITELLM_CATALOG_INVA
 from synthorg.providers.enums import AuthType
 
 if TYPE_CHECKING:
+    # presets imports preset_softlist (the soft/featured merge), so a runtime
+    # import here forms a cycle (caught by the no-circular-imports gate).
     from synthorg.providers.presets import CloudPreset, LocalPreset
 
 logger = get_logger(__name__)
