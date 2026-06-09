@@ -36,6 +36,7 @@ first's in-flight marker.
 
 import asyncio
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from synthorg.api._approval_expiration import ApprovalExpirationMixin
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
@@ -57,10 +58,10 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_STATUS_TRANSITIONED,
 )
 from synthorg.observability.metrics_hub import record_approval_decision
-from synthorg.persistence.approval_protocol import (
-    ApprovalFilterSpec,
-    ApprovalRepository,
-)
+from synthorg.persistence.approval_protocol import ApprovalFilterSpec
+
+if TYPE_CHECKING:
+    from synthorg.persistence.approval_protocol import ApprovalRepository
 
 logger = get_logger(__name__)
 

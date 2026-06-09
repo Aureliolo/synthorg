@@ -35,8 +35,8 @@ from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+    from synthorg.core.clock import Clock
     from synthorg.integrations.connections.models import Connection
-from synthorg.core.clock import Clock
 
 
 class _CleanupOutcome(NamedTuple):

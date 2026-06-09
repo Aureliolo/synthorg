@@ -44,9 +44,8 @@ if TYPE_CHECKING:
         UpdateWorkflowDefinitionRequest,
     )
     from synthorg.engine.workflow.blueprint_models import BlueprintData
+    from synthorg.engine.workflow.validation import WorkflowValidationError
 from litestar.datastructures import State
-
-from synthorg.engine.workflow.validation import WorkflowValidationError
 
 logger = get_logger(__name__)
 

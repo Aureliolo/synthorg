@@ -2144,7 +2144,7 @@
     },
     {
       "kind": "code",
-      "loc": 192,
+      "loc": 195,
       "loc_cap": 500,
       "module": "src/synthorg/api/services/project_service.py",
       "owning_feature": "api_core"

@@ -110,8 +110,10 @@ async def _drive_success(middleware: Any, status_code: int = 200) -> None:
         pass
 
     async def app(scope: Any, receive: Any, send: Any) -> None:
-        await send({"type": "http.response.start", "status": status_code})
-        await send({"type": "http.response.body", "body": b"ok"})
+        await send(
+            {"type": "http.response.start", "status": status_code, "headers": []}
+        )
+        await send({"type": "http.response.body", "body": b"ok", "more_body": False})
 
     middleware.app = app
     await middleware(scope, receive, send)

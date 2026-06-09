@@ -7,6 +7,8 @@ audit logging, mirroring the structure of :class:`UserService` and
 :class:`ArtifactService`.
 """
 
+from typing import TYPE_CHECKING
+
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
@@ -20,7 +22,10 @@ from synthorg.observability.events.api import (
     API_PROJECT_UPDATED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence.project_protocol import ProjectFilterSpec, ProjectRepository
+from synthorg.persistence.project_protocol import ProjectFilterSpec
+
+if TYPE_CHECKING:
+    from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
 
