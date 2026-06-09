@@ -33,7 +33,7 @@ from synthorg.hr.promotion.models import (
 )
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.promotion import (
     DEMOTION_APPLIED,
     PROMOTION_APPLIED,
@@ -471,8 +471,9 @@ class PromotionService:
                 logger.warning(
                     PROMOTION_APPLIED,
                     agent_id=request.agent_id,
-                    error="Trust re-evaluation failed after promotion; "
-                    "promotion still applied",
+                    note="trust re-evaluation failed; promotion still applied",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         event = (
@@ -502,7 +503,9 @@ class PromotionService:
                 logger.warning(
                     PROMOTION_NOTIFICATION_SENT,
                     agent_id=request.agent_id,
-                    error="Notification callback failed; promotion still applied",
+                    note="notification callback failed; promotion still applied",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         return record

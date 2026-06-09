@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING, override
 from pydantic import ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.audit_chain.chain import HashChain
 from synthorg.observability.audit_chain.config import AuditChainConfig
 from synthorg.observability.audit_chain.payloads import AuditChainEventPayload
@@ -425,6 +429,8 @@ class AuditChainSink(logging.Handler):
             # recurse on the single-worker signing executor.
             logger.error(
                 AUDIT_CHAIN_EMIT_ERROR,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             self._invoke_append_callback("error", 0, 0.0)
 
@@ -448,4 +454,6 @@ class AuditChainSink(logging.Handler):
             reraise_critical(exc)
             logger.warning(
                 AUDIT_CHAIN_CALLBACK_ERROR,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )

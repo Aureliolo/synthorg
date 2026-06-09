@@ -314,6 +314,7 @@ class PerformanceTracker:
                 logger.warning(
                     PERF_BACKGROUND_TASK_FAILED,
                     error_type=type(result).__name__,
+                    error=safe_error_description(result),
                 )
                 continue
             if system_error is None:

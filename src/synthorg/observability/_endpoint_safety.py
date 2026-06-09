@@ -53,24 +53,24 @@ def validate_otlp_endpoint_safety(
         )
         raise ValueError(msg)
 
-    # DNS resolution check for hostnames (best-effort).
-    if not is_private_ip(hostname):
-        import socket  # noqa: PLC0415
+    # DNS resolution check (best-effort). The private-IP literal case
+    # already raised above, so *hostname* here is a name to resolve.
+    import socket  # noqa: PLC0415
 
-        try:
-            addrs = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
-        except socket.gaierror:
-            # DNS resolution failed -- skip check (hostname may be valid
-            # at runtime even if not resolvable at config-load time).
-            return
-        for _family, _type, _proto, _canonname, sockaddr in addrs:
-            resolved_ip = str(sockaddr[0])
-            if is_private_ip(resolved_ip):
-                msg = (
-                    f"otlp_endpoint hostname {hostname!r} resolves to "
-                    f"private/loopback address {resolved_ip}"
-                )
-                raise ValueError(msg)
+    try:
+        addrs = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        # DNS resolution failed -- skip check (hostname may be valid
+        # at runtime even if not resolvable at config-load time).
+        return
+    for _family, _type, _proto, _canonname, sockaddr in addrs:
+        resolved_ip = str(sockaddr[0])
+        if is_private_ip(resolved_ip):
+            msg = (
+                f"otlp_endpoint hostname {hostname!r} resolves to "
+                f"private/loopback address {resolved_ip}"
+            )
+            raise ValueError(msg)
 
     if (
         endpoint.startswith("http://")

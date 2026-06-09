@@ -79,8 +79,10 @@ async def fetch_workflow_definitions(
             definitions.extend(page)
     except Exception as exc:
         reraise_critical(exc)
-        logger.warning(
+        log_exception_redacted(
+            logger,
             METRICS_SCRAPE_FAILED,
+            exc,
             component="workflow_definition_repo",
         )
         return None
@@ -107,8 +109,10 @@ async def fetch_departments(app_state: AppState) -> frozenset[str] | None:
         records, _ = await dept_service.list_departments()
     except Exception as exc:
         reraise_critical(exc)
-        logger.warning(
+        log_exception_redacted(
+            logger,
             METRICS_SCRAPE_FAILED,
+            exc,
             component="department_service",
         )
         return None
