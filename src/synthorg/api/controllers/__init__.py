@@ -148,7 +148,13 @@ from synthorg.api.controllers.workflow_executions import (
 from synthorg.api.controllers.workflow_versions import (
     WorkflowVersionController,
 )
-from synthorg.api.controllers.workflows import WorkflowController
+from synthorg.api.controllers.workflows.blueprints import (
+    WorkflowBlueprintController,
+)
+from synthorg.api.controllers.workflows.crud import WorkflowController
+from synthorg.api.controllers.workflows.validation import (
+    WorkflowValidationController,
+)
 from synthorg.api.controllers.ws import ws_handler
 from synthorg.client.state import has_simulation_runtime
 from synthorg.deliverable_receipts.api_controller import (
@@ -236,6 +242,8 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     UserController,
     SubworkflowController,
     WorkflowController,
+    WorkflowBlueprintController,
+    WorkflowValidationController,
     WorkflowVersionController,
     BudgetConfigVersionController,
     CompanyVersionController,
@@ -431,8 +439,10 @@ __all__ = [
     "WebhooksActivityController",
     "WebhooksIngestController",
     "WebhooksRetryController",
+    "WorkflowBlueprintController",
     "WorkflowController",
     "WorkflowExecutionController",
+    "WorkflowValidationController",
     "WorkflowVersionController",
     "ws_handler",
 ]

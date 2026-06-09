@@ -1,6 +1,6 @@
-"""Workflow definition controller -- CRUD, validation, and YAML export."""
+# module-kind: controller
+"""Workflow definition CRUD controller."""
 
-import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated
@@ -14,15 +14,11 @@ from pydantic import ValidationError
 from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.controllers._workflow_builders import (
     apply_update,
-    build_definition_from_blueprint,
-    load_blueprint_or_raise,
     run_subworkflow_validation,
-    wf_versioning,
 )
+from synthorg.api.controllers.workflows._shared import _service
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.dto_workflow import (
-    BlueprintInfoResponse,
-    CreateFromBlueprintRequest,
     CreateWorkflowDefinitionRequest,
     UpdateWorkflowDefinitionRequest,
 )
@@ -39,9 +35,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     WorkflowDefinitionValidationError,
     WorkflowTypeInvalidError,
-    WorkflowYamlExportError,
 )
-from synthorg.engine.workflow.blueprint_loader import list_blueprints
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -49,49 +43,17 @@ from synthorg.engine.workflow.definition import (
     WorkflowNode,
 )
 from synthorg.engine.workflow.enums import WorkflowType
-from synthorg.engine.workflow.service import (
-    WorkflowDefinitionNotFoundError,
-    WorkflowService,
-)
-from synthorg.engine.workflow.validation import WorkflowValidationResult
-from synthorg.engine.workflow.validation import (
-    validate_workflow as run_workflow_validation,
-)
-from synthorg.engine.workflow.yaml_export import export_workflow_yaml
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.engine.workflow.service import WorkflowDefinitionNotFoundError
+from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     WORKFLOW_DEFINITION_CHANGE_REQUESTED,
     WORKFLOW_DEFINITION_CHANGED,
 )
-from synthorg.observability.events.blueprint import (
-    BLUEPRINT_INSTANTIATE_START,
-    BLUEPRINT_INSTANTIATE_SUCCESS,
-)
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_NOT_FOUND,
 )
-from synthorg.observability.metrics_hub import record_blueprint_instantiation
-from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
-
-
-def _service(state: State) -> WorkflowService:
-    """Build the per-request :class:`WorkflowService`.
-
-    Wires in the :class:`VersioningService` for workflow definitions so
-    create/update paths persist a best-effort version snapshot in the
-    same service call -- controllers no longer orchestrate the two
-    writes by hand.
-
-    Returns:
-        ``WorkflowService`` instance.
-    """
-    return WorkflowService(
-        definition_repo=persistence_of(state.app_state).workflow_definitions,
-        version_repo=persistence_of(state.app_state).workflow_versions,
-        versioning_service=wf_versioning(state),
-    )
 
 
 WorkflowTypeFilter = Annotated[
@@ -105,7 +67,7 @@ WorkflowTypeFilter = Annotated[
 
 
 class WorkflowController(Controller):
-    """CRUD, validation, and export for workflow definitions."""
+    """CRUD for workflow definitions."""
 
     path = "/workflows"
     tags = ("workflows",)
@@ -150,90 +112,6 @@ class WorkflowController(Controller):
         return PaginatedResponse[WorkflowDefinition](
             data=page,
             pagination=meta,
-        )
-
-    @get("/blueprints", guards=[require_read_access])
-    async def list_workflow_blueprints(
-        self,
-    ) -> Response[ApiResponse[tuple[BlueprintInfoResponse, ...]]]:
-        """List available workflow blueprints.
-
-        Returns:
-            Result matching the declared return annotation.
-        """
-        infos = await asyncio.to_thread(list_blueprints)
-        responses = tuple(
-            BlueprintInfoResponse(
-                name=i.name,
-                display_name=i.display_name,
-                description=i.description,
-                source=i.source,
-                tags=i.tags,
-                workflow_type=WorkflowType(i.workflow_type),
-                node_count=i.node_count,
-                edge_count=i.edge_count,
-            )
-            for i in infos
-        )
-        return Response(
-            content=ApiResponse[tuple[BlueprintInfoResponse, ...]](
-                data=responses,
-            ),
-        )
-
-    @post(
-        "/from-blueprint",
-        guards=[
-            require_write_access,
-            per_op_rate_limit_from_policy(
-                "workflows.create_from_blueprint",
-                key="user",
-            ),
-        ],
-    )
-    async def create_from_blueprint(
-        self,
-        state: State,
-        data: CreateFromBlueprintRequest,
-    ) -> Response[ApiResponse[WorkflowDefinition]]:
-        """Create a new workflow definition from a blueprint.
-
-        Returns:
-            Result matching the declared return annotation.
-        """
-        creator = get_authenticated_user_id()
-        logger.info(
-            BLUEPRINT_INSTANTIATE_START,
-            blueprint_name=data.blueprint_name,
-        )
-
-        bp = await load_blueprint_or_raise(data.blueprint_name)
-
-        now = datetime.now(UTC)
-        definition = build_definition_from_blueprint(
-            bp,
-            data,
-            creator,
-            now,
-        )
-
-        await _service(state).create_definition(definition, saved_by=creator)
-
-        # Snapshot orchestration moved into ``WorkflowService.create_definition``
-        # (via the ``saved_by`` kwarg), so no explicit ``snapshot_if_changed``
-        # call is needed here.
-        logger.info(
-            BLUEPRINT_INSTANTIATE_SUCCESS,
-            definition_id=definition.id,
-            blueprint_name=data.blueprint_name,
-        )
-        record_blueprint_instantiation(
-            outcome="success",
-            blueprint_name=data.blueprint_name,
-        )
-        return Response(
-            content=ApiResponse[WorkflowDefinition](data=definition),
-            status_code=201,
         )
 
     @get("/{workflow_id:str}", guards=[require_read_access])
@@ -467,160 +345,4 @@ class WorkflowController(Controller):
             definition_id=workflow_id,
             action="delete",
             actor=actor,
-        )
-
-    @post(
-        "/validate-draft",
-        guards=[
-            require_read_access,
-            per_op_rate_limit_from_policy(
-                "workflows.validate_draft",
-                key="user_or_ip",
-            ),
-        ],
-        status_code=200,
-    )
-    async def validate_draft(
-        self,
-        state: State,
-        data: CreateWorkflowDefinitionRequest,
-    ) -> Response[ApiResponse[WorkflowValidationResult]]:
-        """Validate a draft workflow without persisting.
-
-        Returns:
-            Result matching the declared return annotation.
-
-        Raises:
-            WorkflowDefinitionValidationError: Raised on the corresponding failure path.
-        """
-        try:
-            nodes = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
-            edges = tuple(WorkflowEdge.model_validate(e) for e in data.edges)
-            inputs = tuple(WorkflowIODeclaration.model_validate(i) for i in data.inputs)
-            outputs = tuple(
-                WorkflowIODeclaration.model_validate(o) for o in data.outputs
-            )
-            definition = WorkflowDefinition(
-                id="draft",
-                name=data.name,
-                description=data.description,
-                workflow_type=data.workflow_type,
-                version=data.version,
-                inputs=inputs,
-                outputs=outputs,
-                is_subworkflow=data.is_subworkflow,
-                nodes=nodes,
-                edges=edges,
-                created_by="draft",
-            )
-        except (ValueError, ValidationError) as exc:
-            msg = WorkflowDefinitionValidationError.default_message
-            raise WorkflowDefinitionValidationError(msg) from exc
-
-        result = run_workflow_validation(definition)
-
-        subworkflow_errors = await run_subworkflow_validation(
-            definition,
-            state,
-        )
-        if subworkflow_errors:
-            result = WorkflowValidationResult(
-                errors=result.errors + subworkflow_errors,
-            )
-
-        return Response(
-            content=ApiResponse[WorkflowValidationResult](
-                data=result,
-            ),
-        )
-
-    @post(
-        "/{workflow_id:str}/validate",
-        guards=[
-            require_read_access,
-            per_op_rate_limit_from_policy("workflows.validate", key="user"),
-        ],
-        status_code=200,
-    )
-    async def validate_workflow(
-        self,
-        state: State,
-        workflow_id: PathId,
-    ) -> ApiResponse[WorkflowValidationResult]:
-        """Validate a workflow definition for execution readiness.
-
-        Returns the bare ``ApiResponse`` envelope (Litestar wraps it in
-        a 200 response). A missing definition raises ``NotFoundError``
-        (HTTP 404, ``WORKFLOW_DEFINITION_NOT_FOUND``) via the shared
-        exception handlers instead of an inline 404 body.
-
-        Returns:
-            ``ApiResponse[WorkflowValidationResult]`` envelope wrapping
-            the validation outcome.
-
-        Raises:
-            NotFoundError: The workflow definition does not exist.
-            WorkflowDefinitionNotFoundError: Specific subclass raised
-                when the definition is absent.
-        """
-        definition = await _service(state).get_definition(workflow_id)
-        if definition is None:
-            logger.warning(
-                WORKFLOW_DEF_NOT_FOUND,
-                definition_id=workflow_id,
-            )
-            msg = f"workflow_definition {workflow_id!r} not found"
-            raise WorkflowDefinitionNotFoundError(msg)
-
-        result = run_workflow_validation(definition)
-        return ApiResponse[WorkflowValidationResult](data=result)
-
-    @post(
-        "/{workflow_id:str}/export",
-        guards=[
-            require_read_access,
-            per_op_rate_limit_from_policy("workflows.export", key="user"),
-        ],
-        status_code=200,
-    )
-    async def export_workflow(
-        self,
-        state: State,
-        workflow_id: PathId,
-    ) -> Response[str]:
-        """Export a workflow definition as YAML.
-
-        Returns only ``Response[str]`` on success; a missing definition
-        raises ``NotFoundError`` (HTTP 404,
-        ``WORKFLOW_DEFINITION_NOT_FOUND``) through the shared exception
-        handlers rather than returning an inline 404 response.
-
-        Returns:
-            ``Response[str]`` wrapping the exported YAML payload.
-
-        Raises:
-            NotFoundError: The workflow definition does not exist.
-            WorkflowDefinitionNotFoundError: Specific subclass raised
-                when the definition is absent.
-            WorkflowYamlExportError: The YAML serialiser failed to
-                emit a valid document.
-        """
-        definition = await _service(state).get_definition(workflow_id)
-        if definition is None:
-            logger.warning(
-                WORKFLOW_DEF_NOT_FOUND,
-                definition_id=workflow_id,
-            )
-            msg = f"workflow_definition {workflow_id!r} not found"
-            raise WorkflowDefinitionNotFoundError(msg)
-
-        try:
-            yaml_str = export_workflow_yaml(definition)
-        except ValueError as exc:
-            msg = f"Export failed: {safe_error_description(exc)}"
-            raise WorkflowYamlExportError(msg) from exc
-
-        return Response(
-            content=yaml_str,
-            media_type="text/yaml",
         )
