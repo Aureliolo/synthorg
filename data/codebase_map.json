@@ -1801,7 +1801,7 @@
     },
     {
       "kind": "code",
-      "loc": 102,
+      "loc": 103,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/conversational_reconcile.py",
       "owning_feature": "api_core"
@@ -10978,7 +10978,7 @@
     },
     {
       "kind": "code",
-      "loc": 384,
+      "loc": 398,
       "loc_cap": 500,
       "module": "src/synthorg/meta/charter/service.py",
       "owning_feature": "charter"
@@ -11013,7 +11013,7 @@
     },
     {
       "kind": "code",
-      "loc": 319,
+      "loc": 317,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/_propose_parking.py",
       "owning_feature": "meta"
@@ -11062,14 +11062,14 @@
     },
     {
       "kind": "service",
-      "loc": 508,
+      "loc": 511,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/group_chat.py",
       "owning_feature": "meta"
     },
     {
       "kind": "service",
-      "loc": 435,
+      "loc": 433,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/group_invite.py",
       "owning_feature": "meta"
@@ -11090,7 +11090,7 @@
     },
     {
       "kind": "code",
-      "loc": 137,
+      "loc": 126,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/group_roster.py",
       "owning_feature": "meta"
@@ -11209,7 +11209,7 @@
     },
     {
       "kind": "code",
-      "loc": 425,
+      "loc": 415,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/propose.py",
       "owning_feature": "meta"
@@ -11223,7 +11223,7 @@
     },
     {
       "kind": "code",
-      "loc": 181,
+      "loc": 179,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/responder.py",
       "owning_feature": "meta"
@@ -15395,7 +15395,7 @@
     },
     {
       "kind": "code",
-      "loc": 358,
+      "loc": 359,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/conversational_proposal_repo.py",
       "owning_feature": "persistence"
@@ -16186,7 +16186,7 @@
     },
     {
       "kind": "code",
-      "loc": 381,
+      "loc": 382,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/conversational_proposal_repo.py",
       "owning_feature": "persistence"

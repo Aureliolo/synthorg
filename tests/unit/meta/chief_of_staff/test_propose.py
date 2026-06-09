@@ -30,6 +30,7 @@ from synthorg.meta.errors import (
     ConversationClosedError,
     ConversationNotFoundError,
 )
+from tests._shared import as_uuid, sid
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.meta.chief_of_staff.propose_fakes import START, build_proposer
 
@@ -264,8 +265,8 @@ class TestSteeringPropose:
         proposer, conv_repo, _, proposal_repo, approval_store = build_proposer(
             provider=provider
         )
-        conv_repo.items["c-mix"] = Conversation(
-            id=NotBlankStr("c-mix"),
+        conv_repo.items[sid("c-mix")] = Conversation(
+            id=as_uuid("c-mix"),
             created_by=NotBlankStr("user-1"),
             created_at=START,
             updated_at=START,
@@ -291,14 +292,14 @@ class TestSteeringPropose:
                 ProposeArgs(
                     message=NotBlankStr("build it and pivot the store"),
                     created_by=NotBlankStr("user-1"),
-                    conversation_id=NotBlankStr("c-mix"),
+                    conversation_id=sid("c-mix"),
                 )
             )
 
         # The work proposal row was unwound; nothing half-committed remains.
         assert proposal_repo.items == {}
         assert await approval_store.list_items() == ()
-        assert conv_repo.items["c-mix"].status is ConversationStatus.ACTIVE
+        assert conv_repo.items[sid("c-mix")].status is ConversationStatus.ACTIVE
 
 
 class TestConversationResolution:
@@ -317,8 +318,8 @@ class TestConversationResolution:
     async def test_closed_conversation_raises(self) -> None:
         provider = ScriptedProvider(responses=[make_text_response(_CLARIFY_JSON)])
         proposer, conv_repo, *_ = build_proposer(provider=provider)
-        conv_repo.items["c1"] = Conversation(
-            id=NotBlankStr("c1"),
+        conv_repo.items[sid("c1")] = Conversation(
+            id=as_uuid("c1"),
             created_by=NotBlankStr("user-1"),
             created_at=START,
             updated_at=START,
@@ -329,7 +330,7 @@ class TestConversationResolution:
                 ProposeArgs(
                     message=NotBlankStr("hi"),
                     created_by=NotBlankStr("user-1"),
-                    conversation_id=NotBlankStr("c1"),
+                    conversation_id=sid("c1"),
                 )
             )
 
@@ -340,8 +341,8 @@ class TestConversationResolution:
         # collapses to NotFound so existence cannot be probed either.
         provider = ScriptedProvider(responses=[make_text_response(_CLARIFY_JSON)])
         proposer, conv_repo, *_ = build_proposer(provider=provider)
-        conv_repo.items["c1"] = Conversation(
-            id=NotBlankStr("c1"),
+        conv_repo.items[sid("c1")] = Conversation(
+            id=as_uuid("c1"),
             created_by=NotBlankStr("user-A"),
             created_at=START,
             updated_at=START,
@@ -352,15 +353,15 @@ class TestConversationResolution:
                 ProposeArgs(
                     message=NotBlankStr("hi"),
                     created_by=NotBlankStr("user-B"),
-                    conversation_id=NotBlankStr("c1"),
+                    conversation_id=sid("c1"),
                 )
             )
 
     async def test_continue_existing_conversation(self) -> None:
         provider = ScriptedProvider(responses=[make_text_response(_PROPOSE_JSON)])
         proposer, conv_repo, turn_repo, _, _ = build_proposer(provider=provider)
-        conv_repo.items["c1"] = Conversation(
-            id=NotBlankStr("c1"),
+        conv_repo.items[sid("c1")] = Conversation(
+            id=as_uuid("c1"),
             created_by=NotBlankStr("user-1"),
             created_at=START,
             updated_at=START,
@@ -368,8 +369,8 @@ class TestConversationResolution:
         )
         turn_repo.turns.append(
             ConversationTurn(
-                id=NotBlankStr("t0"),
-                conversation_id=NotBlankStr("c1"),
+                id=as_uuid("t0"),
+                conversation_id=sid("c1"),
                 sequence=0,
                 role=ConversationRole.USER,
                 content=NotBlankStr("earlier message"),
@@ -380,10 +381,10 @@ class TestConversationResolution:
             ProposeArgs(
                 message=NotBlankStr("the marketing launch page"),
                 created_by=NotBlankStr("user-1"),
-                conversation_id=NotBlankStr("c1"),
+                conversation_id=sid("c1"),
             )
         )
-        assert result.conversation_id == "c1"
+        assert result.conversation_id == sid("c1")
         assert result.status == "proposed"
         # New user turn appended at sequence 1 (after the seeded turn).
         sequences = sorted(t.sequence for t in turn_repo.turns)
@@ -438,8 +439,8 @@ class TestClarificationCap:
         proposer, conv_repo, turn_repo, _, _ = build_proposer(
             provider=provider, config=config
         )
-        conv_repo.items["c1"] = Conversation(
-            id=NotBlankStr("c1"),
+        conv_repo.items[sid("c1")] = Conversation(
+            id=as_uuid("c1"),
             created_by=NotBlankStr("user-1"),
             created_at=START,
             updated_at=START,
@@ -448,8 +449,8 @@ class TestClarificationCap:
         for seq in range(4):
             turn_repo.turns.append(
                 ConversationTurn(
-                    id=NotBlankStr(f"seed-{seq}"),
-                    conversation_id=NotBlankStr("c1"),
+                    id=as_uuid(f"seed-{seq}"),
+                    conversation_id=sid("c1"),
                     sequence=seq,
                     role=(
                         ConversationRole.USER
@@ -465,14 +466,14 @@ class TestClarificationCap:
             ProposeArgs(
                 message=NotBlankStr("still vague"),
                 created_by=NotBlankStr("user-1"),
-                conversation_id=NotBlankStr("c1"),
+                conversation_id=sid("c1"),
             )
         )
 
         assert result.status == "needs_clarification"
         assert result.conversation_closed is True
         assert provider.call_count == 0
-        assert conv_repo.items["c1"].status is ConversationStatus.CLOSED
+        assert conv_repo.items[sid("c1")].status is ConversationStatus.CLOSED
 
 
 class TestConcurrentConverse:
@@ -488,8 +489,8 @@ class TestConcurrentConverse:
             ],
         )
         proposer, conv_repo, turn_repo, _, _ = build_proposer(provider=provider)
-        conv_repo.items["c-conc"] = Conversation(
-            id=NotBlankStr("c-conc"),
+        conv_repo.items[sid("c-conc")] = Conversation(
+            id=as_uuid("c-conc"),
             created_by=NotBlankStr("user-1"),
             created_at=START,
             updated_at=START,
@@ -501,7 +502,7 @@ class TestConcurrentConverse:
                 ProposeArgs(
                     message=NotBlankStr(message),
                     created_by=NotBlankStr("user-1"),
-                    conversation_id=NotBlankStr("c-conc"),
+                    conversation_id=sid("c-conc"),
                 )
             )
 
@@ -562,8 +563,8 @@ class TestConcurrentConverse:
         proposer, conv_repo, _, proposal_repo, approval_store = build_proposer(
             provider=provider,
         )
-        conv_repo.items["c-fail"] = Conversation(
-            id=NotBlankStr("c-fail"),
+        conv_repo.items[sid("c-fail")] = Conversation(
+            id=as_uuid("c-fail"),
             created_by=NotBlankStr("user-1"),
             created_at=START,
             updated_at=START,
@@ -590,7 +591,7 @@ class TestConcurrentConverse:
                 ProposeArgs(
                     message=NotBlankStr("build both"),
                     created_by=NotBlankStr("user-1"),
-                    conversation_id=NotBlankStr("c-fail"),
+                    conversation_id=sid("c-fail"),
                 )
             )
 
@@ -602,7 +603,7 @@ class TestConcurrentConverse:
         assert await approval_store.list_items() == ()
         # Conversation stays ACTIVE -- the transition only runs after
         # every park lands.
-        assert conv_repo.items["c-fail"].status is ConversationStatus.ACTIVE
+        assert conv_repo.items[sid("c-fail")].status is ConversationStatus.ACTIVE
 
     async def test_run_turn_aborts_if_conversation_terminal_under_lock(
         self,
@@ -621,8 +622,8 @@ class TestConcurrentConverse:
         # succeeds, then flip it to PROPOSED to simulate caller A's
         # commit landing between the resolve and the inside-lock
         # re-read.
-        conv_repo.items["c-race"] = Conversation(
-            id=NotBlankStr("c-race"),
+        conv_repo.items[sid("c-race")] = Conversation(
+            id=as_uuid("c-race"),
             created_by=NotBlankStr("user-1"),
             created_at=START,
             updated_at=START,
@@ -652,7 +653,7 @@ class TestConcurrentConverse:
                 ProposeArgs(
                     message=NotBlankStr("late message"),
                     created_by=NotBlankStr("user-1"),
-                    conversation_id=NotBlankStr("c-race"),
+                    conversation_id=sid("c-race"),
                 )
             )
         # No turns appended -- the abort fires before the user-turn

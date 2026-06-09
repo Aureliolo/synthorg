@@ -64,7 +64,6 @@ from synthorg.meta.chief_of_staff.group_roster import (
     active_participants,
     dedupe_participants,
     enrol_participants,
-    new_id,
     ordered_turns,
     resolve_identities,
 )
@@ -172,7 +171,7 @@ class GroupChatService:
         # commit turns the other side never saw. Held across every
         # agent dispatch -- round-robin contributions must stay linear
         # because each one feeds the next.
-        async with self._locks.hold(conversation.id):
+        async with self._locks.hold(str(conversation.id)):
             return await self._run_round(conversation, args, now)
 
     async def _resolve_conversation(
@@ -200,7 +199,7 @@ class GroupChatService:
         if existing.kind is not ConversationKind.GROUP:
             raise ConversationNotFoundError(conversation_id=args.conversation_id)
         if existing.status is ConversationStatus.CLOSED:
-            raise ConversationClosedError(conversation_id=existing.id)
+            raise ConversationClosedError(conversation_id=str(existing.id))
         return existing
 
     async def _open_group_conversation(
@@ -230,7 +229,6 @@ class GroupChatService:
             )
         identities = await resolve_identities(self._agent_registry, agent_ids)
         conversation = Conversation(
-            id=new_id(),
             created_by=args.created_by,
             created_at=now,
             updated_at=now,
@@ -240,7 +238,7 @@ class GroupChatService:
         await self._conversation_repo.save(conversation)
         await enrol_participants(
             self._participant_repo,
-            conversation_id=conversation.id,
+            conversation_id=NotBlankStr(str(conversation.id)),
             identities=identities,
             added_by=args.created_by,
             now=now,
@@ -261,18 +259,19 @@ class GroupChatService:
         Raises:
             ConversationClosedError: The conversation went terminal.
         """
-        current = await self._conversation_repo.get(conversation.id)
+        current = await self._conversation_repo.get(NotBlankStr(str(conversation.id)))
         if current is None or current.status is not ConversationStatus.ACTIVE:
-            raise ConversationClosedError(conversation_id=conversation.id)
+            raise ConversationClosedError(conversation_id=str(conversation.id))
         conversation = current
         participants = await active_participants(
-            self._participant_repo, conversation.id
+            self._participant_repo, NotBlankStr(str(conversation.id))
         )
-        prior_turns = await ordered_turns(self._turn_repo, conversation.id)
+        prior_turns = await ordered_turns(
+            self._turn_repo, NotBlankStr(str(conversation.id))
+        )
         next_sequence = len(prior_turns)
         user_turn = ConversationTurn(
-            id=new_id(),
-            conversation_id=conversation.id,
+            conversation_id=NotBlankStr(str(conversation.id)),
             sequence=next_sequence,
             role=ConversationRole.USER,
             content=args.message,
@@ -353,9 +352,11 @@ class GroupChatService:
         await self._conversation_repo.save(
             conversation.model_copy(update={"updated_at": now})
         )
-        self._log_round_outcome(conversation.id, contributions, skipped, truncated)
+        self._log_round_outcome(
+            NotBlankStr(str(conversation.id)), contributions, skipped, truncated
+        )
         return GroupConverseResult(
-            conversation_id=conversation.id,
+            conversation_id=NotBlankStr(str(conversation.id)),
             contributions=tuple(contributions),
             participants=participants,
             participants_skipped=tuple(skipped),
@@ -385,7 +386,7 @@ class GroupChatService:
         ):
             return
         summary = await self._invite_coordinator.request_invite(
-            conversation_id=conversation.id,
+            conversation_id=NotBlankStr(str(conversation.id)),
             requested_by_agent_id=participant.agent_id,
             requested_by_name=participant.agent_name,
             invite_request=invite_req,
@@ -449,7 +450,7 @@ class GroupChatService:
         preamble: str | None = None
         if self._invite_coordinator is not None:
             preamble = await self._invite_coordinator.invited_preamble(
-                conversation.id,
+                NotBlankStr(str(conversation.id)),
                 participant.agent_id,
                 already_spoke=any(
                     turn.author_agent_id == participant.agent_id for turn in history
@@ -459,12 +460,15 @@ class GroupChatService:
             history, prior_contributions, template=template, preamble=preamble
         )
         audit_authority(
-            self._authority_guard, conversation.id, participant, prior_contributions
+            self._authority_guard,
+            NotBlankStr(str(conversation.id)),
+            participant,
+            prior_contributions,
         )
         try:
             response = await asyncio.wait_for(
                 self._agent_caller(
-                    participant.agent_id, prompt, max_tokens, conversation.id
+                    participant.agent_id, prompt, max_tokens, str(conversation.id)
                 ),
                 timeout=self._config.agent_call_timeout_seconds,
             )
@@ -480,7 +484,7 @@ class GroupChatService:
             return None, None
         tracker.record(response.input_tokens, response.output_tokens)
         content, invite_req = self._extract_contribution(
-            response.content, conversation.id, participant.agent_id
+            response.content, NotBlankStr(str(conversation.id)), participant.agent_id
         )
         if not content:
             logger.warning(
@@ -492,8 +496,7 @@ class GroupChatService:
             return None, None
         await self._turn_repo.append(
             ConversationTurn(
-                id=new_id(),
-                conversation_id=conversation.id,
+                conversation_id=NotBlankStr(str(conversation.id)),
                 sequence=sequence,
                 role=ConversationRole.AGENT,
                 content=NotBlankStr(content),

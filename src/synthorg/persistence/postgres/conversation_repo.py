@@ -104,7 +104,7 @@ class PostgresConversationRepository:
             QueryError: On other database errors.
         """
         params = (
-            entity.id,
+            str(entity.id),
             entity.created_by,
             entity.created_at,
             entity.updated_at,
@@ -350,7 +350,7 @@ class PostgresConversationTurnRepository:
         current = event
         for attempt in range(_TURN_APPEND_MAX_RETRIES + 1):
             params = (
-                current.id,
+                str(current.id),
                 current.conversation_id,
                 current.sequence,
                 current.role.value,

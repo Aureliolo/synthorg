@@ -28,7 +28,7 @@ from synthorg.persistence.conversational_factory import (
     ConversationalRepositories,
     build_conversational_repositories,
 )
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of, sid
 from tests._shared.scripted_provider import ScriptedProvider
 from tests.unit.meta.chief_of_staff.group_chat_fakes import FakeInviteRepo
 from tests.unit.meta.chief_of_staff.propose_fakes import FakeProposalRepo
@@ -40,7 +40,7 @@ _NOW = datetime(2026, 5, 19, 12, 0, tzinfo=UTC)
 
 def _pending_proposal(proposal_id: str) -> ConversationalProposal:
     return ConversationalProposal(
-        id=proposal_id,
+        id=as_uuid(proposal_id),
         conversation_id="conv-orphan",
         approval_id="appr-gone",
         work_item_json="{}",
@@ -51,7 +51,7 @@ def _pending_proposal(proposal_id: str) -> ConversationalProposal:
 
 def _pending_invite(invite_id: str) -> ConversationInvite:
     return ConversationInvite(
-        id=NotBlankStr(invite_id),
+        id=as_uuid(invite_id),
         conversation_id=NotBlankStr("conv-orphan"),
         approval_id=NotBlankStr("appr-gone"),
         requested_by_agent_id=NotBlankStr("agent-ceo"),
@@ -214,13 +214,13 @@ class TestReconcileOrphanedConversationalIntake:
             _reconcile_repos(proposal_repo, invite_repo), ApprovalStore()
         )
 
-        orphan = await proposal_repo.get("p-orphan")
+        orphan = await proposal_repo.get(sid("p-orphan"))
         assert orphan is not None
         assert orphan.status is ConversationalProposalStatus.REJECTED
-        done = await proposal_repo.get("p-done")
+        done = await proposal_repo.get(sid("p-done"))
         assert done is not None
         assert done.status is ConversationalProposalStatus.EXECUTED
-        retired_invite = await invite_repo.get("i-orphan")
+        retired_invite = await invite_repo.get(sid("i-orphan"))
         assert retired_invite is not None
         assert retired_invite.status is ConversationInviteStatus.DECLINED
 
@@ -238,10 +238,10 @@ class TestReconcileOrphanedConversationalIntake:
             mock_of[ApprovalStoreProtocol](),
         )
 
-        kept_proposal = await proposal_repo.get("p-keep")
+        kept_proposal = await proposal_repo.get(sid("p-keep"))
         assert kept_proposal is not None
         assert kept_proposal.status is ConversationalProposalStatus.PENDING
-        kept_invite = await invite_repo.get("i-keep")
+        kept_invite = await invite_repo.get(sid("i-keep"))
         assert kept_invite is not None
         assert kept_invite.status is ConversationInviteStatus.PENDING
 
@@ -260,10 +260,10 @@ class TestReconcileOrphanedConversationalIntake:
             ApprovalStore(repo=mock_of[ApprovalRepository]()),
         )
 
-        kept_proposal = await proposal_repo.get("p-keep")
+        kept_proposal = await proposal_repo.get(sid("p-keep"))
         assert kept_proposal is not None
         assert kept_proposal.status is ConversationalProposalStatus.PENDING
-        kept_invite = await invite_repo.get("i-keep")
+        kept_invite = await invite_repo.get(sid("i-keep"))
         assert kept_invite is not None
         assert kept_invite.status is ConversationInviteStatus.PENDING
 

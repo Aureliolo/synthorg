@@ -144,7 +144,7 @@ class CharterInterviewService(CharterCrudMixin):
         """
         now = self._clock.now()
         conversation = await self._resolve_conversation(args, now)
-        async with await self._lock_for(conversation.id):
+        async with await self._lock_for(str(conversation.id)):
             return await self._run_turn(conversation, args, now)
 
     async def _run_turn(
@@ -161,15 +161,19 @@ class CharterInterviewService(CharterCrudMixin):
         Raises:
             ConversationClosedError: Raised on the corresponding failure path.
         """
-        current = await self._conversation_repo.get(conversation.id)
+        current = await self._conversation_repo.get(str(conversation.id))
         if current is None or current.status is not ConversationStatus.ACTIVE:
-            raise ConversationClosedError(conversation_id=conversation.id)
+            raise ConversationClosedError(conversation_id=str(conversation.id))
         conversation = current
-        prior_turns = await self._ordered_turns(conversation.id)
+        prior_turns = await self._ordered_turns(str(conversation.id))
         next_sequence = len(prior_turns)
 
         await self._append_turn(
-            conversation.id, next_sequence, ConversationRole.USER, args.message, now
+            str(conversation.id),
+            next_sequence,
+            ConversationRole.USER,
+            args.message,
+            now,
         )
         logger.info(
             CHARTER_INTERVIEW_TURN,
@@ -186,7 +190,11 @@ class CharterInterviewService(CharterCrudMixin):
         history = (
             *prior_turns,
             self._build_turn(
-                conversation.id, next_sequence, ConversationRole.USER, args.message, now
+                str(conversation.id),
+                next_sequence,
+                ConversationRole.USER,
+                args.message,
+                now,
             ),
         )
         decision = await self._strategy.run_turn(
@@ -218,7 +226,6 @@ class CharterInterviewService(CharterCrudMixin):
         """
         if args.conversation_id is None:
             conversation = Conversation(
-                id=_new_id(),
                 created_by=args.created_by,
                 created_at=now,
                 updated_at=now,
@@ -232,7 +239,7 @@ class CharterInterviewService(CharterCrudMixin):
             # be used to probe a foreign conversation's existence.
             raise ConversationNotFoundError(conversation_id=args.conversation_id)
         if existing.status is ConversationStatus.CLOSED:
-            raise ConversationClosedError(conversation_id=existing.id)
+            raise ConversationClosedError(conversation_id=str(existing.id))
         return existing
 
     async def _ordered_turns(
@@ -263,7 +270,6 @@ class CharterInterviewService(CharterCrudMixin):
             ``ConversationTurn`` instance.
         """
         return ConversationTurn(
-            id=_new_id(),
             conversation_id=conversation_id,
             sequence=sequence,
             role=role,
@@ -297,14 +303,18 @@ class CharterInterviewService(CharterCrudMixin):
             ``InterviewTurnResult`` instance.
         """
         await self._append_turn(
-            conversation.id, sequence, ConversationRole.ASSISTANT, question, now
+            str(conversation.id),
+            sequence,
+            ConversationRole.ASSISTANT,
+            question,
+            now,
         )
         await self._conversation_repo.save(
             conversation.model_copy(update={"updated_at": now})
         )
         logger.info(CHARTER_INTERVIEW_QUESTION, conversation_id=conversation.id)
         return InterviewTurnResult(
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             status="needs_more",
             next_question=question,
         )
@@ -321,11 +331,11 @@ class CharterInterviewService(CharterCrudMixin):
         Returns:
             ``InterviewTurnResult`` instance.
         """
-        existing = await self._existing_charter(conversation.id)
+        existing = await self._existing_charter(str(conversation.id))
         charter = self._charter_from_draft(conversation, draft, existing, now)
         await self._charter_repo.save(charter)
         await self._append_turn(
-            conversation.id,
+            str(conversation.id),
             sequence,
             ConversationRole.ASSISTANT,
             _summarise_draft(draft),
@@ -341,7 +351,7 @@ class CharterInterviewService(CharterCrudMixin):
             version=charter.version,
         )
         return InterviewTurnResult(
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             status="drafted",
             charter=charter,
         )
@@ -379,7 +389,7 @@ class CharterInterviewService(CharterCrudMixin):
         created_at = existing.created_at if existing is not None else now
         return ProjectCharter(
             id=charter_id,
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             created_by=conversation.created_by,
             version=version,
             status=CharterStatus.DRAFTED,
@@ -409,10 +419,14 @@ class CharterInterviewService(CharterCrudMixin):
             ``InterviewTurnResult`` instance.
         """
         await self._append_turn(
-            conversation.id, sequence, ConversationRole.ASSISTANT, _CAP_MESSAGE, now
+            str(conversation.id),
+            sequence,
+            ConversationRole.ASSISTANT,
+            _CAP_MESSAGE,
+            now,
         )
         transitioned = await self._conversation_repo.transition_if(
-            conversation.id,
+            str(conversation.id),
             from_state=conversation.status,
             to_state=ConversationStatus.CLOSED,
             updated_at=now.isoformat(),
@@ -426,7 +440,7 @@ class CharterInterviewService(CharterCrudMixin):
             )
         logger.warning(CHARTER_INTERVIEW_CAP_REACHED, conversation_id=conversation.id)
         return InterviewTurnResult(
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             status="needs_more",
             next_question=_CAP_MESSAGE,
             conversation_closed=True,

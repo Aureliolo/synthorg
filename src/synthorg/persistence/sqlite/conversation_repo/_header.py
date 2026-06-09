@@ -70,7 +70,7 @@ class SQLiteConversationRepository:
             QueryError: On other database errors.
         """
         params = (
-            entity.id,
+            str(entity.id),
             entity.created_by,
             format_iso_utc(entity.created_at),
             format_iso_utc(entity.updated_at),

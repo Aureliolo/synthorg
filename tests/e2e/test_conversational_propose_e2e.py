@@ -151,7 +151,7 @@ class _FakeConversationRepo:
         self.items: dict[str, Conversation] = {}
 
     async def save(self, entity: Conversation) -> None:
-        self.items[entity.id] = entity
+        self.items[str(entity.id)] = entity
 
     async def get(self, entity_id: str) -> Conversation | None:
         return self.items.get(entity_id)
@@ -211,7 +211,7 @@ class _FakeProposalRepo:
         self.items: dict[str, ConversationalProposal] = {}
 
     async def save(self, entity: ConversationalProposal) -> None:
-        self.items[entity.id] = entity
+        self.items[str(entity.id)] = entity
 
     async def get(self, entity_id: str) -> ConversationalProposal | None:
         return self.items.get(entity_id)

@@ -64,7 +64,7 @@ def row_to_conversation(row: RowLike) -> Conversation:
     """
     try:
         return Conversation(
-            id=str(row["id"]),
+            id=UUID(str(row["id"])),
             created_by=str(row["created_by"]),
             created_at=coerce_row_timestamp(row["created_at"]),
             updated_at=coerce_row_timestamp(row["updated_at"]),
@@ -97,7 +97,7 @@ def row_to_turn(row: RowLike) -> ConversationTurn:
         routed_topic = row["routed_topic"]
         routing_confidence = row["routing_confidence"]
         return ConversationTurn(
-            id=str(row["id"]),
+            id=UUID(str(row["id"])),
             conversation_id=str(row["conversation_id"]),
             sequence=int(str(row["sequence"])),
             role=ConversationRole(str(row["role"])),
@@ -164,7 +164,7 @@ def row_to_invite(row: RowLike) -> ConversationInvite:
     try:
         target_role = row["target_role"]
         return ConversationInvite(
-            id=str(row["id"]),
+            id=UUID(str(row["id"])),
             conversation_id=str(row["conversation_id"]),
             approval_id=str(row["approval_id"]),
             requested_by_agent_id=str(row["requested_by_agent_id"]),

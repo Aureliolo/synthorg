@@ -7,6 +7,7 @@ driven by the approval decision), and filtered queries by
 """
 
 import sqlite3
+from uuid import UUID
 
 import aiosqlite
 from aiosqlite import Row
@@ -85,7 +86,7 @@ def _row_to_proposal(row: Row) -> ConversationalProposal:
     """
     try:
         return ConversationalProposal(
-            id=str(row["id"]),
+            id=UUID(str(row["id"])),
             conversation_id=str(row["conversation_id"]),
             approval_id=str(row["approval_id"]),
             work_item_json=str(row["work_item_json"]),
@@ -153,7 +154,7 @@ class SQLiteConversationalProposalRepository:
             QueryError: On other database errors.
         """
         params = (
-            entity.id,
+            str(entity.id),
             entity.conversation_id,
             entity.approval_id,
             entity.work_item_json,

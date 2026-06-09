@@ -106,7 +106,7 @@ class FakeInviteRepo:
         self.items: dict[str, ConversationInvite] = {}
 
     async def save(self, entity: ConversationInvite) -> None:
-        self.items[entity.id] = entity
+        self.items[str(entity.id)] = entity
 
     async def get(self, entity_id: str) -> ConversationInvite | None:
         return self.items.get(entity_id)

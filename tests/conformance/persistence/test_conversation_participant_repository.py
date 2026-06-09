@@ -40,7 +40,7 @@ from synthorg.persistence.sqlite.conversation_participant_repo import (
     SQLiteConversationParticipantRepository,
 )
 from synthorg.persistence.sqlite.conversation_repo import SQLiteConversationRepository
-from tests._shared import as_uuid
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -84,7 +84,7 @@ async def _save_conversation(backend: PersistenceBackend, conversation_id: str) 
         repo = PostgresConversationRepository(cast("AsyncConnectionPool", handle))
     await repo.save(
         Conversation(
-            id=conversation_id,
+            id=as_uuid(conversation_id),
             created_by="user-001",
             created_at=_NOW,
             updated_at=_NOW,
@@ -108,7 +108,7 @@ def _make_participant(  # noqa: PLR0913 -- roster columns are optional kwargs
 ) -> ConversationParticipant:
     return ConversationParticipant(
         id=as_uuid(participant_id),
-        conversation_id=conversation_id,
+        conversation_id=sid(conversation_id),
         agent_id=agent_id,
         agent_name=agent_name,
         participant_role=participant_role,
@@ -170,7 +170,7 @@ class TestConversationParticipantRepository:
         )
 
         rows = await repo.query(
-            ConversationParticipantFilterSpec(conversation_id=NotBlankStr("conv-a"))
+            ConversationParticipantFilterSpec(conversation_id=sid("conv-a"))
         )
         assert {r.id for r in rows} == {as_uuid("pa")}
 
@@ -201,7 +201,7 @@ class TestConversationParticipantRepository:
             )
         )
         rows = await repo.query(
-            ConversationParticipantFilterSpec(conversation_id=NotBlankStr("conv-order"))
+            ConversationParticipantFilterSpec(conversation_id=sid("conv-order"))
         )
         assert [r.id for r in rows] == [as_uuid("first"), as_uuid("second")]
 
@@ -225,7 +225,7 @@ class TestConversationParticipantRepository:
         )
         active = await repo.query(
             ConversationParticipantFilterSpec(
-                conversation_id=NotBlankStr("conv-status"),
+                conversation_id=sid("conv-status"),
                 status=ConversationParticipantStatus.ACTIVE,
             )
         )
@@ -243,7 +243,7 @@ class TestConversationParticipantRepository:
                 )
             )
         count = await repo.count(
-            ConversationParticipantFilterSpec(conversation_id=NotBlankStr("conv-count"))
+            ConversationParticipantFilterSpec(conversation_id=sid("conv-count"))
         )
         assert count == 3
 

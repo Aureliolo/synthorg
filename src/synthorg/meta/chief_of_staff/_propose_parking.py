@@ -177,7 +177,7 @@ class ProposeParkingMixin:
             reraise_critical(exc)
             for parked in summaries:
                 await self._unwind_parked_proposal(
-                    conversation_id=conversation.id,
+                    conversation_id=NotBlankStr(str(conversation.id)),
                     proposal_id=parked.proposal_id,
                     approval_id=parked.approval_id,
                 )
@@ -189,7 +189,7 @@ class ProposeParkingMixin:
 
         await self._turn_repo.append(
             build_attributed_assistant_turn(
-                conversation_id=conversation.id,
+                conversation_id=NotBlankStr(str(conversation.id)),
                 sequence=sequence,
                 content=NotBlankStr(
                     _summarise_decision(decision.proposals, decision.steering)
@@ -199,7 +199,7 @@ class ProposeParkingMixin:
             )
         )
         transitioned = await self._conversation_repo.transition_if(
-            conversation.id,
+            NotBlankStr(str(conversation.id)),
             from_state=ConversationStatus.ACTIVE,
             to_state=ConversationStatus.PROPOSED,
             updated_at=now.isoformat(),
@@ -229,7 +229,7 @@ class ProposeParkingMixin:
             proposal_count=len(summaries) + len(steering_summaries),
         )
         return ProposeResult(
-            conversation_id=conversation.id,
+            conversation_id=NotBlankStr(str(conversation.id)),
             status="proposed",
             proposals=tuple(summaries),
             steering=tuple(steering_summaries),
@@ -269,18 +269,16 @@ class ProposeParkingMixin:
             Exception: Raised on the corresponding failure path.
         """
         approval_id = _new_id()
-        proposal_id = _new_id()
         work_item = build_work_item(conversation, args, proposed, project, now)
-        await self._proposal_repo.save(
-            ConversationalProposal(
-                id=proposal_id,
-                conversation_id=conversation.id,
-                approval_id=approval_id,
-                work_item_json=NotBlankStr(work_item.model_dump_json()),
-                status=ConversationalProposalStatus.PENDING,
-                created_at=now,
-            )
+        proposal = ConversationalProposal(
+            conversation_id=NotBlankStr(str(conversation.id)),
+            approval_id=approval_id,
+            work_item_json=NotBlankStr(work_item.model_dump_json()),
+            status=ConversationalProposalStatus.PENDING,
+            created_at=now,
         )
+        proposal_id = NotBlankStr(str(proposal.id))
+        await self._proposal_repo.save(proposal)
         try:
             await self._approval_store.add(
                 build_work_approval_item(

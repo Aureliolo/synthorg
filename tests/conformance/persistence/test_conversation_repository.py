@@ -37,6 +37,7 @@ from synthorg.persistence.sqlite.conversation_repo import (
     SQLiteConversationRepository,
     SQLiteConversationTurnRepository,
 )
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -84,7 +85,7 @@ def _make_conversation(
     kind: ConversationKind = ConversationKind.DIRECT,
 ) -> Conversation:
     return Conversation(
-        id=conversation_id,
+        id=as_uuid(conversation_id),
         created_by="user-001",
         created_at=_NOW,
         updated_at=_NOW,
@@ -106,8 +107,8 @@ def _make_turn(  # noqa: PLR0913 -- attribution columns are optional kwargs
     routing_confidence: float | None = None,
 ) -> ConversationTurn:
     return ConversationTurn(
-        id=turn_id,
-        conversation_id=conversation_id,
+        id=as_uuid(turn_id),
+        conversation_id=sid(conversation_id),
         sequence=sequence,
         role=role,
         content=content,
@@ -125,7 +126,7 @@ class TestConversationRepository:
         conv = _make_conversation()
         await repo.save(conv)
 
-        fetched = await repo.get(conv.id)
+        fetched = await repo.get(str(conv.id))
         assert fetched is not None
         assert fetched.id == conv.id
         assert fetched.created_by == "user-001"
@@ -147,7 +148,7 @@ class TestConversationRepository:
         await first.save(conv)
 
         second = _conversation_repo(backend)
-        fetched = await second.get(conv.id)
+        fetched = await second.get(str(conv.id))
         assert fetched is not None
         assert fetched.id == conv.id
 
@@ -159,7 +160,7 @@ class TestConversationRepository:
         await repo.save(conv)
         await repo.save(conv.model_copy(update={"status": ConversationStatus.PROPOSED}))
 
-        fetched = await repo.get(conv.id)
+        fetched = await repo.get(str(conv.id))
         assert fetched is not None
         assert fetched.status is ConversationStatus.PROPOSED
 
@@ -169,7 +170,7 @@ class TestConversationRepository:
         await repo.save(_make_conversation(conversation_id="b"))
 
         ids = {c.id for c in await repo.list_items()}
-        assert {"a", "b"} <= ids
+        assert {as_uuid("a"), as_uuid("b")} <= ids
 
     async def test_transition_if_flips_state_atomically(
         self, backend: PersistenceBackend
@@ -180,14 +181,14 @@ class TestConversationRepository:
 
         later = (_NOW + timedelta(minutes=5)).isoformat()
         result = await repo.transition_if(
-            conv.id,
+            str(conv.id),
             from_state=ConversationStatus.ACTIVE,
             to_state=ConversationStatus.PROPOSED,
             updated_at=later,
         )
         assert result is True
 
-        fetched = await repo.get(conv.id)
+        fetched = await repo.get(str(conv.id))
         assert fetched is not None
         assert fetched.status is ConversationStatus.PROPOSED
 
@@ -202,12 +203,12 @@ class TestConversationRepository:
         await repo.save(conv)
 
         result = await repo.transition_if(
-            conv.id,
+            str(conv.id),
             from_state=ConversationStatus.ACTIVE,
             to_state=ConversationStatus.PROPOSED,
         )
         assert result is False
-        fetched = await repo.get(conv.id)
+        fetched = await repo.get(str(conv.id))
         assert fetched is not None
         assert fetched.status is ConversationStatus.CLOSED
 
@@ -228,9 +229,9 @@ class TestConversationRepository:
         repo = _conversation_repo(backend)
         conv = _make_conversation(conversation_id="conv-del")
         await repo.save(conv)
-        assert await repo.delete(conv.id) is True
-        assert await repo.get(conv.id) is None
-        assert await repo.delete(conv.id) is False
+        assert await repo.delete(str(conv.id)) is True
+        assert await repo.get(str(conv.id)) is None
+        assert await repo.delete(str(conv.id)) is False
 
     async def test_protocol_runtime_check(self, backend: PersistenceBackend) -> None:
         repo = _conversation_repo(backend)
@@ -240,7 +241,7 @@ class TestConversationRepository:
         repo = _conversation_repo(backend)
         conv = _make_conversation(conversation_id="conv-kind-default")
         await repo.save(conv)
-        fetched = await repo.get(conv.id)
+        fetched = await repo.get(str(conv.id))
         assert fetched is not None
         assert fetched.kind is ConversationKind.DIRECT
 
@@ -251,7 +252,7 @@ class TestConversationRepository:
             kind=ConversationKind.GROUP,
         )
         await repo.save(conv)
-        fetched = await repo.get(conv.id)
+        fetched = await repo.get(str(conv.id))
         assert fetched is not None
         assert fetched.kind is ConversationKind.GROUP
 
@@ -262,7 +263,7 @@ class TestConversationRepository:
             kind=ConversationKind.ROUTED,
         )
         await repo.save(conv)
-        fetched = await repo.get(conv.id)
+        fetched = await repo.get(str(conv.id))
         assert fetched is not None
         assert fetched.kind is ConversationKind.ROUTED
 
@@ -286,7 +287,7 @@ class TestConversationTurnRepository:
         )
 
         rows = await repo.query(
-            ConversationTurnFilterSpec(conversation_id=NotBlankStr("conv-turns"))
+            ConversationTurnFilterSpec(conversation_id=sid("conv-turns"))
         )
         # Append-only invariant: newest-first (sequence DESC).
         assert [r.sequence for r in rows] == [1, 0]
@@ -316,14 +317,14 @@ class TestConversationTurnRepository:
             )
         )
         rows = await repo.query(
-            ConversationTurnFilterSpec(conversation_id=NotBlankStr("conv-dup"))
+            ConversationTurnFilterSpec(conversation_id=sid("conv-dup"))
         )
         # Newest-first ordering; both rows land with distinct
         # sequences (the second was resequenced to 1).
         sequences = sorted(t.sequence for t in rows)
         assert sequences == [0, 1]
         ids = {t.id for t in rows}
-        assert ids == {"d0", "d0-again"}
+        assert ids == {as_uuid("d0"), as_uuid("d0-again")}
 
     async def test_append_resequences_repeated_collisions(
         self, backend: PersistenceBackend
@@ -343,10 +344,15 @@ class TestConversationTurnRepository:
                 _make_turn(turn_id=f"m{i}", conversation_id="conv-multi", sequence=0)
             )
         rows = await repo.query(
-            ConversationTurnFilterSpec(conversation_id=NotBlankStr("conv-multi"))
+            ConversationTurnFilterSpec(conversation_id=sid("conv-multi"))
         )
         assert sorted(t.sequence for t in rows) == [0, 1, 2, 3]
-        assert {t.id for t in rows} == {"m0", "m1", "m2", "m3"}
+        assert {t.id for t in rows} == {
+            as_uuid("m0"),
+            as_uuid("m1"),
+            as_uuid("m2"),
+            as_uuid("m3"),
+        }
 
     async def test_query_scopes_to_conversation(
         self, backend: PersistenceBackend
@@ -358,10 +364,8 @@ class TestConversationTurnRepository:
         await repo.append(_make_turn(turn_id="qa", conversation_id="c-a", sequence=0))
         await repo.append(_make_turn(turn_id="qb", conversation_id="c-b", sequence=0))
 
-        rows = await repo.query(
-            ConversationTurnFilterSpec(conversation_id=NotBlankStr("c-a"))
-        )
-        assert {r.id for r in rows} == {"qa"}
+        rows = await repo.query(ConversationTurnFilterSpec(conversation_id=sid("c-a")))
+        assert {r.id for r in rows} == {as_uuid("qa")}
 
     async def test_purge_before_removes_old_turns(
         self, backend: PersistenceBackend
@@ -375,7 +379,7 @@ class TestConversationTurnRepository:
         removed = await repo.purge_before(_NOW + timedelta(hours=1))
         assert removed >= 1
         rows = await repo.query(
-            ConversationTurnFilterSpec(conversation_id=NotBlankStr("c-purge"))
+            ConversationTurnFilterSpec(conversation_id=sid("c-purge"))
         )
         assert rows == ()
 
@@ -417,7 +421,7 @@ class TestConversationTurnRepository:
             )
         )
         rows = await repo.query(
-            ConversationTurnFilterSpec(conversation_id=NotBlankStr("conv-agent-turn"))
+            ConversationTurnFilterSpec(conversation_id=sid("conv-agent-turn"))
         )
         assert len(rows) == 1
         assert rows[0].role is ConversationRole.AGENT
@@ -453,7 +457,7 @@ class TestConversationTurnRepository:
             )
         )
         rows = await repo.query(
-            ConversationTurnFilterSpec(conversation_id=NotBlankStr("conv-routed-turn"))
+            ConversationTurnFilterSpec(conversation_id=sid("conv-routed-turn"))
         )
         assert len(rows) == 1
         assert rows[0].routed_topic == "budget"
@@ -477,7 +481,7 @@ class TestConversationTurnRepository:
             )
         )
         rows = await repo.query(
-            ConversationTurnFilterSpec(conversation_id=NotBlankStr("conv-null-attr"))
+            ConversationTurnFilterSpec(conversation_id=sid("conv-null-attr"))
         )
         assert len(rows) == 1
         assert rows[0].author_agent_id is None

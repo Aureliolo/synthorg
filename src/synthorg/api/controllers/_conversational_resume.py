@@ -171,7 +171,7 @@ async def _reject_conversational_proposal(
         app_state.slice(MetaStateSlice).conversational_proposal_repo,
         "Conversational Proposal Repository",
     )
-    proposal_id = proposal.id
+    proposal_id = NotBlankStr(str(proposal.id))
     transitioned = await repo.transition_if(
         proposal_id,
         ConversationalProposalStatus.PENDING,
@@ -220,7 +220,7 @@ async def _execute_conversational_proposal(
         app_state.slice(MetaStateSlice).conversational_proposal_repo,
         "Conversational Proposal Repository",
     )
-    proposal_id = proposal.id
+    proposal_id = NotBlankStr(str(proposal.id))
     work_item_json = proposal.work_item_json
 
     if app_state.slice(EngineStateSlice).work_pipeline is None:
@@ -426,7 +426,7 @@ async def _decline_invite(
 
     repo = conversation_invite_repo_of(app_state)
     transitioned = await repo.transition_if(
-        invite.id,
+        NotBlankStr(str(invite.id)),
         ConversationInviteStatus.PENDING,
         ConversationInviteStatus.DECLINED,
     )
@@ -471,7 +471,7 @@ async def _accept_invite(
 
     invite_repo = conversation_invite_repo_of(app_state)
     acquired = await invite_repo.transition_if(
-        invite.id,
+        NotBlankStr(str(invite.id)),
         ConversationInviteStatus.PENDING,
         ConversationInviteStatus.ACCEPTED,
     )
@@ -488,7 +488,7 @@ async def _accept_invite(
     except Exception as exc:
         reraise_critical(exc)
         reverted = await invite_repo.transition_if(
-            invite.id,
+            NotBlankStr(str(invite.id)),
             ConversationInviteStatus.ACCEPTED,
             ConversationInviteStatus.PENDING,
         )
