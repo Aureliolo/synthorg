@@ -174,7 +174,11 @@ class MCPToolDef(BaseModel):
         # one side accepts payloads the other rejects.  ``FieldInfo.is_required()``
         # is True when the field has no default (positional-style required).
         wire_required_raw = self.parameters.get("required") or ()
-        wire_required: set[str] = set(cast("Iterable[str]", wire_required_raw))
+        wire_required: set[str] = (
+            set(cast("Iterable[str]", wire_required_raw))
+            if isinstance(wire_required_raw, (list, tuple))
+            else set()
+        )
         model_required = {
             field_name
             for field_name, field_info in self.args_model.model_fields.items()

@@ -5,6 +5,7 @@ inflections, proactive alerts, and chat query/response models
 that flow through the CoS learning and monitoring pipelines.
 """
 
+from collections.abc import Mapping
 from copy import deepcopy
 from typing import Literal, Self
 from uuid import UUID, uuid4
@@ -212,7 +213,7 @@ class Alert(BaseModel):
         Returns:
             The input data with ``signal_context`` deep-copied when present.
         """
-        if isinstance(data, dict) and "signal_context" in data:
+        if isinstance(data, Mapping) and "signal_context" in data:
             return {**data, "signal_context": deepcopy(data["signal_context"])}
         return data
 

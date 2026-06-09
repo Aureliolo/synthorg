@@ -100,7 +100,7 @@ def _make_parameters(
         "properties": dict(resolved),
     }
     if required:
-        schema["required"] = list[JsonValue](required)
+        schema["required"] = list(required)
     return schema
 
 

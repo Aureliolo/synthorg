@@ -63,7 +63,7 @@ def _python_type_for(prop_schema: object) -> type | None:
         The mapped type (``object`` for an untyped property) when
         resolvable, ``None`` otherwise.
     """
-    if not isinstance(prop_schema, dict):
+    if not isinstance(prop_schema, Mapping):
         return object
     json_type = prop_schema.get("type")
     if json_type is None:

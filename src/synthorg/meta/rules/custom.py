@@ -356,7 +356,7 @@ def resolve_metric(
     obj: object = snapshot
     for part in path.split("."):
         obj = getattr(obj, part)
-    if obj is None or isinstance(obj, (int, float)):
+    if obj is None or (isinstance(obj, (int, float)) and not isinstance(obj, bool)):
         return obj
     msg = (
         f"Metric path '{path}' resolved to a non-numeric "
