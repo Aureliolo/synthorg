@@ -12567,7 +12567,7 @@
     },
     {
       "kind": "adapter",
-      "loc": 528,
+      "loc": 530,
       "loc_cap": 700,
       "module": "src/synthorg/observability/audit_chain/tsa_client.py",
       "owning_feature": "observability"

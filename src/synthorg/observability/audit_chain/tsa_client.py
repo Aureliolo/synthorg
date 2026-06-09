@@ -444,6 +444,8 @@ def _check_pki_status(
             tsa_url=tsa_url,
             pki_status=f"unknown({response.status!r})",
             status_string=status_string,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"TSA rejected request: unknown PKI status {response.status!r}"
         raise TsaProtocolError(msg) from exc
