@@ -118,8 +118,8 @@ class TestDepartmentCeremonyPolicyCas:
 
         app_state = make_app_state(settings_service=settings_service)
 
-        policy_a: dict[str, Any] = {"strategy": "task_driven"}
-        policy_b: dict[str, Any] = {"strategy": "calendar"}
+        policy_a: dict[str, object] = {"strategy": "task_driven"}
+        policy_b: dict[str, object] = {"strategy": "calendar"}
 
         # Drive both mutations concurrently.  One must win CAS first; the
         # loser observes VersionConflictError internally and retries.
