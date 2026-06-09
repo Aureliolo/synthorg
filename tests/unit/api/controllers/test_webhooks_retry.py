@@ -24,6 +24,7 @@ from synthorg.api.services.idempotency_service import (
     IdempotencyResult,
     IdempotencyService,
 )
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import WebhookReceipt
@@ -120,7 +121,7 @@ def _build_state(
 
     app_state = make_app_state(
         persistence=mock_of[PersistenceBackend](webhook_receipts=_WebhookReceipts()),
-        message_bus=object(),
+        message_bus=mock_of[MessageBus](),
         slices={
             ApiCoreStateSlice: {
                 "idempotency_service": mock_of[IdempotencyService](
