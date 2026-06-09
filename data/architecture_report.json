@@ -476,8 +476,8 @@
     },
     "src/synthorg/engine/evolution/service.py": {
       "cap": 500,
-      "loc": 407,
-      "ratio": 0.814,
+      "loc": 404,
+      "ratio": 0.808,
       "tier": "code"
     },
     "src/synthorg/engine/feature.py": {
@@ -836,8 +836,8 @@
     },
     "src/synthorg/meta/chief_of_staff/models.py": {
       "cap": 500,
-      "loc": 488,
-      "ratio": 0.976,
+      "loc": 489,
+      "ratio": 0.978,
       "tier": "code"
     },
     "src/synthorg/meta/chief_of_staff/propose.py": {
@@ -1366,7 +1366,7 @@
     "synthorg.core.auth.roles": 25,
     "synthorg.core.autonomy_enums": 34,
     "synthorg.core.clock": 154,
-    "synthorg.core.critical_errors": 462,
+    "synthorg.core.critical_errors": 463,
     "synthorg.core.domain_errors": 176,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 47,

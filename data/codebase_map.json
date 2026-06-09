@@ -10845,7 +10845,7 @@
     },
     {
       "kind": "code",
-      "loc": 488,
+      "loc": 489,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/models.py",
       "owning_feature": "meta"
@@ -11839,7 +11839,7 @@
     },
     {
       "kind": "code",
-      "loc": 303,
+      "loc": 307,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/registry.py",
       "owning_feature": "meta"
