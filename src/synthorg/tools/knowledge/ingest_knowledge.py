@@ -6,7 +6,7 @@ tool binds its project scope per task; ``None`` ingests a global source.
 """
 
 import builtins
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel
 
@@ -14,6 +14,7 @@ from synthorg.api.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.knowledge.errors import KnowledgeError
+from synthorg.knowledge.service import KnowledgeService
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -26,9 +27,6 @@ from synthorg.observability.events.knowledge import (
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.knowledge._args import IngestKnowledgeArgs
-
-if TYPE_CHECKING:
-    from synthorg.knowledge.service import KnowledgeService
 
 logger = get_logger(__name__)
 

@@ -7,7 +7,10 @@ sandbox.
 
 import asyncio
 import secrets
-from typing import TYPE_CHECKING, Final, cast
+from typing import Final, cast
+
+import aiodocker
+from aiodocker.types import JSONObject
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
@@ -23,13 +26,8 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_SIDECAR_HEALTHY,
 )
 from synthorg.tools.sandbox.container_log_shipper import build_correlation_env
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxStartError
-
-if TYPE_CHECKING:
-    import aiodocker
-    from aiodocker.types import JSONObject
-
-    from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 
 logger = get_logger(__name__)
 

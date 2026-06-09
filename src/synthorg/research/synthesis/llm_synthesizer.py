@@ -7,7 +7,7 @@ to a retained item, so an emitted report is always citation-backed.
 """
 
 import json
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import ValidationError
 
@@ -21,6 +21,7 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import RESEARCH_LLM_OUTPUT_INVALID
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.research._args import SynthesisOutput
 from synthorg.research._llm import complete_text, extract_json_object
 from synthorg.research.errors import ResearchSynthesisError
@@ -31,10 +32,7 @@ from synthorg.research.models import (
     ResearchReport,
     RetrievedItem,
 )
-
-if TYPE_CHECKING:
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.research.synthesis.citation_binder import CitationBinder
+from synthorg.research.synthesis.citation_binder import CitationBinder
 
 logger = get_logger(__name__)
 

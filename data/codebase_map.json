@@ -9130,7 +9130,7 @@
     },
     {
       "kind": "code",
-      "loc": 306,
+      "loc": 336,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/chunking/code.py",
       "owning_feature": "knowledge"
@@ -16760,7 +16760,7 @@
     },
     {
       "kind": "code",
-      "loc": 67,
+      "loc": 66,
       "loc_cap": 500,
       "module": "src/synthorg/research/_llm.py",
       "owning_feature": "research"
@@ -16795,7 +16795,7 @@
     },
     {
       "kind": "code",
-      "loc": 149,
+      "loc": 147,
       "loc_cap": 500,
       "module": "src/synthorg/research/factory.py",
       "owning_feature": "research"
@@ -16823,14 +16823,14 @@
     },
     {
       "kind": "code",
-      "loc": 131,
+      "loc": 130,
       "loc_cap": 500,
       "module": "src/synthorg/research/planning/llm_planner.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 22,
+      "loc": 21,
       "loc_cap": 500,
       "module": "src/synthorg/research/planning/protocol.py",
       "owning_feature": "research"
@@ -16844,14 +16844,14 @@
     },
     {
       "kind": "code",
-      "loc": 133,
+      "loc": 132,
       "loc_cap": 500,
       "module": "src/synthorg/research/retrieval/dedup.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 44,
+      "loc": 43,
       "loc_cap": 500,
       "module": "src/synthorg/research/retrieval/protocol.py",
       "owning_feature": "research"
@@ -16865,7 +16865,7 @@
     },
     {
       "kind": "code",
-      "loc": 56,
+      "loc": 54,
       "loc_cap": 500,
       "module": "src/synthorg/research/retrieval/replay.py",
       "owning_feature": "research"
@@ -16886,35 +16886,35 @@
     },
     {
       "kind": "code",
-      "loc": 73,
+      "loc": 71,
       "loc_cap": 500,
       "module": "src/synthorg/research/retrieval/sources/academic.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 74,
+      "loc": 72,
       "loc_cap": 500,
       "module": "src/synthorg/research/retrieval/sources/code.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 61,
+      "loc": 58,
       "loc_cap": 500,
       "module": "src/synthorg/research/retrieval/sources/knowledge.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 80,
+      "loc": 78,
       "loc_cap": 500,
       "module": "src/synthorg/research/retrieval/sources/web.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 303,
+      "loc": 300,
       "loc_cap": 500,
       "module": "src/synthorg/research/service.py",
       "owning_feature": "research"
@@ -16935,35 +16935,35 @@
     },
     {
       "kind": "code",
-      "loc": 44,
+      "loc": 42,
       "loc_cap": 500,
       "module": "src/synthorg/research/synthesis/citation_binder.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 159,
+      "loc": 158,
       "loc_cap": 500,
       "module": "src/synthorg/research/synthesis/llm_synthesizer.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 37,
+      "loc": 36,
       "loc_cap": 500,
       "module": "src/synthorg/research/synthesis/protocol.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 193,
+      "loc": 192,
       "loc_cap": 500,
       "module": "src/synthorg/research/tool.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 62,
+      "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/research/tool_factory.py",
       "owning_feature": "research"
@@ -16977,28 +16977,28 @@
     },
     {
       "kind": "code",
-      "loc": 120,
+      "loc": 123,
       "loc_cap": 500,
       "module": "src/synthorg/research/triage/heuristic.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 52,
+      "loc": 50,
       "loc_cap": 500,
       "module": "src/synthorg/research/triage/hybrid.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 143,
+      "loc": 142,
       "loc_cap": 500,
       "module": "src/synthorg/research/triage/llm.py",
       "owning_feature": "research"
     },
     {
       "kind": "code",
-      "loc": 31,
+      "loc": 30,
       "loc_cap": 500,
       "module": "src/synthorg/research/triage/protocol.py",
       "owning_feature": "research"
@@ -18538,7 +18538,7 @@
     },
     {
       "kind": "code",
-      "loc": 144,
+      "loc": 147,
       "loc_cap": 500,
       "module": "src/synthorg/tools/_dns_pinning.py",
       "owning_feature": "tools"
@@ -18552,9 +18552,23 @@
     },
     {
       "kind": "code",
-      "loc": 539,
+      "loc": 333,
       "loc_cap": 500,
       "module": "src/synthorg/tools/_git_base.py",
+      "owning_feature": "tools"
+    },
+    {
+      "kind": "code",
+      "loc": 171,
+      "loc_cap": 500,
+      "module": "src/synthorg/tools/_git_clone.py",
+      "owning_feature": "tools"
+    },
+    {
+      "kind": "code",
+      "loc": 220,
+      "loc_cap": 500,
+      "module": "src/synthorg/tools/_git_subprocess.py",
       "owning_feature": "tools"
     },
     {
@@ -18622,14 +18636,14 @@
     },
     {
       "kind": "code",
-      "loc": 247,
+      "loc": 246,
       "loc_cap": 500,
       "module": "src/synthorg/tools/approval_tool.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 213,
+      "loc": 212,
       "loc_cap": 500,
       "module": "src/synthorg/tools/base.py",
       "owning_feature": "tools"
@@ -18650,14 +18664,14 @@
     },
     {
       "kind": "code",
-      "loc": 136,
+      "loc": 135,
       "loc_cap": 500,
       "module": "src/synthorg/tools/brain/search_brain.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 188,
+      "loc": 187,
       "loc_cap": 500,
       "module": "src/synthorg/tools/brain/write_brain_entry.py",
       "owning_feature": "tools"
@@ -18713,28 +18727,28 @@
     },
     {
       "kind": "code",
-      "loc": 38,
+      "loc": 37,
       "loc_cap": 500,
       "module": "src/synthorg/tools/browser/_protocols.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 98,
+      "loc": 97,
       "loc_cap": 500,
       "module": "src/synthorg/tools/browser/_settings.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 138,
+      "loc": 136,
       "loc_cap": 500,
       "module": "src/synthorg/tools/browser/_ssim_differ.py",
       "owning_feature": "tools"
     },
     {
       "kind": "complex_service",
-      "loc": 1067,
+      "loc": 1065,
       "loc_cap": 1100,
       "module": "src/synthorg/tools/browser/browser_tool.py",
       "owning_feature": "tools"
@@ -18748,7 +18762,7 @@
     },
     {
       "kind": "code",
-      "loc": 223,
+      "loc": 220,
       "loc_cap": 500,
       "module": "src/synthorg/tools/code_runner.py",
       "owning_feature": "tools"
@@ -18790,7 +18804,7 @@
     },
     {
       "kind": "code",
-      "loc": 281,
+      "loc": 280,
       "loc_cap": 500,
       "module": "src/synthorg/tools/communication/email_sender.py",
       "owning_feature": "tools"
@@ -18958,14 +18972,14 @@
     },
     {
       "kind": "code",
-      "loc": 62,
+      "loc": 60,
       "loc_cap": 500,
       "module": "src/synthorg/tools/desktop/_settings.py",
       "owning_feature": "tools"
     },
     {
       "kind": "integration",
-      "loc": 525,
+      "loc": 522,
       "loc_cap": 700,
       "module": "src/synthorg/tools/desktop/desktop_tool.py",
       "owning_feature": "tools"
@@ -18986,7 +19000,7 @@
     },
     {
       "kind": "code",
-      "loc": 54,
+      "loc": 51,
       "loc_cap": 500,
       "module": "src/synthorg/tools/desktop/driver/factory.py",
       "owning_feature": "tools"
@@ -19056,14 +19070,14 @@
     },
     {
       "kind": "code",
-      "loc": 134,
+      "loc": 133,
       "loc_cap": 500,
       "module": "src/synthorg/tools/docs/search_living_docs.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 157,
+      "loc": 156,
       "loc_cap": 500,
       "module": "src/synthorg/tools/docs/write_living_doc.py",
       "owning_feature": "tools"
@@ -19112,7 +19126,7 @@
     },
     {
       "kind": "code",
-      "loc": 22,
+      "loc": 20,
       "loc_cap": 500,
       "module": "src/synthorg/tools/external_api/_runtime.py",
       "owning_feature": "tools"
@@ -19128,12 +19142,19 @@
       "kind": "code",
       "loc": 59,
       "loc_cap": 500,
+      "module": "src/synthorg/tools/external_api/_url_guards.py",
+      "owning_feature": "tools"
+    },
+    {
+      "kind": "code",
+      "loc": 59,
+      "loc_cap": 500,
       "module": "src/synthorg/tools/external_api/errors.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 528,
+      "loc": 480,
       "loc_cap": 500,
       "module": "src/synthorg/tools/external_api/external_api_tool.py",
       "owning_feature": "tools"
@@ -19154,7 +19175,7 @@
     },
     {
       "kind": "code",
-      "loc": 27,
+      "loc": 25,
       "loc_cap": 500,
       "module": "src/synthorg/tools/external_api/provider_factory.py",
       "owning_feature": "tools"
@@ -19189,56 +19210,56 @@
     },
     {
       "kind": "code",
-      "loc": 84,
+      "loc": 82,
       "loc_cap": 500,
       "module": "src/synthorg/tools/file_system/_base_fs_tool.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 97,
+      "loc": 94,
       "loc_cap": 500,
       "module": "src/synthorg/tools/file_system/_path_validator.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 98,
+      "loc": 97,
       "loc_cap": 500,
       "module": "src/synthorg/tools/file_system/delete_file.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 249,
+      "loc": 248,
       "loc_cap": 500,
       "module": "src/synthorg/tools/file_system/edit_file.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 295,
+      "loc": 293,
       "loc_cap": 500,
       "module": "src/synthorg/tools/file_system/list_directory.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 236,
+      "loc": 235,
       "loc_cap": 500,
       "module": "src/synthorg/tools/file_system/read_file.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 229,
+      "loc": 228,
       "loc_cap": 500,
       "module": "src/synthorg/tools/file_system/write_file.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 535,
+      "loc": 387,
       "loc_cap": 500,
       "module": "src/synthorg/tools/git_tools.py",
       "owning_feature": "tools"
@@ -19280,21 +19301,21 @@
     },
     {
       "kind": "code",
-      "loc": 124,
+      "loc": 123,
       "loc_cap": 500,
       "module": "src/synthorg/tools/invocation_tracker.py",
       "owning_feature": "tools"
     },
     {
       "kind": "complex_service",
-      "loc": 790,
+      "loc": 787,
       "loc_cap": 1100,
       "module": "src/synthorg/tools/invoker.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 225,
+      "loc": 223,
       "loc_cap": 500,
       "module": "src/synthorg/tools/invoker_discovery.py",
       "owning_feature": "tools"
@@ -19322,28 +19343,28 @@
     },
     {
       "kind": "code",
-      "loc": 107,
+      "loc": 106,
       "loc_cap": 500,
       "module": "src/synthorg/tools/knowledge/ingest_knowledge.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 142,
+      "loc": 141,
       "loc_cap": 500,
       "module": "src/synthorg/tools/knowledge/search_knowledge.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 72,
+      "loc": 71,
       "loc_cap": 500,
       "module": "src/synthorg/tools/mcp/__init__.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 165,
+      "loc": 164,
       "loc_cap": 500,
       "module": "src/synthorg/tools/mcp/bridge_tool.py",
       "owning_feature": "tools"
@@ -19357,7 +19378,7 @@
     },
     {
       "kind": "code",
-      "loc": 489,
+      "loc": 488,
       "loc_cap": 500,
       "module": "src/synthorg/tools/mcp/client.py",
       "owning_feature": "tools"
@@ -19378,7 +19399,7 @@
     },
     {
       "kind": "code",
-      "loc": 190,
+      "loc": 188,
       "loc_cap": 500,
       "module": "src/synthorg/tools/mcp/factory.py",
       "owning_feature": "tools"
@@ -19392,7 +19413,7 @@
     },
     {
       "kind": "code",
-      "loc": 101,
+      "loc": 100,
       "loc_cap": 500,
       "module": "src/synthorg/tools/mcp/result_mapper.py",
       "owning_feature": "tools"
@@ -19420,21 +19441,21 @@
     },
     {
       "kind": "code",
-      "loc": 263,
+      "loc": 262,
       "loc_cap": 500,
       "module": "src/synthorg/tools/permissions.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 76,
+      "loc": 75,
       "loc_cap": 500,
       "module": "src/synthorg/tools/protocol.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 120,
+      "loc": 118,
       "loc_cap": 500,
       "module": "src/synthorg/tools/registry.py",
       "owning_feature": "tools"
@@ -19455,6 +19476,20 @@
     },
     {
       "kind": "code",
+      "loc": 222,
+      "loc_cap": 500,
+      "module": "src/synthorg/tools/sandbox/_subprocess_env.py",
+      "owning_feature": "tools"
+    },
+    {
+      "kind": "code",
+      "loc": 129,
+      "loc_cap": 500,
+      "module": "src/synthorg/tools/sandbox/_subprocess_proc.py",
+      "owning_feature": "tools"
+    },
+    {
+      "kind": "code",
       "loc": 54,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/active_environment.py",
@@ -19469,14 +19504,14 @@
     },
     {
       "kind": "code",
-      "loc": 222,
+      "loc": 220,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/container_log_shipper.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 97,
+      "loc": 96,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/credential_manager.py",
       "owning_feature": "tools"
@@ -19490,28 +19525,28 @@
     },
     {
       "kind": "complex_service",
-      "loc": 767,
+      "loc": 766,
       "loc_cap": 1100,
       "module": "src/synthorg/tools/sandbox/docker_sandbox.py",
       "owning_feature": "tools"
     },
     {
       "kind": "complex_service",
-      "loc": 860,
+      "loc": 859,
       "loc_cap": 1100,
       "module": "src/synthorg/tools/sandbox/docker_sandbox_exec.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 239,
+      "loc": 238,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/docker_sandbox_lifecycle.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 180,
+      "loc": 179,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/docker_sandbox_sidecar.py",
       "owning_feature": "tools"
@@ -19525,7 +19560,7 @@
     },
     {
       "kind": "code",
-      "loc": 274,
+      "loc": 272,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/factory.py",
       "owning_feature": "tools"
@@ -19546,42 +19581,42 @@
     },
     {
       "kind": "code",
-      "loc": 36,
+      "loc": 34,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/lifecycle/factory.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 282,
+      "loc": 280,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/lifecycle/per_agent.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 66,
+      "loc": 64,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/lifecycle/per_call.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 151,
+      "loc": 149,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/lifecycle/per_task.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 93,
+      "loc": 92,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/lifecycle/protocol.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 27,
+      "loc": 26,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/network_presets.py",
       "owning_feature": "tools"
@@ -19595,14 +19630,14 @@
     },
     {
       "kind": "code",
-      "loc": 98,
+      "loc": 97,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/protocol.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 147,
+      "loc": 146,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/reconciliation.py",
       "owning_feature": "tools"
@@ -19616,7 +19651,7 @@
     },
     {
       "kind": "code",
-      "loc": 120,
+      "loc": 119,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/runtime_resolver.py",
       "owning_feature": "tools"
@@ -19630,14 +19665,14 @@
     },
     {
       "kind": "code",
-      "loc": 663,
+      "loc": 362,
       "loc_cap": 500,
       "module": "src/synthorg/tools/sandbox/subprocess_sandbox.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 74,
+      "loc": 72,
       "loc_cap": 500,
       "module": "src/synthorg/tools/scan_result_handler.py",
       "owning_feature": "tools"
@@ -19665,14 +19700,14 @@
     },
     {
       "kind": "code",
-      "loc": 147,
+      "loc": 146,
       "loc_cap": 500,
       "module": "src/synthorg/tools/structure_map/query_structure_map.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 56,
+      "loc": 55,
       "loc_cap": 500,
       "module": "src/synthorg/tools/structure_map/tool_factory.py",
       "owning_feature": "tools"
@@ -19693,7 +19728,7 @@
     },
     {
       "kind": "code",
-      "loc": 115,
+      "loc": 114,
       "loc_cap": 500,
       "module": "src/synthorg/tools/terminal/base_terminal_tool.py",
       "owning_feature": "tools"

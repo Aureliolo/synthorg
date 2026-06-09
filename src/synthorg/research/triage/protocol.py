@@ -5,14 +5,13 @@ and marks whether it clears the brief's threshold. Implementations return
 the verdicts plus any USD cost incurred (LLM-backed strategies).
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.research.models import (
-        ResearchBrief,
-        RetrievedItem,
-        SourceCredibility,
-    )
+from synthorg.research.models import (
+    ResearchBrief,
+    RetrievedItem,
+    SourceCredibility,
+)
 
 
 @runtime_checkable

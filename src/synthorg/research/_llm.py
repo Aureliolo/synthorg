@@ -7,13 +7,11 @@ a model response that may be wrapped in prose or a fenced code block.
 
 import json
 import re
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-
-if TYPE_CHECKING:
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider
 
 _DETERMINISTIC_TEMPERATURE: Final[float] = 0.0
 """Sampling temperature for every research LLM call: deterministic output

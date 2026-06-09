@@ -6,8 +6,6 @@ bundled implementation; injected at runtime), mapping each paper into a
 :class:`RetrievedItem` with an :class:`AcademicSourceLocator` citation.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.types import NotBlankStr
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
 from synthorg.research.enums import ResearchSourceType
@@ -17,15 +15,13 @@ from synthorg.research.models import (
     RetrievedItem,
     SubQuery,
 )
+from synthorg.research.retrieval.providers import AcademicSearchProvider
 from synthorg.research.retrieval.sources._shared import (
     make_ref_id,
     positional_relevance,
     truncate_snippet,
 )
 from synthorg.versioning.hashing import compute_text_hash
-
-if TYPE_CHECKING:
-    from synthorg.research.retrieval.providers import AcademicSearchProvider
 
 
 class AcademicRetrievalSource:

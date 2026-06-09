@@ -1,12 +1,10 @@
 """Sandbox container lifecycle strategy protocol."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr
 
 
 @dataclass(frozen=True, slots=True)

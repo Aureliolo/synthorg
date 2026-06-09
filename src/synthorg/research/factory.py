@@ -7,14 +7,23 @@ mirroring the vendor-agnostic house pattern: a missing provider simply
 means that source family does not fan out.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.clock import Clock
+from synthorg.knowledge.service import KnowledgeService
+from synthorg.persistence.research_protocol import ResearchRunRepository
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.research.config import ResearchConfig
 from synthorg.research.enums import ResearchSourceType
 from synthorg.research.errors import ResearchUnavailableError
 from synthorg.research.planning.llm_planner import LlmQueryPlanner
 from synthorg.research.retrieval.dedup import (
+    Embedder,
     EmbeddingDeduplicator,
     LexicalDeduplicator,
+)
+from synthorg.research.retrieval.protocol import Deduplicator, RetrievalSource
+from synthorg.research.retrieval.providers import (
+    AcademicSearchProvider,
+    CodeSearchProvider,
 )
 from synthorg.research.retrieval.sources.academic import AcademicRetrievalSource
 from synthorg.research.retrieval.sources.code import CodeRetrievalSource
@@ -26,21 +35,8 @@ from synthorg.research.synthesis.llm_synthesizer import LlmSynthesizer
 from synthorg.research.triage.heuristic import HeuristicCredibilityTriage
 from synthorg.research.triage.hybrid import HybridCredibilityTriage
 from synthorg.research.triage.llm import LlmCredibilityTriage
-
-if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
-    from synthorg.knowledge.service import KnowledgeService
-    from synthorg.persistence.research_protocol import ResearchRunRepository
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.research.config import ResearchConfig
-    from synthorg.research.retrieval.dedup import Embedder
-    from synthorg.research.retrieval.protocol import Deduplicator, RetrievalSource
-    from synthorg.research.retrieval.providers import (
-        AcademicSearchProvider,
-        CodeSearchProvider,
-    )
-    from synthorg.research.triage.protocol import CredibilityTriage
-    from synthorg.tools.web.web_search import WebSearchProvider
+from synthorg.research.triage.protocol import CredibilityTriage
+from synthorg.tools.web.web_search import WebSearchProvider
 
 
 def _build_triage(

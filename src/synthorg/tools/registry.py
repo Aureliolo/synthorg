@@ -4,9 +4,10 @@ Immutable after construction.  Provides lookup, membership testing,
 and conversion to a tuple of ``ToolDefinition`` objects for LLM providers.
 """
 
+from collections.abc import Iterable
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
+from synthorg.core.tool_disclosure import ToolL1Metadata
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_NOT_FOUND,
@@ -14,16 +15,10 @@ from synthorg.observability.events.tool import (
     TOOL_REGISTRY_CONTAINS_TYPE_ERROR,
     TOOL_REGISTRY_DUPLICATE,
 )
+from synthorg.providers.models import ToolDefinition
 
+from .base import BaseTool
 from .errors import ToolNotFoundError
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.core.tool_disclosure import ToolL1Metadata
-    from synthorg.providers.models import ToolDefinition
-
-    from .base import BaseTool
 
 logger = get_logger(__name__)
 

@@ -3,7 +3,7 @@
 Supports Python, JavaScript, and Bash via configurable sandbox backends.
 """
 
-from typing import TYPE_CHECKING, ClassVar, Final, cast, override
+from typing import ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
@@ -24,18 +24,14 @@ from synthorg.observability.events.deliverable_receipts import (
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionPurpose,
     CodeExecutionRecord,
+    CodeExecutionRecordRepository,
 )
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._misc_args import CodeRunnerArgs
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
-
-if TYPE_CHECKING:
-    from synthorg.persistence.code_execution_protocol import (
-        CodeExecutionRecordRepository,
-    )
-    from synthorg.tools.sandbox.protocol import SandboxBackend
-    from synthorg.tools.sandbox.result import SandboxResult
+from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
 

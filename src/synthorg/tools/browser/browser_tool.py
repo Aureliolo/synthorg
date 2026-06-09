@@ -24,7 +24,6 @@ import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import (
-    TYPE_CHECKING,
     ClassVar,
     Final,
     TypedDict,
@@ -83,6 +82,7 @@ from synthorg.tools.browser._models import (
     ScreenshotMetadata,
     SpecResult,
 )
+from synthorg.tools.browser._protocols import ScreenshotDiffer
 from synthorg.tools.browser._settings import BrowserSettings
 from synthorg.tools.browser._ssim_differ import SSIMDiffer
 from synthorg.tools.browser.errors import (
@@ -98,10 +98,7 @@ from synthorg.tools.browser.errors import (
 )
 from synthorg.tools.network_metadata import is_cloud_metadata_host
 from synthorg.tools.network_validator import extract_hostname, is_allowed_http_scheme
-
-if TYPE_CHECKING:
-    from synthorg.tools.browser._protocols import ScreenshotDiffer
-    from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 

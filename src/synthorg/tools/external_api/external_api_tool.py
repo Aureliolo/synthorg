@@ -9,8 +9,7 @@ pluggable :class:`ExternalAccessProvider`.
 """
 
 from datetime import UTC
-from typing import TYPE_CHECKING, ClassVar, override
-from urllib.parse import unquote, urlsplit
+from typing import ClassVar, override
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
@@ -18,10 +17,13 @@ from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.resilience_config import RateLimiterConfig
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.models import Connection
 from synthorg.integrations.errors import (
     ConnectionRateLimitError,
     SecretRetrievalError,
@@ -40,10 +42,19 @@ from synthorg.observability.events.external_api import (
 )
 from synthorg.providers.url_utils import redact_url
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
+from synthorg.security.autonomy.models import EffectiveAutonomy
+from synthorg.security.timeout.risk_tier_classifier import (
+    DefaultRiskTierClassifier,
+)
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.external_api._args import ExternalApiArgs
 from synthorg.tools.external_api._credentials import build_auth_headers
 from synthorg.tools.external_api._signature import ApprovalSignature
+from synthorg.tools.external_api._url_guards import (
+    _has_dot_segment,
+    _merge_agent_headers,
+    _signable_headers,
+)
 from synthorg.tools.external_api.errors import (
     ExternalApiApprovalMismatchError,
     ExternalApiConnectionNotFoundError,
@@ -52,33 +63,19 @@ from synthorg.tools.external_api.errors import (
     ExternalApiError,
     ExternalApiResponseError,
 )
-from synthorg.tools.external_api.provider import ExternalAccessRequest
+from synthorg.tools.external_api.provider import (
+    ExternalAccessProvider,
+    ExternalAccessRequest,
+)
 from synthorg.tools.network_validator import (
     NetworkPolicy,
     extract_hostname,
     validate_url_host,
 )
 
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
-    from synthorg.integrations.connections.models import Connection
-    from synthorg.security.autonomy.models import EffectiveAutonomy
-    from synthorg.security.timeout.risk_tier_classifier import (
-        DefaultRiskTierClassifier,
-    )
-    from synthorg.tools.external_api.provider import ExternalAccessProvider
-
 logger = get_logger(__name__)
 
 _ACTION_TYPE = ActionType.EXTERNAL_DATA_REQUEST.value
-
-# Hop-by-hop / framing headers an agent must never set: ``Host`` would allow
-# virtual-host injection past the egress host check, and the framing headers
-# let an agent desync the request body from the transport.
-_RESTRICTED_REQUEST_HEADERS: frozenset[str] = frozenset(
-    {"host", "content-length", "transfer-encoding"},
-)
 
 
 class ExternalApiTool(BaseTool):
@@ -184,7 +181,7 @@ class ExternalApiTool(BaseTool):
             method=args.method,
             resolved_url=resolved_url,
             body=args.body,
-            headers=self._signable_headers(args.headers),
+            headers=_signable_headers(args.headers),
         )
         if (conn.sensitive or args.is_write) and not self._auto_approved:
             gate = await self._gate_approval(args, signature)
@@ -192,7 +189,7 @@ class ExternalApiTool(BaseTool):
                 return gate
 
         merged_headers = self._broker_headers(conn, await self._credentials(conn))
-        merged_headers = self._merge_agent_headers(args.headers, merged_headers)
+        merged_headers = _merge_agent_headers(args.headers, merged_headers)
 
         pinned_ip = validation.resolved_ips[0] if validation.resolved_ips else None
         pinned_hostname = validation.hostname if validation.resolved_ips else None
@@ -243,7 +240,7 @@ class ExternalApiTool(BaseTool):
             resolved = conn.base_url.rstrip("/") + "/" + args.path.lstrip("/")
         else:
             resolved = args.url
-        if self._has_dot_segment(resolved):
+        if _has_dot_segment(resolved):
             logger.warning(
                 EXTERNAL_API_EGRESS_BLOCKED,
                 connection=args.connection,
@@ -270,20 +267,6 @@ class ExternalApiTool(BaseTool):
             )
             raise ExternalApiEgressBlockedError(msg)
         return resolved
-
-    @staticmethod
-    def _has_dot_segment(url: str) -> bool:
-        """Whether the URL path contains a ``.`` or ``..`` traversal segment.
-
-        The path is percent-decoded first so encoded traversal sequences
-        (``%2e`` / ``%2e%2e``) that an upstream server would normalise back
-        into ``.`` / ``..`` are detected here rather than slipping past.
-
-        Returns:
-            ``True`` when the predicate holds, ``False`` otherwise.
-        """
-        path = unquote(urlsplit(url).path)
-        return any(segment in {".", ".."} for segment in path.split("/"))
 
     async def _credentials(self, conn: Connection) -> dict[str, str]:
         """Fetch decrypted credentials, mapping retrieval failure to a domain error.
@@ -318,51 +301,6 @@ class ExternalApiTool(BaseTool):
             Mapping from ``str`` to ``str``.
         """
         return build_auth_headers(conn.auth_method, credentials)
-
-    @staticmethod
-    def _signable_headers(agent_headers: dict[str, str]) -> dict[str, str]:
-        """Agent headers minus restricted ones that egress would strip.
-
-        The approval signature must describe the request that is actually
-        sent, so restricted headers (``Host`` / framing) -- which
-        ``_merge_agent_headers`` drops before egress -- must not influence
-        the signature either. Otherwise two calls differing only in a
-        never-sent ``Host`` would sign differently and force a redundant
-        re-approval.
-
-        Returns:
-            Mapping from ``str`` to ``str``.
-        """
-        return {
-            k: v
-            for k, v in agent_headers.items()
-            if k.lower() not in _RESTRICTED_REQUEST_HEADERS
-        }
-
-    @classmethod
-    def _merge_agent_headers(
-        cls,
-        agent_headers: dict[str, str],
-        brokered_headers: dict[str, str],
-    ) -> dict[str, str]:
-        """Layer agent headers under brokered ones, case-insensitively.
-
-        Agent-supplied headers are dropped when they are restricted
-        (``Host`` / framing headers) or collide case-insensitively with a
-        brokered header, so an agent can neither inject a forged ``Host``
-        nor shadow a brokered credential with a differently-cased
-        duplicate. Brokered headers always win.
-
-        Returns:
-            Mapping from ``str`` to ``str``.
-        """
-        brokered_keys = {k.lower() for k in brokered_headers}
-        safe_agent_headers = {
-            k: v
-            for k, v in cls._signable_headers(agent_headers).items()
-            if k.lower() not in brokered_keys
-        }
-        return {**safe_agent_headers, **brokered_headers}
 
     async def _egress(
         self,

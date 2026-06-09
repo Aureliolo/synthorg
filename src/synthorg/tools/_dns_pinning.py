@@ -15,15 +15,21 @@ duplicated.
 """
 
 import ssl
-from typing import TYPE_CHECKING, cast, override
+from collections.abc import AsyncIterable, AsyncIterator, Iterable
+from typing import cast, override
 
 import httpcore
 import httpx
 
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterable, AsyncIterator, Iterable
-
-    from httpcore._backends.base import SOCKET_OPTION
+# Structural mirror of httpcore's ``SOCKET_OPTION`` (defined in the private
+# ``_backends.base`` module). Re-declaring the socket-option tuple union here
+# keeps the override signatures runtime-resolvable for typeguard without
+# importing an httpcore internal that can be renamed without notice.
+SOCKET_OPTION = (
+    tuple[int, int, int]
+    | tuple[int, int, bytes | bytearray]
+    | tuple[int, int, None, int]
+)
 
 
 class PinnedDnsBackend(httpcore.AsyncNetworkBackend):

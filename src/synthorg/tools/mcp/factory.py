@@ -6,7 +6,6 @@ tools, and wraps each as an ``MCPBridgeTool``.
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -21,10 +20,8 @@ from synthorg.observability.events.mcp import (
 from synthorg.tools.mcp.bridge_tool import MCPBridgeTool
 from synthorg.tools.mcp.cache import MCPResultCache
 from synthorg.tools.mcp.client import MCPClient
-
-if TYPE_CHECKING:
-    from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
-    from synthorg.tools.mcp.models import MCPToolInfo
+from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
+from synthorg.tools.mcp.models import MCPToolInfo
 
 logger = get_logger(__name__)
 

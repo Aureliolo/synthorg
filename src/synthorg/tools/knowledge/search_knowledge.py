@@ -7,13 +7,16 @@ any source type -- may carry injected instructions.
 """
 
 import builtins
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel, JsonValue
 
 from synthorg.api.boundary import parse_typed
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY, wrap_untrusted
 from synthorg.knowledge.errors import KnowledgeError
+from synthorg.knowledge.models import Citation, KnowledgeHit
+from synthorg.knowledge.service import KnowledgeService
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -26,11 +29,6 @@ from synthorg.observability.events.knowledge import (
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.knowledge._args import SearchKnowledgeArgs
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.knowledge.models import Citation, KnowledgeHit
-    from synthorg.knowledge.service import KnowledgeService
 
 logger = get_logger(__name__)
 

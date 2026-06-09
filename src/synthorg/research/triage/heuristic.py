@@ -7,9 +7,10 @@ standalone strategy and as the prefilter in the hybrid strategy.
 """
 
 import re
-from typing import TYPE_CHECKING, Final
+from collections.abc import Mapping
+from typing import Final
 
-from synthorg.core.clock import SystemClock
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.research.constants import (
     RESEARCH_AUTHORITY_ACADEMIC,
     RESEARCH_AUTHORITY_CODE,
@@ -24,13 +25,13 @@ from synthorg.research.constants import (
     RESEARCH_RECENCY_NEUTRAL_CREDIT,
 )
 from synthorg.research.enums import ResearchSourceType
-from synthorg.research.models import AcademicSourceLocator, SourceCredibility
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.clock import Clock
-    from synthorg.research.models import AuthorityLevel, ResearchBrief, RetrievedItem
+from synthorg.research.models import (
+    AcademicSourceLocator,
+    AuthorityLevel,
+    ResearchBrief,
+    RetrievedItem,
+    SourceCredibility,
+)
 
 _MONTHS_PER_YEAR: Final[int] = 12
 

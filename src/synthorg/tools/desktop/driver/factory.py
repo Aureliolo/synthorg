@@ -7,17 +7,12 @@ raises :class:`DesktopDriverConfigError` at construction (fail fast),
 mirroring the git-backend and autonomy-strategy factories.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.registry import StrategyRegistry
-from synthorg.tools.desktop.driver.config import DesktopDriverKind
+from synthorg.tools.desktop.driver.config import DesktopDriverConfig, DesktopDriverKind
+from synthorg.tools.desktop.driver.protocol import DesktopDriver
 from synthorg.tools.desktop.driver.vnc import VncDesktopDriver
 from synthorg.tools.desktop.driver.xvfb import XvfbDesktopDriver
 from synthorg.tools.desktop.errors import DesktopDriverError
-
-if TYPE_CHECKING:
-    from synthorg.tools.desktop.driver.config import DesktopDriverConfig
-    from synthorg.tools.desktop.driver.protocol import DesktopDriver
 
 
 class DesktopDriverConfigError(DesktopDriverError):

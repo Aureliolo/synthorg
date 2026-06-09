@@ -7,7 +7,8 @@ tool discovery and invocation through the MCP protocol.
 import asyncio
 import copy
 from contextlib import AsyncExitStack
-from typing import TYPE_CHECKING, NoReturn, Self
+from types import TracebackType
+from typing import NoReturn, Self
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -33,6 +34,7 @@ from synthorg.observability.events.mcp import (
     MCP_INVOKE_TIMEOUT,
 )
 from synthorg.observability.metrics_hub import record_client_disconnect
+from synthorg.tools.mcp.config import MCPServerConfig
 from synthorg.tools.mcp.errors import (
     MCPConnectionError,
     MCPDiscoveryError,
@@ -40,11 +42,6 @@ from synthorg.tools.mcp.errors import (
     MCPTimeoutError,
 )
 from synthorg.tools.mcp.models import MCPRawResult, MCPToolInfo
-
-if TYPE_CHECKING:
-    from types import TracebackType
-
-    from synthorg.tools.mcp.config import MCPServerConfig
 
 logger = get_logger(__name__)
 

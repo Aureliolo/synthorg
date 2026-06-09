@@ -21,13 +21,22 @@ import asyncio
 import hashlib
 import re
 import uuid
+from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
+import aiodocker
 import structlog.contextvars
+from aiodocker.execs import Exec
+from aiodocker.stream import Stream
+from aiodocker.types import JSONObject
 from pydantic import JsonValue
 
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.config import ContainerLogShippingConfig
 from synthorg.observability.events.docker import (
     DOCKER_CONTAINER_CREATED,
     DOCKER_EXEC_INSPECT_FAILED,
@@ -49,33 +58,20 @@ from synthorg.tools.sandbox.container_log_shipper import (
     collect_sidecar_logs,
     ship_container_logs,
 )
+from synthorg.tools.sandbox.credential_manager import (
+    SandboxCredentialManager,
+)
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxStartError
 from synthorg.tools.sandbox.lifecycle.config import (
     STRATEGY_PER_AGENT,
     STRATEGY_PER_TASK,
 )
-from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+from synthorg.tools.sandbox.lifecycle.protocol import (
+    ContainerHandle,
+    SandboxLifecycleStrategy,
+)
 from synthorg.tools.sandbox.result import SandboxResult
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from pathlib import Path
-
-    import aiodocker
-    from aiodocker.execs import Exec
-    from aiodocker.stream import Stream
-    from aiodocker.types import JSONObject
-
-    from synthorg.core.clock import Clock
-    from synthorg.core.types import NotBlankStr
-    from synthorg.observability.config import ContainerLogShippingConfig
-    from synthorg.tools.sandbox.credential_manager import (
-        SandboxCredentialManager,
-    )
-    from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
-    from synthorg.tools.sandbox.lifecycle.protocol import (
-        SandboxLifecycleStrategy,
-    )
 
 logger = get_logger(__name__)
 

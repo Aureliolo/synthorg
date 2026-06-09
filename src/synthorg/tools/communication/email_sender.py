@@ -10,7 +10,7 @@ import re
 import smtplib
 import ssl
 from email.message import EmailMessage
-from typing import TYPE_CHECKING, ClassVar, Final, cast, override
+from typing import ClassVar, Final, cast, override
 
 from pydantic import BaseModel, JsonValue
 
@@ -30,10 +30,8 @@ from synthorg.tools.communication.base_communication_tool import (
 )
 from synthorg.tools.communication.config import (
     CommunicationToolsConfig,
+    EmailConfig,
 )
-
-if TYPE_CHECKING:
-    from synthorg.tools.communication.config import EmailConfig
 
 logger = get_logger(__name__)
 

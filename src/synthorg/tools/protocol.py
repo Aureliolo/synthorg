@@ -10,15 +10,13 @@ against this protocol lets the engine stay decoupled from the concrete
 ``runtime_checkable``); a protocol-level test asserts conformance.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from collections.abc import Iterable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.approval.models import EscalationInfo
-    from synthorg.core.tool_disclosure import ToolL1Metadata
-    from synthorg.providers.models import ToolCall, ToolDefinition, ToolResult
-    from synthorg.tools.registry import ToolRegistry
+from synthorg.approval.models import EscalationInfo
+from synthorg.core.tool_disclosure import ToolL1Metadata
+from synthorg.providers.models import ToolCall, ToolDefinition, ToolResult
+from synthorg.tools.registry import ToolRegistry
 
 
 @runtime_checkable

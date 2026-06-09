@@ -11,7 +11,9 @@ event loop responsive when multiple specs run concurrently.
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
+
+import numpy as np
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -20,9 +22,6 @@ from synthorg.observability.events.browser import (
 )
 from synthorg.tools.browser._constants import SSIM_DATA_RANGE
 from synthorg.tools.browser.errors import BrowserDiffError
-
-if TYPE_CHECKING:
-    import numpy as np
 
 logger = get_logger(__name__)
 
@@ -107,7 +106,6 @@ def _compare_sync(
         BrowserDiffError: If the related operation fails.
     """
     try:
-        import numpy as np  # noqa: PLC0415
         from PIL import Image  # noqa: PLC0415
         from skimage.metrics import (  # noqa: PLC0415
             structural_similarity,

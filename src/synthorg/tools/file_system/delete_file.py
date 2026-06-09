@@ -1,7 +1,8 @@
 """Delete file tool: removes a single file from the workspace."""
 
 import asyncio
-from typing import TYPE_CHECKING, ClassVar, cast, override
+from pathlib import Path
+from typing import ClassVar, cast, override
 
 from pydantic import BaseModel
 
@@ -11,9 +12,6 @@ from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.file_system._args import DeleteFileArgs
 from synthorg.tools.file_system._base_fs_tool import BaseFileSystemTool, _map_os_error
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = get_logger(__name__)
 

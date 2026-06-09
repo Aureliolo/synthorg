@@ -5,15 +5,14 @@ A synthesiser turns the retained, deduplicated sources into a
 Implementations return the report plus any USD cost incurred.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.research.models import (
-        ResearchBrief,
-        ResearchQueryPlan,
-        ResearchReport,
-        RetrievedItem,
-    )
+from synthorg.research.models import (
+    ResearchBrief,
+    ResearchQueryPlan,
+    ResearchReport,
+    RetrievedItem,
+)
 
 
 @runtime_checkable

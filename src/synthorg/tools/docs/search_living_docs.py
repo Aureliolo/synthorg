@@ -7,12 +7,15 @@ tagged checkout"). The transparent RAG path lives on
 memories on the normal ``memory.retrieve`` call.
 """
 
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import ClassVar, override
 
 from pydantic import BaseModel, JsonValue
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.models import DocSearchHit
+from synthorg.docs_engine.service import DocsService
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -26,11 +29,6 @@ from synthorg.observability.events.docs import (
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.docs._args import SearchLivingDocsArgs
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.docs_engine.models import DocSearchHit
-    from synthorg.docs_engine.service import DocsService
 
 logger = get_logger(__name__)
 

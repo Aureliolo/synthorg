@@ -6,14 +6,10 @@ A claim citing an unknown reference id is a synthesis failure: the binder
 raises rather than emit an unverifiable report.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
 
 from synthorg.research.errors import ResearchSynthesisError
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.research.models import ResearchCitation, RetrievedItem
+from synthorg.research.models import ResearchCitation, RetrievedItem
 
 
 class CitationBinder:

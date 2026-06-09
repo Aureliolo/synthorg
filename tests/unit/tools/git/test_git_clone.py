@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import synthorg.tools.git_tools as git_tools_module
+import synthorg.tools._git_clone as git_clone_module
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.git_tools import GitCloneTool
 from synthorg.tools.git_url_validator import (
@@ -167,7 +167,7 @@ def _mock_validate(
     async def _inner(url: str, policy: GitCloneNetworkPolicy) -> DnsValidationOk:
         return validation
 
-    monkeypatch.setattr(git_tools_module, "validate_clone_url_host", _inner)
+    monkeypatch.setattr(git_clone_module, "validate_clone_url_host", _inner)
 
 
 def _mock_run_git(
@@ -269,7 +269,7 @@ class TestGitCloneToolToctou:
             verify_calls.append((hostname, expected_ips))
             return None
 
-        monkeypatch.setattr(git_tools_module, "verify_dns_consistency", mock_verify)
+        monkeypatch.setattr(git_clone_module, "verify_dns_consistency", mock_verify)
         captured: list[str] = []
         _mock_run_git(captured, monkeypatch)
 
@@ -305,7 +305,7 @@ class TestGitCloneToolToctou:
         ) -> str | None:
             return "DNS rebinding detected for 'evil.example.com'"
 
-        monkeypatch.setattr(git_tools_module, "verify_dns_consistency", mock_verify)
+        monkeypatch.setattr(git_clone_module, "verify_dns_consistency", mock_verify)
 
         tool = GitCloneTool(workspace=workspace)
         result = await tool.execute(
@@ -360,7 +360,7 @@ class TestGitCloneToolToctou:
                 is_https=True,
             )
 
-        monkeypatch.setattr(git_tools_module, "validate_clone_url_host", _validate)
+        monkeypatch.setattr(git_clone_module, "validate_clone_url_host", _validate)
         captured: list[str] = []
         _mock_run_git(captured, monkeypatch)
 
@@ -400,7 +400,7 @@ class TestGitCloneToolToctou:
             verify_calls.append((hostname, expected_ips, dns_timeout))
             return None
 
-        monkeypatch.setattr(git_tools_module, "verify_dns_consistency", mock_verify)
+        monkeypatch.setattr(git_clone_module, "verify_dns_consistency", mock_verify)
         captured: list[str] = []
         _mock_run_git(captured, monkeypatch)
 

@@ -6,6 +6,10 @@ from typing import TYPE_CHECKING
 from synthorg.tools.state import ToolsStateSlice
 
 if TYPE_CHECKING:
+    # ``api.construction_wiring`` / ``api.state`` are kept under TYPE_CHECKING:
+    # the ``api`` layer calls this wiring helper, so a runtime import back up
+    # into ``api`` closes a circular import. PEP 649 makes the bare parameter
+    # annotations below safe at load.
     from synthorg.api.construction_wiring import ConstructionDeps
     from synthorg.api.state import AppState
 

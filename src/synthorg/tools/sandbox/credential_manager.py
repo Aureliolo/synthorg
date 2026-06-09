@@ -6,13 +6,11 @@ and a reporting variant that lists which keys were stripped.
 """
 
 import re
-from typing import TYPE_CHECKING, ClassVar, Final
+from collections.abc import Mapping
+from typing import ClassVar, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.sandbox import SANDBOX_CREDENTIAL_STRIPPED
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 

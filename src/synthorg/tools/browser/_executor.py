@@ -53,11 +53,14 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from playwright.async_api import Page
+
 if TYPE_CHECKING:
-    from playwright.async_api import Page
-
+    # The executor is copied into and run inside the sandbox container, where
+    # ``synthorg`` is not installed, so this import must never execute at
+    # runtime. Signature annotations referencing these names are quoted so the
+    # sub-3.14 sandbox interpreter never evaluates them at function definition.
     from synthorg.tools.browser._executor_types import BrowserPayload, Violation
-
 
 _DEFAULT_VIEWPORT_WIDTH: Final[int] = 1280
 _DEFAULT_VIEWPORT_HEIGHT: Final[int] = 720
@@ -164,7 +167,7 @@ async () => {
 """
 
 
-async def _navigate(page: Page, payload: BrowserPayload) -> dict[str, object]:
+async def _navigate(page: Page, payload: "BrowserPayload") -> dict[str, object]:
     """Navigate.
 
     Returns:
@@ -194,7 +197,7 @@ async def _navigate(page: Page, payload: BrowserPayload) -> dict[str, object]:
 
 async def _screenshot(
     page: Page,
-    payload: BrowserPayload,
+    payload: "BrowserPayload",
 ) -> dict[str, object]:
     """Screenshot.
 
@@ -244,17 +247,17 @@ def _empty_a11y_result(url: str, min_impact: str) -> dict[str, object]:
 
 
 def _partition_violations(
-    raw_violations: list[Violation],
+    raw_violations: list["Violation"],
     min_impact: str,
-) -> tuple[list[Violation], list[Violation]]:
+) -> tuple[list["Violation"], list["Violation"]]:
     """Sort axe-core violations into (failing, warning) buckets.
 
     Returns:
         Tuple of (failing, warning) violation lists.
     """
     min_rank = _A11Y_RANK[min_impact]
-    violations: list[Violation] = []
-    warnings: list[Violation] = []
+    violations: list["Violation"] = []
+    warnings: list["Violation"] = []
     for entry in raw_violations:
         impact = entry.get("impact") or "minor"
         if impact not in _A11Y_RANK:
@@ -302,7 +305,7 @@ def _load_axe_script(axe_script_path: str) -> str:
 
 async def _accessibility(
     page: Page,
-    payload: BrowserPayload,
+    payload: "BrowserPayload",
 ) -> dict[str, object]:
     """Accessibility.
 
@@ -342,7 +345,7 @@ async def _accessibility(
     }
 
 
-async def _dispatch(payload: BrowserPayload) -> dict[str, object]:
+async def _dispatch(payload: "BrowserPayload") -> dict[str, object]:
     # Playwright is only available inside the sandbox image where this
     # script executes; importing lazily keeps the executor importable
     # for host-side static analysis without a host playwright install.

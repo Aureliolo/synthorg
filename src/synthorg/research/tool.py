@@ -8,7 +8,7 @@ same run id (idempotent re-run, replay-friendly).
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, ClassVar, Final, override
+from typing import ClassVar, Final, override
 
 from pydantic import (
     BaseModel,
@@ -30,12 +30,10 @@ from synthorg.research.constants import (
 )
 from synthorg.research.errors import ResearchError
 from synthorg.research.models import QuestionText, ResearchBrief, ResearchReport
+from synthorg.research.service import ResearchService
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.versioning.hashing import compute_text_hash
-
-if TYPE_CHECKING:
-    from synthorg.research.service import ResearchService
 
 logger = get_logger(__name__)
 

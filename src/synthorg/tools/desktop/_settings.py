@@ -6,21 +6,17 @@ selected :class:`DesktopDriverConfig` so :class:`DesktopTool` consumes
 DB > env > code-default values rather than baked-in module constants.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.desktop import DESKTOP_ARGS_VALIDATION_FAILED
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.desktop._constants import DESKTOP_IMAGE_PIN_DEFAULT
 from synthorg.tools.desktop.driver.config import (
     DesktopDriverConfig,
     DesktopDriverKind,
 )
-
-if TYPE_CHECKING:
-    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 

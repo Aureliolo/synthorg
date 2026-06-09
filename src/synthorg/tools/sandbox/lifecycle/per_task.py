@@ -6,7 +6,7 @@ are clean cuts with no grace period.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -16,11 +16,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_DESTROY_FAILED,
     SANDBOX_LIFECYCLE_RELEASE,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 
 logger = get_logger(__name__)
 

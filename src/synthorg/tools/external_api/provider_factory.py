@@ -4,13 +4,9 @@ Keyed off the ``external_api.provider_type`` setting. Ships a single safe
 default ('httpx'); future strategies register here.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.tools.external_api.errors import ExternalApiError
 from synthorg.tools.external_api.httpx_provider import HttpxExternalAccessProvider
-
-if TYPE_CHECKING:
-    from synthorg.tools.external_api.provider import ExternalAccessProvider
+from synthorg.tools.external_api.provider import ExternalAccessProvider
 
 _PROVIDER_HTTPX = "httpx"
 

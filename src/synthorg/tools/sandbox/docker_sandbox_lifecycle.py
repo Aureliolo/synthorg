@@ -5,9 +5,10 @@ Owns ``_safe_collect_logs``, ``_log_execution_outcome``,
 ``cleanup``, ``health_check``, and ``get_backend_type``.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import aiodocker
+import aiodocker.containers
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -22,14 +23,10 @@ from synthorg.observability.events.docker import (
     DOCKER_EXECUTE_SUCCESS,
     DOCKER_HEALTH_CHECK,
 )
-
-if TYPE_CHECKING:
-    import aiodocker.containers
-
-    from synthorg.tools.sandbox.lifecycle.protocol import (
-        ContainerHandle,
-        SandboxLifecycleStrategy,
-    )
+from synthorg.tools.sandbox.lifecycle.protocol import (
+    ContainerHandle,
+    SandboxLifecycleStrategy,
+)
 
 logger = get_logger(__name__)
 

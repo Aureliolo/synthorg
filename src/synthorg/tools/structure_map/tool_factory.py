@@ -6,18 +6,15 @@ by the brownfield-intake wiring and parked on the app state; the per-task
 tool-loader calls :meth:`build_tools` with the task's project scope.
 """
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Iterable
+from typing import Final
 
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.codebase_structure_map_protocol import (
+    CodebaseStructureMapRepository,
+)
+from synthorg.tools.base import BaseTool
 from synthorg.tools.structure_map.query_structure_map import QueryStructureMapTool
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.persistence.codebase_structure_map_protocol import (
-        CodebaseStructureMapRepository,
-    )
-    from synthorg.tools.base import BaseTool
 
 STRUCTURE_MAP_TOOL_NAMES: Final[tuple[str, ...]] = ("query_structure_map",)
 

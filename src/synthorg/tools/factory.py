@@ -9,6 +9,8 @@ in a ``ToolRegistry``.
 """
 
 import math
+from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.autonomy_enums import AutonomyLevel
@@ -43,8 +45,12 @@ from synthorg.tools.web.html_parser import HtmlParserTool
 from synthorg.tools.web.http_request import HttpRequestTool
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from pathlib import Path
+    # This factory loads deep inside the eager ``config.schema`` init chain
+    # (``config.schema`` -> ``api.config`` -> ... -> ``security`` -> ``engine``
+    # -> ``tools.invoker`` -> ``tools`` -> here), so a runtime import of
+    # ``config.schema`` / ``communication`` / ``memory`` types closes a circular
+    # import against a partially-initialised module. The cross-package signature
+    # types stay here; PEP 649 makes the bare annotations below safe at load.
 
     from synthorg.communication.async_tasks.service import AsyncTaskService
     from synthorg.config.schema import RootConfig

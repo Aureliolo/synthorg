@@ -3,8 +3,8 @@
 import asyncio
 import itertools
 import re
-from pathlib import PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING, ClassVar, Final, cast, override
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import ClassVar, Final, cast, override
 
 from pydantic import BaseModel, JsonValue
 
@@ -19,9 +19,6 @@ from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.file_system._args import ListDirectoryArgs
 from synthorg.tools.file_system._base_fs_tool import BaseFileSystemTool
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = get_logger(__name__)
 
