@@ -9130,7 +9130,7 @@
     },
     {
       "kind": "code",
-      "loc": 306,
+      "loc": 336,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/chunking/code.py",
       "owning_feature": "knowledge"

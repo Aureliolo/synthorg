@@ -12,6 +12,7 @@ deterministic line-window split.
 :class:`KnowledgeDependencyError` with install guidance.
 """
 
+import functools
 from typing import TYPE_CHECKING
 
 from synthorg.knowledge.chunking.protocol import ChunkPiece
@@ -79,12 +80,48 @@ def _language_for(path: str) -> str | None:
     return None
 
 
+@functools.cache
+def _cached_grammar(language: str) -> tree_sitter.Language | None:
+    """Load a tree-sitter grammar once per process; None when absent.
+
+    ``tree_sitter_language_pack.get_language`` loads a compiled grammar
+    binary from disk on every call. The knowledge-ingestion path chunks
+    many units, so memoising the grammar avoids reloading the same binary
+    for each one -- a redundant cost that, under heavy parallel load, can
+    stretch a single cold load into a multi-second stall. Grammars are
+    immutable metadata, so sharing one instance across calls (and threads)
+    is safe; a fresh ``Parser`` is still built per call by ``_load_parser``.
+
+    Returns:
+        The cached ``tree_sitter.Language``, or ``None`` when the grammar
+        for ``language`` is absent.
+
+    Raises:
+        KnowledgeDependencyError: When the ``tree-sitter`` extras are not
+            installed.
+    """
+    try:
+        from tree_sitter_language_pack import get_language  # noqa: PLC0415
+    except ImportError as exc:
+        msg = (
+            "Code chunking needs the 'tree-sitter' extras. Install with "
+            "`pip install synthorg[knowledge]`."
+        )
+        raise KnowledgeDependencyError(msg) from exc
+    try:
+        return get_language(language)
+    except LookupError, OSError, ValueError:
+        return None
+
+
 def _load_parser(language: str) -> tree_sitter.Parser | None:
-    """Lazily build a tree-sitter parser; None when the grammar is absent.
+    """Build a tree-sitter parser from a cached grammar; None when absent.
 
     Uses the standard ``tree_sitter.Parser`` + ``get_language`` path
     (the tree-sitter Python API) rather than the language pack's bundled
-    fast-binding, whose ``Tree`` / ``Node`` surface differs.
+    fast-binding, whose ``Tree`` / ``Node`` surface differs. The grammar
+    load is memoised by :func:`_cached_grammar`; a fresh ``Parser`` is
+    built per call so parsing state is never shared across threads.
 
     Returns:
         A configured ``tree_sitter.Parser``, or ``None`` when the grammar
@@ -96,16 +133,14 @@ def _load_parser(language: str) -> tree_sitter.Parser | None:
     """
     try:
         from tree_sitter import Parser  # noqa: PLC0415
-        from tree_sitter_language_pack import get_language  # noqa: PLC0415
     except ImportError as exc:
         msg = (
             "Code chunking needs the 'tree-sitter' extras. Install with "
             "`pip install synthorg[knowledge]`."
         )
         raise KnowledgeDependencyError(msg) from exc
-    try:
-        grammar = get_language(language)
-    except LookupError, OSError, ValueError:
+    grammar = _cached_grammar(language)
+    if grammar is None:
         return None
     return Parser(grammar)
 
