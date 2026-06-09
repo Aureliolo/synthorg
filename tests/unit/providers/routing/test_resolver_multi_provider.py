@@ -388,7 +388,7 @@ class TestRouterSelectorPassthrough:
 
     def test_router_passes_selector_to_resolver(self) -> None:
         """Selector injected into ModelRouter reaches the resolver."""
-        from synthorg.config.schema import RoutingConfig
+        from synthorg.config.agent_schema import RoutingConfig
 
         selector = CheapestSelector()
         router = ModelRouter(

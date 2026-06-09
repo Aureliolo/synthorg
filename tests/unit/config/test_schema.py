@@ -5,14 +5,16 @@ from uuid import uuid4
 import pytest
 from pydantic import JsonValue, ValidationError
 
-from synthorg.config.schema import (
+from synthorg.config.agent_schema import (
     AgentConfig,
-    ProviderConfig,
-    ProviderModelConfig,
-    RootConfig,
     RoutingConfig,
     RoutingRuleConfig,
     TaskAssignmentConfig,
+)
+from synthorg.config.schema import (
+    ProviderConfig,
+    ProviderModelConfig,
+    RootConfig,
 )
 from synthorg.core.types import stable_agent_id
 from synthorg.hr.seniority import SeniorityLevel

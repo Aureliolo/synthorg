@@ -34,6 +34,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_NOT_FOUND,
     SETTINGS_VALIDATION_FAILED,
 )
+from synthorg.settings._resolver_batch_reads import resolve_bridge_fields
 from synthorg.settings.bridge_configs import (
     A2ABridgeConfig,
     ApiBridgeConfig,
@@ -59,8 +60,9 @@ if TYPE_CHECKING:
     # signatures name them without importing them.
     from synthorg.api.config import ApiConfig
     from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
-    from synthorg.config.schema import AgentConfig, ProviderConfig, RootConfig
-    from synthorg.core.company import Department
+    from synthorg.config.agent_schema import AgentConfig
+    from synthorg.config.schema import ProviderConfig, RootConfig
+    from synthorg.core.company_departments import Department
     from synthorg.engine.coordination.config import CoordinationConfig
 
     # The service module pulls the communication package (message bus
@@ -468,7 +470,7 @@ class ConfigResolver:
                 in the registry.
             SettingsEncryptionError: If decryption fails.
         """
-        from synthorg.config.schema import AgentConfig  # noqa: PLC0415
+        from synthorg.config.agent_schema import AgentConfig  # noqa: PLC0415
 
         return await self._resolve_list_setting(
             "company",
@@ -493,7 +495,7 @@ class ConfigResolver:
                 in the registry.
             SettingsEncryptionError: If decryption fails.
         """
-        from synthorg.core.company import Department  # noqa: PLC0415
+        from synthorg.core.company_departments import Department  # noqa: PLC0415
 
         return await self._resolve_list_setting(
             "company",
@@ -764,17 +766,15 @@ class ConfigResolver:
     ) -> dict[str, Any]:
         """Resolve a bundle of same-namespace settings in parallel.
 
-        Each spec is ``(key, kind)`` where ``kind`` is one of
-        ``"int"``, ``"float"``, or ``"str"``.  Returns a mapping from
-        key to parsed value, suitable for passing into a Pydantic
-        model constructor as keyword arguments -- which is why the
-        value type is deliberately ``Any``: the callers unpack the
-        mapping into typed Pydantic ``__init__`` signatures that
-        validate at runtime.
+        Thin delegator: the ``TaskGroup`` fan-out and failed-key
+        pinpointing live in
+        :func:`synthorg.settings._resolver_batch_reads.resolve_bridge_fields`.
 
         Args:
             namespace: Setting namespace (e.g. ``"a2a"``).
-            specs: Tuple of ``(key, kind)`` pairs to resolve.
+            specs: Tuple of ``(key, kind)`` pairs to resolve, where
+                ``kind`` is one of ``"int"``, ``"float"``, ``"str"``,
+                or ``"json"``.
 
         Returns:
             Dict of ``{key: parsed_value}`` for each spec.
@@ -783,69 +783,7 @@ class ConfigResolver:
             SettingNotFoundError: If a key is not in the registry.
             ValueError: If a resolved value cannot be parsed.
         """
-        tasks: dict[str, asyncio.Task[Any]] = {}  # type: ignore[explicit-any]  # see return type
-        try:
-            async with asyncio.TaskGroup() as tg:
-                tasks = {
-                    key: tg.create_task(self._resolve_typed(namespace, key, kind))
-                    for key, kind in specs
-                }
-        except ExceptionGroup as eg:
-            # Pinpoint which key(s) failed so an operator has a
-            # concrete setting name in the log instead of just an
-            # ``error_count``. Skip cancelled sibling tasks:
-            # ``TaskGroup`` cancels all other tasks when one fails,
-            # and calling ``task.exception()`` on a cancelled task
-            # would raise ``CancelledError`` -- masking the original
-            # failure and polluting ``failed_keys`` with siblings
-            # that didn't actually fail.
-            failed_keys = [
-                key
-                for key, task in tasks.items()
-                if task.done() and not task.cancelled() and task.exception() is not None
-            ]
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace=namespace,
-                key="_bridge_composed",
-                error_count=len(eg.exceptions),
-                failed_keys=failed_keys,
-            )
-            raise eg.exceptions[0] from eg
-        return {key: task.result() for key, task in tasks.items()}
-
-    async def _resolve_typed(  # type: ignore[explicit-any]  # kind-dispatched value; see _resolve_bridge_fields
-        self, namespace: str, key: str, kind: str
-    ) -> Any:
-        """Dispatch to the accessor matching ``kind``.
-
-        Args:
-            namespace: Setting namespace (e.g. ``"api"``, ``"tools"``).
-            key: Setting key within the namespace.
-            kind: Type discriminator; one of ``"int"``, ``"float"``,
-                ``"str"``, or ``"json"``. Any other value raises
-                ``ValueError`` so misuse fails loudly rather than
-                silently resolving the wrong accessor.
-
-        Returns:
-            The resolved value coerced to the requested type.
-
-        Raises:
-            ValueError: If *kind* is not one of the four supported
-                discriminators.
-            SettingNotFoundError: If the registry does not contain
-                *key* in *namespace*.
-        """
-        if kind == "int":
-            return await self.get_int(namespace, key)
-        if kind == "float":
-            return await self.get_float(namespace, key)
-        if kind == "str":
-            return await self.get_str(namespace, key)
-        if kind == "json":
-            return await self.get_json(namespace, key)
-        msg = f"Unsupported typed-resolve kind: {kind!r}"
-        raise ValueError(msg)
+        return await resolve_bridge_fields(self, namespace, specs)
 
     async def get_api_bridge_config(self) -> ApiBridgeConfig:
         """Assemble ``ApiBridgeConfig`` from bridged API settings.

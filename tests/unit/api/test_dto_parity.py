@@ -17,7 +17,7 @@ from synthorg.api.dto_org import (
 )
 from synthorg.api.dto_providers import PullModelRequest, UpdateModelConfigRequest
 from synthorg.config.schema import LocalModelParams
-from synthorg.core.company import Team
+from synthorg.core.company_departments import Team
 
 pytestmark = pytest.mark.unit
 

@@ -9,7 +9,8 @@ import pytest
 from pydantic import ValidationError
 from typeguard import suppress_type_checks
 
-from synthorg.config.schema import AgentConfig, RootConfig
+from synthorg.config.agent_schema import AgentConfig
+from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.tool_constraints import ToolAccessLevel

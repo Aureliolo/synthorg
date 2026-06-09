@@ -112,7 +112,7 @@ class TestValidatePresetReferences:
 class TestUnknownPresetWarning:
     def test_unknown_preset_warns_and_skips_personality(self) -> None:
         """Unknown personality_preset logs a warning and omits personality."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Dev",
@@ -123,7 +123,7 @@ class TestUnknownPresetWarning:
 
     def test_unknown_preset_does_not_raise(self) -> None:
         """Unknown preset no longer raises TemplateRenderError."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Dev",
@@ -141,7 +141,7 @@ class TestUnknownPresetWarning:
 class TestCustomPresetResolution:
     def test_custom_preset_resolved_during_expansion(self) -> None:
         """Custom preset is resolved when passed to _expand_single_agent."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         custom: dict[str, dict[str, JsonValue]] = {
             "my_custom": {
@@ -242,7 +242,7 @@ template:
 
     def test_builtin_preset_still_works_with_custom_presets(self) -> None:
         """Builtin presets resolve when custom_presets dict is passed."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         custom: dict[str, dict[str, JsonValue]] = {"other_custom": {"traits": ["a"]}}
         agent: dict[str, object] = {

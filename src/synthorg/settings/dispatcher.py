@@ -1,3 +1,4 @@
+# module-kind: service
 """Settings change dispatcher -- polls ``#settings`` and routes to subscribers.
 
 Follows the same polling-loop pattern as

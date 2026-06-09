@@ -32,7 +32,7 @@ from synthorg.observability.events.api import API_REQUEST_ERROR
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.budget.cost_record import CostRecord
-    from synthorg.config.schema import AgentConfig
+    from synthorg.config.agent_schema import AgentConfig
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
 
 logger = get_logger(__name__)

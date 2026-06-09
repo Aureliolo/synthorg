@@ -24,7 +24,7 @@ from synthorg.observability.events.execution import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.config.schema import GracefulShutdownConfig
+    from synthorg.config.agent_schema import GracefulShutdownConfig
 
 logger = get_logger(__name__)
 

@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.company import (
+from synthorg.core.company_departments import (
     Department,
     ReportingLine,
 )

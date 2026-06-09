@@ -5,7 +5,8 @@ from types import MappingProxyType
 import pytest
 
 from synthorg.communication.delegation.hierarchy import HierarchyResolver
-from synthorg.core.company import Company, Department, Team
+from synthorg.core.company import Company
+from synthorg.core.company_departments import Department, Team
 from synthorg.engine.assignment._shared import (
     STRATEGY_NAME_AUCTION,
     STRATEGY_NAME_COST_OPTIMIZED,

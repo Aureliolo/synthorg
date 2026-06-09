@@ -1,3 +1,4 @@
+# module-kind: adapter
 """Task claim data model and JetStream work-queue client.
 
 A :class:`TaskClaim` is the message body enqueued by the dispatcher

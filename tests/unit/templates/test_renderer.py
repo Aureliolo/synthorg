@@ -442,7 +442,7 @@ class TestCollectVariables:
 class TestExpandAgentNarrowing:
     def test_non_string_role_raises(self) -> None:
         """A non-string role fails loud with the non-empty-string render error."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {"role": 123}
         with pytest.raises(
@@ -452,7 +452,7 @@ class TestExpandAgentNarrowing:
 
     def test_non_string_personality_preset_raises(self) -> None:
         """A non-string personality_preset fails loud."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {"role": "Dev", "personality_preset": 123}
         with pytest.raises(TemplateRenderError, match="must be a string"):
@@ -463,7 +463,7 @@ class TestExpandAgentNarrowing:
 class TestInlinePersonality:
     def test_inline_personality_applied(self) -> None:
         """Inline personality dict is applied to agent config."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Dev",
@@ -523,7 +523,7 @@ class TestDepartmentPassthrough:
     def test_workflow_handoffs_passthrough(self) -> None:
         """Workflow handoffs pass through to config dict."""
         from synthorg.organization.enums import CompanyType
-        from synthorg.templates.renderer import _build_config_dict
+        from synthorg.templates._config_assembly import _build_config_dict
         from synthorg.templates.schema import (
             CompanyTemplate,
             TemplateAgentConfig,
@@ -556,7 +556,7 @@ class TestDepartmentPassthrough:
 class TestInlinePersonalityRejection:
     def test_invalid_inline_personality_raises_template_render_error(self) -> None:
         """Invalid inline personality dict raises TemplateRenderError."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Dev",
@@ -567,7 +567,7 @@ class TestInlinePersonalityRejection:
 
     def test_non_dict_personality_raises_template_render_error(self) -> None:
         """Non-dict personality value raises TemplateRenderError."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Dev",
@@ -581,7 +581,7 @@ class TestInlinePersonalityRejection:
 class TestMissingRoleError:
     def test_missing_role_raises_template_render_error(self) -> None:
         """Agent without a 'role' field raises TemplateRenderError."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         with pytest.raises(
             TemplateRenderError, match="requires a non-empty string 'role'"
@@ -624,7 +624,7 @@ class TestEscalationPathsPassthrough:
     def test_escalation_paths_included_in_config_dict(self) -> None:
         """Escalation paths pass through to config dict."""
         from synthorg.organization.enums import CompanyType
-        from synthorg.templates.renderer import _build_config_dict
+        from synthorg.templates._config_assembly import _build_config_dict
         from synthorg.templates.schema import (
             CompanyTemplate,
             TemplateAgentConfig,
@@ -661,16 +661,16 @@ class TestEscalationPathsPassthrough:
 class TestValidateListErrors:
     def test_non_list_raises(self) -> None:
         """Non-list value for a list field raises TemplateRenderError."""
+        from synthorg.templates._config_assembly import _validate_list
         from synthorg.templates.errors import TemplateRenderError
-        from synthorg.templates.renderer import _validate_list
 
         with pytest.raises(TemplateRenderError, match="must be a list"):
             _validate_list({"agents": "not-a-list"}, "agents")
 
     def test_non_dict_item_raises(self) -> None:
         """Non-dict item in a list field raises TemplateRenderError."""
+        from synthorg.templates._config_assembly import _validate_list
         from synthorg.templates.errors import TemplateRenderError
-        from synthorg.templates.renderer import _validate_list
 
         with pytest.raises(TemplateRenderError, match="must be a mapping"):
             _validate_list({"agents": [{"role": "Dev"}, "bad"]}, "agents")
@@ -683,7 +683,7 @@ class TestValidateListErrors:
 class TestExpandPreservesMergeId:
     def test_expand_preserves_merge_id(self) -> None:
         """Expanded agent dict contains merge_id when set."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Full-Stack Developer",
@@ -695,7 +695,7 @@ class TestExpandPreservesMergeId:
 
     def test_expand_omits_empty_merge_id(self) -> None:
         """Expanded agent dict omits merge_id when empty."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Full-Stack Developer",
@@ -707,7 +707,7 @@ class TestExpandPreservesMergeId:
 
     def test_expand_omits_merge_id_without_extends(self) -> None:
         """Standalone templates do not leak merge_id into output."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Full-Stack Developer",
@@ -719,7 +719,7 @@ class TestExpandPreservesMergeId:
 
     def test_preserve_merge_id_without_extends(self) -> None:
         """Parent rendering preserves merge_id even without extends."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Full-Stack Developer",
@@ -776,7 +776,7 @@ class TestJinja2PlaceholderAutoName:
 
     def test_jinja2_placeholder_triggers_auto_name(self) -> None:
         """An agent name containing __JINJA2__ is replaced by an auto-name."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Backend Developer",
@@ -792,7 +792,7 @@ class TestJinja2PlaceholderAutoName:
 
     def test_jinja2_placeholder_exact_match(self) -> None:
         """An agent name that is exactly __JINJA2__ is auto-named."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "CEO",

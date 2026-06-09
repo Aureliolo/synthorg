@@ -29,13 +29,13 @@ from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.workers._coordinator_assembly import _build_runtime_coordinator
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
 )
 from synthorg.workers.runtime_builder import (
     RuntimeServices,
-    _build_runtime_coordinator,
     build_runtime_services,
 )
 from tests._shared import FakeClock, make_app_state, mock_of

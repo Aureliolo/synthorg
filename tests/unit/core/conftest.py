@@ -15,19 +15,16 @@ from synthorg.core.agent import (
     ToolPermissions,
 )
 from synthorg.core.artifact import Artifact, ExpectedArtifact
-from synthorg.core.company import (
+from synthorg.core.company import Company, CompanyConfig, HRRegistry
+from synthorg.core.company_departments import (
     ApprovalChain,
-    Company,
-    CompanyConfig,
     Department,
     DepartmentPolicies,
-    EscalationPath,
-    HRRegistry,
     ReportingLine,
     ReviewRequirements,
     Team,
-    WorkflowHandoff,
 )
+from synthorg.core.company_handoffs import EscalationPath, WorkflowHandoff
 from synthorg.core.memory_enums import MemoryLevel
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, CustomRole, Role, SeniorityInfo, Skill

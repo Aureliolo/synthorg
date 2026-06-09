@@ -30,8 +30,8 @@ from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
-from synthorg.config.schema import AgentConfig
-from synthorg.core.company import Department
+from synthorg.config.agent_schema import AgentConfig
+from synthorg.core.company_departments import Department
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.normalization import find_by_name_ci
 from synthorg.observability import get_logger

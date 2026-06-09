@@ -12,7 +12,8 @@ from synthorg.core.agent import (
     PersonalityConfig,
     SkillSet,
 )
-from synthorg.core.company import Company, CompanyConfig, Department
+from synthorg.core.company import Company, CompanyConfig
+from synthorg.core.company_departments import Department
 from synthorg.core.role import Authority, Role, Skill
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import (

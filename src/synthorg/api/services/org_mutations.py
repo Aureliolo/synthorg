@@ -14,8 +14,9 @@ from typing import TYPE_CHECKING, Final, TypedDict, override
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.services._org_agent_mutations import OrgAgentMutationsMixin
 from synthorg.api.services._org_department_mutations import OrgDepartmentMutationsMixin
-from synthorg.config.schema import AgentConfig
-from synthorg.core.company import Company, Department
+from synthorg.config.agent_schema import AgentConfig
+from synthorg.core.company import Company
+from synthorg.core.company_departments import Department
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ValidationError

@@ -3,13 +3,12 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.company import (
+from synthorg.core.company_departments import (
     ApprovalChain,
     DepartmentPolicies,
-    EscalationPath,
     ReviewRequirements,
-    WorkflowHandoff,
 )
+from synthorg.core.company_handoffs import EscalationPath, WorkflowHandoff
 
 # ── ReviewRequirements ────────────────────────────────────────────
 
