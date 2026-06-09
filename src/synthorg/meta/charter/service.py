@@ -9,7 +9,6 @@ approved charter is dispatched into the work pipeline by
 ``CharterDispatcher`` via the dedicated approve endpoint.
 """
 
-import asyncio
 import uuid
 from datetime import datetime
 
@@ -29,6 +28,7 @@ from synthorg.meta.charter.models import (
     ProjectCharter,
 )
 from synthorg.meta.charter.strategy import CharterInterviewStrategy
+from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.meta.errors import (
     ConversationClosedError,
@@ -38,6 +38,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.charter import (
     CHARTER_INTERVIEW_CAP_REACHED,
     CHARTER_INTERVIEW_DRAFTED,
+    CHARTER_INTERVIEW_FAILED,
     CHARTER_INTERVIEW_QUESTION,
     CHARTER_INTERVIEW_TURN,
     CHARTER_STATUS_TRANSITIONED,
@@ -111,24 +112,9 @@ class CharterInterviewService(CharterCrudMixin):
         # Per-conversation locks serialise the turn pipeline so two
         # concurrent run_turn() calls on one conversation cannot
         # interleave their history snapshots nor double-create charters.
-        # Lazy-initialised so the guard binds to the request loop.
-        self._conversation_locks: dict[str, asyncio.Lock] = {}
-        self._conversation_locks_guard: asyncio.Lock | None = None
-
-    async def _lock_for(self, conversation_id: str) -> asyncio.Lock:
-        """Return the per-conversation lock, creating it once.
-
-        Returns:
-            ``asyncio.Lock`` instance.
-        """
-        if self._conversation_locks_guard is None:
-            self._conversation_locks_guard = asyncio.Lock()
-        async with self._conversation_locks_guard:
-            lock = self._conversation_locks.get(conversation_id)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._conversation_locks[conversation_id] = lock
-            return lock
+        # The registry reference-counts and evicts idle locks, so it does
+        # not grow unbounded over the process lifetime.
+        self._locks = ConversationLockRegistry()
 
     async def run_turn(self, args: InterviewTurnArgs) -> InterviewTurnResult:
         """Run one interview turn (elicit a question or draft the charter).
@@ -144,7 +130,7 @@ class CharterInterviewService(CharterCrudMixin):
         """
         now = self._clock.now()
         conversation = await self._resolve_conversation(args, now)
-        async with await self._lock_for(str(conversation.id)):
+        async with self._locks.hold(str(conversation.id)):
             return await self._run_turn(conversation, args, now)
 
     async def _run_turn(
@@ -163,6 +149,14 @@ class CharterInterviewService(CharterCrudMixin):
         """
         current = await self._conversation_repo.get(str(conversation.id))
         if current is None or current.status is not ConversationStatus.ACTIVE:
+            logger.warning(
+                CHARTER_INTERVIEW_FAILED,
+                detail="conversation_terminal_or_missing",
+                conversation_id=str(conversation.id),
+                current_status=(
+                    current.status.value if current is not None else "missing"
+                ),
+            )
             raise ConversationClosedError(conversation_id=str(conversation.id))
         conversation = current
         prior_turns = await self._ordered_turns(str(conversation.id))
@@ -177,7 +171,7 @@ class CharterInterviewService(CharterCrudMixin):
         )
         logger.info(
             CHARTER_INTERVIEW_TURN,
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             sequence=next_sequence,
         )
 
@@ -312,7 +306,7 @@ class CharterInterviewService(CharterCrudMixin):
         await self._conversation_repo.save(
             conversation.model_copy(update={"updated_at": now})
         )
-        logger.info(CHARTER_INTERVIEW_QUESTION, conversation_id=conversation.id)
+        logger.info(CHARTER_INTERVIEW_QUESTION, conversation_id=str(conversation.id))
         return InterviewTurnResult(
             conversation_id=str(conversation.id),
             status="needs_more",
@@ -346,7 +340,7 @@ class CharterInterviewService(CharterCrudMixin):
         )
         logger.info(
             CHARTER_INTERVIEW_DRAFTED,
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             charter_id=charter.id,
             version=charter.version,
         )
@@ -434,11 +428,13 @@ class CharterInterviewService(CharterCrudMixin):
         if transitioned:
             logger.info(
                 CHARTER_STATUS_TRANSITIONED,
-                conversation_id=conversation.id,
+                conversation_id=str(conversation.id),
                 from_state=conversation.status.value,
                 to_state=ConversationStatus.CLOSED.value,
             )
-        logger.warning(CHARTER_INTERVIEW_CAP_REACHED, conversation_id=conversation.id)
+        logger.warning(
+            CHARTER_INTERVIEW_CAP_REACHED, conversation_id=str(conversation.id)
+        )
         return InterviewTurnResult(
             conversation_id=str(conversation.id),
             status="needs_more",

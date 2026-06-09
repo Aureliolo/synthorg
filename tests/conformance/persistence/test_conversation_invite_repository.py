@@ -326,12 +326,11 @@ class TestConversationInviteRepository:
             to_state=ConversationInviteStatus.DECLINED,
         )
         # The same target can now be re-invited without colliding.
-        await repo.save(
-            _make_invite(
-                invite_id="re-2", approval_id="a-re-2", target_agent_id="agent-cfo"
-            )
+        second = _make_invite(
+            invite_id="re-2", approval_id="a-re-2", target_agent_id="agent-cfo"
         )
-        assert await repo.get(sid("re-2")) is not None
+        await repo.save(second)
+        assert await repo.get(str(second.id)) is not None
 
     async def test_distinct_target_pending_invites_allowed(
         self, backend: PersistenceBackend
@@ -341,18 +340,16 @@ class TestConversationInviteRepository:
         # persist (only the same-target collision is rejected).
         await _seed_conversation(backend)
         repo = _repo(backend)
-        await repo.save(
-            _make_invite(
-                invite_id="dt-1", approval_id="a-dt-1", target_agent_id="agent-cfo"
-            )
+        dt1 = _make_invite(
+            invite_id="dt-1", approval_id="a-dt-1", target_agent_id="agent-cfo"
         )
-        await repo.save(
-            _make_invite(
-                invite_id="dt-2", approval_id="a-dt-2", target_agent_id="agent-coo"
-            )
+        dt2 = _make_invite(
+            invite_id="dt-2", approval_id="a-dt-2", target_agent_id="agent-coo"
         )
-        assert await repo.get(sid("dt-1")) is not None
-        assert await repo.get(sid("dt-2")) is not None
+        await repo.save(dt1)
+        await repo.save(dt2)
+        assert await repo.get(str(dt1.id)) is not None
+        assert await repo.get(str(dt2.id)) is not None
 
     async def test_transition_if_flips_state_atomically(
         self, backend: PersistenceBackend

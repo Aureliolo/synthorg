@@ -1,8 +1,8 @@
 # module-kind: code
 """Roster + transcript helpers for the multi-agent group chat.
 
-Free functions extracted from :class:`GroupChatService` so the service
-module stays within its size tier. These cover the membership side of a
+Free functions kept separate from :class:`GroupChatService` so each
+concern stays within its module-size tier. These cover the membership side of a
 group conversation -- resolving agent ids to identities, enrolling the
 initial roster in stable order, reading the active roster, and reading
 the ordered transcript -- plus the participant de-duplication used when

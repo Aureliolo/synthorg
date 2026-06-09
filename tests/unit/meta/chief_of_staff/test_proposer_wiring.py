@@ -41,7 +41,7 @@ _NOW = datetime(2026, 5, 19, 12, 0, tzinfo=UTC)
 def _pending_proposal(proposal_id: str) -> ConversationalProposal:
     return ConversationalProposal(
         id=as_uuid(proposal_id),
-        conversation_id="conv-orphan",
+        conversation_id=sid("conv-orphan"),
         approval_id="appr-gone",
         work_item_json="{}",
         status=ConversationalProposalStatus.PENDING,
@@ -52,7 +52,7 @@ def _pending_proposal(proposal_id: str) -> ConversationalProposal:
 def _pending_invite(invite_id: str) -> ConversationInvite:
     return ConversationInvite(
         id=as_uuid(invite_id),
-        conversation_id=NotBlankStr("conv-orphan"),
+        conversation_id=sid("conv-orphan"),
         approval_id=NotBlankStr("appr-gone"),
         requested_by_agent_id=NotBlankStr("agent-ceo"),
         target_agent_id=NotBlankStr("agent-cfo"),

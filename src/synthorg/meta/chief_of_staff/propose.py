@@ -214,23 +214,23 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         Raises:
             ConversationClosedError: Raised on the corresponding failure path.
         """
-        current = await self._conversation_repo.get(NotBlankStr(str(conversation.id)))
+        current = await self._conversation_repo.get(str(conversation.id))
         if current is None or current.status is not ConversationStatus.ACTIVE:
             logger.warning(
                 COS_PROPOSE_FAILED,
                 detail="conversation_terminal_under_lock",
-                conversation_id=conversation.id,
+                conversation_id=str(conversation.id),
                 current_status=(
                     current.status.value if current is not None else "missing"
                 ),
             )
             raise ConversationClosedError(conversation_id=str(conversation.id))
         conversation = current
-        prior_turns = await self._ordered_turns(NotBlankStr(str(conversation.id)))
+        prior_turns = await self._ordered_turns(str(conversation.id))
         next_sequence = len(prior_turns)
 
         user_turn = ConversationTurn(
-            conversation_id=NotBlankStr(str(conversation.id)),
+            conversation_id=str(conversation.id),
             sequence=next_sequence,
             role=ConversationRole.USER,
             content=args.message,
@@ -239,7 +239,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         await self._turn_repo.append(user_turn)
         logger.info(
             COS_PROPOSE_TURN,
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             sequence=next_sequence,
         )
 
@@ -419,7 +419,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         assert question is not None  # noqa: S101
         await self._turn_repo.append(
             build_attributed_assistant_turn(
-                conversation_id=NotBlankStr(str(conversation.id)),
+                conversation_id=str(conversation.id),
                 sequence=sequence,
                 content=question,
                 routing=routing,
@@ -429,9 +429,9 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         await self._conversation_repo.save(
             conversation.model_copy(update={"updated_at": now})
         )
-        logger.info(COS_PROPOSE_CLARIFICATION, conversation_id=conversation.id)
+        logger.info(COS_PROPOSE_CLARIFICATION, conversation_id=str(conversation.id))
         return ProposeResult(
-            conversation_id=NotBlankStr(str(conversation.id)),
+            conversation_id=str(conversation.id),
             status="needs_clarification",
             clarifying_question=question,
             responder_role=routing.responder.role if routing is not None else None,
@@ -453,7 +453,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         """
         await self._turn_repo.append(
             ConversationTurn(
-                conversation_id=NotBlankStr(str(conversation.id)),
+                conversation_id=str(conversation.id),
                 sequence=sequence,
                 role=ConversationRole.ASSISTANT,
                 content=_CAP_MESSAGE,
@@ -461,7 +461,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             )
         )
         transitioned = await self._conversation_repo.transition_if(
-            NotBlankStr(str(conversation.id)),
+            str(conversation.id),
             from_state=conversation.status,
             to_state=ConversationStatus.CLOSED,
             updated_at=now.isoformat(),
@@ -469,13 +469,13 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         if transitioned:
             logger.info(
                 COS_CONVERSATION_STATUS_TRANSITIONED,
-                conversation_id=conversation.id,
+                conversation_id=str(conversation.id),
                 from_state=conversation.status.value,
                 to_state=ConversationStatus.CLOSED.value,
             )
-        logger.warning(COS_PROPOSE_CAP_REACHED, conversation_id=conversation.id)
+        logger.warning(COS_PROPOSE_CAP_REACHED, conversation_id=str(conversation.id))
         return ProposeResult(
-            conversation_id=NotBlankStr(str(conversation.id)),
+            conversation_id=str(conversation.id),
             status="needs_clarification",
             clarifying_question=_CAP_MESSAGE,
             conversation_closed=True,

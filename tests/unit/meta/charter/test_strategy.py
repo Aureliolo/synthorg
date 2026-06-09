@@ -10,7 +10,7 @@ from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.strategy import LLMCharterInterviewer
 from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.errors import CharterInterviewResponseInvalidError
-from tests._shared import as_uuid
+from tests._shared import as_uuid, sid
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 
 pytestmark = pytest.mark.unit
@@ -37,7 +37,7 @@ def _history() -> tuple[ConversationTurn, ...]:
     return (
         ConversationTurn(
             id=as_uuid("t-0"),
-            conversation_id="conv-1",
+            conversation_id=sid("conv-1"),
             sequence=0,
             role=ConversationRole.USER,
             content=NotBlankStr("build a better alternative to the memory tool"),

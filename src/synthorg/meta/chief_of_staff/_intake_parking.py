@@ -2,10 +2,10 @@
 
 Free functions that compose and park the approval-queue items the Chief of
 Staff proposer produces (work items and steering directives), and that execute
-an approved steering directive at the approval gate. Extracted from
-``propose.py`` and the approval-gate module so both stay under the module-size
-budget; the parking mechanics and the steering execution are one cohesive
-conversational-intake surface.
+an approved steering directive at the approval gate. Kept separate from
+``propose.py`` and the approval-gate module so each concern stays within its
+module-size tier; the parking mechanics and the steering execution are one
+cohesive conversational-intake surface.
 
 A steering directive carries no ``ConversationalProposal`` row: it rides in the
 approval ``metadata`` (the ``STEERING_INTAKE_*`` keys), so the gate reads it
@@ -89,7 +89,7 @@ def build_work_item(
         task_type=proposed.task_type,
         estimated_complexity=proposed.estimated_complexity,
         acceptance_criteria=proposed.acceptance_criteria,
-        correlation_id=NotBlankStr(str(conversation.id)),
+        correlation_id=str(conversation.id),
         created_at=now,
     )
 
@@ -277,7 +277,7 @@ async def reject_conversational_proposal(
         app_state.slice(MetaStateSlice).conversational_proposal_repo,
         "Conversational Proposal Repository",
     )
-    proposal_id = NotBlankStr(str(proposal.id))
+    proposal_id = str(proposal.id)
     transitioned = await repo.transition_if(
         proposal_id,
         ConversationalProposalStatus.PENDING,

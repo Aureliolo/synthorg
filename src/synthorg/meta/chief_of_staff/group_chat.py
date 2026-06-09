@@ -238,7 +238,7 @@ class GroupChatService:
         await self._conversation_repo.save(conversation)
         await enrol_participants(
             self._participant_repo,
-            conversation_id=NotBlankStr(str(conversation.id)),
+            conversation_id=str(conversation.id),
             identities=identities,
             added_by=args.created_by,
             now=now,
@@ -259,19 +259,17 @@ class GroupChatService:
         Raises:
             ConversationClosedError: The conversation went terminal.
         """
-        current = await self._conversation_repo.get(NotBlankStr(str(conversation.id)))
+        current = await self._conversation_repo.get(str(conversation.id))
         if current is None or current.status is not ConversationStatus.ACTIVE:
             raise ConversationClosedError(conversation_id=str(conversation.id))
         conversation = current
         participants = await active_participants(
-            self._participant_repo, NotBlankStr(str(conversation.id))
+            self._participant_repo, str(conversation.id)
         )
-        prior_turns = await ordered_turns(
-            self._turn_repo, NotBlankStr(str(conversation.id))
-        )
+        prior_turns = await ordered_turns(self._turn_repo, str(conversation.id))
         next_sequence = len(prior_turns)
         user_turn = ConversationTurn(
-            conversation_id=NotBlankStr(str(conversation.id)),
+            conversation_id=str(conversation.id),
             sequence=next_sequence,
             role=ConversationRole.USER,
             content=args.message,
@@ -280,7 +278,7 @@ class GroupChatService:
         await self._turn_repo.append(user_turn)
         logger.info(
             COS_GROUP_ROUND_STARTED,
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             participant_count=len(participants),
         )
         history = (*prior_turns, user_turn)
@@ -352,11 +350,9 @@ class GroupChatService:
         await self._conversation_repo.save(
             conversation.model_copy(update={"updated_at": now})
         )
-        self._log_round_outcome(
-            NotBlankStr(str(conversation.id)), contributions, skipped, truncated
-        )
+        self._log_round_outcome(str(conversation.id), contributions, skipped, truncated)
         return GroupConverseResult(
-            conversation_id=NotBlankStr(str(conversation.id)),
+            conversation_id=str(conversation.id),
             contributions=tuple(contributions),
             participants=participants,
             participants_skipped=tuple(skipped),
@@ -386,7 +382,7 @@ class GroupChatService:
         ):
             return
         summary = await self._invite_coordinator.request_invite(
-            conversation_id=NotBlankStr(str(conversation.id)),
+            conversation_id=str(conversation.id),
             requested_by_agent_id=participant.agent_id,
             requested_by_name=participant.agent_name,
             invite_request=invite_req,
@@ -450,7 +446,7 @@ class GroupChatService:
         preamble: str | None = None
         if self._invite_coordinator is not None:
             preamble = await self._invite_coordinator.invited_preamble(
-                NotBlankStr(str(conversation.id)),
+                str(conversation.id),
                 participant.agent_id,
                 already_spoke=any(
                     turn.author_agent_id == participant.agent_id for turn in history
@@ -461,7 +457,7 @@ class GroupChatService:
         )
         audit_authority(
             self._authority_guard,
-            NotBlankStr(str(conversation.id)),
+            str(conversation.id),
             participant,
             prior_contributions,
         )
@@ -476,7 +472,7 @@ class GroupChatService:
             reraise_critical(exc)
             logger.warning(
                 COS_GROUP_CONTRIBUTION_FAILED,
-                conversation_id=conversation.id,
+                conversation_id=str(conversation.id),
                 agent_id=participant.agent_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -484,19 +480,19 @@ class GroupChatService:
             return None, None
         tracker.record(response.input_tokens, response.output_tokens)
         content, invite_req = self._extract_contribution(
-            response.content, NotBlankStr(str(conversation.id)), participant.agent_id
+            response.content, str(conversation.id), participant.agent_id
         )
         if not content:
             logger.warning(
                 COS_GROUP_CONTRIBUTION_FAILED,
-                conversation_id=conversation.id,
+                conversation_id=str(conversation.id),
                 agent_id=participant.agent_id,
                 detail="empty_content",
             )
             return None, None
         await self._turn_repo.append(
             ConversationTurn(
-                conversation_id=NotBlankStr(str(conversation.id)),
+                conversation_id=str(conversation.id),
                 sequence=sequence,
                 role=ConversationRole.AGENT,
                 content=NotBlankStr(content),
@@ -507,7 +503,7 @@ class GroupChatService:
         )
         logger.info(
             COS_GROUP_CONTRIBUTION,
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             agent_id=participant.agent_id,
             sequence=sequence,
         )

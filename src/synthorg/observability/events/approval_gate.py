@@ -39,6 +39,9 @@ APPROVAL_GATE_NOTIFICATION_FAILED: Final[str] = "approval_gate.notification.fail
 # Conversational-intake decision flow: a CONVERSATIONAL_INTAKE approval
 # decision either runs the parked WorkItem through the pipeline
 # (approved) or records the proposal declined (rejected).
+APPROVAL_GATE_CONVERSATIONAL_EXECUTING: Final[str] = (
+    "approval_gate.conversational.executing"
+)
 APPROVAL_GATE_CONVERSATIONAL_EXECUTED: Final[str] = (
     "approval_gate.conversational.executed"
 )

@@ -40,6 +40,9 @@ async def _retire_pending_items[StatusT, SpecT, ItemT: _HasId](
 ) -> tuple[int, int]:
     """Move every PENDING row matching *spec* to its terminal status via CAS.
 
+    Each ``_HasId`` item exposes a ``UUID`` ``.id``; it is stringified to
+    match the repository's string-keyed ``transition_if`` CAS.
+
     Returns:
         ``(queried, transitioned)`` -- a gap (queried greater than
         transitioned) means a concurrent process already retired some

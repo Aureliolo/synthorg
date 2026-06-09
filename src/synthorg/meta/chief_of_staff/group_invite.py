@@ -64,7 +64,11 @@ _ACTION_TYPE = NotBlankStr("conversational:invite_agent")
 
 
 def _new_id() -> NotBlankStr:
-    """Return a fresh opaque identifier.
+    """Return a fresh opaque ``NotBlankStr`` id for the approval queue.
+
+    Entity primary keys mint their own ``UUID`` via ``default_factory``;
+    this serves the ``NotBlankStr``-typed ``approval_id`` that ties an
+    invite to its approval item.
 
     Returns:
         ``NotBlankStr`` instance.
@@ -271,7 +275,7 @@ class GroupInviteCoordinator:
                 reason=skip or "unknown_target",
             )
             return None
-        target_agent_id = NotBlankStr(str(target.id))
+        target_agent_id = str(target.id)
         if await self._has_pending_invite(conversation_id, target_agent_id):
             logger.info(
                 COS_GROUP_INVITE_SKIPPED,
@@ -369,7 +373,7 @@ class GroupInviteCoordinator:
             The parked invite summary, or ``None`` on park failure.
         """
         approval_id = _new_id()
-        target_agent_id = NotBlankStr(str(target.id))
+        target_agent_id = str(target.id)
         invite = ConversationInvite(
             conversation_id=conversation_id,
             approval_id=approval_id,
@@ -380,7 +384,7 @@ class GroupInviteCoordinator:
             status=ConversationInviteStatus.PENDING,
             created_at=now,
         )
-        invite_id = NotBlankStr(str(invite.id))
+        invite_id = str(invite.id)
         await self._invite_repo.save(invite)
         try:
             await self._approval_store.add(
