@@ -16,6 +16,7 @@ from synthorg.memory.org.models import (
     OrgFactWriteRequest,
     OrgMemoryQuery,
 )
+from tests._shared import as_uuid
 
 _NOW = datetime.now(UTC)
 
@@ -95,19 +96,19 @@ class TestOrgFact:
     def test_valid_fact(self) -> None:
         author = OrgFactAuthor(is_human=True)
         fact = OrgFact(
-            id="fact-1",
+            id=as_uuid("fact-1"),
             content="All code must be reviewed",
             category=OrgFactCategory.CORE_POLICY,
             author=author,
             created_at=_NOW,
         )
-        assert fact.id == "fact-1"
+        assert fact.id == as_uuid("fact-1")
         assert fact.category == OrgFactCategory.CORE_POLICY
         assert fact.tags == ()
 
     def test_fact_with_tags(self) -> None:
         fact = OrgFact(
-            id="fact-1",
+            id=as_uuid("fact-1"),
             content="Tagged fact",
             category=OrgFactCategory.ADR,
             tags=("core-policy", "security"),
@@ -127,7 +128,7 @@ class TestOrgFact:
     ) -> None:
         with pytest.raises(ValidationError):
             OrgFact(
-                id="fact-1",
+                id=as_uuid("fact-1"),
                 content="test",
                 category=OrgFactCategory.ADR,
                 tags=bad_tags,
@@ -153,7 +154,7 @@ class TestOrgFact:
 
     def test_frozen(self) -> None:
         fact = OrgFact(
-            id="fact-1",
+            id=as_uuid("fact-1"),
             content="test",
             category=OrgFactCategory.ADR,
             author=OrgFactAuthor(is_human=True),
@@ -229,7 +230,7 @@ class TestOperationLogEntry:
 
     def test_publish_entry(self) -> None:
         entry = OperationLogEntry(
-            operation_id="op-1",
+            operation_id=as_uuid("op-1"),
             fact_id="fact-1",
             operation_type="PUBLISH",
             content="Test content",
@@ -245,7 +246,7 @@ class TestOperationLogEntry:
 
     def test_retract_entry_null_content(self) -> None:
         entry = OperationLogEntry(
-            operation_id="op-2",
+            operation_id=as_uuid("op-2"),
             fact_id="fact-1",
             operation_type="RETRACT",
             content=None,
@@ -258,7 +259,7 @@ class TestOperationLogEntry:
     def test_version_must_be_positive(self) -> None:
         with pytest.raises(ValidationError):
             OperationLogEntry(
-                operation_id="op-1",
+                operation_id=as_uuid("op-1"),
                 fact_id="fact-1",
                 operation_type="PUBLISH",
                 content="test",
@@ -272,7 +273,7 @@ class TestOperationLogEntry:
             match="PUBLISH operations must have",
         ):
             OperationLogEntry(
-                operation_id="op-1",
+                operation_id=as_uuid("op-1"),
                 fact_id="fact-1",
                 operation_type="PUBLISH",
                 content=None,
@@ -286,7 +287,7 @@ class TestOperationLogEntry:
             match="RETRACT operations must have",
         ):
             OperationLogEntry(
-                operation_id="op-1",
+                operation_id=as_uuid("op-1"),
                 fact_id="fact-1",
                 operation_type="RETRACT",
                 content="should be None",
@@ -296,7 +297,7 @@ class TestOperationLogEntry:
 
     def test_frozen(self) -> None:
         entry = OperationLogEntry(
-            operation_id="op-1",
+            operation_id=as_uuid("op-1"),
             fact_id="fact-1",
             operation_type="PUBLISH",
             content="test",

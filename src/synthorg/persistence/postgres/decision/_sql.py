@@ -74,7 +74,7 @@ def _build_insert_params(  # noqa: PLR0913
         Result of type ``dict[str, object]``.
     """
     return {
-        "id": record_id,
+        "id": str(record_id),
         "task_id": task_id,
         "approval_id": approval_id,
         "executing_agent_id": executing_agent_id,

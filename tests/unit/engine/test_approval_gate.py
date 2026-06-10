@@ -11,6 +11,7 @@ from synthorg.engine.errors import ExecutionStateError
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.security.timeout.park_service import ParkService
 from synthorg.security.timeout.parked_context import ParkedContext
+from tests._shared import as_uuid, sid
 from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
 
 pytestmark = pytest.mark.unit
@@ -28,7 +29,7 @@ def park_service() -> MagicMock:
     # carries the same fields the test needs without any mocking
     # plumbing.
     parked = ParkedContext(
-        id=NotBlankStr("parked-1"),
+        id=as_uuid("parked-1"),
         execution_id=NotBlankStr("exec-1"),
         agent_id=NotBlankStr("agent-1"),
         approval_id=NotBlankStr("approval-1"),
@@ -238,7 +239,7 @@ class TestResumeContext:
         assert result is not None
         ctx, parked_id = result
         assert ctx is restored_ctx
-        assert parked_id == "parked-1"
+        assert parked_id == sid("parked-1")
 
     async def test_returns_none_for_unknown_approval(
         self,
@@ -279,7 +280,7 @@ class TestResumeContext:
         )
 
         await gate.resume_context("approval-1")
-        repo.delete.assert_awaited_once_with("parked-1")
+        repo.delete.assert_awaited_once_with(sid("parked-1"))
 
     async def test_raises_on_deserialization_failure(
         self,

@@ -8,6 +8,7 @@ TIMESTAMPTZ as timezone-aware ``datetime``, so there is no
 """
 
 import json
+from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
@@ -371,7 +372,7 @@ class _QueryMixin(_DecisionRepoBase):
             # is normalized to ``QueryError`` below alongside the other
             # failure modes.
             record_data: dict[str, object] = {
-                "id": row["id"],
+                "id": UUID(str(row["id"])),
                 "task_id": row["task_id"],
                 "approval_id": row["approval_id"],
                 "executing_agent_id": row["executing_agent_id"],
@@ -389,7 +390,13 @@ class _QueryMixin(_DecisionRepoBase):
                 raw_metadata if isinstance(raw_metadata, dict) else {}
             )
             return DecisionRecord.model_validate(record_data)
-        except (KeyError, ValidationError, TypeError, json.JSONDecodeError) as exc:
+        except (
+            KeyError,
+            ValidationError,
+            TypeError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as exc:
             msg = (
                 f"Failed to deserialize decision record {row.get('id')!r}: "
                 f"{type(exc).__name__}"

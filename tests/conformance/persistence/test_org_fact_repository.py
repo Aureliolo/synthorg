@@ -17,6 +17,7 @@ from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -42,7 +43,7 @@ def _fact(
     at: datetime | None = None,
 ) -> OrgFact:
     return OrgFact(
-        id=NotBlankStr(fact_id),
+        id=as_uuid(fact_id),
         content=NotBlankStr(content),
         category=category,
         tags=tuple(NotBlankStr(t) for t in tags),
@@ -54,7 +55,7 @@ def _fact(
 class TestOrgFactRepository:
     async def test_save_and_get(self, backend: PersistenceBackend) -> None:
         await backend.org_facts.save(_fact())
-        fetched = await backend.org_facts.get(NotBlankStr("fact_1"))
+        fetched = await backend.org_facts.get(sid("fact_1"))
         assert fetched is not None
         assert fetched.content == "We ship on Tuesdays."
         assert fetched.category == OrgFactCategory.CORE_POLICY
@@ -73,8 +74,8 @@ class TestOrgFactRepository:
             categories=frozenset({OrgFactCategory.CORE_POLICY}),
         )
         assert all(f.category == OrgFactCategory.CORE_POLICY for f in rows)
-        assert "p1" in {f.id for f in rows}
-        assert "c1" not in {f.id for f in rows}
+        assert as_uuid("p1") in {f.id for f in rows}
+        assert as_uuid("c1") not in {f.id for f in rows}
 
     async def test_query_by_text_substring(self, backend: PersistenceBackend) -> None:
         await backend.org_facts.save(
@@ -85,8 +86,8 @@ class TestOrgFactRepository:
         )
         rows = await backend.org_facts.query(text="ship on Tues")
         ids = {f.id for f in rows}
-        assert "hit1" in ids
-        assert "miss1" not in ids
+        assert as_uuid("hit1") in ids
+        assert as_uuid("miss1") not in ids
 
     async def test_list_by_category(self, backend: PersistenceBackend) -> None:
         await backend.org_facts.save(
@@ -100,8 +101,8 @@ class TestOrgFactRepository:
         )
         rows = await backend.org_facts.list_by_category(OrgFactCategory.CORE_POLICY)
         ids = {f.id for f in rows}
-        assert {"lp1", "lp2"} <= ids
-        assert "other" not in ids
+        assert {as_uuid("lp1"), as_uuid("lp2")} <= ids
+        assert as_uuid("other") not in ids
 
     async def test_list_by_category_pagination(
         self, backend: PersistenceBackend
@@ -120,7 +121,12 @@ class TestOrgFactRepository:
             OrgFactCategory.CORE_POLICY,
         )
         full_ids = [f.id for f in full]
-        assert {"pg_0", "pg_1", "pg_2", "pg_3"} <= set(full_ids)
+        assert {
+            as_uuid("pg_0"),
+            as_uuid("pg_1"),
+            as_uuid("pg_2"),
+            as_uuid("pg_3"),
+        } <= set(full_ids)
 
         page = await backend.org_facts.list_by_category(
             OrgFactCategory.CORE_POLICY,
@@ -147,12 +153,12 @@ class TestOrgFactRepository:
     async def test_delete_retracts_fact(self, backend: PersistenceBackend) -> None:
         await backend.org_facts.save(_fact("doomed"))
         deleted = await backend.org_facts.delete(
-            NotBlankStr("doomed"),
+            sid("doomed"),
             author=_agent_author(),
         )
         assert deleted is True
         # A retracted fact is no longer active -- get returns None.
-        assert await backend.org_facts.get(NotBlankStr("doomed")) is None
+        assert await backend.org_facts.get(sid("doomed")) is None
 
     async def test_delete_missing_returns_false(
         self, backend: PersistenceBackend
@@ -171,17 +177,17 @@ class TestOrgFactRepository:
         # Query snapshot immediately after -- the fact must be active.
         now = datetime.now(UTC) + timedelta(seconds=5)
         rows = await backend.org_facts.snapshot_at(now)
-        assert any(r.fact_id == "snap1" for r in rows)
+        assert any(r.fact_id == sid("snap1") for r in rows)
 
     async def test_operation_log_tracks_publish_and_retract(
         self, backend: PersistenceBackend
     ) -> None:
         await backend.org_facts.save(_fact("log1"))
         await backend.org_facts.delete(
-            NotBlankStr("log1"),
+            sid("log1"),
             author=_agent_author(),
         )
-        log = await backend.org_facts.get_operation_log(NotBlankStr("log1"))
+        log = await backend.org_facts.get_operation_log(sid("log1"))
         ops = [e.operation_type for e in log]
         assert "PUBLISH" in ops
         assert "RETRACT" in ops

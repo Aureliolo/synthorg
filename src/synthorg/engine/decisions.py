@@ -12,6 +12,7 @@ approval decisions flow through the lifecycle.
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Self
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -82,7 +83,10 @@ class DecisionRecord(BaseModel):
         extra="forbid",
     )
 
-    id: NotBlankStr = Field(description="Unique decision record identifier")
+    id: UUID = Field(
+        default_factory=uuid4,
+        description="Unique decision record identifier",
+    )
     task_id: NotBlankStr = Field(description="Task that was reviewed")
     approval_id: NotBlankStr | None = Field(
         default=None,

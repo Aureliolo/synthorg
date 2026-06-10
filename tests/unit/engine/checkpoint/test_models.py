@@ -1,6 +1,7 @@
 """Tests for checkpoint and heartbeat Pydantic models."""
 
 from datetime import UTC, datetime
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -10,6 +11,7 @@ from synthorg.engine.checkpoint.models import (
     CheckpointConfig,
     Heartbeat,
 )
+from tests._shared import as_uuid
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -52,8 +54,7 @@ class TestCheckpointCreation:
 
     def test_auto_generates_id(self) -> None:
         cp = _make_checkpoint()
-        assert cp.id
-        assert len(cp.id) > 0
+        assert isinstance(cp.id, UUID)
 
     def test_auto_generates_unique_ids(self) -> None:
         cp1 = _make_checkpoint()
@@ -67,8 +68,8 @@ class TestCheckpointCreation:
         assert before <= cp.created_at <= after
 
     def test_explicit_id_preserved(self) -> None:
-        cp = _make_checkpoint(id="custom-id")
-        assert cp.id == "custom-id"
+        cp = _make_checkpoint(id=as_uuid("custom-id"))
+        assert cp.id == as_uuid("custom-id")
 
     def test_all_fields_set(self) -> None:
         cp = _make_checkpoint(
@@ -97,7 +98,7 @@ class TestCheckpointFrozen:
     def test_cannot_mutate_id(self) -> None:
         cp = _make_checkpoint()
         with pytest.raises(ValidationError, match="frozen"):
-            cp.id = "changed"  # type: ignore[misc]
+            cp.id = as_uuid("changed")  # type: ignore[misc]
 
 
 @pytest.mark.unit

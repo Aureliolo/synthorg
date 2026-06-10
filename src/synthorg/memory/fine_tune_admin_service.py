@@ -178,7 +178,7 @@ class FineTuneAdminService:
         run = await orchestrator.start(plan.to_request())
         logger.info(
             MEMORY_FINE_TUNE_STARTED,
-            run_id=run.id,
+            run_id=str(run.id),
             source_dir=plan.source_dir,
         )
         return run
@@ -251,7 +251,7 @@ class FineTuneAdminService:
             msg = f"Fine-tune run {run_id!r} not found"
             raise ValueError(msg)
         return FineTuneStatus(
-            run_id=run.id,
+            run_id=str(run.id),
             stage=run.stage,
             progress=run.progress,
             error=run.error,

@@ -21,7 +21,7 @@ class InMemoryParkedRepo:
         self._by_id: dict[str, ParkedContext] = {}
 
     async def save(self, entity: ParkedContext) -> None:
-        self._by_id[entity.id] = entity
+        self._by_id[str(entity.id)] = entity
 
     async def get(self, entity_id: NotBlankStr) -> ParkedContext | None:
         return self._by_id.get(entity_id)

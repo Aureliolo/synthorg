@@ -49,7 +49,7 @@ class _AuditMixin(_DecisionRepoBase):
         )
         try:
             params = _build_insert_params(
-                record_id=event.id,
+                record_id=str(event.id),
                 task_id=event.task_id,
                 approval_id=event.approval_id,
                 executing_agent_id=event.executing_agent_id,
@@ -63,7 +63,7 @@ class _AuditMixin(_DecisionRepoBase):
         except TypeError:
             logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-                record_id=event.id,
+                record_id=str(event.id),
                 task_id=event.task_id,
                 error_type="TypeError",
             )
@@ -89,19 +89,19 @@ class _AuditMixin(_DecisionRepoBase):
                     {**params, "version": event.version},
                 )
         except psycopg.errors.UniqueViolation as exc:
-            msg = f"Duplicate decision record {event.id!r}"
+            msg = f"Duplicate decision record {str(event.id)!r}"
             logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-                record_id=event.id,
+                record_id=str(event.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
-            msg = f"Failed to append decision record {event.id!r}"
+            msg = f"Failed to append decision record {str(event.id)!r}"
             logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-                record_id=event.id,
+                record_id=str(event.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

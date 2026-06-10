@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
+from uuid import UUID
 
 import aiosqlite
 import pytest
@@ -34,6 +35,7 @@ from synthorg.persistence.sqlite.fine_tune_repo import (
     SQLiteFineTuneCheckpointRepository,
     SQLiteFineTuneRunRepository,
 )
+from tests._shared import as_uuid, sid
 from tests._shared.fake_clock import FakeClock
 from tests._shared.persistence import make_private_write_context
 
@@ -118,14 +120,14 @@ class TestOrchestratorLifecycle:
         # Mock stage functions to return immediately.
         with _mock_all_stages():
             run = await orchestrator.start(req)
-            assert run.id
+            assert isinstance(run.id, UUID)
             assert run.stage == FineTuneStage.GENERATING_DATA
             # Wait for background task to complete.
             if orchestrator._current_task is not None:
                 await orchestrator._current_task
 
         # Run should be persisted.
-        fetched = await run_repo.get(run.id)
+        fetched = await run_repo.get(str(run.id))
         assert fetched is not None
 
     async def test_double_start_raises(
@@ -173,7 +175,7 @@ class TestOrchestratorCancellation:
                     await orchestrator._current_task
 
         # Run should be marked as failed.
-        fetched = await run_repo.get(run.id)
+        fetched = await run_repo.get(str(run.id))
         assert fetched is not None
         assert fetched.stage == FineTuneStage.FAILED
 
@@ -190,7 +192,7 @@ class TestOrchestratorRecovery:
     ) -> None:
         now = datetime.now(tz=UTC)
         run = FineTuneRun(
-            id="stale-run",
+            id=as_uuid("stale-run"),
             stage=FineTuneStage.TRAINING,
             progress=0.5,
             config=FineTuneRunConfig(
@@ -204,7 +206,7 @@ class TestOrchestratorRecovery:
         await run_repo.save(run)
         count = await orchestrator.recover_interrupted()
         assert count == 1
-        fetched = await run_repo.get("stale-run")
+        fetched = await run_repo.get(sid("stale-run"))
         assert fetched is not None
         assert fetched.stage == FineTuneStage.FAILED
 
@@ -229,7 +231,7 @@ class TestProgressThrottleClockSeam:
         )
         now = datetime.now(tz=UTC)
         run = FineTuneRun(
-            id="throttle-run",
+            id=as_uuid("throttle-run"),
             stage=FineTuneStage.TRAINING,
             progress=0.0,
             config=FineTuneRunConfig(
@@ -293,7 +295,7 @@ class TestOrchestratorStatus:
             if orchestrator._current_task is not None:
                 await orchestrator._current_task
         status = await orchestrator.get_status()
-        assert status.run_id == run.id
+        assert status.run_id == str(run.id)
 
 
 # -- Promotion gate ---------------------------------------------------
@@ -570,7 +572,7 @@ class TestTrainingDataSourceSelection:
             if orchestrator._current_task is not None:
                 await orchestrator._current_task
 
-        fetched = await run_repo.get(run.id)
+        fetched = await run_repo.get(str(run.id))
         assert fetched is not None
         assert fetched.stage == FineTuneStage.FAILED
 

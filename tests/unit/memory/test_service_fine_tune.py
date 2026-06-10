@@ -20,6 +20,7 @@ from synthorg.memory.service import MemoryService
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.models import SettingValue
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
@@ -31,7 +32,7 @@ def _run(
     stage: FineTuneStage = FineTuneStage.GENERATING_DATA,
 ) -> FineTuneRun:
     return FineTuneRun(
-        id=NotBlankStr(run_id),
+        id=as_uuid(run_id),
         stage=stage,
         config=FineTuneRunConfig(
             source_dir=NotBlankStr("/data/org-docs"),
@@ -49,7 +50,7 @@ def _checkpoint(
     is_active: bool = False,
 ) -> CheckpointRecord:
     return CheckpointRecord(
-        id=NotBlankStr(checkpoint_id),
+        id=as_uuid(checkpoint_id),
         run_id=NotBlankStr("run-1"),
         model_path=NotBlankStr("local/ckpt-1"),
         base_model=NotBlankStr("all-MiniLM-L6-v2"),
@@ -70,13 +71,13 @@ class _FakeRunRepo:
 
     async def get(self, entity_id: str) -> FineTuneRun | None:
         for r in self._runs:
-            if r.id == entity_id:
+            if str(r.id) == entity_id:
                 return r
         return None
 
     async def delete(self, entity_id: str) -> bool:
         before = len(self._runs)
-        self._runs = [r for r in self._runs if r.id != entity_id]
+        self._runs = [r for r in self._runs if str(r.id) != entity_id]
         return len(self._runs) < before
 
     async def get_active_run(self) -> FineTuneRun | None:
@@ -111,10 +112,10 @@ class _FakeCheckpointRepo:
         self,
         checkpoints: list[CheckpointRecord] | None = None,
     ) -> None:
-        self._rows = {c.id: c for c in checkpoints or []}
+        self._rows = {str(c.id): c for c in checkpoints or []}
 
     async def save(self, entity: CheckpointRecord) -> None:
-        self._rows[entity.id] = entity
+        self._rows[str(entity.id)] = entity
 
     async def get(self, entity_id: str) -> CheckpointRecord | None:
         return self._rows.get(entity_id)
@@ -269,7 +270,7 @@ class TestStartFineTune:
 
         run = await service.start_fine_tune(plan)
 
-        assert run.id == "run-1"
+        assert run.id == as_uuid("run-1")
         assert len(orch.start_calls) == 1
         request = orch.start_calls[0]
         assert request.source_dir == "/data/org-docs"
@@ -283,7 +284,7 @@ class TestResumeFineTune:
 
         run = await service.resume_fine_tune(NotBlankStr("run-42"))
 
-        assert run.id == "run-42"
+        assert run.id == as_uuid("run-42")
         assert orch.resume_calls == ["run-42"]
 
 
@@ -300,9 +301,9 @@ class TestGetFineTuneStatus:
         run = _run(run_id="run-99", stage=FineTuneStage.GENERATING_DATA)
         service = _service(orchestrator=_FakeOrchestrator(), runs=[run])
 
-        status = await service.get_fine_tune_status(NotBlankStr("run-99"))
+        status = await service.get_fine_tune_status(sid("run-99"))
 
-        assert status.run_id == "run-99"
+        assert status.run_id == sid("run-99")
         assert status.stage == FineTuneStage.GENERATING_DATA
 
     async def test_missing_run_id_raises(self) -> None:
@@ -338,7 +339,7 @@ class TestCancelFineTune:
 
         result = await service.cancel_fine_tune()
 
-        assert result == "run-42"
+        assert result == sid("run-42")
         assert orch.cancel_calls == 1
 
     async def test_returns_none_when_no_active_run(self) -> None:
@@ -491,7 +492,7 @@ class TestGetActiveEmbedder:
         snap = await service.get_active_embedder()
 
         assert snap.read_from_settings is False
-        assert snap.checkpoint_id == "ckpt-1"
+        assert snap.checkpoint_id == sid("ckpt-1")
 
     async def test_with_settings_reads_provider_and_model(self) -> None:
         settings = _FakeSettings()
@@ -507,7 +508,7 @@ class TestGetActiveEmbedder:
         assert snap.read_from_settings is True
         assert snap.provider == "local"
         assert snap.model == "local/ckpt-1"
-        assert snap.checkpoint_id == "ckpt-1"
+        assert snap.checkpoint_id == sid("ckpt-1")
 
     async def test_no_active_checkpoint(self) -> None:
         service = _service(checkpoints=[])

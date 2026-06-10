@@ -7,6 +7,7 @@ import pytest
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.timeout.parked_context import ParkedContext
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -22,7 +23,7 @@ def _parked(
     task_id: str | None = "task-001",
 ) -> ParkedContext:
     return ParkedContext(
-        id=NotBlankStr(parked_id),
+        id=as_uuid(parked_id),
         execution_id=NotBlankStr(execution_id),
         agent_id=NotBlankStr(agent_id),
         task_id=NotBlankStr(task_id) if task_id else None,
@@ -37,7 +38,7 @@ class TestParkedContextRepository:
     async def test_save_and_get(self, backend: PersistenceBackend) -> None:
         await backend.parked_contexts.save(_parked())
 
-        fetched = await backend.parked_contexts.get(NotBlankStr("park-001"))
+        fetched = await backend.parked_contexts.get(sid("park-001"))
         assert fetched is not None
         assert fetched.execution_id == "exec-001"
         assert fetched.metadata == {"tool": "send_email"}
@@ -61,7 +62,7 @@ class TestParkedContextRepository:
 
         alice_rows = await backend.parked_contexts.get_by_agent(NotBlankStr("alice"))
         ids = {r.id for r in alice_rows}
-        assert ids == {"p1", "p2"}
+        assert ids == {as_uuid("p1"), as_uuid("p2")}
 
     async def test_list_items_returns_all_in_id_order(
         self, backend: PersistenceBackend
@@ -74,15 +75,16 @@ class TestParkedContextRepository:
         )
 
         results = await backend.parked_contexts.list_items()
-        scoped = [r.id for r in results if r.id.startswith("list-")]
-        assert scoped == ["list-a", "list-b"]
+        expected = {as_uuid("list-a"), as_uuid("list-b")}
+        scoped = [r.id for r in results if r.id in expected]
+        assert scoped == sorted(expected, key=str)
 
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
         await backend.parked_contexts.save(_parked())
 
-        deleted = await backend.parked_contexts.delete(NotBlankStr("park-001"))
+        deleted = await backend.parked_contexts.delete(sid("park-001"))
         assert deleted is True
-        assert await backend.parked_contexts.get(NotBlankStr("park-001")) is None
+        assert await backend.parked_contexts.get(sid("park-001")) is None
 
     async def test_delete_missing(self, backend: PersistenceBackend) -> None:
         assert await backend.parked_contexts.delete(NotBlankStr("ghost")) is False
@@ -90,6 +92,6 @@ class TestParkedContextRepository:
     async def test_taskless_roundtrip(self, backend: PersistenceBackend) -> None:
         await backend.parked_contexts.save(_parked(task_id=None))
 
-        fetched = await backend.parked_contexts.get(NotBlankStr("park-001"))
+        fetched = await backend.parked_contexts.get(sid("park-001"))
         assert fetched is not None
         assert fetched.task_id is None

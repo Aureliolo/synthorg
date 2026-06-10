@@ -11,6 +11,7 @@ from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
 from synthorg.security.timeout.parked_context import ParkedContext
+from tests._shared import as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 
 if TYPE_CHECKING:
@@ -29,7 +30,7 @@ def _make_context(  # noqa: PLR0913
     metadata: dict[str, str] | None = None,
 ) -> ParkedContext:
     return ParkedContext(
-        id=parked_id or str(uuid4()),
+        id=as_uuid(parked_id) if parked_id is not None else uuid4(),
         execution_id=execution_id,
         agent_id=agent_id,
         task_id=task_id,
@@ -49,7 +50,7 @@ class TestSQLiteParkedContextRepository:
         ctx = _make_context(parked_id="parked-001")
         await repo.save(ctx)
 
-        result = await repo.get("parked-001")
+        result = await repo.get(sid("parked-001"))
         assert result is not None
         assert result.id == ctx.id
         assert result.execution_id == ctx.execution_id
@@ -148,8 +149,8 @@ class TestSQLiteParkedContextRepository:
         ctx = _make_context(parked_id="del-me")
         await repo.save(ctx)
 
-        assert await repo.delete("del-me") is True
-        assert await repo.get("del-me") is None
+        assert await repo.delete(sid("del-me")) is True
+        assert await repo.get(sid("del-me")) is None
 
     async def test_delete_returns_false_for_missing(
         self, migrated_db: aiosqlite.Connection
@@ -171,7 +172,7 @@ class TestSQLiteParkedContextRepository:
         await repo.save(ctx)
 
         updated = ParkedContext(
-            id="upsert-id",
+            id=as_uuid("upsert-id"),
             execution_id=ctx.execution_id,
             agent_id=ctx.agent_id,
             task_id=ctx.task_id,
@@ -182,7 +183,7 @@ class TestSQLiteParkedContextRepository:
         )
         await repo.save(updated)
 
-        result = await repo.get("upsert-id")
+        result = await repo.get(sid("upsert-id"))
         assert result is not None
         assert result.context_json == '{"step": 2}'
         assert result.metadata == {"key": "updated"}
@@ -200,7 +201,7 @@ class TestSQLiteParkedContextRepository:
         )
         await repo.save(ctx)
 
-        result = await repo.get("meta-rt")
+        result = await repo.get(sid("meta-rt"))
         assert result is not None
         assert result.metadata == {"tool": "shell", "action": "execute"}
 

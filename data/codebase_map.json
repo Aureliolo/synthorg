@@ -5343,7 +5343,7 @@
     },
     {
       "kind": "code",
-      "loc": 172,
+      "loc": 176,
       "loc_cap": 500,
       "module": "src/synthorg/engine/decisions.py",
       "owning_feature": "engine"
@@ -10040,7 +10040,7 @@
     },
     {
       "kind": "code",
-      "loc": 493,
+      "loc": 494,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/fine_tune_models.py",
       "owning_feature": "memory"
@@ -10229,14 +10229,14 @@
     },
     {
       "kind": "code",
-      "loc": 258,
+      "loc": 259,
       "loc_cap": 500,
       "module": "src/synthorg/memory/org/hybrid_backend.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 288,
+      "loc": 290,
       "loc_cap": 500,
       "module": "src/synthorg/memory/org/models.py",
       "owning_feature": "memory"
@@ -10656,7 +10656,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 769,
+      "loc": 771,
       "loc_cap": 1100,
       "module": "src/synthorg/memory/service.py",
       "owning_feature": "memory"
@@ -14807,7 +14807,7 @@
     },
     {
       "kind": "code",
-      "loc": 174,
+      "loc": 175,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_shared/org_fact_marshalling.py",
       "owning_feature": "persistence"
@@ -15353,7 +15353,7 @@
     },
     {
       "kind": "code",
-      "loc": 294,
+      "loc": 296,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/checkpoint_repo.py",
       "owning_feature": "persistence"
@@ -15465,14 +15465,14 @@
     },
     {
       "kind": "code",
-      "loc": 258,
+      "loc": 259,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/decision/_cas.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 355,
+      "loc": 362,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/decision/_query.py",
       "owning_feature": "persistence"
@@ -15507,7 +15507,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 748,
+      "loc": 749,
       "loc_cap": 1100,
       "module": "src/synthorg/persistence/postgres/fine_tune_repo.py",
       "owning_feature": "persistence"
@@ -15626,7 +15626,7 @@
     },
     {
       "kind": "code",
-      "loc": 291,
+      "loc": 293,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/parked_context_repo.py",
       "owning_feature": "persistence"
@@ -15752,7 +15752,7 @@
     },
     {
       "kind": "code",
-      "loc": 328,
+      "loc": 329,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/ssrf_violation_repo.py",
       "owning_feature": "persistence"
@@ -16123,7 +16123,7 @@
     },
     {
       "kind": "code",
-      "loc": 278,
+      "loc": 280,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/checkpoint_repo.py",
       "owning_feature": "persistence"
@@ -16256,14 +16256,14 @@
     },
     {
       "kind": "code",
-      "loc": 246,
+      "loc": 247,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/decision/_cas.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 369,
+      "loc": 370,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/decision/_query.py",
       "owning_feature": "persistence"
@@ -16305,14 +16305,14 @@
     },
     {
       "kind": "code",
-      "loc": 332,
+      "loc": 333,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/fine_tune_repo/_checkpoint.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 348,
+      "loc": 349,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/fine_tune_repo/_run.py",
       "owning_feature": "persistence"
@@ -16431,7 +16431,7 @@
     },
     {
       "kind": "code",
-      "loc": 258,
+      "loc": 260,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/parked_context_repo.py",
       "owning_feature": "persistence"
@@ -16557,7 +16557,7 @@
     },
     {
       "kind": "code",
-      "loc": 366,
+      "loc": 367,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/ssrf_violation_repo.py",
       "owning_feature": "persistence"
@@ -18153,7 +18153,7 @@
     },
     {
       "kind": "code",
-      "loc": 79,
+      "loc": 80,
       "loc_cap": 500,
       "module": "src/synthorg/security/ssrf_violation.py",
       "owning_feature": "security"

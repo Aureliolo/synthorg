@@ -3,6 +3,7 @@
 import contextlib
 import json
 import sqlite3
+from uuid import UUID
 
 import aiosqlite
 from pydantic import ValidationError
@@ -283,11 +284,12 @@ INSERT OR REPLACE INTO parked_contexts (
             Result of type ``ParkedContext``.
         """
         try:
+            row = {**row, "id": UUID(str(row["id"]))}
             raw_meta = row.get("metadata")
             if isinstance(raw_meta, str):
                 row = {**row, "metadata": json.loads(raw_meta)}
             return ParkedContext.model_validate(row)
-        except (ValidationError, json.JSONDecodeError) as exc:
+        except (ValidationError, json.JSONDecodeError, ValueError) as exc:
             msg = f"Failed to deserialize parked context {row.get('id')!r}"
             logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,

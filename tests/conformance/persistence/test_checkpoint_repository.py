@@ -6,6 +6,7 @@ from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.checkpoint.models import Checkpoint
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.integration
 
@@ -17,7 +18,7 @@ def _checkpoint(
     turn_number: int = 1,
 ) -> Checkpoint:
     return Checkpoint(
-        id=NotBlankStr(checkpoint_id),
+        id=as_uuid(checkpoint_id),
         execution_id=NotBlankStr(execution_id),
         agent_id=NotBlankStr("agent-001"),
         task_id=NotBlankStr("task-001"),
@@ -35,7 +36,7 @@ class TestCheckpointRepository:
             execution_id=NotBlankStr("exec-001"),
         )
         assert result is not None
-        assert result.id == "cp-001"
+        assert result.id == as_uuid("cp-001")
         assert result.turn_number == 1
 
     async def test_append_duplicate_id_raises(
@@ -69,7 +70,7 @@ class TestCheckpointRepository:
         )
         assert latest is not None
         assert latest.turn_number == 5
-        assert latest.id == "c"
+        assert latest.id == as_uuid("c")
 
     async def test_delete_by_execution_removes_all(
         self, backend: PersistenceBackend

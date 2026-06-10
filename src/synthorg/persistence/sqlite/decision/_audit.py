@@ -55,7 +55,7 @@ class _AuditMixin(_DecisionRepoBase):
         )
         try:
             params = _build_insert_params(
-                record_id=event.id,
+                record_id=str(event.id),
                 task_id=event.task_id,
                 approval_id=event.approval_id,
                 executing_agent_id=event.executing_agent_id,
@@ -69,7 +69,7 @@ class _AuditMixin(_DecisionRepoBase):
         except TypeError:
             logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-                record_id=event.id,
+                record_id=str(event.id),
                 task_id=event.task_id,
                 error_type="TypeError",
             )
@@ -93,10 +93,10 @@ class _AuditMixin(_DecisionRepoBase):
         except sqlite3.IntegrityError as exc:
             await self._rollback_quietly()
             if is_unique_constraint_error(exc):
-                msg = f"Duplicate decision record {event.id!r}"
+                msg = f"Duplicate decision record {str(event.id)!r}"
                 logger.warning(
                     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-                    record_id=event.id,
+                    record_id=str(event.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                     sqlite_errorname=exc.sqlite_errorname,
@@ -111,17 +111,17 @@ class _AuditMixin(_DecisionRepoBase):
                 # transient persistence hiccup.
                 logger.warning(
                     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-                    record_id=event.id,
+                    record_id=str(event.id),
                     error_type=type(exc).__name__,
                     violation_category="StructuralConstraintViolation",
                     error=safe_error_description(exc),
                     sqlite_errorname=exc.sqlite_errorname,
                 )
                 raise
-            msg = f"Failed to append decision record {event.id!r}"
+            msg = f"Failed to append decision record {str(event.id)!r}"
             logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-                record_id=event.id,
+                record_id=str(event.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 sqlite_errorname=getattr(exc, "sqlite_errorname", None),
@@ -129,10 +129,10 @@ class _AuditMixin(_DecisionRepoBase):
             raise QueryError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._rollback_quietly()
-            msg = f"Failed to append decision record {event.id!r}"
+            msg = f"Failed to append decision record {str(event.id)!r}"
             logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
-                record_id=event.id,
+                record_id=str(event.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

@@ -3,6 +3,7 @@
 import json
 import sqlite3
 from datetime import UTC, datetime
+from uuid import UUID
 
 import aiosqlite
 
@@ -47,7 +48,7 @@ def _run_from_row(row: aiosqlite.Row) -> FineTuneRun:
         config = FineTuneRunConfig.model_validate_json(row["config_json"])
         stages = tuple(json.loads(row["stages_completed"]))
         return FineTuneRun(
-            id=row["id"],
+            id=UUID(str(row["id"])),
             stage=FineTuneStage(row["stage"]),
             progress=row["progress"],
             error=row["error"],
@@ -112,7 +113,7 @@ class SQLiteFineTuneRunRepository:
                     "completed_at = excluded.completed_at, "
                     "stages_completed = excluded.stages_completed",
                     (
-                        run.id,
+                        str(run.id),
                         run.stage.value,
                         run.progress,
                         run.error,
@@ -132,7 +133,7 @@ class SQLiteFineTuneRunRepository:
                 msg = f"Failed to save fine-tune run {run.id}"
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
-                    run_id=run.id,
+                    run_id=str(run.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -324,7 +325,7 @@ class SQLiteFineTuneRunRepository:
                             else None
                         ),
                         json.dumps(list(run.stages_completed)),
-                        run.id,
+                        str(run.id),
                     ),
                 )
                 await self._db.commit()
@@ -332,7 +333,7 @@ class SQLiteFineTuneRunRepository:
                 msg = f"Failed to update fine-tune run {run.id}"
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
-                    run_id=run.id,
+                    run_id=str(run.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

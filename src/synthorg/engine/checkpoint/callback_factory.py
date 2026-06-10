@@ -97,7 +97,7 @@ def make_checkpoint_callback(
                 CHECKPOINT_SAVED,
                 execution_id=ctx.execution_id,
                 turn_number=turn,
-                checkpoint_id=checkpoint.id,
+                checkpoint_id=str(checkpoint.id),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)

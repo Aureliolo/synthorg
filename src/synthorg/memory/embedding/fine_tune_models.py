@@ -3,6 +3,7 @@
 from enum import StrEnum
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Literal, Self
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -397,7 +398,7 @@ class FineTuneRun(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    id: NotBlankStr = Field(description="Unique run identifier")
+    id: UUID = Field(default_factory=uuid4, description="Unique run identifier")
     stage: FineTuneStage = Field(description="Current pipeline stage")
     progress: float | None = Field(
         default=None,
@@ -488,7 +489,7 @@ class CheckpointRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(description="Unique checkpoint ID")
+    id: UUID = Field(default_factory=uuid4, description="Unique checkpoint ID")
     run_id: NotBlankStr = Field(description="Originating run ID")
     model_path: NotBlankStr = Field(description="Path to checkpoint")
     base_model: NotBlankStr = Field(description="Base model identifier")

@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -26,7 +27,7 @@ class TestSsrfViolationModel:
 
     def test_pending_violation(self) -> None:
         v = SsrfViolation(
-            id="v-1",
+            id=as_uuid("v-1"),
             timestamp=_NOW,
             url="http://host.docker.internal:11434",
             hostname="host.docker.internal",
@@ -41,7 +42,7 @@ class TestSsrfViolationModel:
 
     def test_allowed_violation(self) -> None:
         v = SsrfViolation(
-            id="v-2",
+            id=as_uuid("v-2"),
             timestamp=_NOW,
             url="http://host.docker.internal:11434",
             hostname="host.docker.internal",
@@ -56,7 +57,7 @@ class TestSsrfViolationModel:
 
     def test_denied_violation(self) -> None:
         v = SsrfViolation(
-            id="v-3",
+            id=as_uuid("v-3"),
             timestamp=_NOW,
             url="http://host.docker.internal:11434",
             hostname="host.docker.internal",
@@ -71,7 +72,7 @@ class TestSsrfViolationModel:
 
     def test_frozen(self) -> None:
         v = SsrfViolation(
-            id="v-1",
+            id=as_uuid("v-1"),
             timestamp=_NOW,
             url="http://host.docker.internal:11434",
             hostname="host.docker.internal",
@@ -83,7 +84,7 @@ class TestSsrfViolationModel:
     def test_pending_with_resolved_by_rejected(self) -> None:
         with pytest.raises(ValidationError, match="resolved_by"):
             SsrfViolation(
-                id="v-bad",
+                id=as_uuid("v-bad"),
                 timestamp=_NOW,
                 url="http://example.com:80",
                 hostname="example.com",
@@ -95,7 +96,7 @@ class TestSsrfViolationModel:
     def test_pending_with_resolved_at_rejected(self) -> None:
         with pytest.raises(ValidationError, match="resolved_at"):
             SsrfViolation(
-                id="v-bad",
+                id=as_uuid("v-bad"),
                 timestamp=_NOW,
                 url="http://example.com:80",
                 hostname="example.com",
@@ -107,7 +108,7 @@ class TestSsrfViolationModel:
     def test_allowed_without_resolved_by_rejected(self) -> None:
         with pytest.raises(ValidationError, match="resolved_by"):
             SsrfViolation(
-                id="v-bad",
+                id=as_uuid("v-bad"),
                 timestamp=_NOW,
                 url="http://example.com:80",
                 hostname="example.com",
@@ -118,7 +119,7 @@ class TestSsrfViolationModel:
     def test_denied_without_resolved_by_rejected(self) -> None:
         with pytest.raises(ValidationError, match="resolved_by"):
             SsrfViolation(
-                id="v-bad",
+                id=as_uuid("v-bad"),
                 timestamp=_NOW,
                 url="http://example.com:80",
                 hostname="example.com",
@@ -129,7 +130,7 @@ class TestSsrfViolationModel:
     def test_port_bounds(self) -> None:
         with pytest.raises(ValidationError, match="port"):
             SsrfViolation(
-                id="v-1",
+                id=as_uuid("v-1"),
                 timestamp=_NOW,
                 url="http://example.com:0",
                 hostname="example.com",
@@ -138,7 +139,7 @@ class TestSsrfViolationModel:
 
     def test_port_max(self) -> None:
         v = SsrfViolation(
-            id="v-1",
+            id=as_uuid("v-1"),
             timestamp=_NOW,
             url="http://example.com:65535",
             hostname="example.com",
@@ -148,7 +149,7 @@ class TestSsrfViolationModel:
 
     def test_optional_fields_none(self) -> None:
         v = SsrfViolation(
-            id="v-1",
+            id=as_uuid("v-1"),
             timestamp=_NOW,
             url="http://example.com:80",
             hostname="example.com",
@@ -160,7 +161,7 @@ class TestSsrfViolationModel:
 
     def test_serialization_roundtrip(self) -> None:
         v = SsrfViolation(
-            id="v-1",
+            id=as_uuid("v-1"),
             timestamp=_NOW,
             url="http://host.docker.internal:11434",
             hostname="host.docker.internal",

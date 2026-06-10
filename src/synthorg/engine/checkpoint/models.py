@@ -9,7 +9,7 @@ turn so that execution can resume from the last checkpoint on crash.
 import json
 from datetime import UTC, datetime
 from typing import Self
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -38,8 +38,8 @@ class Checkpoint(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: str(uuid4()),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique checkpoint identifier",
     )
     execution_id: NotBlankStr = Field(description="Execution run identifier")

@@ -3,11 +3,13 @@
 
 from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
 
 from synthorg.security.timeout.parked_context import ParkedContext
+from tests._shared import as_uuid
 
 
 def _make_parked_context(**overrides: Any) -> ParkedContext:
@@ -32,7 +34,7 @@ class TestParkedContext:
         """Valid creation with all fields."""
         now = datetime.now(UTC)
         parked = ParkedContext(
-            id="custom-id",
+            id=as_uuid("custom-id"),
             execution_id="exec-1",
             agent_id="agent-1",
             task_id="task-1",
@@ -41,7 +43,7 @@ class TestParkedContext:
             context_json='{"data": true}',
             metadata={"tool": "git"},
         )
-        assert parked.id == "custom-id"
+        assert parked.id == as_uuid("custom-id")
         assert parked.execution_id == "exec-1"
         assert parked.agent_id == "agent-1"
         assert parked.task_id == "task-1"
@@ -59,8 +61,7 @@ class TestParkedContext:
     def test_default_id_generated(self) -> None:
         """id gets a UUID default when not provided."""
         parked = _make_parked_context()
-        assert parked.id  # non-empty
-        assert len(parked.id) > 0
+        assert isinstance(parked.id, UUID)
 
     def test_unique_ids(self) -> None:
         """Two instances get different default IDs."""

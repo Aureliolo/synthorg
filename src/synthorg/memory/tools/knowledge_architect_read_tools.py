@@ -187,7 +187,7 @@ class KnowledgeArchitectReadTool(BaseTool):
             )
             facts = await self._org_backend.query(query)
             match = next(
-                (f for f in facts if f.id == entry_id),
+                (f for f in facts if str(f.id) == entry_id),
                 None,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised

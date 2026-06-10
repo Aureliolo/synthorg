@@ -17,13 +17,14 @@ from synthorg.persistence._shared.org_fact_marshalling import (
     tags_from_json,
     tags_to_json,
 )
+from tests._shared import as_uuid, sid
 
 _NOW = datetime(2026, 5, 22, 12, 0, tzinfo=UTC)
 
 
 def _fact() -> OrgFact:
     return OrgFact(
-        id=NotBlankStr("fact-1"),
+        id=as_uuid("fact-1"),
         content=NotBlankStr("The deploy cadence is weekly."),
         category=OrgFactCategory.CONVENTION,
         # Stored sorted, so use sorted order for a clean round-trip identity.
@@ -105,7 +106,7 @@ class TestOperationLogMarshalling:
 
     def test_operation_log_entry(self) -> None:
         row: dict[str, object] = {
-            "operation_id": "op-1",
+            "operation_id": sid("op-1"),
             "fact_id": "fact-1",
             "operation_type": "PUBLISH",
             "content": "body",
@@ -119,7 +120,7 @@ class TestOperationLogMarshalling:
             "version": 3,
         }
         entry = row_to_operation_log_entry(row)
-        assert entry.operation_id == "op-1"
+        assert entry.operation_id == as_uuid("op-1")
         assert entry.operation_type == "PUBLISH"
         assert entry.version == 3
         assert entry.tags == (NotBlankStr("x"),)
@@ -158,7 +159,7 @@ class TestOperationLogMarshalling:
 
     def test_operation_log_corrupt_category_raises(self) -> None:
         row: dict[str, object] = {
-            "operation_id": "op-1",
+            "operation_id": sid("op-1"),
             "fact_id": "fact-1",
             "operation_type": "PUBLISH",
             "content": "body",

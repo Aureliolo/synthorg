@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 
@@ -73,7 +74,7 @@ def _make_mock_decision_repo(
     async def _append(**kwargs: object) -> DecisionRecord:
         version = _next_version_for(str(kwargs["task_id"]))
         return DecisionRecord(
-            id=str(kwargs["record_id"]),
+            id=UUID(str(kwargs["record_id"])),
             task_id=str(kwargs["task_id"]),
             approval_id=kwargs["approval_id"],  # type: ignore[arg-type]
             executing_agent_id=str(kwargs["executing_agent_id"]),
@@ -494,7 +495,7 @@ class TestReviewGateServiceDecisionRecording:
         """
         existing = (
             DecisionRecord(
-                id="d-1",
+                id=as_uuid("d-1"),
                 task_id="task-1",
                 executing_agent_id="alice",
                 reviewer_agent_id="carol",

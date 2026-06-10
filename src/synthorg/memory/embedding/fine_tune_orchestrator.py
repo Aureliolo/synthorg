@@ -141,7 +141,7 @@ class FineTuneOrchestrator:
             config = build_config(request)
             now = datetime.now(UTC)
             run = FineTuneRun(
-                id=str(uuid.uuid4()),
+                id=uuid.uuid4(),
                 stage=FineTuneStage.GENERATING_DATA,
                 config=config,
                 started_at=now,
@@ -151,7 +151,7 @@ class FineTuneOrchestrator:
             self._current_run = run
             logger.info(
                 MEMORY_FINE_TUNE_STARTED,
-                run_id=run.id,
+                run_id=str(run.id),
                 source_dir=config.source_dir,
             )
 
@@ -258,7 +258,7 @@ class FineTuneOrchestrator:
         """
         if self._current_run is not None:
             return FineTuneStatus(
-                run_id=self._current_run.id,
+                run_id=str(self._current_run.id),
                 stage=self._current_run.stage,
                 progress=self._current_run.progress,
                 error=self._current_run.error,
@@ -268,7 +268,7 @@ class FineTuneOrchestrator:
         if runs:
             r = runs[0]
             return FineTuneStatus(
-                run_id=r.id,
+                run_id=str(r.id),
                 stage=r.stage,
                 progress=r.progress,
                 error=r.error,
@@ -294,7 +294,7 @@ class FineTuneOrchestrator:
             self._current_run = run
             logger.info(
                 MEMORY_FINE_TUNE_COMPLETED,
-                run_id=run.id,
+                run_id=str(run.id),
             )
             self._schedule_ws(
                 "memory.fine_tune.completed",
@@ -303,7 +303,7 @@ class FineTuneOrchestrator:
         except FineTuneCancelledError:
             logger.info(
                 MEMORY_FINE_TUNE_CANCELLED,
-                run_id=run.id,
+                run_id=str(run.id),
                 stage=run.stage.value,
             )
             try:
@@ -330,7 +330,7 @@ class FineTuneOrchestrator:
                 )
                 logger.warning(
                     MEMORY_FINE_TUNE_FAILED,
-                    run_id=run.id,
+                    run_id=str(run.id),
                     note="failed_to_persist_cancellation_state",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
@@ -367,7 +367,7 @@ class FineTuneOrchestrator:
                     logger,
                     MEMORY_FINE_TUNE_FAILED,
                     persist_exc,
-                    run_id=run.id,
+                    run_id=str(run.id),
                     stage="persist_failed_state",
                     underlying_error_type=type(exc).__name__,
                     underlying_error=safe_error,
@@ -380,7 +380,7 @@ class FineTuneOrchestrator:
             )
             logger.warning(
                 MEMORY_FINE_TUNE_FAILED,
-                run_id=run.id,
+                run_id=str(run.id),
                 error_type=type(exc).__name__,
                 error=safe_error,
             )
@@ -434,7 +434,7 @@ class FineTuneOrchestrator:
         self._current_run = run
         logger.info(
             MEMORY_FINE_TUNE_STAGE_ENTERED,
-            run_id=run.id,
+            run_id=str(run.id),
             stage=stage.value,
         )
         self._schedule_ws(
@@ -525,7 +525,7 @@ class FineTuneOrchestrator:
             self._current_run = updated
             logger.debug(
                 MEMORY_FINE_TUNE_PROGRESS,
-                run_id=run_id,
+                run_id=str(run_id),
                 progress=progress,
             )
             self._emit_ws(

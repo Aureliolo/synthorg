@@ -19,6 +19,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     PreflightResult,
 )
 from synthorg.memory.errors import FineTuneCancelledError
+from tests._shared import as_uuid
 
 # -- CancellationToken ------------------------------------------------
 
@@ -175,7 +176,7 @@ class TestFineTuneRun:
     def _make_run(self, **overrides: object) -> FineTuneRun:
         now = datetime.now(tz=UTC)
         defaults: dict[str, object] = {
-            "id": "run-1",
+            "id": as_uuid("run-1"),
             "stage": FineTuneStage.GENERATING_DATA,
             "config": FineTuneRunConfig(
                 source_dir="/docs",
@@ -190,7 +191,7 @@ class TestFineTuneRun:
 
     def test_basic(self) -> None:
         run = self._make_run()
-        assert run.id == "run-1"
+        assert run.id == as_uuid("run-1")
         assert run.stage == FineTuneStage.GENERATING_DATA
         assert run.duration_seconds is None
 
@@ -216,7 +217,7 @@ class TestCheckpointRecord:
     def test_basic(self) -> None:
         now = datetime.now(tz=UTC)
         cp = CheckpointRecord(
-            id="cp-1",
+            id=as_uuid("cp-1"),
             run_id="run-1",
             model_path="/models/cp-1",
             base_model="test-model",
@@ -231,7 +232,7 @@ class TestCheckpointRecord:
     def test_with_eval_metrics(self) -> None:
         now = datetime.now(tz=UTC)
         cp = CheckpointRecord(
-            id="cp-1",
+            id=as_uuid("cp-1"),
             run_id="run-1",
             model_path="/models/cp-1",
             base_model="test-model",

@@ -18,6 +18,7 @@ exercises identical surfaces.
 
 import json
 from datetime import UTC, datetime
+from uuid import UUID
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
@@ -84,7 +85,7 @@ def _run_from_row(row: DictRow) -> FineTuneRun:
     """
     try:
         return FineTuneRun(
-            id=row["id"],
+            id=UUID(str(row["id"])),
             stage=FineTuneStage(row["stage"]),
             progress=row["progress"],
             error=row["error"],
@@ -130,7 +131,7 @@ def _checkpoint_from_row(row: DictRow) -> CheckpointRecord:
             backup_str = json.dumps(backup_payload)
 
         return CheckpointRecord(
-            id=row["id"],
+            id=UUID(str(row["id"])),
             run_id=row["run_id"],
             model_path=row["model_path"],
             base_model=row["base_model"],
@@ -182,7 +183,7 @@ ON CONFLICT (id) DO UPDATE SET
     completed_at = EXCLUDED.completed_at,
     stages_completed = EXCLUDED.stages_completed""",
                     (
-                        run.id,
+                        str(run.id),
                         run.stage.value,
                         run.progress,
                         run.error,
@@ -202,7 +203,7 @@ ON CONFLICT (id) DO UPDATE SET
             msg = f"Failed to save fine-tune run {run.id}"
             logger.warning(
                 MEMORY_FINE_TUNE_PERSIST_FAILED,
-                run_id=run.id,
+                run_id=str(run.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -412,7 +413,7 @@ WHERE id = %s""",
                             else normalize_utc(run.completed_at)
                         ),
                         Jsonb(list(run.stages_completed)),
-                        run.id,
+                        str(run.id),
                     ),
                 )
                 await conn.commit()
@@ -420,7 +421,7 @@ WHERE id = %s""",
             msg = f"Failed to update fine-tune run {run.id}"
             logger.warning(
                 MEMORY_FINE_TUNE_PERSIST_FAILED,
-                run_id=run.id,
+                run_id=str(run.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -492,7 +493,7 @@ class PostgresFineTuneCheckpointRepository:
             )
         backup_payload = self._encode_backup_config(
             checkpoint.backup_config_json,
-            checkpoint_id=checkpoint.id,
+            checkpoint_id=str(checkpoint.id),
         )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -514,7 +515,7 @@ ON CONFLICT (id) DO UPDATE SET
     is_active = EXCLUDED.is_active,
     backup_config_json = EXCLUDED.backup_config_json""",
                     (
-                        checkpoint.id,
+                        str(checkpoint.id),
                         checkpoint.run_id,
                         checkpoint.model_path,
                         checkpoint.base_model,
@@ -531,7 +532,7 @@ ON CONFLICT (id) DO UPDATE SET
             msg = f"Failed to save checkpoint {checkpoint.id}"
             logger.warning(
                 MEMORY_FINE_TUNE_PERSIST_FAILED,
-                checkpoint_id=checkpoint.id,
+                checkpoint_id=str(checkpoint.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

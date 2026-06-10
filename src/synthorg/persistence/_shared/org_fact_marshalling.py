@@ -12,6 +12,7 @@ modules; only the row <-> model marshalling lives here.
 
 import json
 from typing import Literal, cast
+from uuid import UUID
 
 from pydantic import ValidationError
 
@@ -106,7 +107,7 @@ def snapshot_row_to_org_fact(row: RowLike) -> OrgFact:
     """
     try:
         return OrgFact(
-            id=str(row["fact_id"]),
+            id=UUID(str(row["fact_id"])),
             content=str(row["content"]),
             category=OrgFactCategory(str(row["category"])),
             tags=tags_from_json(row["tags"]),
@@ -137,7 +138,7 @@ def row_to_operation_log_entry(row: RowLike) -> OperationLogEntry:
         seniority = row["author_seniority"]
         autonomy = row["author_autonomy_level"]
         return OperationLogEntry(
-            operation_id=str(row["operation_id"]),
+            operation_id=UUID(str(row["operation_id"])),
             fact_id=str(row["fact_id"]),
             operation_type=cast("_OperationType", str(row["operation_type"])),
             content=_opt_str(row["content"]),

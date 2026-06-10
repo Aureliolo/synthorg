@@ -6,6 +6,7 @@ Postgres stores context_json as native JSONB and timestamps as TIMESTAMPTZ.
 
 import json
 from datetime import datetime
+from uuid import UUID
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
@@ -78,28 +79,28 @@ INSERT INTO checkpoints (
                 )
                 await conn.commit()
         except json.JSONDecodeError as exc:
-            msg = f"Invalid JSON in context_json for checkpoint {checkpoint.id!r}"
+            msg = f"Invalid JSON in context_json for checkpoint {str(checkpoint.id)!r}"
             logger.warning(
                 PERSISTENCE_CHECKPOINT_SAVE_FAILED,
-                checkpoint_id=checkpoint.id,
+                checkpoint_id=str(checkpoint.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         except psycopg.errors.UniqueViolation as exc:
-            msg = f"Checkpoint {checkpoint.id!r} already exists"
+            msg = f"Checkpoint {str(checkpoint.id)!r} already exists"
             logger.warning(
                 PERSISTENCE_CHECKPOINT_SAVE_FAILED,
-                checkpoint_id=checkpoint.id,
+                checkpoint_id=str(checkpoint.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
-            msg = f"Failed to save checkpoint {checkpoint.id!r}"
+            msg = f"Failed to save checkpoint {str(checkpoint.id)!r}"
             logger.warning(
                 PERSISTENCE_CHECKPOINT_SAVE_FAILED,
-                checkpoint_id=checkpoint.id,
+                checkpoint_id=str(checkpoint.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -321,11 +322,12 @@ INSERT INTO checkpoints (
             Result of type ``Checkpoint``.
         """
         try:
+            row["id"] = UUID(str(row["id"]))
             raw = row.get("context_json")
             if raw is not None and not isinstance(raw, str):
                 row["context_json"] = json.dumps(raw)
             return Checkpoint.model_validate(row)
-        except ValidationError as exc:
+        except (ValidationError, ValueError) as exc:
             msg = f"Failed to deserialize checkpoint {row.get('id')!r}"
             logger.warning(
                 PERSISTENCE_CHECKPOINT_DESERIALIZE_FAILED,

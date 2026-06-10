@@ -8,6 +8,7 @@ not yet committed.
 
 import json
 import sqlite3
+from uuid import UUID
 
 import aiosqlite
 from pydantic import ValidationError
@@ -384,7 +385,7 @@ class _QueryMixin(_DecisionRepoBase):
                 # missing key raises KeyError and hits the log-and-
                 # re-raise handler below.
                 parsed: dict[str, object] = {
-                    "id": row["id"],
+                    "id": UUID(str(row["id"])),
                     "task_id": row["task_id"],
                     "approval_id": row["approval_id"],
                     "executing_agent_id": row["executing_agent_id"],
@@ -423,7 +424,7 @@ class _QueryMixin(_DecisionRepoBase):
             else:
                 parsed["metadata"] = raw_metadata
             return DecisionRecord.model_validate(parsed)
-        except (ValidationError, json.JSONDecodeError, TypeError) as exc:
+        except (ValidationError, json.JSONDecodeError, TypeError, ValueError) as exc:
             msg = (
                 f"Failed to deserialize decision record {row.get('id')!r}: "
                 f"{type(exc).__name__}"

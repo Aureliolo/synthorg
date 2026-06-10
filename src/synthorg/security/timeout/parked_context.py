@@ -9,7 +9,7 @@ import copy
 import json
 from types import MappingProxyType
 from typing import Self
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -33,8 +33,8 @@ class ParkedContext(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: str(uuid4()),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique parked context identifier",
     )
     execution_id: NotBlankStr = Field(description="Execution run identifier")

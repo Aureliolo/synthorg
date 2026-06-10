@@ -6,6 +6,7 @@ handles direct JSONB usage without manual JSON serialization.
 """
 
 import json
+from uuid import UUID
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
@@ -82,19 +83,19 @@ ON CONFLICT(id) DO UPDATE SET
                 )
                 await conn.commit()
         except json.JSONDecodeError as exc:
-            msg = f"Invalid JSON in context_json for parked context {context.id!r}"
+            msg = f"Invalid JSON in context_json for parked context {str(context.id)!r}"
             logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
-                parked_id=context.id,
+                parked_id=str(context.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         except psycopg.Error as exc:
-            msg = f"Failed to save parked context {context.id!r}"
+            msg = f"Failed to save parked context {str(context.id)!r}"
             logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
-                parked_id=context.id,
+                parked_id=str(context.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -319,6 +320,7 @@ ON CONFLICT(id) DO UPDATE SET
             QueryError: If the row cannot be deserialized.
         """
         try:
+            row["id"] = UUID(str(row["id"]))
             raw = row.get("context_json")
             if raw is not None and not isinstance(raw, str):
                 row["context_json"] = json.dumps(raw)

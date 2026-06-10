@@ -154,7 +154,7 @@ class SQLiteOrgFactRepository:
                 await db.execute("BEGIN IMMEDIATE")
                 version, _ = await self._append_to_operation_log(
                     db,
-                    fact_id=fact.id,
+                    fact_id=str(fact.id),
                     operation_type="PUBLISH",
                     content=fact.content,
                     category=fact.category,
@@ -184,7 +184,7 @@ class SQLiteOrgFactRepository:
                     "retracted_at=NULL, "
                     "version=excluded.version",
                     (
-                        fact.id,
+                        str(fact.id),
                         fact.content,
                         fact.category.value,
                         tags_json,
@@ -210,7 +210,7 @@ class SQLiteOrgFactRepository:
                     await db.execute("ROLLBACK")
                 logger.warning(
                     ORG_MEMORY_WRITE_FAILED,
-                    fact_id=fact.id,
+                    fact_id=str(fact.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -219,7 +219,7 @@ class SQLiteOrgFactRepository:
             else:
                 logger.info(
                     ORG_MEMORY_MVCC_PUBLISH_APPENDED,
-                    fact_id=fact.id,
+                    fact_id=str(fact.id),
                     version=version,
                 )
 

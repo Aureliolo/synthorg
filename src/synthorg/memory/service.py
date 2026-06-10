@@ -455,7 +455,7 @@ class MemoryService:
         logger.info(
             MEMORY_CHECKPOINT_DEPLOYED,
             checkpoint_id=checkpoint_id,
-            prior_checkpoint_id=prior.id if prior is not None else None,
+            prior_checkpoint_id=str(prior.id) if prior is not None else None,
         )
         return updated
 
@@ -672,7 +672,9 @@ class MemoryService:
             if self._settings is None:
                 return ActiveEmbedderSnapshot(
                     checkpoint_id=(
-                        active_checkpoint.id if active_checkpoint is not None else None
+                        str(active_checkpoint.id)
+                        if active_checkpoint is not None
+                        else None
                     ),
                     read_from_settings=False,
                 )
@@ -690,7 +692,7 @@ class MemoryService:
                 else None
             ),
             checkpoint_id=(
-                active_checkpoint.id if active_checkpoint is not None else None
+                str(active_checkpoint.id) if active_checkpoint is not None else None
             ),
             read_from_settings=True,
         )
@@ -757,7 +759,7 @@ class MemoryService:
             reraise_critical(exc)
             if prior is not None:
                 await self._rollback_step(
-                    checkpoints.set_active(prior.id),
+                    checkpoints.set_active(str(prior.id)),
                     checkpoint_id=checkpoint_id,
                     step="reactivate_prior_checkpoint",
                 )

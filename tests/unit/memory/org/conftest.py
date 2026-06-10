@@ -6,6 +6,7 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
+from tests._shared import as_uuid
 
 _NOW = datetime.now(UTC)
 HUMAN_AUTHOR = OrgFactAuthor(is_human=True)
@@ -27,7 +28,7 @@ def _make_fact(
 ) -> OrgFact:
     """Create a test OrgFact with sensible defaults."""
     return OrgFact(
-        id=fact_id,
+        id=as_uuid(fact_id),
         content=content,
         category=category,
         tags=tags,

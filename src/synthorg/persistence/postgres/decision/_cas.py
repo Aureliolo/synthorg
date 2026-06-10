@@ -13,6 +13,7 @@ import copy
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Final
+from uuid import UUID
 
 import psycopg
 from pydantic import ValidationError
@@ -115,7 +116,7 @@ class _CasMixin(_DecisionRepoBase):
         recorded_at_utc = recorded_at.astimezone(UTC)
         try:
             draft_record = DecisionRecord(
-                id=record_id,
+                id=UUID(record_id),
                 task_id=task_id,
                 approval_id=approval_id,
                 executing_agent_id=executing_agent_id,

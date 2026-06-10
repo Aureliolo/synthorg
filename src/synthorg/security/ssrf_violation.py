@@ -7,6 +7,7 @@ operators to review and allow/deny blocked hosts via the dashboard.
 from enum import StrEnum
 from typing import Self
 from urllib.parse import urlparse
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -47,7 +48,7 @@ class SsrfViolation(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr
+    id: UUID = Field(default_factory=uuid4)
     timestamp: AwareDatetime
     url: NotBlankStr
 

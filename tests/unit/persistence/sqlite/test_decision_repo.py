@@ -14,6 +14,7 @@ from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
 from synthorg.persistence.decision_protocol import DecisionRepository
 from synthorg.persistence.sqlite.decision import SQLiteDecisionRepository
+from tests._shared import as_uuid, coerce_id, sid
 from tests._shared.persistence import make_private_write_context
 
 
@@ -33,7 +34,7 @@ async def _append(  # noqa: PLR0913
 ) -> DecisionRecord:
     """Append a record via the repository with sensible defaults."""
     return await repo.append_with_next_version(
-        record_id=record_id or str(uuid4()),
+        record_id=coerce_id(record_id) if record_id is not None else str(uuid4()),
         task_id=task_id,
         approval_id=approval_id,
         executing_agent_id=executing_agent_id,
@@ -62,9 +63,9 @@ class TestSQLiteDecisionRepositoryAppendAndGet:
         )
         assert record.version == 1
 
-        fetched = await repo.get("dr-001")
+        fetched = await repo.get(sid("dr-001"))
         assert fetched is not None
-        assert fetched.id == "dr-001"
+        assert fetched.id == as_uuid("dr-001")
         assert fetched.task_id == "task-1"
         assert fetched.executing_agent_id == "alice"
         assert fetched.reviewer_agent_id == "bob"
@@ -190,7 +191,11 @@ class TestSQLiteDecisionRepositoryListByTask:
         assert len(results) == 3
         # Chronological order must place the backfill first even
         # though it has the highest version.
-        assert [r.id for r in results] == ["dr-backfill", "dr-1", "dr-2"]
+        assert [r.id for r in results] == [
+            as_uuid("dr-backfill"),
+            as_uuid("dr-1"),
+            as_uuid("dr-2"),
+        ]
         assert [r.version for r in results] == [3, 1, 2]
 
     async def test_list_by_task_empty(self, migrated_db: aiosqlite.Connection) -> None:
@@ -240,8 +245,8 @@ class TestSQLiteDecisionRepositoryListByAgent:
         results = await repo.list_by_agent("alice", role="executor")
         assert len(results) == 2
         # DESC by recorded_at
-        assert results[0].id == "dr-2"
-        assert results[1].id == "dr-1"
+        assert results[0].id == as_uuid("dr-2")
+        assert results[1].id == as_uuid("dr-1")
 
     async def test_list_by_agent_as_reviewer(
         self, migrated_db: aiosqlite.Connection
@@ -269,8 +274,8 @@ class TestSQLiteDecisionRepositoryListByAgent:
         results = await repo.list_by_agent("bob", role="reviewer")
         assert len(results) == 2
         # DESC by recorded_at
-        assert results[0].id == "dr-2"
-        assert results[1].id == "dr-1"
+        assert results[0].id == as_uuid("dr-2")
+        assert results[1].id == as_uuid("dr-1")
 
     async def test_list_by_agent_invalid_role_raises(
         self, migrated_db: aiosqlite.Connection
@@ -319,7 +324,7 @@ class TestSQLiteDecisionRepositorySerialization:
             criteria_snapshot=("a", "b", "c"),
             metadata={"key": "value", "nested": {"x": 1}},
         )
-        fetched = await repo.get("dr-1")
+        fetched = await repo.get(sid("dr-1"))
         assert fetched is not None
         assert fetched.criteria_snapshot == ("a", "b", "c")
         assert fetched.metadata["key"] == "value"
@@ -337,11 +342,11 @@ class TestSQLiteDecisionRepositorySerialization:
         await _append(repo, record_id="dr-1")
         await migrated_db.execute(
             "UPDATE decision_records SET criteria_snapshot = ? WHERE id = ?",
-            ("{not-valid-json}", "dr-1"),
+            ("{not-valid-json}", sid("dr-1")),
         )
         await migrated_db.commit()
         with pytest.raises(QueryError):
-            await repo.get("dr-1")
+            await repo.get(sid("dr-1"))
 
     async def test_corrupted_metadata_raises_query_error(
         self, migrated_db: aiosqlite.Connection
@@ -353,11 +358,11 @@ class TestSQLiteDecisionRepositorySerialization:
         await _append(repo, record_id="dr-1")
         await migrated_db.execute(
             "UPDATE decision_records SET metadata = ? WHERE id = ?",
-            ("{not-valid-json}", "dr-1"),
+            ("{not-valid-json}", sid("dr-1")),
         )
         await migrated_db.commit()
         with pytest.raises(QueryError):
-            await repo.get("dr-1")
+            await repo.get(sid("dr-1"))
 
     async def test_schema_check_rejects_bogus_decision_value(
         self,
@@ -379,7 +384,7 @@ class TestSQLiteDecisionRepositorySerialization:
         async def _attempt_bogus_update() -> None:
             await migrated_db.execute(
                 "UPDATE decision_records SET decision = 'bogus' WHERE id = ?",
-                ("dr-1",),
+                (sid("dr-1"),),
             )
             await migrated_db.commit()
 
@@ -409,13 +414,13 @@ class TestSQLiteDecisionRepositorySerialization:
         try:
             await migrated_db.execute(
                 "UPDATE decision_records SET decision = 'bogus' WHERE id = ?",
-                ("dr-1",),
+                (sid("dr-1"),),
             )
             await migrated_db.commit()
         finally:
             await migrated_db.execute("PRAGMA ignore_check_constraints = OFF")
         with pytest.raises(QueryError):
-            await repo.get("dr-1")
+            await repo.get(sid("dr-1"))
 
     async def test_concurrent_appends_yield_distinct_versions(
         self,
@@ -499,7 +504,7 @@ class TestDecisionRecordSelfReviewInvariant:
 
         with pytest.raises(ValidationError, match="executing_agent_id"):
             DecisionRecord(
-                id="dr-self",
+                id=as_uuid("dr-self"),
                 task_id="task-1",
                 executing_agent_id="alice",
                 reviewer_agent_id="alice",
@@ -527,7 +532,7 @@ class TestSQLiteDecisionRepositoryErrorPaths:
             pytest.raises(QueryError),
         ):
             await repo.append_with_next_version(
-                record_id="dr-e",
+                record_id=sid("dr-e"),
                 task_id="task-1",
                 approval_id=None,
                 executing_agent_id="alice",
@@ -547,7 +552,7 @@ class TestSQLiteDecisionRepositoryErrorPaths:
             patch.object(repo._db, "execute", side_effect=aiosqlite.Error("boom")),
             pytest.raises(QueryError),
         ):
-            await repo.get("dr-001")
+            await repo.get(sid("dr-001"))
 
     async def test_query_translates_db_error(
         self, migrated_db: aiosqlite.Connection

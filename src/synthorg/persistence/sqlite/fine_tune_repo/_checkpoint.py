@@ -3,6 +3,7 @@
 import contextlib
 import json
 import sqlite3
+from uuid import UUID
 
 import aiosqlite
 
@@ -35,7 +36,7 @@ def _checkpoint_from_row(row: aiosqlite.Row) -> CheckpointRecord:
                 row["eval_metrics_json"],
             )
         return CheckpointRecord(
-            id=row["id"],
+            id=UUID(str(row["id"])),
             run_id=row["run_id"],
             model_path=row["model_path"],
             base_model=row["base_model"],
@@ -97,7 +98,7 @@ class SQLiteFineTuneCheckpointRepository:
                     "is_active = excluded.is_active, "
                     "backup_config_json = excluded.backup_config_json",
                     (
-                        checkpoint.id,
+                        str(checkpoint.id),
                         checkpoint.run_id,
                         checkpoint.model_path,
                         checkpoint.base_model,
@@ -116,7 +117,7 @@ class SQLiteFineTuneCheckpointRepository:
                 msg = f"Failed to save checkpoint {checkpoint.id}"
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
-                    checkpoint_id=checkpoint.id,
+                    checkpoint_id=str(checkpoint.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
