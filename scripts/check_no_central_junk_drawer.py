@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """No-central-junk-drawer gate.
 
-``src/synthorg/core/enums.py`` has been fully dissolved into the
-per-feature ``enums.py`` modules; it MUST NOT exist. Recreating it
-fails the build: put new enums in their feature directory, not in a
-central file.
+``src/synthorg/core/enums.py`` MUST NOT exist: enums live in their
+per-feature ``enums.py`` module, never in a central file. Recreating the
+central module fails the build.
 
-The former ``AppState.__slots__`` count tracked here was drained to zero
-and the invariant now lives, absolutely, in
-``check_no_implicit_state_attribute.py`` (``APPROVED_SLOTS`` is empty, so
-any direct slot on the thin ``AppState`` facade fails). This gate keeps
-only the dissolved-module reconstruction guard.
+The ``AppState`` slot invariant is owned by
+``check_no_implicit_state_attribute.py``: its ``APPROVED_SLOTS`` is empty,
+so any direct slot on the thin ``AppState.__slots__`` facade fails there.
+This gate covers only the dissolved-module reconstruction guard.
 
 Usage::
 

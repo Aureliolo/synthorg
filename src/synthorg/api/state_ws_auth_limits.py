@@ -69,12 +69,15 @@ def _reject_invalid_auth_timeout(value: float) -> None:
     field via the shared ``WS_AUTH_TIMEOUT_{MIN,MAX}_SECONDS`` constants.
 
     Raises:
-        TypeError: When *value* is a ``bool``.
+        TypeError: When *value* is a ``bool`` or any non-numeric type.
         ValueError: When *value* is non-finite or out of range.
     """
     # ``bool`` is an ``int`` subclass, so ``True``/``False`` would
-    # otherwise sail through ``math.isfinite`` and the range check.
-    if isinstance(value, bool):
+    # otherwise sail through ``math.isfinite`` and the range check;
+    # a non-numeric ``value`` (``str``/``None``/...) would raise a raw
+    # ``TypeError`` at ``math.isfinite`` below, bypassing the structured
+    # warning. Reject both here so every invalid type logs first.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         logger.warning(
             API_BRIDGE_CONFIG_REJECTED,
             field="ws_auth_timeout_seconds",

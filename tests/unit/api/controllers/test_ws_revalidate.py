@@ -203,6 +203,6 @@ class _FakeApp:
         app_state = make_app_state(persistence=persistence)
         # Tight revalidation-window bounds so the transient-failure
         # regression test can saturate the window in a few iterations.
-        app_state.ws_auth_limits._auth_revalidate_window_seconds = 60
-        app_state.ws_auth_limits._auth_revalidate_max_failures = 3
+        app_state.ws_auth_limits.set_auth_revalidate_window_seconds(60)
+        app_state.ws_auth_limits.set_auth_revalidate_max_failures(3)
         self.state: dict[str, Any] = {"app_state": app_state}
