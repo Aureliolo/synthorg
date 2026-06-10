@@ -610,7 +610,7 @@ class AgentEngine(
                     ctx=ctx,
                     system_prompt=system_prompt,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- engine fatal-error boundary
                 return await self._handle_fatal_error(
                     exc=exc,
                     identity=identity,

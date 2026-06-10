@@ -397,7 +397,7 @@ async def load_self_improvement_config(
         return SelfImprovementConfig()
     try:
         entry = await settings_service.get("meta", "self_improvement")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             META_SELF_IMPROVEMENT_LOAD_FAILED,

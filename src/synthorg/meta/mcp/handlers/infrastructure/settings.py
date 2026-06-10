@@ -51,7 +51,7 @@ async def _settings_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(dict(result))
@@ -77,7 +77,7 @@ async def _settings_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok({"key": key, "value": result})
@@ -120,7 +120,7 @@ async def _settings_update(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(None)
@@ -162,7 +162,7 @@ async def _settings_delete(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(None)

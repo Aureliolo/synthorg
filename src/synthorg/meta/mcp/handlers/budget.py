@@ -103,7 +103,7 @@ async def _budget_get_config(
     tool = "synthorg_budget_get_config"
     try:
         config = await config_resolver_of(app_state).get_budget_config()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -147,7 +147,7 @@ async def _budget_list_records(
             task_id=task_id,
         )
         page, meta = paginate_sequence(records, offset=offset, limit=limit)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -175,7 +175,7 @@ async def _budget_get_agent_spending(
     try:
         total = await cost_tracker_of(app_state).get_agent_cost(agent_id)
         config = await config_resolver_of(app_state).get_budget_config()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -211,7 +211,7 @@ async def _budget_versions_list(
             limit=limit,
             offset=offset,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     # The service already returned the requested page; build the
@@ -246,7 +246,7 @@ async def _budget_versions_get(
 
     try:
         snapshot = await _versions_service(app_state).get_version(version_num)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if snapshot is None:

@@ -69,7 +69,7 @@ async def reindex_unindexed(
                 indexer=indexer,
                 project_id=project_id,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 BRAIN_REPLAY_FAILED,

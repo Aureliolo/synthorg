@@ -42,7 +42,7 @@ async def _integration_health_get_all(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok({k: _to_jsonable(v) for k, v in dict(snapshot).items()})
@@ -68,7 +68,7 @@ async def _integration_health_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if status is None:

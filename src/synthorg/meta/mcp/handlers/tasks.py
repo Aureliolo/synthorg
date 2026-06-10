@@ -148,7 +148,7 @@ async def _tasks_list(
             limit=limit,
             total=total,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -174,7 +174,7 @@ async def _tasks_get(
         return err(exc)
     try:
         task = await task_engine_of(app_state).get_task(task_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if task is None:
@@ -226,7 +226,7 @@ async def _tasks_create(
     except TaskMutationError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -271,7 +271,7 @@ async def _tasks_update(
     except TaskMutationError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -310,7 +310,7 @@ async def _tasks_delete(
     except TaskMutationError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -365,7 +365,7 @@ async def _tasks_transition(
     except TaskMutationError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -405,7 +405,7 @@ async def _tasks_cancel(
     except TaskMutationError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -510,7 +510,7 @@ async def _activities_list(
                 offset=offset,
                 limit=limit,
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

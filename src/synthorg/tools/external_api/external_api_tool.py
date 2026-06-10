@@ -515,7 +515,7 @@ class ExternalApiTool(BaseTool):
             return ApprovalRiskLevel.HIGH
         try:
             return self._risk_classifier.classify(_ACTION_TYPE)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 EXTERNAL_API_RISK_CLASSIFY_FAILED,

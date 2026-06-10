@@ -121,7 +121,7 @@ class DistributedBackendServices:
             for _name, component in reversed(started):
                 try:
                     await component.stop()
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         WORKERS_BACKEND_BUNDLE_STOP_FAILED,
@@ -137,7 +137,7 @@ class DistributedBackendServices:
         for name, component in reversed(self._start_order):
             try:
                 await component.stop()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     WORKERS_BACKEND_BUNDLE_STOP_FAILED,

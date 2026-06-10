@@ -152,7 +152,7 @@ async def collect_sidecar_logs(
             error=safe_error_description(exc),
         )
         return ()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # WARNING (not DEBUG) so a Docker-API failure during sidecar log
         # collection surfaces in operator dashboards. Returning ``()``
@@ -255,7 +255,7 @@ async def ship_container_logs(  # noqa: PLR0913
                 if included:
                     event_kwargs["sidecar_logs"] = tuple(included)
         logger.info(SANDBOX_CONTAINER_LOGS_SHIPPED, **event_kwargs)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # WARNING (not DEBUG): a shipping failure means agent / task
         # logs are absent from the operator's pipeline, so the symptom

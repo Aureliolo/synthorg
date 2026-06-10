@@ -243,7 +243,7 @@ class HTMLParseGuard:
                 gap_ratio=1.0,
                 stripped_element_count=0,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Parse failure on untrusted HTML: scrub the exception
             # description and drop ``exc_info`` so the raw payload (or

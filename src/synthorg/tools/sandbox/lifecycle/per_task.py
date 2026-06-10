@@ -94,7 +94,7 @@ class PerTaskStrategy:
         if loser is not None:
             try:
                 await destroy_fn(loser)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,
@@ -127,7 +127,7 @@ class PerTaskStrategy:
         )
         try:
             await destroy_fn(handle)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # The handle was already popped above; reinstate it (without
             # clobbering a concurrent re-acquire) so a live container
@@ -158,7 +158,7 @@ class PerTaskStrategy:
         for handle in handles:
             try:
                 await destroy_fn(handle)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,

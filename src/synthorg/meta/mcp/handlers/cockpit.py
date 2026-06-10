@@ -137,7 +137,7 @@ async def _get_live_activity(
             tool_name="synthorg_cockpit_get_live_activity",
         )
         return ok(snapshot.model_dump(mode="json"))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed("synthorg_cockpit_get_live_activity", exc)
         return err(exc)
 
@@ -169,7 +169,7 @@ async def _get_frames(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_cockpit_get_flight_recorder_frames", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed("synthorg_cockpit_get_flight_recorder_frames", exc)
         return err(exc)
 
@@ -197,7 +197,7 @@ async def _seek(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_cockpit_seek_flight_recorder", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed("synthorg_cockpit_seek_flight_recorder", exc)
         return err(exc)
 
@@ -226,7 +226,7 @@ async def _intervene_pause(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_cockpit_intervene_pause", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed("synthorg_cockpit_intervene_pause", exc)
         return err(exc)
 
@@ -254,7 +254,7 @@ async def _intervene_kill(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_cockpit_intervene_kill", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed("synthorg_cockpit_intervene_kill", exc)
         return err(exc)
 
@@ -307,7 +307,7 @@ async def _steer(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool_name, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool_name, exc)
         return err(exc)
 
@@ -352,7 +352,7 @@ async def _steer_supersede(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool_name, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool_name, exc)
         return err(exc)
 
@@ -380,7 +380,7 @@ async def _steer_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool_name, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool_name, exc)
         return err(exc)
 

@@ -69,7 +69,7 @@ class EvolutionSignalAggregator:
                 domain="evolution",
                 total_proposals=summary.total_proposals,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain="evolution"

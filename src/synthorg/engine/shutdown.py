@@ -334,7 +334,7 @@ async def _run_cleanup(
                 await callback()
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 all_succeeded = False
                 logger.warning(
@@ -414,7 +414,7 @@ class ShutdownManager:
         )
         try:
             self._strategy.request_shutdown()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 EXECUTION_SHUTDOWN_SIGNAL,
@@ -450,7 +450,7 @@ class ShutdownManager:
                     signal=sig_name,
                 )
                 self._strategy.request_shutdown()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     EXECUTION_SHUTDOWN_SIGNAL,
@@ -471,14 +471,14 @@ class ShutdownManager:
             # stderr for last-resort visibility.
             try:
                 self._strategy.request_shutdown()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 try:
                     sys.stderr.write(
                         f"[shutdown] request_shutdown() failed for signal {sig_name}\n"
                     )
                     sys.stderr.flush()
-                except Exception:  # noqa: S110 -- signal-handler last resort
+                except Exception:  # noqa: BLE001, S110 -- signal-handler last resort
                     pass
 
     def register_task(

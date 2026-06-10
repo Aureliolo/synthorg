@@ -117,7 +117,7 @@ class ConfigApplier:
                 note="config persistence not yet implemented",
             )
             return ApplyResult(success=True, changes_applied=count)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -194,7 +194,7 @@ class ConfigApplier:
 
         try:
             root_config = self._config_provider()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             return self._fail(
                 proposal,

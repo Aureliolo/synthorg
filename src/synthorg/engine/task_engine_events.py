@@ -104,7 +104,7 @@ async def publish_snapshot(
             request_id=mutation.request_id,
             task_id=event.task_id,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             TASK_ENGINE_SNAPSHOT_PUBLISH_FAILED,

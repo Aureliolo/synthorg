@@ -104,7 +104,7 @@ async def _coordination_get_task_metrics(
         record = await coordination_service_of(app_state).get_task_metrics(
             NotBlankStr(task_id),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -142,7 +142,7 @@ async def _coordination_metrics_list(
             offset=offset,
             limit=limit,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -178,7 +178,7 @@ async def _scaling_list_decisions(
             offset=offset,
             limit=limit,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -210,7 +210,7 @@ async def _scaling_get_decision(
         decision = await scaling_decision_service_of(app_state).get_decision(
             NotBlankStr(decision_id),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -238,7 +238,7 @@ async def _scaling_get_config(
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
         config = await scaling_decision_service_of(app_state).get_config()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -278,7 +278,7 @@ async def _scaling_trigger(
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
         decisions = await scaling_decision_service_of(app_state).trigger(agent_ids)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -305,7 +305,7 @@ async def _ceremony_policy_get(
         return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
     try:
         policy = await ceremony_policy_service_of(app_state).get_policy()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -347,7 +347,7 @@ async def _ceremony_policy_get_resolved(
         resolved = await ceremony_policy_service_of(app_state).get_resolved_policy(
             department=department,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -371,7 +371,7 @@ async def _ceremony_policy_get_active_strategy(
         return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
     try:
         active = await ceremony_policy_service_of(app_state).get_active_strategy()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

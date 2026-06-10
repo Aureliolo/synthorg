@@ -61,7 +61,7 @@ class ToolInvokerDiscoveryMixin:
         for name in self._registry.list_tools():
             try:
                 tool = self._registry.get(name)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     TOOL_DISCLOSURE_L1_SUMMARY_ERROR,
@@ -76,7 +76,7 @@ class ToolInvokerDiscoveryMixin:
                 continue
             try:
                 result.append(tool.to_l1_metadata())
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     TOOL_DISCLOSURE_L1_SUMMARY_ERROR,
@@ -113,7 +113,7 @@ class ToolInvokerDiscoveryMixin:
                 tool = self._registry.get(name)
             except ToolNotFoundError:
                 continue
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     TOOL_INVOKE_NOT_FOUND,
@@ -128,7 +128,7 @@ class ToolInvokerDiscoveryMixin:
                 continue
             try:
                 included.append(tool.to_definition())
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     TOOL_INVOKE_NOT_FOUND,
@@ -156,7 +156,7 @@ class ToolInvokerDiscoveryMixin:
                 note="tool not found during L2 disclosure query",
             )
             return None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TOOL_INVOKE_NOT_FOUND,
@@ -176,7 +176,7 @@ class ToolInvokerDiscoveryMixin:
             return None
         try:
             return tool.to_l2_body()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TOOL_INVOKE_NOT_FOUND,
@@ -210,7 +210,7 @@ class ToolInvokerDiscoveryMixin:
                 note="tool not found during L3 disclosure query",
             )
             return None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TOOL_INVOKE_NOT_FOUND,
@@ -232,7 +232,7 @@ class ToolInvokerDiscoveryMixin:
             return None
         try:
             resources = tool.get_l3_resources()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TOOL_INVOKE_NOT_FOUND,

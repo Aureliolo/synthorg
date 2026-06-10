@@ -70,7 +70,7 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
                 http_client=a2a_http_client,
                 timeout_seconds=a2a_client_timeout,
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

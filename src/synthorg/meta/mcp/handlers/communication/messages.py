@@ -92,7 +92,7 @@ async def _messages_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_messages_list", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed("synthorg_messages_list", exc)
         return err(exc)
 
@@ -124,7 +124,7 @@ async def _messages_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_messages_get", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed("synthorg_messages_get", exc)
         return err(exc)
 
@@ -150,7 +150,7 @@ async def _messages_send(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_messages_send", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed("synthorg_messages_send", exc)
         return err(exc)
 
@@ -199,7 +199,7 @@ async def _messages_delete(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 

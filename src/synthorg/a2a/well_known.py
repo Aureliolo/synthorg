@@ -143,7 +143,7 @@ async def _resolve_company_name(app_state: AppState) -> str:
         )
     except SettingNotFoundError:
         return str(app_state.config.company_name)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             A2A_AGENT_CARD_SERVED,
@@ -315,7 +315,7 @@ class WellKnownAgentCardController(Controller):
                 base_url,
                 company_name,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -372,7 +372,7 @@ class WellKnownAgentCardController(Controller):
 
         try:
             identity = await _resolve_agent_for_card(app_state, agent_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -402,7 +402,7 @@ class WellKnownAgentCardController(Controller):
 
         try:
             card_data = _build_agent_card_payload(app_state, identity, host_base)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

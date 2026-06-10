@@ -175,7 +175,7 @@ def build_system_prompt(  # noqa: PLR0913
     if org_policies:
         try:
             validate_policy_quality(org_policies)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PROMPT_POLICY_VALIDATION_FAILED,

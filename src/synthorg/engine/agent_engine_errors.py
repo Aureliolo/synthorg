@@ -256,7 +256,7 @@ class AgentEngineErrorsMixin:
                     getattr(self, "_cost_tracker", None),
                 ),
             )
-        except Exception as build_exc:
+        except Exception as build_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(build_exc)
             logger.warning(
                 EXECUTION_ENGINE_ERROR,
@@ -334,7 +334,7 @@ class AgentEngineErrorsMixin:
                 agent_id=agent_id,
                 task_id=task_id,
             )
-        except Exception as park_exc:
+        except Exception as park_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(park_exc)
             logger.warning(
                 EXECUTION_ENGINE_BUDGET_STOPPED,
@@ -382,7 +382,7 @@ class AgentEngineErrorsMixin:
                 },
             )
             await repo.save(updated)
-        except Exception as stamp_exc:
+        except Exception as stamp_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(stamp_exc)
             logger.warning(
                 EXECUTION_ENGINE_BUDGET_STOPPED,
@@ -494,7 +494,7 @@ class AgentEngineErrorsMixin:
                     getattr(self, "_cost_tracker", None),
                 ),
             )
-        except Exception as build_exc:
+        except Exception as build_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(build_exc)
             logger.warning(
                 EXECUTION_ENGINE_ERROR,

@@ -183,7 +183,7 @@ async def unwind_parked_steering(
     """
     try:
         await approval_store.delete(approval_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             COS_PROPOSE_FAILED,

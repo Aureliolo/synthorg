@@ -150,7 +150,7 @@ class DiskQuotaWatcher:
         async def _safe_check(p: Path) -> DiskQuotaStatus:
             try:
                 return await self.check_worktree(p)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     WORKSPACE_DISK_CHECK_ERROR,

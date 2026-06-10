@@ -148,7 +148,7 @@ async def _brain_append(
     except BrainEntryNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_APPEND, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_APPEND, exc)
         return err(exc)
@@ -179,7 +179,7 @@ async def _brain_resolve(
     except BrainEntryNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_RESOLVE, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_RESOLVE, exc)
         return err(exc)
@@ -210,7 +210,7 @@ async def _brain_supersede(
     except BrainEntryNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_SUPERSEDE, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_SUPERSEDE, exc)
         return err(exc)
@@ -241,7 +241,7 @@ async def _brain_clear_blocker(
     except BrainEntryNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_CLEAR_BLOCKER, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_CLEAR_BLOCKER, exc)
         return err(exc)
@@ -267,7 +267,7 @@ async def _brain_get(
     except BrainEntryNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_GET, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_GET, exc)
         return err(exc)
@@ -295,7 +295,7 @@ async def _brain_list(
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_LIST)
         return ok([s.model_dump(mode="json") for s in summaries])
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_LIST, exc)
         return err(exc)
@@ -318,7 +318,7 @@ async def _brain_query(
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_QUERY)
         return ok([h.model_dump(mode="json") for h in hits])
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_QUERY, exc)
         return err(exc)
@@ -344,7 +344,7 @@ async def _brain_history(
     except BrainEntryNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_HISTORY, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_HISTORY, exc)
         return err(exc)

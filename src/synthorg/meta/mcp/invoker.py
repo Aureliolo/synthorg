@@ -259,7 +259,7 @@ class MCPToolInvoker:
                 arguments=handler_arguments,
                 actor=actor,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             error_type = type(exc).__name__
             # safe_error_description avoids leaking secrets that

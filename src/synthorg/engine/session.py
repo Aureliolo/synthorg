@@ -401,7 +401,7 @@ def _replay_from_events(
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 SESSION_REPLAY_ERROR,

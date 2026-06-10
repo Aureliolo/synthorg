@@ -398,7 +398,7 @@ class GroupInviteCoordinator:
                     now=now,
                 )
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             await self._cleanup_invite(invite_id, conversation_id)
             logger.warning(
@@ -470,7 +470,7 @@ class GroupInviteCoordinator:
         """
         try:
             await self._invite_repo.delete(invite_id)
-        except Exception as cleanup_exc:
+        except Exception as cleanup_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(cleanup_exc)
             logger.warning(
                 COS_GROUP_INVITE_PARK_FAILED,

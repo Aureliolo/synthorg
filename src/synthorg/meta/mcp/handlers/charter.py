@@ -170,7 +170,7 @@ async def _charter_interview(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_INTERVIEW, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_INTERVIEW, exc)
         return err(exc)
@@ -202,7 +202,7 @@ async def _charter_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_LIST, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_LIST, exc)
         return err(exc)
@@ -224,7 +224,7 @@ async def _charter_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_GET, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_GET, exc)
         return err(exc)
@@ -256,7 +256,7 @@ async def _charter_cancel(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_CANCEL, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_CANCEL, exc)
         return err(exc)
@@ -279,7 +279,7 @@ async def _charter_approve(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_APPROVE, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_APPROVE, exc)
         return err(exc)

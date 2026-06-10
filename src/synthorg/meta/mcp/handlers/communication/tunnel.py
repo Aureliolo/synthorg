@@ -41,7 +41,7 @@ async def _tunnel_get_status(
     try:
         status = await tunnel_service_of(app_state).get_status()
         return ok(status.to_dict())
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed("synthorg_tunnel_get_status", exc)
         return err(exc)
 
@@ -75,7 +75,7 @@ async def _tunnel_connect(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 

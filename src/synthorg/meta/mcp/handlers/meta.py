@@ -114,7 +114,7 @@ async def _meta_get_config(
         return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
     try:
         config_dump = self_improvement_service_of(app_state).get_config()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -147,7 +147,7 @@ async def _meta_list_rules(
         serialized = [
             CustomRuleResponse.from_definition(r).model_dump(mode="json") for r in page
         ]
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -177,7 +177,7 @@ async def _meta_list_mcp_tools(
         registry = get_registry()
         tools = list(registry.get_tool_definitions())
         response = ok(data=tools)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -201,7 +201,7 @@ async def _meta_get_mcp_server_config(
 
         config = get_server_config()
         response = ok(data=config)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -236,7 +236,7 @@ async def _meta_trigger_cycle(
     except SelfImprovementTriggerError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="unavailable")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -294,7 +294,7 @@ async def _meta_query_feature_map(
             features=maps,
         )
         payload = index.model_dump(mode="json")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

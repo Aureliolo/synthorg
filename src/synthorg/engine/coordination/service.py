@@ -460,7 +460,7 @@ class MultiAgentCoordinator:
                 routing_result,
                 dispatch_result.waves,
             )
-        except Exception as attr_exc:
+        except Exception as attr_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(attr_exc)
             logger.warning(
                 COORDINATION_CLEANUP_FAILED,
@@ -475,7 +475,7 @@ class MultiAgentCoordinator:
                 await self._performance_tracker.record_coordination_contributions(
                     contributions,
                 )
-            except Exception as tracker_exc:
+            except Exception as tracker_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(tracker_exc)
                 logger.warning(
                     COORDINATION_CLEANUP_FAILED,
@@ -522,7 +522,7 @@ class MultiAgentCoordinator:
                 collector.collect(inputs),
                 timeout=_METRICS_COLLECT_TIMEOUT_SECONDS,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COORDINATION_CLEANUP_FAILED,

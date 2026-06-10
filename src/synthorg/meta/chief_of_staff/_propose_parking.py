@@ -299,7 +299,7 @@ class ProposeParkingMixin:
             reraise_critical(exc)
             try:
                 await self._proposal_repo.delete(proposal_id)
-            except Exception as cleanup_exc:
+            except Exception as cleanup_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(cleanup_exc)
                 logger.warning(
                     COS_PROPOSE_FAILED,
@@ -335,7 +335,7 @@ class ProposeParkingMixin:
         """
         try:
             await self._approval_store.delete(approval_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COS_PROPOSE_FAILED,
@@ -347,7 +347,7 @@ class ProposeParkingMixin:
             )
         try:
             await self._proposal_repo.delete(proposal_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COS_PROPOSE_FAILED,

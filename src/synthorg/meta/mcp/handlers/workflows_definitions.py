@@ -115,7 +115,7 @@ async def _workflows_list(
         # paginator will hand back without over-fetching.
         items = await _service(app_state).list_definitions(limit=limit + offset)
         page, meta = paginate_sequence(items, offset=offset, limit=limit)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -142,7 +142,7 @@ async def _workflows_get(
         return err(exc)
     try:
         defn = await _service(app_state).get_definition(def_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -193,7 +193,7 @@ async def _workflows_create(
     except WorkflowDefinitionExistsError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="already_exists")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -241,7 +241,7 @@ async def _workflows_update(
     except WorkflowDefinitionRevisionMismatchError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -271,7 +271,7 @@ async def _workflows_delete(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -323,7 +323,7 @@ async def _workflows_validate(
 
     try:
         result = await _service(app_state).validate_definition(definition)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

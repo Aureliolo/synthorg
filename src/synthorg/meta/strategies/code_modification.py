@@ -195,7 +195,7 @@ class CodeModificationStrategy:
                 error=safe_error_description(exc),
             )
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 META_CODE_GEN_FAILED,

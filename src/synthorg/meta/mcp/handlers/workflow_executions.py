@@ -147,7 +147,7 @@ async def workflow_executions_list(
         # triggered from MCP.
         executions = await service.list_executions(def_id, limit=limit + offset)
         page, meta = paginate_sequence(executions, offset=offset, limit=limit)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -177,7 +177,7 @@ async def workflow_executions_get(
         return err(exc)
     try:
         execution = await service.get_execution(execution_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -228,7 +228,7 @@ async def workflow_executions_start(
     except WorkflowExecutionError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -281,7 +281,7 @@ async def workflow_executions_cancel(
     except WorkflowExecutionAlreadyTerminalError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

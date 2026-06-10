@@ -84,7 +84,7 @@ async def _connections_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_connections_list", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed("synthorg_connections_list", exc)
         return err(exc)
 
@@ -112,7 +112,7 @@ async def _connections_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_connections_get", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed("synthorg_connections_get", exc)
         return err(exc)
 
@@ -161,7 +161,7 @@ async def _connections_create(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -201,7 +201,7 @@ async def _connections_delete(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -229,7 +229,7 @@ async def _connections_check_health(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_connections_check_health", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         log_handler_invoke_failed("synthorg_connections_check_health", exc)
         return err(exc)
 

@@ -179,7 +179,7 @@ class RequestHumanApprovalTool(BaseTool):
                 metadata={"source": "request_human_approval"},
             )
             await self._approval_store.add(item)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_ESCALATION_FAILED,
@@ -262,7 +262,7 @@ class RequestHumanApprovalTool(BaseTool):
         if self._risk_classifier is not None:
             try:
                 level = self._risk_classifier.classify(action_type)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     APPROVAL_GATE_RISK_CLASSIFY_FAILED,

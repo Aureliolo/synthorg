@@ -190,7 +190,7 @@ async def _analytics_overview(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_analytics_get_overview", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed("synthorg_analytics_get_overview", exc)
         return err(exc)
@@ -219,7 +219,7 @@ async def _analytics_trends(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_analytics_get_trends", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed("synthorg_analytics_get_trends", exc)
         return err(exc)
@@ -252,7 +252,7 @@ async def _analytics_forecast(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_analytics_get_forecast", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed("synthorg_analytics_get_forecast", exc)
         return err(exc)
@@ -281,7 +281,7 @@ async def _metrics_current(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_metrics_get_current", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed("synthorg_metrics_get_current", exc)
         return err(exc)
@@ -320,7 +320,7 @@ async def _metrics_history(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_metrics_get_history", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed("synthorg_metrics_get_history", exc)
         return err(exc)
@@ -357,7 +357,7 @@ async def _reports_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_reports_list", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed("synthorg_reports_list", exc)
         return err(exc)
@@ -395,7 +395,7 @@ async def _reports_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_reports_get", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed("synthorg_reports_get", exc)
         return err(exc)
@@ -435,7 +435,7 @@ async def _reports_generate(
     except ValueError as exc:
         log_handler_invoke_failed("synthorg_reports_generate", exc)
         return err(exc, domain_code="invalid_argument")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed("synthorg_reports_generate", exc)
         return err(exc)

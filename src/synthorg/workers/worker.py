@@ -408,7 +408,7 @@ class Worker:
         """
         try:
             return await self._executor(claim)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -437,7 +437,7 @@ class Worker:
             await self._clock.sleep(self._ack_extend_interval)
             try:
                 await JetStreamTaskQueue.in_progress(raw)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     WORKERS_ACK_EXTEND_FAILED,
@@ -473,7 +473,7 @@ class Worker:
                 subject,
                 beat.model_dump_json().encode("utf-8"),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 WORKERS_HEARTBEAT_FAILED,

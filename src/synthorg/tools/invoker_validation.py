@@ -141,7 +141,7 @@ class ToolInvokerValidationMixin:
                 tool_name=tool_call.name,
             )
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             return self._unexpected_validation_result(
                 tool_call, safe_error_description(exc) or type(exc).__name__
@@ -183,7 +183,7 @@ class ToolInvokerValidationMixin:
                 tool_name=tool_call.name,
             )
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             return self._unexpected_validation_result(
                 tool_call, safe_error_description(exc) or type(exc).__name__
@@ -293,7 +293,7 @@ class ToolInvokerValidationMixin:
                 tool_name=tool_call.name,
             )
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             error_msg = safe_error_description(exc) or type(exc).__name__
             logger.warning(

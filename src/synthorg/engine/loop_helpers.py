@@ -127,7 +127,7 @@ async def call_provider(  # noqa: PLR0913
                     )
                 if response.model:
                     span.set_attribute("gen_ai.response.model", response.model)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     SPAN_ATTRIBUTE_WRITE_FAILED,
@@ -136,7 +136,7 @@ async def call_provider(  # noqa: PLR0913
                     reason="span_attribute_write_failed",
                 )
             return response
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         error_msg = f"Provider error on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(

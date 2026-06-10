@@ -254,7 +254,7 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
                     task.project
                 )
                 workspace_path = Path(workspace.workspace_path)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Best-effort: workspace provisioning failure should not
                 # block agent execution (the workspace may not be needed
@@ -436,7 +436,7 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
             await backend.release_owner(
                 owner_id, project_id=project_id, image_override=image_override
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASE_FAILED,

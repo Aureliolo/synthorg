@@ -77,7 +77,7 @@ class _DynamicToolHandler:
         name = self._blueprint.name
         try:
             payload = await self._run(arguments)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TOOLSMITH_TOOL_INVOKE_FAILED,

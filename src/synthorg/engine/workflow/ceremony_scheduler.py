@@ -167,7 +167,7 @@ class CeremonyScheduler:
             return (0.0, 0.0)
         try:
             return self._budget_snapshot()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 SPRINT_CEREMONY_BUDGET_SNAPSHOT_FAILED,
@@ -321,7 +321,7 @@ class CeremonyScheduler:
             return
         try:
             record = await self._state_repo.get(NotBlankStr(sprint_id))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 SPRINT_CEREMONY_SCHEDULER_START_FAILED,
@@ -477,7 +477,7 @@ class CeremonyScheduler:
         if self._active_strategy is not None:
             try:
                 await self._active_strategy.on_sprint_deactivated()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger,
@@ -498,7 +498,7 @@ class CeremonyScheduler:
                 await self._state_repo.delete(
                     NotBlankStr(self._active_sprint.id),
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     SPRINT_CEREMONY_SCHEDULER_STOPPED,
@@ -562,7 +562,7 @@ class CeremonyScheduler:
                     story_points,
                     context,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger,
@@ -843,7 +843,7 @@ class CeremonyScheduler:
                 event_name,
                 context=context,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

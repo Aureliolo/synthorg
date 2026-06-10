@@ -177,7 +177,7 @@ class ToolsmithCycleScheduler:
                     await task
                 except asyncio.CancelledError:
                     pass
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         TOOLSMITH_CYCLE_SCHEDULER_FAILED,
@@ -224,7 +224,7 @@ class ToolsmithCycleScheduler:
                     await self._run_cycle_once()
                 except asyncio.CancelledError:
                     raise
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         TOOLSMITH_CYCLE_SCHEDULER_FAILED,

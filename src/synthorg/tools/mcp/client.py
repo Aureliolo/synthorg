@@ -152,7 +152,7 @@ class MCPClient:
             self._raise_connection_error(msg, exc)
         except MCPConnectionError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MCP_CLIENT_CONNECTION_FAILED,
@@ -219,7 +219,7 @@ class MCPClient:
             if self._exit_stack is not None:
                 try:
                     await self._exit_stack.aclose()
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         MCP_CLIENT_DISCONNECT_FAILED,

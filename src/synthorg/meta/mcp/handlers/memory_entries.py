@@ -81,7 +81,7 @@ async def _memory_delete_entry(
         return err(exc)
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc, agent_id=agent_id, memory_id=memory_id)
         return err(exc)
