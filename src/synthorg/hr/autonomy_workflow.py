@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED,
@@ -36,7 +37,6 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.security.autonomy.models import (
         AutonomyUpdate,

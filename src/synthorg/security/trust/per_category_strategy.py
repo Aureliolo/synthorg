@@ -8,6 +8,7 @@ file operations but sandboxed for deployment.
 from typing import TYPE_CHECKING
 
 from synthorg.core.tool_constraints import ToolAccessLevel
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.trust import (
     TRUST_EVALUATE_COMPLETE,
@@ -18,7 +19,6 @@ from synthorg.security.trust.levels import TRUST_LEVEL_ORDER, TRUST_LEVEL_RANK
 from synthorg.security.trust.models import TrustEvaluationResult, TrustState
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
     from synthorg.security.trust.config import CategoryTrustCriteria, TrustConfig
 

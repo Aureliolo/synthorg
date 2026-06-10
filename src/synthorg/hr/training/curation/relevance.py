@@ -8,6 +8,7 @@ tie-breaker, then returns the top K.
 import hashlib
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
@@ -15,7 +16,6 @@ from synthorg.observability.events.training import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.seniority import SeniorityLevel
 
 logger = get_logger(__name__)

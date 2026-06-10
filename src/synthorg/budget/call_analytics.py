@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.call_analytics_models import AnalyticsAggregation
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (
     ANALYTICS_AGGREGATION_COMPUTED,
@@ -19,7 +20,6 @@ if TYPE_CHECKING:
     from synthorg.budget.category_analytics import OrchestrationRatio
     from synthorg.budget.cost_record import CostRecord
     from synthorg.budget.tracker import CostTracker
-    from synthorg.core.types import NotBlankStr
     from synthorg.notifications.dispatcher import NotificationDispatcher
 
 logger = get_logger(__name__)

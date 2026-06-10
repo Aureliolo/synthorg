@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.factory import build_guards
 from synthorg.meta.toolsmith.applier import ToolCreationApplier
 from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
@@ -28,7 +29,6 @@ if TYPE_CHECKING:
 
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.tracker import CostTracker
-    from synthorg.core.types import NotBlankStr
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.mcp.handler_protocol import ToolHandler
     from synthorg.meta.signal_models import OrgSignalSnapshot

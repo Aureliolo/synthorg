@@ -35,6 +35,7 @@ from synthorg.budget.quota import (
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import (
     get_logger,
@@ -78,7 +79,6 @@ if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
-    from synthorg.core.types import NotBlankStr
     from synthorg.engine.loop_protocol import BudgetChecker
     from synthorg.persistence.project_cost_aggregate_protocol import (
         ProjectCostAggregateRepository,

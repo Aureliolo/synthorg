@@ -6,15 +6,13 @@ of all pairwise slopes. Pure function, no I/O, no external deps.
 
 from datetime import datetime
 from itertools import combinations
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection
 from synthorg.hr.performance.models import TrendResult
 from synthorg.observability import get_logger
 from synthorg.observability.events.performance import PERF_TREND_COMPUTED
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 _DEFAULT_MIN_DATA_POINTS: Final[int] = 5

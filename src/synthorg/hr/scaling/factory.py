@@ -6,6 +6,7 @@ and injected dependencies.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.context import ScalingContextBuilder
 from synthorg.hr.scaling.guards.approval_gate import ApprovalGateGuard
 from synthorg.hr.scaling.guards.composite import CompositeScalingGuard
@@ -34,7 +35,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.pruning.policy import PruningPolicy
     from synthorg.hr.scaling.config import ScalingConfig
     from synthorg.hr.scaling.protocols import ScalingGuard, ScalingStrategy

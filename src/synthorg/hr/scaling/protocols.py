@@ -6,8 +6,9 @@ signal sources, triggers, and guards.
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.core.types import NotBlankStr
+
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.scaling.enums import ScalingActionType
     from synthorg.hr.scaling.models import (
         ScalingContext,

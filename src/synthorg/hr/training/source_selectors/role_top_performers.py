@@ -8,6 +8,7 @@ import asyncio
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.normalization import compare_ci
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,
@@ -19,7 +20,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from synthorg.core.agent import AgentIdentity
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.hr.registry import AgentRegistryService

@@ -12,14 +12,10 @@ Startup wiring constructs the handler once and stashes the instance
 on ``AppState``.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from opentelemetry import trace
-from opentelemetry.trace import NoOpTracer
-
-if TYPE_CHECKING:
-    from opentelemetry.trace import Tracer
-
+from opentelemetry.trace import NoOpTracer, Tracer
 
 _DEFAULT_FORCE_FLUSH_TIMEOUT_SECONDS: Final[float] = 5.0
 

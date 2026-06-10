@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import PromotionDirection
 from synthorg.hr.promotion.models import CriterionResult, PromotionEvaluation
 from synthorg.hr.seniority import SeniorityLevel, compare_seniority
@@ -20,7 +21,6 @@ from synthorg.observability.events.promotion import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
     from synthorg.hr.promotion.config import PromotionCriteriaConfig
 

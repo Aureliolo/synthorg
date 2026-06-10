@@ -6,8 +6,9 @@ All trust strategies must implement this protocol.
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.core.types import NotBlankStr
+
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
     from synthorg.security.trust.models import TrustEvaluationResult, TrustState
 

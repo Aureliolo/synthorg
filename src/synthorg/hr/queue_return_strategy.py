@@ -7,6 +7,7 @@ to another agent by the task routing system.
 from typing import TYPE_CHECKING
 
 from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import TaskReassignmentError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
@@ -16,7 +17,6 @@ from synthorg.observability.events.hr import (
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 
