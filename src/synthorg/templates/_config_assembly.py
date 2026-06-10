@@ -217,7 +217,7 @@ def _extract_numeric_config(
     """
     source_name = template.metadata.name
     raw_autonomy = company.get("autonomy", template.autonomy)
-    if not isinstance(raw_autonomy, dict):
+    if not isinstance(raw_autonomy, Mapping):
         msg = (
             f"Invalid autonomy config in template {source_name!r}: "
             f"expected dict, got {type(raw_autonomy).__name__}"

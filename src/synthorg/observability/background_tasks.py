@@ -19,7 +19,7 @@ import copy
 import time
 from collections.abc import Callable, Coroutine, Mapping
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Final, Protocol
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.async_task import (
@@ -205,8 +205,22 @@ class BackgroundTaskRegistry:
         return len(self._tasks)
 
 
-def log_task_exceptions(  # type: ignore[explicit-any]  # structlog proxy; see log_exception_redacted
-    logger_: Any,
+class _TaskExceptionLogger(Protocol):
+    """Narrow structlog-proxy surface used by :func:`log_task_exceptions`.
+
+    Declares only the two level methods the done-callback invokes, so
+    the helper avoids an explicit-``Any`` escape hatch while still
+    accepting the lazy structlog proxy returned by
+    :func:`synthorg.observability.get_logger`.
+    """
+
+    def critical(self, event: str, /, **context: object) -> None: ...
+
+    def warning(self, event: str, /, **context: object) -> None: ...
+
+
+def log_task_exceptions(
+    logger_: _TaskExceptionLogger,
     event: str,
     **context: object,
 ) -> Callable[[asyncio.Task[object]], None]:

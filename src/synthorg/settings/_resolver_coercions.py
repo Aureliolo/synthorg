@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_VALIDATION_FAILED
+from synthorg.observability.redaction import safe_error_description
 
 if TYPE_CHECKING:
     from synthorg.budget.config import BudgetAlertConfig
@@ -107,6 +108,8 @@ def _build_budget_alerts(warn: int, crit: int, stop: int) -> BudgetAlertConfig:
             namespace="budget",
             key="_alerts",
             reason="threshold_ordering",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = "Budget alert thresholds must satisfy warn < critical < hard_stop"
         raise ValueError(msg) from exc

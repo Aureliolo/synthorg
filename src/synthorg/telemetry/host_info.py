@@ -281,9 +281,14 @@ async def _probe_daemon_info(aiodocker_mod: object) -> object | None:
     """Construct a client and fetch raw daemon ``/info``.
 
     Returns:
-        The raw daemon ``/info`` dict on success, or ``None`` on any
-        failure (client construction error, timeout, daemon error,
-        non-dict response). Never raises.
+        The raw daemon ``/info`` dict on success, or ``None`` on
+        non-critical failures (client construction error, timeout,
+        daemon error, non-dict response).
+
+    Raises:
+        MemoryError, RecursionError: Propagated via
+            :func:`reraise_critical`; telemetry must not swallow a
+            failing interpreter state.
 
     The :func:`asyncio.timeout` wrapper
     caps the probe at :data:`_DOCKER_INFO_TIMEOUT_SECONDS` because
@@ -347,9 +352,11 @@ async def fetch_docker_info() -> DockerHostInfo:
         marker with a categorical reason. The caller merges the result
         straight into a :class:`TelemetryEvent`'s ``properties``.
 
-    Never raises: every failure is caught, logged at the
-    appropriate level, and collapsed into the marker payload.
-    Telemetry must not affect the main application.
+    Non-critical failures are caught, logged at the appropriate
+    level, and collapsed into the marker payload, because telemetry
+    must not affect the main application. Critical interpreter errors
+    (``MemoryError`` / ``RecursionError``) are intentionally
+    propagated via :func:`reraise_critical`.
     """
     socket_marker = await _probe_docker_socket()
     if socket_marker is not None:

@@ -71,6 +71,26 @@ class TestSqliteSwapCarveout:
         assert bak_path.exists()
         assert not db_path.exists()
 
+    def test_recursion_error_skips_rollback(
+        self,
+        paths: tuple[Path, Path, Path],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db_path, source, bak_path = paths
+
+        def _boom(*_a: object, **_k: object) -> None:
+            raise RecursionError
+
+        monkeypatch.setattr(
+            "synthorg.backup.handlers.sqlite_persistence.shutil.copy2", _boom
+        )
+        with pytest.raises(RecursionError):
+            SQLitePersistenceComponentHandler._atomic_swap(db_path, source, bak_path)
+
+        # Rollback must NOT have run: the original stays parked at .bak.
+        assert bak_path.exists()
+        assert not db_path.exists()
+
 
 class TestMemorySwapCarveout:
     """Memory handler's ``_atomic_swap`` mirrors the sqlite carve-out."""
@@ -115,6 +135,24 @@ class TestMemorySwapCarveout:
 
         monkeypatch.setattr("synthorg.backup.handlers.memory.shutil.copytree", _boom)
         with pytest.raises(MemoryError):
+            MemoryComponentHandler._atomic_swap(data_path, source, bak_path)
+
+        # Rollback must NOT have run: the original stays parked at .bak.
+        assert bak_path.exists()
+        assert not data_path.exists()
+
+    def test_recursion_error_skips_rollback(
+        self,
+        paths: tuple[Path, Path, Path],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        data_path, source, bak_path = paths
+
+        def _boom(*_a: object, **_k: object) -> None:
+            raise RecursionError
+
+        monkeypatch.setattr("synthorg.backup.handlers.memory.shutil.copytree", _boom)
+        with pytest.raises(RecursionError):
             MemoryComponentHandler._atomic_swap(data_path, source, bak_path)
 
         # Rollback must NOT have run: the original stays parked at .bak.

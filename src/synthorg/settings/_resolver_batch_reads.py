@@ -8,7 +8,7 @@ the operator log actionable when one key in a bundle fails.
 """
 
 import asyncio
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
@@ -27,23 +27,21 @@ class TypedSettingReads(Protocol):
 
     async def get_str(self, namespace: str, key: str) -> str: ...
 
-    async def get_json(  # type: ignore[explicit-any]  # parsed JSON feeds pydantic validation
-        self, namespace: str, key: str
-    ) -> Any: ...
+    async def get_json(self, namespace: str, key: str) -> object: ...
 
 
-async def resolve_bridge_fields(  # type: ignore[explicit-any]  # values feed Model(**values)
+async def resolve_bridge_fields(
     reads: TypedSettingReads,
     namespace: str,
     specs: tuple[tuple[str, str], ...],
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Resolve a bundle of same-namespace settings in parallel.
 
     Each spec is ``(key, kind)`` where ``kind`` is one of ``"int"``,
     ``"float"``, ``"str"``, or ``"json"``.  Returns a mapping from key
     to parsed value, suitable for passing into a Pydantic model
     constructor as keyword arguments -- which is why the value type is
-    deliberately ``Any``: the callers unpack the mapping into typed
+    deliberately ``object``: the callers unpack the mapping into typed
     Pydantic ``__init__`` signatures that validate at runtime.
 
     Args:
@@ -58,7 +56,7 @@ async def resolve_bridge_fields(  # type: ignore[explicit-any]  # values feed Mo
         SettingNotFoundError: If a key is not in the registry.
         ValueError: If a resolved value cannot be parsed.
     """
-    tasks: dict[str, asyncio.Task[Any]] = {}  # type: ignore[explicit-any]  # see return type
+    tasks: dict[str, asyncio.Task[object]] = {}
     try:
         async with asyncio.TaskGroup() as tg:
             tasks = {
@@ -92,12 +90,12 @@ async def resolve_bridge_fields(  # type: ignore[explicit-any]  # values feed Mo
     return {key: task.result() for key, task in tasks.items()}
 
 
-async def _resolve_typed(  # type: ignore[explicit-any]  # kind-dispatched value; see resolve_bridge_fields
+async def _resolve_typed(
     reads: TypedSettingReads,
     namespace: str,
     key: str,
     kind: str,
-) -> Any:
+) -> object:
     """Dispatch to the accessor matching ``kind``.
 
     Args:
