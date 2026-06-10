@@ -14723,7 +14723,7 @@
     },
     {
       "kind": "code",
-      "loc": 220,
+      "loc": 221,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_conversation_marshalling.py",
       "owning_feature": "persistence"
