@@ -413,14 +413,6 @@ max-complexity = 8
     "PLR0915", # too-many-statements
     "INP001",  # implicit namespace packages (some directories lack __init__)
 ]
-# BLE001 (blind-except) is being drained per-package by the typed-except
-# remediation (EPIC #2062): each package's sites become a typed except or a
-# justified per-line noqa. This entry keeps the suppression only for the
-# packages not yet drained; the final flip removes it once every package is
-# converted, at which point ruff enforces typed-except across all of src.
-"src/synthorg/{api,memory,communication,hr,observability,security,budget,integrations,providers,telemetry,settings,backup,ontology,notifications,templates,research,knowledge,docs_engine,deliverable_receipts,core,coordination,client,_demo}/**/*.py" = [
-    "BLE001",
-]
 "src/synthorg/tools/browser/**/*.py" = [
     # The BrowserTool catches its own BrowserDomainError chain at the
     # execute() boundary and emits a structured ToolExecutionResult.

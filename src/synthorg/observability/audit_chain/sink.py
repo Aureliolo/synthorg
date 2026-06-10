@@ -422,7 +422,7 @@ class AuditChainSink(logging.Handler):
                 timeout_seconds=self._signing_timeout_seconds,
             )
             self._invoke_append_callback("error", 0, 0.0)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Use a non-audited event prefix (``audit_chain.*``) so
             # this error log can't loop back through ``emit()`` and
@@ -450,7 +450,7 @@ class AuditChainSink(logging.Handler):
             return
         try:
             callback(status, chain_depth, timestamp_unix)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 AUDIT_CHAIN_CALLBACK_ERROR,

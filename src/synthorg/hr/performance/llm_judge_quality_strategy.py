@@ -152,7 +152,7 @@ class LlmJudgeQualityStrategy:
             )
         except RetryExhaustedError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PERF_LLM_JUDGE_FAILED,

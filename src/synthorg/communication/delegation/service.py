@@ -238,7 +238,7 @@ class DelegationService:
         if self._record_store is not None:
             try:
                 self._record_store.record_sync(record)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     DELEGATION_RECORD_STORE_FAILED,

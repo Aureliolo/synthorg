@@ -194,7 +194,7 @@ class ConnectionCreateMixin:
             )
             try:
                 await self._secret_backend.delete(secret_id)
-            except Exception as cleanup_exc:
+            except Exception as cleanup_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(cleanup_exc)
                 logger.warning(
                     CONNECTION_CREATE_FAILED,

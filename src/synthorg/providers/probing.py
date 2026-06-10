@@ -129,7 +129,7 @@ async def _probe_and_fetch(
         _log_probe_miss(preset_name, "timeout", url)
     except json.JSONDecodeError:
         _log_probe_miss(preset_name, "invalid_json", url)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         _log_probe_miss(preset_name, "unexpected_error", url, exc=exc)
     return None

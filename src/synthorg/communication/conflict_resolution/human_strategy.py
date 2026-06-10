@@ -286,7 +286,7 @@ class HumanEscalationResolver:
                 note="notification_dispatch_timeout",
             )
             record_escalation_outcome(outcome="notify_failed")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_NOTIFY_FAILED,
@@ -313,7 +313,7 @@ class HumanEscalationResolver:
         """
         try:
             await asyncio.shield(self._registry.cancel(escalation.id))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
@@ -327,7 +327,7 @@ class HumanEscalationResolver:
             await asyncio.shield(
                 self._store.mark_expired(datetime.now(UTC).isoformat()),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
@@ -356,7 +356,7 @@ class HumanEscalationResolver:
         """
         try:
             await asyncio.shield(self._registry.cancel(escalation.id))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_CANCELLED,
@@ -373,7 +373,7 @@ class HumanEscalationResolver:
                     cancelled_by="system:resolver_cancelled",
                 ),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_CANCELLED,
@@ -410,7 +410,7 @@ class HumanEscalationResolver:
         """
         try:
             row = await self._store.get(escalation.id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
@@ -429,7 +429,7 @@ class HumanEscalationResolver:
         # future completed concurrently.
         try:
             await asyncio.shield(self._registry.cancel(escalation.id))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_RESOLVED,
@@ -469,7 +469,7 @@ class HumanEscalationResolver:
         """
         try:
             row = await self._store.get(escalation_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_RESOLVED,

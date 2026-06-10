@@ -50,7 +50,7 @@ async def _safe_check(
     """
     try:
         return await check_connection_health(catalog, name)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # Connection health checks can surface exceptions whose
         # str() embeds response bodies (including auth headers or

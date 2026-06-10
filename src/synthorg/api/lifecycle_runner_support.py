@@ -92,7 +92,7 @@ async def _cancel_with_timeout(
             timeout_seconds=timeout,
             context=f"Failed to cancel {service} within shutdown budget",
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- janitor best-effort: log and continue
         # A janitor task that fails with a non-timeout exception must not be
         # silently swallowed -- log at ERROR via the shutdown event so the
         # operator sees the underlying cause, then continue with downstream

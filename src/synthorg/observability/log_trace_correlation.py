@@ -44,7 +44,7 @@ def inject_trace_context(
     try:
         span = _ot_trace.get_current_span()
         context = span.get_span_context() if span is not None else None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         return event_dict
     if context is None or not context.is_valid:

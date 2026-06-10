@@ -90,7 +90,7 @@ class SlackHealthCheck:
         # masked as a single connection's "unhealthy" report.
         try:
             credentials = await self._catalog.get_credentials(connection.name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # The secret-backend exception text can carry encrypted
             # token blobs; scrub before logging / surfacing.

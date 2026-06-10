@@ -75,7 +75,7 @@ class OntologyService:
                 continue
             try:
                 await self._snapshot(entity)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
@@ -139,7 +139,7 @@ class OntologyService:
                 continue
             try:
                 await self._snapshot(entity)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,

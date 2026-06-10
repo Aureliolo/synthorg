@@ -560,7 +560,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -1058,7 +1058,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         await manager.delete_model(model_id)
         try:
             await self.discover_models_for_provider(name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PROVIDER_DISCOVERY_FAILED,

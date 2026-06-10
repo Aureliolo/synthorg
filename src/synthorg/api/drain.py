@@ -254,7 +254,7 @@ async def _send_drain_response(send: Send) -> None:
                 "more_body": False,
             },
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.debug(
             API_APP_DRAIN_SEND_FAILED,

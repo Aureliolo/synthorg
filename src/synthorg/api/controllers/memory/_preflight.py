@@ -335,7 +335,7 @@ def _check_fine_tune_sidecar_health() -> bool:
             return _HTTP_STATUS_OK_MIN <= status < _HTTP_STATUS_OK_MAX_EXCLUSIVE
     except urllib.error.URLError, TimeoutError, OSError:
         return False
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         return False
 
@@ -380,7 +380,7 @@ def _check_dependencies() -> PreflightCheck:
             message="Missing ML dependencies",
             detail=safe_error_description(exc),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         return PreflightCheck(
             name="dependencies",
@@ -425,7 +425,7 @@ def _check_gpu() -> PreflightCheck:
             status="warn",
             message="Cannot detect GPU (torch not installed)",
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         return PreflightCheck(
             name="gpu",
@@ -478,7 +478,7 @@ def _recommend_batch_size(
     except ImportError:
         # torch is optional -- absence is expected on CPU-only installs.
         return None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- best-effort probe: log and continue
         # Drop ``exc_info=True``.  The full traceback bypasses
         # ``safe_error_description`` and can leak environment paths /
         # backend metadata; the redacted form is sufficient for triage.
@@ -522,7 +522,7 @@ def _check_disk_space(source_dir: str) -> PreflightCheck:
             status="pass",
             message=f"{free_gb:.1f} GB available",
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         return PreflightCheck(
             name="disk_space",

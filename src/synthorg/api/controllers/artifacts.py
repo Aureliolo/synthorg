@@ -181,7 +181,7 @@ async def _save_metadata_with_rollback(
             # them before the catch-all so process-fatal conditions are
             # never logged-and-swallowed under the rollback path.
             raise
-        except Exception as cleanup_exc:
+        except Exception as cleanup_exc:  # noqa: BLE001 -- rollback best-effort: log and continue
             logger.warning(
                 PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
                 artifact_id=artifact_id,

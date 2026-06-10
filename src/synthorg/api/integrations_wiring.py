@@ -61,7 +61,7 @@ def _wire_mcp_catalog() -> CatalogService | None:
         )
 
         service = CatalogService()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -109,7 +109,7 @@ def _wire_mcp_installations_repo(
             service="mcp_installations_repo",
             backend="deferred_until_persistence_connected",
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -136,7 +136,7 @@ def _wire_tunnel_provider(auth_token_env: str) -> TunnelProvider | None:
         )
 
         provider = NgrokAdapter(auth_token_env=auth_token_env)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -213,7 +213,7 @@ def _wire_rate_limit_coordinator_factory(
                 and conn.rate_limiter.max_requests_per_minute > 0
             ):
                 max_rpm = conn.rate_limiter.max_requests_per_minute
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_SERVICE_AUTO_WIRED,
@@ -380,7 +380,7 @@ def auto_wire_integrations(  # noqa: PLR0913
                 connection_catalog=bundle.connection_catalog,
                 api_config=api_config,
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

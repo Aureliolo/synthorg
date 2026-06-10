@@ -155,7 +155,7 @@ async def unsubscribe_history_consumer(
     """Best-effort teardown for an ephemeral history consumer."""
     try:
         await psub.unsubscribe()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             COMM_BUS_STREAM_SCAN_FAILED,

@@ -188,7 +188,7 @@ class OAuthRotationMixin:
             )
             try:
                 await self._secret_backend.delete(new_secret_id)
-            except Exception as cleanup_exc:
+            except Exception as cleanup_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(cleanup_exc)
                 logger.warning(
                     OAUTH_TOKEN_EXCHANGE_FAILED,
@@ -224,7 +224,7 @@ class OAuthRotationMixin:
                         connection_name=name,
                         secret_id=old_ref.secret_id,
                     )
-            except Exception as del_exc:
+            except Exception as del_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(del_exc)
                 logger.warning(
                     SECRET_DELETE_FAILED,

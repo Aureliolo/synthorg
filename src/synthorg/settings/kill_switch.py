@@ -67,7 +67,7 @@ async def resolve_bool_with_fallback(
         return fallback
     try:
         return await resolver.get_bool(namespace, key)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # reraise_critical re-raises MemoryError / RecursionError before any
         # logging or fallback runs. asyncio.CancelledError is a BaseException,
         # so this broad ``except Exception`` never catches it: an aborted await

@@ -74,7 +74,7 @@ async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_WS_TICKET_CLEANUP,
@@ -112,7 +112,7 @@ async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_WS_TICKET_CLEANUP,
@@ -150,7 +150,7 @@ async def _run_cleanup_step(
         # rest.
         if inspect.isawaitable(result):
             await result
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             event,
@@ -187,7 +187,7 @@ async def _resolve_oauth_idempotency_retention(app_state: AppState) -> float:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             PERSISTENCE_OAUTH_STATE_CLEANUP,
@@ -241,7 +241,7 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
             oauth_removed = await oauth_states.cleanup_expired(
                 oauth_retention_seconds,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_CLEANUP,
@@ -298,7 +298,7 @@ async def _resolve_event_stream_janitor_settings(
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

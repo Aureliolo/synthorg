@@ -125,7 +125,7 @@ class KnowledgeArchitectSearchTool(BaseTool):
                 categories=categories,
             )
             facts = await self._org_backend.query(query)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             safe_error = safe_error_description(exc)
             logger.warning(
@@ -190,7 +190,7 @@ class KnowledgeArchitectReadTool(BaseTool):
                 (f for f in facts if f.id == entry_id),
                 None,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             safe_error = safe_error_description(exc)
             logger.warning(
@@ -262,7 +262,7 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
         try:
             args = KnowledgeArchitectBrowseWikiArgs.model_validate(arguments)
             result = await self._wiki_exporter.export(self._agent_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             safe_error = safe_error_description(exc)
             logger.warning(

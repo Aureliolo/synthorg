@@ -142,7 +142,7 @@ class VisionVerifierGateService:
             return await self._verifier.verify(review_input)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 VISION_VERIFIER_FAILED,

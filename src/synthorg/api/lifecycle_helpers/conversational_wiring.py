@@ -225,7 +225,7 @@ async def _wire_conversational_repositories_and_reconcile(
         await reconcile_orphaned_conversational_intake(
             repositories, effective_approval_store
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

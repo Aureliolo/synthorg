@@ -64,7 +64,7 @@ async def _find_first_user_when_no_owner(app_state: AppState) -> User | None:
                 return None
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -103,7 +103,7 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
         await persistence_of(app_state).users.save(promoted)
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -151,7 +151,7 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
         is_complete = normalize_ascii_lowercase_or_default(setup_entry.value) == "true"
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -179,7 +179,7 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             SETUP_AGENT_BOOTSTRAP_FAILED,

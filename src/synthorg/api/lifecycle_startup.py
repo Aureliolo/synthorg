@@ -160,7 +160,7 @@ async def _rebind_connection_catalog(
         persistent_connections = persistence.connections
     except AttributeError:
         return
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -450,7 +450,7 @@ async def _safe_startup(  # noqa: PLR0913
                     await backup_service.create_backup(
                         BackupTrigger.STARTUP,
                     )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         API_APP_STARTUP,

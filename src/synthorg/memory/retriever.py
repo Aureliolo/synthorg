@@ -281,7 +281,7 @@ class ContextInjectionStrategy:
                 )
             except builtins.MemoryError, RecursionError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     MEMORY_RETRIEVAL_DEGRADED,
@@ -433,7 +433,7 @@ class ContextInjectionStrategy:
                 error_type="system",
             )
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,

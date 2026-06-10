@@ -65,7 +65,7 @@ async def _validate_approval_urgency_invariant(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -122,7 +122,7 @@ async def _apply_sandbox_image_cache(app_state: AppState) -> None:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             setter(None)
             logger.warning(
@@ -159,7 +159,7 @@ async def _apply_notification_dispatcher_config(
         notif_bridge = await resolver.get_notifications_bridge_config()
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -183,7 +183,7 @@ async def _apply_notification_dispatcher_config(
         return
     try:
         await old_dispatcher.aclose()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -221,7 +221,7 @@ async def _apply_bridge_snapshot[T](
         snapshot = await getter()
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_BRIDGE_CONFIG_RESOLVE_FAILED,
@@ -318,7 +318,7 @@ async def _apply_ws_ticket_settings(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -343,7 +343,7 @@ async def _apply_ws_auth_timeout(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -378,7 +378,7 @@ async def _apply_ws_dos_settings(app_state: AppState) -> None:
             getattr(app_state, setter_name)(value)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
@@ -413,7 +413,7 @@ async def _apply_auth_token_bytes(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         set_auth_token_bytes(_DEFAULT_AUTH_TOKEN_BYTES)
         logger.warning(
@@ -449,7 +449,7 @@ async def _apply_timeout_enforcement(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         set_timeout_enforcement_enabled(value=True)
         logger.warning(
@@ -500,7 +500,7 @@ async def _apply_audit_chain_signing_timeout(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -522,7 +522,7 @@ async def _apply_audit_chain_signing_timeout(app_state: AppState) -> None:
             continue
         try:
             handler.set_signing_timeout_seconds(signing_timeout)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
@@ -601,7 +601,7 @@ async def _apply_security_timeout_interval(
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

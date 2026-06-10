@@ -170,7 +170,7 @@ def publish_ws_event(
             event.model_dump_json(),
             channels=[channel],
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_WS_SEND_FAILED,

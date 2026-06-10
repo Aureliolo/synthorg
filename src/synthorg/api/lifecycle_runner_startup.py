@@ -173,7 +173,7 @@ async def _run_startup(  # noqa: PLR0913
                 API_SERVICE_AUTO_WIRED,
                 service="agent_registry_versioning",
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_SERVICE_AUTO_WIRE_FAILED,
@@ -196,7 +196,7 @@ async def _run_startup(  # noqa: PLR0913
                     update={"prometheus_collector": collector}
                 )
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
@@ -215,7 +215,7 @@ async def _run_startup(  # noqa: PLR0913
         )
 
         wire_observability_callbacks(app_state)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -409,7 +409,7 @@ async def _run_startup(  # noqa: PLR0913
                     await _mem.disconnect()
                     raise
                 tasks.training_memory_backend = _mem
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
@@ -433,7 +433,7 @@ async def _run_startup(  # noqa: PLR0913
             await tasks.ticket_cleanup_task
         except asyncio.CancelledError:
             pass
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
     await _apply_bridge_config(app_state, effective_config)
     await _apply_security_timeout_interval(app_state, approval_timeout_scheduler)
@@ -464,7 +464,7 @@ async def _run_startup(  # noqa: PLR0913
             await tasks.audit_retention_task
         except asyncio.CancelledError:
             pass
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
     tasks.audit_retention_task = asyncio.create_task(
         _audit_retention_loop(app_state),
@@ -481,7 +481,7 @@ async def _run_startup(  # noqa: PLR0913
             await tasks.webhook_cleanup_task
         except asyncio.CancelledError:
             pass
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
     tasks.webhook_cleanup_task = asyncio.create_task(
         _webhook_receipt_cleanup_loop(app_state),
@@ -504,7 +504,7 @@ async def _run_startup(  # noqa: PLR0913
     if webhook_event_bridge is not None:
         try:
             await webhook_event_bridge.start()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
@@ -518,7 +518,7 @@ async def _run_startup(  # noqa: PLR0913
     if integrations.health_prober_service is not None:
         try:
             await integrations.health_prober_service.start()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
@@ -530,7 +530,7 @@ async def _run_startup(  # noqa: PLR0913
     if integrations.oauth_token_manager is not None:
         try:
             await integrations.oauth_token_manager.start()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
@@ -542,7 +542,7 @@ async def _run_startup(  # noqa: PLR0913
     if communication.escalation_sweeper is not None:
         try:
             await communication.escalation_sweeper.start()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
@@ -554,7 +554,7 @@ async def _run_startup(  # noqa: PLR0913
     if communication.escalation_notify_subscriber is not None:
         try:
             await communication.escalation_notify_subscriber.start()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
@@ -577,7 +577,7 @@ async def _run_startup(  # noqa: PLR0913
                 idle_ttl_seconds=idle_ttl,
                 janitor_interval_seconds=janitor_interval,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,

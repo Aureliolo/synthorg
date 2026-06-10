@@ -173,7 +173,7 @@ class AbstractiveSummarizer:
                 error_type=type(exc).__name__,
             )
             return _truncate_fallback(content)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DUAL_MODE_ABSTRACTIVE_FALLBACK,

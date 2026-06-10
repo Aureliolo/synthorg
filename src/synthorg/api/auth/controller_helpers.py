@@ -109,7 +109,7 @@ async def make_session_cookies(  # noqa: PLR0913
                         SECURITY_AUTH_FAILED,
                         reason="refresh_store_not_available",
                     )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     SECURITY_AUTH_FAILED,
@@ -213,7 +213,7 @@ async def create_session_record(
             session_id=session_id,
             user_id=user.id,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_SESSION_CREATE_FAILED,
@@ -257,7 +257,7 @@ def extract_jti(request: Request[object, object, State]) -> str | None:
             error=safe_error_description(exc),
         )
         return None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             SECURITY_AUTH_FAILED,

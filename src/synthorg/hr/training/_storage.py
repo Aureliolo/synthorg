@@ -180,7 +180,7 @@ async def _store_one_item(  # noqa: PLR0913
     # a partial-store outcome instead of failing the whole pipeline.
     try:
         await memory_backend.store(plan.new_agent_id, request)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             HR_TRAINING_STORE_FAILED,

@@ -116,7 +116,7 @@ class OntologyAwareMemoryBackend:
                 found = self._detect_entities(request.content)
             else:
                 found = ()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 ONTOLOGY_MEMORY_ENRICHMENT_FAILED,
@@ -174,7 +174,7 @@ class OntologyAwareMemoryBackend:
 
         try:
             manifest = await self._ontology.get_version_manifest()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 ONTOLOGY_MEMORY_MANIFEST_FAILED,
@@ -317,7 +317,7 @@ class OntologyAwareMemoryBackend:
         for name in entities:
             try:
                 entity = await self._ontology.get(name)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     ONTOLOGY_MEMORY_DRIFT_WARNED,

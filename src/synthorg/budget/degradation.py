@@ -212,7 +212,7 @@ async def _resolve_fallback(
                 fallback_name,
                 estimated_tokens=estimated_tokens,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DEGRADATION_FALLBACK_CHECK_ERROR,

@@ -225,7 +225,7 @@ class SimulationController(Controller):
                     simulation_id=record.simulation_id,
                 )
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Drop ``logger.exception`` -- frame-locals on the
                 # simulation-run-failed traceback can carry the

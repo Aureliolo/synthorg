@@ -293,7 +293,7 @@ class ActivityFeedService:
                     since=since,
                     limit=_LIFECYCLE_CAP,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     HR_ACTIVITY_SOURCE_FETCH_FAILED,
@@ -310,7 +310,7 @@ class ActivityFeedService:
                 since=since,
                 until=now,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
@@ -391,7 +391,7 @@ class ActivityFeedService:
             return ()
         try:
             return await self._cost_tracker.get_records(start=since, end=now)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
@@ -420,7 +420,7 @@ class ActivityFeedService:
                 start=since,
                 end=now,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
@@ -452,7 +452,7 @@ class ActivityFeedService:
             return DEFAULT_CURRENCY
         try:
             budget = await self._config_resolver.get_budget_config()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
@@ -561,7 +561,7 @@ class ActivityFeedService:
                 start=since,
                 end=now,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Log so operators can distinguish "no records" from
             # "fetch failed"; the caller still gets an empty tuple
@@ -599,7 +599,7 @@ class ActivityFeedService:
                 start=since,
                 end=now,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
@@ -643,7 +643,7 @@ class ActivityFeedService:
                     start=since,
                     end=now,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     HR_ACTIVITY_SOURCE_FETCH_FAILED,
@@ -668,7 +668,7 @@ class ActivityFeedService:
                     start=since,
                     end=now,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     HR_ACTIVITY_SOURCE_FETCH_FAILED,

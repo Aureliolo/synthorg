@@ -108,7 +108,7 @@ def _safe_record(
                 # would mask a programming bug; let it propagate
                 # so the caller sees the wiring mistake.
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # ValueError lives under this branch on purpose: it
                 # surfaces both genuine programming bugs (caller

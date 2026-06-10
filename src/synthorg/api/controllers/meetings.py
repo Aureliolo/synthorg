@@ -88,7 +88,7 @@ async def _resolve_max_context_keys(app_state: AppState) -> int:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         if not _meeting_context_cap_fallback_logged:
             logger.warning(

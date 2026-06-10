@@ -381,7 +381,7 @@ async def emit_cost_record_from_context(
 
     try:
         record = _build_cost_record(ctx, response, model=model, provider=provider)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             PROVIDER_COST_FAILED,
@@ -451,7 +451,7 @@ async def _record_cost_in_background(
             reason="cost_tracker_record_timeout",
         )
         return
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             PROVIDER_COST_FAILED,

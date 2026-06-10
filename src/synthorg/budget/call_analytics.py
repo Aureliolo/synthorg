@@ -244,7 +244,7 @@ async def _dispatch_retry_rate_alert(
                 source="budget.call_analytics",
             ),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             ANALYTICS_RETRY_RATE_ALERT,

@@ -128,7 +128,7 @@ class OtlpTraceHandler:
             # failing construction leaves no background resources.
             try:
                 self._provider.shutdown()
-            except Exception:
+            except Exception:  # noqa: BLE001 -- cleanup best-effort
                 logger.warning(
                     "trace.handler.orphan_shutdown_failed",
                 )

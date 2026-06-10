@@ -331,7 +331,7 @@ class SafetyClassifier:
                 risk_level,
                 start,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
             log_exception_redacted(

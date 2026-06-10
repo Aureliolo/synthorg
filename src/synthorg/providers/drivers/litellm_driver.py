@@ -366,7 +366,7 @@ class LiteLLMDriver(BaseCompletionProvider):
                 continue
             try:
                 results[model] = self._build_capabilities(model_config)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     PROVIDER_BATCH_CAPABILITIES_PARTIAL,

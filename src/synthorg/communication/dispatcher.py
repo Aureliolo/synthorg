@@ -281,7 +281,7 @@ class MessageDispatcher:
                 handler_name=registration.name,
             )
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             safe_error = safe_error_description(exc)
             errors[index] = safe_error

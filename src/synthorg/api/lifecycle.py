@@ -175,7 +175,7 @@ async def _safe_shutdown(  # noqa: PLR0913
                 await backup_service.create_backup(
                     BackupTrigger.SHUTDOWN,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     API_APP_SHUTDOWN,
@@ -294,7 +294,7 @@ async def _maybe_start_health_prober(
             discovery_policy_loader=policy_loader,
         )
         await prober.start()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

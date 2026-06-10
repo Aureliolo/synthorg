@@ -238,7 +238,7 @@ class FineTuneOrchestrator:
                     MEMORY_FINE_TUNE_CANCELLED,
                     note="cancel timed out waiting for task",
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Task failed/cancelled -- already logged by _on_task_done
 
@@ -311,7 +311,7 @@ class FineTuneOrchestrator:
                     self._current_run or run,
                     "cancelled by user",
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Update in-memory state even if DB fails. Mirror
                 # ``_mark_failed`` so the snapshot has the same terminal
@@ -339,12 +339,12 @@ class FineTuneOrchestrator:
                 "memory.fine_tune.failed",
                 self._current_run or run,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             safe_error = safe_error_description(exc)
             try:
                 await self._mark_failed(self._current_run or run, safe_error)
-            except Exception as persist_exc:
+            except Exception as persist_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(persist_exc)
                 # Persisting the FAILED state can itself fail (DB outage,
                 # disk full, etc.). Log the persistence failure with full

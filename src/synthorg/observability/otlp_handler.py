@@ -146,7 +146,7 @@ class OtlpHandler(logging.Handler):
                 self._pending_count += 1
                 if self._pending_count >= self._batch_size:
                     self._batch_ready.set()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             self.handleError(record)
 
@@ -244,7 +244,7 @@ class OtlpHandler(logging.Handler):
                 break
             try:
                 self._drain_and_flush()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 _internal_logger.error(
                     METRICS_OTLP_FLUSHER_ERROR,
@@ -274,7 +274,7 @@ class OtlpHandler(logging.Handler):
         for record in records:
             try:
                 log_records.append(self._format_as_otlp_dict(record))
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 self.handleError(record)
                 self._increment_dropped(1)
@@ -317,7 +317,7 @@ class OtlpHandler(logging.Handler):
                 timeout=self._timeout,
             ):
                 pass
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # urllib.error.HTTPError wraps a file pointer to the response
             # body.  Close it explicitly to avoid leaking file descriptors.
@@ -360,7 +360,7 @@ class OtlpHandler(logging.Handler):
             return
         try:
             callback(outcome, dropped)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             _internal_logger.warning(
                 METRICS_OTLP_CALLBACK_ERROR,

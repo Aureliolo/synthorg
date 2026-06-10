@@ -335,7 +335,7 @@ def _register_distributed_dispatcher(
         # an observer that would publish to an unstarted queue on the
         # in-process fallback path.
         engine.register_observer(dispatcher.on_task_state_changed)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

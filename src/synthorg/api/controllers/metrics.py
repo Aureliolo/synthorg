@@ -52,7 +52,7 @@ class MetricsController(Controller):
         try:
             await collector.refresh(app_state)
             body = generate_latest(collector.registry)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 METRICS_SCRAPE_FAILED,

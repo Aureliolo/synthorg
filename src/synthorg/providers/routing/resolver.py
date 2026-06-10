@@ -263,7 +263,7 @@ class ModelResolver:
                 reason="selector_raised_resolution_error",
             )
             return None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Defensive fallback: any non-domain selector error converts
             # to a "no model found" outcome rather than propagating up

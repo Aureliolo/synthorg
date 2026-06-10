@@ -57,7 +57,7 @@ def publish_ws_event(
             payload,
             channels=["system"],
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             MEMORY_FINE_TUNE_WS_EMIT_FAILED,

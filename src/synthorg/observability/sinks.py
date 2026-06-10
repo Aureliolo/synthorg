@@ -41,7 +41,7 @@ class _FlushingRotatingFileHandler(logging.handlers.RotatingFileHandler):
         super().emit(record)
         try:
             self.flush()
-        except Exception:  # mirrors StreamHandler.emit
+        except Exception:  # noqa: BLE001 -- mirrors StreamHandler.emit
             self.handleError(record)
 
 
@@ -167,7 +167,7 @@ class _FlushingWatchedFileHandler(logging.handlers.WatchedFileHandler):
         super().emit(record)
         try:
             self.flush()
-        except Exception:  # mirrors StreamHandler.emit
+        except Exception:  # noqa: BLE001 -- mirrors StreamHandler.emit
             self.handleError(record)
 
 

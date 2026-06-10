@@ -53,7 +53,7 @@ async def _demo_greet(
         if service is None:
             return capability_gap(_GREET_TOOL, "demo service not wired")
         return ok({"greeting": service.greet().greeting})
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         log_handler_invoke_failed(_GREET_TOOL, exc)
         return err(exc)

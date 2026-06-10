@@ -195,7 +195,7 @@ def scrub_event_fields(
     """
     try:
         return {key: _scrub_value(value) for key, value in event_dict.items()}
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # Fail open: pass the event through unscrubbed rather than drop
         # the log line entirely.  Still safer than crashing the log

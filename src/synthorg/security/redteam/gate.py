@@ -234,7 +234,7 @@ class RedTeamGateService:
             return
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 RED_TEAM_REPORT_ARCHIVE_FAILED,
@@ -305,7 +305,7 @@ class RedTeamGateService:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 RED_TEAM_REPORT_MISSING,
@@ -371,7 +371,7 @@ class RedTeamGateService:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 RED_TEAM_GROUNDING_CHECK_FAILED,

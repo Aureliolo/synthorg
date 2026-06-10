@@ -228,7 +228,7 @@ def scored_points_to_entries(
                 reason="system error during point conversion",
             )
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             skipped += 1
             logger.warning(
@@ -456,7 +456,7 @@ async def async_try_sparse_upsert(  # noqa: PLR0913
             agent_id=agent_id,
         )
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             MEMORY_SPARSE_UPSERT_FAILED,

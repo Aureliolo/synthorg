@@ -208,7 +208,7 @@ class SuccessMemoryProposer:
                 is_retryable=True,
             )
             return None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Drop exc_info + scrub message.
             logger.warning(

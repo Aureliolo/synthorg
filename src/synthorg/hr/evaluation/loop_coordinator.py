@@ -305,7 +305,7 @@ class EvalLoopCoordinator:
         """
         try:
             return await self._evaluation.evaluate(agent_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger, EVAL_LOOP_AGENT_EVAL_FAILED, exc, agent_id=agent_id
@@ -510,7 +510,7 @@ class EvalLoopCoordinator:
             try:
                 async with semaphore:
                     return await self._benchmarks.run_benchmark(name)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger, EVAL_LOOP_BENCHMARK_FAILED, exc, benchmark_name=name

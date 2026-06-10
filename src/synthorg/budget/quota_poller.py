@@ -118,7 +118,7 @@ class QuotaPoller:
         logger.debug(QUOTA_POLL_STARTED)
         try:
             snapshots = await self._tracker.get_all_snapshots()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(logger, QUOTA_POLL_FAILED, exc)
             return
@@ -144,7 +144,7 @@ class QuotaPoller:
                 await self.poll_once()
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(logger, QUOTA_POLL_FAILED, exc)
             await self._clock.sleep(self._config.poll_interval_seconds)
@@ -195,7 +195,7 @@ class QuotaPoller:
                     level=level,
                     usage_pct=usage_pct,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger, QUOTA_POLL_FAILED, exc, reason="quota_alert_dispatch_failed"

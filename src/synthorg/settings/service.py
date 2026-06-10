@@ -1224,7 +1224,7 @@ class SettingsService:
                 namespace=namespace,
                 key=key,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Notification failure should not break settings writes.
             # Settings is a credential-bearing path so use the

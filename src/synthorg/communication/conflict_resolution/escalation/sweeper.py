@@ -234,7 +234,7 @@ class EscalationExpirationSweeper:
                 except asyncio.CancelledError:
                     # Expected: we just cancelled the task.
                     pass
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     # Best-effort shutdown: never propagate, but elevate
                     # to WARNING so real failures surface in production
@@ -327,7 +327,7 @@ class EscalationExpirationSweeper:
                     await self._sweep_once()
                 except asyncio.CancelledError:
                     raise
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         CONFLICT_ESCALATION_SWEEPER_FAILED,

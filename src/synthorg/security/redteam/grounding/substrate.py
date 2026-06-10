@@ -158,7 +158,7 @@ class KnowledgeSubstrateGroundingChecker:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 RED_TEAM_GROUNDING_EXTRACTION_FAILED,
@@ -212,7 +212,7 @@ class KnowledgeSubstrateGroundingChecker:
         """
         try:
             return self._resolver()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED,
@@ -300,7 +300,7 @@ class KnowledgeSubstrateGroundingChecker:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 RED_TEAM_GROUNDING_SEARCH_FAILED,
@@ -328,7 +328,7 @@ class KnowledgeSubstrateGroundingChecker:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 RED_TEAM_GROUNDING_ENTAILMENT_FAILED,

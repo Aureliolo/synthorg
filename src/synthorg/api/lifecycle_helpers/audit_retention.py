@@ -56,7 +56,7 @@ async def _resolve_audit_retention_loop_enabled(app_state: AppState) -> bool:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_AUDIT_RETENTION,
@@ -97,7 +97,7 @@ async def _resolve_audit_retention_days(app_state: AppState) -> int:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_AUDIT_RETENTION,
@@ -143,7 +143,7 @@ async def _resolve_audit_retention_tick_seconds(app_state: AppState) -> float:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_AUDIT_RETENTION,
@@ -180,7 +180,7 @@ async def _audit_retention_tick(app_state: AppState) -> None:
     cutoff = app_state.clock.now() - timedelta(days=days)
     try:
         deleted = await persistence_of(app_state).audit_entries.purge_before(cutoff)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_AUDIT_RETENTION,

@@ -284,7 +284,7 @@ class TrainingService:
         if not await self._has_terminal_session(str(plan.id)):
             try:
                 await self._record_session(plan)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     HR_TRAINING_SESSION_RECORD_FAILED,
@@ -304,7 +304,7 @@ class TrainingService:
             )
             try:
                 await self._record_session(failed)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     HR_TRAINING_SESSION_RECORD_FAILED,
@@ -331,7 +331,7 @@ class TrainingService:
         )
         try:
             await self._record_session(executed)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 HR_TRAINING_SESSION_RECORD_FAILED,

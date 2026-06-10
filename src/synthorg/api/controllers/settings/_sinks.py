@@ -230,7 +230,7 @@ async def _get_setting_or_default(
             key=key,
         )
         return fallback
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             SETTINGS_OBSERVABILITY_VALIDATION_FAILED,

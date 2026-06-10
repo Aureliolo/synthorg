@@ -200,7 +200,7 @@ async def _resolve_budget_context(
             start=period_start,
             end=end,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_REQUEST_ERROR,
@@ -285,7 +285,7 @@ async def _resolve_agent_counts(
         employed = await require_service(
             app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
         ).list_active()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_REQUEST_ERROR,

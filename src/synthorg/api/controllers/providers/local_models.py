@@ -132,7 +132,7 @@ class ProviderLocalModelsController(Controller):
                 }
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     API_SSE_PULL_MODEL_FAILED,
