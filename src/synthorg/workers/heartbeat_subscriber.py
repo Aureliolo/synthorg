@@ -120,31 +120,38 @@ class WorkerHeartbeatSubscriber:
             logger.info(WORKERS_HEARTBEAT_SUBSCRIBER_STARTED)
 
     async def stop(self) -> None:
-        """Unsubscribe and stop the sweep loop. Idempotent."""
+        """Unsubscribe and stop the sweep loop. Idempotent.
+
+        The lifecycle lock is held across the unsubscribe and sweep
+        awaits so a concurrent ``start()`` waits for the stop to finish
+        rather than observing the transient ``_running is True`` and
+        raising a misleading "already running". This cannot deadlock:
+        only ``start()`` / ``stop()`` acquire this lock and neither the
+        sweep loop nor the message callback re-enters it.
+        """
         async with self._lifecycle_lock:
             if not self._running:
                 return
             self._stop_event.set()
             subscription = self._subscription
             sweep = self._sweep_task
-        if subscription is not None:
-            try:
-                await subscription.unsubscribe()
-            except Exception as exc:
-                reraise_critical(exc)
-                # A failed unsubscribe can leave a duplicate callback on
-                # restart; surface it instead of swallowing silently.
-                logger.warning(
-                    WORKERS_HEARTBEAT_SUBSCRIBER_FAILED,
-                    reason="unsubscribe_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-        if sweep is not None:
-            sweep.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await sweep
-        async with self._lifecycle_lock:
+            if subscription is not None:
+                try:
+                    await subscription.unsubscribe()
+                except Exception as exc:
+                    reraise_critical(exc)
+                    # A failed unsubscribe can leave a duplicate callback
+                    # on restart; surface it instead of swallowing.
+                    logger.warning(
+                        WORKERS_HEARTBEAT_SUBSCRIBER_FAILED,
+                        reason="unsubscribe_failed",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+            if sweep is not None:
+                sweep.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await sweep
             self._running = False
             self._subscription = None
             self._sweep_task = None

@@ -843,9 +843,10 @@ class TelemetryCollector:
                     else None
                 )
                 await self.send_heartbeat(params)
-            except asyncio.CancelledError:
-                raise
             except Exception as exc:
+                # CancelledError is a BaseException, so this broad clause
+                # never catches it: cancellation propagates out of the
+                # loop unaided for graceful shutdown.
                 reraise_critical(exc)
                 logger.warning(
                     TELEMETRY_REPORT_FAILED,

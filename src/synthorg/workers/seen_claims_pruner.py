@@ -81,17 +81,24 @@ class SeenClaimsPruner:
             )
 
     async def stop(self) -> None:
-        """Stop the prune loop and await its exit. Idempotent."""
+        """Stop the prune loop and await its exit. Idempotent.
+
+        The lifecycle lock is held across the cancellation await so a
+        concurrent ``start()`` waits for the stop to finish rather than
+        observing the transient ``_running is True`` and raising a
+        misleading "already running". This cannot deadlock: only
+        ``start()`` / ``stop()`` acquire this lock and the loop never
+        re-enters it.
+        """
         async with self._lifecycle_lock:
             if not self._running:
                 return
             self._stop_event.set()
             task = self._task
-        if task is not None:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-        async with self._lifecycle_lock:
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
             self._running = False
             self._task = None
             logger.info(WORKERS_SEEN_CLAIMS_PRUNER_STOPPED)

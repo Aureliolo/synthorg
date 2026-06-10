@@ -42,6 +42,7 @@ from synthorg.observability.events.workers import (
     WORKERS_HEARTBEAT_FAILED,
     WORKERS_HEARTBEAT_SENT,
     WORKERS_POOL_STARTED,
+    WORKERS_POOL_STOP_FAILED,
     WORKERS_WORKER_STARTED,
     WORKERS_WORKER_STOPPED,
 )
@@ -570,8 +571,21 @@ async def run_worker_pool(  # noqa: PLR0913 -- canonical worker-pool entry point
             for worker in workers:
                 _ = tg.create_task(worker.run())
     finally:
-        with contextlib.suppress(Exception):
-            await asyncio.gather(
-                *(w.stop() for w in workers),
-                return_exceptions=True,
-            )
+        # Best-effort drain: ``return_exceptions=True`` keeps one slow or
+        # failing ``stop()`` from stranding the others. Inspect the results
+        # so a stop failure surfaces in the log instead of being swallowed
+        # (a cancelled gather still propagates: ``CancelledError`` is not an
+        # ``Exception`` and is never in the returned list).
+        stop_results = await asyncio.gather(
+            *(w.stop() for w in workers),
+            return_exceptions=True,
+        )
+        for index, result in enumerate(stop_results):
+            if isinstance(result, BaseException):
+                reraise_critical(result)
+                logger.warning(
+                    WORKERS_POOL_STOP_FAILED,
+                    worker_id=f"{worker_id_prefix}-{index}",
+                    error_type=type(result).__name__,
+                    error=safe_error_description(result),
+                )

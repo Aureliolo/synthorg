@@ -39,6 +39,12 @@ log-before-reraise.
 it is a subclass of ``BaseException``, not ``Exception`` -- broad
 ``except Exception:`` blocks never catch it in the first place, so no
 re-raise is necessary.
+
+A critical exception raised inside an ``asyncio.TaskGroup`` child reaches
+the surrounding handler wrapped in an ``ExceptionGroup``; the helper
+unwraps groups recursively so a nested ``MemoryError`` / ``RecursionError``
+still propagates before the handler logs, rather than being masked behind
+the group's plain-``Exception`` identity.
 """
 
 from typing import Final
@@ -49,17 +55,31 @@ _CRITICAL_TYPES: Final[tuple[type[BaseException], ...]] = (
 )
 
 
+def _contains_critical(exc: BaseException) -> bool:
+    """Return whether ``exc`` is, or nests, an interpreter-critical exception."""
+    if isinstance(exc, _CRITICAL_TYPES):
+        return True
+    if isinstance(exc, BaseExceptionGroup):
+        return any(_contains_critical(child) for child in exc.exceptions)
+    return False
+
+
 def reraise_critical(exc: BaseException) -> None:
-    """Re-raise ``exc`` if it is an interpreter-critical exception.
+    """Re-raise ``exc`` if it is (or nests) an interpreter-critical exception.
 
     Intended for use as the first statement of a broad
     ``except Exception as exc:`` block, immediately before any logging
     or recovery logic. Returns silently when ``exc`` is not critical so
     the caller can continue with its normal error-handling flow.
 
-    Returns silently (no value) when ``exc`` is not ``MemoryError`` or
-    ``RecursionError``, so the caller continues with its own logging /
-    cleanup / re-raise logic.
+    An ``ExceptionGroup`` (raised by ``asyncio.TaskGroup`` when a child
+    fails) is unwrapped recursively: if any leaf is ``MemoryError`` or
+    ``RecursionError`` the group is re-raised so the fatal condition
+    propagates before the handler attempts to log.
+
+    Returns silently (no value) when ``exc`` is not, and does not nest,
+    ``MemoryError`` or ``RecursionError``, so the caller continues with
+    its own logging / cleanup / re-raise logic.
 
     Args:
         exc: The caught exception. May be any ``BaseException`` instance;
@@ -68,9 +88,8 @@ def reraise_critical(exc: BaseException) -> None:
             not silently bypass the re-raise.
 
     Raises:
-        MemoryError: Re-raised unchanged when ``exc`` is a ``MemoryError``.
-        RecursionError: Re-raised unchanged when ``exc`` is a
-            ``RecursionError``.
+        BaseException: Re-raised unchanged when ``exc`` is, or nests, a
+            ``MemoryError`` or ``RecursionError``.
     """
-    if isinstance(exc, _CRITICAL_TYPES):
+    if _contains_critical(exc):
         raise exc

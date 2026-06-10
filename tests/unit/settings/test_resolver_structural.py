@@ -25,7 +25,7 @@ _make_value = make_setting_value
 
 
 class _FakeRootConfig(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
     agents: tuple[FakeAgentConfig, ...] = ()
     departments: tuple[FakeDepartment, ...] = ()
     providers: dict[str, FakeProviderConfig] = {}

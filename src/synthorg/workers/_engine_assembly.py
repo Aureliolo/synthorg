@@ -9,6 +9,8 @@ that threads every boot collaborator in.
 """
 
 import asyncio
+from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg._core.features import require_service
@@ -50,9 +52,6 @@ from synthorg.workers._agent_engine_collaborators import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from pathlib import Path
-
     from synthorg.api.state import AppState
     from synthorg.engine.routing_policy.router import StakesRouter
     from synthorg.providers.protocol import CompletionProvider

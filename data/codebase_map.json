@@ -4174,7 +4174,7 @@
     },
     {
       "kind": "code",
-      "loc": 61,
+      "loc": 76,
       "loc_cap": 500,
       "module": "src/synthorg/core/critical_errors.py",
       "owning_feature": null
@@ -4209,7 +4209,7 @@
     },
     {
       "kind": "code",
-      "loc": 186,
+      "loc": 196,
       "loc_cap": 500,
       "module": "src/synthorg/core/feature_map.py",
       "owning_feature": null
@@ -13981,7 +13981,7 @@
     },
     {
       "kind": "code",
-      "loc": 10,
+      "loc": 11,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/registry.py",
       "owning_feature": "observability"
@@ -14240,7 +14240,7 @@
     },
     {
       "kind": "code",
-      "loc": 109,
+      "loc": 111,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/workers.py",
       "owning_feature": "observability"
@@ -18510,7 +18510,7 @@
     },
     {
       "kind": "code",
-      "loc": 97,
+      "loc": 101,
       "loc_cap": 500,
       "module": "src/synthorg/settings/_resolver_batch_reads.py",
       "owning_feature": "settings"
@@ -18811,7 +18811,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 1026,
+      "loc": 1036,
       "loc_cap": 1100,
       "module": "src/synthorg/settings/resolver.py",
       "owning_feature": "settings"
@@ -18930,7 +18930,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 999,
+      "loc": 997,
       "loc_cap": 1100,
       "module": "src/synthorg/telemetry/collector.py",
       "owning_feature": "telemetry"
@@ -20540,7 +20540,7 @@
     },
     {
       "kind": "code",
-      "loc": 151,
+      "loc": 160,
       "loc_cap": 500,
       "module": "src/synthorg/workers/backend_services.py",
       "owning_feature": "runtime"
@@ -20561,7 +20561,7 @@
     },
     {
       "kind": "code",
-      "loc": 294,
+      "loc": 300,
       "loc_cap": 500,
       "module": "src/synthorg/workers/dead_letter.py",
       "owning_feature": "runtime"
@@ -20645,7 +20645,7 @@
     },
     {
       "kind": "code",
-      "loc": 184,
+      "loc": 190,
       "loc_cap": 500,
       "module": "src/synthorg/workers/heartbeat_subscriber.py",
       "owning_feature": "runtime"
@@ -20659,7 +20659,7 @@
     },
     {
       "kind": "code",
-      "loc": 114,
+      "loc": 120,
       "loc_cap": 500,
       "module": "src/synthorg/workers/seen_claims_pruner.py",
       "owning_feature": "runtime"
@@ -20673,7 +20673,7 @@
     },
     {
       "kind": "code",
-      "loc": 492,
+      "loc": 501,
       "loc_cap": 500,
       "module": "src/synthorg/workers/worker.py",
       "owning_feature": "runtime"

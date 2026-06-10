@@ -31,6 +31,11 @@ from pydantic import (
 from synthorg._core.features import ControllerRegistration, FeatureModule
 from synthorg.core.codebase_structure_map import RelPath
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.registry import REGISTRY_FEATURE_IMPORT_FAILED
+from synthorg.observability.redaction import safe_error_description
+
+logger = get_logger(__name__)
 
 FEATURE_INDEX_SCHEMA_VERSION: int = 1
 
@@ -150,10 +155,18 @@ def protocol_exports(directory: str) -> tuple[str, ...]:
     package_name = ".".join(Path(directory).parts[1:])
     try:
         package = importlib.import_module(package_name)
-    except ImportError, AttributeError:
+    except (ImportError, AttributeError) as exc:
         # Best-effort covers only import-shape failures (missing
         # optional deps, absent submodule attribute); any other error
         # is a real defect in the feature package and must propagate.
+        # Log so a silently-dropped feature package is visible in the
+        # index-build output rather than vanishing from the catalogue.
+        logger.warning(
+            REGISTRY_FEATURE_IMPORT_FAILED,
+            package=package_name,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return ()
     exported: tuple[str, ...] = tuple(getattr(package, "__all__", ()))
     return tuple(

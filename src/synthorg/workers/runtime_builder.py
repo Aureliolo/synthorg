@@ -28,6 +28,7 @@ Engine-side construction helpers live in
 :mod:`synthorg.workers._coordinator_assembly`.
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.budget.baseline_store import BaselineStore
@@ -72,8 +73,6 @@ from synthorg.workers.execution_service import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from synthorg.api.state import AppState
     from synthorg.engine.coordination.service import MultiAgentCoordinator
     from synthorg.engine.pipeline.protocol import WorkPipeline

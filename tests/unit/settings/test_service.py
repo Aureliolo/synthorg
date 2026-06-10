@@ -39,7 +39,7 @@ class _BudgetConfig(BaseModel):
 
 
 class _FakeConfig(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
     budget: _BudgetConfig = _BudgetConfig()
 
 

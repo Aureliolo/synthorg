@@ -180,10 +180,13 @@ enable_error_code = [
 ]
 ```
 
-Legacy packages with non-trivial `Any` usage carry minimal
+Legacy packages with non-trivial `Any` usage carried minimal
 `[[tool.mypy.overrides]]` blocks turning off only the flag that
-fires. The override list is the technical-debt register; later typing
-PRs lift overrides one package at a time.
+fires; the override list was the technical-debt register that later
+typing PRs lifted one package at a time. That drain is complete: no
+`synthorg.*` package carries a `disallow_any_explicit = false` override
+any more (the residual override is confined to `tests.*`, tracked
+under #2121).
 
 ### Pyright
 
@@ -256,7 +259,9 @@ British dictionary).
   surface grows; CI wall-clock grows by at most the longest new job
   (Lighthouse, ~2-3 min).
 - Mypy `[[tool.mypy.overrides]]` block list creates explicit
-  technical debt that later typing PRs must drain.
+  technical debt that later typing PRs must drain (RESOLVED for
+  `synthorg.*` by EPIC #2056: no `synthorg.*` `disallow_any_explicit`
+  override remains; only the `tests.*` override is open, under #2121).
 - DOC per-file-ignore creates implicit technical debt that later
   docstring PRs must drain (RESOLVED by #2065: the brace-expansion
   ignore is deleted and `DOC201/202/501` enforced across `src/synthorg/`).
@@ -368,7 +373,7 @@ is EPIC #2056's charter (Section F), not PR 4's. Import-layering contracts
 | Exemption | Mechanism | Acceptance criterion in PR 4 |
 |-----------|-----------|------------------------------|
 | Mypy override for `synthorg.persistence.*` | PR 4 decomposes 6 repo factories per-entity; new files strict-clean | Drop persistence override (done) |
-| Mypy override for `synthorg.{communication, engine, observability}.*` | PR 4 decomposes / cycle-breaks structurally but does NOT Any-drain these packages | Overrides retained; per-package `disallow_any_explicit` drain is EPIC #2056 (the 22-package ratchet), not PR 4 |
+| Mypy override for `synthorg.{communication, engine, observability}.*` | PR 4 decomposes / cycle-breaks structurally but does NOT Any-drain these packages | Overrides retained at PR-4 time; per-package `disallow_any_explicit` drain is EPIC #2056 (the 22-package ratchet), not PR 4 (RESOLVED since: EPIC #2056 has drained every `synthorg.*` override) |
 | `_circular_imports_baseline.txt` (3 cycles: 2 in `synthorg.persistence.*`, 1 in `synthorg.{memory, observability}.*`) | PR 4 import-linter contracts + decomposition catches these | Baseline drains to 0 (done) |
 | `_module_size_baseline.json` entries for the 9 PR-4-named files (persistence backends + decision repos + repositories + workers/execution_service + observability/prometheus_recording + infrastructure/services) | PR 4 decomposes these | Drop those 9 entries via `--update-baseline`. The remaining ~22 persistence and engine entries in the baseline are covered by EPIC #2077 (Section F), not PR 4. |
 
@@ -401,14 +406,14 @@ and closed for the project to reach 100% strict enforcement.
 | Mypy `deprecated` (3 sites) | Issue #2060: "Mypy deprecated-API cleanup" | Trivial |
 | Mypy strict++ overrides on `tests.*` | Issue #2061 partially landed; remaining work tracked under sub-issues #2116, #2117, #2118, #2119, #2120, #2121 (see Section F.1 below for the full breakdown by lifted error code) | Small to Very Large per sub-issue (see F.1) |
 | Ruff `ERA001` (13 sites, all false positives) | Issue #2063: "Remove commented-out code (ERA001)" (RESOLVED: per-file-ignore dropped, code-shaped comments reworded) | Small |
-| Ruff `DOC201/202/501` on `src/synthorg/**` | Issue #2065: "Docstring Returns/Raises backfill + interrogate threshold flip" (RESOLVED: brace-expansion per-file-ignore deleted; `DOC201/202/501` now enforced across all of `src/synthorg/` except `tests/`, `scripts/`, and the five api god modules pending #2077) | Large |
+| Ruff `DOC201/202/501` on `src/synthorg/**` | Issue #2065: "Docstring Returns/Raises backfill + interrogate threshold flip" (RESOLVED: brace-expansion per-file-ignore deleted; `DOC201/202/501` now enforced across all of `src/synthorg/` except `tests/` and `scripts/`) | Large |
 | Interrogate `fail_under` 90 -> 95 | Same as DOC backfill (RESOLVED: `[tool.interrogate] fail-under` flipped to 95) | Medium |
 | ESLint `complexity / max-lines / max-lines-per-function / max-params` exempted on `src/**/*.{ts,tsx}` | EPIC #2066: "Web component-size ratchet: decompose oversized React components", sliced into 4 sub-issues: #2092 (Foundation: utils + hooks + lib), #2093 (Stores incl. websocket), #2094 (Components + API types/endpoints), #2095 (Pages + override deletion). The override block at `web/eslint.config.js:146-217` grows an `ignores:` list per sub-issue; PR D deletes the block. (RESOLVED: all sub-issues landed; the Pages tranche shipped as #2095 (D1) → D2a → #2141 (D2b), which deleted the `src/**/*.{ts,tsx}` override block entirely. The four caps now apply globally across `web/src/**`; the only surviving exemptions are `components/ui/**` (disables `max-lines-per-function` for cva variants) and the test/bench globs (disable all four).) | Large (4 PRs filed) |
 | Go `gocyclo / funlen / gocognit / nestif / revive` path-excluded across `cli/internal/**` + `cmd/**` | Issue #2067: "CLI complexity ratchet: per-package lift" | Medium |
 | Typeguard activation: a dedicated multi-PR programme, #2182 (WARN) + #2183 (ERROR) | Infrastructure landed under closed #2068: typeguard==4.5.2 in `[dependency-groups.test]`, ruff TC001/2/3 disabled project-wide (the convention shift), the `typeguard.install_import_hook(["synthorg"])` line plus the `--typeguard-packages=synthorg` / `--typeguard-forward-ref-policy=WARN` `addopts` (seeded commented under #2068, now live via the WARN programme below and paired with the policy-honouring checker in `tests/_typeguard_checker.py`) in `tests/conftest.py` + `pyproject.toml`, and `@suppress_type_checks` on `api.app.create_app`. #2050 attempted activation and reverted it: an authoritative full `pytest -m unit` with typeguard live (WARN) surfaced **1,949 failures across 231 test files** -- ~1,500 of them resolved-type `TypeCheckError`s that `forward_ref_policy` does NOT skip (`AwareDatetime`-vs-`datetime`, test doubles failing `Protocol`/`isinstance` checks, DTO generics), the single `Clock.now()` `AwareDatetime` return alone cascading to 978 lifespan-fixture failures, plus the ~1,055-module `TYPE_CHECKING`-guarded-signature class (`check_tuple`/`check_typed_dict`/`check_protocol`/`check_callable` eager-eval under PEP 649). That is far beyond #2050's scope and file cap, and typeguard is a Section-F follow-up, not a #2046 closure requirement. #2182 (WARN: `AwareDatetime`->`datetime` source fixes + a policy-honouring NameError-tolerant `checker_lookup` + test-double conformance) has since landed, activating typeguard at WARN across the full `synthorg` package; #2183 (ERROR: the ~1,055-module signature-import migration) remains. | Large (multi-PR programme) |
 | `knip --no-exit-code` (report-only, never blocks) | Issue #2071: "Knip blocking: eliminate unused exports surfaced by knip" | Medium |
 | `dpdm --skip-imports` for `stores/auth.ts -> api/client.ts` cycle | Issue #2072: "Fix auth -> client circular dependency" | Small |
-| `_module_size_baseline.json` residue: 109 files not covered by PR 3 / PR 4 / #2051 / #2052 (oversized files in `persistence/`, `engine/`, `api/`, `meta/`, etc. that no existing PR addresses) | Issue #2077: "EPIC: Drain residual module-size baseline" | Very large (per-package decomposition program) |
+| `_module_size_baseline.json` residue: 109 files not covered by PR 3 / PR 4 / #2051 / #2052 (oversized files in `persistence/`, `engine/`, `api/`, `meta/`, etc. that no existing PR addresses) | Issue #2077: "EPIC: Drain residual module-size baseline" (RESOLVED: the package-vertical decomposition PRs landed the last entries; `locations` is now `{}` and every file is enforced at its tier cap) | Very large (per-package decomposition program) |
 
 ### F.1. Issue #2061 partial landing
 
@@ -433,7 +438,7 @@ entries until their upstream blocker clears.
 | 3 | `explicit-override` | LIFTED. Every overriding method on a test subclass (`BaseCompletionProvider`, `BaseTool`, `RequestDrainMiddleware`, `logging.Formatter`, `logging.Handler`, `asyncio.Lock`, plus internal `_Fake*` hierarchies) now carries `@override`; the per-file inline `# mypy: disable-error-code` comments and the `tests.*` block entry were dropped. | [#2118](https://github.com/Aureliolo/synthorg/issues/2118) | Closed | nothing |
 | 4 | `arg-type` + `redundant-cast` + `assignment` + `comparison-overlap` + `attr-defined` (bundled, same root cause) | LIFTED. `FakePersistenceBackend` now nominally implements `PersistenceBackend`; `FakeVersionRepository` is generic, ~15 concrete `Fake*Repository` classes had their signatures tightened to protocol parity, the missing `idempotency_keys` / `seen_claims` / `principle_overrides` properties were added, and the residual redundant casts were dropped. | [#2119](https://github.com/Aureliolo/synthorg/issues/2119) | Closed | nothing |
 | 5 | `deprecated` | LIFTED. pytest-asyncio 1.4.0 shipped the `pytest_asyncio_loop_factories` pluggy hook; the 9 `event_loop_policy` fixture overrides under `tests/` migrated to per-conftest hook impls. The process-wide `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())` call in `tests/unit/conftest.py` was dropped: empirical `--count=2` runs showed the previously-feared IOCP teardown SEGV does not actually reproduce, while a separate pre-existing Windows + Python 3.14 + `socket._fallback_socketpair` deadlock under TestClient anyio-portal concurrency does fire regardless of the policy choice. One residual Pydantic v2 `model_fields` instance access in `tests/unit/api/controllers/test_providers.py` switched to class access. The `tests.*` block entry was dropped. | [#2120](https://github.com/Aureliolo/synthorg/issues/2120) | Closed | nothing |
-| 6 | `disallow_any_explicit` | ~1,800 `Any` sites in tests/unit/{api,engine,api/controllers,...}, tests/integration/, tests/conformance/, tests/e2e/, tests/benchmarks/, tests/evals/. | [#2121](https://github.com/Aureliolo/synthorg/issues/2121) | Very large (months; per-subdir batches) | EPIC #2056: test fixtures cannot re-tighten until the underlying `synthorg.*` types they consume tighten |
+| 6 | `disallow_any_explicit` | ~1,800 `Any` sites in tests/unit/{api,engine,api/controllers,...}, tests/integration/, tests/conformance/, tests/e2e/, tests/benchmarks/, tests/evals/. | [#2121](https://github.com/Aureliolo/synthorg/issues/2121) | Very large (months; per-subdir batches) | Nothing (blocker discharged: EPIC #2056's `synthorg.*` surface is fully drained, so test fixtures consume tightened types) |
 | 7 | `unused-ignore` | Holding pen (no standalone issue). Pre-existing per-line `# type: ignore[code]` comments targeting any code lifted above become redundant the moment that code is enforced. Removing them is bundled into each ratchet-off PR so the comment cleanup ships with the underlying check enforcement, not as standalone churn. | (bundle into entries 1-6 above) | Trivial per ratchet | Entries 1-6 above |
 
 ### G. Permanent design decisions (NOT exemptions to lift)

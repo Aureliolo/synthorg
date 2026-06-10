@@ -12,6 +12,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
+from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 
@@ -77,14 +78,17 @@ async def resolve_bridge_fields(  # type: ignore[explicit-any]  # values feed Mo
             for key, task in tasks.items()
             if task.done() and not task.cancelled() and task.exception() is not None
         ]
+        first_failure = eg.exceptions[0]
         logger.warning(
             SETTINGS_FETCH_FAILED,
             namespace=namespace,
             key="_bridge_composed",
             error_count=len(eg.exceptions),
             failed_keys=failed_keys,
+            error_type=type(first_failure).__name__,
+            error=safe_error_description(first_failure),
         )
-        raise eg.exceptions[0] from eg
+        raise first_failure from eg
     return {key: task.result() for key, task in tasks.items()}
 
 

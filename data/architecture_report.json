@@ -1118,8 +1118,8 @@
     },
     "src/synthorg/settings/resolver.py": {
       "cap": 1100,
-      "loc": 1026,
-      "ratio": 0.933,
+      "loc": 1036,
+      "ratio": 0.942,
       "tier": "complex_service"
     },
     "src/synthorg/settings/service.py": {
@@ -1130,8 +1130,8 @@
     },
     "src/synthorg/telemetry/collector.py": {
       "cap": 1100,
-      "loc": 999,
-      "ratio": 0.908,
+      "loc": 997,
+      "ratio": 0.906,
       "tier": "complex_service"
     },
     "src/synthorg/templates/loader.py": {
@@ -1190,8 +1190,8 @@
     },
     "src/synthorg/workers/worker.py": {
       "cap": 500,
-      "loc": 492,
-      "ratio": 0.984,
+      "loc": 501,
+      "ratio": 1.002,
       "tier": "code"
     }
   },
@@ -1281,7 +1281,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 64,
-    "synthorg.observability": 1537,
+    "synthorg.observability": 1538,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 167,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1490,7 +1490,7 @@
     },
     "synthorg.settings.resolver:ConfigResolver": {
       "lcom4": 1,
-      "loc": 963
+      "loc": 972
     },
     "synthorg.settings.service:SettingsService": {
       "lcom4": 1,
@@ -1498,7 +1498,7 @@
     },
     "synthorg.telemetry.collector:TelemetryCollector": {
       "lcom4": 1,
-      "loc": 494
+      "loc": 492
     },
     "synthorg.tools.browser.browser_tool:BrowserTool": {
       "lcom4": 1,

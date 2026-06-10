@@ -1,3 +1,4 @@
+# module-kind: code
 """Root configuration schema and config-level Pydantic models."""
 
 from collections import Counter

@@ -24,6 +24,7 @@ from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
+    WORKERS_BACKEND_BUNDLE_START_FAILED,
     WORKERS_BACKEND_BUNDLE_STARTED,
     WORKERS_BACKEND_BUNDLE_STOP_FAILED,
 )
@@ -100,8 +101,10 @@ class DistributedBackendServices:
         stopped before the error propagates.
         """
         started: list[tuple[str, _LifecycleComponent]] = []
+        failed_component = "<unknown>"
         try:
             for name, component in self._start_order:
+                failed_component = name
                 await component.start()
                 started.append((name, component))
         except Exception as exc:
@@ -109,6 +112,12 @@ class DistributedBackendServices:
             # async teardown work that may allocate, and must not run
             # under catastrophic interpreter state.
             reraise_critical(exc)
+            logger.error(
+                WORKERS_BACKEND_BUNDLE_START_FAILED,
+                component=failed_component,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             for _name, component in reversed(started):
                 try:
                     await component.stop()

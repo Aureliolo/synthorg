@@ -34,6 +34,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_NOT_FOUND,
     SETTINGS_VALIDATION_FAILED,
 )
+from synthorg.observability.redaction import safe_error_description
 from synthorg.settings._resolver_batch_reads import resolve_bridge_fields
 from synthorg.settings._resolver_coercions import (
     _build_budget_alerts,
@@ -590,13 +591,16 @@ class ConfigResolver:
                 t_stop = tg.create_task(self.get_int("budget", "alert_hard_stop_at"))
                 t_currency = tg.create_task(self.get_str("budget", "currency"))
         except ExceptionGroup as eg:
+            first_failure = eg.exceptions[0]
             logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace="budget",
                 key="_composed",
                 error_count=len(eg.exceptions),
+                error_type=type(first_failure).__name__,
+                error=safe_error_description(first_failure),
             )
-            raise eg.exceptions[0] from eg
+            raise first_failure from eg
 
         alerts = _build_budget_alerts(t_warn.result(), t_crit.result(), t_stop.result())
         return base.model_copy(
@@ -664,13 +668,16 @@ class ConfigResolver:
                 t_jwt_exp = tg.create_task(self.get_int("api", "jwt_expiry_minutes"))
                 t_min_pw = tg.create_task(self.get_int("api", "min_password_length"))
         except ExceptionGroup as eg:
+            first_failure = eg.exceptions[0]
             logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace="api",
                 key="_composed",
                 error_count=len(eg.exceptions),
+                error_type=type(first_failure).__name__,
+                error=safe_error_description(first_failure),
             )
-            raise eg.exceptions[0] from eg
+            raise first_failure from eg
 
         return base.model_copy(
             update={
@@ -744,13 +751,16 @@ class ConfigResolver:
                 )
                 t_branch = tg.create_task(self.get_str("coordination", "base_branch"))
         except ExceptionGroup as eg:
+            first_failure = eg.exceptions[0]
             logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace="coordination",
                 key="_composed",
                 error_count=len(eg.exceptions),
+                error_type=type(first_failure).__name__,
+                error=safe_error_description(first_failure),
             )
-            raise eg.exceptions[0] from eg
+            raise first_failure from eg
 
         return CoordinationConfig(
             max_concurrency_per_wave=(
