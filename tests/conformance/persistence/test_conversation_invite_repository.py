@@ -50,7 +50,7 @@ from synthorg.persistence.sqlite.conversation_invite_repo import (
 from synthorg.persistence.sqlite.conversation_repo import (
     SQLiteConversationRepository,
 )
-from tests._shared import as_uuid
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -119,7 +119,7 @@ async def _seed_conversation(
     """Save the parent conversation row required by the invite FK."""
     await _conversation_repo(backend).save(
         Conversation(
-            id=NotBlankStr(conversation_id),
+            id=as_uuid(conversation_id),
             created_by=NotBlankStr("user-001"),
             created_at=_NOW,
             updated_at=_NOW,
@@ -139,8 +139,8 @@ def _make_invite(  # noqa: PLR0913 -- test builder: many independent knobs
     status: ConversationInviteStatus = ConversationInviteStatus.PENDING,
 ) -> ConversationInvite:
     return ConversationInvite(
-        id=NotBlankStr(invite_id),
-        conversation_id=NotBlankStr(conversation_id),
+        id=as_uuid(invite_id),
+        conversation_id=sid(conversation_id),
         approval_id=NotBlankStr(approval_id),
         requested_by_agent_id=NotBlankStr("agent-ceo"),
         target_agent_id=NotBlankStr(target_agent_id),
@@ -158,7 +158,7 @@ class TestConversationInviteRepository:
         invite = _make_invite()
         await repo.save(invite)
 
-        fetched = await repo.get(invite.id)
+        fetched = await repo.get(str(invite.id))
         assert fetched is not None
         assert fetched.id == invite.id
         assert fetched.approval_id == "appr-001"
@@ -179,7 +179,7 @@ class TestConversationInviteRepository:
         invite = _make_invite(invite_id="inv-norole", target_role=None)
         await repo.save(invite)
 
-        fetched = await repo.get(invite.id)
+        fetched = await repo.get(str(invite.id))
         assert fetched is not None
         assert fetched.target_role is None
 
@@ -198,7 +198,7 @@ class TestConversationInviteRepository:
         await first.save(invite)
 
         second = _repo(backend)
-        assert await second.get(invite.id) is not None
+        assert await second.get(str(invite.id)) is not None
 
     async def test_query_filter_by_approval_id(
         self, backend: PersistenceBackend
@@ -217,7 +217,7 @@ class TestConversationInviteRepository:
         rows = await repo.query(
             ConversationInviteFilterSpec(approval_id=NotBlankStr("appr-A"))
         )
-        assert {r.id for r in rows} == {"i1"}
+        assert {r.id for r in rows} == {as_uuid("i1")}
 
     async def test_query_filter_by_conversation_id(
         self, backend: PersistenceBackend
@@ -233,9 +233,9 @@ class TestConversationInviteRepository:
         )
 
         rows = await repo.query(
-            ConversationInviteFilterSpec(conversation_id=NotBlankStr("conv-X"))
+            ConversationInviteFilterSpec(conversation_id=sid("conv-X"))
         )
-        assert {r.id for r in rows} == {"ic1"}
+        assert {r.id for r in rows} == {as_uuid("ic1")}
 
     async def test_query_filter_by_target_and_status(
         self, backend: PersistenceBackend
@@ -263,12 +263,12 @@ class TestConversationInviteRepository:
 
         rows = await repo.query(
             ConversationInviteFilterSpec(
-                conversation_id=NotBlankStr("conv-001"),
+                conversation_id=sid("conv-001"),
                 target_agent_id=NotBlankStr("agent-cfo"),
                 status=ConversationInviteStatus.PENDING,
             )
         )
-        assert {r.id for r in rows} == {"it-pending"}
+        assert {r.id for r in rows} == {as_uuid("it-pending")}
 
     async def test_count(self, backend: PersistenceBackend) -> None:
         await _seed_conversation(backend)
@@ -321,17 +321,16 @@ class TestConversationInviteRepository:
         )
         await repo.save(first)
         assert await repo.transition_if(
-            first.id,
+            str(first.id),
             from_state=ConversationInviteStatus.PENDING,
             to_state=ConversationInviteStatus.DECLINED,
         )
         # The same target can now be re-invited without colliding.
-        await repo.save(
-            _make_invite(
-                invite_id="re-2", approval_id="a-re-2", target_agent_id="agent-cfo"
-            )
+        second = _make_invite(
+            invite_id="re-2", approval_id="a-re-2", target_agent_id="agent-cfo"
         )
-        assert await repo.get("re-2") is not None
+        await repo.save(second)
+        assert await repo.get(str(second.id)) is not None
 
     async def test_distinct_target_pending_invites_allowed(
         self, backend: PersistenceBackend
@@ -341,18 +340,16 @@ class TestConversationInviteRepository:
         # persist (only the same-target collision is rejected).
         await _seed_conversation(backend)
         repo = _repo(backend)
-        await repo.save(
-            _make_invite(
-                invite_id="dt-1", approval_id="a-dt-1", target_agent_id="agent-cfo"
-            )
+        dt1 = _make_invite(
+            invite_id="dt-1", approval_id="a-dt-1", target_agent_id="agent-cfo"
         )
-        await repo.save(
-            _make_invite(
-                invite_id="dt-2", approval_id="a-dt-2", target_agent_id="agent-coo"
-            )
+        dt2 = _make_invite(
+            invite_id="dt-2", approval_id="a-dt-2", target_agent_id="agent-coo"
         )
-        assert await repo.get("dt-1") is not None
-        assert await repo.get("dt-2") is not None
+        await repo.save(dt1)
+        await repo.save(dt2)
+        assert await repo.get(str(dt1.id)) is not None
+        assert await repo.get(str(dt2.id)) is not None
 
     async def test_transition_if_flips_state_atomically(
         self, backend: PersistenceBackend
@@ -363,12 +360,12 @@ class TestConversationInviteRepository:
         await repo.save(invite)
 
         result = await repo.transition_if(
-            invite.id,
+            str(invite.id),
             from_state=ConversationInviteStatus.PENDING,
             to_state=ConversationInviteStatus.ACCEPTED,
         )
         assert result is True
-        fetched = await repo.get(invite.id)
+        fetched = await repo.get(str(invite.id))
         assert fetched is not None
         assert fetched.status is ConversationInviteStatus.ACCEPTED
 
@@ -385,7 +382,7 @@ class TestConversationInviteRepository:
         await repo.save(invite)
 
         result = await repo.transition_if(
-            invite.id,
+            str(invite.id),
             from_state=ConversationInviteStatus.PENDING,
             to_state=ConversationInviteStatus.ACCEPTED,
         )
@@ -398,9 +395,9 @@ class TestConversationInviteRepository:
         repo = _repo(backend)
         invite = _make_invite(invite_id="it-del", approval_id="a-del")
         await repo.save(invite)
-        assert await repo.delete(invite.id) is True
-        assert await repo.get(invite.id) is None
-        assert await repo.delete(invite.id) is False
+        assert await repo.delete(str(invite.id)) is True
+        assert await repo.get(str(invite.id)) is None
+        assert await repo.delete(str(invite.id)) is False
 
     async def test_protocol_runtime_check(self, backend: PersistenceBackend) -> None:
         assert isinstance(_repo(backend), ConversationInviteRepository)

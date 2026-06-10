@@ -9,7 +9,6 @@ autonomous acting).
 """
 
 import asyncio
-import uuid
 from datetime import datetime
 
 from pydantic import ValidationError
@@ -93,15 +92,6 @@ _CAP_MESSAGE: NotBlankStr = NotBlankStr(
 # turn-rendering caller the full history without forcing pagination; the
 # repo's own ``_MAX_PAGE_LIMIT`` (1000) clamps anything larger anyway.
 _MAX_TURNS_QUERY_LIMIT: int = 1000
-
-
-def _new_id() -> NotBlankStr:
-    """Return a fresh opaque identifier.
-
-    Returns:
-        ``NotBlankStr`` instance.
-    """
-    return NotBlankStr(str(uuid.uuid4()))
 
 
 class ChiefOfStaffProposer(ProposeParkingMixin):
@@ -199,7 +189,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         # window is small (one user per conversation). The registry
         # reference-counts and evicts idle locks, so it does not grow
         # unbounded over the process lifetime.
-        async with self._locks.hold(conversation.id):
+        async with self._locks.hold(str(conversation.id)):
             return await self._run_turn(conversation, args, now)
 
     async def _run_turn(
@@ -224,24 +214,23 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         Raises:
             ConversationClosedError: Raised on the corresponding failure path.
         """
-        current = await self._conversation_repo.get(conversation.id)
+        current = await self._conversation_repo.get(str(conversation.id))
         if current is None or current.status is not ConversationStatus.ACTIVE:
             logger.warning(
                 COS_PROPOSE_FAILED,
                 detail="conversation_terminal_under_lock",
-                conversation_id=conversation.id,
+                conversation_id=str(conversation.id),
                 current_status=(
                     current.status.value if current is not None else "missing"
                 ),
             )
-            raise ConversationClosedError(conversation_id=conversation.id)
+            raise ConversationClosedError(conversation_id=str(conversation.id))
         conversation = current
-        prior_turns = await self._ordered_turns(conversation.id)
+        prior_turns = await self._ordered_turns(str(conversation.id))
         next_sequence = len(prior_turns)
 
         user_turn = ConversationTurn(
-            id=_new_id(),
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             sequence=next_sequence,
             role=ConversationRole.USER,
             content=args.message,
@@ -250,7 +239,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         await self._turn_repo.append(user_turn)
         logger.info(
             COS_PROPOSE_TURN,
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             sequence=next_sequence,
         )
 
@@ -297,7 +286,6 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         """
         if args.conversation_id is None:
             conversation = Conversation(
-                id=_new_id(),
                 created_by=args.created_by,
                 created_at=now,
                 updated_at=now,
@@ -317,7 +305,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         if existing.created_by != args.created_by:
             raise ConversationNotFoundError(conversation_id=args.conversation_id)
         if existing.status is ConversationStatus.CLOSED:
-            raise ConversationClosedError(conversation_id=existing.id)
+            raise ConversationClosedError(conversation_id=str(existing.id))
         return existing
 
     async def _ordered_turns(
@@ -431,7 +419,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         assert question is not None  # noqa: S101
         await self._turn_repo.append(
             build_attributed_assistant_turn(
-                conversation_id=conversation.id,
+                conversation_id=str(conversation.id),
                 sequence=sequence,
                 content=question,
                 routing=routing,
@@ -441,9 +429,9 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         await self._conversation_repo.save(
             conversation.model_copy(update={"updated_at": now})
         )
-        logger.info(COS_PROPOSE_CLARIFICATION, conversation_id=conversation.id)
+        logger.info(COS_PROPOSE_CLARIFICATION, conversation_id=str(conversation.id))
         return ProposeResult(
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             status="needs_clarification",
             clarifying_question=question,
             responder_role=routing.responder.role if routing is not None else None,
@@ -465,8 +453,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         """
         await self._turn_repo.append(
             ConversationTurn(
-                id=_new_id(),
-                conversation_id=conversation.id,
+                conversation_id=str(conversation.id),
                 sequence=sequence,
                 role=ConversationRole.ASSISTANT,
                 content=_CAP_MESSAGE,
@@ -474,7 +461,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             )
         )
         transitioned = await self._conversation_repo.transition_if(
-            conversation.id,
+            str(conversation.id),
             from_state=conversation.status,
             to_state=ConversationStatus.CLOSED,
             updated_at=now.isoformat(),
@@ -482,13 +469,13 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         if transitioned:
             logger.info(
                 COS_CONVERSATION_STATUS_TRANSITIONED,
-                conversation_id=conversation.id,
+                conversation_id=str(conversation.id),
                 from_state=conversation.status.value,
                 to_state=ConversationStatus.CLOSED.value,
             )
-        logger.warning(COS_PROPOSE_CAP_REACHED, conversation_id=conversation.id)
+        logger.warning(COS_PROPOSE_CAP_REACHED, conversation_id=str(conversation.id))
         return ProposeResult(
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             status="needs_clarification",
             clarifying_question=_CAP_MESSAGE,
             conversation_closed=True,

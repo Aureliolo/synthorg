@@ -22,6 +22,7 @@ from synthorg.meta.chief_of_staff.models import (
     ProposeResult,
     SteeringProposalSummary,
 )
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
@@ -33,7 +34,7 @@ class TestConversation:
 
     def _make(self, **overrides: object) -> Conversation:
         defaults: dict[str, object] = {
-            "id": "conv-1",
+            "id": as_uuid("conv-1"),
             "created_by": "user-1",
             "created_at": _NOW,
             "updated_at": _NOW,
@@ -67,8 +68,8 @@ class TestConversationTurn:
 
     def _make(self, **overrides: object) -> ConversationTurn:
         defaults: dict[str, object] = {
-            "id": "turn-1",
-            "conversation_id": "conv-1",
+            "id": as_uuid("turn-1"),
+            "conversation_id": sid("conv-1"),
             "sequence": 0,
             "role": ConversationRole.USER,
             "content": "I need a new landing page",
@@ -292,8 +293,8 @@ class TestConversationalProposal:
 
     def _make(self, **overrides: object) -> ConversationalProposal:
         defaults: dict[str, object] = {
-            "id": "prop-1",
-            "conversation_id": "conv-1",
+            "id": as_uuid("prop-1"),
+            "conversation_id": sid("conv-1"),
             "approval_id": "appr-1",
             "work_item_json": '{"title": "x"}',
             "created_at": _NOW,

@@ -31,7 +31,7 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.providers.registry import ProviderRegistry
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of, sid
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.meta.chief_of_staff.propose_fakes import (
     build_registry as _registry,
@@ -48,8 +48,8 @@ _START = datetime(2026, 5, 19, 9, 0, 0, tzinfo=UTC)
 def _user_turn(text: str) -> tuple[ConversationTurn, ...]:
     return (
         ConversationTurn(
-            id=NotBlankStr("turn-1"),
-            conversation_id=NotBlankStr("conv-1"),
+            id=as_uuid("turn-1"),
+            conversation_id=sid("conv-1"),
             sequence=0,
             role=ConversationRole.USER,
             content=NotBlankStr(text),

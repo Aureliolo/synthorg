@@ -70,7 +70,7 @@ class SQLiteConversationRepository:
             QueryError: On other database errors.
         """
         params = (
-            entity.id,
+            str(entity.id),
             entity.created_by,
             format_iso_utc(entity.created_at),
             format_iso_utc(entity.updated_at),
@@ -86,13 +86,13 @@ class SQLiteConversationRepository:
                     self._db,
                     event=PERSISTENCE_CONVERSATION_FAILED,
                     operation="save",
-                    conversation_id=entity.id,
+                    conversation_id=str(entity.id),
                 )
                 msg = f"Constraint violation saving conversation {entity.id!r}"
                 logger.warning(
                     PERSISTENCE_CONVERSATION_FAILED,
                     operation="save",
-                    conversation_id=entity.id,
+                    conversation_id=str(entity.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -102,13 +102,13 @@ class SQLiteConversationRepository:
                     self._db,
                     event=PERSISTENCE_CONVERSATION_FAILED,
                     operation="save",
-                    conversation_id=entity.id,
+                    conversation_id=str(entity.id),
                 )
                 msg = f"Failed to save conversation {entity.id!r}"
                 logger.warning(
                     PERSISTENCE_CONVERSATION_FAILED,
                     operation="save",
-                    conversation_id=entity.id,
+                    conversation_id=str(entity.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

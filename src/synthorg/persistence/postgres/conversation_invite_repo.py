@@ -97,7 +97,7 @@ class PostgresConversationInviteRepository:
             QueryError: On other database errors.
         """
         params = (
-            entity.id,
+            str(entity.id),
             entity.conversation_id,
             entity.approval_id,
             entity.requested_by_agent_id,
@@ -120,7 +120,7 @@ class PostgresConversationInviteRepository:
             logger.warning(
                 COS_GROUP_INVITE_FAILED,
                 operation="save",
-                invite_id=entity.id,
+                invite_id=str(entity.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -130,7 +130,7 @@ class PostgresConversationInviteRepository:
             logger.warning(
                 COS_GROUP_INVITE_FAILED,
                 operation="save",
-                invite_id=entity.id,
+                invite_id=str(entity.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -204,6 +204,8 @@ class PostgresConversationInviteRepository:
                 )
                 rows = await cur.fetchall()
                 items = tuple(row_to_invite(r) for r in rows)
+        except QueryError:
+            raise
         except psycopg.Error as exc:
             msg = "Failed to list invites"
             logger.warning(
@@ -253,6 +255,8 @@ class PostgresConversationInviteRepository:
                 )
                 rows = await cur.fetchall()
                 items = tuple(row_to_invite(r) for r in rows)
+        except QueryError:
+            raise
         except psycopg.Error as exc:
             msg = "Failed to query invites"
             logger.warning(

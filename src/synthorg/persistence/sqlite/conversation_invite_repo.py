@@ -132,7 +132,7 @@ class SQLiteConversationInviteRepository:
             QueryError: On other database errors.
         """
         params = (
-            entity.id,
+            str(entity.id),
             entity.conversation_id,
             entity.approval_id,
             entity.requested_by_agent_id,
@@ -147,23 +147,27 @@ class SQLiteConversationInviteRepository:
                 await self._db.execute(_UPSERT_SQL, params)
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
-                await _safe_rollback(self._db, operation="save", invite_id=entity.id)
+                await _safe_rollback(
+                    self._db, operation="save", invite_id=str(entity.id)
+                )
                 msg = f"Constraint violation saving invite {entity.id!r}"
                 logger.warning(
                     COS_GROUP_INVITE_FAILED,
                     operation="save",
-                    invite_id=entity.id,
+                    invite_id=str(entity.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
                 raise ConstraintViolationError(msg, constraint=str(exc)) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(self._db, operation="save", invite_id=entity.id)
+                await _safe_rollback(
+                    self._db, operation="save", invite_id=str(entity.id)
+                )
                 msg = f"Failed to save invite {entity.id!r}"
                 logger.warning(
                     COS_GROUP_INVITE_FAILED,
                     operation="save",
-                    invite_id=entity.id,
+                    invite_id=str(entity.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

@@ -1,8 +1,8 @@
 # module-kind: code
 """Roster + transcript helpers for the multi-agent group chat.
 
-Free functions extracted from :class:`GroupChatService` so the service
-module stays within its size tier. These cover the membership side of a
+Free functions kept separate from :class:`GroupChatService` so each
+concern stays within its module-size tier. These cover the membership side of a
 group conversation -- resolving agent ids to identities, enrolling the
 initial roster in stable order, reading the active roster, and reading
 the ordered transcript -- plus the participant de-duplication used when
@@ -11,7 +11,6 @@ conversation-lifecycle decisions; these are the cohesive data-access
 helpers it calls through.
 """
 
-import uuid
 from datetime import datetime, timedelta
 
 from synthorg.core.agent import AgentIdentity
@@ -38,19 +37,6 @@ logger = get_logger(__name__)
 # generous ceiling that hands every round the full history without
 # pagination (the repo's own _MAX_PAGE_LIMIT clamps anything larger).
 MAX_TURNS_QUERY_LIMIT: int = 1000
-
-
-def new_id() -> NotBlankStr:
-    """Return a fresh opaque string identifier.
-
-    Used for the ``NotBlankStr``-typed ids of ``Conversation`` and
-    ``ConversationTurn``. ``ConversationParticipant`` mints its own
-    ``UUID`` id via the model's ``default_factory`` and does not call this.
-
-    Returns:
-        ``NotBlankStr`` instance.
-    """
-    return NotBlankStr(str(uuid.uuid4()))
 
 
 def dedupe_participants(participants: tuple[NotBlankStr, ...]) -> list[NotBlankStr]:
@@ -162,7 +148,6 @@ __all__ = [
     "active_participants",
     "dedupe_participants",
     "enrol_participants",
-    "new_id",
     "ordered_turns",
     "resolve_identities",
 ]

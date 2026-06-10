@@ -104,7 +104,7 @@ class PostgresConversationRepository:
             QueryError: On other database errors.
         """
         params = (
-            entity.id,
+            str(entity.id),
             entity.created_by,
             entity.created_at,
             entity.updated_at,
@@ -124,7 +124,7 @@ class PostgresConversationRepository:
             logger.warning(
                 PERSISTENCE_CONVERSATION_FAILED,
                 operation="save",
-                conversation_id=entity.id,
+                conversation_id=str(entity.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -134,7 +134,7 @@ class PostgresConversationRepository:
             logger.warning(
                 PERSISTENCE_CONVERSATION_FAILED,
                 operation="save",
-                conversation_id=entity.id,
+                conversation_id=str(entity.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -205,6 +205,8 @@ class PostgresConversationRepository:
                 )
                 rows = await cur.fetchall()
                 items = tuple(row_to_conversation(r) for r in rows)
+        except QueryError:
+            raise
         except psycopg.Error as exc:
             msg = "Failed to list conversations"
             logger.warning(
@@ -350,7 +352,7 @@ class PostgresConversationTurnRepository:
         current = event
         for attempt in range(_TURN_APPEND_MAX_RETRIES + 1):
             params = (
-                current.id,
+                str(current.id),
                 current.conversation_id,
                 current.sequence,
                 current.role.value,
@@ -476,6 +478,8 @@ class PostgresConversationTurnRepository:
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
                 items = tuple(row_to_turn(r) for r in rows)
+        except QueryError:
+            raise
         except psycopg.Error as exc:
             msg = "Failed to query conversation turns"
             logger.warning(

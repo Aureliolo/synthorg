@@ -534,7 +534,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 549,
+      "loc": 556,
       "loc_cap": 600,
       "module": "src/synthorg/api/controllers/_conversational_resume.py",
       "owning_feature": "api_core"
@@ -1801,7 +1801,7 @@
     },
     {
       "kind": "code",
-      "loc": 102,
+      "loc": 105,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/conversational_reconcile.py",
       "owning_feature": "api_core"
@@ -10978,7 +10978,7 @@
     },
     {
       "kind": "code",
-      "loc": 384,
+      "loc": 395,
       "loc_cap": 500,
       "module": "src/synthorg/meta/charter/service.py",
       "owning_feature": "charter"
@@ -11013,7 +11013,7 @@
     },
     {
       "kind": "code",
-      "loc": 319,
+      "loc": 320,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/_propose_parking.py",
       "owning_feature": "meta"
@@ -11062,14 +11062,14 @@
     },
     {
       "kind": "service",
-      "loc": 508,
+      "loc": 507,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/group_chat.py",
       "owning_feature": "meta"
     },
     {
       "kind": "service",
-      "loc": 435,
+      "loc": 436,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/group_invite.py",
       "owning_feature": "meta"
@@ -11090,7 +11090,7 @@
     },
     {
       "kind": "code",
-      "loc": 137,
+      "loc": 126,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/group_roster.py",
       "owning_feature": "meta"
@@ -11209,7 +11209,7 @@
     },
     {
       "kind": "code",
-      "loc": 425,
+      "loc": 415,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/propose.py",
       "owning_feature": "meta"
@@ -11223,7 +11223,7 @@
     },
     {
       "kind": "code",
-      "loc": 181,
+      "loc": 179,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/responder.py",
       "owning_feature": "meta"
@@ -12994,7 +12994,7 @@
     },
     {
       "kind": "code",
-      "loc": 43,
+      "loc": 46,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/approval_gate.py",
       "owning_feature": "observability"
@@ -14723,7 +14723,7 @@
     },
     {
       "kind": "code",
-      "loc": 165,
+      "loc": 221,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_conversation_marshalling.py",
       "owning_feature": "persistence"
@@ -15374,7 +15374,7 @@
     },
     {
       "kind": "code",
-      "loc": 344,
+      "loc": 348,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/conversation_invite_repo.py",
       "owning_feature": "persistence"
@@ -15388,14 +15388,14 @@
     },
     {
       "kind": "code",
-      "loc": 466,
+      "loc": 470,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/conversation_repo.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 358,
+      "loc": 335,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/conversational_proposal_repo.py",
       "owning_feature": "persistence"
@@ -16144,7 +16144,7 @@
     },
     {
       "kind": "code",
-      "loc": 363,
+      "loc": 367,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/conversation_invite_repo.py",
       "owning_feature": "persistence"
@@ -16186,7 +16186,7 @@
     },
     {
       "kind": "code",
-      "loc": 381,
+      "loc": 359,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/conversational_proposal_repo.py",
       "owning_feature": "persistence"

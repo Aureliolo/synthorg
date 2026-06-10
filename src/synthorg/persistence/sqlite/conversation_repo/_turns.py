@@ -105,7 +105,7 @@ class SQLiteConversationTurnRepository:
             # repository and must not move to GeneralRetryHandler.
             for attempt in range(_TURN_APPEND_MAX_RETRIES + 1):
                 params = (
-                    current.id,
+                    str(current.id),
                     current.conversation_id,
                     current.sequence,
                     current.role.value,

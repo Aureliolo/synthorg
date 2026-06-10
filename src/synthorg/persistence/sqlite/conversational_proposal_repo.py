@@ -9,7 +9,6 @@ driven by the approval decision), and filtered queries by
 import sqlite3
 
 import aiosqlite
-from aiosqlite import Row
 
 from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
@@ -25,9 +24,9 @@ from synthorg.observability.events.persistence.conversational_proposal import (
     PERSISTENCE_CONVERSATIONAL_PROPOSAL_FETCHED,
     PERSISTENCE_CONVERSATIONAL_PROPOSAL_LISTED,
 )
+from synthorg.persistence._conversation_marshalling import row_to_proposal
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
-    coerce_row_timestamp,
     format_iso_utc,
     validate_pagination_args,
 )
@@ -72,35 +71,6 @@ async def _safe_rollback(
             operation=operation,
             **log_context,
         )
-
-
-def _row_to_proposal(row: Row) -> ConversationalProposal:
-    """Convert a database row into a :class:`ConversationalProposal`.
-
-    Raises:
-        QueryError: If the row contains corrupt or unparseable data.
-
-    Returns:
-        Result of type ``ConversationalProposal``.
-    """
-    try:
-        return ConversationalProposal(
-            id=str(row["id"]),
-            conversation_id=str(row["conversation_id"]),
-            approval_id=str(row["approval_id"]),
-            work_item_json=str(row["work_item_json"]),
-            status=ConversationalProposalStatus(str(row["status"])),
-            created_at=coerce_row_timestamp(row["created_at"]),
-        )
-    except (ValueError, TypeError, KeyError) as exc:
-        msg = "Failed to parse conversational proposal row"
-        logger.warning(
-            PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED,
-            operation="deserialize",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
 
 
 def _build_where(
@@ -153,7 +123,7 @@ class SQLiteConversationalProposalRepository:
             QueryError: On other database errors.
         """
         params = (
-            entity.id,
+            str(entity.id),
             entity.conversation_id,
             entity.approval_id,
             entity.work_item_json,
@@ -165,23 +135,27 @@ class SQLiteConversationalProposalRepository:
                 await self._db.execute(_UPSERT_SQL, params)
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
-                await _safe_rollback(self._db, operation="save", proposal_id=entity.id)
+                await _safe_rollback(
+                    self._db, operation="save", proposal_id=str(entity.id)
+                )
                 msg = f"Constraint violation saving proposal {entity.id!r}"
                 logger.warning(
                     PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED,
                     operation="save",
-                    proposal_id=entity.id,
+                    proposal_id=str(entity.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
                 raise ConstraintViolationError(msg, constraint=str(exc)) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(self._db, operation="save", proposal_id=entity.id)
+                await _safe_rollback(
+                    self._db, operation="save", proposal_id=str(entity.id)
+                )
                 msg = f"Failed to save proposal {entity.id!r}"
                 logger.warning(
                     PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED,
                     operation="save",
-                    proposal_id=entity.id,
+                    proposal_id=str(entity.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -215,7 +189,7 @@ class SQLiteConversationalProposalRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        proposal = _row_to_proposal(row)
+        proposal = row_to_proposal(row)
         logger.debug(PERSISTENCE_CONVERSATIONAL_PROPOSAL_FETCHED, proposal_id=entity_id)
         return proposal
 
@@ -245,7 +219,7 @@ class SQLiteConversationalProposalRepository:
         try:
             cursor = await self._db.execute(sql, (effective_limit, offset))
             rows = await cursor.fetchall()
-            items = tuple(_row_to_proposal(r) for r in rows)
+            items = tuple(row_to_proposal(r) for r in rows)
         except QueryError:
             raise
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -293,7 +267,7 @@ class SQLiteConversationalProposalRepository:
         try:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()
-            items = tuple(_row_to_proposal(r) for r in rows)
+            items = tuple(row_to_proposal(r) for r in rows)
         except QueryError:
             raise
         except (sqlite3.Error, aiosqlite.Error) as exc:

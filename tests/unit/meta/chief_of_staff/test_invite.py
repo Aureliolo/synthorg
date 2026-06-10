@@ -344,7 +344,7 @@ class TestInvitedPreamble:
     ) -> None:
         await invite_repo.save(
             ConversationInvite(
-                id=NotBlankStr("inv-1"),
+                id=as_uuid("inv-1"),
                 conversation_id=_CONV,
                 approval_id=NotBlankStr("appr-1"),
                 requested_by_agent_id=NotBlankStr(requested_by),
@@ -685,7 +685,7 @@ class TestGroupChatInviteIntegration:
         # records who brought them in and why.
         await invite_repo.save(
             ConversationInvite(
-                id=NotBlankStr("inv-1"),
+                id=as_uuid("inv-1"),
                 conversation_id=conversation_id,
                 approval_id=NotBlankStr("appr-1"),
                 requested_by_agent_id=NotBlankStr(str(ceo.id)),

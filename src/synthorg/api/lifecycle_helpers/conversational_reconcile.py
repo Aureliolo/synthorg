@@ -13,6 +13,7 @@ the rows stay resumable and are left untouched.
 
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Protocol
+from uuid import UUID
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -24,10 +25,10 @@ logger = get_logger(__name__)
 
 
 class _HasId(Protocol):
-    """A persisted row addressable by its string ``id`` (proposal/invite)."""
+    """A persisted row addressable by its ``UUID`` ``id`` (proposal/invite)."""
 
     @property
-    def id(self) -> str: ...
+    def id(self) -> UUID: ...
 
 
 async def _retire_pending_items[StatusT, SpecT, ItemT: _HasId](
@@ -39,6 +40,9 @@ async def _retire_pending_items[StatusT, SpecT, ItemT: _HasId](
 ) -> tuple[int, int]:
     """Move every PENDING row matching *spec* to its terminal status via CAS.
 
+    Each ``_HasId`` item exposes a ``UUID`` ``.id``; it is stringified to
+    match the repository's string-keyed ``transition_if`` CAS.
+
     Returns:
         ``(queried, transitioned)`` -- a gap (queried greater than
         transitioned) means a concurrent process already retired some
@@ -48,7 +52,7 @@ async def _retire_pending_items[StatusT, SpecT, ItemT: _HasId](
     items = await repo_query(spec)
     transitioned = 0
     for item in items:
-        if await transition_if(item.id, pending, terminal):
+        if await transition_if(str(item.id), pending, terminal):
             transitioned += 1
     return len(items), transitioned
 

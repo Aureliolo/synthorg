@@ -14,7 +14,6 @@ provider. This keeps the clarify/propose JSON deterministic regardless of
 which role agent is speaking.
 """
 
-import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -184,7 +183,6 @@ def build_attributed_assistant_turn(
     """
     responder = routing.responder if routing is not None else None
     return ConversationTurn(
-        id=NotBlankStr(str(uuid.uuid4())),
         conversation_id=conversation_id,
         sequence=sequence,
         role=ConversationRole.ASSISTANT,

@@ -6,7 +6,7 @@ Sibling of ``SQLiteConversationalProposalRepository`` backed by
 """
 
 import psycopg
-from psycopg.rows import DictRow, dict_row
+from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from synthorg.communication.conversation.enums import ConversationalProposalStatus
@@ -19,11 +19,9 @@ from synthorg.observability.events.persistence.conversational_proposal import (
     PERSISTENCE_CONVERSATIONAL_PROPOSAL_FETCHED,
     PERSISTENCE_CONVERSATIONAL_PROPOSAL_LISTED,
 )
+from synthorg.persistence._conversation_marshalling import row_to_proposal
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import (
-    coerce_row_timestamp,
-    validate_pagination_args,
-)
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
 )
@@ -44,35 +42,6 @@ _UPSERT_SQL = f"""
         status = EXCLUDED.status,
         created_at = EXCLUDED.created_at
 """  # noqa: S608  -- column list is a compile-time constant
-
-
-def _row_to_proposal(row: DictRow) -> ConversationalProposal:
-    """Convert a Postgres dict row into a :class:`ConversationalProposal`.
-
-    Returns:
-        Result of type ``ConversationalProposal``.
-
-    Raises:
-        QueryError: If the database query fails.
-    """
-    try:
-        return ConversationalProposal(
-            id=str(row["id"]),
-            conversation_id=str(row["conversation_id"]),
-            approval_id=str(row["approval_id"]),
-            work_item_json=str(row["work_item_json"]),
-            status=ConversationalProposalStatus(str(row["status"])),
-            created_at=coerce_row_timestamp(row["created_at"]),
-        )
-    except (ValueError, TypeError, KeyError) as exc:
-        msg = "Failed to parse conversational proposal row"
-        logger.warning(
-            PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED,
-            operation="deserialize",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
 
 
 def _build_where(
@@ -117,7 +86,7 @@ class PostgresConversationalProposalRepository:
             QueryError: On other database errors.
         """
         params = (
-            entity.id,
+            str(entity.id),
             entity.conversation_id,
             entity.approval_id,
             entity.work_item_json,
@@ -137,7 +106,7 @@ class PostgresConversationalProposalRepository:
             logger.warning(
                 PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED,
                 operation="save",
-                proposal_id=entity.id,
+                proposal_id=str(entity.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -147,7 +116,7 @@ class PostgresConversationalProposalRepository:
             logger.warning(
                 PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED,
                 operation="save",
-                proposal_id=entity.id,
+                proposal_id=str(entity.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -185,7 +154,7 @@ class PostgresConversationalProposalRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        proposal = _row_to_proposal(row)
+        proposal = row_to_proposal(row)
         logger.debug(PERSISTENCE_CONVERSATIONAL_PROPOSAL_FETCHED, proposal_id=entity_id)
         return proposal
 
@@ -220,7 +189,9 @@ class PostgresConversationalProposalRepository:
                     (effective_limit, offset),
                 )
                 rows = await cur.fetchall()
-                items = tuple(_row_to_proposal(r) for r in rows)
+                items = tuple(row_to_proposal(r) for r in rows)
+        except QueryError:
+            raise
         except psycopg.Error as exc:
             msg = "Failed to list proposals"
             logger.warning(
@@ -269,7 +240,9 @@ class PostgresConversationalProposalRepository:
                     params,
                 )
                 rows = await cur.fetchall()
-                items = tuple(_row_to_proposal(r) for r in rows)
+                items = tuple(row_to_proposal(r) for r in rows)
+        except QueryError:
+            raise
         except psycopg.Error as exc:
             msg = "Failed to query proposals"
             logger.warning(

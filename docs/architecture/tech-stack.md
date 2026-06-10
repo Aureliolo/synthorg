@@ -132,7 +132,8 @@ These conventions are used throughout the codebase. For full details on each, se
 | **Immutability strategy** | Adopted | `copy.deepcopy()` at construction + `MappingProxyType` wrapping for non-Pydantic collections. `frozen=True` + boundary `deepcopy()` for Pydantic models. |
 | **Config vs runtime split** | Adopted | Frozen models for config/identity; `model_copy(update=...)` for runtime state transitions (e.g., `TaskExecution`, `AgentContext`). |
 | **Derived fields** | Adopted | `@computed_field` instead of stored + validated redundant fields. |
-| **String validation** | Adopted | `NotBlankStr` type from `core.types` for all identifier/name fields, eliminating per-model validator boilerplate. |
+| **Entity identifiers** | Adopted | Entity primary-key `.id` fields are `UUID = Field(default_factory=uuid4)`; persistence stores them in a `TEXT` column via `str(uuid)` / `UUID(...)`, so the wire form is unchanged. |
+| **String validation** | Adopted | `NotBlankStr` type from `core.types` for name and string foreign-key reference fields, eliminating per-model validator boilerplate. |
 | **Numeric field safety** | Adopted | `allow_inf_nan=False` in all `ConfigDict` declarations to reject `NaN`/`Inf` in numeric fields at validation time. |
 | **Shared field groups** | Adopted | Common field sets extracted into base models (e.g., `_SpendingTotals`) to prevent duplication. |
 | **Event constants** | Adopted | Per-domain submodules under `observability/events/`. Direct imports: `from synthorg.observability.events.<domain> import CONSTANT`. |

@@ -41,7 +41,7 @@ from synthorg.persistence.sqlite.conversation_repo import (
 from synthorg.persistence.sqlite.conversational_proposal_repo import (
     SQLiteConversationalProposalRepository,
 )
-from tests._shared import as_uuid
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -111,7 +111,7 @@ def _approval_repo(backend: PersistenceBackend) -> ApprovalRepository:
 
 def _make_conversation(*, conversation_id: str = "conv-001") -> Conversation:
     return Conversation(
-        id=NotBlankStr(conversation_id),
+        id=as_uuid(conversation_id),
         created_by=NotBlankStr("user-001"),
         created_at=_NOW,
         updated_at=_NOW,
@@ -135,8 +135,8 @@ def _make_proposal(
     status: ConversationalProposalStatus = (ConversationalProposalStatus.PENDING),
 ) -> ConversationalProposal:
     return ConversationalProposal(
-        id=proposal_id,
-        conversation_id=conversation_id,
+        id=as_uuid(proposal_id),
+        conversation_id=sid(conversation_id),
         approval_id=approval_id,
         work_item_json='{"title": "Build landing page"}',
         status=status,
@@ -151,7 +151,7 @@ class TestConversationalProposalRepository:
         proposal = _make_proposal()
         await repo.save(proposal)
 
-        fetched = await repo.get(proposal.id)
+        fetched = await repo.get(str(proposal.id))
         assert fetched is not None
         assert fetched.id == proposal.id
         assert fetched.approval_id == "appr-001"
@@ -174,7 +174,7 @@ class TestConversationalProposalRepository:
         await first.save(proposal)
 
         second = _repo(backend)
-        fetched = await second.get(proposal.id)
+        fetched = await second.get(str(proposal.id))
         assert fetched is not None
 
     async def test_query_filter_by_approval_id(
@@ -188,7 +188,7 @@ class TestConversationalProposalRepository:
         rows = await repo.query(
             ConversationalProposalFilterSpec(approval_id=NotBlankStr("appr-A"))
         )
-        assert {r.id for r in rows} == {"p1"}
+        assert {r.id for r in rows} == {as_uuid("p1")}
 
     async def test_query_filter_by_conversation_id(
         self, backend: PersistenceBackend
@@ -215,9 +215,9 @@ class TestConversationalProposalRepository:
         )
 
         rows = await repo.query(
-            ConversationalProposalFilterSpec(conversation_id=NotBlankStr("conv-X"))
+            ConversationalProposalFilterSpec(conversation_id=sid("conv-X"))
         )
-        assert {r.id for r in rows} == {"pc1"}
+        assert {r.id for r in rows} == {as_uuid("pc1")}
 
     async def test_query_filter_by_status(self, backend: PersistenceBackend) -> None:
         await _seed_conversation(backend)
@@ -243,8 +243,8 @@ class TestConversationalProposalRepository:
             )
         )
         ids = {r.id for r in rows}
-        assert "ps-executed" in ids
-        assert "ps-pending" not in ids
+        assert as_uuid("ps-executed") in ids
+        assert as_uuid("ps-pending") not in ids
 
     async def test_count(self, backend: PersistenceBackend) -> None:
         await _seed_conversation(backend)
@@ -262,12 +262,12 @@ class TestConversationalProposalRepository:
         await repo.save(proposal)
 
         result = await repo.transition_if(
-            proposal.id,
+            str(proposal.id),
             from_state=ConversationalProposalStatus.PENDING,
             to_state=ConversationalProposalStatus.EXECUTED,
         )
         assert result is True
-        fetched = await repo.get(proposal.id)
+        fetched = await repo.get(str(proposal.id))
         assert fetched is not None
         assert fetched.status is ConversationalProposalStatus.EXECUTED
 
@@ -284,7 +284,7 @@ class TestConversationalProposalRepository:
         await repo.save(proposal)
 
         result = await repo.transition_if(
-            proposal.id,
+            str(proposal.id),
             from_state=ConversationalProposalStatus.PENDING,
             to_state=ConversationalProposalStatus.EXECUTED,
         )
@@ -297,9 +297,9 @@ class TestConversationalProposalRepository:
         repo = _repo(backend)
         proposal = _make_proposal(proposal_id="d-prop", approval_id="a-d")
         await repo.save(proposal)
-        assert await repo.delete(proposal.id) is True
-        assert await repo.get(proposal.id) is None
-        assert await repo.delete(proposal.id) is False
+        assert await repo.delete(str(proposal.id)) is True
+        assert await repo.get(str(proposal.id)) is None
+        assert await repo.delete(str(proposal.id)) is False
 
     async def test_executing_cas_single_winner_and_revert(
         self, backend: PersistenceBackend
@@ -314,7 +314,7 @@ class TestConversationalProposalRepository:
         await repo.save(proposal)
 
         acquired = await repo.transition_if(
-            proposal.id,
+            str(proposal.id),
             from_state=ConversationalProposalStatus.PENDING,
             to_state=ConversationalProposalStatus.EXECUTING,
         )
@@ -322,7 +322,7 @@ class TestConversationalProposalRepository:
 
         # A concurrent second acquirer loses: status is no longer PENDING.
         lost = await repo.transition_if(
-            proposal.id,
+            str(proposal.id),
             from_state=ConversationalProposalStatus.PENDING,
             to_state=ConversationalProposalStatus.EXECUTING,
         )
@@ -330,12 +330,12 @@ class TestConversationalProposalRepository:
 
         # Revert on failure returns the proposal to PENDING (retryable).
         reverted = await repo.transition_if(
-            proposal.id,
+            str(proposal.id),
             from_state=ConversationalProposalStatus.EXECUTING,
             to_state=ConversationalProposalStatus.PENDING,
         )
         assert reverted is True
-        fetched = await repo.get(proposal.id)
+        fetched = await repo.get(str(proposal.id))
         assert fetched is not None
         assert fetched.status is ConversationalProposalStatus.PENDING
 

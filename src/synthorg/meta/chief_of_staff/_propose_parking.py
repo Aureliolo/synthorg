@@ -60,7 +60,11 @@ logger = get_logger(__name__)
 
 
 def _new_id() -> NotBlankStr:
-    """Return a fresh opaque identifier.
+    """Return a fresh opaque ``NotBlankStr`` id for the approval queue.
+
+    Entity primary keys mint their own ``UUID`` via ``default_factory``;
+    this serves the ``NotBlankStr``-typed ``approval_id`` that ties a
+    proposal to its approval item.
 
     Returns:
         ``NotBlankStr`` instance.
@@ -136,7 +140,7 @@ class ProposeParkingMixin:
                 logger.warning(
                     COS_PROPOSE_RESPONSE_INVALID,
                     detail="proposal_missing_project",
-                    conversation_id=conversation.id,
+                    conversation_id=str(conversation.id),
                 )
                 raise ConversationalProposeResponseInvalidError
             resolved.append((proposed, project))
@@ -147,7 +151,7 @@ class ProposeParkingMixin:
                 logger.warning(
                     COS_PROPOSE_RESPONSE_INVALID,
                     detail="steering_missing_project",
-                    conversation_id=conversation.id,
+                    conversation_id=str(conversation.id),
                 )
                 raise ConversationalProposeResponseInvalidError
             resolved_steering.append((steer, steer_project))
@@ -177,7 +181,7 @@ class ProposeParkingMixin:
             reraise_critical(exc)
             for parked in summaries:
                 await self._unwind_parked_proposal(
-                    conversation_id=conversation.id,
+                    conversation_id=str(conversation.id),
                     proposal_id=parked.proposal_id,
                     approval_id=parked.approval_id,
                 )
@@ -189,7 +193,7 @@ class ProposeParkingMixin:
 
         await self._turn_repo.append(
             build_attributed_assistant_turn(
-                conversation_id=conversation.id,
+                conversation_id=str(conversation.id),
                 sequence=sequence,
                 content=NotBlankStr(
                     _summarise_decision(decision.proposals, decision.steering)
@@ -199,7 +203,7 @@ class ProposeParkingMixin:
             )
         )
         transitioned = await self._conversation_repo.transition_if(
-            conversation.id,
+            str(conversation.id),
             from_state=ConversationStatus.ACTIVE,
             to_state=ConversationStatus.PROPOSED,
             updated_at=now.isoformat(),
@@ -207,7 +211,7 @@ class ProposeParkingMixin:
         if transitioned:
             logger.info(
                 COS_CONVERSATION_STATUS_TRANSITIONED,
-                conversation_id=conversation.id,
+                conversation_id=str(conversation.id),
                 from_state=ConversationStatus.ACTIVE.value,
                 to_state=ConversationStatus.PROPOSED.value,
             )
@@ -220,16 +224,16 @@ class ProposeParkingMixin:
             logger.warning(
                 COS_PROPOSE_FAILED,
                 detail="conversation_status_already_transitioned",
-                conversation_id=conversation.id,
+                conversation_id=str(conversation.id),
                 from_state=ConversationStatus.ACTIVE.value,
             )
         logger.info(
             COS_PROPOSE_PROPOSED,
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             proposal_count=len(summaries) + len(steering_summaries),
         )
         return ProposeResult(
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             status="proposed",
             proposals=tuple(summaries),
             steering=tuple(steering_summaries),
@@ -269,18 +273,16 @@ class ProposeParkingMixin:
             Exception: Raised on the corresponding failure path.
         """
         approval_id = _new_id()
-        proposal_id = _new_id()
         work_item = build_work_item(conversation, args, proposed, project, now)
-        await self._proposal_repo.save(
-            ConversationalProposal(
-                id=proposal_id,
-                conversation_id=conversation.id,
-                approval_id=approval_id,
-                work_item_json=NotBlankStr(work_item.model_dump_json()),
-                status=ConversationalProposalStatus.PENDING,
-                created_at=now,
-            )
+        proposal = ConversationalProposal(
+            conversation_id=str(conversation.id),
+            approval_id=approval_id,
+            work_item_json=NotBlankStr(work_item.model_dump_json()),
+            status=ConversationalProposalStatus.PENDING,
+            created_at=now,
         )
+        proposal_id = str(proposal.id)
+        await self._proposal_repo.save(proposal)
         try:
             await self._approval_store.add(
                 build_work_approval_item(
@@ -302,7 +304,7 @@ class ProposeParkingMixin:
                 logger.warning(
                     COS_PROPOSE_FAILED,
                     detail="park_proposal_cleanup_failed",
-                    conversation_id=conversation.id,
+                    conversation_id=str(conversation.id),
                     proposal_id=proposal_id,
                     error_type=type(cleanup_exc).__name__,
                     error=safe_error_description(cleanup_exc),

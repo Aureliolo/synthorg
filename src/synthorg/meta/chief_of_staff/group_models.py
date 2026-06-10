@@ -145,7 +145,7 @@ class ConversationInvite(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr
+    id: UUID = Field(default_factory=uuid4)
     conversation_id: NotBlankStr
     approval_id: NotBlankStr
     requested_by_agent_id: NotBlankStr

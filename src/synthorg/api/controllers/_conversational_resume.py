@@ -1,10 +1,11 @@
 # module-kind: orchestrator
 """Conversational approval-resume flows for the approvals controller.
 
-Extracted from ``_approval_review_gate.py`` (which keeps the
+Kept separate from ``_approval_review_gate.py`` (which holds the
 parked-context + review-gate flows and the ``signal_resume_intent``
-dispatcher) so each resume concern stays within its size tier as the
-agent-invite flow joins the conversational-intake flow.
+dispatcher) so each resume concern stays within its module-size tier;
+the agent-invite flow and the conversational-intake flow are distinct
+resume surfaces that share only the reread primitive below.
 
 Two flows live here, both keyed off the persisted
 :attr:`ApprovalItem.source` discriminator and both repo-direct (never
@@ -42,6 +43,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
+    APPROVAL_GATE_CONVERSATIONAL_EXECUTING,
     APPROVAL_GATE_CONVERSATIONAL_FAILED,
     APPROVAL_GATE_CONVERSATIONAL_NO_PROPOSAL,
     APPROVAL_GATE_CONVERSATIONAL_REJECTED,
@@ -171,7 +173,7 @@ async def _reject_conversational_proposal(
         app_state.slice(MetaStateSlice).conversational_proposal_repo,
         "Conversational Proposal Repository",
     )
-    proposal_id = proposal.id
+    proposal_id = str(proposal.id)
     transitioned = await repo.transition_if(
         proposal_id,
         ConversationalProposalStatus.PENDING,
@@ -220,7 +222,7 @@ async def _execute_conversational_proposal(
         app_state.slice(MetaStateSlice).conversational_proposal_repo,
         "Conversational Proposal Repository",
     )
-    proposal_id = proposal.id
+    proposal_id = str(proposal.id)
     work_item_json = proposal.work_item_json
 
     if app_state.slice(EngineStateSlice).work_pipeline is None:
@@ -254,6 +256,11 @@ async def _execute_conversational_proposal(
         )
         return
 
+    logger.info(
+        APPROVAL_GATE_CONVERSATIONAL_EXECUTING,
+        approval_id=approval_id,
+        proposal_id=proposal_id,
+    )
     try:
         work_item = WorkItem.model_validate_json(work_item_json)
         work_pipeline = require_service(
@@ -426,7 +433,7 @@ async def _decline_invite(
 
     repo = conversation_invite_repo_of(app_state)
     transitioned = await repo.transition_if(
-        invite.id,
+        str(invite.id),
         ConversationInviteStatus.PENDING,
         ConversationInviteStatus.DECLINED,
     )
@@ -471,7 +478,7 @@ async def _accept_invite(
 
     invite_repo = conversation_invite_repo_of(app_state)
     acquired = await invite_repo.transition_if(
-        invite.id,
+        str(invite.id),
         ConversationInviteStatus.PENDING,
         ConversationInviteStatus.ACCEPTED,
     )
@@ -488,7 +495,7 @@ async def _accept_invite(
     except Exception as exc:
         reraise_critical(exc)
         reverted = await invite_repo.transition_if(
-            invite.id,
+            str(invite.id),
             ConversationInviteStatus.ACCEPTED,
             ConversationInviteStatus.PENDING,
         )

@@ -124,7 +124,7 @@ def _approval(
 
 def _proposal(approval_id: str) -> ConversationalProposal:
     return ConversationalProposal(
-        id=NotBlankStr(f"prop-{approval_id}"),
+        id=as_uuid(f"prop-{approval_id}"),
         conversation_id=NotBlankStr("conv-1"),
         approval_id=NotBlankStr(sid(approval_id)),
         work_item_json=NotBlankStr(_work_item_json()),
@@ -144,7 +144,7 @@ async def _seed(
     repo = _FakeProposalRepo()
     if with_proposal:
         prop = _proposal("a1")
-        repo.items[prop.id] = prop
+        repo.items[str(prop.id)] = prop
     state = _make_app_state(
         approval_store=store,
         proposal_repo=repo,
@@ -174,7 +174,9 @@ class TestConversationalIntakeResume:
         assert handled is True
         assert len(pipeline.calls) == 1
         assert pipeline.calls[0].source is WorkSource.CONVERSATIONAL
-        assert repo.items["prop-a1"].status is ConversationalProposalStatus.EXECUTED
+        assert (
+            repo.items[sid("prop-a1")].status is ConversationalProposalStatus.EXECUTED
+        )
 
     async def test_reject_skips_pipeline_and_marks_rejected(self) -> None:
         pipeline = _FakePipeline()
@@ -186,7 +188,9 @@ class TestConversationalIntakeResume:
         )
         assert handled is True
         assert pipeline.calls == []
-        assert repo.items["prop-a1"].status is ConversationalProposalStatus.REJECTED
+        assert (
+            repo.items[sid("prop-a1")].status is ConversationalProposalStatus.REJECTED
+        )
 
     async def test_missing_proposal_is_owned_but_noop(self) -> None:
         state, _ = await _seed(with_proposal=False)
@@ -202,7 +206,7 @@ class TestConversationalIntakeResume:
         await store.add(_approval("a1"))
         repo = _FakeProposalRepo()
         prop = _proposal("a1")
-        repo.items[prop.id] = prop
+        repo.items[str(prop.id)] = prop
         state = _make_app_state(
             approval_store=store,
             proposal_repo=repo,
@@ -246,7 +250,7 @@ class TestConversationalIntakeResume:
             approved=True,
         )
         assert handled is True
-        assert repo.items["prop-a1"].status is ConversationalProposalStatus.PENDING
+        assert repo.items[sid("prop-a1")].status is ConversationalProposalStatus.PENDING
 
     async def test_concurrent_acquire_only_one_runs_pipeline(self) -> None:
         # Simulate the loser of the PENDING -> EXECUTING CAS: a second
@@ -256,7 +260,7 @@ class TestConversationalIntakeResume:
         pipeline = _FakePipeline()
         state, repo = await _seed(pipeline=pipeline)
         # Pre-acquire: simulate a concurrent winner already in EXECUTING.
-        repo.items["prop-a1"] = repo.items["prop-a1"].model_copy(
+        repo.items[sid("prop-a1")] = repo.items[sid("prop-a1")].model_copy(
             update={"status": ConversationalProposalStatus.EXECUTING}
         )
         handled = await try_conversational_intake_resume(
@@ -268,4 +272,6 @@ class TestConversationalIntakeResume:
         # Loser does not run the pipeline (winner owns it).
         assert pipeline.calls == []
         # Loser does not transition the state -- winner finishes it.
-        assert repo.items["prop-a1"].status is ConversationalProposalStatus.EXECUTING
+        assert (
+            repo.items[sid("prop-a1")].status is ConversationalProposalStatus.EXECUTING
+        )

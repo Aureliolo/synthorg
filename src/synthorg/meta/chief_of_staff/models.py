@@ -279,7 +279,7 @@ class Conversation(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr
+    id: UUID = Field(default_factory=uuid4)
     created_by: NotBlankStr
     created_at: AwareDatetime
     updated_at: AwareDatetime
@@ -314,7 +314,7 @@ class ConversationTurn(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr
+    id: UUID = Field(default_factory=uuid4)
     conversation_id: NotBlankStr
     sequence: int = Field(ge=0)
     role: ConversationRole
@@ -470,7 +470,7 @@ class ConversationalProposal(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr
+    id: UUID = Field(default_factory=uuid4)
     conversation_id: NotBlankStr
     approval_id: NotBlankStr
     work_item_json: NotBlankStr
