@@ -12952,7 +12952,7 @@
     },
     {
       "kind": "code",
-      "loc": 235,
+      "loc": 226,
       "loc_cap": 500,
       "module": "src/synthorg/observability/background_tasks.py",
       "owning_feature": "observability"
