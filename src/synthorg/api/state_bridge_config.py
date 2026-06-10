@@ -8,6 +8,7 @@ locks) and the one-shot "bridge config applied" flag. Composed onto
 """
 
 import threading
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -71,7 +72,7 @@ class BridgeConfigState:
         self,
         *,
         lock: threading.Lock,
-        attr: str,
+        attr: Literal["_api", "_workers", "_memory"],
         service: str,
         config: BaseModel,
     ) -> None:
@@ -101,7 +102,7 @@ class BridgeConfigState:
         self,
         *,
         lock: threading.Lock,
-        attr: str,
+        attr: Literal["_api", "_workers", "_memory"],
         service: str,
         updates: dict[str, object],
     ) -> None:
@@ -169,10 +170,9 @@ class BridgeConfigState:
         Combines a re-validating partial update and the swap into a
         single critical section so two concurrent operator edits cannot
         both build a new snapshot from the same prior value and lose
-        each other's update.  The watched-key check in
-        :class:`~synthorg.settings.subscribers.api_bridge_subscriber.ApiBridgeSettingsSubscriber`
-        already restricts ``updates`` to fields declared on
-        ``ApiBridgeConfig``.
+        each other's update.  The ``ApiBridgeSettingsSubscriber``
+        watched-key check already restricts ``updates`` to fields
+        declared on ``ApiBridgeConfig``.
         """
         self._mutate(
             lock=self._api_lock,

@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import copy
 import threading
 import uuid
 from collections.abc import AsyncIterator, Iterator
@@ -696,10 +697,11 @@ def _clear_appstate_stores(shared_app: Litestar, app_state: AppState) -> None:
             locks.clear()
 
 
-# Primitive owner objects composed onto ``AppState`` (mutable runtime
-# state decomposed out of the old central ``__slots__`` bag). Their
-# private fields are snapshotted/restored per test alongside the
-# identity primitives that remain on ``AppState`` itself.
+# Cohesive owner objects composed onto ``AppState`` to hold the mutable
+# runtime state a frozen slice cannot own. Their private fields are
+# snapshotted and restored per test (alongside the identity primitives on
+# ``AppState`` itself) so a test's in-place mutation cannot bleed into the
+# next test sharing the session-scoped app.
 _PRIMITIVE_OWNER_ATTRS: tuple[str, ...] = (
     "bridge_config",
     "per_op_limits",
@@ -758,12 +760,18 @@ def _snapshot_app_state(
     every domain service lives on a frozen feature slice in ``_slices``,
     so a shallow copy of that mapping is enough to revert a test's
     ``wire`` / ``swap_slice`` mutations (the slice *values* are immutable,
-    so they need no deep copy).
+    so they need no deep copy). Mutable *container* primitives (the
+    request-lock registry's dict/refcount map, the background-task sets)
+    are snapshotted by value (shallow copy) so a test's in-place mutation
+    is reverted on restore; scalars, frozen configs, and lock objects are
+    captured by reference.
     """
-    saved: list[tuple[object, str, Any]] = [
-        (holder, name, getattr(holder, name))
-        for holder, name in _iter_primitive_holders(app_state)
-    ]
+    saved: list[tuple[object, str, Any]] = []
+    for holder, name in _iter_primitive_holders(app_state):
+        value = getattr(holder, name)
+        if isinstance(value, (dict, set, list)):
+            value = copy.copy(value)
+        saved.append((holder, name, value))
     saved_slices: dict[Any, Any] = dict(app_state._slices)
     return saved, saved_slices
 

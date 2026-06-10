@@ -11,7 +11,7 @@ accessor).
 
 These tests cover the slice store (``slice`` / ``has_slice`` /
 ``set_slice`` / ``swap_slice`` / ``wire``), the ``per_op_limits`` 503
-guard, the surviving identity primitives, the ``request_locks`` registry,
+guard, the lifecycle identity primitives, the ``request_locks`` registry,
 and the ``bridge_config`` snapshot accessor.
 """
 
@@ -238,6 +238,15 @@ class TestPerOpLimits503:
         assert state.per_op_limits.has_rate_limit_config is True
         assert state.per_op_limits.rate_limit_config is config
 
+    def test_set_concurrency_then_get_returns_value(self) -> None:
+        from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
+
+        state = _make_state()
+        config = PerOpConcurrencyConfig()
+        state.per_op_limits.set_concurrency_config(config)
+        assert state.per_op_limits.has_concurrency_config is True
+        assert state.per_op_limits.concurrency_config is config
+
 
 class TestPrimitives:
     """The cross-cutting mutable primitives a frozen slice cannot own."""
@@ -362,7 +371,7 @@ class TestAppStateRequestLocks:
     def test_eviction_caps_registry_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Defence-in-depth cap: a non-terminal request that scopes but
         # never advances would otherwise grow the dict forever (the
-        # ``release_request_lock_if_idle`` path only fires on terminal
+        # ``request_locks.release_if_idle`` path only fires on terminal
         # states). When the cap is hit, the oldest **idle** entries
         # are evicted; still-held entries are kept so an in-flight
         # approve/reject is never stranded on an evicted Lock. Tests
@@ -413,7 +422,7 @@ class TestAppStateRequestLocks:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # The race the refcount fixes: between
-        # ``acquire_request_lock`` reserving the Lock and the body
+        # ``request_locks.acquire`` reserving the Lock and the body
         # entering ``async with``, the Lock is unlocked but in flight.
         # An eviction sweep that ignores the refcount would drop it
         # under the caller's feet and the next call would mint a
@@ -477,3 +486,102 @@ class TestAppStateApiBridgeConfig:
         state.bridge_config.swap_api(snapshot)
         state.bridge_config.swap_api(snapshot)
         assert state.bridge_config.api is snapshot
+
+
+@pytest.mark.unit
+class TestBridgeConfigMutate:
+    """``mutate_api`` re-validates and rolls back to the prior snapshot."""
+
+    def test_mutate_applies_valid_update(self) -> None:
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        state = _make_state()
+        original = ApiBridgeConfig(
+            max_lifecycle_events_per_query=10_000,
+            max_audit_records_per_query=42_000,
+        )
+        state.bridge_config.swap_api(original)
+
+        state.bridge_config.mutate_api({"max_lifecycle_events_per_query": 50_000})
+
+        updated = state.bridge_config.api
+        assert updated.max_lifecycle_events_per_query == 50_000
+        # Untouched fields are preserved from the prior snapshot.
+        assert updated.max_audit_records_per_query == 42_000
+
+    def test_mutate_rejects_out_of_range_and_retains_snapshot(self) -> None:
+        from pydantic import ValidationError
+
+        from synthorg.settings.bridge_configs import ApiBridgeConfig
+
+        state = _make_state()
+        original = ApiBridgeConfig(max_lifecycle_events_per_query=12_345)
+        state.bridge_config.swap_api(original)
+
+        # ``max_lifecycle_events_per_query`` is bounded ``ge=100``;
+        # ``model_validate`` re-runs validators (unlike a bare
+        # ``model_copy(update=...)``) so a below-bound value raises and
+        # the prior snapshot must stay in place.
+        with pytest.raises(ValidationError):
+            state.bridge_config.mutate_api({"max_lifecycle_events_per_query": 50})
+
+        assert state.bridge_config.api is original
+        assert state.bridge_config.api.max_lifecycle_events_per_query == 12_345
+
+
+@pytest.mark.unit
+class TestWsAuthLimitsValidation:
+    """``ws_auth_limits`` setters reject bool / non-finite / out-of-range."""
+
+    def test_set_auth_timeout_accepts_valid_value(self) -> None:
+        state = _make_state()
+        state.ws_auth_limits.set_auth_timeout_seconds(42.0)
+        assert state.ws_auth_limits.auth_timeout_seconds == 42.0
+
+    def test_set_auth_timeout_rejects_bool(self) -> None:
+        state = _make_state()
+        with pytest.raises(TypeError, match="must be float"):
+            state.ws_auth_limits.set_auth_timeout_seconds(True)
+
+    def test_set_auth_timeout_rejects_non_finite(self) -> None:
+        state = _make_state()
+        with pytest.raises(ValueError, match="must be finite"):
+            state.ws_auth_limits.set_auth_timeout_seconds(float("inf"))
+
+    def test_set_auth_timeout_rejects_out_of_range(self) -> None:
+        state = _make_state()
+        # Bounded ``[1.0, 120.0]``; 1000.0 is above the ceiling.
+        with pytest.raises(ValueError, match="must be between"):
+            state.ws_auth_limits.set_auth_timeout_seconds(1_000.0)
+
+    def test_set_frame_timeout_rejects_bool(self) -> None:
+        state = _make_state()
+        with pytest.raises(TypeError, match="must be int"):
+            state.ws_auth_limits.set_frame_timeout_seconds(True)
+
+    def test_set_frame_timeout_rejects_out_of_range(self) -> None:
+        state = _make_state()
+        # Bounded ``[1, 600]``; 0 is below the floor.
+        with pytest.raises(ValueError, match="must be between"):
+            state.ws_auth_limits.set_frame_timeout_seconds(0)
+
+    def test_set_revalidate_window_rejects_out_of_range(self) -> None:
+        state = _make_state()
+        # Bounded ``[1, 3600]``; 10000 is above the ceiling.
+        with pytest.raises(ValueError, match="must be between"):
+            state.ws_auth_limits.set_auth_revalidate_window_seconds(10_000)
+
+    def test_set_revalidate_max_failures_rejects_out_of_range(self) -> None:
+        state = _make_state()
+        # Bounded ``[1, 100]``; 0 is below the floor.
+        with pytest.raises(ValueError, match="must be between"):
+            state.ws_auth_limits.set_auth_revalidate_max_failures(0)
+
+    def test_setters_apply_valid_values(self) -> None:
+        state = _make_state()
+        state.ws_auth_limits.set_frame_timeout_seconds(45)
+        state.ws_auth_limits.set_auth_revalidate_window_seconds(90)
+        state.ws_auth_limits.set_auth_revalidate_max_failures(7)
+        assert state.ws_auth_limits.frame_timeout_seconds == 45
+        assert state.ws_auth_limits.auth_revalidate_window_seconds == 90
+        assert state.ws_auth_limits.auth_revalidate_max_failures == 7

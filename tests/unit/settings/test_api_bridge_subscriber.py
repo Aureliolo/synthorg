@@ -36,7 +36,7 @@ def _make_subscriber(
     """Build a subscriber with a real AppState + spec'd ConfigResolver.
 
     Returns the subscriber plus the AppState so callers can assert
-    on the post-call ``api_bridge_config`` snapshot.
+    on the post-call ``bridge_config.api`` snapshot.
     """
     settings_service = create_autospec(SettingsService, instance=True)
 

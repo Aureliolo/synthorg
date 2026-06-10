@@ -1,6 +1,6 @@
 """Workers bridge-config settings subscriber.
 
-Hot-swaps :attr:`AppState.workers_bridge_config` when an operator edits
+Hot-swaps ``app_state.bridge_config.workers`` when an operator edits
 a watched ``workers.*`` setting whose value lives on
 :class:`~synthorg.settings.bridge_configs.WorkersBridgeConfig`. The
 dispatcher already filters out ``restart_required=True`` keys before

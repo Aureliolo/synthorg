@@ -53,6 +53,17 @@ class AppState(AppStateSliceMixin):
 
     __slots__ = ()
 
+    # Lifecycle identity + primitive owners live in ``__dict__`` (the base
+    # ``AppStateSliceMixin`` carries no slots). These are bare annotations
+    # for readability, not slots, so ``__slots__`` stays empty.
+    config: RootConfig
+    clock: Clock
+    startup_time: float
+    bridge_config: BridgeConfigState
+    per_op_limits: PerOpLimitsState
+    request_locks: RequestLockRegistry
+    ws_auth_limits: WsAuthLimits
+
     def __init__(
         self,
         *,

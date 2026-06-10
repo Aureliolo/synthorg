@@ -55,7 +55,7 @@ for _ns, _key in _WATCHED:
 
 
 class ApiBridgeSettingsSubscriber:
-    """Hot-swap ``api_bridge_config`` when watched API settings change.
+    """Hot-swap ``app_state.bridge_config.api`` when watched API settings change.
 
     Holds references to :class:`AppState` (where the snapshot lives)
     and :class:`SettingsService` (carried for parity with peer

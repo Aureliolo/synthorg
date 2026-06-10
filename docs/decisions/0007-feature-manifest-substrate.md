@@ -90,10 +90,14 @@ non-blank line so the module-size budget gate caps it at 100 LOC.
    ship a `feature.py` carrying `# module-kind: feature`, LOC <= 100,
    and a module-level `FEATURE` attribute.
 2. `scripts/check_no_implicit_state_attribute.py` asserts
-   `AppState.__slots__` equals a hard-coded approved set (21 slots:
-   the cross-cutting mutable primitives a frozen slice cannot own).
-   New attributes must move into a feature state slice; the gate's
-   hard-coded set IS the contract.
+   `AppState.__slots__` equals the gate's `APPROVED_SLOTS` frozenset,
+   now drained to **empty** (#2299): `AppState` is a thin
+   `__slots__ = ()` facade, the cross-cutting mutable primitives a
+   frozen slice cannot own live on cohesive owner objects composed onto
+   it (`bridge_config` / `per_op_limits` / `request_locks` /
+   `ws_auth_limits`), and `clock` / `config` / `startup_time` live in
+   `__dict__`. New state must move into a feature state slice or a
+   primitive owner.
 3. `scripts/check_feature_index_freshness.py` regenerates
    `data/feature_index.json` + `data/codebase_map.json` to a scratch
    path and asserts the committed artefacts match byte-for-byte
@@ -135,11 +139,13 @@ own the symbol-level inventory.
 
 ### Neutral
 
-- `AppState` still owns 21 cross-cutting mutable primitives (request
-  locks, bridge configs, WS timeouts, background-task sets, the
-  shutdown event, plus `clock`, `config`, and `startup_time`). These
-  do not fit any one feature; the gate's approved set codifies the
-  boundary.
+- The cross-cutting mutable primitives a frozen slice cannot own
+  (request locks, bridge configs, WS timeouts) no longer sit as bare
+  `AppState` slots: #2299 decomposed them into cohesive owner objects
+  (`bridge_config` / `per_op_limits` / `request_locks` /
+  `ws_auth_limits`), leaving `AppState` a thin `__slots__ = ()` facade
+  whose only `__dict__` identity is `clock` / `config` /
+  `startup_time` plus the background-task sets and shutdown event.
 - Boot still warms `synthorg.api.app` before walking `feature.py`
   modules (the latent `core.agent` import cycle resolves through that
   order). The generator + freshness gate include the warmup; the

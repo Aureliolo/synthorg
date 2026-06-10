@@ -1,6 +1,6 @@
 """Memory bridge-config settings subscriber.
 
-Hot-swaps :attr:`AppState.memory_bridge_config` when an operator edits
+Hot-swaps ``app_state.bridge_config.memory`` when an operator edits
 a watched ``memory.*`` setting whose value lives on
 :class:`~synthorg.settings.bridge_configs.MemoryBridgeConfig` (the
 consolidation enforce-batch size and the embedding fine-tune preflight

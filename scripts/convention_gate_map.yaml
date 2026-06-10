@@ -105,7 +105,7 @@ mandatory_rules:
     #       must net-shrink.
     #   scripts/check_no_central_junk_drawer.py
     #     - core/enums.py must not exist (dissolved into feature
-    #       directories); AppState __slots__ may shrink but not grow.
+    #       directories), and stays deleted.
     #   scripts/check_no_circular_imports.py
     #   scripts/check_module_depth.py
     #   scripts/check_protocol_documented.py
@@ -117,8 +117,9 @@ mandatory_rules:
     #     - every slice-bearing directory under src/synthorg/ carries
     #       a feature.py manifest with FEATURE: FeatureModule.
     #   scripts/check_no_implicit_state_attribute.py
-    #     - AppState.__slots__ must equal the hard-coded approved set;
-    #       new application state goes through a feature slice.
+    #     - AppState.__slots__ must stay empty (thin facade); new
+    #       application state goes through a feature slice or a
+    #       primitive owner object.
     #   scripts/check_feature_index_freshness.py
     #     - data/feature_index.json + data/codebase_map.json are
     #       regenerated from the feature manifests on every commit.

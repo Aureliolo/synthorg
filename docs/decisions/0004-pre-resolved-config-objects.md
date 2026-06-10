@@ -41,10 +41,11 @@ This PR performs the full sweep (big-bang), not a single pilot:
 1. `MemoryBridgeConfig` (the memory namespace): the consolidation
    enforce-batch size and the embedding fine-tune preflight knobs
    (`fine_tune_vram_batch_table`, `fine_tune_chunk_size`) resolved into
-   one frozen model with an `AppState` slot, startup snapshot, and a
-   hot-swap subscriber. The live consumer -- the fine-tune preflight
-   batch-size recommendation in `api/controllers/memory.py` -- reads
-   `app_state.memory_bridge_config.fine_tune_vram_batch_table` per
+   one frozen model held by the `app_state.bridge_config` owner, with a
+   startup snapshot and a hot-swap subscriber. The live consumer -- the
+   fine-tune preflight batch-size recommendation in
+   `api/controllers/memory.py` -- reads
+   `app_state.bridge_config.memory.fine_tune_vram_batch_table` per
    request instead of a module constant. The `consolidation_enabled`
    master kill-switch stays a per-cycle resolve (the deliberate
    kill-switch idiom, unchanged). The remaining two fields'
@@ -64,8 +65,9 @@ This PR performs the full sweep (big-bang), not a single pilot:
    bridge" -- it is "every config-dependent service uses the canonical
    mechanism appropriate to its tier":
 
-   - **Frozen `<Ns>BridgeConfig` + AppState slot + hot-swap
-     subscriber** (the new pattern): `api`, `workers`, `memory`.
+   - **Frozen `<Ns>BridgeConfig` on the `app_state.bridge_config`
+     owner + hot-swap subscriber** (the new pattern): `api`, `workers`,
+     `memory`.
    - **Resolve-once `set_config_resolver` at boot** (cluster-2,
      task #2, already shipped): `OAuthTokenManager`,
      `WebhookEventBridge`, `MessageBusBridge`, `JetStreamMessageBus`
@@ -141,14 +143,16 @@ Per namespace group:
    field per consumed setting, defaults matching the registry.
 2. Add `ConfigResolver.get_<ns>_bridge_config()` resolving all fields
    via the shared `_resolve_bridge_fields()` helper.
-3. Add the `AppState` slot, `<name>_bridge_config` accessor,
-   `swap_*` / `mutate_*` under a per-bridge lock; default-construct in
-   `AppState.__init__` so consumers see a valid snapshot pre-startup.
+3. Add the snapshot field to the `app_state.bridge_config` owner
+   (`BridgeConfigState`): the `<name>` accessor and `swap_<name>` /
+   `mutate_<name>` under a per-bridge lock; default-construct it in
+   `BridgeConfigState.__init__` so consumers see a valid snapshot
+   pre-startup.
 4. Add `settings/subscribers/<ns>_bridge_subscriber.py` with the
    `_WATCHED` set + module-load existence guard; register it where
    `SettingsService` subscribers are wired.
 5. Change the service constructor to take the frozen config (or read
-   `AppState.<name>_bridge_config`); delete the `config_resolver` field
+   `app_state.bridge_config.<name>`); delete the `config_resolver` field
    where it is now unused; update all callsites and tests.
 6. Tests per bridge: valid default snapshot before `_apply_bridge_config`
    runs; hot-reload `mutate` applies; out-of-range `mutate` rejected

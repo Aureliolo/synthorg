@@ -16,7 +16,7 @@
     },
     {
       "kind": "code",
-      "loc": 404,
+      "loc": 403,
       "loc_cap": 500,
       "module": "src/synthorg/_core/features.py",
       "owning_feature": null
@@ -1794,7 +1794,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 542,
+      "loc": 548,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/config_apply.py",
       "owning_feature": "api_core"
@@ -2172,7 +2172,7 @@
     },
     {
       "kind": "code",
-      "loc": 209,
+      "loc": 216,
       "loc_cap": 500,
       "module": "src/synthorg/api/state.py",
       "owning_feature": "api_core"
@@ -2193,21 +2193,21 @@
     },
     {
       "kind": "code",
-      "loc": 149,
+      "loc": 158,
       "loc_cap": 500,
       "module": "src/synthorg/api/state_request_locks.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 179,
+      "loc": 178,
       "loc_cap": 500,
       "module": "src/synthorg/api/state_slices.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 223,
+      "loc": 229,
       "loc_cap": 500,
       "module": "src/synthorg/api/state_ws_auth_limits.py",
       "owning_feature": "api_core"
@@ -13022,7 +13022,7 @@
     },
     {
       "kind": "code",
-      "loc": 201,
+      "loc": 202,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/api.py",
       "owning_feature": "observability"

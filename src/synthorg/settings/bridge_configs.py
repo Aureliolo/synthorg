@@ -27,9 +27,9 @@ from synthorg.core.types import NotBlankStr
 _CSP_ORIGIN_RE: Final[re.Pattern[str]] = re.compile(r"^https?://[^\s/]+$")
 
 # WebSocket first-message auth handshake timeout bounds. Exposed as
-# module constants so the ``set_ws_auth_timeout_seconds`` setter on
-# ``AppState`` can validate against the same bounds as the Pydantic
-# field without duplicating the numeric literals (DRY).
+# module constants so the ``WsAuthLimits.set_auth_timeout_seconds`` setter
+# can validate against the same bounds as the Pydantic field without
+# duplicating the numeric literals (DRY).
 WS_AUTH_TIMEOUT_MIN_SECONDS: Final[float] = 1.0
 WS_AUTH_TIMEOUT_MAX_SECONDS: Final[float] = 120.0
 

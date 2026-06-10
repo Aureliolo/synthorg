@@ -365,17 +365,15 @@ async def _apply_ws_dos_settings(app_state: AppState) -> None:
     Raises:
         CancelledError: Raised on the corresponding failure path.
     """
-    for setting_key, setter_name in (
-        ("ws_frame_timeout_seconds", "set_frame_timeout_seconds"),
-        ("auth_revalidate_window_seconds", "set_auth_revalidate_window_seconds"),
-        ("auth_revalidate_max_failures", "set_auth_revalidate_max_failures"),
-    ):
+    ws_limits = app_state.ws_auth_limits
+
+    async def _apply_knob(setting_key: str, setter: Callable[[int], None]) -> None:
         try:
             value = await config_resolver_of(app_state).get_int(
                 SettingNamespace.API.value,
                 setting_key,
             )
-            getattr(app_state.ws_auth_limits, setter_name)(value)
+            setter(value)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -386,6 +384,18 @@ async def _apply_ws_dos_settings(app_state: AppState) -> None:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+
+    # Direct method references (not getattr-by-name) so a setter rename
+    # fails type-checking rather than silently breaking at startup.
+    await _apply_knob("ws_frame_timeout_seconds", ws_limits.set_frame_timeout_seconds)
+    await _apply_knob(
+        "auth_revalidate_window_seconds",
+        ws_limits.set_auth_revalidate_window_seconds,
+    )
+    await _apply_knob(
+        "auth_revalidate_max_failures",
+        ws_limits.set_auth_revalidate_max_failures,
+    )
 
 
 async def _apply_auth_token_bytes(app_state: AppState) -> None:

@@ -62,6 +62,53 @@ def _reject_non_int(value: object, *, field: str) -> None:
         raise TypeError(msg)
 
 
+def _reject_invalid_auth_timeout(value: float) -> None:
+    """Reject a non-finite, non-float, or out-of-range WS auth timeout.
+
+    Bounds mirror the ``ApiBridgeConfig.ws_auth_timeout_seconds`` Pydantic
+    field via the shared ``WS_AUTH_TIMEOUT_{MIN,MAX}_SECONDS`` constants.
+
+    Raises:
+        TypeError: When *value* is a ``bool``.
+        ValueError: When *value* is non-finite or out of range.
+    """
+    # ``bool`` is an ``int`` subclass, so ``True``/``False`` would
+    # otherwise sail through ``math.isfinite`` and the range check.
+    if isinstance(value, bool):
+        logger.warning(
+            API_BRIDGE_CONFIG_REJECTED,
+            field="ws_auth_timeout_seconds",
+            reason="invalid_type",
+            provided_type=type(value).__name__,
+        )
+        msg = f"ws_auth_timeout_seconds must be float, got {type(value).__name__}"
+        raise TypeError(msg)
+    if not math.isfinite(value):
+        logger.warning(
+            API_BRIDGE_CONFIG_REJECTED,
+            field="ws_auth_timeout_seconds",
+            reason="non_finite",
+            provided_value=repr(value),
+        )
+        msg = f"ws_auth_timeout_seconds must be finite, got {value!r}"
+        raise ValueError(msg)
+    if value < WS_AUTH_TIMEOUT_MIN_SECONDS or value > WS_AUTH_TIMEOUT_MAX_SECONDS:
+        logger.warning(
+            API_BRIDGE_CONFIG_REJECTED,
+            field="ws_auth_timeout_seconds",
+            reason="out_of_range",
+            provided_value=value,
+            min_value=WS_AUTH_TIMEOUT_MIN_SECONDS,
+            max_value=WS_AUTH_TIMEOUT_MAX_SECONDS,
+        )
+        msg = (
+            "ws_auth_timeout_seconds must be between"
+            f" {WS_AUTH_TIMEOUT_MIN_SECONDS} and"
+            f" {WS_AUTH_TIMEOUT_MAX_SECONDS} seconds, got {value}"
+        )
+        raise ValueError(msg)
+
+
 class WsAuthLimits:
     """WebSocket auth-handshake / per-frame + revalidation timeout knobs.
 
@@ -93,10 +140,10 @@ class WsAuthLimits:
         operator-visible contract is "takes effect at the next restart");
         always has a sane built-in default (10.0 s) so the handler
         never reaches back through the resolver per-connection.  The
-        setter below is permissive by design -- tests and subsystems that
-        need a different value at runtime may call it -- so the effective
-        value is whichever ``set_auth_timeout_seconds`` call ran most
-        recently.
+        setter validates and accepts repeated calls (no single-shot
+        contract) -- tests and subsystems may stage a different value at
+        runtime -- so the effective value is whichever validated
+        ``set_auth_timeout_seconds`` call ran most recently.
 
         Returns:
             Resulting numeric value.
@@ -109,53 +156,15 @@ class WsAuthLimits:
         Mirrors the ``set_max_pending_per_user`` pattern used by the
         ticket store: ``_apply_bridge_config`` resolves the setting
         and calls this setter with the validated value at startup,
-        which is then read by the ``/ws`` handler.  Repeated calls
-        are allowed and the latest value wins -- tests monkeypatch
+        which is then read by the ``/ws`` handler.  Validated repeated
+        calls are allowed and the latest value wins -- tests monkeypatch
         this freely and no state enforces a single-shot contract.
-        Bounds mirror the ``ApiBridgeConfig.ws_auth_timeout_seconds``
-        Pydantic field; the shared ``WS_AUTH_TIMEOUT_{MIN,MAX}_SECONDS``
-        constants keep the two sites aligned (DRY).
 
         Raises:
             TypeError: Raised on the corresponding failure path.
             ValueError: Raised on the corresponding failure path.
         """
-        # ``bool`` is an ``int`` subclass, so ``True``/``False`` would
-        # otherwise sail through ``math.isfinite`` and the range check.
-        if isinstance(value, bool):
-            logger.warning(
-                API_BRIDGE_CONFIG_REJECTED,
-                field="ws_auth_timeout_seconds",
-                reason="invalid_type",
-                provided_type=type(value).__name__,
-            )
-            msg = f"ws_auth_timeout_seconds must be float, got {type(value).__name__}"
-            raise TypeError(msg)
-
-        if not math.isfinite(value):
-            logger.warning(
-                API_BRIDGE_CONFIG_REJECTED,
-                field="ws_auth_timeout_seconds",
-                reason="non_finite",
-                provided_value=repr(value),
-            )
-            msg = f"ws_auth_timeout_seconds must be finite, got {value!r}"
-            raise ValueError(msg)
-        if value < WS_AUTH_TIMEOUT_MIN_SECONDS or value > WS_AUTH_TIMEOUT_MAX_SECONDS:
-            logger.warning(
-                API_BRIDGE_CONFIG_REJECTED,
-                field="ws_auth_timeout_seconds",
-                reason="out_of_range",
-                provided_value=value,
-                min_value=WS_AUTH_TIMEOUT_MIN_SECONDS,
-                max_value=WS_AUTH_TIMEOUT_MAX_SECONDS,
-            )
-            msg = (
-                "ws_auth_timeout_seconds must be between"
-                f" {WS_AUTH_TIMEOUT_MIN_SECONDS} and"
-                f" {WS_AUTH_TIMEOUT_MAX_SECONDS} seconds, got {value}"
-            )
-            raise ValueError(msg)
+        _reject_invalid_auth_timeout(value)
         self._auth_timeout_seconds = value
 
     @property

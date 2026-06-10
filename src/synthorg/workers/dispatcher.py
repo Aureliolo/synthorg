@@ -227,11 +227,11 @@ class DistributedDispatcher:
             # the broad ``retryable=lambda _exc: True`` predicate
             # cannot distinguish on its own.
             #
-            # ``GeneralRetryHandler.execute`` may raise
-            # ``RetryExhaustedError`` after the last attempt; in that
-            # case unwrap to the underlying cause so ``error_type``
-            # carries the actual publish failure (auth, timeout, etc.)
-            # rather than the generic exhaustion wrapper.
+            # ``GeneralRetryHandler.execute`` re-raises the last attempt's
+            # failure directly (it does not wrap it in a
+            # ``RetryExhaustedError``), so ``exc.__cause__`` is normally
+            # ``None`` and ``root_exc`` is ``exc``; the unwrap is a safe
+            # no-op that still surfaces any underlying cause if present.
             root_exc = exc.__cause__ or exc
             logger.warning(
                 WORKERS_DISPATCHER_PUBLISH_FAILED,

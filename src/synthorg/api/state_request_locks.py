@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
+    REQUEST_LOCK_EVICTED_AT_CAP,
     REQUEST_LOCK_RELEASE_SKIPPED_WHILE_HELD,
 )
 
@@ -32,10 +33,10 @@ class RequestLockRegistry:
     """Per-request lifecycle-lock registry with bounded eviction.
 
     Serialises ``scope`` / ``approve`` / ``reject`` transitions on a
-    request id. The dict is guarded by a plain ``threading.Lock`` because
-    ``asyncio.Lock`` instances can only be constructed inside a running
-    event loop, so the registry needs a thread-safe "check, then create"
-    that does not require an active loop to serialise itself.
+    request id. The registry dict is guarded by a plain ``threading.Lock``
+    (not an ``asyncio.Lock``) because ``get_or_create`` runs in a
+    synchronous context: the "check, then create" must serialise itself
+    thread-safely without requiring a running event loop.
     """
 
     __slots__ = ("_guard", "_locks", "_refs")
@@ -149,12 +150,23 @@ class RequestLockRegistry:
         evicted Lock object.
         """
         # Snapshot keys before mutating the OrderedDict during iteration.
+        evicted = 0
         for request_id in list(self._locks.keys()):
             if len(self._locks) <= target_size:
-                return
+                break
             lock = self._locks[request_id]
             if not lock.locked() and self._refs.get(request_id, 0) == 0:
                 self._locks.pop(request_id, None)
+                evicted += 1
+        if evicted:
+            # The cap was hit and idle entries were dropped; surface at
+            # DEBUG so an operator can correlate a flood of unique,
+            # never-advanced request ids against the bounded registry.
+            logger.debug(
+                REQUEST_LOCK_EVICTED_AT_CAP,
+                evicted=evicted,
+                cap=target_size,
+            )
 
     def release_if_idle(self, request_id: str) -> None:
         """Drop the lock for ``request_id`` after a terminal transition.
