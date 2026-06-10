@@ -44,8 +44,8 @@
     },
     "src/synthorg/api/controllers/_conversational_resume.py": {
       "cap": 600,
-      "loc": 549,
-      "ratio": 0.915,
+      "loc": 556,
+      "ratio": 0.927,
       "tier": "orchestrator"
     },
     "src/synthorg/api/controllers/_department_health.py": {
@@ -734,8 +734,8 @@
     },
     "src/synthorg/meta/chief_of_staff/group_chat.py": {
       "cap": 600,
-      "loc": 508,
-      "ratio": 0.847,
+      "loc": 507,
+      "ratio": 0.845,
       "tier": "service"
     },
     "src/synthorg/meta/chief_of_staff/models.py": {
@@ -746,8 +746,8 @@
     },
     "src/synthorg/meta/chief_of_staff/propose.py": {
       "cap": 500,
-      "loc": 425,
-      "ratio": 0.85,
+      "loc": 415,
+      "ratio": 0.83,
       "tier": "code"
     },
     "src/synthorg/meta/feature.py": {
@@ -848,8 +848,8 @@
     },
     "src/synthorg/persistence/postgres/conversation_repo.py": {
       "cap": 500,
-      "loc": 466,
-      "ratio": 0.932,
+      "loc": 470,
+      "ratio": 0.94,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/escalation_repo.py": {
