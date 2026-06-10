@@ -46,6 +46,9 @@ norm() {
         drive=$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')
         p="/$drive/${BASH_REMATCH[2]}"
     fi
+    # Strip any leading "./" (and repeated "././") so a relative path like
+    # "./scratch.py" cannot slip past the anchored deny regexes below.
+    while [[ "$p" == "./"* ]]; do p="${p#./}"; done
     printf '%s' "$p"
 }
 
