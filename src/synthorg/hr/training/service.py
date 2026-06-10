@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     # Collaborator protocols stay TYPE_CHECKING: tests pass partial
     # fakes for these, and hoisting them to runtime makes typeguard's
     # check_protocol reject the fakes (their methods are fully
-    # resolvable). See the #2183 established policy.
+    # resolvable).
     from synthorg.hr.training.protocol import (
         ContentExtractor,
         CurationStrategy,
