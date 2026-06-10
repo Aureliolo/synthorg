@@ -43,7 +43,7 @@ norm() {
     local p="${1//\\//}"
     if [[ "$p" =~ ^([A-Za-z]):/(.*)$ ]]; then
         local drive
-        drive=$(printf '%s' "${BASH_REMATCH[1]}" | tr 'A-Z' 'a-z')
+        drive=$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')
         p="/$drive/${BASH_REMATCH[2]}"
     fi
     printf '%s' "$p"

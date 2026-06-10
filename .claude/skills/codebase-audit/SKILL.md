@@ -36,10 +36,10 @@ Flags:
 
 ### Setup output directory
 
-Create a fresh timestamped run directory and repoint `_audit/latest` at it. The timestamp uses second-level precision (`%H%M%S`) so back-to-back runs in the same minute do not collide. All findings, INDEX, REWORK, DIFF, and JSON live in the run-specific directory; `_audit/latest` always points at the most recent run.
+Create a fresh timestamped run directory and repoint `_audit/latest` at it. The directory name combines a second-precision timestamp (`%H%M%S`) with the shell PID (`$$`), so even two runs started in the same second get distinct directories. All findings, INDEX, REWORK, DIFF, and JSON live in the run-specific directory; `_audit/latest` always points at the most recent run.
 
 ```bash
-RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M%S)" && mkdir -p "$RUN_DIR/findings" && if test -d _audit/latest && ! test -L _audit/latest; then rm -rf _audit/latest; else rm -f _audit/latest; fi && ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest && touch _audit/.audit-run-active && echo "RUN_DIR=$RUN_DIR"
+RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M%S)-$$" && mkdir -p "$RUN_DIR/findings" && if test -d _audit/latest && ! test -L _audit/latest; then rm -rf _audit/latest; else rm -f _audit/latest; fi && ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest && touch _audit/.audit-run-active && echo "RUN_DIR=$RUN_DIR"
 ```
 
 The `touch _audit/.audit-run-active` marker arms the `check_no_audit_scratch_scripts.sh` PreToolUse hook for the duration of this run. While the marker exists, that hook blocks any agent attempt to Write a `*.py` / `*.sh` file at the project root or directly under `scripts/` (the documented scratch-script leak pattern); it stays inert otherwise, so normal development is unaffected. Phase 7 removes the marker; a stale marker (>12h, from a crashed run) is auto-ignored by the hook.
