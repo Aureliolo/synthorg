@@ -473,7 +473,7 @@ The conventions-enforcer agent checks for project-specific code conventions from
 
 **Python 3.14 conventions (MAJOR):**
 8. `from __future__ import annotations`: forbidden, Python 3.14 has PEP 649 (CRITICAL)
-9. Unparenthesized `except (A, B):` when NOT binding: flag the parens as removable, prefer `except A, B:` (MAJOR). **Do NOT flag `except (A, B) as exc:` -- when binding with `as`, PEP 758 REQUIRES the parens; it is correct, not a violation.** (See "Known false positives" below.)
+9. Parenthesized `except (A, B):` when NOT binding: flag the parens as removable, prefer `except A, B:` (MAJOR). **Do NOT flag `except (A, B) as exc:` -- when binding with `as`, PEP 758 REQUIRES the parens; it is correct, not a violation.** (See "Known false positives" below.)
 
 **Code structure (MAJOR):**
 10. Functions exceeding 50 lines (MAJOR)

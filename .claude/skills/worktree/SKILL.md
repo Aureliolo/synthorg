@@ -251,7 +251,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    - `spec:tools` → `src/synthorg/tools/`
    - `spec:hr` → `src/synthorg/hr/`
    - `spec:human-interaction` → `src/synthorg/api/`, `src/synthorg/cli/`
-   - `spec:api` → `src/synthorg/api/` (plus `src/synthorg/cli/`)
+   - `spec:api` → `src/synthorg/api/`, `src/synthorg/cli/`
    - `spec:memory` → `src/synthorg/memory/`
    - `spec:persistence` → `src/synthorg/persistence/`
    - `spec:security` → `src/synthorg/security/`

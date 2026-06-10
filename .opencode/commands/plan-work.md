@@ -6,7 +6,7 @@ description: Plan max-safe parallel worktrees (survey open issues, map inflight,
 
 You are running in **OpenCode**, not Claude Code. Apply these overrides:
 
-### Subagent type mapping
+## Subagent type mapping
 
 The skill spawns sub-agents via the `Task` tool with Claude Code `subagent_type` values. In OpenCode, load the corresponding `.opencode/agents/` definition as the subagent prompt and use the model in its frontmatter:
 
@@ -16,15 +16,15 @@ The skill spawns sub-agents via the `Task` tool with Claude Code `subagent_type`
 
 For the footprint-estimation sub-agents (Step 3), there is no dedicated OpenCode agent: run them inline with a general-purpose subagent and a `haiku`-tier model (mechanical file counts).
 
-### GitHub queries
+## GitHub queries
 
 The skill uses `gh` via the shell (`gh issue list`, `gh issue view`, `gh pr list`). This is correct in OpenCode too: `gh` is a plain shell command, not an MCP tool. Do NOT substitute an MCP `list_issues` call.
 
-### Hand-off to /worktree setup
+## Hand-off to /worktree setup
 
 Step 7 hands the chosen groupings to `/worktree setup`. In OpenCode that is the `worktree` command (`.opencode/commands/worktree.md`); invoke it with the same one-line-per-worktree groupings (`<branch> #issues "Description"`). Do not re-implement worktree creation here.
 
-### Shell compatibility
+## Shell compatibility
 
 This runs on Windows with PowerShell. The skill's `git` / `gh` invocations work the same, but bash-specific syntax (`for ... do ... done`, `test -f`, `[ -n "$x" ]`, `$(...)` substitution in conditionals) needs PowerShell equivalents:
 - `test -f file` becomes `Test-Path file`
