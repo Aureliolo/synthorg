@@ -1,9 +1,9 @@
 {
-  "unit_suite_seconds": 131,
-  "test_count": 20918,
-  "commit": "e012abea",
-  "measured_at": "2026-04-23",
+  "unit_suite_seconds": 183,
+  "test_count": 32626,
+  "commit": "669050d50",
+  "measured_at": "2026-06-10",
   "regression_threshold_secs": 15,
   "regression_threshold_ratio": 1.3,
-  "notes": "Re-measured on 2026-04-23. Prior baseline (107s / 19112 tests / 46abf4f2 / 2026-04-13) was stale -- main accumulated ~1800 tests across upstream merges while the baseline stayed pinned. Per-test cost is 6.26ms (current) vs 5.60ms (old baseline); the fixed +10s threshold fired on mechanical scale growth rather than a real slowdown. Tolerance raised to +15s to absorb xdist variance at the new scale without masking genuine regressions."
+  "notes": "Re-measured on 2026-06-10. Prior baseline (131s / 20918 tests / 2026-04-23) went stale: the suite grew to 32626 tests across upstream merges while the baseline stayed pinned, so the per-test-cost rail fired on mechanical scale growth rather than a real slowdown. Per-test cost is 5.61ms (current) vs 6.26ms (old baseline). The ratio threshold (1.3) still catches genuine per-test regressions at the new scale."
 }
