@@ -33,4 +33,4 @@ class TestConsoleNotificationSink:
 
         delivered = [e for e in logs if e["event"] == NOTIFICATION_CONSOLE_DELIVERED]
         assert len(delivered) == 1
-        assert delivered[0]["notification_id"] == n.id
+        assert delivered[0]["notification_id"] == str(n.id)

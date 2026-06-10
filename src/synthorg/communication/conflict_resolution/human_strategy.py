@@ -26,7 +26,6 @@ subsequent GETs surface the terminal state.
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
 
 from synthorg.communication.conflict_resolution._escalation_builders import (
     build_escalation_notification,
@@ -153,7 +152,7 @@ class HumanEscalationResolver:
         # A race-fast decision endpoint that sees the row and calls
         # ``registry.resolve`` before we register would otherwise create
         # an orphan decision and leave the resolver waiting until timeout.
-        future = await self._registry.register(escalation.id)
+        future = await self._registry.register(str(escalation.id))
         try:
             await self._store.create(escalation)
         except Exception as exc:
@@ -165,18 +164,18 @@ class HumanEscalationResolver:
             # here).
             logger.warning(
                 CONFLICT_ESCALATION_QUEUED,
-                escalation_id=escalation.id,
+                escalation_id=str(escalation.id),
                 conflict_id=str(conflict.id),
                 subject=conflict.subject,
                 note="store_create_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            await self._registry.cancel(escalation.id)
+            await self._registry.cancel(str(escalation.id))
             raise
         logger.info(
             CONFLICT_ESCALATION_QUEUED,
-            escalation_id=escalation.id,
+            escalation_id=str(escalation.id),
             conflict_id=str(conflict.id),
             subject=conflict.subject,
             timeout_seconds=self._timeout_seconds,
@@ -204,7 +203,7 @@ class HumanEscalationResolver:
                 log_task_exceptions(
                     logger,
                     CONFLICT_ESCALATION_NOTIFY_FAILED,
-                    escalation_id=escalation.id,
+                    escalation_id=str(escalation.id),
                     conflict_id=str(conflict.id),
                 ),
             )
@@ -235,7 +234,7 @@ class HumanEscalationResolver:
         # The decision endpoint is responsible for persisting the
         # DECIDED row and then resolving the Future -- the resolver
         # only has to hand the decision to the processor.
-        decided_by = await self._resolve_decided_by(escalation.id)
+        decided_by = await self._resolve_decided_by(str(escalation.id))
         resolution = self._processor.process(
             conflict,
             decision,
@@ -243,7 +242,7 @@ class HumanEscalationResolver:
         )
         logger.info(
             CONFLICT_ESCALATION_RESOLVED,
-            escalation_id=escalation.id,
+            escalation_id=str(escalation.id),
             conflict_id=str(conflict.id),
             outcome=resolution.outcome.value,
         )
@@ -280,7 +279,7 @@ class HumanEscalationResolver:
         except TimeoutError:
             logger.warning(
                 CONFLICT_ESCALATION_NOTIFY_FAILED,
-                escalation_id=escalation.id,
+                escalation_id=str(escalation.id),
                 conflict_id=str(conflict.id),
                 timeout_seconds=_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS,
                 note="notification_dispatch_timeout",
@@ -290,7 +289,7 @@ class HumanEscalationResolver:
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_NOTIFY_FAILED,
-                escalation_id=escalation.id,
+                escalation_id=str(escalation.id),
                 conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -312,12 +311,12 @@ class HumanEscalationResolver:
         resolver's fallback path intact.
         """
         try:
-            await asyncio.shield(self._registry.cancel(escalation.id))
+            await asyncio.shield(self._registry.cancel(str(escalation.id)))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
-                escalation_id=escalation.id,
+                escalation_id=str(escalation.id),
                 conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -331,7 +330,7 @@ class HumanEscalationResolver:
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
-                escalation_id=escalation.id,
+                escalation_id=str(escalation.id),
                 conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -339,7 +338,7 @@ class HumanEscalationResolver:
             )
         logger.warning(
             CONFLICT_ESCALATION_TIMEOUT,
-            escalation_id=escalation.id,
+            escalation_id=str(escalation.id),
             conflict_id=str(conflict.id),
             timeout_seconds=self._timeout_seconds,
         )
@@ -355,12 +354,12 @@ class HumanEscalationResolver:
         tries to cancel us mid-cleanup, then log for audit.
         """
         try:
-            await asyncio.shield(self._registry.cancel(escalation.id))
+            await asyncio.shield(self._registry.cancel(str(escalation.id)))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_CANCELLED,
-                escalation_id=escalation.id,
+                escalation_id=str(escalation.id),
                 conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -369,7 +368,7 @@ class HumanEscalationResolver:
         try:
             await asyncio.shield(
                 self._store.cancel(
-                    escalation.id,
+                    str(escalation.id),
                     cancelled_by="system:resolver_cancelled",
                 ),
             )
@@ -377,7 +376,7 @@ class HumanEscalationResolver:
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_CANCELLED,
-                escalation_id=escalation.id,
+                escalation_id=str(escalation.id),
                 conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -385,7 +384,7 @@ class HumanEscalationResolver:
             )
         logger.warning(
             CONFLICT_ESCALATION_CANCELLED,
-            escalation_id=escalation.id,
+            escalation_id=str(escalation.id),
             conflict_id=str(conflict.id),
         )
 
@@ -409,12 +408,12 @@ class HumanEscalationResolver:
             ``ESCALATED_TO_HUMAN`` contract.
         """
         try:
-            row = await self._store.get(escalation.id)
+            row = await self._store.get(str(escalation.id))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
-                escalation_id=escalation.id,
+                escalation_id=str(escalation.id),
                 conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -428,12 +427,12 @@ class HumanEscalationResolver:
         # Drain the future so the registry does not leak; no-op if the
         # future completed concurrently.
         try:
-            await asyncio.shield(self._registry.cancel(escalation.id))
+            await asyncio.shield(self._registry.cancel(str(escalation.id)))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_RESOLVED,
-                escalation_id=escalation.id,
+                escalation_id=str(escalation.id),
                 conflict_id=str(conflict.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -447,7 +446,7 @@ class HumanEscalationResolver:
         )
         logger.info(
             CONFLICT_ESCALATION_RESOLVED,
-            escalation_id=escalation.id,
+            escalation_id=str(escalation.id),
             conflict_id=str(conflict.id),
             outcome=resolution.outcome.value,
             note="late_decision_observed_after_timeout",
@@ -507,9 +506,6 @@ class HumanEscalationResolver:
         if self._timeout_seconds is not None:
             expires_at = now + timedelta(seconds=self._timeout_seconds)
         return Escalation(
-            # Full UUID (32 hex chars, 122 bits entropy) so persisted
-            # escalation IDs cannot collide across long-lived queues.
-            id=f"escalation-{uuid4().hex}",
             conflict=conflict,
             status=EscalationStatus.PENDING,
             created_at=now,

@@ -5,7 +5,10 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
-from synthorg.core.persistence_errors import PersistenceVersionConflictError
+from synthorg.core.persistence_errors import (
+    PersistenceVersionConflictError,
+    QueryError,
+)
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -22,6 +25,7 @@ from synthorg.persistence.sqlite.workflow_definition_repo import (
 from synthorg.persistence.workflow_definition_protocol import (
     WorkflowDefinitionFilterSpec,
 )
+from tests._shared import as_pk, as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 
 
@@ -104,7 +108,7 @@ def _make_definition(  # noqa: PLR0913
 ) -> WorkflowDefinition:
     """Build a complete ``WorkflowDefinition`` for testing."""
     return WorkflowDefinition(
-        id=definition_id,
+        id=as_pk(definition_id),
         name=name,
         description=description,
         workflow_type=workflow_type,
@@ -126,7 +130,7 @@ class TestSQLiteWorkflowDefinitionRepository:
         defn = _make_definition()
         await repo.save(defn)
 
-        result = await repo.get("wf-001")
+        result = await repo.get(sid("wf-001"))
 
         assert result is not None
         assert result.id == defn.id
@@ -152,6 +156,22 @@ class TestSQLiteWorkflowDefinitionRepository:
             assert loaded_edge.type == orig_edge.type
             assert loaded_edge.label == orig_edge.label
 
+    async def test_get_rejects_non_uuid_id(
+        self,
+        repo: SQLiteWorkflowDefinitionRepository,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        """A non-UUID stored id is rejected at read instead of silently passing."""
+        await repo.save(_make_definition())
+        await migrated_db.execute(
+            "UPDATE workflow_definitions SET id = ? WHERE id = ?",
+            ("not-a-uuid", sid("wf-001")),
+        )
+        await migrated_db.commit()
+
+        with pytest.raises(QueryError, match="Failed to deserialize"):
+            await repo.get("not-a-uuid")
+
     async def test_save_upsert_updates_existing(
         self,
         repo: SQLiteWorkflowDefinitionRepository,
@@ -168,7 +188,7 @@ class TestSQLiteWorkflowDefinitionRepository:
         )
         await repo.save(defn_v2)
 
-        result = await repo.get("wf-001")
+        result = await repo.get(sid("wf-001"))
         assert result is not None
         assert result.name == "Updated Workflow"
         assert result.description == "Updated description"
@@ -191,7 +211,7 @@ class TestSQLiteWorkflowDefinitionRepository:
             await repo.save(defn_v3)
 
         # Original revision 1 should still be stored
-        result = await repo.get("wf-001")
+        result = await repo.get(sid("wf-001"))
         assert result is not None
         assert result.revision == 1
         assert result.name == "Test Workflow"
@@ -217,7 +237,7 @@ class TestSQLiteWorkflowDefinitionRepository:
             await repo.save(defn_v1_again)
 
         # Original should be unchanged
-        result = await repo.get("wf-001")
+        result = await repo.get(sid("wf-001"))
         assert result is not None
         assert result.name == "Test Workflow"
 
@@ -225,7 +245,7 @@ class TestSQLiteWorkflowDefinitionRepository:
         self,
         repo: SQLiteWorkflowDefinitionRepository,
     ) -> None:
-        result = await repo.get("nonexistent-id")
+        result = await repo.get(sid("nonexistent-id"))
         assert result is None
 
     async def test_list_definitions_all(
@@ -248,7 +268,7 @@ class TestSQLiteWorkflowDefinitionRepository:
         results = await repo.query(WorkflowDefinitionFilterSpec())
         assert len(results) == 2
         ids = {d.id for d in results}
-        assert ids == {"wf-a", "wf-b"}
+        assert ids == {as_uuid("wf-a"), as_uuid("wf-b")}
 
     async def test_list_definitions_with_filter(
         self,
@@ -271,7 +291,7 @@ class TestSQLiteWorkflowDefinitionRepository:
             WorkflowDefinitionFilterSpec(workflow_type=WorkflowType.KANBAN),
         )
         assert len(results) == 1
-        assert results[0].id == "wf-kanban"
+        assert results[0].id == as_uuid("wf-kanban")
         assert results[0].workflow_type == WorkflowType.KANBAN
 
     async def test_delete_returns_true(
@@ -281,17 +301,17 @@ class TestSQLiteWorkflowDefinitionRepository:
         defn = _make_definition()
         await repo.save(defn)
 
-        deleted = await repo.delete("wf-001")
+        deleted = await repo.delete(sid("wf-001"))
         assert deleted is True
 
-        result = await repo.get("wf-001")
+        result = await repo.get(sid("wf-001"))
         assert result is None
 
     async def test_delete_not_found_returns_false(
         self,
         repo: SQLiteWorkflowDefinitionRepository,
     ) -> None:
-        deleted = await repo.delete("nonexistent-id")
+        deleted = await repo.delete(sid("nonexistent-id"))
         assert deleted is False
 
     async def test_timestamps_preserved_utc(
@@ -303,7 +323,7 @@ class TestSQLiteWorkflowDefinitionRepository:
         defn = _make_definition(created_at=created, updated_at=updated)
         await repo.save(defn)
 
-        result = await repo.get("wf-001")
+        result = await repo.get(sid("wf-001"))
         assert result is not None
         assert result.created_at == created
         assert result.updated_at == updated

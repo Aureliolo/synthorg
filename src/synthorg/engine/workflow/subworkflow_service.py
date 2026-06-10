@@ -287,7 +287,7 @@ class SubworkflowService:
             raise
         logger.info(
             SUBWORKFLOW_REGISTERED,
-            subworkflow_id=definition.id,
+            subworkflow_id=str(definition.id),
             version=definition.version,
             saved_by=saved_by,
             stage="service.create",

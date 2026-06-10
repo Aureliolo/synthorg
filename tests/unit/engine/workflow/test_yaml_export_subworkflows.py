@@ -18,13 +18,14 @@ from synthorg.engine.workflow.enums import (
     WorkflowValueType,
 )
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
+from tests._shared import as_uuid
 
 _NOW = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 
 
 def _minimal_parent_with_subworkflow_node() -> WorkflowDefinition:
     return WorkflowDefinition(
-        id="wfdef-parent",
+        id=as_uuid("wfdef-parent"),
         name="Parent Workflow",
         description="Uses a subworkflow",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -87,7 +88,7 @@ def _minimal_parent_with_subworkflow_node() -> WorkflowDefinition:
 
 def _subworkflow_definition() -> WorkflowDefinition:
     return WorkflowDefinition(
-        id="sub-finance-close",
+        id=as_uuid("sub-finance-close"),
         name="Finance Close",
         description="",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -181,7 +182,7 @@ class TestYamlExportSubworkflowFields:
     def test_parent_without_subworkflow_still_valid(self) -> None:
         """Parent without any SUBWORKFLOW node omits the io arrays."""
         definition = WorkflowDefinition(
-            id="plain",
+            id=as_uuid("plain"),
             name="Plain",
             description="",
             workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,

@@ -98,7 +98,7 @@ class PostgresWorkflowExecutionRepository:
         """
         node_jsonb = Jsonb(node_execution_payloads(execution))
         return (
-            execution.id,
+            str(execution.id),
             execution.definition_id,
             execution.definition_revision,
             execution.status.value,
@@ -138,7 +138,7 @@ class PostgresWorkflowExecutionRepository:
                     msg = f"Workflow execution {execution.id!r} already exists"
                     logger.warning(
                         PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                        execution_id=execution.id,
+                        execution_id=str(execution.id),
                         error=msg,
                     )
                     raise DuplicateRecordError(msg)
@@ -147,7 +147,7 @@ class PostgresWorkflowExecutionRepository:
             msg = f"Failed to save workflow execution {execution.id!r}"
             logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                execution_id=execution.id,
+                execution_id=str(execution.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -175,14 +175,14 @@ class PostgresWorkflowExecutionRepository:
                     """,
                     (
                         *params[1:],  # skip id (it's in WHERE)
-                        execution.id,
+                        str(execution.id),
                         execution.version - 1,
                     ),
                 )
                 if cur.rowcount == 0:
                     await cur.execute(
                         "SELECT version FROM workflow_executions WHERE id = %s",
-                        (execution.id,),
+                        (str(execution.id),),
                     )
                     row = await cur.fetchone()
                     if row is None:
@@ -192,7 +192,7 @@ class PostgresWorkflowExecutionRepository:
                         )
                         logger.warning(
                             PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                            execution_id=execution.id,
+                            execution_id=str(execution.id),
                             error=msg,
                         )
                         raise RecordNotFoundError(msg)
@@ -203,7 +203,7 @@ class PostgresWorkflowExecutionRepository:
                     )
                     logger.warning(
                         PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                        execution_id=execution.id,
+                        execution_id=str(execution.id),
                         error=msg,
                     )
                     raise PersistenceVersionConflictError(msg)
@@ -212,7 +212,7 @@ class PostgresWorkflowExecutionRepository:
             msg = f"Failed to save workflow execution {execution.id!r}"
             logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                execution_id=execution.id,
+                execution_id=str(execution.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -483,7 +483,7 @@ class PostgresWorkflowExecutionRepository:
             PERSISTENCE_WORKFLOW_EXEC_FOUND_BY_TASK,
             task_id=task_id,
             found=True,
-            execution_id=execution.id,
+            execution_id=str(execution.id),
         )
         return execution
 

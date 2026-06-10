@@ -78,7 +78,7 @@ def _execution_duration_seconds(
     if duration < 0:
         logger.warning(
             METRICS_CLOCK_SKEW_DETECTED,
-            execution_id=execution.id,
+            execution_id=str(execution.id),
             skew_seconds=abs(duration),
             note=("completed_at < created_at; check NTP or multi-node clock sync"),
         )
@@ -177,7 +177,7 @@ async def cancel_execution(
         "workflow.execution.cancelled",
         attributes={
             "workflow.definition_id": execution.definition_id,
-            "workflow.execution_id": execution.id,
+            "workflow.execution_id": str(execution.id),
             "workflow.cancelled_by": cancelled_by,
         },
     ):
@@ -254,7 +254,7 @@ async def complete_execution(
         "workflow.execution.completed",
         attributes={
             "workflow.definition_id": execution.definition_id,
-            "workflow.execution_id": execution.id,
+            "workflow.execution_id": str(execution.id),
         },
     ):
         now = datetime.now(UTC)
@@ -306,7 +306,7 @@ async def fail_execution(
         "workflow.execution.failed",
         attributes={
             "workflow.definition_id": execution.definition_id,
-            "workflow.execution_id": execution.id,
+            "workflow.execution_id": str(execution.id),
             # Don't attach the raw ``error`` string as a span
             # attribute: error messages are unbounded user / model
             # output and would inflate the trace cardinality and
@@ -388,15 +388,15 @@ async def _retry_after_version_conflict(
     retry_event = _retry_event_for(event)
     logger.warning(
         retry_event,
-        execution_id=execution.id,
+        execution_id=str(execution.id),
         task_id=event.task_id,
         error="Concurrent modification; re-fetching execution",
     )
-    refreshed = await repo.get(execution.id)
+    refreshed = await repo.get(str(execution.id))
     if refreshed is None:
         logger.warning(
             retry_event,
-            execution_id=execution.id,
+            execution_id=str(execution.id),
             task_id=event.task_id,
             error="Execution not found after version conflict",
         )
@@ -419,14 +419,14 @@ async def _retry_after_version_conflict(
     except RecordNotFoundError:
         logger.warning(
             retry_event,
-            execution_id=execution.id,
+            execution_id=str(execution.id),
             task_id=event.task_id,
             error="Execution deleted during retry",
         )
     except PersistenceVersionConflictError:
         logger.warning(
             retry_event,
-            execution_id=execution.id,
+            execution_id=str(execution.id),
             task_id=event.task_id,
             error="Concurrent modification during retry",
         )
@@ -458,7 +458,7 @@ async def handle_task_state_changed(
         # would only fail the same way, so log and drop.
         logger.warning(
             _retry_event_for(event),
-            execution_id=execution.id,
+            execution_id=str(execution.id),
             task_id=event.task_id,
             error="Execution deleted before lifecycle update could persist",
         )
@@ -506,7 +506,7 @@ def _emit_terminal_workflow_observability(
     """
     logger.info(
         WORKFLOW_EXEC_STATUS_TRANSITIONED,
-        execution_id=execution.id,
+        execution_id=str(execution.id),
         workflow_definition_id=execution.definition_id,
         from_status=execution.status.value,
         to_status=terminal_status.value,
@@ -514,7 +514,7 @@ def _emit_terminal_workflow_observability(
     )
     logger.info(
         event_constant,
-        execution_id=execution.id,
+        execution_id=str(execution.id),
         **(extra_event_kwargs or {}),
     )
     record_workflow_execution(
@@ -544,7 +544,7 @@ async def _handle_task_failed(
         "workflow.execution.task_failed",
         attributes={
             "workflow.definition_id": execution.definition_id,
-            "workflow.execution_id": execution.id,
+            "workflow.execution_id": str(execution.id),
             "workflow.terminal_via": "task_failed",
             "task.id": event.task_id,
             "task.new_status": new_status_value,
@@ -570,7 +570,7 @@ async def _handle_task_failed(
         # State-transition logs fire AFTER persistence succeeds. Save
         # raises propagate here, skipping these logs and the metric.
         _log_node_status_transition(
-            execution_id=execution.id,
+            execution_id=str(execution.id),
             workflow_definition_id=execution.definition_id,
             task_id=event.task_id,
             previous_node_status=previous_node_status,
@@ -578,7 +578,7 @@ async def _handle_task_failed(
         )
         logger.info(
             WORKFLOW_EXEC_NODE_TASK_FAILED,
-            execution_id=execution.id,
+            execution_id=str(execution.id),
             task_id=event.task_id,
         )
         _emit_terminal_workflow_observability(
@@ -622,7 +622,7 @@ async def _handle_task_completed(
         # Node-status log fires AFTER persistence; the workflow
         # itself stays RUNNING so no terminal log is emitted here.
         _log_node_status_transition(
-            execution_id=execution.id,
+            execution_id=str(execution.id),
             workflow_definition_id=execution.definition_id,
             task_id=event.task_id,
             previous_node_status=previous_node_status,
@@ -630,7 +630,7 @@ async def _handle_task_completed(
         )
         logger.info(
             WORKFLOW_EXEC_NODE_TASK_COMPLETED,
-            execution_id=execution.id,
+            execution_id=str(execution.id),
             task_id=event.task_id,
         )
 
@@ -654,7 +654,7 @@ async def _finalize_task_completed_terminal(
         "workflow.execution.task_completed",
         attributes={
             "workflow.definition_id": execution.definition_id,
-            "workflow.execution_id": execution.id,
+            "workflow.execution_id": str(execution.id),
             "workflow.terminal_via": "task_completed",
             "task.id": event.task_id,
         },
@@ -670,7 +670,7 @@ async def _finalize_task_completed_terminal(
         await repo.save(completed)
         # State-transition logs fire AFTER persistence succeeds.
         _log_node_status_transition(
-            execution_id=execution.id,
+            execution_id=str(execution.id),
             workflow_definition_id=execution.definition_id,
             task_id=event.task_id,
             previous_node_status=previous_node_status,
@@ -678,7 +678,7 @@ async def _finalize_task_completed_terminal(
         )
         logger.info(
             WORKFLOW_EXEC_NODE_TASK_COMPLETED,
-            execution_id=execution.id,
+            execution_id=str(execution.id),
             task_id=event.task_id,
         )
         _emit_terminal_workflow_observability(
@@ -771,7 +771,7 @@ def _update_node_status(
         msg = f"task_id {task_id!r} not found in execution {execution.id!r}"
         logger.warning(
             WORKFLOW_EXEC_NOT_FOUND,
-            execution_id=execution.id,
+            execution_id=str(execution.id),
             task_id=task_id,
             error=msg,
         )

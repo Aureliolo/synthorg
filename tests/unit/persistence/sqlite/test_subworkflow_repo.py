@@ -21,6 +21,7 @@ from synthorg.engine.workflow.enums import (
 from synthorg.persistence.sqlite.subworkflow_repo import (
     SQLiteSubworkflowRepository,
 )
+from tests._shared import as_pk, sid
 from tests._shared.persistence import make_private_write_context
 
 _DEFAULT_TS = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
@@ -81,7 +82,7 @@ def _make_subworkflow(  # noqa: PLR0913
     outputs: tuple[WorkflowIODeclaration, ...] = (),
 ) -> WorkflowDefinition:
     return WorkflowDefinition(
-        id=subworkflow_id,
+        id=as_pk(subworkflow_id),
         name=name,
         description=description,
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -121,7 +122,7 @@ class TestSaveAndGet:
         )
         await repo.save(sub)
 
-        loaded = await repo.get(("sub-quarterly-close", "1.0.0"))
+        loaded = await repo.get((sid("sub-quarterly-close"), "1.0.0"))
         assert loaded is not None
         assert loaded.id == sub.id
         assert loaded.version == "1.0.0"
@@ -137,7 +138,7 @@ class TestSaveAndGet:
         self,
         repo: SQLiteSubworkflowRepository,
     ) -> None:
-        result = await repo.get(("sub-nonexistent", "1.0.0"))
+        result = await repo.get((sid("sub-nonexistent"), "1.0.0"))
         assert result is None
 
     async def test_duplicate_version_rejected(
@@ -163,14 +164,14 @@ class TestListVersions:
         for version in ["1.0.0", "1.9.0", "1.10.0", "2.0.0"]:
             await repo.save(_make_subworkflow(version=version))
 
-        versions = await repo.list_versions("sub-quarterly-close")
+        versions = await repo.list_versions(sid("sub-quarterly-close"))
         assert versions == ("2.0.0", "1.10.0", "1.9.0", "1.0.0")
 
     async def test_list_versions_missing_subworkflow(
         self,
         repo: SQLiteSubworkflowRepository,
     ) -> None:
-        versions = await repo.list_versions("sub-nonexistent")
+        versions = await repo.list_versions(sid("sub-nonexistent"))
         assert versions == ()
 
 
@@ -201,7 +202,7 @@ class TestListSummariesAndSearch:
         summaries = await repo.list_summaries()
         assert len(summaries) == 1
         summary = summaries[0]
-        assert summary.subworkflow_id == "sub-quarterly-close"
+        assert summary.subworkflow_id == sid("sub-quarterly-close")
         assert summary.latest_version == "1.10.0"
         assert summary.name == "Close v1.10"
         assert summary.input_count == 1
@@ -229,7 +230,7 @@ class TestListSummariesAndSearch:
 
         results = await repo.search("QUARTERLY")
         assert len(results) == 1
-        assert results[0].subworkflow_id == "sub-quarterly-close"
+        assert results[0].subworkflow_id == sid("sub-quarterly-close")
 
     async def test_search_escapes_like_wildcards(
         self,
@@ -252,11 +253,11 @@ class TestListSummariesAndSearch:
 
         results = await repo.search("50%")
         assert len(results) == 1
-        assert results[0].subworkflow_id == "sub-percent-literal"
+        assert results[0].subworkflow_id == sid("sub-percent-literal")
 
         results = await repo.search("step_1")
         assert len(results) == 1
-        assert results[0].subworkflow_id == "sub-underscore-literal"
+        assert results[0].subworkflow_id == sid("sub-underscore-literal")
 
 
 @pytest.mark.unit
@@ -268,13 +269,13 @@ class TestDelete:
         repo: SQLiteSubworkflowRepository,
     ) -> None:
         await repo.save(_make_subworkflow())
-        assert await repo.delete(("sub-quarterly-close", "1.0.0")) is True
+        assert await repo.delete((sid("sub-quarterly-close"), "1.0.0")) is True
 
     async def test_delete_missing_returns_false(
         self,
         repo: SQLiteSubworkflowRepository,
     ) -> None:
-        assert await repo.delete(("sub-nonexistent", "1.0.0")) is False
+        assert await repo.delete((sid("sub-nonexistent"), "1.0.0")) is False
 
     async def test_delete_version_leaves_other_versions_intact(
         self,
@@ -283,8 +284,8 @@ class TestDelete:
         await repo.save(_make_subworkflow(version="1.0.0"))
         await repo.save(_make_subworkflow(version="2.0.0"))
 
-        await repo.delete(("sub-quarterly-close", "1.0.0"))
-        remaining = await repo.list_versions("sub-quarterly-close")
+        await repo.delete((sid("sub-quarterly-close"), "1.0.0"))
+        remaining = await repo.list_versions(sid("sub-quarterly-close"))
         assert remaining == ("2.0.0",)
 
 

@@ -13,7 +13,7 @@ from tests._shared.app_state import make_app_state
 from tests._shared.build_app import build_test_app
 from tests._shared.capturing_logger import CapturingErrorLogger
 from tests._shared.fake_clock import FakeClock
-from tests._shared.ids import as_uuid, coerce_id, sid
+from tests._shared.ids import as_pk, as_uuid, coerce_id, sid
 from tests._shared.json_types import AsgiDict, JsonDict
 from tests._shared.loop_async_client import LoopAsyncClient
 from tests._shared.mock_of import mock_of
@@ -26,6 +26,7 @@ __all__ = [
     "JsonDict",
     "LoopAsyncClient",
     "NoOpTrustStrategy",
+    "as_pk",
     "as_uuid",
     "build_test_app",
     "coerce_id",

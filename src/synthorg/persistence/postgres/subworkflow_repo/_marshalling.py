@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 from typing import Literal, LiteralString
+from uuid import UUID
 
 from packaging.version import InvalidVersion, Version
 from psycopg.rows import DictRow
@@ -67,7 +68,7 @@ def deserialize_row(row: DictRow, context_id: str) -> WorkflowDefinition:
             WorkflowIODeclaration.model_validate(o) for o in (row.get("outputs") or [])
         )
         return WorkflowDefinition(
-            id=str(row["subworkflow_id"]),
+            id=UUID(str(row["subworkflow_id"])),
             name=str(row["name"]),
             description=str(row["description"]),
             workflow_type=WorkflowType(row["workflow_type"]),

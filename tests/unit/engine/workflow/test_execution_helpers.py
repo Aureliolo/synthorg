@@ -15,6 +15,7 @@ from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
 )
+from tests._shared import as_uuid
 
 # -- _update_node_status helper tests ----------------------------------------
 
@@ -25,7 +26,7 @@ class TestUpdateNodeStatus:
     @pytest.mark.unit
     def test_updates_matching_node(self) -> None:
         exe = WorkflowExecution(
-            id="wfexec-test",
+            id=as_uuid("wfexec-test"),
             definition_id="wf-1",
             definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
@@ -54,7 +55,7 @@ class TestUpdateNodeStatus:
     @pytest.mark.unit
     def test_preserves_other_nodes(self) -> None:
         exe = WorkflowExecution(
-            id="wfexec-test",
+            id=as_uuid("wfexec-test"),
             definition_id="wf-1",
             definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
@@ -87,7 +88,7 @@ class TestUpdateNodeStatus:
     @pytest.mark.unit
     def test_raises_for_missing_task_id(self) -> None:
         exe = WorkflowExecution(
-            id="wfexec-test",
+            id=as_uuid("wfexec-test"),
             definition_id="wf-1",
             definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
@@ -119,7 +120,7 @@ class TestAllTasksCompleted:
     @pytest.mark.unit
     def test_all_completed(self) -> None:
         exe = WorkflowExecution(
-            id="wfexec-test",
+            id=as_uuid("wfexec-test"),
             definition_id="wf-1",
             definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
@@ -149,7 +150,7 @@ class TestAllTasksCompleted:
     @pytest.mark.unit
     def test_not_all_completed(self) -> None:
         exe = WorkflowExecution(
-            id="wfexec-test",
+            id=as_uuid("wfexec-test"),
             definition_id="wf-1",
             definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
@@ -175,7 +176,7 @@ class TestAllTasksCompleted:
     @pytest.mark.unit
     def test_task_failed_returns_false(self) -> None:
         exe = WorkflowExecution(
-            id="wfexec-test",
+            id=as_uuid("wfexec-test"),
             definition_id="wf-1",
             definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
@@ -201,7 +202,7 @@ class TestAllTasksCompleted:
     @pytest.mark.unit
     def test_skipped_tasks_ignored(self) -> None:
         exe = WorkflowExecution(
-            id="wfexec-test",
+            id=as_uuid("wfexec-test"),
             definition_id="wf-1",
             definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,
@@ -228,7 +229,7 @@ class TestAllTasksCompleted:
     def test_no_task_nodes_returns_true(self) -> None:
         """Vacuous truth: execution with only control nodes is complete."""
         exe = WorkflowExecution(
-            id="wfexec-test",
+            id=as_uuid("wfexec-test"),
             definition_id="wf-1",
             definition_revision=1,
             status=WorkflowExecutionStatus.RUNNING,

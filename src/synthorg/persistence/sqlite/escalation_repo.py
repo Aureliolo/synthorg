@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import override
+from uuid import UUID
 
 import aiosqlite
 from aiosqlite import Row
@@ -71,7 +72,7 @@ def _row_to_escalation(row: Row) -> Escalation:
         if decision_raw is not None:
             decision = _decision_adapter.validate_json(str(decision_raw))
         return Escalation(
-            id=str(row["id"]),
+            id=UUID(str(row["id"])),
             conflict=conflict,
             status=EscalationStatus(str(row["status"])),
             created_at=parse_iso_utc(str(row["created_at"])),
@@ -142,7 +143,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             msg = "create() requires status=PENDING"
             raise ValueError(msg)
         params = (
-            escalation.id,
+            str(escalation.id),
             str(escalation.conflict.id),
             escalation.conflict.model_dump_json(),
             escalation.status.value,
@@ -161,7 +162,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="escalation_create_duplicate",
-                    escalation_id=escalation.id,
+                    escalation_id=str(escalation.id),
                     conflict_id=str(escalation.conflict.id),
                     error=safe_error_description(exc),
                 )
@@ -172,7 +173,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="escalation_create_failed",
-                    escalation_id=escalation.id,
+                    escalation_id=str(escalation.id),
                     conflict_id=str(escalation.conflict.id),
                     error=safe_error_description(exc),
                 )

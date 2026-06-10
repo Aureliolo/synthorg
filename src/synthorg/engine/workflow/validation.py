@@ -87,11 +87,11 @@ def validate_workflow(
     result = WorkflowValidationResult(errors=tuple(errors))
 
     if result.valid:
-        logger.info(WORKFLOW_DEF_VALIDATED, workflow_id=definition.id)
+        logger.info(WORKFLOW_DEF_VALIDATED, workflow_id=str(definition.id))
     else:
         logger.warning(
             WORKFLOW_DEF_VALIDATION_FAILED,
-            workflow_id=definition.id,
+            workflow_id=str(definition.id),
             error_count=len(errors),
         )
 

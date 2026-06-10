@@ -6,7 +6,6 @@ the Litestar route handlers.
 
 import asyncio
 import copy
-import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -200,7 +199,6 @@ def build_definition_from_blueprint(
         ``WorkflowDefinition`` instance.
     """
     return WorkflowDefinition(
-        id=f"wfdef-{uuid.uuid4().hex[:12]}",
         name=data.name or bp.display_name,
         description=(
             data.description if data.description is not None else bp.description

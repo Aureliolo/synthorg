@@ -26,7 +26,7 @@ from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.persistence.postgres.escalation_repo import (
     PostgresEscalationRepository,
 )
-from tests._shared import as_uuid
+from tests._shared import as_pk, as_uuid, sid
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
@@ -74,7 +74,7 @@ def _make_escalation(
     """
     resolved_conflict_id = conflict_id or f"conflict-for-{escalation_id}"
     return Escalation(
-        id=escalation_id,
+        id=as_pk(escalation_id),
         conflict=_make_conflict(resolved_conflict_id),
         created_at=datetime.now(UTC),
         expires_at=expires_at,
@@ -91,7 +91,7 @@ def repo(postgres_backend: PostgresPersistenceBackend) -> PostgresEscalationRepo
 async def test_create_and_get(repo: PostgresEscalationRepository) -> None:
     row = _make_escalation(escalation_id="escalation-pg-get-01")
     await repo.create(row)
-    fetched = await repo.get("escalation-pg-get-01")
+    fetched = await repo.get(sid("escalation-pg-get-01"))
     assert fetched is not None
     assert fetched.id == row.id
     assert fetched.status == EscalationStatus.PENDING
@@ -118,17 +118,19 @@ async def test_list_items_filters_by_status(
     await repo.create(_make_escalation(escalation_id="escalation-pg-list-a"))
     await repo.create(_make_escalation(escalation_id="escalation-pg-list-b"))
     await repo.create(_make_escalation(escalation_id="escalation-pg-list-c"))
-    await repo.cancel("escalation-pg-list-c", cancelled_by="human:op-list-test")
+    await repo.cancel(sid("escalation-pg-list-c"), cancelled_by="human:op-list-test")
     pending, total_pending = await repo.list_items(
         status=EscalationStatus.PENDING,
     )
     assert total_pending >= 2
     ids = {e.id for e in pending}
-    assert {"escalation-pg-list-a", "escalation-pg-list-b"}.issubset(ids)
-    assert "escalation-pg-list-c" not in ids
+    assert {as_uuid("escalation-pg-list-a"), as_uuid("escalation-pg-list-b")}.issubset(
+        ids
+    )
+    assert as_uuid("escalation-pg-list-c") not in ids
     # The CANCELLED row is still visible under its own status filter.
     cancelled, _ = await repo.list_items(status=EscalationStatus.CANCELLED)
-    assert "escalation-pg-list-c" in {e.id for e in cancelled}
+    assert as_uuid("escalation-pg-list-c") in {e.id for e in cancelled}
 
 
 async def test_apply_winner_decision_round_trips(
@@ -140,13 +142,13 @@ async def test_apply_winner_decision_round_trips(
         reasoning="Stronger consistency wins",
     )
     updated = await repo.apply_decision(
-        "escalation-pg-win",
+        sid("escalation-pg-win"),
         decision=decision,
         decided_by="human:op-1",
     )
     assert updated.status == EscalationStatus.DECIDED
     assert updated.decision == decision
-    reloaded = await repo.get("escalation-pg-win")
+    reloaded = await repo.get(sid("escalation-pg-win"))
     assert reloaded is not None
     assert reloaded.status == EscalationStatus.DECIDED
     assert reloaded.decision == decision
@@ -158,7 +160,7 @@ async def test_apply_reject_decision_round_trips(
     await repo.create(_make_escalation(escalation_id="escalation-pg-rej"))
     decision = RejectDecision(reasoning="Both positions off-strategy")
     updated = await repo.apply_decision(
-        "escalation-pg-rej",
+        sid("escalation-pg-rej"),
         decision=decision,
         decided_by="human:op-2",
     )
@@ -183,13 +185,13 @@ async def test_apply_decision_on_decided_raises_valueerror(
     await repo.create(_make_escalation(escalation_id="escalation-pg-dbl"))
     decision = WinnerDecision(winning_agent_id="agent-a", reasoning="ok")
     await repo.apply_decision(
-        "escalation-pg-dbl",
+        sid("escalation-pg-dbl"),
         decision=decision,
         decided_by="human:op-1",
     )
     with pytest.raises(ValueError, match="cannot transition"):
         await repo.apply_decision(
-            "escalation-pg-dbl",
+            sid("escalation-pg-dbl"),
             decision=decision,
             decided_by="human:op-2",
         )
@@ -200,7 +202,7 @@ async def test_cancel_transitions_to_cancelled(
 ) -> None:
     await repo.create(_make_escalation(escalation_id="escalation-pg-canc"))
     updated = await repo.cancel(
-        "escalation-pg-canc",
+        sid("escalation-pg-canc"),
         cancelled_by="human:op-3",
     )
     assert updated.status == EscalationStatus.CANCELLED
@@ -219,10 +221,10 @@ async def test_mark_expired_transitions_stale_rows(
         _make_escalation(escalation_id="escalation-pg-fresh", expires_at=future),
     )
     expired = await repo.mark_expired(datetime.now(UTC).isoformat())
-    assert "escalation-pg-old" in expired
-    old = await repo.get("escalation-pg-old")
+    assert sid("escalation-pg-old") in expired
+    old = await repo.get(sid("escalation-pg-old"))
     assert old is not None
     assert old.status == EscalationStatus.EXPIRED
-    fresh = await repo.get("escalation-pg-fresh")
+    fresh = await repo.get(sid("escalation-pg-fresh"))
     assert fresh is not None
     assert fresh.status == EscalationStatus.PENDING

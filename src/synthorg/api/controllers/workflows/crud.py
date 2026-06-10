@@ -1,7 +1,6 @@
 # module-kind: controller
 """Workflow definition CRUD controller."""
 
-import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -181,7 +180,6 @@ class WorkflowController(Controller):
                 WorkflowIODeclaration.model_validate(o) for o in data.outputs
             )
             definition = WorkflowDefinition(
-                id=f"wfdef-{uuid.uuid4().hex[:12]}",
                 name=data.name,
                 description=data.description,
                 workflow_type=data.workflow_type,
@@ -210,7 +208,7 @@ class WorkflowController(Controller):
         # below confirms actual success.
         logger.info(
             WORKFLOW_DEFINITION_CHANGE_REQUESTED,
-            definition_id=definition.id,
+            definition_id=str(definition.id),
             action="create",
             actor=creator,
             version_after=definition.version,
@@ -226,7 +224,7 @@ class WorkflowController(Controller):
         # for a definition the database never accepted.
         logger.info(
             WORKFLOW_DEFINITION_CHANGED,
-            definition_id=definition.id,
+            definition_id=str(definition.id),
             action="create",
             actor=creator,
             version_after=definition.version,

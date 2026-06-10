@@ -15,6 +15,7 @@ from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
 )
+from tests._shared import as_uuid, coerce_id
 
 # ── WorkflowNodeExecution ──────────────────────────────────────────
 
@@ -99,7 +100,7 @@ def _make_execution(**overrides: object) -> WorkflowExecution:
     """Build a WorkflowExecution with sensible defaults."""
     now = datetime.now(UTC)
     defaults: dict[str, object] = {
-        "id": "wfexec-test001",
+        "id": coerce_id("wfexec-test001"),
         "definition_id": "wfdef-abc123",
         "definition_revision": 1,
         "activated_by": "test-user",
@@ -117,7 +118,7 @@ class TestWorkflowExecution:
     @pytest.mark.unit
     def test_valid_defaults(self) -> None:
         exe = _make_execution()
-        assert exe.id == "wfexec-test001"
+        assert exe.id == as_uuid("wfexec-test001")
         assert exe.definition_id == "wfdef-abc123"
         assert exe.definition_revision == 1
         assert exe.status is WorkflowExecutionStatus.PENDING

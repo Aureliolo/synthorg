@@ -223,14 +223,14 @@ def compute_diff(
         )
         raise ValueError(msg)
     for label, snap in (("old", old), ("new", new)):
-        if snap.snapshot.id != snap.entity_id:
+        if str(snap.snapshot.id) != snap.entity_id:
             msg = (
                 f"Corrupted {label} snapshot: snapshot.id "
                 f"{snap.snapshot.id!r} != entity_id {snap.entity_id!r}"
             )
             logger.warning(
                 WORKFLOW_DEF_INVALID_REQUEST,
-                snapshot_id=snap.snapshot.id,
+                snapshot_id=str(snap.snapshot.id),
                 entity_id=snap.entity_id,
                 reason=msg,
             )

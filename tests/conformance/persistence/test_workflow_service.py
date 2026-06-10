@@ -25,6 +25,7 @@ from synthorg.engine.workflow.service import WorkflowService
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.versioning.hashing import compute_content_hash
 from synthorg.versioning.models import VersionSnapshot
+from tests._shared import as_pk, as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -51,7 +52,7 @@ def _definition(
     is_subworkflow: bool = False,
 ) -> WorkflowDefinition:
     return WorkflowDefinition(
-        id=NotBlankStr(definition_id),
+        id=as_pk(definition_id),
         name=NotBlankStr("Cascade fixture"),
         description="",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -73,7 +74,7 @@ def _snapshot(
     version: int,
 ) -> VersionSnapshot[WorkflowDefinition]:
     return VersionSnapshot(
-        entity_id=NotBlankStr(definition.id),
+        entity_id=str(definition.id),
         version=version,
         content_hash=NotBlankStr(compute_content_hash(definition)),
         snapshot=definition,
@@ -103,18 +104,18 @@ class TestWorkflowServiceCascade:
 
         assert (
             await backend.workflow_versions.count_versions(
-                NotBlankStr("wf-cascade"),
+                sid("wf-cascade"),
             )
             == 2
         )
 
-        deleted = await service.delete_definition(NotBlankStr("wf-cascade"))
+        deleted = await service.delete_definition(sid("wf-cascade"))
         assert deleted is True
 
-        assert await service.get_definition(NotBlankStr("wf-cascade")) is None
+        assert await service.get_definition(sid("wf-cascade")) is None
         assert (
             await backend.workflow_versions.count_versions(
-                NotBlankStr("wf-cascade"),
+                sid("wf-cascade"),
             )
             == 0
         )
@@ -133,9 +134,9 @@ class TestWorkflowServiceCascade:
         definition = _definition(definition_id="wf-no-versions")
         await service.create_definition(definition)
 
-        deleted = await service.delete_definition(NotBlankStr("wf-no-versions"))
+        deleted = await service.delete_definition(sid("wf-no-versions"))
         assert deleted is True
-        assert await service.get_definition(NotBlankStr("wf-no-versions")) is None
+        assert await service.get_definition(sid("wf-no-versions")) is None
 
     async def test_list_and_get_round_trip(self, backend: PersistenceBackend) -> None:
         # Seed non-default inputs / outputs / is_subworkflow so a backend
@@ -171,11 +172,11 @@ class TestWorkflowServiceCascade:
 
         listed = await service.list_definitions()
         ids = {d.id for d in listed}
-        assert {"wf-a", "wf-b"} <= ids
+        assert {as_uuid("wf-a"), as_uuid("wf-b")} <= ids
 
-        fetched = await service.get_definition(NotBlankStr("wf-a"))
+        fetched = await service.get_definition(sid("wf-a"))
         assert fetched is not None
-        assert fetched.id == "wf-a"
+        assert fetched.id == as_uuid("wf-a")
         assert fetched.inputs == inputs_a
         assert fetched.outputs == outputs_a
         assert fetched.is_subworkflow is True

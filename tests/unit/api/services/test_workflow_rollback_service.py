@@ -32,6 +32,7 @@ from synthorg.persistence.version_protocol import VersionRepository
 from synthorg.persistence.workflow_definition_protocol import (
     WorkflowDefinitionRepository,
 )
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -46,7 +47,7 @@ def _definition_stub() -> WorkflowDefinition:
     class so a future rename surfaces here.
     """
     stub = MagicMock(spec=WorkflowDefinition)
-    stub.id = NotBlankStr("wfdef-1")
+    stub.id = as_uuid("wfdef-1")
     stub.revision = 5
     return cast(WorkflowDefinition, stub)
 

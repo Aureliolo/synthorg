@@ -15,6 +15,7 @@ from collections import Counter
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Self
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -216,7 +217,10 @@ class WorkflowDefinition(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(description="Unique workflow definition ID")
+    id: UUID = Field(
+        default_factory=uuid4,
+        description="Unique workflow definition ID",
+    )
     name: NotBlankStr = Field(description="Workflow name")
     description: str = Field(default="", description="Detailed description")
     workflow_type: WorkflowType = Field(

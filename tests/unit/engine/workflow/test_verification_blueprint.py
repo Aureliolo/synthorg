@@ -6,6 +6,7 @@ from synthorg.engine.workflow.blueprint_loader import load_blueprint
 from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.validation import validate_workflow
+from tests._shared import as_uuid
 
 
 @pytest.mark.unit
@@ -59,7 +60,7 @@ class TestVerificationPipelineBlueprint:
         )
         defn = WorkflowDefinition.model_validate(
             {
-                "id": "wf-test",
+                "id": as_uuid("wf-test"),
                 "name": bp.name,
                 "created_by": "test",
                 "nodes": nodes,

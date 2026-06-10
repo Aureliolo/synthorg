@@ -55,18 +55,18 @@ class FakeDefinitionRepo:
         self._store: dict[str, WorkflowDefinition] = {}
 
     async def save(self, definition: WorkflowDefinition) -> None:
-        self._store[definition.id] = copy.deepcopy(definition)
+        self._store[str(definition.id)] = copy.deepcopy(definition)
 
     async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
-        if definition.id in self._store:
+        if str(definition.id) in self._store:
             return False
-        self._store[definition.id] = copy.deepcopy(definition)
+        self._store[str(definition.id)] = copy.deepcopy(definition)
         return True
 
     async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
-        if definition.id not in self._store:
+        if str(definition.id) not in self._store:
             return False
-        self._store[definition.id] = copy.deepcopy(definition)
+        self._store[str(definition.id)] = copy.deepcopy(definition)
         return True
 
     async def get(self, definition_id: str) -> WorkflowDefinition | None:
@@ -107,7 +107,7 @@ class FakeExecutionRepo:
         self._store: dict[str, WorkflowExecution] = {}
 
     async def save(self, execution: WorkflowExecution) -> None:
-        stored = self._store.get(execution.id)
+        stored = self._store.get(str(execution.id))
         if stored is None:
             if execution.version != 1:
                 msg = f"Execution {execution.id!r} not found"
@@ -122,7 +122,7 @@ class FakeExecutionRepo:
                     f" got {execution.version}"
                 )
                 raise PersistenceVersionConflictError(msg)
-        self._store[execution.id] = copy.deepcopy(execution)
+        self._store[str(execution.id)] = copy.deepcopy(execution)
 
     async def get(self, execution_id: str) -> WorkflowExecution | None:
         stored = self._store.get(execution_id)
@@ -298,7 +298,7 @@ async def _activate_simple(
     )
     await def_repo.save(wf)
     return await service.activate(
-        wf.id,
+        str(wf.id),
         project="proj-1",
         activated_by="test",
     )
@@ -339,7 +339,7 @@ async def _activate_parallel(
     )
     await def_repo.save(wf)
     return await service.activate(
-        wf.id,
+        str(wf.id),
         project="proj-1",
         activated_by="test",
     )
@@ -370,14 +370,14 @@ class TestCompleteExecution:
         exe = await _activate_simple(service, def_repo)
         assert exe.status is WorkflowExecutionStatus.RUNNING
 
-        result = await service.complete_execution(exe.id)
+        result = await service.complete_execution(str(exe.id))
         assert result.status is WorkflowExecutionStatus.COMPLETED
         assert result.completed_at is not None
         assert result.error is None
         assert result.version == exe.version + 1
 
         # Persisted
-        stored = await exec_repo.get(exe.id)
+        stored = await exec_repo.get(str(exe.id))
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.COMPLETED
 
@@ -396,10 +396,10 @@ class TestCompleteExecution:
         def_repo: FakeDefinitionRepo,
     ) -> None:
         exe = await _activate_simple(service, def_repo)
-        await service.complete_execution(exe.id)
+        await service.complete_execution(str(exe.id))
 
         with pytest.raises(WorkflowExecutionError, match="expected 'running'"):
-            await service.complete_execution(exe.id)
+            await service.complete_execution(str(exe.id))
 
     @pytest.mark.unit
     async def test_complete_cancelled_raises(
@@ -408,10 +408,10 @@ class TestCompleteExecution:
         def_repo: FakeDefinitionRepo,
     ) -> None:
         exe = await _activate_simple(service, def_repo)
-        await service.cancel_execution(exe.id, cancelled_by="test")
+        await service.cancel_execution(str(exe.id), cancelled_by="test")
 
         with pytest.raises(WorkflowExecutionError, match="expected 'running'"):
-            await service.complete_execution(exe.id)
+            await service.complete_execution(str(exe.id))
 
 
 # ── fail_execution tests ──────────────────────────────────────────
@@ -430,7 +430,7 @@ class TestFailExecution:
         exe = await _activate_simple(service, def_repo)
 
         result = await service.fail_execution(
-            exe.id,
+            str(exe.id),
             error="Task blew up",
         )
         assert result.status is WorkflowExecutionStatus.FAILED
@@ -438,7 +438,7 @@ class TestFailExecution:
         assert result.error == "Task blew up"
         assert result.version == exe.version + 1
 
-        stored = await exec_repo.get(exe.id)
+        stored = await exec_repo.get(str(exe.id))
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.FAILED
 
@@ -460,10 +460,10 @@ class TestFailExecution:
         def_repo: FakeDefinitionRepo,
     ) -> None:
         exe = await _activate_simple(service, def_repo)
-        await service.cancel_execution(exe.id, cancelled_by="test")
+        await service.cancel_execution(str(exe.id), cancelled_by="test")
 
         with pytest.raises(WorkflowExecutionError, match="expected 'running'"):
-            await service.fail_execution(exe.id, error="late failure")
+            await service.fail_execution(str(exe.id), error="late failure")
 
 
 # ── handle_task_state_changed tests ───────────────────────────────
@@ -489,7 +489,7 @@ class TestHandleTaskStateChanged:
         )
         await service.handle_task_state_changed(event)
 
-        stored = await exec_repo.get(exe.id)
+        stored = await exec_repo.get(str(exe.id))
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.RUNNING
         nmap = {ne.node_id: ne for ne in stored.node_executions}
@@ -513,7 +513,7 @@ class TestHandleTaskStateChanged:
             _make_task_event(task_ids["task-b"], TaskStatus.COMPLETED),
         )
 
-        stored = await exec_repo.get(exe.id)
+        stored = await exec_repo.get(str(exe.id))
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.COMPLETED
         assert stored.completed_at is not None
@@ -532,7 +532,7 @@ class TestHandleTaskStateChanged:
             _make_task_event(task_ids["task-1"], TaskStatus.COMPLETED),
         )
 
-        stored = await exec_repo.get(exe.id)
+        stored = await exec_repo.get(str(exe.id))
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.COMPLETED
 
@@ -559,7 +559,7 @@ class TestHandleTaskStateChanged:
             _make_task_event(task_ids["task-1"], terminal_status),
         )
 
-        stored = await exec_repo.get(exe.id)
+        stored = await exec_repo.get(str(exe.id))
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.FAILED
         assert expected_word in (stored.error or "").lower()
@@ -583,7 +583,7 @@ class TestHandleTaskStateChanged:
             _make_task_event(task_ids["task-a"], terminal_status),
         )
 
-        stored = await exec_repo.get(exe.id)
+        stored = await exec_repo.get(str(exe.id))
         assert stored is not None
         nmap = {ne.node_id: ne for ne in stored.node_executions}
         assert nmap["task-a"].status is WorkflowNodeExecutionStatus.TASK_FAILED
@@ -601,7 +601,7 @@ class TestHandleTaskStateChanged:
             _make_task_event("unrelated-task-999", TaskStatus.COMPLETED),
         )
 
-        stored = await exec_repo.get(exe.id)
+        stored = await exec_repo.get(str(exe.id))
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.RUNNING
 
@@ -619,7 +619,7 @@ class TestHandleTaskStateChanged:
             _make_task_event(task_ids["task-1"], TaskStatus.COMPLETED),
         )
 
-        stored = await exec_repo.get(exe.id)
+        stored = await exec_repo.get(str(exe.id))
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.COMPLETED
 
@@ -646,7 +646,7 @@ class TestHandleTaskStateChanged:
         )
         await service.handle_task_state_changed(event)
 
-        stored = await exec_repo.get(exe.id)
+        stored = await exec_repo.get(str(exe.id))
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.RUNNING
         # Node status unchanged -- still TASK_CREATED
@@ -671,7 +671,7 @@ class TestHandleTaskStateChanged:
         )
         await service.handle_task_state_changed(event)
 
-        stored = await exec_repo.get(exe.id)
+        stored = await exec_repo.get(str(exe.id))
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.RUNNING
         nmap = {ne.node_id: ne for ne in stored.node_executions}
@@ -745,7 +745,7 @@ class TestHandleTaskStateChanged:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="proj-1",
             activated_by="test",
         )
@@ -760,7 +760,7 @@ class TestHandleTaskStateChanged:
             _make_task_event(task_ids["task-true"], TaskStatus.COMPLETED),
         )
 
-        stored = await exec_repo.get(exe.id)
+        stored = await exec_repo.get(str(exe.id))
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.COMPLETED
 
@@ -776,19 +776,21 @@ class TestWorkflowMetricsAndLogs:
         ("terminal_op", "expected_status", "extra_log_kwargs"),
         [
             pytest.param(
-                lambda svc, exe: svc.complete_execution(exe.id),
+                lambda svc, exe: svc.complete_execution(str(exe.id)),
                 "completed",
                 {},
                 id="complete",
             ),
             pytest.param(
-                lambda svc, exe: svc.fail_execution(exe.id, error="boom"),
+                lambda svc, exe: svc.fail_execution(str(exe.id), error="boom"),
                 "failed",
                 {"error": "boom"},
                 id="fail",
             ),
             pytest.param(
-                lambda svc, exe: svc.cancel_execution(exe.id, cancelled_by="alice"),
+                lambda svc, exe: svc.cancel_execution(
+                    str(exe.id), cancelled_by="alice"
+                ),
                 "cancelled",
                 {},
                 id="cancel",

@@ -28,6 +28,7 @@ from synthorg.integrations.connections.models import (
     WebhookReceipt,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid, coerce_id, sid
 
 pytestmark = pytest.mark.integration
 
@@ -582,7 +583,7 @@ def _receipt(
         "payload_json": payload_json,
     }
     if receipt_id is not None:
-        kwargs["id"] = NotBlankStr(receipt_id)
+        kwargs["id"] = coerce_id(receipt_id)
     return WebhookReceipt(**kwargs)  # type: ignore[arg-type]
 
 
@@ -619,7 +620,11 @@ class TestWebhookReceiptRepository:
             NotBlankStr("github-bot"),
         )
 
-        assert [r.id for r in rows] == ["newest", "middle", "oldest"]
+        assert [r.id for r in rows] == [
+            as_uuid("newest"),
+            as_uuid("middle"),
+            as_uuid("oldest"),
+        ]
 
     async def test_get_by_connection_respects_limit(
         self, backend: PersistenceBackend
@@ -655,7 +660,7 @@ class TestWebhookReceiptRepository:
             offset=2,
         )
 
-        assert [r.id for r in rows] == ["r-2", "r-3"]
+        assert [r.id for r in rows] == [as_uuid("r-2"), as_uuid("r-3")]
 
     async def test_get_by_connection_offset_beyond_collection(
         self, backend: PersistenceBackend
@@ -707,10 +712,10 @@ class TestWebhookReceiptRepository:
         receipt = _receipt(receipt_id="rcpt-target")
         await backend.webhook_receipts.save(receipt)
 
-        fetched = await backend.webhook_receipts.get(NotBlankStr("rcpt-target"))
+        fetched = await backend.webhook_receipts.get(sid("rcpt-target"))
 
         assert fetched is not None
-        assert fetched.id == "rcpt-target"
+        assert fetched.id == as_uuid("rcpt-target")
         assert fetched.payload_json == '{"event":"push"}'
 
     async def test_get_returns_none_when_missing(
@@ -725,14 +730,14 @@ class TestWebhookReceiptRepository:
 
         updated_at = datetime.now(UTC)
         updated = await backend.webhook_receipts.update_status(
-            NotBlankStr("rcpt-update"),
+            sid("rcpt-update"),
             status="failed",
             processed_at=updated_at,
             error="downstream timeout",
         )
 
         assert updated is True
-        fetched = await backend.webhook_receipts.get(NotBlankStr("rcpt-update"))
+        fetched = await backend.webhook_receipts.get(sid("rcpt-update"))
         assert fetched is not None
         assert fetched.status == "failed"
         assert fetched.error == "downstream timeout"
@@ -759,7 +764,7 @@ class TestWebhookReceiptRepository:
         )
 
         updated = await backend.webhook_receipts.update_status_if_current(
-            NotBlankStr("rcpt-cas-win"),
+            sid("rcpt-cas-win"),
             expected_status="failed",
             status="retrying",
             processed_at=None,
@@ -767,7 +772,7 @@ class TestWebhookReceiptRepository:
         )
 
         assert updated is True
-        fetched = await backend.webhook_receipts.get(NotBlankStr("rcpt-cas-win"))
+        fetched = await backend.webhook_receipts.get(sid("rcpt-cas-win"))
         assert fetched is not None
         assert fetched.status == "retrying"
 
@@ -787,7 +792,7 @@ class TestWebhookReceiptRepository:
         )
 
         updated = await backend.webhook_receipts.update_status_if_current(
-            NotBlankStr("rcpt-cas-lose"),
+            sid("rcpt-cas-lose"),
             expected_status="failed",
             status="retrying",
             processed_at=None,
@@ -797,7 +802,7 @@ class TestWebhookReceiptRepository:
         assert updated is False
         # Row untouched: the loser must not flip the status nor clear
         # any other fields.
-        fetched = await backend.webhook_receipts.get(NotBlankStr("rcpt-cas-lose"))
+        fetched = await backend.webhook_receipts.get(sid("rcpt-cas-lose"))
         assert fetched is not None
         assert fetched.status == "retrying"
 
@@ -857,7 +862,7 @@ class TestWebhookReceiptRepository:
         rows = await backend.webhook_receipts.get_by_connection(
             NotBlankStr("github-bot"),
         )
-        assert {r.id for r in rows} == {"recent"}
+        assert {r.id for r in rows} == {as_uuid("recent")}
 
     async def test_cleanup_old_only_touches_named_connection(
         self, backend: PersistenceBackend
@@ -891,4 +896,4 @@ class TestWebhookReceiptRepository:
         slack_rows = await backend.webhook_receipts.get_by_connection(
             NotBlankStr("slack-bot"),
         )
-        assert {r.id for r in slack_rows} == {"slack-old"}
+        assert {r.id for r in slack_rows} == {as_uuid("slack-old")}

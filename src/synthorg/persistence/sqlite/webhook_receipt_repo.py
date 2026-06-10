@@ -8,6 +8,7 @@ newest-first and bounded by an explicit ``limit``.
 import contextlib
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import aiosqlite
 
@@ -56,7 +57,7 @@ def _row_to_receipt(row: aiosqlite.Row) -> WebhookReceipt:
         error,
     ) = row
     return WebhookReceipt(
-        id=NotBlankStr(receipt_id),
+        id=UUID(str(receipt_id)),
         connection_name=NotBlankStr(connection_name),
         event_type=event_type or "",
         status=status or "received",

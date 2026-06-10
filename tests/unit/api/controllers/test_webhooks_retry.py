@@ -33,7 +33,9 @@ from synthorg.observability.events.integrations import (
     WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
 )
 from synthorg.persistence.protocol import PersistenceBackend
-from tests._shared import make_app_state, mock_of
+from tests._shared import as_pk, make_app_state, mock_of, sid
+
+_RCPT_ID = sid("rcpt-retry")
 
 
 async def _passthrough_run_idempotent(
@@ -66,7 +68,7 @@ _retry_receipt_fn = WebhooksRetryController.retry_receipt.fn
 
 def _make_receipt(  # noqa: PLR0913 -- kw-only test fixture builder
     *,
-    receipt_id: str = "rcpt-retry",
+    receipt_id: str = _RCPT_ID,
     connection_name: str = "conn-a",
     event_type: str = "issues.opened",
     status: str = "failed",
@@ -75,7 +77,7 @@ def _make_receipt(  # noqa: PLR0913 -- kw-only test fixture builder
 ) -> WebhookReceipt:
     """Build a :class:`WebhookReceipt` fixture for the retry path."""
     return WebhookReceipt(
-        id=NotBlankStr(receipt_id),
+        id=as_pk(receipt_id),
         connection_name=NotBlankStr(connection_name),
         event_type=event_type,
         status=status,
@@ -171,13 +173,13 @@ class TestRetryReceiptHappyPath:
             response = await _retry_receipt_fn(
                 _self_stub(),
                 state=state,
-                receipt_id="rcpt-retry",
+                receipt_id=_RCPT_ID,
             )
 
         assert response.data == {
             "status": "accepted",
             "event_type": "issues.opened",
-            "receipt_id": "rcpt-retry",
+            "receipt_id": _RCPT_ID,
         }
         transitions = [
             e for e in logs if e.get("event") == WEBHOOK_RECEIPT_STATUS_TRANSITIONED
@@ -200,14 +202,14 @@ class TestRetryReceiptHappyPath:
         # ``status`` away from ``"retrying"`` / ``"received"`` would
         # surface here rather than silently shipping the wrong contract.
         cas_mock.assert_awaited_once_with(
-            NotBlankStr("rcpt-retry"),
+            _RCPT_ID,
             expected_status="failed",
             status="retrying",
             processed_at=None,
             error=None,
         )
         plain_mock.assert_awaited_once_with(
-            NotBlankStr("rcpt-retry"),
+            _RCPT_ID,
             status="received",
             processed_at=ANY,
             error=None,
@@ -235,7 +237,7 @@ class TestRetryReceiptHappyPath:
         await _retry_receipt_fn(
             _self_stub(),
             state=state,
-            receipt_id="rcpt-retry",
+            receipt_id=_RCPT_ID,
         )
         assert captured["payload"] == {"raw": "not-json-{"}
 
@@ -261,7 +263,7 @@ class TestRetryReceiptHappyPath:
         await _retry_receipt_fn(
             _self_stub(),
             state=state,
-            receipt_id="rcpt-retry",
+            receipt_id=_RCPT_ID,
         )
         assert captured["payload"] == {"data": [1, 2, 3]}
 
@@ -295,7 +297,7 @@ class TestRetryReceiptHappyPath:
         await _retry_receipt_fn(
             _self_stub(),
             state=state,
-            receipt_id="rcpt-retry",
+            receipt_id=_RCPT_ID,
         )
         assert captured["payload"] == {"raw": ""}
 
@@ -350,7 +352,7 @@ class TestRetryReceiptErrorPaths:
             await _retry_receipt_fn(
                 _self_stub(),
                 state=state,
-                receipt_id="rcpt-retry",
+                receipt_id=_RCPT_ID,
             )
         # CAS fired once and lost; no plain update_status follow-up.
         cas_mock.assert_awaited_once()
@@ -393,7 +395,7 @@ class TestRetryReceiptErrorPaths:
             await _retry_receipt_fn(
                 _self_stub(),
                 state=state,
-                receipt_id="rcpt-retry",
+                receipt_id=_RCPT_ID,
             )
 
         transitions = [
@@ -404,7 +406,7 @@ class TestRetryReceiptErrorPaths:
         assert transitions[1]["status"] == "failed"
         assert transitions[1]["previous_status"] == "retrying"
         cas_mock.assert_awaited_once_with(
-            NotBlankStr("rcpt-retry"),
+            _RCPT_ID,
             expected_status="failed",
             status="retrying",
             processed_at=None,
@@ -416,7 +418,7 @@ class TestRetryReceiptErrorPaths:
         # regression that accidentally leaves the row in ``retrying``
         # after a publish failure (which would block future retries).
         plain_mock.assert_awaited_once_with(
-            NotBlankStr("rcpt-retry"),
+            _RCPT_ID,
             status="failed",
             processed_at=ANY,
             error=ANY,
@@ -463,7 +465,7 @@ class TestRetryReceiptErrorPaths:
             await _retry_receipt_fn(
                 _self_stub(),
                 state=state,
-                receipt_id="rcpt-retry",
+                receipt_id=_RCPT_ID,
             )
         # Only the CAS write fired; no follow-up plain update_status.
         cas_mock.assert_awaited_once()
@@ -506,7 +508,7 @@ class TestRetryReceiptErrorPaths:
             await _retry_receipt_fn(
                 _self_stub(),
                 state=state,
-                receipt_id="rcpt-retry",
+                receipt_id=_RCPT_ID,
             )
         # Neither write fires on the rejection path -- the guard
         # short-circuits before any persistence call.

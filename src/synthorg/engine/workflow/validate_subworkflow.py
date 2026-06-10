@@ -288,7 +288,7 @@ async def validate_subworkflow_io(
     if errors:
         logger.warning(
             SUBWORKFLOW_IO_INVALID,
-            workflow_id=definition.id,
+            workflow_id=str(definition.id),
             error_count=len(errors),
         )
     return result
@@ -305,7 +305,7 @@ async def validate_subworkflow_graph(
         error for each cycle found; empty when no cycles exist.
     """
     errors: list[WorkflowValidationError] = []
-    root_key = (definition.id, definition.version)
+    root_key = (str(definition.id), definition.version)
     visiting: set[tuple[str, str]] = set()
     finished: set[tuple[str, str]] = set()
 
@@ -361,7 +361,7 @@ async def validate_subworkflow_graph(
     if errors:
         logger.warning(
             SUBWORKFLOW_CYCLE_DETECTED,
-            workflow_id=definition.id,
+            workflow_id=str(definition.id),
             cycle_count=len(errors),
         )
     return WorkflowValidationResult(errors=tuple(errors))

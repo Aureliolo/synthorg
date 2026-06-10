@@ -11,6 +11,7 @@ import sqlite3
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Literal, cast
+from uuid import UUID
 
 import aiosqlite
 from packaging.version import InvalidVersion, Version
@@ -106,7 +107,7 @@ def _deserialize_row(
         created_at = _parse_created_at(data["created_at"])
         updated_at = _parse_created_at(data["updated_at"])
         return WorkflowDefinition(
-            id=str(data["subworkflow_id"]),
+            id=UUID(str(data["subworkflow_id"])),
             name=str(data["name"]),
             description=str(data["description"]),
             workflow_type=WorkflowType(data["workflow_type"]),
@@ -280,7 +281,7 @@ INSERT INTO subworkflows
      inputs, outputs, nodes, edges, created_by, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        entity.id,
+                        str(entity.id),
                         entity.version,
                         entity.name,
                         entity.description,
@@ -303,7 +304,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 )
                 logger.warning(
                     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-                    subworkflow_id=entity.id,
+                    subworkflow_id=str(entity.id),
                     version=entity.version,
                     error=msg,
                 )
@@ -316,7 +317,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 )
                 logger.warning(
                     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-                    subworkflow_id=entity.id,
+                    subworkflow_id=str(entity.id),
                     version=entity.version,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),

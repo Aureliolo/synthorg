@@ -23,7 +23,7 @@ from synthorg.engine.workflow.validation_types import (
 from synthorg.persistence.workflow_definition_protocol import (
     WorkflowDefinitionRepository,
 )
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of
 
 
 def _service() -> WorkflowService:
@@ -79,7 +79,7 @@ def _start_end_definition(
             )
         )
     return WorkflowDefinition(
-        id=NotBlankStr("wfdef-test001"),
+        id=as_uuid("wfdef-test001"),
         name=NotBlankStr("Test workflow"),
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
         version=NotBlankStr("1.0.0"),

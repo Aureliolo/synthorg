@@ -2,10 +2,10 @@
 
 import pytest
 
-from tests._shared import JsonDict, LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient, sid
 from tests.unit.api.conftest import make_auth_headers
 
-_SUB_ID = "sub-finance-close"
+_SUB_ID = sid("sub-finance-close")
 
 
 def _sub_payload(
@@ -107,13 +107,13 @@ class TestSubworkflowCrud:
         async_test_client: LoopAsyncClient,
     ) -> None:
         await _create_subworkflow(
-            async_test_client, _sub_payload(subworkflow_id="sub-a", name="Sub A")
+            async_test_client, _sub_payload(subworkflow_id=sid("sub-a"), name="Sub A")
         )
         await _create_subworkflow(
-            async_test_client, _sub_payload(subworkflow_id="sub-b", name="Sub B")
+            async_test_client, _sub_payload(subworkflow_id=sid("sub-b"), name="Sub B")
         )
         await _create_subworkflow(
-            async_test_client, _sub_payload(subworkflow_id="sub-c", name="Sub C")
+            async_test_client, _sub_payload(subworkflow_id=sid("sub-c"), name="Sub C")
         )
 
         first = (
@@ -149,14 +149,17 @@ class TestSubworkflowCrud:
         # in a stable, total order. Without the subworkflow_id
         # tie-breaker, ``registry.list_all()`` could return them in
         # different orders across requests, producing duplicates or
-        # skips when clients follow ``next_cursor``. Distinct IDs
-        # `sub-a` < `sub-b` lexicographically, so a correct total sort
-        # places `sub-a` first regardless of insertion order.
+        # skips when clients follow ``next_cursor``. The ids are UUID
+        # strings, so the total sort places the lexicographically
+        # smaller id first regardless of insertion order.
+        first_id, second_id = sorted((sid("sub-a"), sid("sub-b")))
         await _create_subworkflow(
-            async_test_client, _sub_payload(subworkflow_id="sub-b", name="shared-name")
+            async_test_client,
+            _sub_payload(subworkflow_id=sid("sub-b"), name="shared-name"),
         )
         await _create_subworkflow(
-            async_test_client, _sub_payload(subworkflow_id="sub-a", name="shared-name")
+            async_test_client,
+            _sub_payload(subworkflow_id=sid("sub-a"), name="shared-name"),
         )
 
         body = (
@@ -166,7 +169,7 @@ class TestSubworkflowCrud:
                 headers=make_auth_headers("ceo"),
             )
         ).json()
-        assert [s["subworkflow_id"] for s in body["data"]] == ["sub-a"]
+        assert [s["subworkflow_id"] for s in body["data"]] == [first_id]
         cursor = body["pagination"]["next_cursor"]
         assert cursor is not None
 
@@ -177,7 +180,7 @@ class TestSubworkflowCrud:
                 headers=make_auth_headers("ceo"),
             )
         ).json()
-        assert [s["subworkflow_id"] for s in second["data"]] == ["sub-b"]
+        assert [s["subworkflow_id"] for s in second["data"]] == [second_id]
         assert second["pagination"]["has_more"] is False
 
     async def test_list_invalid_cursor_returns_400(

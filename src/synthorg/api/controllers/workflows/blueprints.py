@@ -111,7 +111,7 @@ class WorkflowBlueprintController(Controller):
         # call is needed here.
         logger.info(
             BLUEPRINT_INSTANTIATE_SUCCESS,
-            definition_id=definition.id,
+            definition_id=str(definition.id),
             blueprint_name=data.blueprint_name,
         )
         record_blueprint_instantiation(

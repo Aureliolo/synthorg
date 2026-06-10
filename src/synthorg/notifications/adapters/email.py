@@ -108,14 +108,14 @@ class EmailNotificationSink:
             await asyncio.to_thread(self._send_sync, notification)
             logger.info(
                 NOTIFICATION_EMAIL_DELIVERED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 to_count=len(self._to_addrs),
             )
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
                 NOTIFICATION_EMAIL_FAILED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

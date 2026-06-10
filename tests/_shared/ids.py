@@ -42,6 +42,26 @@ def sid(label: str) -> str:
     return str(as_uuid(label))
 
 
+def as_pk(value: object) -> UUID:
+    """Return the typed-``UUID`` primary key for a test id *value*.
+
+    Companion to :func:`coerce_id` (which returns the canonical string for
+    foreign-key / wire shapes): use ``as_pk`` for a typed ``UUID`` primary-key
+    field in a direct model constructor, where a bare label or canonical
+    string would fail static type-checking even though Pydantic coerces it at
+    runtime. Accepts the same inputs as :func:`coerce_id` -- a readable label,
+    a canonical UUID string, or a ``UUID`` -- so a fixture may thread either
+    shape without re-hashing an already-canonical id.
+
+    Args:
+        value: A ``UUID``, a canonical UUID string, or a readable label.
+
+    Returns:
+        The ``UUID`` primary key for *value*.
+    """
+    return UUID(coerce_id(value))
+
+
 def coerce_id(value: object) -> str:
     """Return a canonical UUID string for a test id *value*.
 

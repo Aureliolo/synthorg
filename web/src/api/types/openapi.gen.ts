@@ -8638,6 +8638,7 @@ export type components = {
             /** @default true */
             readonly health_check_enabled: boolean;
             readonly health_status: components["schemas"]["ConnectionStatus"];
+            /** Format: uuid */
             readonly id: string;
             /**
              * Format: date-time
@@ -9171,7 +9172,10 @@ export type components = {
             readonly outputs: readonly {
                 readonly [key: string]: unknown;
             }[];
-            /** @description Stable identifier (generated when omitted) */
+            /**
+             * Format: uuid
+             * @description Existing subworkflow UUID to version, or omit to mint
+             */
             readonly subworkflow_id?: string | null;
             /**
              * @description Semver version
@@ -9808,6 +9812,7 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly expires_at: string | null;
+            /** Format: uuid */
             readonly id: string;
             readonly status: components["schemas"]["EscalationStatus"];
         };
@@ -15785,6 +15790,7 @@ export type components = {
             readonly error: string | null;
             /** @default  */
             readonly event_type: string;
+            /** Format: uuid */
             readonly id: string;
             /** @default  */
             readonly payload_json: string;
@@ -15871,7 +15877,10 @@ export type components = {
              * @default []
              */
             readonly edges: readonly components["schemas"]["WorkflowEdge"][];
-            /** @description Unique workflow definition ID */
+            /**
+             * Format: uuid
+             * @description Unique workflow definition ID
+             */
             readonly id: string;
             /**
              * @description Typed input contract (subworkflow-facing)
@@ -15967,7 +15976,10 @@ export type components = {
             readonly definition_revision: number;
             /** @description Error message when FAILED */
             readonly error: string | null;
-            /** @description Unique execution ID */
+            /**
+             * Format: uuid
+             * @description Unique execution ID
+             */
             readonly id: string;
             /**
              * @description Per-node execution state

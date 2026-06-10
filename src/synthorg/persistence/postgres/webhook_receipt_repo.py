@@ -7,6 +7,7 @@ newest-first and bounded by an explicit ``limit``.
 
 import json
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
@@ -63,7 +64,7 @@ def _row_to_receipt(row: DictRow) -> WebhookReceipt:
         payload_str = json.dumps(raw_payload, separators=(",", ":"))
     processed_at = row.get("processed_at")
     return WebhookReceipt(
-        id=NotBlankStr(row["id"]),
+        id=UUID(str(row["id"])),
         connection_name=NotBlankStr(row["connection_name"]),
         event_type=row.get("event_type") or "",
         status=row.get("status") or "received",

@@ -199,7 +199,7 @@ class NtfyNotificationSink:
         if client is None:
             logger.warning(
                 NOTIFICATION_NTFY_FAILED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 error_type="RuntimeError",
                 detail="send_called_before_start",
             )
@@ -227,14 +227,14 @@ class NtfyNotificationSink:
             response.raise_for_status()
             logger.info(
                 NOTIFICATION_NTFY_DELIVERED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 status_code=response.status_code,
             )
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
                 NOTIFICATION_NTFY_FAILED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

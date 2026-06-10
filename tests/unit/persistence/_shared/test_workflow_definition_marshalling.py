@@ -24,6 +24,7 @@ from synthorg.persistence._shared.workflow_definition_marshalling import (
 from synthorg.persistence.workflow_definition_protocol import (
     WorkflowDefinitionFilterSpec,
 )
+from tests._shared import as_uuid
 
 _NOW = datetime(2026, 5, 22, 12, 0, tzinfo=UTC)
 
@@ -31,7 +32,7 @@ _NOW = datetime(2026, 5, 22, 12, 0, tzinfo=UTC)
 def _definition() -> WorkflowDefinition:
     """A valid START -> TASK -> END workflow definition."""
     return WorkflowDefinition(
-        id="wfdef-1",
+        id=as_uuid("wfdef-1"),
         name="My workflow",
         description="A workflow.",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -69,7 +70,7 @@ def _sqlite_data(definition: WorkflowDefinition) -> dict[str, object]:
     """A SQLite-shaped row: JSON TEXT columns and ISO timestamps."""
     nodes, edges, inputs, outputs = serialize_definition_columns(definition)
     return {
-        "id": definition.id,
+        "id": str(definition.id),
         "name": definition.name,
         "description": definition.description,
         "workflow_type": definition.workflow_type.value,
@@ -92,7 +93,9 @@ class TestRowToWorkflowDefinition:
 
     def test_sqlite_round_trip(self) -> None:
         definition = _definition()
-        result = row_to_workflow_definition(_sqlite_data(definition), definition.id)
+        result = row_to_workflow_definition(
+            _sqlite_data(definition), str(definition.id)
+        )
 
         assert result == definition
 
@@ -108,7 +111,7 @@ class TestRowToWorkflowDefinition:
         data["created_at"] = _NOW
         data["updated_at"] = _NOW
 
-        result = row_to_workflow_definition(data, definition.id)
+        result = row_to_workflow_definition(data, str(definition.id))
 
         assert result == definition
 

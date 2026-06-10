@@ -29,6 +29,7 @@ from synthorg.engine.workflow.subworkflow_models import (
 from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.subworkflow_protocol import SubworkflowRepository
+from tests._shared import as_pk, as_uuid, sid
 
 _DEFAULT_TS = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 
@@ -43,7 +44,7 @@ def _make_subworkflow(  # noqa: PLR0913
     outputs: tuple[WorkflowIODeclaration, ...] = (),
 ) -> WorkflowDefinition:
     return WorkflowDefinition(
-        id=subworkflow_id,
+        id=as_pk(subworkflow_id),
         name=name,
         description="Finance close",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -90,7 +91,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
 
     @override
     async def save(self, entity: WorkflowDefinition) -> None:
-        key = (entity.id, entity.version)
+        key = (str(entity.id), entity.version)
         if key in self._rows:
             msg = f"Duplicate {key}"
             raise DuplicateRecordError(msg)
@@ -138,7 +139,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
     ) -> tuple[SubworkflowSummary, ...]:
         grouped: dict[str, list[WorkflowDefinition]] = {}
         for definition in self._rows.values():
-            grouped.setdefault(definition.id, []).append(definition)
+            grouped.setdefault(str(definition.id), []).append(definition)
         from packaging.version import Version
 
         summaries: list[SubworkflowSummary] = []
@@ -243,8 +244,8 @@ class TestRegister:
         sub = _make_subworkflow()
         await registry.register(sub)
 
-        fetched = await registry.get("sub-finance-close", "1.0.0")
-        assert fetched.id == "sub-finance-close"
+        fetched = await registry.get(sid("sub-finance-close"), "1.0.0")
+        assert fetched.id == as_uuid("sub-finance-close")
 
     @pytest.mark.unit
     async def test_register_rejects_non_subworkflow(
@@ -276,8 +277,8 @@ class TestGet:
         registry: SubworkflowRegistry,
     ) -> None:
         with pytest.raises(SubworkflowNotFoundError) as exc_info:
-            await registry.get("sub-missing", "1.0.0")
-        assert exc_info.value.subworkflow_id == "sub-missing"
+            await registry.get(sid("sub-missing"), "1.0.0")
+        assert exc_info.value.subworkflow_id == sid("sub-missing")
         assert exc_info.value.version == "1.0.0"
 
 
@@ -290,7 +291,7 @@ class TestVersionOrdering:
         for version in ["1.0.0", "1.9.0", "1.10.0", "2.0.0"]:
             await registry.register(_make_subworkflow(version=version))
 
-        versions = await registry.list_versions("sub-finance-close")
+        versions = await registry.list_versions(sid("sub-finance-close"))
         assert versions == ("2.0.0", "1.10.0", "1.9.0", "1.0.0")
 
     @pytest.mark.unit
@@ -300,7 +301,7 @@ class TestVersionOrdering:
     ) -> None:
         await registry.register(_make_subworkflow(version="1.9.0"))
         await registry.register(_make_subworkflow(version="1.10.0"))
-        latest = await registry.latest_version("sub-finance-close")
+        latest = await registry.latest_version(sid("sub-finance-close"))
         assert latest == "1.10.0"
 
     @pytest.mark.unit
@@ -308,7 +309,7 @@ class TestVersionOrdering:
         self,
         registry: SubworkflowRegistry,
     ) -> None:
-        assert await registry.latest_version("sub-nope") is None
+        assert await registry.latest_version(sid("sub-nope")) is None
 
 
 class TestDeleteProtection:
@@ -323,7 +324,7 @@ class TestDeleteProtection:
         fake_repo = registry._repo
         assert isinstance(fake_repo, FakeSubworkflowRepository)
         fake_repo.add_parent(
-            "sub-finance-close",
+            sid("sub-finance-close"),
             ParentReference(
                 parent_id="parent-1",
                 parent_name="Parent Workflow",
@@ -337,7 +338,7 @@ class TestDeleteProtection:
             SubworkflowIOError,
             match="still referenced by 1 parent",
         ):
-            await registry.delete("sub-finance-close", "1.0.0")
+            await registry.delete(sid("sub-finance-close"), "1.0.0")
 
     @pytest.mark.unit
     async def test_delete_missing_raises(
@@ -345,7 +346,7 @@ class TestDeleteProtection:
         registry: SubworkflowRegistry,
     ) -> None:
         with pytest.raises(SubworkflowNotFoundError):
-            await registry.delete("sub-missing", "1.0.0")
+            await registry.delete(sid("sub-missing"), "1.0.0")
 
     @pytest.mark.unit
     async def test_delete_success_without_parents(
@@ -354,8 +355,8 @@ class TestDeleteProtection:
     ) -> None:
         sub = _make_subworkflow()
         await registry.register(sub)
-        await registry.delete("sub-finance-close", "1.0.0")
-        assert await registry.latest_version("sub-finance-close") is None
+        await registry.delete(sid("sub-finance-close"), "1.0.0")
+        assert await registry.latest_version(sid("sub-finance-close")) is None
 
 
 class TestSearch:
@@ -372,4 +373,4 @@ class TestSearch:
         )
         results = await registry.search("alpha")
         assert len(results) == 1
-        assert results[0].subworkflow_id == "sub-a"
+        assert results[0].subworkflow_id == sid("sub-a")

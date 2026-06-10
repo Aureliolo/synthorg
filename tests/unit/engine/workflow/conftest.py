@@ -10,6 +10,7 @@ from synthorg.engine.workflow.definition import (
 from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.kanban_board import KanbanConfig, KanbanWipLimit
 from synthorg.engine.workflow.kanban_columns import KanbanColumn
+from tests._shared import coerce_id
 
 # Re-export all helpers for direct import by test modules
 __all__ = [
@@ -96,6 +97,7 @@ def make_workflow(
         "created_by": "test",
     }
     defaults.update(kwargs)
+    defaults["id"] = coerce_id(defaults["id"])
     return WorkflowDefinition.model_validate(
         {"nodes": nodes, "edges": edges, **defaults},
     )
@@ -114,6 +116,7 @@ def make_minimal_definition(**overrides: object) -> WorkflowDefinition:
         ),
     }
     defaults.update(overrides)
+    defaults["id"] = coerce_id(defaults["id"])
     return WorkflowDefinition.model_validate(defaults)
 
 

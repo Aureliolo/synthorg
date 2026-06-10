@@ -13,6 +13,7 @@ this module never imports a driver).
 
 import json
 from typing import LiteralString
+from uuid import UUID
 
 from pydantic import ValidationError
 
@@ -75,6 +76,7 @@ def row_to_workflow_definition(
     """
     data = dict(data)
     try:
+        data["id"] = UUID(str(data["id"]))
         data["workflow_type"] = WorkflowType(str(data["workflow_type"]))
         data["nodes"] = tuple(
             WorkflowNode.model_validate(n) for n in _decode_json_list(data.get("nodes"))

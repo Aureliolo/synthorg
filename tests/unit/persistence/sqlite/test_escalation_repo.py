@@ -18,11 +18,12 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictPosition,
 )
 from synthorg.communication.enums import ConflictType
+from synthorg.core.persistence_errors import QueryError
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.persistence.sqlite.escalation_repo import SQLiteEscalationRepository
-from tests._shared import as_uuid
+from tests._shared import as_pk, as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 
 pytestmark = pytest.mark.unit
@@ -70,7 +71,7 @@ def _make_escalation(
     """
     resolved_conflict_id = conflict_id or f"conflict-for-{escalation_id}"
     return Escalation(
-        id=escalation_id,
+        id=as_pk(escalation_id),
         conflict=_make_conflict(resolved_conflict_id),
         created_at=datetime.now(UTC),
         expires_at=expires_at,
@@ -111,11 +112,28 @@ async def test_create_and_get(backend: SQLitePersistenceBackend) -> None:
     )
     row = _make_escalation(escalation_id="escalation-sql-01")
     await repo.create(row)
-    fetched = await repo.get("escalation-sql-01")
+    fetched = await repo.get(sid("escalation-sql-01"))
     assert fetched is not None
     assert fetched.id == row.id
     assert fetched.status == EscalationStatus.PENDING
     assert fetched.conflict.id == row.conflict.id
+
+
+async def test_get_rejects_non_uuid_id(backend: SQLitePersistenceBackend) -> None:
+    """A non-UUID stored id is rejected at read instead of silently passing."""
+    assert backend._db is not None
+    repo = SQLiteEscalationRepository(
+        backend._db, write_context=make_private_write_context()
+    )
+    await repo.create(_make_escalation(escalation_id="escalation-sql-bad"))
+    await backend._db.execute(
+        "UPDATE conflict_escalations SET id = ? WHERE id = ?",
+        ("not-a-uuid", sid("escalation-sql-bad")),
+    )
+    await backend._db.commit()
+
+    with pytest.raises(QueryError, match="Failed to parse escalation row"):
+        await repo.get("not-a-uuid")
 
 
 async def test_list_items_filters_by_status(backend: SQLitePersistenceBackend) -> None:
@@ -129,7 +147,10 @@ async def test_list_items_filters_by_status(backend: SQLitePersistenceBackend) -
         status=EscalationStatus.PENDING,
     )
     assert total_pending == 2
-    assert {e.id for e in pending} == {"escalation-sql-a", "escalation-sql-b"}
+    assert {e.id for e in pending} == {
+        as_uuid("escalation-sql-a"),
+        as_uuid("escalation-sql-b"),
+    }
     decided, total_decided = await repo.list_items(
         status=EscalationStatus.DECIDED,
     )
@@ -150,7 +171,7 @@ async def test_apply_winner_decision_transitions_to_decided(
         reasoning="Stronger consistency wins",
     )
     updated = await repo.apply_decision(
-        "escalation-sql-win",
+        sid("escalation-sql-win"),
         decision=decision,
         decided_by="human:op-1",
     )
@@ -158,7 +179,7 @@ async def test_apply_winner_decision_transitions_to_decided(
     assert updated.decision == decision
     assert updated.decided_by == "human:op-1"
     # Re-fetch from DB to confirm persistence
-    reloaded = await repo.get("escalation-sql-win")
+    reloaded = await repo.get(sid("escalation-sql-win"))
     assert reloaded is not None
     assert reloaded.status == EscalationStatus.DECIDED
     assert reloaded.decision == decision
@@ -174,7 +195,7 @@ async def test_apply_reject_decision_round_trips(
     await repo.create(_make_escalation(escalation_id="escalation-sql-rej"))
     decision = RejectDecision(reasoning="Both positions off-strategy")
     updated = await repo.apply_decision(
-        "escalation-sql-rej",
+        sid("escalation-sql-rej"),
         decision=decision,
         decided_by="human:op-2",
     )
@@ -191,7 +212,7 @@ async def test_apply_decision_on_missing_row_raises_keyerror(
     )
     with pytest.raises(KeyError):
         await repo.apply_decision(
-            "missing",
+            sid("missing"),
             decision=WinnerDecision(winning_agent_id="agent-a", reasoning="x"),
             decided_by="human:op-x",
         )
@@ -207,13 +228,13 @@ async def test_apply_decision_on_decided_row_raises_valueerror(
     await repo.create(_make_escalation(escalation_id="escalation-sql-dbl"))
     decision = WinnerDecision(winning_agent_id="agent-a", reasoning="ok")
     await repo.apply_decision(
-        "escalation-sql-dbl",
+        sid("escalation-sql-dbl"),
         decision=decision,
         decided_by="human:op-1",
     )
     with pytest.raises(ValueError, match="cannot transition"):
         await repo.apply_decision(
-            "escalation-sql-dbl",
+            sid("escalation-sql-dbl"),
             decision=decision,
             decided_by="human:op-2",
         )
@@ -227,7 +248,7 @@ async def test_cancel_transitions_to_cancelled(
         backend._db, write_context=make_private_write_context()
     )
     await repo.create(_make_escalation(escalation_id="escalation-sql-canc"))
-    updated = await repo.cancel("escalation-sql-canc", cancelled_by="human:op-3")
+    updated = await repo.cancel(sid("escalation-sql-canc"), cancelled_by="human:op-3")
     assert updated.status == EscalationStatus.CANCELLED
     assert updated.decided_by == "human:op-3"
 
@@ -248,11 +269,11 @@ async def test_mark_expired_transitions_stale_rows(
         _make_escalation(escalation_id="escalation-sql-new", expires_at=future),
     )
     expired = await repo.mark_expired(datetime.now(UTC).isoformat())
-    assert expired == ("escalation-sql-old",)
-    old = await repo.get("escalation-sql-old")
+    assert expired == (sid("escalation-sql-old"),)
+    old = await repo.get(sid("escalation-sql-old"))
     assert old is not None
     assert old.status == EscalationStatus.EXPIRED
-    new = await repo.get("escalation-sql-new")
+    new = await repo.get(sid("escalation-sql-new"))
     assert new is not None
     assert new.status == EscalationStatus.PENDING
 

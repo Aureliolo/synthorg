@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 from typing import ClassVar, Literal, override
+from uuid import UUID
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
@@ -75,7 +76,7 @@ def _row_to_escalation(row: DictRow) -> Escalation:
         if row["decision_json"] is not None:
             decision = _decision_adapter.validate_python(row["decision_json"])
         return Escalation(
-            id=str(row["id"]),
+            id=UUID(str(row["id"])),
             conflict=conflict,
             status=EscalationStatus(str(row["status"])),
             created_at=row["created_at"],
@@ -162,7 +163,7 @@ class PostgresEscalationRepository(EscalationQueueStore):
             raise ValueError(msg)
         conflict_payload = Jsonb(escalation.conflict.model_dump(mode="json"))
         params = {
-            "id": escalation.id,
+            "id": str(escalation.id),
             "conflict_id": str(escalation.conflict.id),
             "conflict_json": conflict_payload,
             "status": escalation.status.value,
@@ -205,7 +206,7 @@ INSERT INTO conflict_escalations (
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type=error_type,
-                escalation_id=escalation.id,
+                escalation_id=str(escalation.id),
                 conflict_id=str(escalation.conflict.id),
                 constraint=constraint_name or None,
                 error=safe_error_description(exc),
@@ -219,7 +220,7 @@ INSERT INTO conflict_escalations (
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_create_failed",
-                escalation_id=escalation.id,
+                escalation_id=str(escalation.id),
                 conflict_id=str(escalation.conflict.id),
                 error=safe_error_description(exc),
             )

@@ -14,6 +14,7 @@ backend repos so this module never imports a driver.
 import json
 from collections.abc import Mapping
 from typing import LiteralString
+from uuid import UUID
 
 from pydantic import ValidationError
 
@@ -112,6 +113,7 @@ def row_to_workflow_execution(
     """
     data = dict(data)
     try:
+        data["id"] = UUID(str(data["id"]))
         data["status"] = WorkflowExecutionStatus(str(data["status"]))
         data["node_executions"] = deserialize_node_executions(
             data.get("node_executions")

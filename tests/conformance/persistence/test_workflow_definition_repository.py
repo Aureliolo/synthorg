@@ -20,6 +20,7 @@ from synthorg.engine.workflow.enums import (
     WorkflowType,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid, coerce_id, sid
 
 
 def _make_workflow_definition(
@@ -32,7 +33,7 @@ def _make_workflow_definition(
     The minimal valid graph is: START -> TASK -> END.
     """
     defaults: dict[str, object] = {
-        "id": definition_id,
+        "id": coerce_id(definition_id),
         "name": name,
         "description": "Test workflow",
         "workflow_type": WorkflowType.SEQUENTIAL_PIPELINE,
@@ -99,10 +100,10 @@ class TestWorkflowDefinitionRepository:
         )
 
         await repo.save(defn)
-        retrieved = await repo.get("wf-001")
+        retrieved = await repo.get(sid("wf-001"))
 
         assert retrieved is not None
-        assert retrieved.id == "wf-001"
+        assert retrieved.id == as_uuid("wf-001")
         assert retrieved.name == "Test Workflow"
         assert len(retrieved.nodes) == 3
         assert len(retrieved.edges) == 2
@@ -159,7 +160,7 @@ class TestWorkflowDefinitionRepository:
             ),
         )
         assert len(sequential_only) >= 1
-        assert any(d.id == "wf-sequential" for d in sequential_only)
+        assert any(d.id == as_uuid("wf-sequential") for d in sequential_only)
         # Strict filter enforcement: the non-matching parallel
         # definition must not leak through, and every returned row
         # must have the requested type.  Otherwise a backend that
@@ -167,7 +168,7 @@ class TestWorkflowDefinitionRepository:
         assert all(
             d.workflow_type == WorkflowType.SEQUENTIAL_PIPELINE for d in sequential_only
         )
-        assert not any(d.id == "wf-parallel" for d in sequential_only)
+        assert not any(d.id == as_uuid("wf-parallel") for d in sequential_only)
 
     async def test_query_respects_limit(
         self,
@@ -205,7 +206,7 @@ class TestWorkflowDefinitionRepository:
         )
         await repo.save(updated)
 
-        retrieved = await repo.get("wf-002")
+        retrieved = await repo.get(sid("wf-002"))
         assert retrieved is not None
         assert retrieved.name == "Updated"
         assert retrieved.description == "Updated description"
@@ -245,10 +246,10 @@ class TestWorkflowDefinitionRepository:
         )
         await repo.save(defn)
 
-        deleted = await repo.delete("wf-for-delete")
+        deleted = await repo.delete(sid("wf-for-delete"))
         assert deleted is True
 
-        retrieved = await repo.get("wf-for-delete")
+        retrieved = await repo.get(sid("wf-for-delete"))
         assert retrieved is None
 
     async def test_delete_nonexistent_returns_false(

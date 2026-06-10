@@ -288,7 +288,7 @@ class WorkflowService:
         # Emit the state-transition INFO log BEFORE the best-effort
         # snapshot so the committed create is always in the audit trail,
         # even if the snapshot follow-up fails loud or silent.
-        logger.info(WORKFLOW_DEF_CREATED, definition_id=definition.id)
+        logger.info(WORKFLOW_DEF_CREATED, definition_id=str(definition.id))
         await self._best_effort_snapshot(definition, saved_by)
         return definition
 
@@ -353,7 +353,7 @@ class WorkflowService:
             # we still propagate the original conflict as ``__cause__``.
             stored_revision: int | None = None
             try:
-                existing = await self._definitions.get(definition.id)
+                existing = await self._definitions.get(str(definition.id))
             except Exception as lookup_exc:  # noqa: BLE001 -- criticals re-raised
                 # ``reraise_critical`` propagates fatal system errors
                 # even from this best-effort probe; otherwise the
@@ -400,7 +400,7 @@ class WorkflowService:
         # Emit the state-transition INFO log BEFORE the best-effort
         # snapshot so the committed update is always in the audit trail,
         # even if the snapshot follow-up fails loud or silent.
-        logger.info(WORKFLOW_DEF_UPDATED, definition_id=definition.id)
+        logger.info(WORKFLOW_DEF_UPDATED, definition_id=str(definition.id))
         await self._best_effort_snapshot(definition, saved_by)
         return definition
 
@@ -428,7 +428,7 @@ class WorkflowService:
             return
         try:
             await self._versioning.snapshot_if_changed(
-                entity_id=definition.id,
+                entity_id=str(definition.id),
                 snapshot=definition,
                 saved_by=saved_by,
             )
@@ -439,7 +439,7 @@ class WorkflowService:
             reraise_critical(exc)
             logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
-                definition_id=definition.id,
+                definition_id=str(definition.id),
                 revision=definition.revision,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
