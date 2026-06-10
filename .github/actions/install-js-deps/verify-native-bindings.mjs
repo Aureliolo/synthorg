@@ -17,7 +17,16 @@ const arch = process.arch; // e.g. "x64"
 // glibc runner does not demand a musl artifact it will never use.
 const GLIBC = "glibc";
 
-const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
+let lock;
+try {
+  lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
+} catch (err) {
+  console.error(
+    `::error::Failed to read or parse package-lock.json: ${err.message}. ` +
+      "Ensure npm ci ran in this working-directory.",
+  );
+  process.exit(1);
+}
 const packages = lock.packages ?? {};
 
 // A native binding is an optional dependency pinned to a concrete os + cpu.
@@ -56,7 +65,10 @@ console.warn(
 );
 
 const spec = missing.map((p) => `${p.name}@${p.version}`).join(" ");
-execSync(`npm install ${spec} --no-save --force --ignore-scripts --no-audit --no-fund`, {
+// No --force: we install exact lockfile name@version pairs on the matching
+// platform, so there is nothing to force past, and dropping it lets npm's
+// native error surface if a binding genuinely cannot install.
+execSync(`npm install ${spec} --no-save --ignore-scripts --no-audit --no-fund`, {
   stdio: "inherit",
 });
 
