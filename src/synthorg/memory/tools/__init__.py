@@ -211,7 +211,7 @@ def registry_with_memory_tools(
             augmented = _build_self_editing_registry(tool_registry, strategy, agent_id)
         except ValueError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TOOL_MEMORY_AUGMENTATION_FAILED,
@@ -239,7 +239,7 @@ def registry_with_memory_tools(
         )
     except ValueError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             TOOL_MEMORY_AUGMENTATION_FAILED,

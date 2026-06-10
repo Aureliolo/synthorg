@@ -189,7 +189,7 @@ async def _maybe_log_overflow(
             await probe_task
         except asyncio.CancelledError:
             pass
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             if isinstance(exc, (MemoryError, RecursionError)):
                 state.last_overflow_log.pop(key, None)
             reraise_critical(exc)
@@ -205,7 +205,7 @@ async def _maybe_log_overflow(
         return
     try:
         info = probe_task.result()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # Non-emission path: release the slot on both critical re-raise
         # AND probe-RPC-failure paths so the next empty fetch can retry
         # without suppressing a real overflow warning for the next
@@ -284,7 +284,7 @@ async def fetch_with_shutdown(
         return []
     except asyncio.CancelledError:
         return None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             COMM_BUS_RECEIVE_ERROR,
@@ -310,7 +310,7 @@ async def try_ack(
     """
     try:
         await msg.ack()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             COMM_BUS_RECEIVE_ERROR,

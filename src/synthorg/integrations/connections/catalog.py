@@ -489,7 +489,7 @@ class ConnectionCatalog(
                             connection_name=name,
                             secret_id=ref.secret_id,
                         )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     # The connection delete itself succeeded; a stale
                     # secret cleanup failure is a secret-delete

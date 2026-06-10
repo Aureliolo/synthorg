@@ -102,7 +102,7 @@ async def rollback_register_if_absent(
             await spawned_task
         except asyncio.CancelledError:
             pass
-        except Exception as drain_exc:
+        except Exception as drain_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(drain_exc)
             logger.warning(
                 SIMULATION_RUN_FAILED,
@@ -195,7 +195,7 @@ async def run_in_background(
             sim_state, record.simulation_id, "Simulation configuration error"
         )
         return
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # Frame-locals on a simulation-run-failed path can carry the
         # entire simulation config; scrub + drop the traceback.

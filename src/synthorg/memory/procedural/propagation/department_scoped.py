@@ -99,7 +99,7 @@ class DepartmentScopedPropagation:
                 )
                 await memory_backend.store(str(target.id), store_request)
                 count += 1
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     PROCEDURAL_PROPAGATION_TARGET_FAILED,

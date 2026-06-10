@@ -111,7 +111,7 @@ def _get_instance_id() -> str:
         request_id = ctx.get("request_id")
         if isinstance(request_id, str) and request_id:
             return request_id
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_CORRELATION_FALLBACK,
@@ -142,7 +142,7 @@ def _wants_problem_json(request: Request[object, object, State]) -> bool:
         match = request.accept.best_match(
             ["application/json", _PROBLEM_JSON],
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_ACCEPT_PARSE_FAILED,
@@ -274,7 +274,7 @@ def _build_response(  # noqa: PLR0913
             status_code=status_code,
             headers=headers,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # Last-resort fallback when structured-response construction
         # itself fails (e.g. Pydantic validation error from a corrupted
@@ -297,7 +297,7 @@ def _build_response(  # noqa: PLR0913
         # so the fallback never repeats the same crash.
         try:
             use_problem_json = _wants_problem_json(request)
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:  # noqa: BLE001 -- defensive  # pragma: no cover
             reraise_critical(exc)
             use_problem_json = False
         instance = _get_instance_id()

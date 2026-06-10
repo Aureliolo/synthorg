@@ -264,7 +264,7 @@ class ScalingService:
                 return await s.evaluate(context)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     HR_SCALING_STRATEGY_EVALUATED,
@@ -422,7 +422,7 @@ class ScalingService:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 HR_SCALING_EXECUTION_FAILED,
@@ -483,7 +483,7 @@ class ScalingService:
             record = await self._offboarding_service.offboard(firing_request)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 HR_SCALING_EXECUTION_FAILED,
@@ -530,7 +530,7 @@ class ScalingService:
             if isinstance(inner, (CooldownGuard, RateLimitGuard)):
                 try:
                     await inner.record_action(decision)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     log_exception_redacted(
                         logger,
@@ -550,7 +550,7 @@ class ScalingService:
             if isinstance(inner, CooldownGuard):
                 try:
                     await inner.release_reservation(decision)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     log_exception_redacted(
                         logger,

@@ -308,7 +308,7 @@ class TrajectoryTrainingDataSource:
                     ArtifactFilterSpec(task_id=str(task.id)),
                     limit=self._per_agent_limit,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 self._log_degraded("artifact", str(task.id), exc)
                 continue
@@ -432,7 +432,7 @@ class TrajectoryTrainingDataSource:
         """
         try:
             return await self._memory_backend.retrieve(agent_id, query)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             self._log_degraded(kind, agent_id, exc)
             return ()

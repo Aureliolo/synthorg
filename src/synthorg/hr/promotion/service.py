@@ -466,7 +466,7 @@ class PromotionService:
                     request.agent_id,
                     snapshot,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     PROMOTION_APPLIED,
@@ -498,7 +498,7 @@ class PromotionService:
                     agent_id=request.agent_id,
                     direction=request.direction.value,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     PROMOTION_NOTIFICATION_SENT,

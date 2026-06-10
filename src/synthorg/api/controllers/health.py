@@ -129,7 +129,7 @@ async def _probe_service(
         return None
     try:
         return await probe()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # ``exc_info=True`` would serialize frame locals from the probe
         # into the log record; persistence / bus probes carry connection

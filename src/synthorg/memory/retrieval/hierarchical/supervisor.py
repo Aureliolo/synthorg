@@ -154,7 +154,7 @@ class SupervisorRouter:
             return await self._route_via_llm(query)
         except builtins.MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Provider exceptions in str(exc) can carry the API
             # key; scrub before logging.
@@ -208,7 +208,7 @@ class SupervisorRouter:
             return await self._evaluate_via_llm(query, result)
         except builtins.MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEMORY_HIERARCHICAL_RETRY,
@@ -358,7 +358,7 @@ class SupervisorRouter:
                 )
             except builtins.MemoryError, RecursionError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.debug(
                     MEMORY_HIERARCHICAL_RETRY,

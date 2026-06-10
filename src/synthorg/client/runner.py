@@ -303,7 +303,7 @@ class SimulationRunner:
                     await self._feedback_sink(feedback)
                 except MemoryError, RecursionError:
                     raise
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- best-effort sink
                     log_exception_redacted(
                         logger,
                         CLIENT_FEEDBACK_SINK_FAILED,

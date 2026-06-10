@@ -162,7 +162,7 @@ async def check_has_name_locales(
         raise
     except SettingNotFoundError:
         return False
-    except Exception:
+    except Exception:  # noqa: BLE001 -- settings best-effort: log and skip
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             setting="name_locales",
@@ -212,7 +212,7 @@ async def resolve_min_password_length(
             reason="non_integer_value",
             raw=raw_pw_value,
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 -- settings best-effort: log and skip
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             setting="min_password_length",
@@ -282,7 +282,7 @@ async def read_name_locales(
         raise
     except SettingNotFoundError:
         return None
-    except Exception:
+    except Exception:  # noqa: BLE001 -- settings best-effort: log and skip
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             setting="name_locales",

@@ -123,7 +123,7 @@ async def _resolve_urgency_thresholds(app_state: AppState) -> tuple[float, float
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         return _urgency_thresholds_fallback(
             "failed to resolve approval urgency thresholds;"

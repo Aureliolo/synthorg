@@ -441,7 +441,7 @@ class IdempotencyService:
                 )
             else:
                 logger.info(IDEMPOTENCY_FAIL, scope=scope, key=key)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # The original callback exception is the one the caller
             # cares about; failing to mark the row failed is best-

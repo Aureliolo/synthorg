@@ -117,7 +117,7 @@ async def try_mid_execution_resume(
             return False
         try:
             has_parked = await gate.has_parked_context(approval_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_RESUME_FAILED,
@@ -152,7 +152,7 @@ async def try_mid_execution_resume(
             note="resume dispatch failed -- runtime not configured",
         )
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- transient dispatch: don't 5xx
         # A transient dispatch failure (e.g. background-spawn hiccup)
         # must not 5xx the approve/reject response and must still
         # suppress the review-gate fall-through (the parked record is

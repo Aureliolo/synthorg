@@ -232,7 +232,7 @@ async def _resolve_dept_policy_cas_attempts(app_state: AppState) -> int:
             "coordination",
             "department_policy_cas_retry_attempts",
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_REQUEST_ERROR,

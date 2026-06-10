@@ -240,7 +240,7 @@ class RetentionEnforcer:
                             entry_id=entry.id,
                             category=category.value,
                         )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     RETENTION_CLEANUP_FAILED,

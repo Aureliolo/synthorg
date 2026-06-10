@@ -407,7 +407,7 @@ class DelegationCircuitBreaker:
                     opened_at=opened,
                 )
                 await self._state_repo.save(record)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Key stays in _dirty for retry on next persist cycle.
                 log_exception_redacted(

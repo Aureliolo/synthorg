@@ -173,7 +173,7 @@ class TwoTierCompressionStrategy:
                 )
             except builtins.MemoryError, RecursionError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     TWO_TIER_COMPRESSION_FAILED,
@@ -235,7 +235,7 @@ class TwoTierCompressionStrategy:
             return await self._backend.retrieve(agent_id, query)
         except builtins.MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TWO_TIER_COMPRESSION_FAILED,

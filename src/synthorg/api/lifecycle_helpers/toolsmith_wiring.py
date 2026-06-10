@@ -266,7 +266,7 @@ async def wire_toolsmith(
             cost_tracker=cost_tracker,
             workspace_root=agent_workspace_root_of(app_state),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -290,7 +290,7 @@ async def wire_toolsmith(
 
     try:
         install_dynamic_tool_layer(runtime.dynamic_registry)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -322,11 +322,11 @@ async def wire_toolsmith(
         app_state.swap_slice(
             ToolsmithStateSlice(service=runtime.service, cycle_scheduler=scheduler),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         try:
             await scheduler.stop()
-        except Exception as stop_exc:
+        except Exception as stop_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(stop_exc)
             logger.warning(
                 API_APP_STARTUP,

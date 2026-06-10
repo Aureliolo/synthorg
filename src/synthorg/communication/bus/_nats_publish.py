@@ -289,7 +289,7 @@ async def publish_batch(
     for future in futures:
         try:
             future.result()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             errors.append(exc)
     if errors:

@@ -509,7 +509,7 @@ class TelemetryCollector:
                         timeout_seconds=_DEPLOYMENT_ID_LOAD_TIMEOUT_SECONDS,
                         using_generated_id=True,
                     )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     # The sync helper is documented to never raise,
                     # but a future regression must not crash start()
@@ -576,7 +576,7 @@ class TelemetryCollector:
                 if self._session_summary_snapshot_provider is not None:
                     try:
                         params = self._session_summary_snapshot_provider()
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                         reraise_critical(exc)
                         logger.warning(
                             TELEMETRY_REPORT_FAILED,
@@ -586,7 +586,7 @@ class TelemetryCollector:
 
                 try:
                     await self.send_session_summary(params)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         TELEMETRY_REPORT_FAILED,
@@ -596,7 +596,7 @@ class TelemetryCollector:
 
                 try:
                     await self._send_shutdown_event()
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         TELEMETRY_REPORT_FAILED,
@@ -606,7 +606,7 @@ class TelemetryCollector:
 
             try:
                 await self._reporter.shutdown()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     TELEMETRY_REPORT_FAILED,
@@ -749,7 +749,7 @@ class TelemetryCollector:
 
         try:
             await self._reporter.report(event)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
@@ -790,7 +790,7 @@ class TelemetryCollector:
 
         try:
             docker_info: DockerHostInfo = await fetch_docker_info()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
@@ -843,7 +843,7 @@ class TelemetryCollector:
                     else None
                 )
                 await self.send_heartbeat(params)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 # CancelledError is a BaseException, so this broad clause
                 # never catches it: cancellation propagates out of the
                 # loop unaided for graceful shutdown.
@@ -945,7 +945,7 @@ def _load_or_create_deployment_id_sync(
         if existing is not None:
             return existing
         return _atomic_create_or_recover(id_path_str, candidate_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # Belt-and-suspenders: each helper is documented to never
         # raise, but a future regression must not bubble an exception

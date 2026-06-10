@@ -272,7 +272,7 @@ class LlmSecurityEvaluator(_LlmEvaluatorSupportMixin):
                 )
         except TimeoutError:
             return self._on_llm_timeout(context, rule_verdict, start)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             return self._on_llm_error(
                 context,

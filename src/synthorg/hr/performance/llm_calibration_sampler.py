@@ -138,7 +138,7 @@ class LlmCalibrationSampler:
 
         try:
             llm_score, rationale, cost = await self._call_llm(record)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PERF_LLM_SAMPLE_FAILED,

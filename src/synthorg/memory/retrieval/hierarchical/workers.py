@@ -174,7 +174,7 @@ class SemanticWorker:
                     )
                 except builtins.MemoryError, RecursionError:
                     raise
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     # Shared store failure is a partial degradation:
                     # the worker can still return personal results, so
@@ -219,7 +219,7 @@ class SemanticWorker:
             )
         except builtins.MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             logger.warning(
@@ -415,7 +415,7 @@ class EpisodicWorker:
             )
         except builtins.MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             logger.warning(
@@ -528,7 +528,7 @@ class ProceduralWorker:
             )
         except builtins.MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             logger.warning(

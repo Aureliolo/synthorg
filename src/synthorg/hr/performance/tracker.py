@@ -547,7 +547,7 @@ class PerformanceTracker:
             try:
                 raw = describe()
                 weights = _coerce_finite_weights(raw)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Coercion failures (malformed pair, blank component name,
                 # non-numeric weight) are folded into the same fail-soft
@@ -624,7 +624,7 @@ class PerformanceTracker:
         for agent_id in agent_ids:
             try:
                 snapshot = await self.get_snapshot(agent_id, now=now)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     PERF_SNAPSHOT_FAILED,
@@ -981,7 +981,7 @@ class PerformanceTracker:
                 agent_id=record.agent_id,
                 records=(record,),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PERF_LLM_SAMPLE_FAILED,
@@ -996,7 +996,7 @@ class PerformanceTracker:
                 record=record,
                 behavioral_score=behavioral_result.score,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PERF_LLM_SAMPLE_FAILED,
@@ -1086,7 +1086,7 @@ class PerformanceTracker:
                     await sink.emit(inflection)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PERF_INFLECTION_EMISSION_FAILED,

@@ -125,7 +125,7 @@ class CedarPolicyEngine:
                 matched_policy="cedar_policy_set",
                 latency_ms=latency_ms,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             latency_ms = (time.perf_counter() - start) * 1000
             log_exception_redacted(
@@ -161,7 +161,7 @@ class CedarPolicyEngine:
         # block a ready policy decision from being returned.
         try:
             record_security_verdict("allow" if decision.allow else "deny")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 SECURITY_POLICY_ENGINE_ERROR,

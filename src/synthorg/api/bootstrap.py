@@ -128,7 +128,7 @@ async def bootstrap_agents(
     for config in agent_configs:
         try:
             identity = _identity_from_config(config, clock=resolved_clock)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 SETUP_AGENT_BOOTSTRAP_SKIPPED,
@@ -149,7 +149,7 @@ async def bootstrap_agents(
                 agent_id=str(identity.id),
                 reason="already_registered",
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 SETUP_AGENT_BOOTSTRAP_SKIPPED,

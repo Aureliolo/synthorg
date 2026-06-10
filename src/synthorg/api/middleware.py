@@ -352,7 +352,7 @@ def _record_request_metric(
         return
     try:
         collector = app_state.slice(ObservabilityStateSlice).prometheus_collector
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # Log the lookup failure so operators notice a metrics-
         # pipeline regression rather than seeing silent drop-offs.
@@ -371,7 +371,7 @@ def _record_request_metric(
             status_code=status_code,
             duration_sec=duration_sec,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             METRICS_RECORD_FAILED,

@@ -34,7 +34,7 @@ def get_litellm_model_info(litellm_model: str) -> dict[str, object]:
     except KeyError, ValueError:
         logger.info(PROVIDER_MODEL_INFO_UNAVAILABLE, model=litellm_model)
         return {}
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,

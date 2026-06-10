@@ -160,7 +160,7 @@ class LLMQueryReformulator:
             response = await self._completion_fn(prompt)
         except builtins.MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEMORY_REFORMULATION_FAILED,
@@ -229,7 +229,7 @@ class LLMSufficiencyChecker:
             return verdict.upper() == "SUFFICIENT"
         except builtins.MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEMORY_SUFFICIENCY_CHECK_FAILED,

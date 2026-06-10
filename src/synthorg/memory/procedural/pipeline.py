@@ -193,7 +193,7 @@ async def _try_build_payload(
     """
     try:
         payload = _build_payload(execution_result, recovery_result)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             PROCEDURAL_MEMORY_ERROR,
@@ -239,7 +239,7 @@ async def _store_and_materialize(
     )
     try:
         memory_id = await memory_backend.store(agent_id, request)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             PROCEDURAL_MEMORY_STORE_FAILED,
@@ -271,7 +271,7 @@ async def _store_and_materialize(
                 task_id=task_id,
                 path=str(skill_path),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PROCEDURAL_MEMORY_SKILL_MD,
@@ -332,7 +332,7 @@ async def propose_procedural_memory(  # noqa: PLR0913
 
     try:
         proposal = await proposer.propose(payload)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             PROCEDURAL_MEMORY_SKIPPED,

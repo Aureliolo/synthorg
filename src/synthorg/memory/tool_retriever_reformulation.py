@@ -295,7 +295,7 @@ class ToolBasedReformulationMixin:
             raise
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEMORY_SUFFICIENCY_CHECK_FAILED,
@@ -343,7 +343,7 @@ class ToolBasedReformulationMixin:
             raise
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEMORY_REFORMULATION_FAILED,
@@ -408,7 +408,7 @@ class ToolBasedReformulationMixin:
             return None
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,

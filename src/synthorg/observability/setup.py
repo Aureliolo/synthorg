@@ -139,7 +139,7 @@ def _clear_root_handlers(root_logger: logging.Logger) -> None:
         root_logger.removeHandler(handler)
         try:
             handler.close()
-        except Exception:
+        except Exception:  # noqa: BLE001 -- log-handler teardown best-effort
             print(  # noqa: T201
                 f"WARNING: Failed to close log handler {handler!r}",
                 file=sys.stderr,
@@ -298,7 +298,7 @@ def _tame_third_party_loggers() -> None:
             lg.removeHandler(handler)
             try:
                 handler.close()
-            except Exception:
+            except Exception:  # noqa: BLE001 -- log-handler teardown best-effort
                 print(  # noqa: T201
                     f"WARNING: Failed to close third-party log handler "
                     f"{handler!r} on logger {name!r}",

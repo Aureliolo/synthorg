@@ -110,7 +110,7 @@ async def _try_stop(
             context=error_msg,
         )
         return False
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- shutdown best-effort: log and continue
         logger.warning(
             event,
             service=service,

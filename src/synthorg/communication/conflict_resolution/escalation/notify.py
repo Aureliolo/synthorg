@@ -303,7 +303,7 @@ class PostgresEscalationNotifySubscriber:
                     await task
                 except asyncio.CancelledError:
                     pass
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
@@ -413,7 +413,7 @@ class PostgresEscalationNotifySubscriber:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
@@ -443,7 +443,7 @@ class PostgresEscalationNotifySubscriber:
                     await self._listen_once()
                 except asyncio.CancelledError:
                     raise
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
@@ -532,7 +532,7 @@ class PostgresEscalationNotifySubscriber:
                     status=status,
                     note="unknown_notify_status",
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_SUBSCRIBER_FAILED,

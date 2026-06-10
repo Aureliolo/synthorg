@@ -106,7 +106,7 @@ class DeliverableReceiptService:
             await self._renderer.render_into_doc(receipt=receipt)
         except DocNotFoundError:
             return
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 RECEIPT_RENDERED,

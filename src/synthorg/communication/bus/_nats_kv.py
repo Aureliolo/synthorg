@@ -95,7 +95,7 @@ async def write_channel_to_kv(state: _NatsState, channel: Channel) -> None:
     value = channel.model_dump_json().encode("utf-8")
     try:
         await state.kv.put(key, value)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             COMM_BUS_KV_WRITE_FAILED,
@@ -241,7 +241,7 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
     for key in keys:
         try:
             decoded_keys.append((key, decode_token(key)))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COMM_BUS_KV_READ_FAILED,

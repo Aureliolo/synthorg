@@ -451,7 +451,7 @@ class CompositeBackend:
                             query,
                         )
                         results.extend(self._rewrite_entry(backend, e) for e in entries)
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                         reraise_critical(exc)
                         name = self._backend_to_name.get(
                             id(backend),

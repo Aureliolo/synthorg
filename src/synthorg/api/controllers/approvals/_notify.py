@@ -107,7 +107,7 @@ def _publish_approval_event(
             event.model_dump_json(),
             channels=[CHANNEL_APPROVALS],
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APPROVAL_PUBLISH_FAILED,

@@ -100,7 +100,7 @@ class BackupSettingsSubscriber:
         """Start or stop the scheduler based on the current setting value."""
         try:
             result = await self._settings_service.get("backup", "enabled")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -159,7 +159,7 @@ class BackupSettingsSubscriber:
         """Update the scheduler interval from current settings."""
         try:
             result = await self._settings_service.get("backup", "schedule_hours")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

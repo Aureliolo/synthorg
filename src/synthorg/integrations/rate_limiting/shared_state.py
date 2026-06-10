@@ -106,7 +106,7 @@ class SharedRateLimitCoordinator:
                     _RATELIMIT_CHANNEL.name,
                     self._subscriber_id,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     RATE_LIMIT_COORDINATOR_STARTED,
@@ -241,7 +241,7 @@ class SharedRateLimitCoordinator:
                 RATE_LIMIT_ACQUIRE_PUBLISHED,
                 connection_name=self._connection_name,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             self._distributed = False
             logger.warning(
@@ -266,7 +266,7 @@ class SharedRateLimitCoordinator:
                 await envelope.ack()
             except asyncio.CancelledError:
                 break
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # A receive/ingest failure means this worker is no
                 # longer seeing remote acquires. Flip ``_distributed``
@@ -344,7 +344,7 @@ async def set_coordinator_factory(
     for coordinator in old:
         try:
             await coordinator.stop()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 RATE_LIMIT_COORDINATOR_STOPPED,

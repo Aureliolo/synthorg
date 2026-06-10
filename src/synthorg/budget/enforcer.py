@@ -220,7 +220,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             monthly_cost = await self._cost_tracker.get_total_cost(
                 start=period_start,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger, BUDGET_UTILIZATION_ERROR, exc, reason="falling_back_to_none"
@@ -279,7 +279,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                 )
         except BudgetExhaustedError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -624,7 +624,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                     source="budget.enforcer",
                 ),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 BUDGET_NOTIFICATION_FAILED,
@@ -658,7 +658,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             monthly_cost = await self._cost_tracker.get_total_cost(
                 start=period_start,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -784,7 +784,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                 daily_limit,
                 agent_id,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -841,7 +841,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                 aggregate = await self._project_cost_repo.get(
                     project_id,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger,
@@ -865,7 +865,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             cost = await self._cost_tracker.get_project_cost(
                 project_id,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

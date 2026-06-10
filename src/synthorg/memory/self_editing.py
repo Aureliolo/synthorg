@@ -230,7 +230,7 @@ class SelfEditingMemoryStrategy:
             )
         except builtins.MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEMORY_SELF_EDIT_CORE_READ,
@@ -314,7 +314,7 @@ class SelfEditingMemoryStrategy:
             return await self._dispatch_tool_call(args, agent_id)
         except builtins.MemoryError, RecursionError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Generic dispatch failure event: covers every self-editing
             # tool (read / write / search / recall) so a failed

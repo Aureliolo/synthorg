@@ -561,7 +561,7 @@ async def _safe_fetch(
         _log_fetch_failure(preset_name, "timeout", safe_url)
     except json.JSONDecodeError:
         _log_fetch_failure(preset_name, "invalid_json_response", safe_url)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             PROVIDER_DISCOVERY_FAILED,

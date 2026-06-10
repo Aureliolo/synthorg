@@ -68,7 +68,7 @@ async def safe_compose_settings_dependent_services(
             # asyncio loop's handler still sees them.
             try:
                 await dispatcher.stop()
-            except Exception as stop_exc:
+            except Exception as stop_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(stop_exc)
         raise
 

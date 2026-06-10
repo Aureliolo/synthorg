@@ -139,7 +139,7 @@ def build_backup_service(
             resolved_config_path=resolved_config_path,
         )
         return BackupService(backup_config, handlers)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

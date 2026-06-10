@@ -76,7 +76,7 @@ async def wire_auth_stores(
                 note="Lockout store initialized",
                 backend=type(lockout_store).__name__,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

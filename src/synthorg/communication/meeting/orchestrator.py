@@ -444,7 +444,7 @@ class MeetingOrchestrator:
                 MeetingStatus.BUDGET_EXHAUSTED,
                 exc,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             status = MeetingStatus.FAILED
             if isinstance(exc, ExceptionGroup):
@@ -596,7 +596,7 @@ class MeetingOrchestrator:
                     description=action_item.description,
                     assignee=action_item.assignee_id,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 failures += 1
                 log_exception_redacted(
@@ -633,7 +633,7 @@ class MeetingOrchestrator:
                 participant_ids,
                 lenses,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEETING_LENS_ASSIGNMENT_FAILED,

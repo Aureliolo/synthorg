@@ -183,7 +183,7 @@ class AsyncTaskService:
                     cancelled_task,
                     rollback_prior,
                 )
-        except Exception as cancel_exc:
+        except Exception as cancel_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(cancel_exc)
             logger.warning(
                 ASYNC_TASK_START_FAILED,

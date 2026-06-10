@@ -232,11 +232,11 @@ def safe_error_description(exc: BaseException) -> str:
         # redacted wrapper. ``scrub_secret_tokens`` is applied below.
         # Calling ``safe_error_description`` here would infinitely recurse.
         message = str(exc)
-    except Exception as stringify_exc:
+    except Exception as stringify_exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(stringify_exc)  # pragma: no cover - defensive
         try:
             message = repr(exc)
-        except Exception as repr_exc:
+        except Exception as repr_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(repr_exc)  # pragma: no cover - defensive
             return type_name
     if not message:

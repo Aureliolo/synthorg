@@ -277,7 +277,7 @@ class ResearchService:
                 project_id=brief.project_id,
                 limit=self._per_query_limit,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 RESEARCH_SOURCE_FAILED,

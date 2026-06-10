@@ -63,7 +63,7 @@ async def check_connection_health(
 
     try:
         return await checker.check(conn)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             HEALTH_CHECK_FAILED,

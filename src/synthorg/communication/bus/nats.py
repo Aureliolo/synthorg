@@ -152,7 +152,7 @@ class JetStreamMessageBus:
             await client.flush(
                 timeout=state.nats_config.health_flush_timeout_seconds,  # type: ignore[arg-type]
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COMM_BUS_HEALTH_CHECK_FAILED,
@@ -367,7 +367,7 @@ class JetStreamMessageBus:
             fetch_timeout = await self._config_resolver.get_float(
                 namespace, "nats_history_fetch_timeout_seconds"
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COMM_BUS_STREAM_SCAN_FAILED,

@@ -85,7 +85,7 @@ def _publish_ws_event(
             event.model_dump_json(),
             channels=[CHANNEL_TASKS],
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # Drop exc_info -- channels_plugin internals can carry
         # connection metadata; surface scrubbed type+msg.
@@ -205,7 +205,7 @@ class CoordinationController(Controller):
         try:
             budget_cfg = await config_resolver_of(app_state).get_budget_config()
             currency = budget_cfg.currency
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Drop ``exc_info=True`` -- the config-resolver traceback
             # can carry secret-store URLs in frame-locals.

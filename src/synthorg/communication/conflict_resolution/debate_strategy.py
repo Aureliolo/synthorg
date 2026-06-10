@@ -102,7 +102,7 @@ class DebateResolver:
                     conflict,
                     judge_id,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger,

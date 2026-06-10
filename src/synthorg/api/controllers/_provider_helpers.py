@@ -57,7 +57,7 @@ async def enrich_with_usage(
                 "total_cost_24h": usage.total_cost,
             },
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_PROVIDER_USAGE_ENRICHMENT_FAILED,

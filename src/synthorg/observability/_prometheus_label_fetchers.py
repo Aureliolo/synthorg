@@ -77,7 +77,7 @@ async def fetch_workflow_definitions(
             page_size=DEFAULT_PAGE_SIZE,
         ):
             definitions.extend(page)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         log_exception_redacted(
             logger,
@@ -107,7 +107,7 @@ async def fetch_departments(app_state: AppState) -> frozenset[str] | None:
         if dept_service is None:
             return frozenset()
         records, _ = await dept_service.list_departments()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         log_exception_redacted(
             logger,
@@ -140,7 +140,7 @@ async def fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
         if registry is None:
             return frozenset()
         return frozenset(registry.list_tools())
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # ``fetch_tool_names`` runs inside a ``TaskGroup`` alongside
         # the workflow / department fetchers; an uncaught exception

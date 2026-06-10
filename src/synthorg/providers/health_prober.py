@@ -276,7 +276,7 @@ class ProviderHealthProber:
                     await task
                 except asyncio.CancelledError:
                     pass
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
@@ -350,7 +350,7 @@ class ProviderHealthProber:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             if not self._resolve_failed_logged:
                 logger.warning(
@@ -391,7 +391,7 @@ class ProviderHealthProber:
                     await self._probe_all()
                 except asyncio.CancelledError:
                     raise
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
@@ -488,7 +488,7 @@ class ProviderHealthProber:
         """
         try:
             await self._probe_one(name, config, ollama_port=ollama_port)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PROVIDER_HEALTH_PROBE_FAILED,
@@ -587,7 +587,7 @@ class ProviderHealthProber:
             error_msg = "timeout"
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             error_msg = _truncate(
                 f"{type(exc).__name__}: {safe_error_description(exc)}"

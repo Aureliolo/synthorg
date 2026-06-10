@@ -76,7 +76,7 @@ async def _resolve_sse_keepalive_seconds(app_state: AppState | None) -> float:
         return await resolver.get_float("api", "sse_keepalive_seconds")
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             EVENT_STREAM_PROJECTION_FAILED,
@@ -156,7 +156,7 @@ async def _user_revocation_reason(
     """
     try:
         db_user = await persistence_of(app_state).users.get(user_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             EVENT_STREAM_PROJECTION_FAILED,
@@ -211,7 +211,7 @@ async def _serialise_stream_event(
     """
     try:
         data = _json.dumps(event.model_dump(mode="json"))
-    except Exception as serialize_exc:
+    except Exception as serialize_exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(serialize_exc)
         logger.warning(
             EVENT_STREAM_PROJECTION_FAILED,

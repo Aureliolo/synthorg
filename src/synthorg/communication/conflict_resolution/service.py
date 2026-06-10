@@ -335,7 +335,7 @@ class ConflictResolutionService:
                     transport="bus",
                     note="Message bus missing publish method",
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COMM_DISSENT_PUBLISH_FAILED,
@@ -371,7 +371,7 @@ class ConflictResolutionService:
                 conflict_id=conflict_id,
                 transport="sse",
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COMM_DISSENT_PUBLISH_FAILED,

@@ -142,7 +142,7 @@ def _try_wire_cost_dial(app_state: AppState) -> None:
         return
     try:
         _wire_cost_dial_services(app_state)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -215,7 +215,7 @@ def _try_wire_cockpit(app_state: AppState) -> None:
         return
     try:
         _wire_cockpit_services(app_state)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

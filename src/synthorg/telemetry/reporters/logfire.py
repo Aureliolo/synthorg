@@ -162,7 +162,7 @@ class LogfireReporter:
         """Flush the Logfire exporter."""
         try:
             await asyncio.to_thread(self._logfire.force_flush)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
@@ -175,7 +175,7 @@ class LogfireReporter:
         await self.flush()
         try:
             await asyncio.to_thread(self._logfire.shutdown)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TELEMETRY_REPORT_FAILED,

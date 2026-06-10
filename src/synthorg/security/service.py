@@ -197,7 +197,7 @@ class SecOpsService(SecOpsServiceEscalationMixin):
         # never be bypassed, regardless of autonomy configuration.
         try:
             verdict = self._rule_engine.evaluate(context)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -314,7 +314,7 @@ class SecOpsService(SecOpsServiceEscalationMixin):
             )
             try:
                 self._audit_log.record(entry)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger,
@@ -332,7 +332,7 @@ class SecOpsService(SecOpsServiceEscalationMixin):
         policy_name = getattr(self._output_scan_policy, "name", "<unknown>")
         try:
             result = self._output_scan_policy.apply(result, context)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -390,7 +390,7 @@ class SecOpsService(SecOpsServiceEscalationMixin):
 
         try:
             return await self._llm_evaluator.evaluate(context, verdict)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -517,7 +517,7 @@ class SecOpsService(SecOpsServiceEscalationMixin):
         )
         try:
             self._audit_log.record(entry)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

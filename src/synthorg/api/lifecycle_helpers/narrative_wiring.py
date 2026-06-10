@@ -78,7 +78,7 @@ async def wire_run_narrator(
     except MemoryError, RecursionError:
         # Interpreter-level criticals are never best-effort; let them abort.
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- best-effort wiring: log and continue
         logger.warning(
             API_APP_STARTUP,
             service="chief_of_staff_narrator",

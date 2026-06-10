@@ -100,7 +100,7 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
             recovered=recovered,
             trajectory_source=training_data_source is not None,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             MEMORY_FINE_TUNE_WIRING_FAILED,

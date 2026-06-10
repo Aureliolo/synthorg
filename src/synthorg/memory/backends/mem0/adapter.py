@@ -202,7 +202,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                     self._client = None
                     self._connected = False
                     raise
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         MEMORY_BACKEND_CONNECTION_FAILED,
@@ -270,7 +270,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="health_check"
             )
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEMORY_BACKEND_HEALTH_CHECK,
