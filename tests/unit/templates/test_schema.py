@@ -1,7 +1,5 @@
 """Tests for template schema models."""
 
-from typing import TYPE_CHECKING
-
 import pytest
 from pydantic import JsonValue, ValidationError
 
@@ -16,8 +14,7 @@ from synthorg.templates.schema import (
     TemplateVariable,
 )
 
-if TYPE_CHECKING:
-    from .conftest import TemplateDictFactory
+from .conftest import TemplateDictFactory
 
 # ── TemplateVariable ─────────────────────────────────────────────
 

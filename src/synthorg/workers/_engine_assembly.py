@@ -339,9 +339,6 @@ def _build_vision_gate_or_none(
     from synthorg.security.visionverify.builder import (  # noqa: PLC0415
         build_vision_verifier_gate,
     )
-    from synthorg.security.visionverify.errors import (  # noqa: PLC0415
-        VisionVerifyConfigError,
-    )
 
     tier_resolver = (
         (lambda _tier: "example-medium-001") if provider is not None else None
@@ -355,11 +352,12 @@ def _build_vision_gate_or_none(
             cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
             clock=app_state.clock,
         )
-    except VisionVerifyConfigError as exc:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             service="runtime_services",
-            note="vision verifier gate disabled: configuration incomplete",
+            note="vision verifier gate disabled: build failed",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

@@ -100,10 +100,11 @@ def _expand_single_agent(  # noqa: PLR0913
         TemplateRenderError: When ``role`` is absent, empty, or not a string.
     """
     role = agent.get("role")
-    if not isinstance(role, str) or not role:
+    if not isinstance(role, str) or not role.strip():
         msg = f"Agent at index {idx} requires a non-empty string 'role' field"
         logger.warning(TEMPLATE_RENDER_VARIABLE_ERROR, index=idx, field="role")
         raise TemplateRenderError(msg)
+    role = role.strip()
     name = str(agent.get("name") or "").strip()
 
     if not name or name.startswith("{{") or "__JINJA2__" in name:

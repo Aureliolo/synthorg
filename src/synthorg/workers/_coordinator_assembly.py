@@ -132,6 +132,51 @@ async def _resolve_routing_scorer_config(
         return None
 
 
+async def _resolve_coordinator_dependencies(
+    app_state: AppState,
+) -> tuple[
+    str,
+    RoutingScorerConfig | None,
+    tuple[PlannerWorktreeStrategy, WorkspaceIsolationConfig],
+]:
+    """Resolve decomposition model, routing-scorer config, and workspace concurrently.
+
+    The three resolution steps are independent, so they run under a
+    ``TaskGroup`` to keep boot latency down (structured concurrency: any
+    failure cancels the siblings and propagates).
+
+    Returns:
+        A ``(decomposition_model, routing_scorer_config, (workspace_strategy,
+        workspace_config))`` triple.
+    """
+    try:
+        async with asyncio.TaskGroup() as tg:
+            model_task = tg.create_task(
+                config_resolver_of(app_state).get_str(
+                    _DECOMPOSITION_NS,
+                    _DECOMPOSITION_KEY,
+                )
+            )
+            scorer_task = tg.create_task(_resolve_routing_scorer_config(app_state))
+            workspace_task = tg.create_task(_build_workspace_strategy(app_state))
+    except Exception as exc:
+        reraise_critical(exc)
+        log_exception_redacted(
+            logger,
+            API_APP_STARTUP,
+            exc,
+            service="coordinator",
+            context="resolve_failed",
+            note="decomposition / routing-scorer / workspace config resolve failed",
+        )
+        raise
+    return (
+        model_task.result(),
+        scorer_task.result(),
+        workspace_task.result(),
+    )
+
+
 async def _build_runtime_coordinator(
     app_state: AppState,
     engine: AgentEngine,
@@ -155,30 +200,11 @@ async def _build_runtime_coordinator(
         A ``(coordinator, scorer, decomposition_model)`` triple sharing
         the boot engine and a single ``AgentTaskScorer``.
     """
-    try:
-        async with asyncio.TaskGroup() as tg:
-            model_task = tg.create_task(
-                config_resolver_of(app_state).get_str(
-                    _DECOMPOSITION_NS,
-                    _DECOMPOSITION_KEY,
-                )
-            )
-            scorer_task = tg.create_task(_resolve_routing_scorer_config(app_state))
-            workspace_task = tg.create_task(_build_workspace_strategy(app_state))
-    except Exception as exc:
-        reraise_critical(exc)
-        log_exception_redacted(
-            logger,
-            API_APP_STARTUP,
-            exc,
-            service="coordinator",
-            context="resolve_failed",
-            note="decomposition / routing-scorer / workspace config resolve failed",
-        )
-        raise
-    decomposition_model = model_task.result()
-    routing_scorer_config = scorer_task.result()
-    workspace_strategy, workspace_config = workspace_task.result()
+    (
+        decomposition_model,
+        routing_scorer_config,
+        (workspace_strategy, workspace_config),
+    ) = await _resolve_coordinator_dependencies(app_state)
     performance_tracker = app_state.slice(HrStateSlice).performance_tracker
     if routing_scorer_config is None:
         scorer = AgentTaskScorer(min_score=app_state.config.task_assignment.min_score)

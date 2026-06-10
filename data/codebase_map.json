@@ -19042,7 +19042,7 @@
     },
     {
       "kind": "code",
-      "loc": 161,
+      "loc": 162,
       "loc_cap": 500,
       "module": "src/synthorg/templates/_agent_expansion.py",
       "owning_feature": null
@@ -20519,14 +20519,14 @@
     },
     {
       "kind": "code",
-      "loc": 261,
+      "loc": 283,
       "loc_cap": 500,
       "module": "src/synthorg/workers/_coordinator_assembly.py",
       "owning_feature": "runtime"
     },
     {
       "kind": "code",
-      "loc": 330,
+      "loc": 328,
       "loc_cap": 500,
       "module": "src/synthorg/workers/_engine_assembly.py",
       "owning_feature": "runtime"

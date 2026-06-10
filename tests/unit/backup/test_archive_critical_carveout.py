@@ -63,6 +63,21 @@ class TestDirManifestProbes:
         with pytest.raises(MemoryError):
             await service.list_backups()
 
+    async def test_recursion_error_propagates_from_listing(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        service = _make_service(tmp_path)
+        _write_dir_backup(tmp_path, "{}")
+
+        def _boom(*_a: object, **_k: object) -> object:
+            raise RecursionError
+
+        monkeypatch.setattr("synthorg.backup.service_archive.json.loads", _boom)
+        with pytest.raises(RecursionError):
+            await service.list_backups()
+
     async def test_memory_error_propagates_from_dir_match(
         self,
         tmp_path: Path,
@@ -76,6 +91,21 @@ class TestDirManifestProbes:
 
         monkeypatch.setattr("synthorg.backup.service_archive.json.loads", _boom)
         with pytest.raises(MemoryError):
+            service._dir_matches_backup(backup_dir, "x")
+
+    async def test_recursion_error_propagates_from_dir_match(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        service = _make_service(tmp_path)
+        backup_dir = _write_dir_backup(tmp_path, json.dumps({"backup_id": "x"}))
+
+        def _boom(*_a: object, **_k: object) -> object:
+            raise RecursionError
+
+        monkeypatch.setattr("synthorg.backup.service_archive.json.loads", _boom)
+        with pytest.raises(RecursionError):
             service._dir_matches_backup(backup_dir, "x")
 
     def test_dir_match_ordinary_error_returns_false(self, tmp_path: Path) -> None:
@@ -132,6 +162,25 @@ class TestArchiveManifestProbes:
         with pytest.raises(MemoryError):
             await service.list_backups()
 
+    async def test_recursion_error_propagates_from_archive_listing(
+        self,
+        tmp_path: Path,
+        archive_entry: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        service = _make_service(tmp_path)
+
+        def _boom(_path: Path) -> object:
+            raise RecursionError
+
+        monkeypatch.setattr(
+            BackupService,
+            "_read_manifest_from_archive",
+            staticmethod(_boom),
+        )
+        with pytest.raises(RecursionError):
+            await service.list_backups()
+
     def test_archive_match_swallows_unexpected_error(
         self,
         tmp_path: Path,
@@ -168,4 +217,23 @@ class TestArchiveManifestProbes:
             staticmethod(_boom),
         )
         with pytest.raises(MemoryError):
+            service._archive_matches_backup(archive_entry, "other")
+
+    def test_archive_match_recursion_error_propagates(
+        self,
+        tmp_path: Path,
+        archive_entry: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        service = _make_service(tmp_path)
+
+        def _boom(_path: Path) -> object:
+            raise RecursionError
+
+        monkeypatch.setattr(
+            BackupService,
+            "_read_manifest_from_archive",
+            staticmethod(_boom),
+        )
+        with pytest.raises(RecursionError):
             service._archive_matches_backup(archive_entry, "other")
