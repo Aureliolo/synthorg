@@ -146,7 +146,7 @@ class DiagramGeneratorTool(BaseDesignTool):
                 markup = self._generate_mermaid(diagram_type, description, title)
             else:
                 markup = self._generate_graphviz(diagram_type, description, title)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DESIGN_DIAGRAM_GENERATION_FAILED,

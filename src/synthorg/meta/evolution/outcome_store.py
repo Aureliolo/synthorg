@@ -95,7 +95,7 @@ class InMemoryEvolutionOutcomeStore:
                     EVOLUTION_OUTCOME_STORE_EVICTED,
                     max_results=self._max_results,
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 EVOLUTION_OUTCOME_RECORD_FAILED,

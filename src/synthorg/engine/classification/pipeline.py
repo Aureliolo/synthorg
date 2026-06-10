@@ -395,7 +395,7 @@ async def _classify_safely(  # noqa: PLR0913
             severity="non_recoverable",
         )
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- best-effort: log and skip
         logger.warning(
             CLASSIFICATION_ERROR,
             agent_id=agent_id,
@@ -420,7 +420,7 @@ async def _dispatch_to_sinks(
     for sink in sinks:
         try:
             await sink.on_classification(result)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 CLASSIFICATION_SINK_ERROR,
@@ -538,7 +538,7 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
             continue
         try:
             context = await loader.load(execution_result, agent_id, task_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             detector_names = [type(d).__name__ for d in detectors]
             logger.warning(
@@ -611,7 +611,7 @@ async def _safe_detect(  # noqa: PLR0913
             timeout_seconds=timeout_seconds,
         )
         return ()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             DETECTOR_ERROR,

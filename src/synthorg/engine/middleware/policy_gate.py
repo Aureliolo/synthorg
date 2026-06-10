@@ -94,7 +94,7 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
                 },
             )
             decision = await self._engine.evaluate(request)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.error(
                 SECURITY_POLICY_ENGINE_ERROR,

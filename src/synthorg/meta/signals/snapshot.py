@@ -129,7 +129,7 @@ class SnapshotBuilder:
             """Run aggregator, store result on success."""
             try:
                 results[name] = await coro  # type: ignore[misc]
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain=name

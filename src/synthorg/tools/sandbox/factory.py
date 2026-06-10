@@ -299,7 +299,7 @@ async def cleanup_sandbox_backends(
         logger.debug(SANDBOX_FACTORY_CLEANUP, backend=name)
         try:
             await backend.cleanup()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 SANDBOX_FACTORY_CLEANUP_FAILED,

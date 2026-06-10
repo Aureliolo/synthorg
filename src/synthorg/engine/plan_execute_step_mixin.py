@@ -231,7 +231,7 @@ class PlanExecuteStepMixin:
             return
         try:
             await self._checkpoint_callback(ctx)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 EXECUTION_CHECKPOINT_CALLBACK_FAILED,

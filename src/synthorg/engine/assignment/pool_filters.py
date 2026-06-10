@@ -97,7 +97,7 @@ class HierarchicalPoolFilter:
         delegator = self._resolve_delegator(request)
         try:
             known = self._is_known_delegator(delegator)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             return self._hierarchy_lookup_failure(
                 request,
@@ -112,7 +112,7 @@ class HierarchicalPoolFilter:
             )
         try:
             subordinates = self._filter_by_hierarchy(request, delegator)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             return self._hierarchy_lookup_failure(
                 request,

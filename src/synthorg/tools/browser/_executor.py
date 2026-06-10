@@ -449,7 +449,7 @@ def main() -> int:
         return 2
     try:
         result = asyncio.run(_dispatch(payload))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         _reraise_critical(exc)
         # Redact the raw exception message entirely: str(exc) can carry
         # filesystem paths, env vars, URLs, or page content. Emit only

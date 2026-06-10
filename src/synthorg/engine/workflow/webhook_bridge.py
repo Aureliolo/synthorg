@@ -137,7 +137,7 @@ class WebhookEventBridge:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             if not self._poll_timeout_fallback_logged:
                 logger.warning(
@@ -177,7 +177,7 @@ class WebhookEventBridge:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             if not self._max_errors_fallback_logged:
                 logger.warning(
@@ -285,7 +285,7 @@ class WebhookEventBridge:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             if not self._enabled_fallback_logged:
                 logger.warning(
@@ -350,7 +350,7 @@ class WebhookEventBridge:
                 consecutive_errors = 0
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 # ``reraise_critical`` propagates catastrophic
                 # interpreter-level errors (``MemoryError`` /
                 # ``RecursionError``) to the event-loop exception
@@ -388,7 +388,7 @@ class WebhookEventBridge:
                             WEBHOOK_CHANNEL.name,
                             _SUBSCRIBER_ID,
                         )
-                    except Exception as unsub_exc:
+                    except Exception as unsub_exc:  # noqa: BLE001 -- criticals re-raised
                         reraise_critical(unsub_exc)
                         logger.warning(
                             WEBHOOK_BRIDGE_STOPPED,

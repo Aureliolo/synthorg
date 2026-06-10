@@ -88,7 +88,7 @@ async def sync_to_task_engine(  # noqa: PLR0913
         result = await task_engine.submit(mutation)
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         _log_sync_issue(
             critical=critical,
@@ -333,7 +333,7 @@ async def _create_review_approval(
     )
     try:
         await approval_store.add(item)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             EXECUTION_ENGINE_ERROR,

@@ -57,7 +57,7 @@ async def autonomy_get(
         return err(exc)
     try:
         identity = await agent_registry_of(app_state).get(NotBlankStr(agent_id))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -149,7 +149,7 @@ async def autonomy_update(
     except AgentNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -178,7 +178,7 @@ async def collaboration_get_score(
         score = await performance_tracker_of(app_state).get_collaboration_score(
             NotBlankStr(agent_id),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -216,7 +216,7 @@ async def collaboration_get_calibration(
         calibration = await tracker.get_collaboration_calibration(
             NotBlankStr(agent_id),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

@@ -108,7 +108,7 @@ class RollbackExecutor:
                     reason="catastrophic_error",
                 )
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- best-effort revert: log and fail
                 log_exception_redacted(
                     logger,
                     META_ROLLBACK_OPERATION_FAILED,

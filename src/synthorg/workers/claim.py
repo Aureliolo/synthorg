@@ -282,7 +282,7 @@ class JetStreamTaskQueue:
                         f"{self._stop_drain_timeout_seconds}s"
                     )
                     raise BusStopTimeoutError(msg) from exc
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         WORKERS_TASK_QUEUE_DRAIN_FAILED,
@@ -301,7 +301,7 @@ class JetStreamTaskQueue:
         if self._client is not None:
             try:
                 await self._client.drain()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     WORKERS_TASK_QUEUE_DRAIN_FAILED,
@@ -580,7 +580,7 @@ class JetStreamTaskQueue:
             )
             try:
                 await raw.ack()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
@@ -599,7 +599,7 @@ class JetStreamTaskQueue:
             )
             try:
                 await raw.ack()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
@@ -720,7 +720,7 @@ class JetStreamTaskQueue:
             return
         try:
             await sub.unsubscribe()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
@@ -733,7 +733,7 @@ class JetStreamTaskQueue:
         """Terminally ack an unparseable message; log if the ack fails."""
         try:
             await raw.ack()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,

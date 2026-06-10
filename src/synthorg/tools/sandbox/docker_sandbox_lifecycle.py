@@ -75,7 +75,7 @@ class DockerSandboxLifecycleMixin:
         """
         try:
             return await self._collect_logs(container_obj)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # aiodocker exceptions can carry the Docker socket path
             # or registry auth header in str(exc).
@@ -153,7 +153,7 @@ class DockerSandboxLifecycleMixin:
                 DOCKER_CONTAINER_STOPPED,
                 container_id=container_id[:12],
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DOCKER_CONTAINER_STOP_FAILED,
@@ -179,7 +179,7 @@ class DockerSandboxLifecycleMixin:
                 DOCKER_CONTAINER_REMOVED,
                 container_id=container_id[:12],
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DOCKER_CONTAINER_REMOVE_FAILED,
@@ -209,7 +209,7 @@ class DockerSandboxLifecycleMixin:
             await self._lifecycle_strategy.cleanup_all(
                 destroy_fn=self._destroy_handle,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DOCKER_CLEANUP,
@@ -228,7 +228,7 @@ class DockerSandboxLifecycleMixin:
                     await self._remove_container(self._docker, sidecar_id)
             try:
                 await self._docker.close()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     DOCKER_CLEANUP,
@@ -249,7 +249,7 @@ class DockerSandboxLifecycleMixin:
         try:
             docker = await self._ensure_docker()
             await docker.version()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DOCKER_HEALTH_CHECK,

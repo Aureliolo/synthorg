@@ -369,7 +369,7 @@ class LlmConcernRouter:
                     ),
                     timeout=self._timeout_seconds,
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COS_ROUTING_FALLBACK,

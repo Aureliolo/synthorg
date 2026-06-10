@@ -63,7 +63,7 @@ def check_shutdown(
         return None
     try:
         shutting_down = shutdown_checker()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         error_msg = f"Shutdown checker failed: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
@@ -108,7 +108,7 @@ def check_budget(
         return None
     try:
         exhausted = budget_checker(ctx)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         error_msg = f"Budget checker failed: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
@@ -181,7 +181,7 @@ async def check_stagnation(  # noqa: PLR0913
             tuple(turns),
             corrections_injected=corrections_injected,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             EXECUTION_LOOP_ERROR,
@@ -289,7 +289,7 @@ async def invoke_compaction(
         return None
     try:
         return await compaction_callback(ctx)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             CONTEXT_BUDGET_COMPACTION_FAILED,

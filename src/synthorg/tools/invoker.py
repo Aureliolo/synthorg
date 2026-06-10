@@ -266,7 +266,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             verdict = await self._security_interceptor.evaluate_pre_tool(
                 context,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 SECURITY_INTERCEPTOR_ERROR,
@@ -355,7 +355,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 context,
                 result.content,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 SECURITY_OUTPUT_SCAN_ERROR,
@@ -644,7 +644,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 error=safe_error_description(exc),
             )
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Propagated error string lands in agent context; redact to
             # prevent credential leakage from third-party HTTP / driver
@@ -716,7 +716,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                     reason="Agent requested human approval",
                 ),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TOOL_INVOKE_EXECUTION_ERROR,

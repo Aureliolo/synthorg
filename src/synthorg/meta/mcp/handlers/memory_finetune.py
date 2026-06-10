@@ -94,7 +94,7 @@ async def _memory_start_fine_tune(
         # recovery path instead of a generic handler error.
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -148,7 +148,7 @@ async def _memory_resume_fine_tune(
         # orchestrator won't reclassify the failure.
         log_handler_invoke_failed(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -191,7 +191,7 @@ async def _memory_get_fine_tune_status(
     except ValueError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -224,7 +224,7 @@ async def _memory_cancel_fine_tune(
         target_id = await service.cancel_fine_tune()
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -268,7 +268,7 @@ async def _memory_run_preflight(
         result = await service.run_preflight(plan)
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -298,7 +298,7 @@ async def _memory_list_runs(
         runs, total = await service.list_runs(limit=limit, offset=offset)
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -324,7 +324,7 @@ async def _memory_get_active_embedder(
         snap = await service.get_active_embedder()
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

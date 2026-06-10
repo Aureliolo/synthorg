@@ -87,7 +87,7 @@ async def _personalities_list(
             offset=offset,
             limit=limit,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -119,7 +119,7 @@ async def _personalities_get(
         entry = await personality_service_of(app_state).get_personality(
             NotBlankStr(name),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -155,7 +155,7 @@ async def _training_list_sessions(
             offset=offset,
             limit=limit,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -187,7 +187,7 @@ async def _training_get_session(
         session = await training_service_of(app_state).get_session(
             NotBlankStr(plan_id),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -222,7 +222,7 @@ async def _training_start_session(
         return capability_gap(tool, _WHY_TRAINING_START)
     try:
         result = await training_service_of(app_state).start_session(plan)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

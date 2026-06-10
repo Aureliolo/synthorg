@@ -188,7 +188,7 @@ class TrackerGroupAggregator:
         """
         try:
             return await self._tracker.get_snapshot(str(agent_id), now=until)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 META_ABTEST_GROUP_AGGREGATOR_SNAPSHOT_FAILED,

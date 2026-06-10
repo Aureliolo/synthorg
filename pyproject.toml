@@ -407,12 +407,19 @@ max-complexity = 8
 # decomposition can satisfy; INP001 is a packaging chore. Tracked
 # separately in the exemption ledger in docs/decisions/0006-tiered-module-size-policy.md.
 "src/synthorg/**/*.py" = [
-    "BLE001",  # broad-except boundary code (logger.exception sites)
     "C901",    # complex-structure (function-level cyclomatic)
     "PLR0911", # too-many-return-statements
     "PLR0912", # too-many-branches
     "PLR0915", # too-many-statements
     "INP001",  # implicit namespace packages (some directories lack __init__)
+]
+# BLE001 (blind-except) is being drained per-package by the typed-except
+# remediation (EPIC #2062): each package's sites become a typed except or a
+# justified per-line noqa. This entry keeps the suppression only for the
+# packages not yet drained; the final flip removes it once every package is
+# converted, at which point ruff enforces typed-except across all of src.
+"src/synthorg/{api,memory,communication,hr,observability,security,budget,integrations,providers,telemetry,settings,backup,ontology,notifications,templates,research,knowledge,docs_engine,deliverable_receipts,core,coordination,client,_demo}/**/*.py" = [
+    "BLE001",
 ]
 "src/synthorg/tools/browser/**/*.py" = [
     # The BrowserTool catches its own BrowserDomainError chain at the

@@ -194,7 +194,7 @@ async def _park_for_approval(
             agent_id=agent_id,
             task_id=task_id,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         return build_result(
             ctx,
@@ -264,7 +264,7 @@ async def execute_tool_calls(  # noqa: PLR0913
         results = await tool_invoker.invoke_all(
             response.tool_calls,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         error_msg = f"Tool execution failed on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         log_exception_redacted(

@@ -145,7 +145,7 @@ class AgentEngineRecoveryMixin:
             raise
         except BudgetExhaustedError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 EXECUTION_RECOVERY_FAILED,

@@ -120,7 +120,7 @@ async def setup_workspaces(
     try:
         requests = build_workspace_requests(routing_result, config, project_id)
         workspaces = await workspace_service.setup_group(requests=requests)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         elapsed = clock.monotonic() - start
         phase = CoordinationPhaseResult(
@@ -234,7 +234,7 @@ async def merge_workspaces(  # noqa: PLR0913 -- project/repo routing inputs
             merge_result = await workspace_service.merge_group(
                 workspaces=workspaces,
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         elapsed = clock.monotonic() - start
         phase = CoordinationPhaseResult(
@@ -278,7 +278,7 @@ async def teardown_workspaces(
     )
     try:
         await workspace_service.teardown_group(workspaces=workspaces)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             COORDINATION_CLEANUP_FAILED,
@@ -368,7 +368,7 @@ async def execute_waves(
             if not success and fail_fast:
                 break
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             elapsed = clock.monotonic() - start
             logger.warning(

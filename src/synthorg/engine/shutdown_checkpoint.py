@@ -296,7 +296,7 @@ class CheckpointAndStopStrategy:
                 reason="checkpoint timed out",
             )
             return False
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 EXECUTION_SHUTDOWN_CHECKPOINT_FAILED,

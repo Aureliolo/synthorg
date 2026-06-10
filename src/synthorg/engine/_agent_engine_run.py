@@ -89,7 +89,7 @@ class AgentEngineRunMixin:
             )
             if frames:
                 await self._flight_recorder_sink.record_frames(frames)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 FLIGHT_RECORDER_RECORD_FAILED,

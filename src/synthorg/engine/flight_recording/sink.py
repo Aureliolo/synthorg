@@ -77,7 +77,7 @@ class PersistenceFlightRecorderSink:
             return
         try:
             await self._repository.append_many(frames)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # ``reraise_critical`` ensures system errors escape so the
             # engine still gets the operator-fatal signal it expects
             # at the per-turn boundary. The recording path is best-

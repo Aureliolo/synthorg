@@ -169,7 +169,7 @@ class WorkspaceIsolationService:
                 await self._strategy.teardown_workspace(
                     workspace=ws,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Rollback cleanup errors can wrap filesystem / DB
                 # exceptions whose str() embeds paths or connection
@@ -300,7 +300,7 @@ class WorkspaceIsolationService:
         for queue in queues:
             try:
                 await queue.stop()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     WORKSPACE_TEARDOWN_FAILED,
@@ -336,7 +336,7 @@ class WorkspaceIsolationService:
                 await self._strategy.teardown_workspace(
                     workspace=workspace,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # The ``errors`` list flows into
                 # ``WorkspaceCleanupError`` which callers may log as

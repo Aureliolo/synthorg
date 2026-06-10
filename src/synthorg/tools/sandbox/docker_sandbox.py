@@ -236,7 +236,7 @@ class DockerSandbox(
                     created_at=self._clock.now(),
                 ),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 SANDBOX_CONTAINER_TRACK_FAILED,
@@ -254,7 +254,7 @@ class DockerSandbox(
             return
         try:
             await repo.delete(container_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 SANDBOX_CONTAINER_UNTRACK_FAILED,

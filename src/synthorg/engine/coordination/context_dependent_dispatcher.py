@@ -180,7 +180,7 @@ class ContextDependentDispatcher:
             wave_workspaces = await workspace_service.setup_group(
                 requests=wave_requests,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             ws_elapsed = self._clock.monotonic() - ws_start
             logger.warning(
@@ -293,7 +293,7 @@ class ContextDependentDispatcher:
                     duration_seconds=elapsed,
                 )
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # Mark the wave failed BEFORE re-raising a critical error so the
             # ``finally`` block skips the merge path on a critical unwind.
             wave_failed = True

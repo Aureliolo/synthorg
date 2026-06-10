@@ -210,7 +210,7 @@ class ApprovalGate:
                 )
                 await self._interrupt_store.create(interrupt)
                 interrupt_id = interrupt.id
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     APPROVAL_GATE_NOTIFICATION_FAILED,
@@ -235,7 +235,7 @@ class ApprovalGate:
                     "reason": escalation.reason,
                 },
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_NOTIFICATION_FAILED,
@@ -275,7 +275,7 @@ class ApprovalGate:
                     },
                 ),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_NOTIFICATION_FAILED,
@@ -419,7 +419,7 @@ class ApprovalGate:
                     agent_id=parked.agent_id,
                     payload={"approval_id": approval_id},
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     APPROVAL_GATE_NOTIFICATION_FAILED,
@@ -447,7 +447,7 @@ class ApprovalGate:
         )
         try:
             await self._interrupt_store.resolve(resolution)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_NOTIFICATION_FAILED,

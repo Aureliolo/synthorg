@@ -139,7 +139,7 @@ async def reconcile_tracked_containers(
     for container_id in db_only:
         try:
             await repo.delete(container_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DOCKER_CONTAINER_REMOVED,
@@ -154,7 +154,7 @@ async def reconcile_tracked_containers(
     for container_id in docker_only:
         try:
             await docker.stop_container(container_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DOCKER_CONTAINER_REMOVED,
@@ -165,7 +165,7 @@ async def reconcile_tracked_containers(
             )
         try:
             await docker.remove_container(container_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DOCKER_CONTAINER_REMOVED,

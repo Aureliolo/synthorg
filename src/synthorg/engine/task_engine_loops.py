@@ -217,7 +217,7 @@ class TaskEngineLoopsMixin:
                     with contextlib.suppress(BaseException):
                         envelope.future.exception()
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- processing-loop boundary
                 log_exception_redacted(
                     logger,
                     TASK_ENGINE_LOOP_ERROR,
@@ -286,7 +286,7 @@ class TaskEngineLoopsMixin:
                             mutation_type=event.mutation_type,
                             queue_size=self._observer_queue.qsize(),
                         )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -323,7 +323,7 @@ class TaskEngineLoopsMixin:
                 break
             try:
                 await self._notify_observers(event)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger,
@@ -345,7 +345,7 @@ class TaskEngineLoopsMixin:
         for observer in self._observers:
             try:
                 await observer(event)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     TASK_ENGINE_OBSERVER_FAILED,

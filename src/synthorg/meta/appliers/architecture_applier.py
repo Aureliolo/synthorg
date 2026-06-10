@@ -123,7 +123,7 @@ class ArchitectureApplier:
                 note="registry mutation not yet implemented",
             )
             return ApplyResult(success=True, changes_applied=count)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -212,7 +212,7 @@ class ArchitectureApplier:
                 errors.extend(
                     _validate_change(change, context=context, pending=pending)
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 detail = (
                     f"context raised {type(exc).__name__}: "

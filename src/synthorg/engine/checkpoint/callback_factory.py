@@ -99,7 +99,7 @@ def make_checkpoint_callback(
                 turn_number=turn,
                 checkpoint_id=checkpoint.id,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -130,7 +130,7 @@ def make_checkpoint_callback(
                 HEARTBEAT_UPDATED,
                 execution_id=ctx.execution_id,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger, HEARTBEAT_UPDATE_FAILED, exc, execution_id=ctx.execution_id

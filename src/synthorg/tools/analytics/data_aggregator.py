@@ -306,7 +306,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 ),
                 is_error=True,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 ANALYTICS_TOOL_QUERY_FAILED,

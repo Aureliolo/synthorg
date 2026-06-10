@@ -181,7 +181,7 @@ async def _knowledge_search(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_SEARCH, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_SEARCH, exc)
         return err(exc)
@@ -212,7 +212,7 @@ async def _knowledge_ingest(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_INGEST, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_INGEST, exc)
         return err(exc)
@@ -238,7 +238,7 @@ async def _knowledge_reindex(
     except KnowledgeSourceNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_REINDEX, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_REINDEX, exc)
         return err(exc)
@@ -272,7 +272,7 @@ async def _knowledge_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_LIST, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_LIST, exc)
         return err(exc)
@@ -297,7 +297,7 @@ async def _knowledge_get(
     except KnowledgeSourceNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_GET, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_GET, exc)
         return err(exc)
@@ -323,7 +323,7 @@ async def _knowledge_delete(
     except KnowledgeSourceNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_DELETE, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_DELETE, exc)
         return err(exc)

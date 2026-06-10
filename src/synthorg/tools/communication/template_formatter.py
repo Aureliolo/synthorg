@@ -164,7 +164,7 @@ class TemplateFormatterTool(BaseCommunicationTool):
 
         try:
             rendered = tmpl.render(**variables)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COMM_TOOL_TEMPLATE_RENDER_FAILED,

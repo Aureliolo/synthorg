@@ -154,7 +154,7 @@ class MemoryContextProvider:
                     limit=1,
                 ),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 STRATEGY_CONTEXT_PROVIDER_FAILED,
@@ -252,7 +252,7 @@ class CompositeContextProvider:
             provider_name = type(provider).__name__
             try:
                 return await provider.provide(config=config)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     STRATEGY_CONTEXT_PROVIDER_FAILED,

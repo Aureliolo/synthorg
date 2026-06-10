@@ -211,7 +211,7 @@ class DesktopTool(BaseTool):
         """Release sandbox resources tied to this tool's owner."""
         try:
             await self._sandbox.release_owner(self._owner_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DESKTOP_CLOSE_FAILED,

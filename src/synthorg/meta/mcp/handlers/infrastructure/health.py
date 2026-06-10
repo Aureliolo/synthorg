@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import HrStateSlice
 from synthorg.meta.mcp.handler_protocol import ToolHandler
@@ -40,7 +41,8 @@ async def _health_check(
             "approval_store": app_state.slice(ApprovalStateSlice).store is not None,
             "agent_registry": app_state.slice(HrStateSlice).agent_registry is not None,
         }
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         # No argument validation in this body, so the canonical
         # ``except ArgumentValidationError`` branch added across other
         # handlers would be dead code here. Capability flag access is

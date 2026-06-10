@@ -141,7 +141,7 @@ class MCPToolFactory:
             for client in self._clients:
                 try:
                     await client.disconnect()
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         MCP_CLIENT_DISCONNECT_FAILED,

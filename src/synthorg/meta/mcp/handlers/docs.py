@@ -290,7 +290,7 @@ async def _docs_write(
     except (DocCommitError, DocIndexError, DocValidationError) as exc:
         log_handler_invoke_failed(_TOOL_DOCS_WRITE, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_DOCS_WRITE, exc)
         return err(exc)
@@ -321,7 +321,7 @@ async def _docs_get(
     except DocNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_DOCS_GET, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_DOCS_GET, exc)
         return err(exc)
@@ -355,7 +355,7 @@ async def _docs_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_DOCS_LIST, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_DOCS_LIST, exc)
         return err(exc)
@@ -387,7 +387,7 @@ async def _docs_search(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_DOCS_SEARCH, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_DOCS_SEARCH, exc)
         return err(exc)
@@ -420,7 +420,7 @@ async def _docs_history(
     except DocNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_DOCS_HISTORY, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_DOCS_HISTORY, exc)
         return err(exc)

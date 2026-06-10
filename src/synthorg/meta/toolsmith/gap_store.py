@@ -82,7 +82,7 @@ class RingBufferCapabilityGapStore:
             logger.debug(TOOLSMITH_GAP_RECORDED, signature=signature)
             if evicted:
                 logger.info(TOOLSMITH_GAP_EVICTED, max_observations=self._max)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TOOLSMITH_GAP_RECORD_FAILED,

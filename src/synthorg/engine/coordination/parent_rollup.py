@@ -118,7 +118,7 @@ async def _hop_failure_note(
     )
     try:
         live = await task_engine.get_task(task_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         return base
     if live is None:
@@ -267,7 +267,7 @@ def compute_status_rollup(  # noqa: PLR0913
     try:
         statuses = _collect_subtask_statuses(dispatch_result, decomp_result)
         rollup = decomposition_service.rollup_status(str(context.task.id), statuses)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         elapsed = clock.monotonic() - start
         logger.warning(
@@ -426,7 +426,7 @@ async def run_update_parent_phase(
             rollup=rollup,
         )
         _record_update_parent_outcome(phases, clock=clock, outcome=outcome, start=start)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         _fail_update_parent_phase(
             phases,

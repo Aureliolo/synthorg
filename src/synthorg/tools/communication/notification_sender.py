@@ -225,7 +225,7 @@ class NotificationSenderTool(BaseCommunicationTool):
 
         try:
             await self._dispatcher.dispatch(notification)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COMM_TOOL_NOTIFICATION_SEND_FAILED,

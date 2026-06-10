@@ -172,7 +172,7 @@ class ApprovalGateGuard:
                 guard_name=self.name,
                 verdict=GuardVerdict.PASSED,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- store-write boundary
             reason = (
                 f"Approval store write failed "
                 f"({type(exc).__name__}); proposal not persisted."

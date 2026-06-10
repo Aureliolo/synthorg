@@ -468,7 +468,7 @@ class GroupChatService:
                 ),
                 timeout=self._config.agent_call_timeout_seconds,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COS_GROUP_CONTRIBUTION_FAILED,

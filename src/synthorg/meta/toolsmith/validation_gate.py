@@ -157,7 +157,7 @@ class SandboxBriefRunner:
             # (it executes ``script_body`` in the sandbox), so ``None`` is the
             # honest runtime value; the cast satisfies the ToolHandler contract.
             raw = await handler(app_state=cast("AppState", None), arguments=probe)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TOOLSMITH_BRIEF_PARSE_FAILED,

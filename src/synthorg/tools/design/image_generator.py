@@ -244,7 +244,7 @@ class ImageGeneratorTool(BaseDesignTool):
                 ),
                 is_error=True,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DESIGN_IMAGE_GENERATION_FAILED,
@@ -259,7 +259,7 @@ class ImageGeneratorTool(BaseDesignTool):
 
         try:
             decoded_bytes = base64.b64decode(result.data, validate=True)
-        except Exception as decode_exc:
+        except Exception as decode_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(decode_exc)
             logger.warning(
                 DESIGN_IMAGE_GENERATION_FAILED,

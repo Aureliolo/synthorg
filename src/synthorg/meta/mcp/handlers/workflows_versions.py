@@ -120,7 +120,7 @@ async def _workflow_versions_list(
             offset=offset,
             limit=limit,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -152,7 +152,7 @@ async def _workflow_versions_get(
         return err(exc)
     try:
         snapshot = await service.get_version(NotBlankStr(def_id), revision)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

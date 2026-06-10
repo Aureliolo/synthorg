@@ -228,7 +228,7 @@ class ResumeDispatchMixin:
                     project_id
                 )
                 workspace_path = Path(workspace.workspace_path)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     WORKERS_EXECUTION_SERVICE_FAILED,

@@ -211,7 +211,7 @@ class NarrativeReader:
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- best-effort fetch: log and drop
                 logger.warning(
                     COS_NARRATIVE_DECISION_UNAVAILABLE,
                     project_id=project_id,

@@ -253,7 +253,7 @@ class AgentEngineResumeMixin:
                 ctx=ctx,
                 system_prompt=system_prompt,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             return await self._handle_fatal_error(
                 exc=exc,

@@ -770,8 +770,8 @@
     },
     "src/synthorg/meta/mcp/handlers/tasks.py": {
       "cap": 500,
-      "loc": 471,
-      "ratio": 0.942,
+      "loc": 476,
+      "ratio": 0.952,
       "tier": "code"
     },
     "src/synthorg/meta/rollout/ab_test.py": {
@@ -1234,7 +1234,7 @@
     "synthorg.core.auth.roles": 27,
     "synthorg.core.autonomy_enums": 34,
     "synthorg.core.clock": 159,
-    "synthorg.core.critical_errors": 485,
+    "synthorg.core.critical_errors": 507,
     "synthorg.core.domain_errors": 184,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 48,

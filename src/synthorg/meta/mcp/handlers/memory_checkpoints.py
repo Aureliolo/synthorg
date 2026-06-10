@@ -81,7 +81,7 @@ async def _memory_list_checkpoints(
             limit=limit,
             offset=offset,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -126,7 +126,7 @@ async def _memory_deploy_checkpoint(
         # ``conflict`` so callers distinguish from internal errors.
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -175,7 +175,7 @@ async def _memory_rollback_checkpoint(
     ) as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -223,7 +223,7 @@ async def _memory_delete_checkpoint(
         # ``conflict`` so callers can distinguish from internal errors.
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

@@ -358,7 +358,7 @@ class ShadowEvaluationGuard:
                             failure_category="infrastructure",
                         )
                         raise
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 -- runner boundary
                         # Includes runner-raised ``TimeoutError`` (HTTP
                         # client timeout, etc.) -- distinguished from
                         # guard-deadline timeout by virtue of being

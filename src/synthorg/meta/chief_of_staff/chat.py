@@ -196,7 +196,7 @@ class ChiefOfStaffChat:
         if self._outcome_store is not None:
             try:
                 recent = await self._outcome_store.recent_outcomes(limit=5)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     COS_CHAT_FAILED,

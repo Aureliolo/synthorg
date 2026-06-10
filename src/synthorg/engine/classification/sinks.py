@@ -107,7 +107,7 @@ class PerformanceTrackerSink:
                     ),
                 )
                 await self._tracker.record_collaboration_event(record)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Never use logger.exception here -- the traceback
                 # can leak sensitive locals. Use the safe-warning
@@ -334,7 +334,7 @@ class NotificationDispatcherSink:
                     },
                 )
                 await self._dispatcher.dispatch(notification)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Best-effort path: refund the *exact* admission this
                 # iteration consumed (not the newest slot for the

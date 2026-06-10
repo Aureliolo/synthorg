@@ -242,7 +242,7 @@ class ReportGeneratorTool(BaseAnalyticsTool):
                 content=(f"Report query timed out after {self._config.query_timeout}s"),
                 is_error=True,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 ANALYTICS_TOOL_REPORT_FAILED,
@@ -262,7 +262,7 @@ class ReportGeneratorTool(BaseAnalyticsTool):
 
         try:
             report = self._format_report(report_type, period, data, output_format)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 ANALYTICS_TOOL_REPORT_FAILED,

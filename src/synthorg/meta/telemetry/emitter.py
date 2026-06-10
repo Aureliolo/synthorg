@@ -178,7 +178,7 @@ class HttpAnalyticsEmitter:
                 builtin_rule_names=self._builtin_rule_names,
             )
             await self._enqueue(event)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 XDEPLOY_EVENT_EMIT_FAILED,
@@ -208,7 +208,7 @@ class HttpAnalyticsEmitter:
                 builtin_rule_names=self._builtin_rule_names,
             )
             await self._enqueue(event)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 XDEPLOY_EVENT_EMIT_FAILED,
@@ -295,14 +295,14 @@ class HttpAnalyticsEmitter:
                     await self._flush_task
                 except asyncio.CancelledError:
                     pass  # expected: we just cancelled it
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     deferred_exc = exc
             try:
                 await self.flush()
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 if deferred_exc is None:
                     deferred_exc = exc
@@ -497,7 +497,7 @@ def _safe_response_text(response: httpx.Response) -> str:
     """
     try:
         text = response.text
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             XDEPLOY_RESPONSE_BODY_UNREADABLE,

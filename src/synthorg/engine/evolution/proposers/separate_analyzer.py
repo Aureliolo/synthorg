@@ -381,7 +381,7 @@ class SeparateAnalyzerProposer:
                 is_retryable=True,
             )
             return ()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 EVOLUTION_PROPOSER_PARSE_ERROR,
