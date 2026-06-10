@@ -142,10 +142,13 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
-        # --fetch-retries=5 retries on transient registry 5xx / network
-        # blips so a flaky npm registry doesn't fail the gate;
-        # --fetch-retry-factor=2 does exponential backoff.
-        run: npm --prefix web ci --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
+        # The composite retries on registry blips and verifies + repairs any
+        # native binding npm's optional-dep race (npm/cli#4828) drops.
+        # --fetch-retries adds npm's own exponential backoff on top.
+        uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: web
+          npm-ci-args: --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
 
       - name: Run CodSpeed Web benchmarks
         uses: CodSpeedHQ/action@9d332c4d90b43981c3e55ae8e38e68709996240f # v4.17.0

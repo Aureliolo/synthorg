@@ -1,0 +1,50 @@
+name: Install JS deps (native-binding guarded)
+description: >-
+  Runs `npm ci` and then asserts every platform-matched native binding listed
+  in the lockfile actually landed on disk, repairing any that npm dropped.
+  npm has a long-standing optional-dependency reify bug (npm/cli#4828) where
+  `npm ci` exits 0 while silently omitting a platform-specific native binding
+  (rolldown / esbuild / oxc / tailwind-oxide / lightningcss / rollup). The
+  failure then surfaces non-deterministically at build time as "Cannot find
+  native binding", not at install time, so a plain `npm ci` cannot self-heal.
+  This action closes that gap: install, verify against the lockfile, repair the
+  exact missing artifacts, and fail loudly only if a binding is still missing
+  after repair (i.e. a reproducible problem, not the transient race).
+
+inputs:
+  working-directory:
+    description: Directory containing package.json + package-lock.json.
+    required: false
+    default: web
+  npm-ci-args:
+    description: Extra arguments appended to `npm ci` (e.g. --ignore-scripts).
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: npm ci (retry on registry blips)
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        # Routed through env (not direct ${{ }} expansion into the run block)
+        # so the value cannot inject shell code (zizmor template-injection).
+        # Left unquoted below on purpose: word-splitting turns a multi-flag
+        # value like "--fetch-retries=5 --fetch-retry-factor=2" into argv.
+        NPM_CI_ARGS: ${{ inputs.npm-ci-args }}
+      run: |
+        for attempt in 1 2 3; do
+          if npm ci ${NPM_CI_ARGS}; then
+            exit 0
+          fi
+          echo "::warning::npm ci attempt ${attempt}/3 failed; retrying in 30s" >&2
+          sleep 30
+        done
+        echo "::error::npm ci failed after 3 attempts" >&2
+        exit 1
+
+    - name: Verify + repair native bindings (npm/cli#4828)
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: node "${GITHUB_ACTION_PATH}/verify-native-bindings.mjs"

@@ -189,18 +189,15 @@ jobs:
         with:
           node-version: "24.16.0"
 
-      # npm ci can die mid-stream on a transient registry ECONNRESET;
-      # nick-fields/retry (the repo's standard transient-failure wrapper,
-      # also used in docker.yml) reruns it on a network blip. `uses:`
-      # steps ignore step-level working-directory, so cd into site inside
-      # the command.
+      # The composite retries npm ci on a transient registry blip
+      # (superseding the prior nick-fields/retry wrapper) and verifies +
+      # repairs any native binding npm's optional-dep race (npm/cli#4828)
+      # drops before the build runs. site/ ships rolldown / esbuild /
+      # tailwind-oxide / lightningcss / rollup bindings, so it is exposed.
       - name: Install Astro dependencies
-        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
+        uses: ./.github/actions/install-js-deps
         with:
-          timeout_minutes: 10
-          max_attempts: 3
-          retry_wait_seconds: 30
-          command: cd site && npm ci
+          working-directory: site
 
       - name: Build Astro
         working-directory: site
@@ -319,6 +316,12 @@ jobs:
         with:
           node-version: "24.16.0"
 
+      - name: Install deploy tooling
+        uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: .github
+          npm-ci-args: --ignore-scripts
+
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -326,7 +329,6 @@ jobs:
           PR_NUMBER: ${{ needs.build.outputs.pr_number }}
           HEAD_SHA: ${{ needs.build.outputs.head_sha }}
         run: |
-          npm ci --ignore-scripts --prefix .github
           npx --prefix .github wrangler pages deploy _site \
             --project-name=synthorg-pr-preview \
             --branch="pr-${PR_NUMBER}" \
