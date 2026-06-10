@@ -1,6 +1,6 @@
 """Tests for CodeRunnerTool with mocked sandbox."""
 
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -8,6 +8,7 @@ import pytest
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.code_runner import CodeRunnerTool
 from synthorg.tools.sandbox.result import SandboxResult
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 # ── Helpers ──────────────────────────────────────────────────────
@@ -54,11 +55,11 @@ class TestCodeRunnerInit:
         tool = CodeRunnerTool(sandbox=sandbox)
         schema = tool.parameters_schema
         assert schema is not None
-        props = cast("dict[str, Any]", schema)["properties"]
+        props = cast(JsonDict, schema)["properties"]
         assert "code" in props
         assert "language" in props
         assert "timeout" in props
-        assert cast("dict[str, Any]", schema)["required"] == ["code", "language"]
+        assert cast(JsonDict, schema)["required"] == ["code", "language"]
 
 
 # ── Language mapping ────────────────────────────────────────────

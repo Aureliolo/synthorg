@@ -13,14 +13,13 @@ Realistic event-payload shapes:
   exercising every redaction path
 """
 
-from typing import Any
-
 import pytest
 from pytest_codspeed import BenchmarkFixture
 
 from synthorg.observability import scrub_event_fields
+from tests._shared import JsonDict
 
-_SMALL_CLEAN: dict[str, Any] = {
+_SMALL_CLEAN: JsonDict = {
     "event": "API_REQUEST_STARTED",
     "request_id": "req-0001",
     "method": "GET",
@@ -29,7 +28,7 @@ _SMALL_CLEAN: dict[str, Any] = {
     "duration_ms": 12.5,
 }
 
-_MEDIUM_MIXED: dict[str, Any] = {
+_MEDIUM_MIXED: JsonDict = {
     "event": "ENGINE_STAGE_COMPLETED",
     "task_id": "task-abc-0042",
     "agent_id": "agent-backend-7",
@@ -57,7 +56,7 @@ _MEDIUM_MIXED: dict[str, Any] = {
     "span_id": "span-1234abcd",
 }
 
-_ADVERSARIAL: dict[str, Any] = {
+_ADVERSARIAL: JsonDict = {
     "event": "API_AUTH_VERIFY_FAILED",
     "request_id": "req-0002",
     "method": "POST",

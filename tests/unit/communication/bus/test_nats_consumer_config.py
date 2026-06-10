@@ -62,7 +62,7 @@ class TestNatsConsumerConfig:
         channel = Channel(name="#engineering", type=ChannelType.TOPIC)
 
         await create_pull_consumer(
-            state,  # type: ignore[arg-type]
+            state,
             channel_name=channel.name,
             subscriber_id="agent-alice",
             channel=channel,

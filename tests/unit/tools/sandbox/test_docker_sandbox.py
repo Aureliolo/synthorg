@@ -23,15 +23,16 @@ from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from synthorg.tools.sandbox.lifecycle.per_task import PerTaskStrategy
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+from tests._shared import JsonDict
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 _DOCKER_MODULE = "synthorg.tools.sandbox.docker_sandbox.aiodocker"
 
 
-def _container_config(sandbox: DockerSandbox, **kwargs: Any) -> dict[str, Any]:
+def _container_config(sandbox: DockerSandbox, **kwargs: Any) -> JsonDict:  # type: ignore[explicit-any]  # kwargs forwarded to _build_container_config
     """Return the built container config as a freely-indexable mapping."""
-    return cast("dict[str, Any]", sandbox._build_container_config(**kwargs))
+    return cast(JsonDict, sandbox._build_container_config(**kwargs))
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -149,7 +150,7 @@ def _make_mock_docker() -> MagicMock:
 @contextmanager
 def _patch_aiodocker(
     mock_docker: MagicMock,
-) -> Iterator[Any]:
+) -> Iterator[MagicMock]:
     """Create a patch for aiodocker.Docker that returns mock_docker."""
     mock_module = MagicMock()
     mock_module.Docker = MagicMock(return_value=mock_docker)

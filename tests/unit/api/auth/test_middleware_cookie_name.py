@@ -1,7 +1,7 @@
 """Tests for the ``_get_cookie_name`` fallback logging."""
 
 from types import SimpleNamespace
-from typing import Any
+from typing import Never
 
 import pytest
 import structlog.testing
@@ -16,7 +16,7 @@ class TestGetCookieNameFallback:
     def test_missing_auth_logs_warning(self) -> None:
         class _RaisesOnCookieName:
             @property
-            def config(self) -> Any:
+            def config(self) -> Never:
                 msg = "config missing"
                 raise AttributeError(msg)
 

@@ -1,6 +1,6 @@
 """Tests for EchoTool."""
 
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -8,6 +8,7 @@ from synthorg.providers.models import ToolCall, ToolDefinition
 from synthorg.tools.examples.echo import EchoTool
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import JsonDict
 
 
 @pytest.mark.unit
@@ -27,7 +28,7 @@ class TestEchoToolProperties:
         schema = tool.parameters_schema
         assert schema is not None
         assert schema["type"] == "object"
-        assert "message" in cast("dict[str, Any]", schema)["properties"]
+        assert "message" in cast(JsonDict, schema)["properties"]
         assert schema["required"] == ["message"]
         assert schema["additionalProperties"] is False
 

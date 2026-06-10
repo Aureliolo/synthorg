@@ -1,7 +1,6 @@
 """Tests for the shared custom-rule repository helpers."""
 
 from datetime import UTC, datetime, timedelta, timezone
-from typing import Any
 from uuid import UUID
 
 import pytest
@@ -17,6 +16,7 @@ from synthorg.persistence._shared.custom_rule import (
     row_to_custom_rule,
     serialize_altitudes,
 )
+from tests._shared import JsonDict
 
 
 def _rule(
@@ -41,7 +41,7 @@ def _rule(
     )
 
 
-def _row_for(rule: CustomRuleDefinition, **overrides: Any) -> dict[str, Any]:
+def _row_for(rule: CustomRuleDefinition, **overrides: object) -> JsonDict:
     return {
         "id": str(rule.id),
         "name": rule.name,

@@ -9,7 +9,7 @@ second returns ``None`` and logs ``API_APPROVAL_CONFLICT`` with
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import Any, override
+from typing import override
 from unittest.mock import patch
 
 import pytest
@@ -86,7 +86,7 @@ class GatedRepo:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
@@ -496,7 +496,7 @@ class _LostRaceRepo:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
@@ -570,7 +570,7 @@ class TestLostRaceBatchFetch:
             @override
             async def query(
                 self,
-                filter_spec: Any,
+                filter_spec: object,
                 *,
                 limit: int = 100,
                 offset: int = 0,

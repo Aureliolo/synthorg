@@ -53,7 +53,7 @@ async def _signal_entry_and_wait(
     await asyncio.to_thread(release.wait, _HOLD_TIMEOUT_SECONDS)
 
 
-def _make_test_app(
+def _make_test_app(  # type: ignore[explicit-any]  # litestar route-handler union
     handler: Any,
     *,
     config: PerOpConcurrencyConfig | None = None,
@@ -75,7 +75,7 @@ def _make_test_app(
 
 
 def _fire_concurrent_posts(  # noqa: PLR0913 -- test helper with optional knobs
-    client: TestClient[Any],
+    client: TestClient[Litestar],
     path: str,
     count: int,
     *,

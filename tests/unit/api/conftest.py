@@ -19,6 +19,7 @@ from typeguard import suppress_type_checks
 import synthorg.api.app as _app_mod
 import synthorg.api.auth.service as _auth_mod
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
+from synthorg._core.features import BaseFeatureStateSlice
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.service import AuthService
 from synthorg.api.config import ApiConfig, RateLimitConfig
@@ -158,7 +159,7 @@ def _no_backup_service() -> Iterator[None]:
         yield
 
 
-def make_exception_handler_app(handler: Any) -> Litestar:
+def make_exception_handler_app(handler: Any) -> Litestar:  # type: ignore[explicit-any]  # accepts any Litestar route handler
     """Build a minimal Litestar app with project exception handlers."""
     return Litestar(
         route_handlers=[handler],
@@ -451,7 +452,7 @@ def task_board_entry_adapter() -> TaskBoardEntryAdapter:
     """
     pipeline = mock_of[WorkPipeline]()
 
-    async def _no_run(_work_item: Any) -> Any:
+    async def _no_run(_work_item: object) -> None:
         # The detached background task swallows the return value; we
         # only need ``submit`` not to raise. A real spine result is
         # exercised in the e2e suite.
@@ -736,7 +737,7 @@ def _iter_primitive_holders(app_state: AppState) -> Iterator[tuple[object, str]]
         if name.startswith("_") and name not in _NON_PRIMITIVE_PRIVATE_ATTRS:
             seen.add(name)
             yield app_state, name
-    instance_dict: dict[str, Any] = getattr(app_state, "__dict__", {})
+    instance_dict: dict[str, object] = getattr(app_state, "__dict__", {})
     for name in list(instance_dict):
         if (
             name.startswith("_")
@@ -753,7 +754,10 @@ def _iter_primitive_holders(app_state: AppState) -> Iterator[tuple[object, str]]
 
 def _snapshot_app_state(
     app_state: AppState,
-) -> tuple[list[tuple[object, str, Any]], dict[Any, Any]]:
+) -> tuple[
+    list[tuple[object, str, object]],
+    dict[type[BaseFeatureStateSlice], BaseFeatureStateSlice],
+]:
     """Step 5: snapshot mutable primitives + the per-feature slice store.
 
     Each primitive owner exposes its mutable runtime state via slots;
@@ -766,13 +770,15 @@ def _snapshot_app_state(
     is reverted on restore; scalars, frozen configs, and lock objects are
     captured by reference.
     """
-    saved: list[tuple[object, str, Any]] = []
+    saved: list[tuple[object, str, object]] = []
     for holder, name in _iter_primitive_holders(app_state):
         value = getattr(holder, name)
         if isinstance(value, (dict, set, list)):
             value = copy.copy(value)
         saved.append((holder, name, value))
-    saved_slices: dict[Any, Any] = dict(app_state._slices)
+    saved_slices: dict[type[BaseFeatureStateSlice], BaseFeatureStateSlice] = dict(
+        app_state._slices
+    )
     return saved, saved_slices
 
 
@@ -812,7 +818,10 @@ def _clear_litestar_stores(shared_app: Litestar) -> None:
 def _pre_test_reset(
     shared_app: Litestar,
     services: _ResetServices,
-) -> tuple[list[tuple[object, str, Any]], dict[Any, Any]]:
+) -> tuple[
+    list[tuple[object, str, object]],
+    dict[type[BaseFeatureStateSlice], BaseFeatureStateSlice],
+]:
     """Clear shared mutable state and snapshot AppState (steps 1-6).
 
     Returns the AppState primitive snapshot and a copy of the slice
@@ -876,8 +885,8 @@ def _post_startup_reset(shared_app: Litestar, services: _ResetServices) -> None:
 
 def _restore_app_state(
     shared_app: Litestar,
-    saved: list[tuple[object, str, Any]],
-    saved_slices: dict[Any, Any],
+    saved: list[tuple[object, str, object]],
+    saved_slices: dict[type[BaseFeatureStateSlice], BaseFeatureStateSlice],
 ) -> None:
     """Restore AppState primitives + slice store after the test (step 8).
 
@@ -898,7 +907,7 @@ def _restore_app_state(
 def _sync_shared_client(
     shared_app: Litestar,
     services: _ResetServices,
-) -> Iterator[TestClient[Any]]:
+) -> Iterator[TestClient[Litestar]]:
     """Reset state, enter a sync ``TestClient`` on the shared app, restore."""
     saved, saved_slices = _pre_test_reset(shared_app, services)
     try:
@@ -989,7 +998,7 @@ async def async_test_client(
 def ws_test_client(
     _shared_app: Litestar,
     _reset_services: _ResetServices,
-) -> Iterator[TestClient[Any]]:
+) -> Iterator[TestClient[Litestar]]:
     """Yield a sync ``TestClient`` for websocket tests.
 
     litestar 2.22's ``WebSocketTestSession`` is sync and portal-backed in

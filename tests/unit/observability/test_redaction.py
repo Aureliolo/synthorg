@@ -19,6 +19,7 @@ from synthorg.observability.redaction import (
     safe_error_description,
     scrub_secret_tokens,
 )
+from tests._shared import JsonDict
 
 
 @pytest.mark.unit
@@ -369,9 +370,9 @@ class _CapturingLogger:
     """
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.calls: list[tuple[str, JsonDict]] = []
 
-    def error(self, event: str | None = None, *args: Any, **kwargs: Any) -> None:
+    def error(self, event: str | None = None, *args: Any, **kwargs: Any) -> None:  # type: ignore[explicit-any]  # mirrors structlog BoundLogger.error Any-typed Protocol
         # ``*args`` is part of the structural surface but unused by
         # ``log_exception_redacted``; record kwargs only. The Any-typed
         # ``**kwargs`` mirrors the production ``_ErrorLogger`` Protocol

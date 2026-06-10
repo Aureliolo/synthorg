@@ -156,11 +156,11 @@ def test_main_walks_both_dirs_and_reports_combined_violations(
         "    model_config = ConfigDict(frozen=True)\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(gate, "SRC_DIR", fake_src)  # type: ignore[attr-defined]
-    monkeypatch.setattr(gate, "TEST_DIR", fake_tests)  # type: ignore[attr-defined]
+    monkeypatch.setattr(gate, "SRC_DIR", fake_src)
+    monkeypatch.setattr(gate, "TEST_DIR", fake_tests)
     # ``main()`` calls ``path.relative_to(REPO_ROOT)`` when printing
     # violations; re-anchor it so the synthetic paths resolve.
-    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)  # type: ignore[attr-defined]
+    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)
     rc = gate.main()  # type: ignore[attr-defined]
     assert rc == 1
     stderr = capsys.readouterr().err

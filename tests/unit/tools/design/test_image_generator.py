@@ -1,6 +1,6 @@
 """Tests for the image generator tool."""
 
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -10,6 +10,7 @@ from synthorg.tools.design.image_generator import (
     ImageProvider,
     ImageResult,
 )
+from tests._shared import JsonDict
 
 from .conftest import MockImageProvider
 
@@ -43,7 +44,7 @@ class TestImageGeneratorTool:
         tool = ImageGeneratorTool(provider=mock_provider)
         schema = tool.parameters_schema
         assert schema is not None
-        assert "prompt" in cast("dict[str, Any]", schema)["required"]
+        assert "prompt" in cast(JsonDict, schema)["required"]
 
     async def test_execute_success(
         self,

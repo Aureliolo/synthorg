@@ -7,7 +7,7 @@ so the host-side flow can be exercised without booting Xvfb or Docker.
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -16,13 +16,14 @@ from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.desktop import DesktopTool
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
+from tests._shared import JsonDict
 from tests._shared.fake_clock import FakeClock
 from tests._shared.mock_of import mock_of
 
 pytestmark = pytest.mark.unit
 
 
-def _sandbox_result(payload: dict[str, Any]) -> SandboxResult:
+def _sandbox_result(payload: JsonDict) -> SandboxResult:
     return SandboxResult(
         stdout=json.dumps(payload),
         stderr="",
@@ -36,14 +37,15 @@ def workspace(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _fake_sandbox(result: SandboxResult) -> Any:
-    return mock_of[SandboxBackend](
+def _fake_sandbox(result: SandboxResult) -> SandboxBackend:
+    sandbox: SandboxBackend = mock_of[SandboxBackend](
         execute=AsyncMock(spec=SandboxBackend.execute, return_value=result),
         release_owner=AsyncMock(spec=SandboxBackend.release_owner),
     )
+    return sandbox
 
 
-def _tool(workspace: Path, payload: dict[str, Any]) -> DesktopTool:
+def _tool(workspace: Path, payload: JsonDict) -> DesktopTool:
     return DesktopTool(
         sandbox=_fake_sandbox(_sandbox_result(payload)),
         workspace=workspace,
@@ -108,7 +110,7 @@ class TestDesktopToolDispatch:
             arguments={"mode": "screenshot", "screenshot_name": "shot"},
         )
         assert result.is_error is False
-        meta = cast("dict[str, Any]", result.metadata)
+        meta = cast(JsonDict, result.metadata)
         assert meta["sha256"] == "a" * 64
         assert meta["saved_path"].endswith("shot.png")
 
@@ -178,4 +180,4 @@ class TestDesktopToolDispatch:
         sandbox = _fake_sandbox(_sandbox_result({}))
         tool = DesktopTool(sandbox=sandbox, workspace=workspace)
         await tool.cleanup()
-        sandbox.release_owner.assert_awaited_once()
+        cast(AsyncMock, sandbox.release_owner).assert_awaited_once()

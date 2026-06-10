@@ -10,7 +10,7 @@ sweep + failure isolation), not the wall-clock loop scheduling.
 
 import asyncio
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -60,7 +60,7 @@ def _build_app_state(  # noqa: PLR0913 -- each kwarg controls a distinct stub ax
     has_persistence: bool = True,
     has_config_resolver: bool = True,
     default_retention_days: int = 90,
-    connections: list[Any] | None = None,
+    connections: list[SimpleNamespace] | None = None,
     cleanup_side_effects: dict[str, type[BaseException] | BaseException] | None = None,
     list_all_side_effect: type[BaseException] | BaseException | None = None,
 ) -> AppState:
@@ -270,7 +270,7 @@ async def test_loop_drives_tick_at_each_iteration(
     clock = FakeClock()
     tick_count = 0
 
-    async def _stub_tick(_app_state: Any) -> None:
+    async def _stub_tick(_app_state: AppState) -> None:
         nonlocal tick_count
         tick_count += 1
 

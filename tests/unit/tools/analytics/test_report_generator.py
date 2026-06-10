@@ -1,12 +1,13 @@
 """Tests for the report generator tool."""
 
 import json
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.analytics.report_generator import ReportGeneratorTool
+from tests._shared import JsonDict
 
 from .conftest import MockAnalyticsProvider
 
@@ -193,6 +194,6 @@ class TestReportGeneratorTool:
         tool = ReportGeneratorTool(provider=mock_provider)
         schema = tool.parameters_schema
         assert schema is not None
-        required = cast("dict[str, Any]", schema)["required"]
+        required = cast(JsonDict, schema)["required"]
         assert "report_type" in required
         assert "period" in required

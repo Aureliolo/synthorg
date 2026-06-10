@@ -1,7 +1,7 @@
 """Tests for discovery tools (list_tools, load_tool, load_tool_resource)."""
 
 import json
-from typing import Any, cast, override
+from typing import cast, override
 
 import pytest
 
@@ -17,6 +17,7 @@ from synthorg.tools.discovery import (
 )
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import JsonDict
 
 # ── Fixtures ────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ class _ToolWithResources(BaseTool):
         )
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         return ToolExecutionResult(content="executed")
 
 
@@ -84,7 +85,7 @@ class _SimpleTool(BaseTool):
         )
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         return ToolExecutionResult(content="ok")
 
 
@@ -223,7 +224,7 @@ class TestLoadToolResourceTool:
         result = await tool.execute(
             arguments={"tool_name": "rich_tool", "resource_id": "guide"},
         )
-        assert cast("dict[str, Any]", result.metadata)["should_load_resource"] == [
+        assert cast(JsonDict, result.metadata)["should_load_resource"] == [
             "rich_tool",
             "guide",
         ]

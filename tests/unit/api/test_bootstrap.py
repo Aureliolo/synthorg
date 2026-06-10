@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from datetime import UTC, date, datetime
+from typing import TypeAlias
 from unittest.mock import AsyncMock
 
 import pytest
@@ -13,6 +14,10 @@ from synthorg.hr.seniority import SeniorityLevel
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from tests._shared import FakeClock, make_app_state, mock_of
+
+# The fixture yields a spec'd-resolver factory whose ``get_agents`` is
+# pre-seeded; it accepts arbitrary kwargs, so confine the explicit Any.
+ConfigResolverFactory: TypeAlias = Callable[..., ConfigResolver]  # type: ignore[explicit-any]  # noqa: UP040  # TypeAlias keeps the explicit-any ignore live (PEP 695 `type` defers it)
 
 
 def _make_agent_config(
@@ -44,7 +49,7 @@ def registry() -> AgentRegistryService:
 
 
 @pytest.fixture
-def make_config_resolver() -> Callable[..., ConfigResolver]:
+def make_config_resolver() -> ConfigResolverFactory:
     """Build a spec'd ConfigResolver whose ``get_agents`` yields *agents*.
 
     Autospec via ``mock_of`` makes a method-name typo (``get_agnts``)
@@ -72,7 +77,7 @@ class TestBootstrapAgents:
     async def test_registers_agents_from_config(
         self,
         registry: AgentRegistryService,
-        make_config_resolver: Callable[..., ConfigResolver],
+        make_config_resolver: ConfigResolverFactory,
     ) -> None:
         """Happy path: two agent configs produce two registered agents."""
         from synthorg.api.bootstrap import bootstrap_agents
@@ -94,7 +99,7 @@ class TestBootstrapAgents:
     async def test_returns_zero_on_empty_config(
         self,
         registry: AgentRegistryService,
-        make_config_resolver: Callable[..., ConfigResolver],
+        make_config_resolver: ConfigResolverFactory,
     ) -> None:
         """Empty agent list produces zero registrations."""
         from synthorg.api.bootstrap import bootstrap_agents
@@ -109,7 +114,7 @@ class TestBootstrapAgents:
     async def test_re_call_resilience(
         self,
         registry: AgentRegistryService,
-        make_config_resolver: Callable[..., ConfigResolver],
+        make_config_resolver: ConfigResolverFactory,
     ) -> None:
         """Calling bootstrap twice is idempotent.
 
@@ -136,7 +141,7 @@ class TestBootstrapAgents:
     async def test_skips_invalid_config_without_aborting(
         self,
         registry: AgentRegistryService,
-        make_config_resolver: Callable[..., ConfigResolver],
+        make_config_resolver: ConfigResolverFactory,
     ) -> None:
         """One invalid config doesn't prevent valid configs from registering."""
         from synthorg.api.bootstrap import bootstrap_agents
@@ -159,7 +164,7 @@ class TestBootstrapAgents:
     async def test_sets_hiring_date_from_clock(
         self,
         registry: AgentRegistryService,
-        make_config_resolver: Callable[..., ConfigResolver],
+        make_config_resolver: ConfigResolverFactory,
     ) -> None:
         """Hiring date is read from the injected clock, not wall time.
 
@@ -180,7 +185,7 @@ class TestBootstrapAgents:
     async def test_preserves_agent_level(
         self,
         registry: AgentRegistryService,
-        make_config_resolver: Callable[..., ConfigResolver],
+        make_config_resolver: ConfigResolverFactory,
     ) -> None:
         """Agent level from config is preserved in the identity."""
         from synthorg.api.bootstrap import bootstrap_agents
@@ -198,7 +203,7 @@ class TestBootstrapAgents:
     async def test_preserves_autonomy_level(
         self,
         registry: AgentRegistryService,
-        make_config_resolver: Callable[..., ConfigResolver],
+        make_config_resolver: ConfigResolverFactory,
     ) -> None:
         """Per-agent autonomy_level is forwarded from config."""
         from synthorg.api.bootstrap import bootstrap_agents
@@ -222,7 +227,7 @@ class TestBootstrapAgents:
     async def test_empty_model_skips_agent(
         self,
         registry: AgentRegistryService,
-        make_config_resolver: Callable[..., ConfigResolver],
+        make_config_resolver: ConfigResolverFactory,
     ) -> None:
         """Agent with empty model dict is skipped (not registered)."""
         from synthorg.api.bootstrap import bootstrap_agents

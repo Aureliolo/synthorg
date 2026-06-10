@@ -1,6 +1,6 @@
 """Tests for the email sender tool."""
 
-from typing import Any, cast
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,6 +8,7 @@ import pytest
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.communication.config import CommunicationToolsConfig, EmailConfig
 from synthorg.tools.communication.email_sender import EmailSenderTool
+from tests._shared import JsonDict
 
 
 @pytest.mark.unit
@@ -181,6 +182,6 @@ class TestEmailSenderTool:
         tool = EmailSenderTool(config=comm_config)
         schema = tool.parameters_schema
         assert schema is not None
-        required = cast("dict[str, Any]", schema)["required"]
+        required = cast(JsonDict, schema)["required"]
         assert "to" in required
         assert "subject" in required

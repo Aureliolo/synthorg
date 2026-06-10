@@ -7,7 +7,7 @@ classifications, and the per-task factory binding.
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -22,7 +22,7 @@ from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.knowledge.ingest_knowledge import IngestKnowledgeTool
 from synthorg.tools.knowledge.search_knowledge import SearchKnowledgeTool
-from tests._shared import FakeClock
+from tests._shared import FakeClock, JsonDict
 from tests.unit.knowledge._fakes import (
     FakeChunkProvenanceRepository,
     FakeKnowledgeSourceRepository,
@@ -73,9 +73,9 @@ class TestKnowledgeTools:
         assert "<memory-entry>" in result.content
         assert "checkout_secret" in result.content
         assert "auth.py" in result.content
-        meta = cast("dict[str, Any]", result.metadata)
+        meta = cast(JsonDict, result.metadata)
         assert meta["hit_count"] >= 1
-        citations = cast("list[dict[str, Any]]", meta["citations"])
+        citations = cast(list[JsonDict], meta["citations"])
         assert citations
         assert citations[0]["locator_kind"] == "code"
 
@@ -96,7 +96,7 @@ class TestKnowledgeTools:
         )
         assert result.is_error is False
         assert result.metadata["status"] == "indexed"
-        assert cast("dict[str, Any]", result.metadata)["chunk_count"] >= 1
+        assert cast(JsonDict, result.metadata)["chunk_count"] >= 1
 
     async def test_action_types(self) -> None:
         factory = await _factory()

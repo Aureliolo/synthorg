@@ -2,7 +2,7 @@
 
 import os
 import sys
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
 import pytest
@@ -11,6 +11,7 @@ from synthorg.tools.file_system.list_directory import (
     MAX_ENTRIES,
     ListDirectoryTool,
 )
+from tests._shared import JsonDict
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -39,7 +40,7 @@ class TestListDirectoryExecution:
         result = await list_tool.execute(arguments={"path": "subdir"})
         assert not result.is_error
         assert "nested.py" in result.content
-        assert cast("dict[str, Any]", result.metadata)["files"] >= 1
+        assert cast(JsonDict, result.metadata)["files"] >= 1
 
     async def test_glob_pattern(self, list_tool: ListDirectoryTool) -> None:
         result = await list_tool.execute(arguments={"path": ".", "pattern": "*.txt"})
@@ -96,7 +97,7 @@ class TestListDirectoryExecution:
     async def test_metadata_counts(self, list_tool: ListDirectoryTool) -> None:
         result = await list_tool.execute(arguments={"path": "."})
         assert not result.is_error
-        meta = cast("dict[str, Any]", result.metadata)
+        meta = cast(JsonDict, result.metadata)
         assert meta["directories"] >= 1
         assert meta["files"] >= 1
 

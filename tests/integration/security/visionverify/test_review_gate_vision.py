@@ -67,7 +67,7 @@ def _task() -> Task:
     )
 
 
-def _mock_task_engine(task: Task) -> Any:
+def _mock_task_engine(task: Task) -> Any:  # type: ignore[explicit-any]  # mock_of returns Any by design
     return mock_of[TaskEngine](
         submit=AsyncMock(
             return_value=TaskMutationResult(
@@ -122,7 +122,7 @@ def _vision_input() -> VisionReviewInput:
     )
 
 
-def _build_gate_service(workspace: Path) -> tuple[ReviewGateService, Any]:
+def _build_gate_service(workspace: Path) -> tuple[ReviewGateService, Any]:  # type: ignore[explicit-any]  # task-engine mock element
     task_engine = _mock_task_engine(_task())
     verifier = HeuristicVisionVerifier(workspace=workspace)
     vision_gate = VisionVerifierGateService(verifier=verifier, clock=FakeClock())

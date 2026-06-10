@@ -1,13 +1,11 @@
 """Tests for workflow versioning API endpoints."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.api.services.workflow_rollback_service import WorkflowRollbackService
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -42,7 +40,7 @@ _THREE_NODE_EDGES = [
 async def _create_workflow(
     async_test_client: LoopAsyncClient,
     **overrides: object,
-) -> dict[str, Any]:
+) -> JsonDict:
     """Create a workflow via POST and return the response data."""
     payload: dict[str, object] = {
         "name": "test-workflow",
@@ -58,7 +56,7 @@ async def _create_workflow(
         headers=make_auth_headers("ceo"),
     )
     assert resp.status_code == 201
-    result: dict[str, Any] = resp.json()["data"]
+    result: JsonDict = resp.json()["data"]
     return result
 
 
@@ -67,7 +65,7 @@ async def _update_workflow(
     wf_id: str,
     expected_revision: int,
     **fields: object,
-) -> dict[str, Any]:
+) -> JsonDict:
     """PATCH a workflow and return response data."""
     payload: dict[str, object] = {"expected_revision": expected_revision}
     payload.update(fields)
@@ -77,7 +75,7 @@ async def _update_workflow(
         headers=make_auth_headers("ceo"),
     )
     assert resp.status_code == 200
-    result: dict[str, Any] = resp.json()["data"]
+    result: JsonDict = resp.json()["data"]
     return result
 
 

@@ -1,11 +1,10 @@
 """Tests for SandboxResult model."""
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
 from synthorg.tools.sandbox.result import SandboxResult
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -93,9 +92,7 @@ class TestSandboxResultContainerFields:
         assert result.success is False
 
     def test_all_container_fields_populated(self) -> None:
-        logs: tuple[dict[str, Any], ...] = (
-            {"ts": "2026-04-14T00:00:00Z", "msg": "hello"},
-        )
+        logs: tuple[JsonDict, ...] = ({"ts": "2026-04-14T00:00:00Z", "msg": "hello"},)
         result = SandboxResult(
             stdout="output",
             stderr="",

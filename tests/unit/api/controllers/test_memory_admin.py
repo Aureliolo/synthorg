@@ -289,7 +289,7 @@ class TestRecommendBatchSize:
         # ``__getattr__``; later ``capture_logs()`` calls cannot
         # then reach the cached method's stale processor list.
         proxy = memory_module.logger
-        proxy.warning = warning_mock  # type: ignore[method-assign]
+        proxy.warning = warning_mock
         try:
             result = _recommend_batch_size()
 

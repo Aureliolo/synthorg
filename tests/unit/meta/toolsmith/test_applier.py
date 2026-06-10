@@ -163,7 +163,7 @@ def _registry() -> DynamicToolRegistry:
 
 def _applier(repo: _InMemoryRepo, registry: DynamicToolRegistry, gate: _Gate) -> Any:
     return ToolCreationApplier(
-        repo=repo,  # type: ignore[arg-type]
+        repo=repo,
         registry=registry,
         gate=gate,
         clock=FakeClock(start=_NOW),

@@ -4,15 +4,16 @@ Covers `_wire_workflow_observer`, `_wire_ontology_service`, the unconditional
 tunnel wiring path, and the once-only contract on `set_ontology_service`.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast, override
+from typing import Never, cast, override
 from unittest.mock import AsyncMock
 
 import pytest
 import structlog
+from structlog.typing import EventDict
 from typeguard import suppress_type_checks
 
 from synthorg.api.approval_store import ApprovalStore
@@ -65,12 +66,12 @@ from tests.unit.api.fakes_backend import FakePersistenceBackend
 
 
 def _make_state(**overrides: object) -> AppState:
-    defaults: dict[str, Any] = {
+    defaults: dict[str, object] = {
         "config": RootConfig(company_name="test"),
         "approval_store": ApprovalStore(),
     }
     defaults.update(overrides)
-    return make_app_state(**defaults)
+    return make_app_state(**defaults)  # type: ignore[arg-type]  # **dict unpacking carries no 'slices' key
 
 
 @dataclass
@@ -128,7 +129,7 @@ class TestWireWorkflowObserver:
 
         notes = [e for e in captured if e["event"] == API_APP_STARTUP]
         assert len(notes) == 1
-        entry: Any = notes[0]
+        entry: EventDict = notes[0]
         assert entry["log_level"] == "info"
         assert entry["component"] == "workflow_execution_observer"
         assert "config_resolver not wired" in entry["note"]
@@ -203,7 +204,9 @@ class TestWireOntologyService:
         state = _make_state()
         service = _FakeOntologyService("first")
 
-        async def fake_auto_wire(*args: Any, **kwargs: Any) -> Any:
+        async def fake_auto_wire(
+            *args: object, **kwargs: object
+        ) -> _FakeOntologyService:
             return service
 
         monkeypatch.setattr(
@@ -222,7 +225,9 @@ class TestWireOntologyService:
         first = _FakeOntologyService("first")
         state.wire(OntologyStateSlice, service=first)
 
-        async def fake_auto_wire(*args: Any, **kwargs: Any) -> Any:
+        async def fake_auto_wire(
+            *args: object, **kwargs: object
+        ) -> _FakeOntologyService:
             return _FakeOntologyService("second")
 
         monkeypatch.setattr(
@@ -234,7 +239,7 @@ class TestWireOntologyService:
         # is already wired, so the autowired "second" never replaces it.
         await _wire_ontology_service(object(), state)  # type: ignore[arg-type]
 
-        assert cast(Any, state.slice(OntologyStateSlice).service) is first
+        assert cast(object, state.slice(OntologyStateSlice).service) is first
 
 
 @dataclass
@@ -408,12 +413,12 @@ class _NoFineTuneBackend(FakePersistenceBackend):
 
     @override
     @property
-    def fine_tune_runs(self) -> Any:
+    def fine_tune_runs(self) -> Never:
         msg = "backend does not support fine-tuning"
         raise NotImplementedError(msg)
 
 
-def _wire_logs(captured: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+def _wire_logs(captured: Sequence[EventDict]) -> list[EventDict]:
     """Filter captured logs to the fine-tune-orchestrator startup events.
 
     Returns:

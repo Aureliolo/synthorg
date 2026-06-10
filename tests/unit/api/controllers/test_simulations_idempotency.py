@@ -7,7 +7,8 @@ with HTTP 409 Conflict.
 """
 
 import asyncio
-from typing import Any, cast
+from collections.abc import Coroutine
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -121,7 +122,11 @@ class TestSimulationsIdempotency:
         async def _noop() -> None:
             return None
 
-        def _spawn_dummy_task(coro: Any, *_a: Any, **_kw: Any) -> asyncio.Task[None]:
+        def _spawn_dummy_task(
+            coro: Coroutine[object, object, object],
+            *_a: object,
+            **_kw: object,
+        ) -> asyncio.Task[None]:
             # Close the real runner coro (we are not exercising it) and hand
             # back a genuine, immediately-completing ``Task`` so the
             # controller's ``spawned_task: asyncio.Task[None]`` assignment and

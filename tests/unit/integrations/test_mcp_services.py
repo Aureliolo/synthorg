@@ -32,7 +32,7 @@ def _catalog_facade() -> MCPCatalogFacadeService:
     """Build a catalog facade whose backing primitives expose nothing."""
     return MCPCatalogFacadeService(
         catalog=SimpleNamespace(),  # type: ignore[arg-type]
-        installations=SimpleNamespace(),  # type: ignore[arg-type]
+        installations=SimpleNamespace(),
     )
 
 
@@ -67,7 +67,7 @@ async def test_get_catalog_entry_returns_none_on_miss() -> None:
 
     facade = MCPCatalogFacadeService(
         catalog=SimpleNamespace(get_entry=_raise_missing),  # type: ignore[arg-type]
-        installations=SimpleNamespace(),  # type: ignore[arg-type]
+        installations=SimpleNamespace(),
     )
     assert await facade.get_catalog_entry(NotBlankStr("missing")) is None
 
@@ -100,7 +100,7 @@ async def test_delete_artifact_without_storage_delete_raises() -> None:
     The capability guard sits after the in-memory index lookup, so an
     artifact must be indexed first for the guard to be reached.
     """
-    facade = ArtifactFacadeService(storage=SimpleNamespace())  # type: ignore[arg-type]
+    facade = ArtifactFacadeService(storage=SimpleNamespace())
     record = await facade.create_artifact(
         name=NotBlankStr("report.pdf"),
         content_type=NotBlankStr("application/pdf"),

@@ -1,7 +1,7 @@
 """Tests for ToolInvoker disclosure-aware methods."""
 
 from collections.abc import Sequence
-from typing import Any, override
+from typing import Never, override
 
 import pytest
 
@@ -30,7 +30,7 @@ class _FakeTool(BaseTool):
         )
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         return ToolExecutionResult(content="ok")
 
 
@@ -146,19 +146,19 @@ class _FaultyTool(_FakeTool):
     """A tool whose disclosure methods raise a non-critical error."""
 
     @override
-    def to_l1_metadata(self) -> Any:
+    def to_l1_metadata(self) -> Never:
         raise ValueError
 
     @override
-    def to_definition(self) -> Any:
+    def to_definition(self) -> Never:
         raise ValueError
 
     @override
-    def to_l2_body(self) -> Any:
+    def to_l2_body(self) -> Never:
         raise ValueError
 
     @override
-    def get_l3_resources(self) -> Any:
+    def get_l3_resources(self) -> Never:
         raise ValueError
 
 
@@ -166,7 +166,7 @@ class _OomTool(_FakeTool):
     """A tool whose L1 metadata raises an interpreter-critical error."""
 
     @override
-    def to_l1_metadata(self) -> Any:
+    def to_l1_metadata(self) -> Never:
         raise MemoryError
 
 

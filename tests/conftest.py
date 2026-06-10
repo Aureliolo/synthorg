@@ -366,7 +366,7 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
 try:
     import pytest_timeout as _pytest_timeout  # type: ignore[import-untyped]
 
-    def _timeout_timer_with_faulthandler(item: Any, settings: Any) -> None:
+    def _timeout_timer_with_faulthandler(item: Any, settings: Any) -> None:  # type: ignore[explicit-any]  # mirrors untyped pytest_timeout.timeout_timer signature
         # 1) Dump Python frames for every thread via faulthandler (raw
         #    fd write, bypasses pytest/xdist IPC -> always reaches log).
         sys.stderr.write(
@@ -454,16 +454,16 @@ faulthandler.enable(file=sys.stderr, all_threads=True)
 if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
     from typing import cast
 
-    _original_popen_init: Any = subprocess.Popen.__init__
+    _original_popen_init: Any = subprocess.Popen.__init__  # type: ignore[explicit-any]  # captured bound-method ref
 
-    def _no_console_popen_init(self: Any, *args: Any, **kwargs: Any) -> None:
+    def _no_console_popen_init(self: object, *args: object, **kwargs: object) -> None:
         existing = kwargs.get("creationflags", 0)
         if not isinstance(existing, int):
             existing = 0
         kwargs["creationflags"] = existing | subprocess.CREATE_NO_WINDOW
         _original_popen_init(self, *args, **kwargs)
 
-    subprocess.Popen.__init__ = cast(Any, _no_console_popen_init)  # type: ignore[method-assign]
+    subprocess.Popen.__init__ = cast(Any, _no_console_popen_init)  # type: ignore[method-assign, explicit-any]
 
 
 # ── pytest-xdist loadscope crash-during-collection guard ───────────
@@ -498,7 +498,7 @@ def _install_xdist_loadscope_crash_guard() -> None:
     if getattr(original, "_synthorg_crash_guarded", False):
         return
 
-    def _guarded_reschedule(self: Any, node: Any) -> Any:
+    def _guarded_reschedule(self: Any, node: Any) -> Any:  # type: ignore[explicit-any]  # mirrors untyped xdist LoadScopeScheduling._reschedule
         if node not in self.registered_collections:
             return None
         return original(self, node)

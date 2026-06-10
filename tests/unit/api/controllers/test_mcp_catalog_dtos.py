@@ -1,6 +1,5 @@
 """DTO validation tests for the MCP catalog controller."""
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,7 +12,7 @@ from synthorg.api.controllers.mcp_catalog import (
     MCPCatalogController,
 )
 from synthorg.core.domain_errors import ValidationError as DomainValidationError
-from tests._shared import make_app_state
+from tests._shared import JsonDict, make_app_state
 
 
 @pytest.mark.unit
@@ -44,7 +43,7 @@ class TestInstallEntryRequest:
             ),
         ],
     )
-    def test_rejects_invalid_payload(self, payload: dict[str, Any]) -> None:
+    def test_rejects_invalid_payload(self, payload: JsonDict) -> None:
         """DTO rejects invalid payloads at the framework boundary."""
         with pytest.raises(ValidationError):
             InstallEntryRequest(**payload)

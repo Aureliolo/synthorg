@@ -14,7 +14,7 @@ from synthorg.core.auth.roles import HumanRole
 _FACTORY = RequestFactory()
 
 
-def _make_connection(
+def _make_connection(  # type: ignore[explicit-any]  # litestar RequestFactory yields Request[Any, Any, Any]
     *,
     role: HumanRole = HumanRole.CEO,
     org_roles: tuple[OrgRole, ...] = (),

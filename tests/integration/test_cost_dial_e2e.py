@@ -208,7 +208,7 @@ def _budget_config() -> BudgetConfig:
     )
 
 
-def _checker_ctx(*, accumulated_cost: float) -> Any:
+def _checker_ctx(*, accumulated_cost: float) -> Any:  # type: ignore[explicit-any]  # SimpleNamespace stub duck-types AgentContext
     """Stub agent context with the single attribute the closure reads."""
     return SimpleNamespace(
         accumulated_cost=SimpleNamespace(cost=accumulated_cost),
@@ -230,12 +230,12 @@ async def test_cost_dial_full_lifecycle() -> None:
 
     forecaster = CostForecaster(
         budget_config=budget,
-        history_lookup=cast("Callable[..., Awaitable[Sequence[float]]]", _no_history),
+        history_lookup=cast("Callable[..., Awaitable[Sequence[float]]]", _no_history),  # type: ignore[explicit-any]  # Callable ellipsis for the history-lookup seam
     )
     gate = ForecastGate(
         work_pipeline=pipeline,
         forecaster=forecaster,
-        forecast_repo=cast("Any", repo),
+        forecast_repo=cast("Any", repo),  # type: ignore[explicit-any]  # in-memory fake repo stands in for the protocol
         budget_config=budget,
     )
 
@@ -287,7 +287,7 @@ async def test_cost_dial_full_lifecycle() -> None:
         return None
 
     engine = _EngineHost(approval_gate=SimpleNamespace(park_context=_park_ok))
-    run_result = cast(
+    run_result = cast(  # type: ignore[explicit-any]  # engine internal returns a dynamic resume payload
         "Any",
         await engine._handle_budget_error(
             exc=ceiling_info.value,

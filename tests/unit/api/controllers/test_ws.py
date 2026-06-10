@@ -1,9 +1,9 @@
 """Tests for WebSocket handler message parsing and ticket auth."""
 
 import json
-from typing import Any
 
 import pytest
+from litestar import Litestar
 from litestar.testing import TestClient
 
 from synthorg.api.api_core_state import ticket_store_of
@@ -370,7 +370,7 @@ class TestWsTicketAuth:
 
     def test_ws_rejects_invalid_query_ticket(
         self,
-        ws_test_client: TestClient[Any],
+        ws_test_client: TestClient[Litestar],
     ) -> None:
         """WS connection with invalid query-param ticket is rejected pre-accept."""
         from litestar.exceptions import WebSocketDisconnect
@@ -387,7 +387,7 @@ class TestWsTicketAuth:
 
     def test_ws_rejects_bad_first_message_ticket(
         self,
-        ws_test_client: TestClient[Any],
+        ws_test_client: TestClient[Litestar],
     ) -> None:
         """WS connection with invalid first-message ticket is rejected post-accept."""
         from litestar.exceptions import WebSocketDisconnect
@@ -403,7 +403,7 @@ class TestWsTicketAuth:
 
     def test_ws_rejects_missing_first_message_auth(
         self,
-        ws_test_client: TestClient[Any],
+        ws_test_client: TestClient[Litestar],
     ) -> None:
         """WS connection sending non-auth first message is rejected."""
         from litestar.exceptions import WebSocketDisconnect
@@ -419,7 +419,7 @@ class TestWsTicketAuth:
 
     def test_ws_accepts_valid_ticket(
         self,
-        ws_test_client: TestClient[Any],
+        ws_test_client: TestClient[Litestar],
     ) -> None:
         """WS connection with a valid ticket is accepted.
 
@@ -452,7 +452,7 @@ class TestWsTicketAuth:
 
     def test_ws_first_message_auth_sends_auth_ok(
         self,
-        ws_test_client: TestClient[Any],
+        ws_test_client: TestClient[Litestar],
     ) -> None:
         """First-message-auth path sends ``auth_ok`` after ticket validation.
 
@@ -478,7 +478,7 @@ class TestWsTicketAuth:
 
     def test_ws_ping_pong_round_trip(
         self,
-        ws_test_client: TestClient[Any],
+        ws_test_client: TestClient[Litestar],
     ) -> None:
         """Client ping receives a server pong without affecting state."""
         from synthorg.core.auth.models import AuthenticatedUser, AuthMethod

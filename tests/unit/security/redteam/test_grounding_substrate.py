@@ -228,9 +228,9 @@ class TestPrecision:
 
         assert claims == ()
         # Only the extraction call ran; no entailment on an empty corpus.
-        assert provider.complete.await_count == 1  # type: ignore[attr-defined]
-        knowledge.search.assert_awaited_once()  # type: ignore[attr-defined]
-        _, kwargs = knowledge.search.call_args  # type: ignore[attr-defined]
+        assert provider.complete.await_count == 1
+        knowledge.search.assert_awaited_once()
+        _, kwargs = knowledge.search.call_args
         assert kwargs["project_id"] == _PROJECT
 
 
@@ -274,7 +274,7 @@ class TestEscalation:
             project_id=_PROJECT,
         )
 
-        _, kwargs = knowledge.search.call_args  # type: ignore[attr-defined]
+        _, kwargs = knowledge.search.call_args
         assert kwargs["project_id"] == _PROJECT
 
     async def test_per_claim_search_failure_skips_only_that_claim(self) -> None:
@@ -336,7 +336,7 @@ class TestDegradation:
         assert len(claims) == 1
         assert claims[0].excerpt == _FALLBACK_EXCERPT
         # The provider is never touched when the substrate is unavailable.
-        provider.complete.assert_not_awaited()  # type: ignore[attr-defined]
+        provider.complete.assert_not_awaited()
 
     async def test_extraction_failure_degrades_to_fallback(self) -> None:
         provider = mock_of[CompletionProvider](
@@ -370,7 +370,7 @@ class TestDegradation:
         )
 
         assert claims == ()
-        knowledge.search.assert_not_awaited()  # type: ignore[attr-defined]
+        knowledge.search.assert_not_awaited()
 
 
 class TestPerClaimResilience:

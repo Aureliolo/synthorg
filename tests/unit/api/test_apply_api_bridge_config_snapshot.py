@@ -9,7 +9,7 @@ warning is emitted -- the centralised replacement for the per-request
 log-once fallback the activities controller used to carry inline.
 """
 
-from typing import Any, cast
+from typing import cast
 from unittest.mock import create_autospec
 
 import pytest
@@ -72,13 +72,13 @@ class TestApplyApiBridgeConfigSnapshot:
             config_resolver=_resolver_raising(RuntimeError("resolver outage")),
         )
 
-        warnings: list[tuple[str, dict[str, Any]]] = []
+        warnings: list[tuple[str, dict[str, object]]] = []
 
         from synthorg.api.lifecycle_helpers import config_apply as mod
 
         original = mod.logger.warning
 
-        def _capture(event: str, **kwargs: Any) -> None:
+        def _capture(event: str, **kwargs: object) -> None:
             warnings.append((event, kwargs))
             original(event, **kwargs)
 

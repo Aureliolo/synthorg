@@ -13,11 +13,19 @@ once per session via the SDK's hidden override path
 each test clears the in-memory exporter to start fresh.
 """
 
+# The tests below drive the middleware with loosely-typed ASGI stubs
+# that don't conform to Litestar's strict ``Scope`` / ``Send`` unions;
+# the middleware contract is the ASGI spec, not the Litestar overlay,
+# and the runtime behaviour is correct. Silence the per-call-site
+# ``arg-type`` error file-wide rather than littering every line.
+# mypy: disable-error-code=arg-type
+
 import importlib
 from collections.abc import Generator
-from typing import Any, cast
+from typing import Any
 
 import pytest
+from litestar.types import Receive, Send
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -25,6 +33,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from opentelemetry.trace import StatusCode
+
+from tests._shared import AsgiDict
 
 pytestmark = pytest.mark.unit
 
@@ -50,7 +60,7 @@ def _tracer_setup() -> Generator[InMemorySpanExporter]:
     restored provider. Without the restore, later test modules sharing
     the same xdist worker would inherit this fixture's mutated globals.
     """
-    original_provider = cast(Any, trace._TRACER_PROVIDER)
+    original_provider = trace._TRACER_PROVIDER
     original_done = trace._TRACER_PROVIDER_SET_ONCE._done
 
     exporter = InMemorySpanExporter()
@@ -87,8 +97,8 @@ def in_memory_exporter(
     return _tracer_setup
 
 
-async def _drive_success(middleware: Any, status_code: int = 200) -> None:
-    scope: dict[str, Any] = {
+async def _drive_success(middleware: Any, status_code: int = 200) -> None:  # type: ignore[explicit-any]  # generic ASGI middleware driver
+    scope: AsgiDict = {
         "type": "http",
         "method": "GET",
         "path": "/api/v1/health",
@@ -102,14 +112,14 @@ async def _drive_success(middleware: Any, status_code: int = 200) -> None:
         "query_string": b"",
     }
 
-    async def receive() -> dict[str, Any]:
+    async def receive() -> AsgiDict:
         return {"type": "http.request"}
 
-    async def send(message: dict[str, Any]) -> None:
+    async def send(message: AsgiDict) -> None:
         # Status capture happens via the middleware's wrapped send.
         pass
 
-    async def app(scope: Any, receive: Any, send: Any) -> None:
+    async def app(scope: AsgiDict, receive: Receive, send: Send) -> None:
         await send(
             {"type": "http.response.start", "status": status_code, "headers": []}
         )
@@ -119,8 +129,8 @@ async def _drive_success(middleware: Any, status_code: int = 200) -> None:
     await middleware(scope, receive, send)
 
 
-async def _drive_failure(middleware: Any, exc: Exception) -> None:
-    scope: dict[str, Any] = {
+async def _drive_failure(middleware: Any, exc: Exception) -> None:  # type: ignore[explicit-any]  # generic ASGI middleware driver
+    scope: AsgiDict = {
         "type": "http",
         "method": "GET",
         "path": "/api/v1/health",
@@ -129,13 +139,13 @@ async def _drive_failure(middleware: Any, exc: Exception) -> None:
         "query_string": b"",
     }
 
-    async def receive() -> dict[str, Any]:
+    async def receive() -> AsgiDict:
         return {"type": "http.request"}
 
-    async def send(message: dict[str, Any]) -> None:
+    async def send(message: AsgiDict) -> None:
         pass
 
-    async def app(scope: Any, receive: Any, send: Any) -> None:
+    async def app(scope: AsgiDict, receive: Receive, send: Send) -> None:
         raise exc
 
     middleware.app = app
@@ -147,7 +157,7 @@ async def test_middleware_emits_span_on_success(
 ) -> None:
     import synthorg.api.middleware as mw
 
-    middleware = mw.RequestLoggingMiddleware(app=lambda *_: None)  # type: ignore[arg-type]
+    middleware = mw.RequestLoggingMiddleware(app=lambda *_: None)
     await _drive_success(middleware, status_code=200)
 
     spans = in_memory_exporter.get_finished_spans()
@@ -166,7 +176,7 @@ async def test_middleware_records_exception_on_failure(
 ) -> None:
     import synthorg.api.middleware as mw
 
-    middleware = mw.RequestLoggingMiddleware(app=lambda *_: None)  # type: ignore[arg-type]
+    middleware = mw.RequestLoggingMiddleware(app=lambda *_: None)
     with pytest.raises(RuntimeError, match="boom"):
         await _drive_failure(middleware, RuntimeError("boom"))
 

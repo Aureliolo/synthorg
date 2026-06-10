@@ -106,7 +106,7 @@ class TestDockerSandboxConfigImageResolution:
         # lifetime of the proxy and breaking ``capture_logs()`` for
         # later tests on the same xdist worker.
         proxy = module.logger
-        proxy.debug = _capture  # type: ignore[method-assign,assignment]
+        proxy.debug = _capture
         try:
             DockerSandboxConfig()
             assert any(
@@ -170,7 +170,7 @@ class TestDockerSandboxConfigSidecarImageResolution:
             recorded.append(("debug", event, dict(kwargs)))
 
         proxy = module.logger
-        proxy.debug = _capture  # type: ignore[method-assign,assignment]
+        proxy.debug = _capture
         try:
             # Force ``sidecar_image`` resolution by reading the
             # attribute (Pydantic v2 evaluates default factories

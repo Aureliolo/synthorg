@@ -7,11 +7,12 @@ to understand the whole feature surface.
 
 import importlib.util
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Protocol, cast
 
 import pytest
 
 from synthorg.core.feature_map import FeatureIndex
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -25,7 +26,7 @@ class _GeneratorModule(Protocol):
     @staticmethod
     def build_feature_index() -> FeatureIndex: ...
     @staticmethod
-    def build_codebase_map() -> list[dict[str, Any]]: ...
+    def build_codebase_map() -> list[JsonDict]: ...
 
 
 def _load() -> _GeneratorModule:

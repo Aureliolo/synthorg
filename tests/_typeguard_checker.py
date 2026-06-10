@@ -28,6 +28,12 @@ can register the checker before installing the import hook, without pulling any
 ``synthorg`` module into the interpreter ahead of instrumentation.
 """
 
+# Every ``Any`` in this module mirrors typeguard's ``TypeCheckerCallable``
+# signature (``value``/``origin_type`` are genuinely arbitrary at a checker
+# boundary); there is no narrower honest type, so the explicit-any rule is
+# disabled file-wide rather than scattered per signature.
+# mypy: disable-error-code="explicit-any"
+
 import warnings
 from types import UnionType
 from typing import Any, Union

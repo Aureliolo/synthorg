@@ -86,7 +86,7 @@ class TestDynamicToolHandler:
         sandbox = _FakeSandbox(
             SandboxResult(stdout='{"slug": "hello-world"}', stderr="", returncode=0)
         )
-        handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
+        handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         raw = await handler(
             app_state=cast("AppState", None), arguments={"text": "Hello World"}
@@ -99,7 +99,7 @@ class TestDynamicToolHandler:
         sandbox = _FakeSandbox(
             SandboxResult(stdout='{"ok": true}', stderr="", returncode=0)
         )
-        handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
+        handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         await handler(app_state=cast("AppState", None), arguments={"text": "hi"})
         assert sandbox.last_call is not None
@@ -109,7 +109,7 @@ class TestDynamicToolHandler:
 
     async def test_nonzero_exit_returns_error_envelope(self) -> None:
         sandbox = _FakeSandbox(SandboxResult(stdout="", stderr="boom", returncode=1))
-        handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
+        handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         envelope = json.loads(
             await handler(app_state=cast("AppState", None), arguments={"text": "x"})
@@ -121,7 +121,7 @@ class TestDynamicToolHandler:
         sandbox = _FakeSandbox(
             SandboxResult(stdout="", stderr="", returncode=0, timed_out=True)
         )
-        handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
+        handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         envelope = json.loads(
             await handler(app_state=cast("AppState", None), arguments={"text": "x"})
@@ -132,7 +132,7 @@ class TestDynamicToolHandler:
         sandbox = _FakeSandbox(
             SandboxResult(stdout="not json", stderr="", returncode=0)
         )
-        handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
+        handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         envelope = json.loads(
             await handler(app_state=cast("AppState", None), arguments={"text": "x"})

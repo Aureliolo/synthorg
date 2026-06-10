@@ -1,6 +1,6 @@
 """Unit tests for LLM semantic analysis prompt building and parsing."""
 
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -17,6 +17,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -27,13 +28,13 @@ class TestBuildSemanticReviewTool:
     def test_returns_tool_definition(self) -> None:
         tool = build_semantic_review_tool()
         assert tool.name == "submit_semantic_review"
-        schema = cast("dict[str, Any]", tool.parameters_schema)
+        schema = cast(JsonDict, tool.parameters_schema)
         assert "conflicts" in schema["properties"]
         assert "summary" in schema["properties"]
 
     def test_conflict_schema_has_required_fields(self) -> None:
         tool = build_semantic_review_tool()
-        schema = cast("dict[str, Any]", tool.parameters_schema)
+        schema = cast(JsonDict, tool.parameters_schema)
         conflict_schema = schema["properties"]["conflicts"]["items"]
         assert "file_path" in conflict_schema["properties"]
         assert "description" in conflict_schema["properties"]

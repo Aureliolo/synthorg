@@ -104,7 +104,7 @@ def _build_engine(
         provider=MockCompletionProvider(responses),
         tool_registry=registry,
         approval_store=ApprovalStore(),
-        parked_context_repo=repo,  # type: ignore[arg-type]
+        parked_context_repo=repo,
     )
     return engine, repo
 

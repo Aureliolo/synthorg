@@ -1,6 +1,9 @@
 """Tests for the LLM-based criteria decomposer."""
 
+from typing import cast
+
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.task import AcceptanceCriterion
 from synthorg.engine.quality.decomposers.llm import (
@@ -18,7 +21,7 @@ from tests.unit.engine.quality.scripted_provider import (
 def _build_response(tool_arguments: dict[str, object]) -> CompletionResponse:
     return build_tool_call_response(
         "emit_atomic_probes",
-        tool_arguments,
+        cast(dict[str, JsonValue], tool_arguments),
         call_id="call-decompose-001",
     )
 

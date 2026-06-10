@@ -1,10 +1,9 @@
 """Shared fixtures for analytics tool tests."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.tools.analytics.config import AnalyticsToolsConfig
+from tests._shared import JsonDict
 
 
 class MockAnalyticsProvider:
@@ -13,7 +12,7 @@ class MockAnalyticsProvider:
     def __init__(
         self,
         *,
-        result: dict[str, Any] | None = None,
+        result: JsonDict | None = None,
         error: Exception | None = None,
     ) -> None:
         self._result = (
@@ -26,7 +25,7 @@ class MockAnalyticsProvider:
             else result
         )
         self._error = error
-        self.calls: list[dict[str, Any]] = []
+        self.calls: list[JsonDict] = []
 
     async def query(
         self,
@@ -36,7 +35,7 @@ class MockAnalyticsProvider:
         group_by: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> JsonDict:
         self.calls.append(
             {
                 "metrics": metrics,
@@ -60,7 +59,7 @@ class MockMetricSink:
         error: Exception | None = None,
     ) -> None:
         self._error = error
-        self.recorded: list[dict[str, Any]] = []
+        self.recorded: list[JsonDict] = []
 
     async def record(
         self,

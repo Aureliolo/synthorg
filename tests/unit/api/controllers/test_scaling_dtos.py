@@ -1,7 +1,5 @@
 """DTO validation tests for the scaling controller response models."""
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
@@ -11,10 +9,11 @@ from synthorg.api.controllers.scaling import (
     ScalingSignalResponse,
     ScalingStrategyResponse,
 )
+from tests._shared import JsonDict
 
 
-def _valid_decision_kwargs(**overrides: Any) -> dict[str, Any]:
-    base: dict[str, Any] = {
+def _valid_decision_kwargs(**overrides: object) -> JsonDict:
+    base: JsonDict = {
         "id": "decision-1",
         "action_type": "hire",
         "source_strategy": "skill-gap",
@@ -66,7 +65,7 @@ class TestScalingSignalResponse:
         ],
     )
     def test_rejects_blank_identifier_field(self, field: str, value: str) -> None:
-        kwargs: dict[str, Any] = {
+        kwargs: JsonDict = {
             "name": "latency",
             "value": 1.0,
             "source": "metrics",

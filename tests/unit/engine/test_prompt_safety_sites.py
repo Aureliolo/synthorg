@@ -94,7 +94,7 @@ class TestCoordinationConstraintsFacts:
         # present so TaskLedgerMiddleware actually runs.
         from unittest.mock import MagicMock
 
-        ctx: Any = MagicMock()
+        ctx: Any = MagicMock()  # type: ignore[explicit-any]  # structural MagicMock ctx (suppress_type_checks below)
         ctx.decomposition_result = "decomposition plan text"
         ctx.coordination_context = MagicMock()
         ctx.coordination_context.task = task
@@ -108,7 +108,7 @@ class TestCoordinationConstraintsFacts:
         # suppressed for this single call (the test verifies fact wrapping,
         # not the type contract).
         with suppress_type_checks():
-            updates: Any = await middleware.before_dispatch(ctx)
+            updates: Any = await middleware.before_dispatch(ctx)  # type: ignore[explicit-any]  # model_copy returns the raw update mapping by design
         ledger = updates["task_ledger"]
         for fact in ledger.known_facts:
             assert fact.startswith("<task-fact>\n")

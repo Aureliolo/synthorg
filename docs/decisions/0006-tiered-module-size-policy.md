@@ -186,9 +186,10 @@ Legacy packages with non-trivial `Any` usage carried minimal
 `[[tool.mypy.overrides]]` blocks turning off only the flag that
 fires; the override list was the technical-debt register that later
 typing PRs lifted one package at a time. That drain is complete: no
-`synthorg.*` package carries a `disallow_any_explicit = false` override
-any more (the residual override is confined to `tests.*`, tracked
-under #2121).
+package carries a `disallow_any_explicit = false` override any more.
+The `synthorg.*` surface was drained by EPIC #2056 and the `tests.*`
+surface by #2121, so `tests.*` now inherits the global
+`disallow_any_explicit = true` with no Any-disabling override.
 
 ### Pyright
 
@@ -261,9 +262,9 @@ British dictionary).
   surface grows; CI wall-clock grows by at most the longest new job
   (Lighthouse, ~2-3 min).
 - Mypy `[[tool.mypy.overrides]]` block list creates explicit
-  technical debt that later typing PRs must drain (RESOLVED for
-  `synthorg.*` by EPIC #2056: no `synthorg.*` `disallow_any_explicit`
-  override remains; only the `tests.*` override is open, under #2121).
+  technical debt that later typing PRs must drain (RESOLVED: EPIC
+  #2056 drained the `synthorg.*` surface and #2121 drained `tests.*`;
+  no `disallow_any_explicit` override remains anywhere).
 - DOC per-file-ignore creates implicit technical debt that later
   docstring PRs must drain (RESOLVED by #2065: the brace-expansion
   ignore is deleted and `DOC201/202/501` enforced across `src/synthorg/`).
@@ -406,7 +407,7 @@ and closed for the project to reach 100% strict enforcement.
 | Mypy `disallow_any_explicit` (4136 sites across 29 synthorg packages at introduction: 22 individual blocks plus a 7-package grouped block; drained per-package) | EPIC #2056: "Mypy strict++ ratchet" with per-package sub-issues (RESOLVED: every `synthorg.*` `disallow_any_explicit` override drained across children #2249-#2259; the global `disallow_any_explicit = true` now applies to all of `synthorg.*`, with the irreducible sites carrying reasoned per-line `# type: ignore[explicit-any]` and only the `tests.*` override remaining under #2121. Regression-guarded by `scripts/check_no_synthorg_any_override.py`) | Very large (months) |
 | Mypy `possibly-undefined` (4 sites) | Issue #2059: "Mypy possibly-undefined cleanup" | Trivial |
 | Mypy `deprecated` (3 sites) | Issue #2060: "Mypy deprecated-API cleanup" | Trivial |
-| Mypy strict++ overrides on `tests.*` | Issue #2061 partially landed; remaining work tracked under sub-issues #2116, #2117, #2118, #2119, #2120, #2121 (see Section F.1 below for the full breakdown by lifted error code) | Small to Very Large per sub-issue (see F.1) |
+| Mypy strict++ overrides on `tests.*` | Issue #2061, sliced into sub-issues #2116, #2117, #2118, #2119, #2120, #2121 (see Section F.1 below for the breakdown by lifted error code). RESOLVED: every sub-issue landed; #2121 dropped the last block, so the entire `tests.*` override is gone and `tests.*` inherits the global strict++ bar. | Small to Very Large per sub-issue (see F.1) |
 | Ruff `ERA001` (13 sites, all false positives) | Issue #2063: "Remove commented-out code (ERA001)" (RESOLVED: per-file-ignore dropped, code-shaped comments reworded) | Small |
 | Ruff `DOC201/202/501` on `src/synthorg/**` | Issue #2065: "Docstring Returns/Raises backfill + interrogate threshold flip" (RESOLVED: brace-expansion per-file-ignore deleted; `DOC201/202/501` now enforced across all of `src/synthorg/` except `tests/` and `scripts/`) | Large |
 | Interrogate `fail_under` 90 -> 95 | Same as DOC backfill (RESOLVED: `[tool.interrogate] fail-under` flipped to 95) | Medium |
@@ -425,13 +426,14 @@ and tightened ~150 test files to the full strict++ bar individually
 config, persistence, scripts, monitoring, telemetry, providers,
 security, budget, memory, knowledge, communication, hr, integrations,
 notifications, templates, workers, a2a, backup, client, plus most of
-the meta and tools tiers). The residual `tests.*` override now lifts
-only the error codes that map to specific remaining cleanup work;
-each needs its own follow-up issue to fully ratchet the override off.
+the meta and tools tiers). The residual override lifted only the error
+codes that mapped to specific remaining cleanup work, each tracked by
+its own follow-up issue. All of them have now landed: with #2121 the
+`tests.*` override block is removed entirely and `tests.*` inherits
+the global strict++ configuration with no Any-disabling override.
 
-The table below is ordered by unblock readiness: file the top entries
-first (no upstream dependency, smallest diff), defer the bottom
-entries until their upstream blocker clears.
+The table below records each lifted error code and the sub-issue that
+ratcheted it off; every entry is now closed.
 
 | # | Lifted code in `tests.*` | Remaining work | Follow-up issue | Size | Blocked on |
 |---|--------------------------|----------------|-----------------|------|------------|
@@ -440,8 +442,8 @@ entries until their upstream blocker clears.
 | 3 | `explicit-override` | LIFTED. Every overriding method on a test subclass (`BaseCompletionProvider`, `BaseTool`, `RequestDrainMiddleware`, `logging.Formatter`, `logging.Handler`, `asyncio.Lock`, plus internal `_Fake*` hierarchies) now carries `@override`; the per-file inline `# mypy: disable-error-code` comments and the `tests.*` block entry were dropped. | [#2118](https://github.com/Aureliolo/synthorg/issues/2118) | Closed | nothing |
 | 4 | `arg-type` + `redundant-cast` + `assignment` + `comparison-overlap` + `attr-defined` (bundled, same root cause) | LIFTED. `FakePersistenceBackend` now nominally implements `PersistenceBackend`; `FakeVersionRepository` is generic, ~15 concrete `Fake*Repository` classes had their signatures tightened to protocol parity, the missing `idempotency_keys` / `seen_claims` / `principle_overrides` properties were added, and the residual redundant casts were dropped. | [#2119](https://github.com/Aureliolo/synthorg/issues/2119) | Closed | nothing |
 | 5 | `deprecated` | LIFTED. pytest-asyncio 1.4.0 shipped the `pytest_asyncio_loop_factories` pluggy hook; the 9 `event_loop_policy` fixture overrides under `tests/` migrated to per-conftest hook impls. The process-wide `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())` call in `tests/unit/conftest.py` was dropped: empirical `--count=2` runs showed the previously-feared IOCP teardown SEGV does not actually reproduce, while a separate pre-existing Windows + Python 3.14 + `socket._fallback_socketpair` deadlock under TestClient anyio-portal concurrency does fire regardless of the policy choice. One residual Pydantic v2 `model_fields` instance access in `tests/unit/api/controllers/test_providers.py` switched to class access. The `tests.*` block entry was dropped. | [#2120](https://github.com/Aureliolo/synthorg/issues/2120) | Closed | nothing |
-| 6 | `disallow_any_explicit` | ~1,800 `Any` sites in tests/unit/{api,engine,api/controllers,...}, tests/integration/, tests/conformance/, tests/e2e/, tests/benchmarks/, tests/evals/. | [#2121](https://github.com/Aureliolo/synthorg/issues/2121) | Very large (months; per-subdir batches) | Nothing (blocker discharged: EPIC #2056's `synthorg.*` surface is fully drained, so test fixtures consume tightened types) |
-| 7 | `unused-ignore` | Holding pen (no standalone issue). Pre-existing per-line `# type: ignore[code]` comments targeting any code lifted above become redundant the moment that code is enforced. Removing them is bundled into each ratchet-off PR so the comment cleanup ships with the underlying check enforcement, not as standalone churn. | (bundle into entries 1-6 above) | Trivial per ratchet | Entries 1-6 above |
+| 6 | `disallow_any_explicit` | LIFTED. The residual annotation-position `Any` across tests/unit/{api,tools,...}, tests/integration/, tests/conformance/, tests/e2e/, tests/benchmarks/, tests/evals_spine/, and tests/_shared/ was drained: precise types where the shape is known, the confined `JsonDict` / `AsgiDict` aliases in `tests/_shared/json_types.py` for genuinely dynamic JSON, and a handful of justified per-line `# type: ignore[explicit-any]` for irreducible heterogeneous-factory signatures. The `tests.*` block entry was dropped. | [#2121](https://github.com/Aureliolo/synthorg/issues/2121) | Very large | nothing |
+| 7 | `unused-ignore` | LIFTED. Dropping the `tests.*` override also removed its `disable_error_code = ["unused-ignore"]`, so stale `# type: ignore[...]` comments now surface as errors. The redundant comments were removed as part of #2121; `tests.*` is now fully strict with no error-code suppression. | (bundled into #2121) | Trivial | Entries 1-6 above |
 
 ### G. Permanent design decisions (NOT exemptions to lift)
 

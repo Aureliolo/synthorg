@@ -16,7 +16,6 @@ handler -> service path end-to-end without touching persistence.
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -45,13 +44,13 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_SERVICE_FALLBACK,
 )
 from synthorg.security.autonomy.models import AutonomyUpdateResult
-from tests._shared import make_app_state
+from tests._shared import JsonDict, make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.integration
 
 
-def _sync_dumped(data: dict[str, Any]) -> SimpleNamespace:
+def _sync_dumped(data: JsonDict) -> SimpleNamespace:
     """Build a Pydantic-model double whose ``model_dump`` returns *data*.
 
     Used by handlers that call ``record.model_dump(mode="json")`` on the
@@ -178,8 +177,8 @@ def app_state(services: SimpleNamespace) -> AppState:
     )
 
 
-def _parse(result: str) -> dict[str, Any]:
-    body: dict[str, Any] = json.loads(result)
+def _parse(result: str) -> JsonDict:
+    body: JsonDict = json.loads(result)
     assert body["status"] in {"ok", "error"}
     return body
 
@@ -187,7 +186,7 @@ def _parse(result: str) -> dict[str, Any]:
 def _minimal_workflow_definition_dict(
     *,
     workflow_id: str = "wfdef-1",
-) -> dict[str, Any]:
+) -> JsonDict:
     """Return a dict that round-trips through ``WorkflowDefinition.model_validate``.
 
     Used by error-mapping tests so the mocked service exception path is
@@ -264,7 +263,7 @@ class TestNoFallbackEventsEmitted:
         # validation is strict (e.g. ``identity``, ``definition``), the
         # handler returns ``invalid_argument`` -- still an ``error``
         # envelope, still no fallback emission.
-        args: dict[str, Any] = {
+        args: JsonDict = {
             "agent_id": "agent-1",
             "agent_name": "alpha",
             "task_id": "task-1",

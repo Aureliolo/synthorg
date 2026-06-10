@@ -7,7 +7,6 @@ swallowed rather than aborting the steering write path.
 """
 
 import json
-from typing import Any
 
 import pytest
 from typeguard import suppress_type_checks
@@ -35,7 +34,7 @@ class _SpyChannels:
         self.published.append((str(data), channels))
 
 
-def _make_notifier(channels: Any) -> SteeringNotifier:
+def _make_notifier(channels: _SpyChannels) -> SteeringNotifier:
     """Build a notifier from a behavioural ``_SpyChannels`` recorder.
 
     ``channels`` stands in for a concrete ``ChannelsPlugin``; the runtime
@@ -44,7 +43,7 @@ def _make_notifier(channels: Any) -> SteeringNotifier:
     the published envelope, not channels-plugin type conformance.
     """
     with suppress_type_checks():
-        return make_steering_notifier(channels)
+        return make_steering_notifier(channels)  # type: ignore[arg-type]  # _SpyChannels duck-types ChannelsPlugin
 
 
 class TestSteeringNotifier:

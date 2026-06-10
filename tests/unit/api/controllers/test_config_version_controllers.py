@@ -5,7 +5,6 @@ EvaluationConfigVersionController, and RoleVersionController.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 from pydantic import BaseModel
@@ -18,6 +17,7 @@ from synthorg.organization.enums import DepartmentName
 from synthorg.versioning import VersionSnapshot, compute_content_hash
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
+from tests.unit.api.fakes import FakePersistenceBackend
 
 _NOW = datetime(2026, 4, 8, 12, 0, tzinfo=UTC)
 
@@ -59,7 +59,7 @@ class TestBudgetConfigVersions:
     async def test_list_versions_with_data(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         repo = fake_persistence.budget_config_versions
         c1 = BudgetConfig(total_monthly=100.0)
@@ -81,7 +81,7 @@ class TestBudgetConfigVersions:
     async def test_get_version(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         repo = fake_persistence.budget_config_versions
         config = BudgetConfig(total_monthly=150.0)
@@ -111,7 +111,7 @@ class TestBudgetConfigVersions:
     async def test_list_versions_paginated(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         repo = fake_persistence.budget_config_versions
         for v in range(1, 4):
@@ -149,7 +149,7 @@ class TestCompanyVersions:
     async def test_list_versions_with_data(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         repo = fake_persistence.company_versions
         c1 = Company(name="Corp v1")
@@ -171,7 +171,7 @@ class TestCompanyVersions:
     async def test_list_versions_paginated(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         repo = fake_persistence.company_versions
         for v in range(1, 4):
@@ -190,7 +190,7 @@ class TestCompanyVersions:
     async def test_get_version(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         repo = fake_persistence.company_versions
         company = Company(name="Test Corp")
@@ -239,7 +239,7 @@ class TestEvaluationConfigVersions:
     async def test_list_versions_with_data(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         repo = fake_persistence.evaluation_config_versions
         c1 = EvaluationConfig()
@@ -261,7 +261,7 @@ class TestEvaluationConfigVersions:
     async def test_list_versions_paginated(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         repo = fake_persistence.evaluation_config_versions
         for v in range(1, 4):
@@ -280,7 +280,7 @@ class TestEvaluationConfigVersions:
     async def test_get_version(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         repo = fake_persistence.evaluation_config_versions
         config = EvaluationConfig()
@@ -328,7 +328,7 @@ class TestRoleVersions:
     async def test_list_versions_with_data(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         repo = fake_persistence.role_versions
         r1 = Role(
@@ -360,7 +360,7 @@ class TestRoleVersions:
     async def test_list_versions_paginated(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         repo = fake_persistence.role_versions
         for v in range(1, 4):
@@ -395,7 +395,7 @@ class TestRoleVersions:
     async def test_get_version(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         repo = fake_persistence.role_versions
         role = Role(

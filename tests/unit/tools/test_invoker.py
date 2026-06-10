@@ -1,10 +1,11 @@
 """Tests for ToolInvoker."""
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from synthorg.providers.models import ToolCall, ToolResult
+from tests._shared import JsonDict
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -336,7 +337,7 @@ class TestInvokeBoundaryIsolation:
             arguments={"nested": {"key": "original"}},
         )
         await extended_invoker.invoke(call)
-        args = cast("dict[str, Any]", call.arguments)
+        args = cast(JsonDict, call.arguments)
         assert args["nested"]["key"] == "original"
         assert "mutated" not in args.get("nested", {})
         assert "injected" not in args
@@ -352,7 +353,7 @@ class TestInvokeBoundaryIsolation:
             arguments={"nested": {"value": 42}},
         )
         await extended_invoker.invoke(call)
-        args = cast("dict[str, Any]", call.arguments)
+        args = cast(JsonDict, call.arguments)
         assert "mutated" not in args.get("nested", {})
 
 

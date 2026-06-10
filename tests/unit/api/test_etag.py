@@ -4,11 +4,13 @@
 # mypy: disable-error-code=arg-type
 
 import asyncio
-from typing import Any
+from collections.abc import Awaitable, Callable
 
 import pytest
+from litestar.types import Receive, Send
 
 from synthorg.api.etag import ETagMiddleware, compute_etag, match_etag
+from tests._shared import AsgiDict
 
 
 @pytest.mark.unit
@@ -56,13 +58,13 @@ class TestMatchEtag:
 # -- Middleware integration tests --------------------------------------------
 
 
-def _ok_app_factory(body: bytes) -> Any:
+def _ok_app_factory(body: bytes) -> Callable[..., Awaitable[None]]:  # type: ignore[explicit-any]  # loose ASGI app stub signature
     """Return a stub ASGI app that responds with ``body`` and HTTP 200."""
 
     async def app(
-        scope: dict[str, Any],
-        receive: Any,
-        send: Any,
+        scope: AsgiDict,
+        receive: Receive,
+        send: Send,
     ) -> None:
         if scope["type"] != "http":
             return
@@ -86,13 +88,13 @@ def _ok_app_factory(body: bytes) -> Any:
 
 class _Recorder:
     def __init__(self) -> None:
-        self.messages: list[dict[str, Any]] = []
+        self.messages: list[AsgiDict] = []
 
-    async def __call__(self, message: dict[str, Any]) -> None:
+    async def __call__(self, message: AsgiDict) -> None:
         self.messages.append(message)
 
 
-async def _empty_receive() -> dict[str, Any]:  # pragma: no cover
+async def _empty_receive() -> AsgiDict:  # pragma: no cover
     return {"type": "http.disconnect"}
 
 
@@ -101,7 +103,7 @@ def _http_scope(
     path: str,
     method: str = "GET",
     if_none_match: str | None = None,
-) -> dict[str, Any]:
+) -> AsgiDict:
     headers: list[tuple[bytes, bytes]] = []
     if if_none_match is not None:
         headers.append((b"if-none-match", if_none_match.encode("latin-1")))
@@ -232,9 +234,9 @@ class TestETagMiddleware:
         """4xx/5xx responses are not ETag'd."""
 
         async def err_app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             await send(
                 {
@@ -263,12 +265,12 @@ class TestETagMiddleware:
         assert b"etag" not in headers
 
     async def test_lifespan_scope_passes_through(self) -> None:
-        captured: list[dict[str, Any]] = []
+        captured: list[AsgiDict] = []
 
         async def app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             captured.append(scope)
 
@@ -284,9 +286,9 @@ class TestETagMiddleware:
         bodies = [b'{"a":1}', b'{"b":2}']
 
         async def app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             body = bodies[scope["client"][1] % len(bodies)]
             await send(
@@ -324,9 +326,9 @@ class TestETagMiddleware:
         etag = compute_etag(body)
 
         async def app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             await send(
                 {
@@ -374,9 +376,9 @@ class TestETagMiddleware:
         """
 
         async def app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             await send(
                 {
@@ -414,9 +416,9 @@ class TestETagMiddleware:
         chunks = [b"chunk-1", b"chunk-2", b"chunk-3"]
 
         async def streaming_app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             await send(
                 {
@@ -497,9 +499,9 @@ class TestETagMiddleware:
         """
 
         async def truncating_app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             await send(
                 {

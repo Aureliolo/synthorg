@@ -1,6 +1,6 @@
 """Advanced tests for hybrid loop: stagnation, tiering, metadata, etc."""
 
-from typing import TYPE_CHECKING, Any, Never
+from typing import TYPE_CHECKING, Never
 
 import pytest
 
@@ -354,20 +354,20 @@ class TestHybridLoopProviderErrors:
         sample_agent_context: AgentContext,
     ) -> None:
         class FailingProvider:
-            async def complete(self, *_args: Any, **_kwargs: Any) -> None:
+            async def complete(self, *_args: object, **_kwargs: object) -> None:
                 msg = "provider unreachable"
                 raise ConnectionError(msg)
 
-            async def stream(self, *_args: Any, **_kwargs: Any) -> Never:
+            async def stream(self, *_args: object, **_kwargs: object) -> Never:
                 raise NotImplementedError
 
             async def get_model_capabilities(
-                self, *_args: Any, **_kwargs: Any
+                self, *_args: object, **_kwargs: object
             ) -> Never:
                 raise NotImplementedError
 
             async def batch_get_capabilities(
-                self, *_args: Any, **_kwargs: Any
+                self, *_args: object, **_kwargs: object
             ) -> Never:
                 raise NotImplementedError
 
@@ -387,7 +387,9 @@ class TestHybridLoopProviderErrors:
         call_count = 0
 
         class FailingProvider:
-            async def complete(self, *_args: Any, **_kwargs: Any) -> CompletionResponse:
+            async def complete(
+                self, *_args: object, **_kwargs: object
+            ) -> CompletionResponse:
                 nonlocal call_count
                 call_count += 1
                 if call_count == 1:
@@ -395,16 +397,16 @@ class TestHybridLoopProviderErrors:
                 msg = "provider unreachable"
                 raise ConnectionError(msg)
 
-            async def stream(self, *_args: Any, **_kwargs: Any) -> Never:
+            async def stream(self, *_args: object, **_kwargs: object) -> Never:
                 raise NotImplementedError
 
             async def get_model_capabilities(
-                self, *_args: Any, **_kwargs: Any
+                self, *_args: object, **_kwargs: object
             ) -> Never:
                 raise NotImplementedError
 
             async def batch_get_capabilities(
-                self, *_args: Any, **_kwargs: Any
+                self, *_args: object, **_kwargs: object
             ) -> Never:
                 raise NotImplementedError
 

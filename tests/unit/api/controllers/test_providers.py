@@ -2,10 +2,10 @@
 
 import json
 from collections.abc import AsyncIterator
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from litestar.datastructures import State
 
 from synthorg.api.controllers.providers.capabilities import (
     ProviderCapabilitiesController,
@@ -179,14 +179,12 @@ class TestProviderCrudEndpoints:
         assert resp.status_code in (404, 405)
 
 
-def _make_provider_state_and_mgmt() -> tuple[Any, AsyncMock]:
+def _make_provider_state_and_mgmt() -> tuple[State, AsyncMock]:
     """Create a Litestar State with a mock provider management service.
 
     Returns:
         Tuple of (state, mock_provider_management).
     """
-    from litestar.datastructures import State
-
     from synthorg.providers.management.service import ProviderManagementService
 
     mgmt = AsyncMock(spec=ProviderManagementService)

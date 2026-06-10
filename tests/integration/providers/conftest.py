@@ -5,7 +5,7 @@ so that real ``ModelResponse`` attribute access paths are exercised
 through ``_map_response``, ``_process_chunk``, and ``extract_tool_calls``.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 from litellm import ModelResponse
@@ -25,6 +25,7 @@ from synthorg.providers.models import (
     ChatMessage,
     ToolDefinition,
 )
+from tests._shared import JsonDict
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -114,7 +115,7 @@ def make_ollama_config() -> dict[str, ProviderConfig]:
 def build_model_response(  # noqa: PLR0913
     *,
     content: str | None = "Hello! How can I help?",
-    tool_calls: list[dict[str, Any]] | None = None,
+    tool_calls: list[JsonDict] | None = None,
     finish_reason: str = "stop",
     prompt_tokens: int = 100,
     completion_tokens: int = 50,
@@ -122,7 +123,7 @@ def build_model_response(  # noqa: PLR0913
     model: str = "test-model-001",
 ) -> ModelResponse:
     """Build a real ``litellm.ModelResponse`` for non-streaming tests."""
-    message: dict[str, Any] = {
+    message: JsonDict = {
         "role": "assistant",
         "content": content,
         **({} if tool_calls is None else {"tool_calls": tool_calls}),
@@ -150,7 +151,7 @@ def build_tool_call_dict(
     call_id: str = "call_001",
     name: str = "get_weather",
     arguments: str = '{"location": "London"}',
-) -> dict[str, Any]:
+) -> JsonDict:
     """Build a single tool call dict in chat-completion format."""
     return {
         "id": call_id,

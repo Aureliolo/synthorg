@@ -1,7 +1,6 @@
 """Tests for team CRUD controller."""
 
 import json
-from typing import Any
 
 import pytest
 
@@ -12,7 +11,7 @@ from synthorg.api.controllers._team_helpers import (
     _persisted_name,
 )
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 # ── Helpers ────────────────────────────────────────────────
@@ -20,7 +19,7 @@ from tests.unit.api.conftest import make_auth_headers
 
 async def _seed_departments(
     async_test_client: LoopAsyncClient,
-    depts: list[dict[str, Any]],
+    depts: list[JsonDict],
 ) -> None:
     """Seed departments into settings via the settings endpoint."""
     resp = await async_test_client.put(
@@ -34,8 +33,8 @@ async def _seed_departments(
 def _dept_with_teams(
     name: str = "engineering",
     budget: float = 60.0,
-    teams: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+    teams: list[JsonDict] | None = None,
+) -> JsonDict:
     return {
         "name": name,
         "budget_percent": budget,
@@ -47,7 +46,7 @@ def _team(
     name: str = "backend",
     lead: str = "alice",
     members: list[str] | None = None,
-) -> dict[str, Any]:
+) -> JsonDict:
     return {
         "name": name,
         "lead": lead,
@@ -578,14 +577,14 @@ class TestPrivateHelpers:
             _persisted_name({"name": 42}, "Team")
 
     async def test_find_department_surfaces_corrupted_record(self) -> None:
-        depts: list[dict[str, Any]] = [
+        depts: list[JsonDict] = [
             {"name": None, "budget_percent": 50.0, "teams": []},
         ]
         with pytest.raises(ValidationError, match="non-string"):
             _find_department(depts, "anything")
 
     async def test_find_team_surfaces_corrupted_record(self) -> None:
-        teams: list[dict[str, Any]] = [
+        teams: list[JsonDict] = [
             {"name": 7, "lead": "alice", "members": []},
         ]
         with pytest.raises(ValidationError, match="non-string"):

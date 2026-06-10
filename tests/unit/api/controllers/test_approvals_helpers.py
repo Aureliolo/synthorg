@@ -16,6 +16,7 @@ from synthorg.api.controllers.approvals._notify import (
     _resolve_decision,
     _signal_resume_intent,
 )
+from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
@@ -61,7 +62,7 @@ def _make_pending_item(
     )
 
 
-def _store(item: ApprovalItem | None) -> Any:
+def _store(item: ApprovalItem | None) -> Any:  # type: ignore[explicit-any]  # mock_of returns Any by design
     """An approval-store double (``mock_of[ApprovalStore]``).
 
     Return type is ``Any`` to match ``mock_of``'s deliberate static
@@ -73,11 +74,11 @@ def _store(item: ApprovalItem | None) -> Any:
 
 def _app_state(
     *,
-    gate: Any = None,
-    review_gate: Any = None,
-    store: Any = None,
-    worker: Any = None,
-) -> Any:
+    gate: object = None,
+    review_gate: object = None,
+    store: object = None,
+    worker: object = None,
+) -> AppState:
     """An ``AppState`` double whose ``ApprovalStateSlice`` carries the doubles.
 
     The resume helpers read the approval store / gate / review gate

@@ -21,7 +21,6 @@ Zero real LLM spend: every provider is scripted/deterministic.
 from collections.abc import AsyncGenerator
 from datetime import date
 from pathlib import Path
-from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -32,6 +31,7 @@ from synthorg.approval.enums import ApprovalStatus
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
+from synthorg.client.models import ClientRequest
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.communication.conversation.enums import (
     ConversationalProposalStatus,
@@ -39,6 +39,7 @@ from synthorg.communication.conversation.enums import (
 )
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -126,7 +127,7 @@ class _TaskCreatingIntakeStrategy:
     def __init__(self, task_engine: TaskEngine) -> None:
         self._task_engine = task_engine
 
-    async def process(self, request: Any) -> IntakeResult:
+    async def process(self, request: ClientRequest) -> IntakeResult:
         meta = request.metadata
         created = await self._task_engine.create_task(
             CreateTaskData(
@@ -271,8 +272,7 @@ def _make_agent(name: str, skill: str, *, level: SeniorityLevel) -> AgentIdentit
     )
 
 
-def _project(project_id: str) -> Any:
-    from synthorg.core.project import Project
+def _project(project_id: str) -> Project:
     from synthorg.core.project_enums import ProjectStatus
 
     return Project(

@@ -1,6 +1,6 @@
 """Tests for MCPBridgeTool."""
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -195,7 +195,7 @@ class TestBridgeToolWithCache:
         # call (the test asserts graceful non-crashing execution).
         with suppress_type_checks():
             result = await bridge.execute(
-                arguments=cast("dict[str, Any]", {"obj": Unhashable()}),
+                arguments=cast(dict[str, object], {"obj": Unhashable()}),
             )
         assert isinstance(result, ToolExecutionResult)
         assert not result.is_error

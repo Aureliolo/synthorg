@@ -7,7 +7,7 @@ booting Playwright or Docker.
 
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,6 +21,7 @@ from synthorg.tools.browser.errors import (
 )
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
+from tests._shared import JsonDict
 from tests._shared.mock_of import mock_of
 
 pytestmark = pytest.mark.unit
@@ -29,7 +30,7 @@ pytestmark = pytest.mark.unit
 _VIEWPORT = (800, 600)
 
 
-def _executor_payload(*, screenshot_path: str) -> dict[str, Any]:
+def _executor_payload(*, screenshot_path: str) -> JsonDict:
     return {
         "status": "ok",
         "navigation": {
@@ -59,7 +60,7 @@ def _executor_payload(*, screenshot_path: str) -> dict[str, Any]:
     }
 
 
-def _sandbox_success(payload: dict[str, Any]) -> SandboxResult:
+def _sandbox_success(payload: JsonDict) -> SandboxResult:
     return SandboxResult(
         stdout=json.dumps(payload),
         stderr="",
@@ -74,11 +75,12 @@ def workspace(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def fake_sandbox() -> Any:
-    return mock_of[SandboxBackend](
+def fake_sandbox() -> SandboxBackend:
+    sandbox: SandboxBackend = mock_of[SandboxBackend](
         execute=AsyncMock(spec=SandboxBackend.execute),
         release_owner=AsyncMock(spec=SandboxBackend.release_owner),
     )
+    return sandbox
 
 
 class _NoOpDiffer:
@@ -105,7 +107,7 @@ class TestBrowserToolBasics:
     def test_category_is_browser(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
     ) -> None:
         tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
         assert tool.category is ToolCategory.BROWSER
@@ -114,7 +116,7 @@ class TestBrowserToolBasics:
     def test_assert_screenshot_differ_is_pluggable(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
     ) -> None:
         differ = _NoOpDiffer(0.99)
         tool = BrowserTool(
@@ -131,7 +133,7 @@ class TestBrowserToolDispatch:
     async def test_invalid_mode_returns_argument_error(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
     ) -> None:
         tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
         result = await tool.execute(
@@ -143,10 +145,10 @@ class TestBrowserToolDispatch:
     async def test_spec_baseline_missing_raises(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
     ) -> None:
         # Sandbox returns a successful executor payload.
-        fake_sandbox.execute.return_value = _sandbox_success(
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(
             _executor_payload(
                 screenshot_path=str(
                     workspace
@@ -185,9 +187,9 @@ class TestBrowserToolDispatch:
     async def test_spec_creates_baseline_when_flag_set(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
     ) -> None:
-        fake_sandbox.execute.return_value = _sandbox_success(
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(
             _executor_payload(
                 screenshot_path=str(
                     workspace
@@ -235,9 +237,9 @@ class TestBrowserToolExecutorErrorPaths:
     async def test_non_json_stdout_raises(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
     ) -> None:
-        fake_sandbox.execute.return_value = SandboxResult(
+        cast(AsyncMock, fake_sandbox.execute).return_value = SandboxResult(
             stdout="CRASHED: segfault",
             stderr="error tail",
             returncode=0,
@@ -253,13 +255,13 @@ class TestBrowserToolExecutorErrorPaths:
     async def test_sandbox_timeout_raises_launch_error(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
     ) -> None:
         # An outer sandbox.execute() timeout means the executor couldn't
         # even bootstrap inside its budget; classify that as a launch
         # failure (not navigation), so the agent's remediation routes to
         # provider/sandbox reconfiguration rather than URL retry.
-        fake_sandbox.execute.return_value = SandboxResult(
+        cast(AsyncMock, fake_sandbox.execute).return_value = SandboxResult(
             stdout="",
             stderr="timed out",
             returncode=-1,
@@ -284,11 +286,11 @@ class TestBrowserToolExecutorErrorPaths:
     async def test_executor_error_remap(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
         executor_error_type: str,
         expected_class_name: str,
     ) -> None:
-        fake_sandbox.execute.return_value = SandboxResult(
+        cast(AsyncMock, fake_sandbox.execute).return_value = SandboxResult(
             stdout=json.dumps(
                 {
                     "status": "error",
@@ -329,7 +331,7 @@ class TestDifferExceptionWrapping:
     async def test_unexpected_diff_exception_wrapped(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
     ) -> None:
         spec_dir = workspace / ".synthorg" / "screenshots" / "spec1"
         current_rel = spec_dir / "hero.current.png"
@@ -337,7 +339,7 @@ class TestDifferExceptionWrapping:
         baseline_rel.parent.mkdir(parents=True, exist_ok=True)
         baseline_rel.write_bytes(b"png-baseline")
         current_rel.write_bytes(b"png-current")
-        fake_sandbox.execute.return_value = _sandbox_success(
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(
             _executor_payload(screenshot_path=str(current_rel)),
         )
         tool = BrowserTool(
@@ -361,7 +363,7 @@ class TestA11yPayloadShape:
     async def test_violations_and_warnings_parsed(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
     ) -> None:
         payload = _executor_payload(
             screenshot_path=str(
@@ -388,7 +390,7 @@ class TestA11yPayloadShape:
         ]
         payload["accessibility"]["total_affected_nodes"] = 8
         payload["accessibility"]["passed"] = False
-        fake_sandbox.execute.return_value = _sandbox_success(payload)
+        cast(AsyncMock, fake_sandbox.execute).return_value = _sandbox_success(payload)
         tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
         result = await tool.execute(
             arguments={
@@ -397,7 +399,7 @@ class TestA11yPayloadShape:
             },
         )
         assert result.is_error is False, result.content
-        meta = cast("dict[str, Any]", result.metadata)
+        meta = cast(JsonDict, result.metadata)
         assert meta["passed"] is False
         assert len(meta["violations"]) == 1
         assert meta["violations"][0]["impact"] == "critical"
@@ -417,7 +419,7 @@ class TestPathTraversalRejection:
     async def test_traversal_path_rejected(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
         path: str,
     ) -> None:
         tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
@@ -453,7 +455,7 @@ class TestUrlSchemeRestriction:
     async def test_disallowed_url_rejected(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
         url: str,
     ) -> None:
         """Non-http(s) schemes and metadata endpoints are rejected at the gate."""
@@ -465,7 +467,7 @@ class TestUrlSchemeRestriction:
     async def test_loopback_http_url_passes_the_gate(
         self,
         workspace: Path,
-        fake_sandbox: Any,
+        fake_sandbox: SandboxBackend,
     ) -> None:
         """A loopback http url (the app-under-test) is not rejected at the gate.
 

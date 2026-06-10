@@ -2,9 +2,9 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+from synthorg.api.state import AppState
 from synthorg.providers.state import ProvidersStateSlice
 from tests._shared import LoopAsyncClient
 
@@ -29,7 +29,7 @@ def _build_mock_provider_management() -> MagicMock:
 
 
 @contextmanager
-def mock_providers(async_test_client: LoopAsyncClient) -> Iterator[Any]:
+def mock_providers(async_test_client: LoopAsyncClient) -> Iterator[AppState]:
     """Patch ``app_state._provider_management`` with a stub for the test body.
 
     Returning ``(app_state, original)`` would force every caller to
@@ -48,7 +48,7 @@ def mock_providers(async_test_client: LoopAsyncClient) -> Iterator[Any]:
 
 def setup_mock_providers(
     async_test_client: LoopAsyncClient,
-) -> tuple[Any, Any]:
+) -> tuple[AppState, object]:
     """Patch ``app_state._provider_management`` with a stub.
 
     For callers that restore state manually in a ``finally`` block;

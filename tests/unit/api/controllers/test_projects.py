@@ -1,12 +1,11 @@
 """Tests for project controller."""
 
-from typing import Any
 from uuid import UUID
 
 import pytest
 import structlog.testing
 
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -189,13 +188,13 @@ class TestProjectController:
         Regression guard: the controller's WS broadcast is easy to drop during
         refactors because it is fire-and-forget and silent on failure.
         """
-        captured: list[dict[str, Any]] = []
+        captured: list[JsonDict] = []
 
         def capture(
-            request: Any,
-            event_type: Any,
+            request: object,
+            event_type: object,
             channel: str,
-            payload: dict[str, Any],
+            payload: JsonDict,
         ) -> None:
             captured.append(
                 {

@@ -10,7 +10,6 @@ service.
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -49,18 +48,18 @@ class _PaginatingKnowledgeService:
         self._items = items
 
     async def list_sources(
-        self, *, limit: int, offset: int = 0, **_: Any
+        self, *, limit: int, offset: int = 0, **_: object
     ) -> tuple[KnowledgeSource, ...]:
         return self._items[offset : offset + limit]
 
 
 @contextmanager
 def _with_knowledge_service(
-    async_test_client: LoopAsyncClient, svc: Any
+    async_test_client: LoopAsyncClient, svc: object
 ) -> Iterator[None]:
     app_state = async_test_client.app.state.app_state
     original_slice = app_state.slice(KnowledgeStateSlice)
-    app_state.swap_slice(KnowledgeStateSlice.model_construct(service=svc))
+    app_state.swap_slice(KnowledgeStateSlice.model_construct(service=svc))  # type: ignore[arg-type]  # fake duck-types the service for read-path tests
     try:
         yield
     finally:

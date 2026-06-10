@@ -154,7 +154,7 @@ def audit_sink(tmp_path: Path) -> Iterator[AuditChainSink]:
         root.removeHandler(sink)
 
 
-def _connection_state() -> Any:
+def _connection_state() -> Any:  # type: ignore[explicit-any]  # spec'd controller-state stub
     """Build a controller state with a stubbed ConnectionCatalog.
 
     The catalog is spec'd to ``ConnectionCatalog`` so its methods are
@@ -192,7 +192,7 @@ def _tamper_previous_hash(snapshot: HashChain) -> None:
     )
 
 
-def _custom_rule_state(rule: CustomRuleDefinition) -> Any:
+def _custom_rule_state(rule: CustomRuleDefinition) -> Any:  # type: ignore[explicit-any]  # spec'd controller-state stub
     """Build a controller state with a stubbed persistence layer.
 
     The controller reads ``state.app_state`` via attribute access, so we

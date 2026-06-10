@@ -1,11 +1,12 @@
 """Tests for ReadFileTool."""
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.file_system.read_file import MAX_FILE_SIZE_BYTES, ReadFileTool
+from tests._shared import JsonDict
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -24,7 +25,7 @@ class TestReadFileToolProperties:
     def test_has_schema(self, read_tool: ReadFileTool) -> None:
         schema = read_tool.parameters_schema
         assert schema is not None
-        assert "path" in cast("dict[str, Any]", schema)["properties"]
+        assert "path" in cast(JsonDict, schema)["properties"]
 
 
 @pytest.mark.unit
@@ -35,7 +36,7 @@ class TestReadFileExecution:
         result = await read_tool.execute(arguments={"path": "hello.txt"})
         assert not result.is_error
         assert "Hello, world!" in result.content
-        meta = cast("dict[str, Any]", result.metadata)
+        meta = cast(JsonDict, result.metadata)
         assert meta["path"] == "hello.txt"
         assert meta["size_bytes"] > 0
 

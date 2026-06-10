@@ -19,7 +19,8 @@ Two construction shapes are supported (both pre-existing call sites):
 import copy
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import date
-from typing import Any
+
+from pydantic import JsonValue
 
 from synthorg.core.agent import (
     AgentIdentity,
@@ -177,7 +178,7 @@ assert isinstance(ScriptedProvider([]), CompletionProvider)
 
 def build_tool_call_response(  # noqa: PLR0913
     tool_name: str,
-    tool_arguments: dict[str, Any],
+    tool_arguments: dict[str, JsonValue],
     *,
     call_id: str = "call-001",
     input_tokens: int = 100,

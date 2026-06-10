@@ -7,7 +7,6 @@ the cost tracker, and omits roles with no observed spend.
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -20,15 +19,19 @@ from tests._shared import mock_of
 pytestmark = pytest.mark.unit
 
 
-def _agent(role: str, model_id: str) -> Any:
+def _agent(role: str, model_id: str) -> SimpleNamespace:
     return SimpleNamespace(role=role, model=SimpleNamespace(model_id=model_id))
 
 
-def _record(model: str, cost: float) -> Any:
+def _record(model: str, cost: float) -> SimpleNamespace:
     return SimpleNamespace(model=model, cost=cost)
 
 
-def _lookup(*, agents: tuple[Any, ...], records: tuple[Any, ...]) -> Any:
+def _lookup(
+    *,
+    agents: tuple[SimpleNamespace, ...],
+    records: tuple[SimpleNamespace, ...],
+) -> AgentRegistryAssignmentLookup:
     registry = mock_of[AgentRegistryService](
         list_active=AsyncMock(return_value=agents),
     )

@@ -1,7 +1,7 @@
 """Tests for the ``get_auth_config`` fallback logging."""
 
 from types import SimpleNamespace
-from typing import Any
+from typing import Never
 
 import pytest
 import structlog.testing
@@ -14,10 +14,10 @@ class _RaisesOnAuth:
     """Config stub whose ``api.auth`` access raises ``AttributeError``."""
 
     @property
-    def api(self) -> Any:
+    def api(self) -> object:
         class _Api:
             @property
-            def auth(self) -> Any:
+            def auth(self) -> Never:
                 msg = "auth not wired"
                 raise AttributeError(msg)
 

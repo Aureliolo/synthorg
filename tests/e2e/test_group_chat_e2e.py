@@ -187,9 +187,9 @@ class TestGroupChatE2E:
             agent_caller=agent_caller,
             agent_registry=registry,
             config=ChiefOfStaffConfig(group_chat_enabled=True),
-            conversation_repo=FakeConversationRepo(),  # type: ignore[arg-type]
-            turn_repo=turn_repo,  # type: ignore[arg-type]
-            participant_repo=FakeParticipantRepo(),  # type: ignore[arg-type]
+            conversation_repo=FakeConversationRepo(),
+            turn_repo=turn_repo,
+            participant_repo=FakeParticipantRepo(),
             clock=FakeClock(start=START),
         )
 

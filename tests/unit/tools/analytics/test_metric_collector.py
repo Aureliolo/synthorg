@@ -1,6 +1,6 @@
 """Tests for the metric collector tool."""
 
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -10,6 +10,7 @@ from synthorg.tools.analytics.metric_collector import (
     MetricCollectorTool,
     MetricSink,
 )
+from tests._shared import JsonDict
 
 from .conftest import MockMetricSink
 
@@ -148,7 +149,7 @@ class TestMetricCollectorTool:
         assert result.metadata["metric_name"] == "cpu_usage"
         assert result.metadata["value"] == 85.5
         assert result.metadata["unit"] == "percent"
-        assert cast("dict[str, Any]", result.metadata)["tags"]["host"] == "worker-1"
+        assert cast(JsonDict, result.metadata)["tags"]["host"] == "worker-1"
 
     def test_mock_sink_satisfies_protocol(
         self,
@@ -163,6 +164,6 @@ class TestMetricCollectorTool:
         tool = MetricCollectorTool(sink=mock_sink)
         schema = tool.parameters_schema
         assert schema is not None
-        required = cast("dict[str, Any]", schema)["required"]
+        required = cast(JsonDict, schema)["required"]
         assert "metric_name" in required
         assert "value" in required

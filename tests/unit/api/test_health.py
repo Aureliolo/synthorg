@@ -2,7 +2,6 @@
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,7 +15,7 @@ from synthorg.providers.health import (
     ProviderHealthRecord,
     ProviderHealthTracker,
 )
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests._shared import build_test_app as create_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -39,7 +38,7 @@ class TestLiveness:
     async def test_liveness_ignores_bus_down(
         self,
         async_test_client: LoopAsyncClient,
-        fake_message_bus: Any,
+        fake_message_bus: FakeMessageBus,
     ) -> None:
         # Liveness is a proof-of-life for supervisors; it does not probe
         # dependencies, so a dead bus doesn't flip it to 503.
@@ -81,7 +80,7 @@ class TestReadinessUnhealthy:
     async def test_503_when_bus_down(
         self,
         async_test_client: LoopAsyncClient,
-        fake_message_bus: Any,
+        fake_message_bus: FakeMessageBus,
     ) -> None:
         fake_message_bus._running = False
         response = await async_test_client.get("/api/v1/readyz")
@@ -93,8 +92,8 @@ class TestReadinessUnhealthy:
     async def test_503_when_persistence_and_bus_down(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
-        fake_message_bus: Any,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
     ) -> None:
         fake_persistence._connected = False
         fake_message_bus._running = False
@@ -209,7 +208,7 @@ class TestReadinessExceptionPaths:
     )
     async def test_service_exception_returns_false(
         self,
-        service_spec: dict[str, Any],
+        service_spec: JsonDict,
         response_key: str,
     ) -> None:
         service = service_spec["factory"]()

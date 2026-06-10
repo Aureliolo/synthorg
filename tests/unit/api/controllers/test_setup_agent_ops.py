@@ -5,13 +5,12 @@ randomize-name, auto-agents from templates, and the
 agent_dict_to_summary helper.
 """
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from synthorg.providers.state import ProvidersStateSlice
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.controllers.conftest import mock_providers, setup_mock_providers
 
@@ -124,7 +123,7 @@ class TestAgentDictToSummary:
             agent_dict_to_summary,
         )
 
-        agent: dict[str, Any] = {
+        agent: JsonDict = {
             "name": "Alice",
             "role": "Developer",
             "department": "Engineering",
@@ -143,7 +142,7 @@ class TestAgentDictToSummary:
             agent_dict_to_summary,
         )
 
-        agent: dict[str, Any] = {
+        agent: JsonDict = {
             "name": "Bob",
             "role": "QA",
             "department": "Engineering",
@@ -162,7 +161,7 @@ class TestAgentDictToSummary:
             agent_dict_to_summary,
         )
 
-        agent: dict[str, Any] = {
+        agent: JsonDict = {
             "name": "Carol",
             "role": "PM",
             "department": "Product",

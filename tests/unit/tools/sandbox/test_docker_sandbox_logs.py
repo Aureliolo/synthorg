@@ -6,7 +6,6 @@ Tests target the standalone functions in
 """
 
 import json
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,6 +23,7 @@ from synthorg.tools.sandbox.container_log_shipper import (
     ship_container_logs,
 )
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -33,7 +33,7 @@ _SHIPPER_MODULE = "synthorg.tools.sandbox.container_log_shipper"
 # ── Fixtures ────────────────────────────────────────────────────
 
 
-def _make_log_lines(*entries: dict[str, Any]) -> list[str]:
+def _make_log_lines(*entries: JsonDict) -> list[str]:
     """Build Docker log output lines from JSON dicts."""
     return [json.dumps(e) + "\n" for e in entries]
 
@@ -259,7 +259,7 @@ class TestCollectSidecarLogs:
 # ── ship_container_logs ─────────────────────────────────────────
 
 
-_SHIP_KWARGS: dict[str, Any] = {
+_SHIP_KWARGS: JsonDict = {
     "container_id": "abc123def456",
     "sidecar_id": "side78901234",
     "stdout": "hello world",

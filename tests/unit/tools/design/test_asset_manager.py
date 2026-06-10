@@ -1,11 +1,10 @@
 """Tests for the asset manager tool."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.design.asset_manager import AssetManagerTool
+from tests._shared import JsonDict
 
 
 @pytest.mark.unit
@@ -170,7 +169,7 @@ class TestAssetManagerTool:
         assert "img-001" in result.content
 
     def test_initial_assets_are_deep_copied(self) -> None:
-        original: dict[str, dict[str, Any]] = {"img-001": {"type": "image"}}
+        original: dict[str, JsonDict] = {"img-001": {"type": "image"}}
         tool = AssetManagerTool(assets=original)
         tool._assets["img-001"]["type"] = "modified"
         assert original["img-001"]["type"] == "image"

@@ -1,6 +1,6 @@
 """Tests for ToolRegistry disclosure-aware methods."""
 
-from typing import Any, override
+from typing import override
 
 import pytest
 
@@ -26,7 +26,7 @@ class _StubTool(BaseTool):
         )
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         return ToolExecutionResult(content="ok")
 
 

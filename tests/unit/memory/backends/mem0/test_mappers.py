@@ -196,7 +196,7 @@ class TestParseMem0Metadata:
     def test_non_dict_truthy_metadata(self) -> None:
         """Non-dict truthy metadata (e.g. string) uses defaults."""
         with suppress_type_checks():
-            category, metadata, expires_at = parse_mem0_metadata("not-a-dict")  # type: ignore[arg-type]
+            category, metadata, expires_at = parse_mem0_metadata("not-a-dict")
         assert category == MemoryCategory.WORKING
         assert metadata.confidence == 1.0
         assert expires_at is None

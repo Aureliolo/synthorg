@@ -17,7 +17,6 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -68,7 +67,7 @@ class _FakePdf:
 
 
 @contextmanager
-def _fake_pdf_opener(_path: str) -> Iterator[Any]:
+def _fake_pdf_opener(_path: str) -> Iterator[_FakePdf]:
     yield _FakePdf(_PDF_PAGES)
 
 

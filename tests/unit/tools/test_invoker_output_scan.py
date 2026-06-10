@@ -7,7 +7,7 @@ Split from ``test_invoker_security.py`` to keep file sizes under
 """
 
 from datetime import UTC, datetime
-from typing import Any, override
+from typing import override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -45,7 +45,7 @@ class _OutputScanTestTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         return ToolExecutionResult(
             content=f"executed: {arguments.get('cmd', 'default')}",

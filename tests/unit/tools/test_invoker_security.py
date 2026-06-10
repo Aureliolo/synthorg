@@ -1,7 +1,7 @@
 """Tests for ToolInvoker security interception integration."""
 
 from datetime import UTC, datetime
-from typing import Any, override
+from typing import override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -44,7 +44,7 @@ class _SecurityTestTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         return ToolExecutionResult(
             content=f"executed: {arguments.get('cmd', 'default')}",
@@ -61,7 +61,7 @@ class _FailingSecurityTool(_SecurityTestTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         msg = "intentional failure"
         raise RuntimeError(msg)
@@ -77,7 +77,7 @@ class _SoftErrorSecurityTool(_SecurityTestTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         return ToolExecutionResult(
             is_error=True,

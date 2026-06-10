@@ -1,6 +1,6 @@
 """Tests for BaseTool action_type integration with DEFAULT_CATEGORY_ACTION_MAP."""
 
-from typing import Any, override
+from typing import override
 
 import pytest
 
@@ -31,7 +31,7 @@ class _ActionTypeTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         return ToolExecutionResult(content="ok")
 

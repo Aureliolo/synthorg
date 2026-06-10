@@ -1,7 +1,5 @@
 """Unit tests for :class:`BrowserToolArgs` validation."""
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
@@ -10,8 +8,8 @@ from synthorg.tools.browser._args import BrowserToolArgs
 pytestmark = pytest.mark.unit
 
 
-def _base(**overrides: Any) -> dict[str, Any]:
-    base = {"mode": "navigate", "url": "http://example.test"}
+def _base(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {"mode": "navigate", "url": "http://example.test"}
     base.update(overrides)
     return base
 

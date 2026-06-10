@@ -13,7 +13,6 @@ actually passes -- no wall-clock races.
 
 import asyncio
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 from typeguard import suppress_type_checks
@@ -21,7 +20,7 @@ from typeguard import suppress_type_checks
 from synthorg.api.controllers.ws import _WS_CLOSE_AUTH_FAILED, _read_auth_message
 
 
-async def _read_auth(socket: Any) -> str | None:
+async def _read_auth(socket: _NeverResolvingSocket) -> str | None:
     """Drive ``_read_auth_message`` with a behavioural ``_NeverResolvingSocket``.
 
     ``socket`` is a hang-forever stand-in for a concrete ``WebSocket``; the
@@ -30,7 +29,7 @@ async def _read_auth(socket: Any) -> str | None:
     the timeout/close path, not socket type conformance.
     """
     with suppress_type_checks():
-        return await _read_auth_message(socket)
+        return await _read_auth_message(socket)  # type: ignore[arg-type]  # behavioural socket stub, not a real WebSocket
 
 
 class _NeverResolvingSocket:
@@ -46,7 +45,7 @@ class _NeverResolvingSocket:
         # Build a Litestar-shaped ``app.state`` dict accessor: the WS
         # handler reads ``socket.app.state["app_state"]``, so ``state``
         # must be subscriptable.
-        state: dict[str, Any] = {
+        state: dict[str, object] = {
             "app_state": SimpleNamespace(
                 ws_auth_limits=SimpleNamespace(
                     auth_timeout_seconds=ws_auth_timeout_seconds,
@@ -81,7 +80,7 @@ class TestWsAuthTimeoutKillSwitch:
         socket = _NeverResolvingSocket(ws_auth_timeout_seconds=5.0)
         seen: dict[str, float] = {}
 
-        async def _fake_wait_for(awaitable: Any, timeout: float) -> str:  # noqa: ASYNC109 -- signature mirrors asyncio.wait_for
+        async def _fake_wait_for(awaitable: object, timeout: float) -> str:  # noqa: ASYNC109 -- signature mirrors asyncio.wait_for
             seen["timeout"] = timeout
             if asyncio.iscoroutine(awaitable):
                 awaitable.close()
@@ -108,7 +107,7 @@ class TestWsAuthTimeoutKillSwitch:
         socket = _NeverResolvingSocket(ws_auth_timeout_seconds=100.0)
         seen: dict[str, float] = {}
 
-        async def _fake_wait_for(awaitable: Any, timeout: float) -> str:  # noqa: ASYNC109 -- signature mirrors asyncio.wait_for
+        async def _fake_wait_for(awaitable: object, timeout: float) -> str:  # noqa: ASYNC109 -- signature mirrors asyncio.wait_for
             seen["timeout"] = timeout
             if asyncio.iscoroutine(awaitable):
                 awaitable.close()
@@ -143,7 +142,7 @@ class TestWsAuthTimeoutKillSwitch:
         socket.app.state["app_state"].ws_auth_limits.auth_timeout_seconds = 42.0
         seen: dict[str, float] = {}
 
-        async def _fake_wait_for(awaitable: Any, timeout: float) -> str:  # noqa: ASYNC109 -- signature mirrors asyncio.wait_for
+        async def _fake_wait_for(awaitable: object, timeout: float) -> str:  # noqa: ASYNC109 -- signature mirrors asyncio.wait_for
             seen["timeout"] = timeout
             if asyncio.iscoroutine(awaitable):
                 awaitable.close()

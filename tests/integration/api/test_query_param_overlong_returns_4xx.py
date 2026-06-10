@@ -19,7 +19,7 @@ signature shape the three production handlers use after the
 migration, so the result generalises.
 """
 
-from typing import Annotated, Any
+from typing import Annotated
 
 import pytest
 from litestar import Litestar, get
@@ -27,6 +27,7 @@ from litestar.params import QueryParameter
 
 from synthorg.api.path_params import QUERY_MAX_LENGTH
 from tests._shared import LoopAsyncClient
+from tests._shared.json_types import JsonDict
 
 
 @get("/probe")
@@ -35,7 +36,7 @@ async def _probe_handler(
         str | None,
         QueryParameter(max_length=QUERY_MAX_LENGTH),
     ] = None,
-) -> dict[str, Any]:
+) -> JsonDict:
     """Echo the bound value; exists purely to exercise Litestar's binding."""
     return {"action_type": action_type}
 

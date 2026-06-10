@@ -1,11 +1,12 @@
 """Tests for the diagram generator tool."""
 
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.design.diagram_generator import DiagramGeneratorTool
+from tests._shared import JsonDict
 
 
 @pytest.mark.unit
@@ -126,7 +127,7 @@ class TestDiagramGeneratorTool:
         ids=["invalid_diagram_type", "invalid_output_format"],
     )
     async def test_execute_invalid_inputs(
-        self, args: dict[str, Any], expected_msg: str
+        self, args: dict[str, object], expected_msg: str
     ) -> None:
         tool = DiagramGeneratorTool()
         result = await tool.execute(arguments=args)
@@ -153,6 +154,6 @@ class TestDiagramGeneratorTool:
         tool = DiagramGeneratorTool()
         schema = tool.parameters_schema
         assert schema is not None
-        required = cast("dict[str, Any]", schema)["required"]
+        required = cast(JsonDict, schema)["required"]
         assert "diagram_type" in required
         assert "description" in required

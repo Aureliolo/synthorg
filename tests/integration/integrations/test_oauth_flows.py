@@ -9,7 +9,7 @@ They exercise the actual flow classes end-to-end and verify that
 raw tokens are returned (not placeholder ``pending-*`` refs).
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -47,11 +47,12 @@ from synthorg.integrations.oauth.pkce import (
     generate_code_verifier,
 )
 from synthorg.integrations.oauth.state_service import OAuthStateService
+from tests._shared import JsonDict
 from tests._shared.fake_clock import FakeClock
 
 
 def _mock_token_response(
-    json_body: dict[str, Any],
+    json_body: JsonDict,
     status_code: int = 200,
 ) -> MagicMock:
     resp = MagicMock(spec=httpx.Response)
@@ -89,10 +90,10 @@ class TestAuthorizationCodeFlow:
         client_mock = AsyncMock(spec=httpx.AsyncClient)
         client_mock.post.return_value = resp
 
-        async def _enter(self: Any) -> AsyncMock:
+        async def _enter(self: object) -> AsyncMock:
             return client_mock
 
-        async def _exit(self: Any, *_: Any) -> None:
+        async def _exit(self: object, *_: object) -> None:
             return None
 
         with patch(
@@ -124,10 +125,10 @@ class TestAuthorizationCodeFlow:
         client_mock = AsyncMock(spec=httpx.AsyncClient)
         client_mock.post.return_value = resp
 
-        async def _enter(self: Any) -> AsyncMock:
+        async def _enter(self: object) -> AsyncMock:
             return client_mock
 
-        async def _exit(self: Any, *_: Any) -> None:
+        async def _exit(self: object, *_: object) -> None:
             return None
 
         with patch(
@@ -260,7 +261,7 @@ class TestCallbackOidcBinding:
     """
 
     @staticmethod
-    def _harness(
+    def _harness(  # type: ignore[explicit-any]  # heterogeneous OAuth flow harness tuple
         *,
         credentials: dict[str, str],
         id_token: str | None,
@@ -531,10 +532,10 @@ class TestClientCredentialsFlow:
         client_mock = AsyncMock(spec=httpx.AsyncClient)
         client_mock.post.return_value = resp
 
-        async def _enter(self: Any) -> AsyncMock:
+        async def _enter(self: object) -> AsyncMock:
             return client_mock
 
-        async def _exit(self: Any, *_: Any) -> None:
+        async def _exit(self: object, *_: object) -> None:
             return None
 
         with patch(
@@ -587,10 +588,10 @@ class TestDeviceFlow:
             granted_resp,
         ]
 
-        async def _enter(self: Any) -> AsyncMock:
+        async def _enter(self: object) -> AsyncMock:
             return client_mock
 
-        async def _exit(self: Any, *_: Any) -> None:
+        async def _exit(self: object, *_: object) -> None:
             return None
 
         with patch(
@@ -731,7 +732,7 @@ _LEAKY_BODY = (
 )
 
 
-def _leak_free(events: Sequence[Any]) -> None:
+def _leak_free(events: Sequence[Mapping[str, object]]) -> None:
     """Assert none of the sentinel values or key-prefix combinations
     appear anywhere in the captured log events."""
     blob = repr(events)
@@ -794,10 +795,10 @@ class TestOAuthLogRedaction:
 
         client_mock = self._mock_client()
 
-        async def _enter(_self: Any) -> AsyncMock:
+        async def _enter(_self: object) -> AsyncMock:
             return client_mock
 
-        async def _exit(_self: Any, *_args: Any) -> None:
+        async def _exit(_self: object, *_args: object) -> None:
             return None
 
         raised_message: str | None = None
@@ -893,10 +894,10 @@ class TestOAuthLogRedaction:
         client_mock = AsyncMock(spec=httpx.AsyncClient)
         client_mock.post.side_effect = _leaky_http_error(_LEAKY_BODY)
 
-        async def _enter(_self: Any) -> AsyncMock:
+        async def _enter(_self: object) -> AsyncMock:
             return client_mock
 
-        async def _exit(_self: Any, *_args: Any) -> None:
+        async def _exit(_self: object, *_args: object) -> None:
             return None
 
         with patch(

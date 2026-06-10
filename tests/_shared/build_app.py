@@ -17,7 +17,7 @@ from synthorg.api.app_overrides import AppOverrides
 from synthorg.config.schema import RootConfig
 
 
-def build_test_app(
+def build_test_app(  # type: ignore[explicit-any]  # forwards arbitrary AppOverrides fields into the typed bundle
     *,
     config: RootConfig | None = None,
     _skip_lifecycle_shutdown: bool = False,

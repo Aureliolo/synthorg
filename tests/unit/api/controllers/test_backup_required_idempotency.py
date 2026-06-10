@@ -11,7 +11,7 @@ correctly invokes the idempotency service when the key is supplied.
 """
 
 import inspect
-from typing import Any
+from collections.abc import Awaitable, Callable
 from unittest.mock import MagicMock
 
 import pytest
@@ -48,9 +48,9 @@ def _make_manifest() -> BackupManifest:
     )
 
 
-def _make_state(
+def _make_state(  # type: ignore[explicit-any]  # Callable ellipsis mirrors IdempotencyService.run_idempotent
     *,
-    run_idempotent: Any,
+    run_idempotent: Callable[..., Awaitable[IdempotencyResult]],
 ) -> tuple[State, MagicMock]:
     # ``MagicMock(spec=BackupService)`` auto-mocks ``create_backup``
     # as an AsyncMock. Set ``return_value`` on the auto-mock directly
@@ -88,7 +88,7 @@ class TestRequiredIdempotencyKey:
             *,
             scope: object,
             key: object,
-            callback: Any,
+            callback: Callable[[], Awaitable[object]],
         ) -> IdempotencyResult:
             captured["scope"] = scope
             captured["key"] = key

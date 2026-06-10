@@ -8,7 +8,6 @@ surface (agent tool / MCP only), so they are not tested here.
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -42,10 +41,10 @@ def _summary(entry_id: str, *, title: str) -> BrainSummary:
 class _FakeBrainService:
     """Returns canned models for the read endpoints."""
 
-    async def list_current(self, **_: Any) -> tuple[BrainSummary, ...]:
+    async def list_current(self, **_: object) -> tuple[BrainSummary, ...]:
         return (_summary("dec-1", title="Adopt Postgres"),)
 
-    async def query(self, **_: Any) -> tuple[BrainSearchHit, ...]:
+    async def query(self, **_: object) -> tuple[BrainSearchHit, ...]:
         return (
             BrainSearchHit(
                 project_id=NotBlankStr("proj-1"),
@@ -56,7 +55,7 @@ class _FakeBrainService:
             ),
         )
 
-    async def git_history(self, **_: Any) -> tuple[BrainEntryVersion, ...]:
+    async def git_history(self, **_: object) -> tuple[BrainEntryVersion, ...]:
         return (
             BrainEntryVersion(
                 commit_hash=NotBlankStr("a" * 40),
@@ -80,16 +79,18 @@ class _PaginatingBrainService:
         self._items = items
 
     async def list_current(
-        self, *, limit: int, offset: int = 0, **_: Any
+        self, *, limit: int, offset: int = 0, **_: object
     ) -> tuple[BrainSummary, ...]:
         return self._items[offset : offset + limit]
 
 
 @contextmanager
-def _with_brain_service(async_test_client: LoopAsyncClient, svc: Any) -> Iterator[None]:
+def _with_brain_service(
+    async_test_client: LoopAsyncClient, svc: object
+) -> Iterator[None]:
     app_state = async_test_client.app.state.app_state
     original_slice = app_state.slice(ProjectBrainStateSlice)
-    app_state.swap_slice(ProjectBrainStateSlice.model_construct(service=svc))
+    app_state.swap_slice(ProjectBrainStateSlice.model_construct(service=svc))  # type: ignore[arg-type]  # fake duck-types the service for read-path tests
     try:
         yield
     finally:

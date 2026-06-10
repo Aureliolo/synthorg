@@ -17,7 +17,6 @@ Zero real LLM spend: every provider is scripted/deterministic.
 from collections.abc import AsyncGenerator
 from datetime import date
 from pathlib import Path
-from typing import Any
 from uuid import uuid4, uuid5
 
 import pytest
@@ -28,6 +27,7 @@ from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.tracker import CostTracker
+from synthorg.client.models import ClientRequest
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.config.schema import RootConfig
@@ -121,7 +121,7 @@ class _TaskCreatingIntakeStrategy:
     def __init__(self, task_engine: TaskEngine) -> None:
         self._task_engine = task_engine
 
-    async def process(self, request: Any) -> IntakeResult:
+    async def process(self, request: ClientRequest) -> IntakeResult:
         meta = request.metadata
         created = await self._task_engine.create_task(
             CreateTaskData(
@@ -427,7 +427,7 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
         config=CharterConfig(interview_enabled=True),
         conversation_repo=conversation_repo,
         turn_repo=_FakeTurnRepo(),
-        charter_repo=charter_repo,  # type: ignore[arg-type]
+        charter_repo=charter_repo,
         clock=FakeClock(),
     )
 
@@ -466,8 +466,8 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
 
     # Approve: create the project + an approved forecast, and drive the run.
     dispatcher = CharterDispatcher(
-        charter_repo=charter_repo,  # type: ignore[arg-type]
-        forecast_repo=forecast_repo,  # type: ignore[arg-type]
+        charter_repo=charter_repo,
+        forecast_repo=forecast_repo,
         project_service=ProjectService(repo=persistence.projects),
         work_pipeline=pipeline,
         conversation_repo=conversation_repo,

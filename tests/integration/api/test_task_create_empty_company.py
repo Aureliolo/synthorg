@@ -6,11 +6,13 @@ that can never execute. With a provider present, creation succeeds.
 """
 
 from collections.abc import AsyncGenerator
-from typing import Any
 
+import httpx
 import pytest
+from litestar import Litestar
 
 from tests._shared import LoopAsyncClient
+from tests._shared.json_types import JsonDict
 from tests.integration.api.conftest import build_runtime_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -21,7 +23,7 @@ _USERNAME = "admin"
 _PASSWORD = "secure-pass-12chars"
 
 
-def _extract_auth_cookies(resp: Any) -> tuple[str, str]:
+def _extract_auth_cookies(resp: httpx.Response) -> tuple[str, str]:
     session = ""
     csrf = ""
     for k, v in resp.headers.multi_items():
@@ -34,7 +36,7 @@ def _extract_auth_cookies(resp: Any) -> tuple[str, str]:
     return session, csrf
 
 
-async def _authed(app: Any) -> AsyncGenerator[LoopAsyncClient]:
+async def _authed(app: Litestar) -> AsyncGenerator[LoopAsyncClient]:
     async with LoopAsyncClient(app) as client:
         resp = await client.post(
             "/api/v1/auth/setup",
@@ -81,7 +83,7 @@ async def provider_company_client(
         yield client
 
 
-def _task_payload() -> dict[str, Any]:
+def _task_payload() -> JsonDict:
     return {
         "title": "Build the thing",
         "description": "A task that needs an agent to run.",

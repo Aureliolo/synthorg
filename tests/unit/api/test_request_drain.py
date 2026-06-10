@@ -23,10 +23,11 @@ Pins the contract:
 # mypy: disable-error-code=arg-type
 
 import asyncio
-from typing import Any, override
+from typing import override
 
 import pytest
 import structlog.testing
+from litestar.types import Receive, Send
 
 from synthorg.api.drain import RequestDrainMiddleware
 from synthorg.observability.events.api import (
@@ -34,12 +35,13 @@ from synthorg.observability.events.api import (
     API_APP_DRAIN_STARTED,
     API_APP_DRAIN_TIMEOUT,
 )
+from tests._shared import AsgiDict
 
 
 async def _ok_app(
-    scope: dict[str, Any],
-    receive: Any,
-    send: Any,
+    scope: AsgiDict,
+    receive: Receive,
+    send: Send,
 ) -> None:
     """Trivial inner ASGI app: returns 200 for HTTP, no-op otherwise."""
     if scope["type"] != "http":
@@ -61,9 +63,9 @@ async def _ok_app(
 
 
 async def _slow_app(
-    scope: dict[str, Any],
-    receive: Any,
-    send: Any,
+    scope: AsgiDict,
+    receive: Receive,
+    send: Send,
     *,
     delay_s: float,
 ) -> None:
@@ -91,17 +93,17 @@ class _Recorder:
     """Collects ASGI ``send`` messages for assertions."""
 
     def __init__(self) -> None:
-        self.messages: list[dict[str, Any]] = []
+        self.messages: list[AsgiDict] = []
 
-    async def __call__(self, message: dict[str, Any]) -> None:
+    async def __call__(self, message: AsgiDict) -> None:
         self.messages.append(message)
 
 
-async def _empty_receive() -> dict[str, Any]:  # pragma: no cover - never called
+async def _empty_receive() -> AsgiDict:  # pragma: no cover - never called
     return {"type": "http.disconnect"}
 
 
-def _http_scope(path: str = "/") -> dict[str, Any]:
+def _http_scope(path: str = "/") -> AsgiDict:
     return {
         "type": "http",
         "asgi": {"version": "3.0", "spec_version": "2.3"},
@@ -144,9 +146,9 @@ class TestRequestDrainMiddleware:
         self,
     ) -> None:
         async def app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             await _slow_app(scope, receive, send, delay_s=0.05)
 
@@ -171,9 +173,9 @@ class TestRequestDrainMiddleware:
         self,
     ) -> None:
         async def app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             await _slow_app(scope, receive, send, delay_s=0.5)
 
@@ -192,12 +194,12 @@ class TestRequestDrainMiddleware:
         await request_task
 
     async def test_lifespan_scope_passes_through(self) -> None:
-        captured: list[dict[str, Any]] = []
+        captured: list[AsgiDict] = []
 
         async def app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             captured.append(scope)
 
@@ -212,12 +214,12 @@ class TestRequestDrainMiddleware:
         assert captured == [{"type": "lifespan"}]
 
     async def test_websocket_scope_passes_through(self) -> None:
-        captured: list[dict[str, Any]] = []
+        captured: list[AsgiDict] = []
 
         async def app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             captured.append(scope)
 
@@ -256,9 +258,9 @@ class TestRequestDrainMiddleware:
         order: list[str] = []
 
         async def inner_app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             if scope["type"] != "lifespan":
                 return
@@ -271,7 +273,7 @@ class TestRequestDrainMiddleware:
                 order.append("begin_drain")
                 await super().begin_drain()
 
-        async def fake_receive() -> dict[str, Any]:
+        async def fake_receive() -> AsgiDict:
             return {"type": "lifespan.shutdown"}
 
         tracked = _Tracked(inner_app, drain_timeout_seconds=1.0)
@@ -282,9 +284,9 @@ class TestRequestDrainMiddleware:
         """The finally block must run even if the inner app raises."""
 
         async def failing_app(
-            scope: dict[str, Any],
-            receive: Any,
-            send: Any,
+            scope: AsgiDict,
+            receive: Receive,
+            send: Send,
         ) -> None:
             msg = "boom"
             raise RuntimeError(msg)

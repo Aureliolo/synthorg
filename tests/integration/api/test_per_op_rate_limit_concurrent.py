@@ -20,10 +20,11 @@ succeed and four must return 429 with ``error_code=5002``.
 from collections.abc import AsyncGenerator, Generator
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from threading import Event as ThreadingEvent
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+from litestar import Litestar
 from litestar.testing import TestClient
 
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
@@ -36,6 +37,7 @@ from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import JsonDict
 from tests._shared import build_test_app as create_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -80,7 +82,7 @@ def _build_app(
     fake_message_bus: FakeMessageBus,
     *,
     concurrency_overrides: dict[str, int] | None = None,
-) -> Any:
+) -> Litestar:
     """Build the app and authenticate as admin, returning a primed client."""
     root_config = RootConfig(company_name="rate-limit-test-co")
     if concurrency_overrides is not None:
@@ -132,7 +134,7 @@ def _build_app(
     return app
 
 
-def _extract_auth_cookies(resp: Any) -> tuple[str, str]:
+def _extract_auth_cookies(resp: httpx.Response) -> tuple[str, str]:
     session = ""
     csrf = ""
     for k, v in resp.headers.multi_items():
@@ -149,7 +151,7 @@ def _extract_auth_cookies(resp: Any) -> tuple[str, str]:
 def authed_client(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
-) -> Generator[TestClient[Any]]:
+) -> Generator[TestClient[Litestar]]:
     """A TestClient that has completed the admin setup + login flow."""
     app = _build_app(fake_persistence, fake_message_bus)
     with TestClient(app) as client:
@@ -170,12 +172,12 @@ class TestConcurrentBurstAgainstAgentsCreate:
 
     def test_fires_100_concurrent_mutations_and_asserts_429s(
         self,
-        authed_client: TestClient[Any],
+        authed_client: TestClient[Litestar],
     ) -> None:
         # The agent-create payload requires a valid shape; distinct names
         # avoid the 409-conflict path, so every 2xx response is unambiguously
         # a success and every 429 is unambiguously a rate-limit denial.
-        def _payload(i: int) -> dict[str, Any]:
+        def _payload(i: int) -> JsonDict:
             return {
                 "name": f"agent-{i:03d}",
                 "role": "PAIR_PROGRAMMER",
@@ -241,7 +243,7 @@ class TestRateLimitMetaTriggerCycle:
 
     def test_second_request_is_denied(
         self,
-        authed_client: TestClient[Any],
+        authed_client: TestClient[Litestar],
     ) -> None:
         first = authed_client.post("/api/v1/meta/cycle")
         # The first call should pass the guard; whether the body returns
@@ -295,7 +297,9 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
         entered = ThreadingEvent()
         release = ThreadingEvent()
 
-        def _held_preflight_checks(*_args: Any, **_kwargs: Any) -> tuple[Any, ...]:
+        def _held_preflight_checks(
+            *_args: object, **_kwargs: object
+        ) -> tuple[object, ...]:
             # ``to_thread`` runs this synchronously on a worker, so
             # ``threading.Event`` is the right primitive here.
             # Signal entry (the holder has the permit), then park on
@@ -306,7 +310,7 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
             release.wait(_HOLD_TIMEOUT_SECONDS)
             return ()
 
-        def _held_batch_size(*_args: Any, **_kwargs: Any) -> int:
+        def _held_batch_size(*_args: object, **_kwargs: object) -> int:
             # Accept and ignore any kwargs the production helper grows
             # (currently ``default_batch_size``) so the patch stays
             # signature-tolerant across controller changes.
@@ -367,7 +371,7 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
                 "base_model": "test-small-001",
             }
 
-            def _fire() -> Any:
+            def _fire() -> httpx.Response:
                 return client.post(
                     "/api/v1/admin/memory/fine-tune/preflight",
                     json=payload,
@@ -480,7 +484,7 @@ class TestHighTierOpsCarryGuards:
         app = _build_app(fake_persistence, fake_message_bus)
         # Walk every handler once so the assertion survives route
         # reorganisations (new routers, nested controllers, etc.).
-        handler_by_name: dict[str, Any] = {}
+        handler_by_name: dict[str, object] = {}
         for route in app.routes:
             for handler in getattr(route, "route_handlers", []) or []:
                 handler_by_name[getattr(handler, "handler_name", "")] = handler

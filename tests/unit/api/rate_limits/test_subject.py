@@ -25,11 +25,12 @@ from synthorg.api.rate_limits._subject import (
     extract_subject_key,
     parse_trusted_networks,
 )
+from tests._shared import AsgiDict
 
 pytestmark = pytest.mark.unit
 
 
-def _connection(  # noqa: PLR0913 -- test builder with many optional knobs
+def _connection(  # type: ignore[explicit-any]  # MagicMock duck-types ASGIConnection  # noqa: PLR0913 -- test builder with many optional knobs
     *,
     peer: str | None = "203.0.113.5",
     headers: dict[str, str] | None = None,
@@ -54,7 +55,7 @@ def _connection(  # noqa: PLR0913 -- test builder with many optional knobs
         user = MagicMock()
         user.user_id = user_id
 
-    scope: dict[str, Any] = {
+    scope: AsgiDict = {
         "user": user,
         "client": (peer, 0) if peer is not None else None,
     }

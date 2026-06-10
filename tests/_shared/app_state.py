@@ -21,9 +21,9 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 
-def make_app_state(
+def make_app_state(  # type: ignore[explicit-any]  # heterogeneous service/config injection flowing into the typed AppState constructor
     *,
-    slices: Mapping[type[BaseFeatureStateSlice], Mapping[str, Any]] | None = None,
+    slices: Mapping[type[BaseFeatureStateSlice], Mapping[str, object]] | None = None,
     **overrides: Any,
 ) -> AppState:
     """Build a thin ``AppState`` with *overrides* composed into their slices.

@@ -69,7 +69,7 @@ _DECIDED_BY = "operator-1"
 _REASON = "budget sign-off needed"
 
 
-def _invite_config(**overrides: Any) -> ChiefOfStaffConfig:
+def _invite_config(**overrides: Any) -> ChiefOfStaffConfig:  # type: ignore[explicit-any]  # kwargs forwarded into ChiefOfStaffConfig constructor
     """Build a group-chat config with invites enabled.
 
     Returns:
@@ -115,10 +115,10 @@ async def _coordinator_with_roster(
     participant_repo = FakeParticipantRepo()
     approval_store = ApprovalStore()
     coordinator = GroupInviteCoordinator(
-        invite_repo=invite_repo,  # type: ignore[arg-type]
+        invite_repo=invite_repo,
         approval_store=approval_store,
         agent_registry=registry,
-        participant_repo=participant_repo,  # type: ignore[arg-type]
+        participant_repo=participant_repo,
         config=config,
         clock=FakeClock(start=START),
     )
@@ -330,10 +330,10 @@ class TestInvitedPreamble:
         registry = await build_registry(ceo)
         invite_repo = FakeInviteRepo()
         coordinator = GroupInviteCoordinator(
-            invite_repo=invite_repo,  # type: ignore[arg-type]
+            invite_repo=invite_repo,
             approval_store=ApprovalStore(),
             agent_registry=registry,
-            participant_repo=FakeParticipantRepo(),  # type: ignore[arg-type]
+            participant_repo=FakeParticipantRepo(),
             config=_invite_config(),
             clock=FakeClock(start=START),
         )
@@ -489,10 +489,10 @@ class TestInviteResume:
         participant_repo = FakeParticipantRepo()
         approval_store = ApprovalStore()
         coordinator = GroupInviteCoordinator(
-            invite_repo=invite_repo,  # type: ignore[arg-type]
+            invite_repo=invite_repo,
             approval_store=approval_store,
             agent_registry=registry,
-            participant_repo=participant_repo,  # type: ignore[arg-type]
+            participant_repo=participant_repo,
             config=_invite_config(),
             clock=FakeClock(start=START),
         )

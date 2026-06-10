@@ -13,8 +13,8 @@ exactly N ticks; no wall-clock races.
 import asyncio
 from collections.abc import Iterator
 from types import SimpleNamespace
-from typing import Any, cast
-from unittest.mock import create_autospec
+from typing import cast
+from unittest.mock import AsyncMock, create_autospec
 
 import pytest
 from typeguard import suppress_type_checks
@@ -127,7 +127,7 @@ def _build_app_state(*, enabled: bool) -> AppState:
 
 
 async def _run_loop_ticks(
-    app_state: Any,
+    app_state: AppState,
     ticks: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -170,11 +170,19 @@ class TestLifecycleCleanupKillSwitch:
 
         await _run_loop_ticks(app_state, ticks=2, monkeypatch=monkeypatch)
 
-        assert cast(Any, ticket_store_of(app_state).cleanup_expired).call_count == 2
-        assert cast(Any, session_store_of(app_state).cleanup_expired).await_count == 2
-        assert cast(Any, lockout_store_of(app_state).cleanup_expired).await_count == 2
+        assert (
+            cast(AsyncMock, ticket_store_of(app_state).cleanup_expired).call_count == 2
+        )
+        assert (
+            cast(AsyncMock, session_store_of(app_state).cleanup_expired).await_count
+            == 2
+        )
+        assert (
+            cast(AsyncMock, lockout_store_of(app_state).cleanup_expired).await_count
+            == 2
+        )
         # One resolver consult per tick -- the gate is live, not frozen.
-        assert cast(Any, config_resolver_of(app_state).get_bool).await_count == 2
+        assert cast(AsyncMock, config_resolver_of(app_state).get_bool).await_count == 2
 
     async def test_disabled_short_circuits_every_tick(
         self,
@@ -189,10 +197,18 @@ class TestLifecycleCleanupKillSwitch:
 
         await _run_loop_ticks(app_state, ticks=3, monkeypatch=monkeypatch)
 
-        assert cast(Any, ticket_store_of(app_state).cleanup_expired).call_count == 0
-        assert cast(Any, session_store_of(app_state).cleanup_expired).await_count == 0
-        assert cast(Any, lockout_store_of(app_state).cleanup_expired).await_count == 0
-        assert cast(Any, config_resolver_of(app_state).get_bool).await_count == 3
+        assert (
+            cast(AsyncMock, ticket_store_of(app_state).cleanup_expired).call_count == 0
+        )
+        assert (
+            cast(AsyncMock, session_store_of(app_state).cleanup_expired).await_count
+            == 0
+        )
+        assert (
+            cast(AsyncMock, lockout_store_of(app_state).cleanup_expired).await_count
+            == 0
+        )
+        assert cast(AsyncMock, config_resolver_of(app_state).get_bool).await_count == 3
 
 
 @pytest.mark.unit

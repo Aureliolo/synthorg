@@ -1,7 +1,5 @@
 """Tests for workflow definition YAML export."""
 
-from typing import Any
-
 import pytest
 import yaml
 
@@ -11,6 +9,7 @@ from synthorg.engine.workflow.enums import (
     WorkflowType,
 )
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
+from tests._shared import JsonDict
 from tests.unit.engine.workflow.conftest import (
     make_edge as _edge,
 )
@@ -22,7 +21,7 @@ from tests.unit.engine.workflow.conftest import (
 )
 
 
-def _parse_yaml(yaml_str: str) -> dict[str, Any]:
+def _parse_yaml(yaml_str: str) -> JsonDict:
     return yaml.safe_load(yaml_str)  # type: ignore[no-any-return]
 
 

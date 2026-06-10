@@ -27,13 +27,13 @@ sweep layers the acceptance criteria on top:
 
 import json
 from collections import Counter
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import structlog.testing
 from typeguard import suppress_type_checks
 
+from synthorg.api.state import AppState
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
@@ -50,12 +50,13 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_SERVICE_FALLBACK,
 )
 from synthorg.security.autonomy.models import AutonomyUpdateResult
+from tests._shared import JsonDict
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.integration
 
 
-def _sync_dumped(data: dict[str, Any]) -> MagicMock:
+def _sync_dumped(data: JsonDict) -> MagicMock:
     mock = MagicMock()
     mock.model_dump = MagicMock(return_value=data)
     for k, v in data.items():
@@ -72,7 +73,7 @@ def _mkversion_repo() -> AsyncMock:
 
 
 @pytest.fixture
-def fake_app_state() -> Any:
+def fake_app_state() -> AppState:
     """Wide-blast ``AppState`` stub covering every primitive the handlers probe.
 
     Returns a live ``AppState`` so handlers can call ``app_state.slice(...)``
@@ -171,7 +172,7 @@ def actor() -> AgentIdentity:
     return make_test_actor()
 
 
-_BLAST_ARGS: dict[str, Any] = {
+_BLAST_ARGS: JsonDict = {
     "agent_name": "alpha",
     "agent_id": "agent-1",
     "approval_id": "approval-1",
@@ -215,7 +216,7 @@ class TestNoServiceFallbackEvents:
 
     async def test_invoking_every_tool_emits_no_service_fallback_event(
         self,
-        fake_app_state: Any,
+        fake_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handlers = build_handler_map()
@@ -237,7 +238,7 @@ class TestNoServiceFallbackEvents:
 
     async def test_capability_gap_is_the_not_supported_source(
         self,
-        fake_app_state: Any,
+        fake_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         """Tools returning ``not_supported`` must emit CAPABILITY_GAP (INFO).
@@ -310,7 +311,7 @@ class TestNoServiceFallbackEvents:
     )
     async def test_backend_unsupported_error_routes_to_not_supported(
         self,
-        fake_app_state: Any,
+        fake_app_state: AppState,
         actor: AgentIdentity,
         tool_name: str,
     ) -> None:
@@ -330,7 +331,7 @@ class TestNoServiceFallbackEvents:
         class _UnsupportedMemoryService:
             async def get_fine_tune_status(
                 self,
-                run_id: Any = None,
+                run_id: object = None,
             ) -> None:
                 raise MemoryBackendUnsupportedError(unsupported_reason)
 
@@ -379,7 +380,7 @@ class TestNoServiceFallbackEvents:
 
     async def test_every_tool_returns_well_formed_envelope(
         self,
-        fake_app_state: Any,
+        fake_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         """Each tool returns ``status`` in {ok, error}, with mandatory keys."""

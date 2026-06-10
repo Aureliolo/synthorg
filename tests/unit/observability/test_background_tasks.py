@@ -126,7 +126,7 @@ async def test_drain_cancels_on_timeout(
     original_wait = asyncio.wait
     call_count = 0
 
-    async def _wait_shim(
+    async def _wait_shim(  # type: ignore[explicit-any]  # **kwargs forwards verbatim to asyncio.wait
         tasks: set[asyncio.Task[object]],
         *,
         timeout: float | None = None,  # noqa: ASYNC109 - mirrors asyncio.wait

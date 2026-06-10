@@ -60,7 +60,7 @@ def _make_state(*, task_engine: AsyncMock) -> MagicMock:
     return state
 
 
-def _unwrap(method_name: str) -> Any:
+def _unwrap(method_name: str) -> Any:  # type: ignore[explicit-any]  # returns a dynamically-typed route-handler coroutine fn
     """Return the underlying coroutine function of a Litestar route handler."""
     handler = ReviewController.__dict__[method_name]
     return getattr(handler, "fn", handler)

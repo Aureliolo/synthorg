@@ -16,7 +16,7 @@ These tests pin:
   to the caller (the controller catches it and returns 409).
 """
 
-from typing import Any
+from typing import Never, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -36,7 +36,7 @@ from synthorg.persistence.workflow_definition_protocol import (
 pytestmark = pytest.mark.unit
 
 
-def _definition_stub() -> Any:
+def _definition_stub() -> WorkflowDefinition:
     """Build a stub WorkflowDefinition exposing the attrs the service touches.
 
     The service only reads ``id`` and ``revision`` off the
@@ -48,7 +48,7 @@ def _definition_stub() -> Any:
     stub = MagicMock(spec=WorkflowDefinition)
     stub.id = NotBlankStr("wfdef-1")
     stub.revision = 5
-    return stub
+    return cast(WorkflowDefinition, stub)
 
 
 class TestRollback:
@@ -68,7 +68,7 @@ class TestRollback:
         async def _record_save(_: object) -> None:
             call_order.append("save")
 
-        async def _record_snapshot_lookup(*_args: object, **_kwargs: object) -> Any:
+        async def _record_snapshot_lookup(*_args: object, **_kwargs: object) -> Never:
             call_order.append("snapshot")
             msg = "snapshot path skipped"
             raise PersistenceError(msg)

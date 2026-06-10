@@ -1,7 +1,5 @@
 """Tests for communication tool configuration models."""
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
@@ -9,6 +7,7 @@ from synthorg.tools.communication.config import (
     CommunicationToolsConfig,
     EmailConfig,
 )
+from tests._shared import JsonDict
 
 
 @pytest.mark.unit
@@ -65,7 +64,7 @@ class TestEmailConfig:
         ],
         ids=["username_only", "password_only"],
     )
-    def test_partial_credentials_rejected(self, kwargs: dict[str, Any]) -> None:
+    def test_partial_credentials_rejected(self, kwargs: JsonDict) -> None:
         with pytest.raises(ValidationError, match="username and password"):
             EmailConfig(
                 host="smtp.example.com",
@@ -149,6 +148,6 @@ class TestCommunicationToolsConfig:
         [0, 1001, float("nan")],
         ids=["zero", "above_max", "nan"],
     )
-    def test_invalid_max_recipients(self, value: Any) -> None:
+    def test_invalid_max_recipients(self, value: float) -> None:
         with pytest.raises(ValidationError):
-            CommunicationToolsConfig(max_recipients=value)
+            CommunicationToolsConfig(max_recipients=value)  # type: ignore[arg-type]  # deliberately-invalid value under test

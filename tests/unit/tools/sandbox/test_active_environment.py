@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
 from pydantic import ValidationError
@@ -16,6 +16,7 @@ from synthorg.tools.sandbox.active_environment import (
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -56,7 +57,7 @@ class TestDockerImageOverride:
             image_override=NotBlankStr("synthorg-project-p:abc123"),
         )
         assert config["Image"] == "synthorg-project-p:abc123"
-        assert "FOO=bar" in cast("dict[str, Any]", config)["Env"]
+        assert "FOO=bar" in cast(JsonDict, config)["Env"]
 
     def test_build_container_config_default_image(self, tmp_path: Path) -> None:
         cfg = DockerSandboxConfig()

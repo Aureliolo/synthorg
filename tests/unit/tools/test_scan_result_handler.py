@@ -1,6 +1,6 @@
 """Tests for handle_sensitive_scan routing logic."""
 
-from typing import Any, ClassVar
+from typing import ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -9,6 +9,7 @@ from synthorg.providers.models import ToolCall
 from synthorg.security.models import OutputScanResult, ScanOutcome
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.scan_result_handler import handle_sensitive_scan
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -17,8 +18,8 @@ def _make_tool_call() -> ToolCall:
     return ToolCall(id="tc-1", name="read_file", arguments={"path": "/workspace"})
 
 
-def _make_result(**overrides: Any) -> ToolExecutionResult:
-    defaults: dict[str, Any] = {
+def _make_result(**overrides: object) -> ToolExecutionResult:
+    defaults: JsonDict = {
         "content": "original output",
         "is_error": False,
         "metadata": {"tool_name": "read_file"},

@@ -14,23 +14,24 @@ PATH-bound param with the wrong marker will fail here pointing at the
 exact parameter name before any other test runs.
 """
 
-from typing import Any
-
 import pytest
 from litestar import Litestar
 from litestar.exceptions import ImproperlyConfiguredException
 
+from synthorg.budget.tracker import CostTracker
+from synthorg.config.schema import RootConfig
 from tests._shared import build_test_app as create_app
+from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 
 @pytest.mark.unit
 class TestAppBootHasNoKwargAmbiguity:
     def test_create_app_does_not_raise_kwarg_ambiguity(
         self,
-        fake_persistence: Any,
-        fake_message_bus: Any,
-        cost_tracker: Any,
-        root_config: Any,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+        cost_tracker: CostTracker,
+        root_config: RootConfig,
     ) -> None:
         """Building the app must not trip Litestar 2.22's PATH-vs-query check.
 

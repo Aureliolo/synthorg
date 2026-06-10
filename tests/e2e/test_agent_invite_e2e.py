@@ -135,10 +135,10 @@ def _build_service(
     invite_repo = FakeInviteRepo()
     approval_store = ApprovalStore()
     coordinator = GroupInviteCoordinator(
-        invite_repo=invite_repo,  # type: ignore[arg-type]
+        invite_repo=invite_repo,
         approval_store=approval_store,
         agent_registry=registry,
-        participant_repo=participant_repo,  # type: ignore[arg-type]
+        participant_repo=participant_repo,
         config=config,
         clock=clock,
     )
@@ -146,9 +146,9 @@ def _build_service(
         agent_caller=agent_caller,
         agent_registry=registry,
         config=config,
-        conversation_repo=FakeConversationRepo(),  # type: ignore[arg-type]
-        turn_repo=FakeTurnRepo(),  # type: ignore[arg-type]
-        participant_repo=participant_repo,  # type: ignore[arg-type]
+        conversation_repo=FakeConversationRepo(),
+        turn_repo=FakeTurnRepo(),
+        participant_repo=participant_repo,
         clock=clock,
         invite_coordinator=coordinator,
     )

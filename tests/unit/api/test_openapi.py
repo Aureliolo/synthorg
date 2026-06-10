@@ -6,12 +6,12 @@ content types, and injects error references into operations.
 """
 
 import copy
-from typing import Any
 
 import pytest
 
 from synthorg.api.openapi import inject_rfc9457_responses
 from synthorg.api.openapi_responses import _should_inject
+from tests._shared import JsonDict
 
 # ── Fixtures ──────────────────────────────────────────────────
 
@@ -20,9 +20,9 @@ def _minimal_operation(
     *,
     status: int = 200,
     has_body: bool = False,
-) -> dict[str, Any]:
+) -> JsonDict:
     """Build a minimal OpenAPI operation dict."""
-    op: dict[str, Any] = {
+    op: JsonDict = {
         "responses": {
             str(status): {
                 "description": "OK",
@@ -39,11 +39,11 @@ def _minimal_operation(
 
 def _minimal_schema(
     *,
-    paths: dict[str, dict[str, Any]] | None = None,
-    extra_schemas: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    paths: dict[str, JsonDict] | None = None,
+    extra_schemas: JsonDict | None = None,
+) -> JsonDict:
     """Build a minimal OpenAPI schema dict for testing."""
-    schemas: dict[str, Any] = {
+    schemas: JsonDict = {
         "ErrorCode": {"type": "integer", "enum": [1000, 3001]},
         "ErrorCategory": {"type": "string", "enum": ["auth", "not_found"]},
         "ErrorDetail": {"type": "object", "properties": {}},
@@ -60,7 +60,7 @@ def _minimal_schema(
 
 
 @pytest.fixture
-def base_schema() -> dict[str, Any]:
+def base_schema() -> JsonDict:
     """Schema with representative paths for injection testing."""
     return _minimal_schema(
         paths={
@@ -99,13 +99,13 @@ def base_schema() -> dict[str, Any]:
 class TestProblemDetailSchema:
     """ProblemDetail schema is correctly added to components."""
 
-    def test_added_to_components(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_added_to_components(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         schemas = result["components"]["schemas"]
         assert "ProblemDetail" in schemas
 
-    def test_has_required_fields(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_has_required_fields(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         pd = result["components"]["schemas"]["ProblemDetail"]
         required = set(pd.get("required", []))
         expected = {
@@ -119,8 +119,8 @@ class TestProblemDetailSchema:
         }
         assert expected == required
 
-    def test_has_all_properties(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_has_all_properties(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         pd = result["components"]["schemas"]["ProblemDetail"]
         props = set(pd.get("properties", {}).keys())
         expected = {
@@ -136,16 +136,14 @@ class TestProblemDetailSchema:
         }
         assert expected == props
 
-    def test_reuses_existing_error_code_ref(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_reuses_existing_error_code_ref(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         pd = result["components"]["schemas"]["ProblemDetail"]
         error_code_prop = pd["properties"]["error_code"]
         assert error_code_prop == {"$ref": "#/components/schemas/ErrorCode"}
 
-    def test_reuses_existing_error_category_ref(
-        self, base_schema: dict[str, Any]
-    ) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_reuses_existing_error_category_ref(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         pd = result["components"]["schemas"]["ProblemDetail"]
         error_cat_prop = pd["properties"]["error_category"]
         assert error_cat_prop == {
@@ -156,12 +154,12 @@ class TestProblemDetailSchema:
         """Pre-existing ProblemDetail schema is preserved."""
         custom_pd = {"type": "object", "custom": True}
         schema = _minimal_schema(extra_schemas={"ProblemDetail": custom_pd})
-        result: dict[str, Any] = inject_rfc9457_responses(schema)
+        result: JsonDict = inject_rfc9457_responses(schema)
         assert result["components"]["schemas"]["ProblemDetail"]["custom"] is True
 
-    def test_no_defs_in_problem_detail(self, base_schema: dict[str, Any]) -> None:
+    def test_no_defs_in_problem_detail(self, base_schema: JsonDict) -> None:
         """ProblemDetail schema has no leftover $defs."""
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         pd = result["components"]["schemas"]["ProblemDetail"]
         assert "$defs" not in pd
 
@@ -197,25 +195,21 @@ _EXPECTED_STATUS_CODES: dict[str, int] = {
 class TestReusableResponses:
     """Reusable responses are defined with dual content types."""
 
-    def test_all_responses_defined(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_all_responses_defined(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         responses = result["components"]["responses"]
         assert set(responses.keys()) == _EXPECTED_RESPONSE_KEYS
 
     @pytest.mark.parametrize("key", sorted(_EXPECTED_RESPONSE_KEYS))
-    def test_has_dual_content_types(
-        self, base_schema: dict[str, Any], key: str
-    ) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_has_dual_content_types(self, base_schema: JsonDict, key: str) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         content = result["components"]["responses"][key]["content"]
         assert "application/json" in content
         assert "application/problem+json" in content
 
     @pytest.mark.parametrize("key", sorted(_EXPECTED_RESPONSE_KEYS))
-    def test_json_content_refs_envelope(
-        self, base_schema: dict[str, Any], key: str
-    ) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_json_content_refs_envelope(self, base_schema: JsonDict, key: str) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         json_content = result["components"]["responses"][key]["content"][
             "application/json"
         ]
@@ -225,9 +219,9 @@ class TestReusableResponses:
 
     @pytest.mark.parametrize("key", sorted(_EXPECTED_RESPONSE_KEYS))
     def test_problem_json_refs_problem_detail(
-        self, base_schema: dict[str, Any], key: str
+        self, base_schema: JsonDict, key: str
     ) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         pj_content = result["components"]["responses"][key]["content"][
             "application/problem+json"
         ]
@@ -236,18 +230,16 @@ class TestReusableResponses:
         }
 
     @pytest.mark.parametrize("key", sorted(_EXPECTED_RESPONSE_KEYS))
-    def test_examples_present(self, base_schema: dict[str, Any], key: str) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_examples_present(self, base_schema: JsonDict, key: str) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         content = result["components"]["responses"][key]["content"]
         # Both content types must have an example.
         assert "example" in content["application/json"]
         assert "example" in content["application/problem+json"]
 
     @pytest.mark.parametrize("key", sorted(_EXPECTED_RESPONSE_KEYS))
-    def test_envelope_example_structure(
-        self, base_schema: dict[str, Any], key: str
-    ) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_envelope_example_structure(self, base_schema: JsonDict, key: str) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         example = result["components"]["responses"][key]["content"]["application/json"][
             "example"
         ]
@@ -262,9 +254,9 @@ class TestReusableResponses:
 
     @pytest.mark.parametrize("key", sorted(_EXPECTED_RESPONSE_KEYS))
     def test_problem_detail_example_structure(
-        self, base_schema: dict[str, Any], key: str
+        self, base_schema: JsonDict, key: str
     ) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         example = result["components"]["responses"][key]["content"][
             "application/problem+json"
         ]["example"]
@@ -283,12 +275,12 @@ class TestReusableResponses:
     )
     def test_problem_detail_example_status_matches_http_code(
         self,
-        base_schema: dict[str, Any],
+        base_schema: JsonDict,
         key: str,
         expected_status: int,
     ) -> None:
         """ProblemDetail example status matches the HTTP status code."""
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         example = result["components"]["responses"][key]["content"][
             "application/problem+json"
         ]["example"]
@@ -302,8 +294,8 @@ class TestReusableResponses:
 class TestOperationInjection:
     """Error responses are injected into the correct operations."""
 
-    def test_all_operations_have_500(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_all_operations_have_500(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         for path, path_item in result["paths"].items():
             for method, operation in path_item.items():
                 if not isinstance(operation, dict):
@@ -314,18 +306,16 @@ class TestOperationInjection:
                     "$ref": "#/components/responses/InternalError"
                 }
 
-    def test_authenticated_endpoints_have_401(
-        self, base_schema: dict[str, Any]
-    ) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_authenticated_endpoints_have_401(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         # Non-public paths should have 401.
         for path in ("/api/v1/tasks", "/api/v1/agents"):
             for method in result["paths"][path]:
                 responses = result["paths"][path][method]["responses"]
                 assert "401" in responses, f"{method.upper()} {path} missing 401"
 
-    def test_public_endpoints_skip_401(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_public_endpoints_skip_401(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         for path in (
             "/api/v1/healthz",
             "/api/v1/auth/login",
@@ -339,8 +329,8 @@ class TestOperationInjection:
                 assert "401" not in responses, f"{path} should not have 401"
                 assert "403" not in responses, f"{path} should not have 403"
 
-    def test_path_param_endpoints_have_404(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_path_param_endpoints_have_404(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         for path in (
             "/api/v1/tasks/{task_id}",
             "/api/v1/agents/{agent_name}",
@@ -349,8 +339,8 @@ class TestOperationInjection:
                 responses = result["paths"][path][method]["responses"]
                 assert "404" in responses, f"{method.upper()} {path} missing 404"
 
-    def test_non_param_endpoints_skip_404(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_non_param_endpoints_skip_404(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         for path in ("/api/v1/tasks", "/api/v1/agents"):
             for method in result["paths"][path]:
                 responses = result["paths"][path][method]["responses"]
@@ -358,8 +348,8 @@ class TestOperationInjection:
                     f"{method.upper()} {path} should not have 404"
                 )
 
-    def test_write_endpoints_have_409(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_write_endpoints_have_409(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         # POST /tasks should have 409
         post_responses = result["paths"]["/api/v1/tasks"]["post"]["responses"]
         assert "409" in post_responses
@@ -369,18 +359,18 @@ class TestOperationInjection:
         ]
         assert "409" in patch_responses
 
-    def test_get_endpoints_skip_409(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_get_endpoints_skip_409(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         get_responses = result["paths"]["/api/v1/tasks"]["get"]["responses"]
         assert "409" not in get_responses
 
-    def test_write_endpoints_have_403(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_write_endpoints_have_403(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         post_responses = result["paths"]["/api/v1/tasks"]["post"]["responses"]
         assert "403" in post_responses
 
-    def test_get_endpoints_skip_403(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_get_endpoints_skip_403(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         get_responses = result["paths"]["/api/v1/tasks"]["get"]["responses"]
         assert "403" not in get_responses
 
@@ -399,7 +389,7 @@ class TestOperationInjection:
                 },
             },
         )
-        result: dict[str, Any] = inject_rfc9457_responses(schema)
+        result: JsonDict = inject_rfc9457_responses(schema)
         resp_404 = result["paths"]["/api/v1/items/{id}"]["get"]["responses"]["404"]
         # Should keep the custom response, not overwrite with ref.
         assert resp_404.get("custom") is True
@@ -433,7 +423,7 @@ class TestOperationInjection:
                 },
             },
         )
-        result: dict[str, Any] = inject_rfc9457_responses(schema)
+        result: JsonDict = inject_rfc9457_responses(schema)
         resp_400 = result["paths"]["/api/v1/tasks"]["get"]["responses"]["400"]
         # Should be replaced with our ref.
         assert resp_400 == {"$ref": "#/components/responses/BadRequest"}
@@ -470,37 +460,37 @@ class TestOperationInjection:
                 },
             },
         )
-        result: dict[str, Any] = inject_rfc9457_responses(schema)
+        result: JsonDict = inject_rfc9457_responses(schema)
         resp_400 = result["paths"]["/api/v1/tasks"]["post"]["responses"]["400"]
         # Custom 400 should be preserved (not Litestar's ValidationException).
         assert resp_400["description"] == "Custom validation"
 
-    def test_non_public_have_429(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_non_public_have_429(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         responses = result["paths"]["/api/v1/tasks"]["get"]["responses"]
         assert "429" in responses
 
-    def test_public_skip_429(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_public_skip_429(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         responses = result["paths"]["/api/v1/healthz"]["get"]["responses"]
         assert "429" not in responses
 
-    def test_public_skip_503(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_public_skip_503(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         responses = result["paths"]["/api/v1/healthz"]["get"]["responses"]
         assert "503" not in responses
 
-    def test_delete_skip_409(self, base_schema: dict[str, Any]) -> None:
+    def test_delete_skip_409(self, base_schema: JsonDict) -> None:
         """DELETE is idempotent -- conflicts are a create/update concern."""
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         responses = result["paths"]["/api/v1/tasks/{task_id}"]["delete"]["responses"]
         assert "409" not in responses
 
     @pytest.mark.parametrize("key", ["TooManyRequests", "ServiceUnavailable"])
     def test_retryable_example_has_retryable_true(
-        self, base_schema: dict[str, Any], key: str
+        self, base_schema: JsonDict, key: str
     ) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         content = result["components"]["responses"][key]["content"]
         envelope_ex = content["application/json"]["example"]
         assert envelope_ex["error_detail"]["retryable"] is True
@@ -519,9 +509,9 @@ class TestOperationInjection:
         ],
     )
     def test_non_retryable_example_has_retryable_false(
-        self, base_schema: dict[str, Any], key: str
+        self, base_schema: JsonDict, key: str
     ) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         content = result["components"]["responses"][key]["content"]
         envelope_ex = content["application/json"]["example"]
         assert envelope_ex["error_detail"]["retryable"] is False
@@ -537,17 +527,17 @@ class TestOperationInjection:
                 },
             },
         )
-        result: dict[str, Any] = inject_rfc9457_responses(schema)
+        result: JsonDict = inject_rfc9457_responses(schema)
         responses = result["paths"]["/api/v1/tasks/{task_id}"]["put"]["responses"]
         assert "400" in responses
         assert "403" in responses
         assert "409" in responses
 
     def test_get_without_existing_400_skips_bad_request(
-        self, base_schema: dict[str, Any]
+        self, base_schema: JsonDict
     ) -> None:
         """GET endpoint without pre-existing 400 does not get BadRequest."""
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         # GET /tasks has no pre-existing 400 and is not a write method.
         responses = result["paths"]["/api/v1/tasks"]["get"]["responses"]
         assert "400" not in responses
@@ -562,7 +552,7 @@ class TestOperationInjection:
                 },
             },
         )
-        result: dict[str, Any] = inject_rfc9457_responses(schema)
+        result: JsonDict = inject_rfc9457_responses(schema)
         # Should not crash; GET should have 500 injected.
         responses = result["paths"]["/api/v1/items/{id}"]["get"]["responses"]
         assert "500" in responses
@@ -588,20 +578,20 @@ class TestOperationInjection:
 class TestInfoDescription:
     """RFC 9457 documentation is stored in x-documentation extension."""
 
-    def test_rfc9457_in_x_documentation(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_rfc9457_in_x_documentation(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         xdoc = result["info"]["x-documentation"]
         assert "rfc9457" in xdoc
         assert "RFC 9457" in xdoc["rfc9457"]
 
-    def test_not_in_description(self, base_schema: dict[str, Any]) -> None:
+    def test_not_in_description(self, base_schema: JsonDict) -> None:
         """RFC 9457 docs should not pollute info.description."""
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         desc = result["info"].get("description", "")
         assert "RFC 9457" not in desc
 
-    def test_mentions_content_negotiation(self, base_schema: dict[str, Any]) -> None:
-        result: dict[str, Any] = inject_rfc9457_responses(base_schema)
+    def test_mentions_content_negotiation(self, base_schema: JsonDict) -> None:
+        result: JsonDict = inject_rfc9457_responses(base_schema)
         rfc_doc = result["info"]["x-documentation"]["rfc9457"]
         assert "application/problem+json" in rfc_doc
         assert "application/json" in rfc_doc
@@ -610,7 +600,7 @@ class TestInfoDescription:
         """Existing info.description is not modified."""
         schema = _minimal_schema()
         schema["info"]["description"] = "My custom API description."
-        result: dict[str, Any] = inject_rfc9457_responses(schema)
+        result: JsonDict = inject_rfc9457_responses(schema)
         assert result["info"]["description"] == "My custom API description."
 
 
@@ -621,12 +611,12 @@ class TestInfoDescription:
 class TestIdempotencyAndImmutability:
     """Function is idempotent and does not mutate the input."""
 
-    def test_idempotent(self, base_schema: dict[str, Any]) -> None:
+    def test_idempotent(self, base_schema: JsonDict) -> None:
         first = inject_rfc9457_responses(base_schema)
         second = inject_rfc9457_responses(first)
         assert first == second
 
-    def test_does_not_mutate_input(self, base_schema: dict[str, Any]) -> None:
+    def test_does_not_mutate_input(self, base_schema: JsonDict) -> None:
         original = copy.deepcopy(base_schema)
         inject_rfc9457_responses(base_schema)
         assert base_schema == original
@@ -634,15 +624,15 @@ class TestIdempotencyAndImmutability:
     def test_empty_paths(self) -> None:
         """Handles schema with no paths gracefully."""
         schema = _minimal_schema(paths={})
-        result: dict[str, Any] = inject_rfc9457_responses(schema)
+        result: JsonDict = inject_rfc9457_responses(schema)
         assert "ProblemDetail" in result["components"]["schemas"]
         assert len(result["components"]["responses"]) == 8
 
     def test_missing_components(self) -> None:
         """Handles schema with missing components section."""
-        schema: dict[str, Any] = {
+        schema: JsonDict = {
             "openapi": "3.1.0",
             "info": {"title": "X", "version": "1"},
         }
-        result: dict[str, Any] = inject_rfc9457_responses(schema)
+        result: JsonDict = inject_rfc9457_responses(schema)
         assert "ProblemDetail" in result["components"]["schemas"]

@@ -1,11 +1,10 @@
 """Tests for analytics tool configuration models."""
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
 from synthorg.tools.analytics.config import AnalyticsToolsConfig
+from tests._shared import JsonDict
 
 
 @pytest.mark.unit
@@ -52,7 +51,7 @@ class TestAnalyticsToolsConfig:
             "timeout_inf",
         ],
     )
-    def test_rejects_invalid_params(self, kwargs: dict[str, Any]) -> None:
+    def test_rejects_invalid_params(self, kwargs: JsonDict) -> None:
         with pytest.raises(ValidationError):
             AnalyticsToolsConfig(**kwargs)
 

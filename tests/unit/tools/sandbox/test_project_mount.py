@@ -7,7 +7,7 @@ project-B files) is exercised by the Docker-gated integration test.
 """
 
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
 import structlog.contextvars
@@ -16,7 +16,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox, _to_posix_bind_path
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.lifecycle.protocol import SandboxLifecycleStrategy
-from tests._shared import mock_of
+from tests._shared import JsonDict, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -83,14 +83,14 @@ class TestHostConfigBindsProjectSubtree:
         project_root = _make_project(tmp_path, "proj-a")
         sandbox = _sandbox(tmp_path)
         host_config = sandbox._build_host_config(project_root)
-        bind = cast("dict[str, Any]", host_config)["Binds"][0]
+        bind = cast(JsonDict, host_config)["Binds"][0]
         assert bind.startswith(f"{_to_posix_bind_path(project_root)}:")
         assert bind.endswith(":/workspace:ro") or ":/workspace:" in bind
 
     def test_default_bind_is_whole_workspace(self, tmp_path: Path) -> None:
         sandbox = _sandbox(tmp_path)
         host_config = sandbox._build_host_config()
-        bind = cast("dict[str, Any]", host_config)["Binds"][0]
+        bind = cast(JsonDict, host_config)["Binds"][0]
         assert bind.startswith(f"{_to_posix_bind_path(tmp_path)}:")
 
 

@@ -19,13 +19,15 @@ defence at the edge for these endpoints.
 """
 
 from collections.abc import AsyncGenerator
-from typing import Any, override
+from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from litestar import Litestar, Router
 from litestar.datastructures import State
+from litestar.enums import ScopeType
 from litestar.middleware import ASGIMiddleware
+from litestar.types import ASGIApp, Receive, Scope, Send
 
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.rate_limits._subject import STATE_KEY_CONFIG, STATE_KEY_STORE
@@ -65,12 +67,12 @@ class _InjectUserMiddleware(ASGIMiddleware):
     @override
     async def handle(
         self,
-        scope: Any,
-        receive: Any,
-        send: Any,
-        next_app: Any,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        next_app: ASGIApp,
     ) -> None:
-        if scope["type"] == "http":
+        if scope["type"] == ScopeType.HTTP:
             scope["user"] = _TestUser()
         await next_app(scope, receive, send)
 

@@ -9,14 +9,15 @@ bootstrap boilerplate in every test module.
 import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any
 
 import pytest
+from litestar import Litestar
 
 from synthorg.api.auth.service import AuthService
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
+from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence import migrations
 from synthorg.persistence.config import SQLiteConfig
@@ -59,8 +60,8 @@ def build_runtime_app(
     *,
     with_provider: bool,
     company_name: str,
-    coordinator: Any = None,
-) -> Any:
+    coordinator: MultiAgentCoordinator | None = None,
+) -> Litestar:
     """Build an app for provider-present-switch integration tests.
 
     ``with_provider`` registers one scripted provider so the company is

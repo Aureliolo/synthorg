@@ -1,8 +1,9 @@
 """Tests for AuthController endpoints."""
 
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock
 
+import httpx
 import jwt
 import pytest
 from typeguard import suppress_type_checks
@@ -12,10 +13,12 @@ from synthorg.api.api_core_state import (
     auth_service_of,
     ticket_store_of,
 )
+from synthorg.api.state import AppState
 from synthorg.core.auth.roles import HumanRole
 from synthorg.persistence.state import persistence_of
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import _TEST_JWT_SECRET, make_auth_headers
+from tests.unit.api.fakes import FakePersistenceBackend
 
 
 @pytest.fixture
@@ -25,7 +28,7 @@ async def bare_client(async_test_client: LoopAsyncClient) -> LoopAsyncClient:
     return async_test_client
 
 
-def _extract_auth_cookies(response: Any) -> dict[str, str]:
+def _extract_auth_cookies(response: httpx.Response) -> dict[str, str]:
     """Extract session and CSRF cookies from Set-Cookie headers.
 
     Returns a dict with ``session`` and ``csrf_token`` keys.
@@ -47,7 +50,7 @@ def _extract_auth_cookies(response: Any) -> dict[str, str]:
 class TestSetup:
     async def test_setup_creates_admin(self, bare_client: LoopAsyncClient) -> None:
         app_state = bare_client.app.state["app_state"]
-        cast(Any, persistence_of(app_state))._users._users.clear()
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users.clear()
 
         response = await bare_client.post(
             "/api/v1/auth/setup",
@@ -90,7 +93,9 @@ class TestSetup:
             created_at=now,
             updated_at=now,
         )
-        cast(Any, persistence_of(app_state))._users._users[user.id] = user
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users[
+            user.id
+        ] = user
 
         response = await bare_client.post(
             "/api/v1/auth/setup",
@@ -105,7 +110,7 @@ class TestSetup:
         self, bare_client: LoopAsyncClient
     ) -> None:
         app_state = bare_client.app.state["app_state"]
-        cast(Any, persistence_of(app_state))._users._users.clear()
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users.clear()
 
         response = await bare_client.post(
             "/api/v1/auth/setup",
@@ -118,7 +123,7 @@ class TestSetup:
 class TestLogin:
     async def test_login_valid_credentials(self, bare_client: LoopAsyncClient) -> None:
         app_state = bare_client.app.state["app_state"]
-        cast(Any, persistence_of(app_state))._users._users.clear()
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users.clear()
 
         await bare_client.post(
             "/api/v1/auth/setup",
@@ -167,7 +172,7 @@ class TestLogin:
 class TestChangePassword:
     async def test_change_password_success(self, bare_client: LoopAsyncClient) -> None:
         app_state = bare_client.app.state["app_state"]
-        cast(Any, persistence_of(app_state))._users._users.clear()
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users.clear()
 
         setup_resp = await bare_client.post(
             "/api/v1/auth/setup",
@@ -226,7 +231,7 @@ class TestChangePassword:
         bare_client: LoopAsyncClient,
     ) -> None:
         app_state = bare_client.app.state["app_state"]
-        cast(Any, persistence_of(app_state))._users._users.clear()
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users.clear()
 
         setup_resp = await bare_client.post(
             "/api/v1/auth/setup",
@@ -462,7 +467,9 @@ class TestSystemUserBlocking:
             updated_at=now,
         )
         # Use internal dict because save() is async and this is a sync test
-        cast(Any, persistence_of(app_state))._users._users[SYSTEM_USER_ID] = system_user
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users[
+            SYSTEM_USER_ID
+        ] = system_user
 
         response = await bare_client.post(
             "/api/v1/auth/login",
@@ -501,7 +508,9 @@ class TestSystemUserBlocking:
             created_at=now,
             updated_at=now,
         )
-        cast(Any, persistence_of(app_state))._users._users[SYSTEM_USER_ID] = system_user
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users[
+            SYSTEM_USER_ID
+        ] = system_user
 
         # Build a CLI-style JWT with iss + aud (required by middleware)
         token = pyjwt.encode(
@@ -542,7 +551,7 @@ class TestSystemUserBlocking:
 
         app_state = bare_client.app.state["app_state"]
         # Clear all users, then add only the system user
-        cast(Any, persistence_of(app_state))._users._users.clear()
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users.clear()
         now = datetime.now(UTC)
         system_user = User(
             id=SYSTEM_USER_ID,
@@ -553,7 +562,9 @@ class TestSystemUserBlocking:
             created_at=now,
             updated_at=now,
         )
-        cast(Any, persistence_of(app_state))._users._users[SYSTEM_USER_ID] = system_user
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users[
+            SYSTEM_USER_ID
+        ] = system_user
 
         response = await bare_client.post(
             "/api/v1/auth/setup",
@@ -570,7 +581,7 @@ class TestSystemUserBlocking:
     ) -> None:
         """Setup rejects the reserved 'system' username with 409."""
         app_state = bare_client.app.state["app_state"]
-        cast(Any, persistence_of(app_state))._users._users.clear()
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users.clear()
 
         response = await bare_client.post(
             "/api/v1/auth/setup",
@@ -591,7 +602,7 @@ class TestSystemUserBlocking:
         from synthorg.core.auth.models import User
 
         app_state = bare_client.app.state["app_state"]
-        cast(Any, persistence_of(app_state))._users._users.clear()
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users.clear()
         now = datetime.now(UTC)
         observer = User(
             id="observer-001",
@@ -602,7 +613,9 @@ class TestSystemUserBlocking:
             created_at=now,
             updated_at=now,
         )
-        cast(Any, persistence_of(app_state))._users._users["observer-001"] = observer
+        cast(FakePersistenceBackend, persistence_of(app_state))._users._users[
+            "observer-001"
+        ] = observer
 
         response = await bare_client.post(
             "/api/v1/auth/setup",
@@ -624,7 +637,7 @@ class TestLogoutIdempotency:
     clients can recover from stale cookie state.
     """
 
-    def _assert_clear_cookies(self, response: Any) -> None:
+    def _assert_clear_cookies(self, response: httpx.Response) -> None:
         """Assert each clear-cookie header carries ``Max-Age=0``.
 
         Checking ``max-age=0`` on the concatenated string would still
@@ -669,7 +682,7 @@ class TestLogoutIdempotency:
 
     @staticmethod
     def _install_spy_session_store(
-        app_state: Any,
+        app_state: AppState,
         revoke_spy: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -686,7 +699,7 @@ class TestLogoutIdempotency:
         spied = app_state.slice(ApiCoreStateSlice).model_copy(
             update={"session_store": SimpleNamespace(revoke=revoke_spy)},
         )
-        monkeypatch.setitem(app_state._slices, ApiCoreStateSlice, spied)
+        monkeypatch.setitem(app_state._slices, ApiCoreStateSlice, spied)  # type: ignore[misc]  # mypy cannot infer the type[]-keyed dict's K for setitem
 
     async def test_logout_with_valid_auth_returns_204_and_revokes_session(
         self,
