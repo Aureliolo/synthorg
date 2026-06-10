@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.collections import dedupe_preserving_order
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
@@ -19,7 +20,6 @@ from synthorg.observability.events.training import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.seniority import SeniorityLevel
     from synthorg.tools.invocation_record import ToolInvocationRecord
     from synthorg.tools.invocation_tracker import ToolInvocationTracker

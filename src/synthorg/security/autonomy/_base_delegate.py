@@ -10,9 +10,10 @@ the behaviour it actually overrides.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
+
 if TYPE_CHECKING:
     from synthorg.core.autonomy_enums import AutonomyLevel
-    from synthorg.core.types import NotBlankStr
     from synthorg.security.autonomy.change_strategy import (
         HumanOnlyPromotionStrategy,
     )

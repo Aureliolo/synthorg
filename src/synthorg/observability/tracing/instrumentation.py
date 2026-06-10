@@ -13,19 +13,14 @@ tracing disabled, ``get_tracer`` returns OTel's built-in
 nothing.
 """
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
 
 from opentelemetry import trace as _ot_trace
-from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace import Span, Status, StatusCode, Tracer
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import safe_error_description
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
-    from opentelemetry.trace import Span, Tracer
 
 _INSTRUMENTATION_NAME = "synthorg"
 

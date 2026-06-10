@@ -28,6 +28,7 @@ from synthorg.core.normalization import (
     find_by_name_ci,
     normalize_identifier,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
@@ -60,7 +61,6 @@ if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.clock import Clock
-    from synthorg.core.types import NotBlankStr
     from synthorg.security.autonomy.models import (
         AutonomyUpdate,
         AutonomyUpdateResult,

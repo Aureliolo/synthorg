@@ -16,10 +16,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.idempotency import (
     IDEMPOTENCY_CLAIM_COMPLETED,
@@ -34,9 +34,6 @@ from synthorg.persistence.idempotency_protocol import (
     IdempotencyOutcome,
     IdempotencyRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

@@ -7,8 +7,9 @@ All protocols are ``@runtime_checkable`` for duck-typing support.
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.core.types import NotBlankStr
+
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.seniority import SeniorityLevel
     from synthorg.hr.training.models import (
         ContentType,

@@ -7,6 +7,7 @@ by checking ``expires_at`` at query time.
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.performance import (
     PERF_OVERRIDE_CLEARED,
@@ -15,7 +16,6 @@ from synthorg.observability.events.performance import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.performance.models import CollaborationOverride
 
 logger = get_logger(__name__)

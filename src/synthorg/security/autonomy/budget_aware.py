@@ -9,6 +9,7 @@ recovery / override-store ops delegate to the base.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_PROMOTION_DENIED,
@@ -18,7 +19,6 @@ from synthorg.security.autonomy._base_delegate import BaseDelegatingStrategy
 
 if TYPE_CHECKING:
     from synthorg.core.autonomy_enums import AutonomyLevel
-    from synthorg.core.types import NotBlankStr
     from synthorg.security.autonomy.change_strategy import (
         HumanOnlyPromotionStrategy,
     )

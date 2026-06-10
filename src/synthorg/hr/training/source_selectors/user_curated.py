@@ -7,6 +7,7 @@ user, validating that each agent exists in the registry.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_AGENT_NOT_FOUND,
@@ -14,7 +15,6 @@ from synthorg.observability.events.training import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.hr.seniority import SeniorityLevel
 

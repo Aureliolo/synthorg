@@ -22,6 +22,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
+from opentelemetry.trace import Tracer
 
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import get_logger
@@ -32,8 +33,6 @@ from synthorg.observability.events.metrics import (
 )
 
 if TYPE_CHECKING:
-    from opentelemetry.trace import Tracer
-
     from synthorg.observability.tracing.config import OtlpHttpTraceConfig
 
 logger = get_logger(__name__)
