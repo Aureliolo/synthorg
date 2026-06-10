@@ -52,12 +52,9 @@ def _read_live_config(state: State) -> PerOpRateLimitConfig | None:
         The ``PerOpRateLimitConfig`` value when present, ``None`` otherwise.
     """
     app_state = getattr(state, "app_state", None)
-    if app_state is not None and getattr(
-        app_state,
-        "has_per_op_rate_limit_config",
-        False,
-    ):
-        live: PerOpRateLimitConfig = app_state.per_op_rate_limit_config
+    per_op_limits = getattr(app_state, "per_op_limits", None)
+    if per_op_limits is not None and per_op_limits.has_rate_limit_config:
+        live: PerOpRateLimitConfig = per_op_limits.rate_limit_config
         return live
     dict_value: PerOpRateLimitConfig | None = getattr(
         state,

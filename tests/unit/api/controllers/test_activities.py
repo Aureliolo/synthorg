@@ -717,7 +717,7 @@ class TestDegradedSources:
 
 
 class TestActivityFeedLifecycleCap:
-    """Lifecycle cap is sourced from ``app_state.api_bridge_config``.
+    """Lifecycle cap is sourced from ``app_state.bridge_config.api``.
 
     The controller no longer carries a hardcoded fallback constant;
     the cap flows through the bridge-config snapshot that
@@ -745,7 +745,7 @@ class TestActivityFeedLifecycleCap:
         app_state = async_test_client.app.state.app_state
         assert (
             captured["limit"]
-            == app_state.api_bridge_config.max_lifecycle_events_per_query
+            == app_state.bridge_config.api.max_lifecycle_events_per_query
         )
 
     async def test_swapped_cap_takes_effect_immediately(
@@ -757,8 +757,8 @@ class TestActivityFeedLifecycleCap:
         from synthorg.settings.bridge_configs import ApiBridgeConfig
 
         app_state = async_test_client.app.state.app_state
-        previous = app_state.api_bridge_config
-        app_state.swap_api_bridge_config(
+        previous = app_state.bridge_config.api
+        app_state.bridge_config.swap_api(
             previous.model_copy(update={"max_lifecycle_events_per_query": 137}),
         )
         captured: dict[str, Any] = {}
@@ -772,13 +772,13 @@ class TestActivityFeedLifecycleCap:
         try:
             resp = await async_test_client.get("/api/v1/activities")
         finally:
-            app_state.swap_api_bridge_config(previous)
+            app_state.bridge_config.swap_api(previous)
 
         assert resp.status_code == 200
         assert captured["limit"] == 137
         # Confirm the snapshot still holds an ``ApiBridgeConfig`` after
         # restoration -- the swap path is reversible.
-        assert isinstance(app_state.api_bridge_config, ApiBridgeConfig)
+        assert isinstance(app_state.bridge_config.api, ApiBridgeConfig)
 
 
 class TestActivitiesControllerSurface:

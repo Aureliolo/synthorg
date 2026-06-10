@@ -2011,7 +2011,7 @@
     },
     {
       "kind": "code",
-      "loc": 245,
+      "loc": 242,
       "loc_cap": 500,
       "module": "src/synthorg/api/rate_limits/guard.py",
       "owning_feature": "api_core"
@@ -2053,7 +2053,7 @@
     },
     {
       "kind": "code",
-      "loc": 190,
+      "loc": 187,
       "loc_cap": 500,
       "module": "src/synthorg/api/rate_limits/inflight_middleware.py",
       "owning_feature": "api_core"
@@ -2172,23 +2172,30 @@
     },
     {
       "kind": "code",
-      "loc": 279,
+      "loc": 209,
       "loc_cap": 500,
       "module": "src/synthorg/api/state.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 332,
+      "loc": 229,
       "loc_cap": 500,
-      "module": "src/synthorg/api/state_services_bridge.py",
+      "module": "src/synthorg/api/state_bridge_config.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 358,
+      "loc": 122,
       "loc_cap": 500,
-      "module": "src/synthorg/api/state_services_locks.py",
+      "module": "src/synthorg/api/state_per_op_limits.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 149,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/state_request_locks.py",
       "owning_feature": "api_core"
     },
     {
@@ -2196,6 +2203,13 @@
       "loc": 179,
       "loc_cap": 500,
       "module": "src/synthorg/api/state_slices.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 223,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/state_ws_auth_limits.py",
       "owning_feature": "api_core"
     },
     {

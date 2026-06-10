@@ -1,6 +1,6 @@
 """API bridge-config settings subscriber.
 
-Hot-swaps :attr:`AppState.api_bridge_config` when an operator edits a
+Hot-swaps ``app_state.bridge_config.api`` when an operator edits a
 watched ``api.*`` setting whose value lives on
 :class:`~synthorg.settings.bridge_configs.ApiBridgeConfig`. The
 dispatcher already filters out ``restart_required=True`` keys before
@@ -65,7 +65,7 @@ class ApiBridgeSettingsSubscriber:
 
     On a watched-key change the subscriber resolves the integer value
     via :class:`~synthorg.settings.resolver.ConfigResolver` and applies
-    it through ``AppState.mutate_api_bridge_config({key: value})``,
+    it through ``app_state.bridge_config.mutate_api({key: value})``,
     which merges the single-field update into the current snapshot
     under a per-bridge lock and re-validates via ``model_validate``
     (Pydantic v2 skips validators on the bare ``model_copy(update=...)``
@@ -114,7 +114,7 @@ class ApiBridgeSettingsSubscriber:
             return
         try:
             value = await config_resolver_of(self._app_state).get_int(namespace, key)
-            self._app_state.mutate_api_bridge_config({key: value})
+            self._app_state.bridge_config.mutate_api({key: value})
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

@@ -110,8 +110,8 @@ def _build_revalidation_limiter(
         ``_SlidingWindowRateLimiter`` instance.
     """
     if app_state is not None:
-        window = float(app_state.auth_revalidate_window_seconds)
-        max_failures = app_state.auth_revalidate_max_failures
+        window = float(app_state.ws_auth_limits.auth_revalidate_window_seconds)
+        max_failures = app_state.ws_auth_limits.auth_revalidate_max_failures
     else:
         window = _AUTH_REVALIDATE_WINDOW_FALLBACK_SECONDS
         max_failures = _AUTH_REVALIDATE_MAX_FAILURES_FALLBACK

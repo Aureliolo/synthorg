@@ -61,12 +61,12 @@ for _, _key in _WATCHED:
 
 
 class MemoryBridgeSettingsSubscriber:
-    """Hot-swap ``memory_bridge_config`` when watched settings change.
+    """Hot-swap the memory bridge config when watched settings change.
 
     On a watched-key change the full ``MemoryBridgeConfig`` is
     re-resolved via :meth:`ConfigResolver.get_memory_bridge_config`
     (which parses + ordering-validates the JSON VRAM table) and applied
-    through ``AppState.swap_memory_bridge_config``. A resolver/parse
+    through ``app_state.bridge_config.swap_memory``. A resolver/parse
     failure is logged and re-raised so the dispatcher records
     subscriber context; the prior snapshot stays because the swap never
     happens.
@@ -108,7 +108,7 @@ class MemoryBridgeSettingsSubscriber:
         try:
             resolver = config_resolver_of(self._app_state)
             snapshot = await resolver.get_memory_bridge_config()
-            self._app_state.swap_memory_bridge_config(snapshot)
+            self._app_state.bridge_config.swap_memory(snapshot)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

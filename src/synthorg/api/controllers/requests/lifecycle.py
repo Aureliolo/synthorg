@@ -244,7 +244,7 @@ class RequestController(Controller):
         # race at ``save`` time.  The lock scope is intentionally
         # narrow -- only the get/check/save critical section -- so a
         # stuck request does not block unrelated requests.
-        async with app_state.acquire_request_lock(request_id):
+        async with app_state.request_locks.acquire(request_id):
             try:
                 stored = await sim_state.request_store.get(request_id)
             except KeyError as exc:
@@ -350,7 +350,7 @@ class RequestController(Controller):
         """
         app_state: AppState = state.app_state
         sim_state = client_simulation_state_of(app_state)
-        async with app_state.acquire_request_lock(request_id):
+        async with app_state.request_locks.acquire(request_id):
             try:
                 stored = await sim_state.request_store.get(request_id)
             except KeyError as exc:
@@ -415,7 +415,7 @@ class RequestController(Controller):
         """
         app_state: AppState = state.app_state
         sim_state = client_simulation_state_of(app_state)
-        async with app_state.acquire_request_lock(request_id):
+        async with app_state.request_locks.acquire(request_id):
             try:
                 stored = await sim_state.request_store.get(request_id)
             except KeyError as exc:
@@ -446,5 +446,5 @@ class RequestController(Controller):
             )
             _publish(request, WsEventType.REQUEST_REJECTED, cancelled)
         # Reject walks to ``CANCELLED`` (terminal) -- drop the lock.
-        app_state.release_request_lock_if_idle(request_id)
+        app_state.request_locks.release_if_idle(request_id)
         return ApiResponse(data=cancelled)

@@ -130,7 +130,7 @@ class DistributedDispatcher:
         Mirrors :meth:`OAuthTokenManager.set_config_resolver`: the
         dispatcher is instantiated in ``auto_wire_phase1`` before
         ``AppState``, so the API startup hook injects
-        ``lambda: app_state.workers_bridge_config`` here. Each publish
+        ``lambda: app_state.bridge_config.workers`` here. Each publish
         then reads the current snapshot, so an operator hot-reload of a
         ``workers.dispatcher_publish_*`` setting takes effect on the
         next publish without restarting the dispatcher.
@@ -144,7 +144,7 @@ class DistributedDispatcher:
         I/O retry for the NATS publish hot path. Rebuilt per publish
         (a cheap object) so a hot-reloaded retry budget applies without
         subscriber-to-consumer plumbing, mirroring how controllers read
-        ``app_state.api_bridge_config`` per request.
+        ``app_state.bridge_config.api`` per request.
 
         Returns:
             A ``GeneralRetryHandler`` configured from the current workers

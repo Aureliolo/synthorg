@@ -5,7 +5,7 @@ Snapshots ``ApiBridgeConfig`` onto ``AppState``, validates cross-
 setting invariants (e.g. approval-urgency ordering), populates the
 sandbox image-resolution cache, rebuilds the notification dispatcher
 with resolved timeouts, and applies the security-timeout scheduler
-cadence. Idempotent via ``app_state.bridge_config_applied`` so a
+cadence. Idempotent via ``app_state.bridge_config.applied`` so a
 re-entering Litestar lifespan does not churn long-lived clients.
 """
 
@@ -253,7 +253,7 @@ async def _apply_api_bridge_config_snapshot(app_state: AppState) -> None:
         # Lambda is required: ``config_resolver`` raises until wired, so
         # access must defer past the helper's has_config_resolver guard.
         getter=lambda: config_resolver_of(app_state).get_api_bridge_config(),
-        setter=app_state.swap_api_bridge_config,
+        setter=app_state.bridge_config.swap_api,
     )
 
 
@@ -276,7 +276,7 @@ async def _apply_workers_bridge_config_snapshot(app_state: AppState) -> None:
         # Lambda is required: ``config_resolver`` raises until wired, so
         # access must defer past the helper's has_config_resolver guard.
         getter=lambda: config_resolver_of(app_state).get_workers_bridge_config(),
-        setter=app_state.swap_workers_bridge_config,
+        setter=app_state.bridge_config.swap_workers,
     )
 
 
@@ -299,7 +299,7 @@ async def _apply_memory_bridge_config_snapshot(app_state: AppState) -> None:
         # Lambda is required: ``config_resolver`` raises until wired, so
         # access must defer past the helper's has_config_resolver guard.
         getter=lambda: config_resolver_of(app_state).get_memory_bridge_config(),
-        setter=app_state.swap_memory_bridge_config,
+        setter=app_state.bridge_config.swap_memory,
     )
 
 
@@ -335,7 +335,7 @@ async def _apply_ws_auth_timeout(app_state: AppState) -> None:
         CancelledError: Raised on the corresponding failure path.
     """
     try:
-        app_state.set_ws_auth_timeout_seconds(
+        app_state.ws_auth_limits.set_auth_timeout_seconds(
             await config_resolver_of(app_state).get_float(
                 SettingNamespace.API.value,
                 "ws_auth_timeout_seconds",
@@ -366,7 +366,7 @@ async def _apply_ws_dos_settings(app_state: AppState) -> None:
         CancelledError: Raised on the corresponding failure path.
     """
     for setting_key, setter_name in (
-        ("ws_frame_timeout_seconds", "set_ws_frame_timeout_seconds"),
+        ("ws_frame_timeout_seconds", "set_frame_timeout_seconds"),
         ("auth_revalidate_window_seconds", "set_auth_revalidate_window_seconds"),
         ("auth_revalidate_max_failures", "set_auth_revalidate_max_failures"),
     ):
@@ -375,7 +375,7 @@ async def _apply_ws_dos_settings(app_state: AppState) -> None:
                 SettingNamespace.API.value,
                 setting_key,
             )
-            getattr(app_state, setter_name)(value)
+            getattr(app_state.ws_auth_limits, setter_name)(value)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -539,13 +539,13 @@ async def _apply_bridge_config(
 ) -> None:
     """Apply operator-tuned API bridge settings during startup.
 
-    Idempotent via ``app_state.bridge_config_applied`` so a re-entering
+    Idempotent via ``app_state.bridge_config.applied`` so a re-entering
     Litestar lifespan (shared-app test fixtures, multi-lifespan runs)
     does not churn httpx/SMTP clients or rebuild the OAuth flow.
     """
     if (
         app_state.slice(SettingsStateSlice).config_resolver is None
-        or app_state.bridge_config_applied
+        or app_state.bridge_config.applied
     ):
         return
 
@@ -563,7 +563,7 @@ async def _apply_bridge_config(
     await _apply_audit_chain_signing_timeout(app_state)
     await _apply_notification_dispatcher_config(app_state, effective_config)
 
-    app_state.mark_bridge_config_applied()
+    app_state.bridge_config.mark_applied()
 
 
 async def _apply_security_timeout_interval(

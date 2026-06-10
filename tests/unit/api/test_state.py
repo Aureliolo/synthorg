@@ -1,19 +1,18 @@
 """Tests for the thin :class:`AppState` composition root.
 
-After the feature-manifest collapse, ``AppState`` carries only
-``config`` / ``clock`` / ``startup_time``, the cross-cutting mutable
-primitives a frozen slice cannot own (the per-request-id lock registry,
-bridge-config snapshots, WS timeouts, background-task sets, the
-shutdown event), and a typed per-feature *slice store*. Every domain
-service now lives on its feature slice and is read through
-``app_state.slice(XStateSlice).field`` (or a ``*_of`` accessor), so the
-per-service ``has_X`` flags and once-only ``set_X`` seams the old
-god-object carried are gone.
+``AppState`` carries only its lifecycle identity (``config`` / ``clock``
+/ ``startup_time``, the background-task sets and shutdown event) and a
+typed per-feature *slice store*; the cross-cutting mutable primitives a
+frozen slice cannot own live on cohesive owner objects composed onto it
+(``bridge_config`` / ``per_op_limits`` / ``request_locks`` /
+``ws_auth_limits``). Every domain service lives on its feature slice and
+is read through ``app_state.slice(XStateSlice).field`` (or a ``*_of``
+accessor).
 
 These tests cover the slice store (``slice`` / ``has_slice`` /
-``set_slice`` / ``swap_slice`` / ``wire``), the ``_require_service``
-503 guard, the surviving primitives, the per-request-id lock registry,
-and the API bridge-config snapshot accessor.
+``set_slice`` / ``swap_slice`` / ``wire``), the ``per_op_limits`` 503
+guard, the surviving identity primitives, the ``request_locks`` registry,
+and the ``bridge_config`` snapshot accessor.
 """
 
 import asyncio
@@ -209,21 +208,35 @@ class TestSliceStore:
         assert state.slice(_ProbeSlice).first is not None
 
 
-class TestRequireService:
-    """``_require_service`` returns the value or 503s on ``None``."""
+class TestPerOpLimits503:
+    """``per_op_limits`` returns the config or 503s before the snapshot lands."""
 
-    def test_returns_service_when_present(self) -> None:
+    def test_rate_limit_config_503_when_unset(self) -> None:
         state = _make_state()
-        sentinel = object()
-        assert state._require_service(sentinel, "Probe") is sentinel
-
-    def test_raises_service_unavailable_when_none(self) -> None:
-        state = _make_state()
+        assert state.per_op_limits.has_rate_limit_config is False
         with pytest.raises(
             ServiceUnavailableError,
-            match="Probe Service not configured",
+            match="Per Op Rate Limit Config not configured",
         ):
-            state._require_service(None, "probe_service")
+            _ = state.per_op_limits.rate_limit_config
+
+    def test_concurrency_config_503_when_unset(self) -> None:
+        state = _make_state()
+        assert state.per_op_limits.has_concurrency_config is False
+        with pytest.raises(
+            ServiceUnavailableError,
+            match="Per Op Concurrency Config not configured",
+        ):
+            _ = state.per_op_limits.concurrency_config
+
+    def test_set_then_get_returns_value(self) -> None:
+        from synthorg.api.rate_limits.config import PerOpRateLimitConfig
+
+        state = _make_state()
+        config = PerOpRateLimitConfig()
+        state.per_op_limits.set_rate_limit_config(config)
+        assert state.per_op_limits.has_rate_limit_config is True
+        assert state.per_op_limits.rate_limit_config is config
 
 
 class TestPrimitives:
@@ -236,9 +249,9 @@ class TestPrimitives:
 
     def test_bridge_config_applied_flips_once(self) -> None:
         state = _make_state()
-        assert state.bridge_config_applied is False
-        state.mark_bridge_config_applied()
-        assert state.bridge_config_applied is True
+        assert state.bridge_config.applied is False
+        state.bridge_config.mark_applied()
+        assert state.bridge_config.applied is True
 
     def test_background_task_sets_are_distinct(self) -> None:
         state = _make_state()
@@ -263,8 +276,8 @@ class TestAppStateRequestLocks:
 
     def test_lock_is_cached_per_request_id(self) -> None:
         state = _make_state()
-        first = state.get_or_create_request_lock("req-1")
-        second = state.get_or_create_request_lock("req-1")
+        first = state.request_locks.get_or_create("req-1")
+        second = state.request_locks.get_or_create("req-1")
         # Same id returns the same Lock instance; without identity the
         # ``async with`` ordering across two awaiters would not
         # serialise.
@@ -276,38 +289,38 @@ class TestAppStateRequestLocks:
         # mode this fix addresses).
         state_a = _make_state()
         state_b = _make_state()
-        lock_a = state_a.get_or_create_request_lock("req-1")
-        lock_b = state_b.get_or_create_request_lock("req-1")
+        lock_a = state_a.request_locks.get_or_create("req-1")
+        lock_b = state_b.request_locks.get_or_create("req-1")
         assert lock_a is not lock_b
-        assert "req-1" in state_a._request_locks
-        assert "req-1" in state_b._request_locks
+        assert "req-1" in state_a.request_locks._locks
+        assert "req-1" in state_b.request_locks._locks
         # Cross-state dicts are independent.
-        assert state_a._request_locks is not state_b._request_locks
+        assert state_a.request_locks._locks is not state_b.request_locks._locks
 
     def test_release_evicts_idle_lock(self) -> None:
         state = _make_state()
-        lock = state.get_or_create_request_lock("req-1")
-        assert "req-1" in state._request_locks
+        lock = state.request_locks.get_or_create("req-1")
+        assert "req-1" in state.request_locks._locks
         # Lock is idle (never acquired), so release evicts.
         assert not lock.locked()
-        state.release_request_lock_if_idle("req-1")
-        assert "req-1" not in state._request_locks
+        state.request_locks.release_if_idle("req-1")
+        assert "req-1" not in state.request_locks._locks
 
     async def test_release_keeps_locked_entry(self) -> None:
         # Releasing while a waiter holds the lock would strand them on
         # an entry the next caller can no longer find. The helper must
         # only evict idle locks.
         state = _make_state()
-        lock = state.get_or_create_request_lock("req-1")
+        lock = state.request_locks.get_or_create("req-1")
         async with lock:
-            state.release_request_lock_if_idle("req-1")
-            assert "req-1" in state._request_locks
+            state.request_locks.release_if_idle("req-1")
+            assert "req-1" in state.request_locks._locks
 
     def test_release_is_noop_for_unknown_id(self) -> None:
         state = _make_state()
         # No registry entry yet -- helper must not raise.
-        state.release_request_lock_if_idle("never-seen")
-        assert "never-seen" not in state._request_locks
+        state.request_locks.release_if_idle("never-seen")
+        assert "never-seen" not in state.request_locks._locks
 
     async def test_repeat_create_release_drains_clean(self) -> None:
         # Mirrors what ``--count 2`` exercises: two consecutive
@@ -316,12 +329,12 @@ class TestAppStateRequestLocks:
         state = _make_state()
         for cycle in ("first", "second"):
             request_id = f"req-{cycle}"
-            lock = state.get_or_create_request_lock(request_id)
+            lock = state.request_locks.get_or_create(request_id)
             async with lock:
                 pass
-            state.release_request_lock_if_idle(request_id)
-            assert request_id not in state._request_locks
-        assert state._request_locks == {}
+            state.request_locks.release_if_idle(request_id)
+            assert request_id not in state.request_locks._locks
+        assert state.request_locks._locks == {}
 
     def test_concurrent_create_returns_same_lock(self) -> None:
         # Two threads racing to create the same id must observe the
@@ -336,7 +349,7 @@ class TestAppStateRequestLocks:
         state = _make_state()
 
         def _create() -> object:
-            return state.get_or_create_request_lock("req-race")
+            return state.request_locks.get_or_create("req-race")
 
         with ThreadPoolExecutor(max_workers=4) as pool:
             results = list(pool.map(lambda _: _create(), range(16)))
@@ -344,7 +357,7 @@ class TestAppStateRequestLocks:
         assert all(r is first for r in results), (
             "DCL guard broken: concurrent create returned distinct Locks"
         )
-        assert len(state._request_locks) == 1
+        assert len(state.request_locks._locks) == 1
 
     def test_eviction_caps_registry_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Defence-in-depth cap: a non-terminal request that scopes but
@@ -355,22 +368,22 @@ class TestAppStateRequestLocks:
         # approve/reject is never stranded on an evicted Lock. Tests
         # patch the cap to a small number so the assertion is
         # constant-time independent of the production ceiling.
-        from synthorg.api import state_services_locks as _ss
+        from synthorg.api import state_request_locks as _ss
 
         monkeypatch.setattr(_ss, "_MAX_REQUEST_LOCKS", 4)
 
         state = _make_state()
         for i in range(4):
-            state.get_or_create_request_lock(f"prefill-{i}")
-        assert len(state._request_locks) == 4
+            state.request_locks.get_or_create(f"prefill-{i}")
+        assert len(state.request_locks._locks) == 4
         # All prefilled locks are idle, so the eviction sweep should
         # bring the registry down to the cap when the next insert
         # arrives.
-        state.get_or_create_request_lock("trigger-evict")
-        assert len(state._request_locks) == 4
+        state.request_locks.get_or_create("trigger-evict")
+        assert len(state.request_locks._locks) == 4
         # The newest insert must survive; one of the older idles was
         # evicted (FIFO order in the OrderedDict).
-        assert "trigger-evict" in state._request_locks
+        assert "trigger-evict" in state.request_locks._locks
 
     async def test_eviction_preserves_held_lock(
         self, monkeypatch: pytest.MonkeyPatch
@@ -379,22 +392,22 @@ class TestAppStateRequestLocks:
         # must skip it: dropping a Lock currently inside ``async with``
         # would let the next call mint a fresh Lock for the same id and
         # leave concurrent callers serialising on different objects.
-        from synthorg.api import state_services_locks as _ss
+        from synthorg.api import state_request_locks as _ss
 
         monkeypatch.setattr(_ss, "_MAX_REQUEST_LOCKS", 3)
 
         state = _make_state()
-        oldest = state.get_or_create_request_lock("oldest")
+        oldest = state.request_locks.get_or_create("oldest")
         async with oldest:
             # Fill to cap with idle entries.
-            state.get_or_create_request_lock("middle")
-            state.get_or_create_request_lock("newest")
+            state.request_locks.get_or_create("middle")
+            state.request_locks.get_or_create("newest")
             # Trigger eviction: ``oldest`` is held, so it must survive
             # and one of the idle entries is dropped instead.
-            state.get_or_create_request_lock("trigger")
-            assert "oldest" in state._request_locks
-            assert state._request_locks["oldest"] is oldest
-            assert "trigger" in state._request_locks
+            state.request_locks.get_or_create("trigger")
+            assert "oldest" in state.request_locks._locks
+            assert state.request_locks._locks["oldest"] is oldest
+            assert "trigger" in state.request_locks._locks
 
     async def test_eviction_preserves_referenced_lock(
         self, monkeypatch: pytest.MonkeyPatch
@@ -405,36 +418,36 @@ class TestAppStateRequestLocks:
         # An eviction sweep that ignores the refcount would drop it
         # under the caller's feet and the next call would mint a
         # different Lock, splitting the per-id serialisation guarantee.
-        from synthorg.api import state_services_locks as _ss
+        from synthorg.api import state_request_locks as _ss
 
         monkeypatch.setattr(_ss, "_MAX_REQUEST_LOCKS", 3)
 
         state = _make_state()
         # Simulate the in-flight window: refcount > 0, lock unlocked.
-        reserved = state._reserve_request_lock("in-flight")
+        reserved = state.request_locks._reserve("in-flight")
         try:
             # Fill registry to the cap with idle entries.
-            state.get_or_create_request_lock("idle-1")
-            state.get_or_create_request_lock("idle-2")
+            state.request_locks.get_or_create("idle-1")
+            state.request_locks.get_or_create("idle-2")
             # Trigger eviction sweep with one more insert.
-            state.get_or_create_request_lock("trigger")
+            state.request_locks.get_or_create("trigger")
             # ``in-flight`` is unlocked but its refcount is non-zero,
             # so the sweep must keep it.
-            assert "in-flight" in state._request_locks
-            assert state._request_locks["in-flight"] is reserved
+            assert "in-flight" in state.request_locks._locks
+            assert state.request_locks._locks["in-flight"] is reserved
         finally:
-            state._release_request_lock_ref("in-flight")
+            state.request_locks._release_ref("in-flight")
 
 
 @pytest.mark.unit
 class TestAppStateApiBridgeConfig:
-    """Tests for api_bridge_config snapshot accessor and swap_api_bridge_config."""
+    """Tests for the ``bridge_config.api`` snapshot accessor and ``swap_api``."""
 
     def test_default_snapshot_available_pre_startup(self) -> None:
         from synthorg.settings.bridge_configs import ApiBridgeConfig
 
         state = _make_state()
-        snapshot = state.api_bridge_config
+        snapshot = state.bridge_config.api
         assert isinstance(snapshot, ApiBridgeConfig)
         assert snapshot == ApiBridgeConfig()
 
@@ -443,7 +456,7 @@ class TestAppStateApiBridgeConfig:
 
         state = _make_state()
         assert (
-            state.api_bridge_config.max_lifecycle_events_per_query
+            state.bridge_config.api.max_lifecycle_events_per_query
             == ApiBridgeConfig().max_lifecycle_events_per_query
         )
 
@@ -452,15 +465,15 @@ class TestAppStateApiBridgeConfig:
 
         state = _make_state()
         new = ApiBridgeConfig(max_lifecycle_events_per_query=25_000)
-        state.swap_api_bridge_config(new)
-        assert state.api_bridge_config is new
-        assert state.api_bridge_config.max_lifecycle_events_per_query == 25_000
+        state.bridge_config.swap_api(new)
+        assert state.bridge_config.api is new
+        assert state.bridge_config.api.max_lifecycle_events_per_query == 25_000
 
     def test_swap_is_idempotent_for_same_instance(self) -> None:
         from synthorg.settings.bridge_configs import ApiBridgeConfig
 
         state = _make_state()
         snapshot = ApiBridgeConfig(max_lifecycle_events_per_query=12_345)
-        state.swap_api_bridge_config(snapshot)
-        state.swap_api_bridge_config(snapshot)
-        assert state.api_bridge_config is snapshot
+        state.bridge_config.swap_api(snapshot)
+        state.bridge_config.swap_api(snapshot)
+        assert state.bridge_config.api is snapshot

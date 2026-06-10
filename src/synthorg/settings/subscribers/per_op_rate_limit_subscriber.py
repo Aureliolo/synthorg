@@ -159,8 +159,8 @@ class PerOpRateLimitSettingsSubscriber:
             overrides_raw = await self._read_json(_RATE_LIMIT_OVERRIDES)
             overrides = self._coerce_rate_limit_overrides(overrides_raw)
             existing = (
-                self._app_state.per_op_rate_limit_config
-                if self._app_state.has_per_op_rate_limit_config
+                self._app_state.per_op_limits.rate_limit_config
+                if self._app_state.per_op_limits.has_rate_limit_config
                 else None
             )
             backend = existing.backend if existing is not None else "memory"
@@ -179,7 +179,7 @@ class PerOpRateLimitSettingsSubscriber:
                 error=safe_error_description(exc),
             )
             raise
-        self._app_state.swap_per_op_rate_limit_config(new_config)
+        self._app_state.per_op_limits.swap_rate_limit_config(new_config)
 
     async def _rebuild_concurrency_config(self, trigger_key: str) -> None:
         """Rebuild ``PerOpConcurrencyConfig`` and swap into AppState."""
@@ -188,8 +188,8 @@ class PerOpRateLimitSettingsSubscriber:
             overrides_raw = await self._read_json(_CONCURRENCY_OVERRIDES)
             overrides = self._coerce_concurrency_overrides(overrides_raw)
             existing = (
-                self._app_state.per_op_concurrency_config
-                if self._app_state.has_per_op_concurrency_config
+                self._app_state.per_op_limits.concurrency_config
+                if self._app_state.per_op_limits.has_concurrency_config
                 else None
             )
             backend = existing.backend if existing is not None else "memory"
@@ -208,7 +208,7 @@ class PerOpRateLimitSettingsSubscriber:
                 error=safe_error_description(exc),
             )
             raise
-        self._app_state.swap_per_op_concurrency_config(new_config)
+        self._app_state.per_op_limits.swap_concurrency_config(new_config)
 
     async def _read_bool(self, key: str) -> bool:
         """Read a boolean setting, rejecting anything but ``"true"``/``"false"``.

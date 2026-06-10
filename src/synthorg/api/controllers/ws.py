@@ -167,8 +167,8 @@ async def _read_auth_message(
 
     Returns the ticket string, or ``None`` after closing the socket.
     The timeout is read once per connection from
-    ``app_state.ws_auth_timeout_seconds``, which is baked in at
-    startup by ``_apply_bridge_config`` from the operator-tunable
+    ``app_state.ws_auth_limits.auth_timeout_seconds``, which is baked in
+    at startup by ``_apply_bridge_config`` from the operator-tunable
     ``api.ws_auth_timeout_seconds`` setting.
 
     Returns:
@@ -178,7 +178,7 @@ async def _read_auth_message(
     try:
         data = await asyncio.wait_for(
             socket.receive_text(),
-            timeout=app_state.ws_auth_timeout_seconds,
+            timeout=app_state.ws_auth_limits.auth_timeout_seconds,
         )
     except TimeoutError:
         await _reject_auth(socket, "auth_timeout", "Auth timeout")
@@ -1002,15 +1002,15 @@ async def _receive_loop(  # noqa: PLR0913 -- optional backpressure + clock + tim
     loop waits for the next inbound frame.  A connection that goes
     silent past the budget is closed with policy code 1008 so a
     silent client cannot indefinitely hold a slot (DoS prevention).
-    Defaults to ``app_state.ws_frame_timeout_seconds`` (registered
-    setting ``api.ws_frame_timeout_seconds``, default 30).
+    Defaults to ``app_state.ws_auth_limits.frame_timeout_seconds``
+    (registered setting ``api.ws_frame_timeout_seconds``, default 30).
 
     Raises:
         Exception: Raised on the corresponding failure path.
     """
     if frame_timeout_seconds is None:
         app_state = socket.app.state["app_state"]
-        frame_timeout_seconds = app_state.ws_frame_timeout_seconds
+        frame_timeout_seconds = app_state.ws_auth_limits.frame_timeout_seconds
     try:
         # lint-allow: long-running-loop-kill-switch -- per-request WS receive.
         while True:

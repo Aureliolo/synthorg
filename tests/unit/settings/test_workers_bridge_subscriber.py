@@ -1,6 +1,6 @@
 """Tests for ``WorkersBridgeSettingsSubscriber``.
 
-The subscriber hot-swaps ``app_state.workers_bridge_config`` when the
+The subscriber hot-swaps ``app_state.bridge_config.workers`` when the
 operator changes a watched ``workers.dispatcher_publish_*`` setting.
 Tests cover protocol conformance, happy-path swap for the int knob
 (``get_int``) and a float knob (``get_float``) with every other field
@@ -55,7 +55,7 @@ def _make_subscriber(
         config_resolver=resolver,
     )
     if snapshot is not None:
-        app_state.swap_workers_bridge_config(snapshot)
+        app_state.bridge_config.swap_workers(snapshot)
 
     sub = WorkersBridgeSettingsSubscriber(
         app_state=app_state,
@@ -98,7 +98,7 @@ class TestRebuild:
 
         await sub.on_settings_changed("workers", "dispatcher_publish_max_attempts")
 
-        swapped = app_state.workers_bridge_config
+        swapped = app_state.bridge_config.workers
         assert swapped.dispatcher_publish_max_attempts == 7
         # Every other field is preserved verbatim from the prior snapshot.
         assert swapped.dispatcher_publish_backoff_base_seconds == 0.25
@@ -111,7 +111,7 @@ class TestRebuild:
             "workers", "dispatcher_publish_backoff_base_seconds"
         )
 
-        swapped = app_state.workers_bridge_config
+        swapped = app_state.bridge_config.workers
         assert swapped.dispatcher_publish_backoff_base_seconds == 2.5
         assert swapped.dispatcher_publish_max_attempts == 5
 
@@ -125,17 +125,17 @@ class TestRebuild:
         with pytest.raises(RuntimeError, match="resolver outage"):
             await sub.on_settings_changed("workers", "dispatcher_publish_max_attempts")
 
-        assert app_state.workers_bridge_config is original
-        assert app_state.workers_bridge_config.dispatcher_publish_max_attempts == 4
+        assert app_state.bridge_config.workers is original
+        assert app_state.bridge_config.workers.dispatcher_publish_max_attempts == 4
 
     async def test_memory_error_propagates(self) -> None:
         sub, app_state = _make_subscriber(int_side_effect=MemoryError())
-        before = app_state.workers_bridge_config
+        before = app_state.bridge_config.workers
 
         with pytest.raises(MemoryError):
             await sub.on_settings_changed("workers", "dispatcher_publish_max_attempts")
 
-        assert app_state.workers_bridge_config is before
+        assert app_state.bridge_config.workers is before
 
     async def test_out_of_range_value_rejected_keeps_prior_snapshot(self) -> None:
         # ``dispatcher_publish_max_attempts`` is bounded ``ge=1, le=10``.
@@ -152,8 +152,8 @@ class TestRebuild:
             await sub.on_settings_changed("workers", "dispatcher_publish_max_attempts")
         assert exc_info.type.__name__ == "ValidationError"
 
-        assert app_state.workers_bridge_config is original
-        assert app_state.workers_bridge_config.dispatcher_publish_max_attempts == 3
+        assert app_state.bridge_config.workers is original
+        assert app_state.bridge_config.workers.dispatcher_publish_max_attempts == 3
 
 
 class TestUnexpectedRouting:
@@ -165,7 +165,7 @@ class TestUnexpectedRouting:
 
         await sub.on_settings_changed("other", "dispatcher_publish_max_attempts")
 
-        assert app_state.workers_bridge_config is original
+        assert app_state.bridge_config.workers is original
 
     async def test_unknown_key_is_ignored(self) -> None:
         original = WorkersBridgeConfig(dispatcher_publish_max_attempts=6)
@@ -173,4 +173,4 @@ class TestUnexpectedRouting:
 
         await sub.on_settings_changed("workers", "some_unrelated_key")
 
-        assert app_state.workers_bridge_config is original
+        assert app_state.bridge_config.workers is original

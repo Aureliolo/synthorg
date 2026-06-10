@@ -29,5 +29,5 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
     )
     if phase1.distributed_dispatcher is not None:
         phase1.distributed_dispatcher.set_workers_bridge_provider(
-            lambda: app_state.workers_bridge_config,
+            lambda: app_state.bridge_config.workers,
         )

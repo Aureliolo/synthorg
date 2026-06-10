@@ -696,21 +696,74 @@ def _clear_appstate_stores(shared_app: Litestar, app_state: AppState) -> None:
             locks.clear()
 
 
+# Primitive owner objects composed onto ``AppState`` (mutable runtime
+# state decomposed out of the old central ``__slots__`` bag). Their
+# private fields are snapshotted/restored per test alongside the
+# identity primitives that remain on ``AppState`` itself.
+_PRIMITIVE_OWNER_ATTRS: tuple[str, ...] = (
+    "bridge_config",
+    "per_op_limits",
+    "request_locks",
+    "ws_auth_limits",
+)
+# Slice-store internals are reverted wholesale via ``saved_slices``, not
+# as individual primitive fields.
+_NON_PRIMITIVE_PRIVATE_ATTRS: frozenset[str] = frozenset({"_slices", "_slice_lock"})
+
+
+def _mro_slot_names(obj: object) -> list[str]:
+    """Every ``__slots__`` name declared across ``type(obj)``'s MRO."""
+    names: list[str] = []
+    for klass in type(obj).__mro__:
+        names.extend(getattr(klass, "__slots__", ()))
+    return names
+
+
+def _iter_primitive_holders(app_state: AppState) -> Iterator[tuple[object, str]]:
+    """Yield ``(holder, attr)`` for every mutable primitive to snapshot.
+
+    Walks ``app_state``'s own private state (``__slots__`` and/or
+    ``__dict__``) plus the private fields of each composed primitive
+    owner object (``bridge_config`` / ``per_op_limits`` / ``request_locks``
+    / ``ws_auth_limits``). The slice store is excluded (restored wholesale
+    elsewhere). Owner objects are never reconstructed, so restoring onto
+    the captured instance reverts a test's in-place config swaps.
+    """
+    seen: set[str] = set()
+    for name in _mro_slot_names(app_state):
+        if name.startswith("_") and name not in _NON_PRIMITIVE_PRIVATE_ATTRS:
+            seen.add(name)
+            yield app_state, name
+    instance_dict: dict[str, Any] = getattr(app_state, "__dict__", {})
+    for name in list(instance_dict):
+        if (
+            name.startswith("_")
+            and name not in _NON_PRIMITIVE_PRIVATE_ATTRS
+            and name not in seen
+        ):
+            yield app_state, name
+    for owner_attr in _PRIMITIVE_OWNER_ATTRS:
+        owner = getattr(app_state, owner_attr, None)
+        if owner is not None:
+            for name in _mro_slot_names(owner):
+                yield owner, name
+
+
 def _snapshot_app_state(
     app_state: AppState,
-) -> tuple[dict[str, Any], dict[Any, Any]]:
-    """Step 5: snapshot primitive slots + the per-feature slice store.
+) -> tuple[list[tuple[object, str, Any]], dict[Any, Any]]:
+    """Step 5: snapshot mutable primitives + the per-feature slice store.
 
-    Primitives live in ``__slots__``; every domain service lives on a
-    frozen feature slice in ``_slices``, so a shallow copy of that mapping
-    is enough to revert a test's ``wire`` / ``swap_slice`` mutations (the
-    slice *values* are immutable, so they need no deep copy).
+    Each primitive owner exposes its mutable runtime state via slots;
+    every domain service lives on a frozen feature slice in ``_slices``,
+    so a shallow copy of that mapping is enough to revert a test's
+    ``wire`` / ``swap_slice`` mutations (the slice *values* are immutable,
+    so they need no deep copy).
     """
-    saved: dict[str, Any] = {
-        attr: getattr(app_state, attr)
-        for attr in AppState.__slots__
-        if attr.startswith("_")
-    }
+    saved: list[tuple[object, str, Any]] = [
+        (holder, name, getattr(holder, name))
+        for holder, name in _iter_primitive_holders(app_state)
+    ]
     saved_slices: dict[Any, Any] = dict(app_state._slices)
     return saved, saved_slices
 
@@ -751,10 +804,10 @@ def _clear_litestar_stores(shared_app: Litestar) -> None:
 def _pre_test_reset(
     shared_app: Litestar,
     services: _ResetServices,
-) -> tuple[dict[str, Any], dict[Any, Any]]:
+) -> tuple[list[tuple[object, str, Any]], dict[Any, Any]]:
     """Clear shared mutable state and snapshot AppState (steps 1-6).
 
-    Returns the AppState primitive-slot snapshot and a copy of the slice
+    Returns the AppState primitive snapshot and a copy of the slice
     store so the caller can restore them after the test (see
     :func:`_restore_app_state`). Shared by the sync and async client
     context managers: the reset is identical regardless of client type (it
@@ -815,18 +868,20 @@ def _post_startup_reset(shared_app: Litestar, services: _ResetServices) -> None:
 
 def _restore_app_state(
     shared_app: Litestar,
-    saved: dict[str, Any],
+    saved: list[tuple[object, str, Any]],
     saved_slices: dict[Any, Any],
 ) -> None:
-    """Restore AppState primitive slots + slice store after the test (step 8).
+    """Restore AppState primitives + slice store after the test (step 8).
 
     Reverts any ``wire`` / ``swap_slice`` a test performed (and the
     post-startup baseline) so a coordinator / docs runtime a test injected
-    cannot bleed into the next test sharing the session-scoped app.
+    cannot bleed into the next test sharing the session-scoped app. The
+    primitive fields are written back onto their captured holders (the
+    facade and its owner objects), reverting in-place config swaps.
     """
     app_state: AppState = shared_app.state.app_state
-    for attr, value in saved.items():
-        setattr(app_state, attr, value)
+    for holder, name, value in saved:
+        setattr(holder, name, value)
     app_state._slices.clear()
     app_state._slices.update(saved_slices)
 

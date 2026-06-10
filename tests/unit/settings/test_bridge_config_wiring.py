@@ -414,9 +414,9 @@ class TestAppStateBridgeConfigFlags:
             config=RootConfig(company_name="test"),
             approval_store=ApprovalStore(),
         )
-        assert state.bridge_config_applied is False
-        state.mark_bridge_config_applied()
-        assert state.bridge_config_applied is True
+        assert state.bridge_config.applied is False
+        state.bridge_config.mark_applied()
+        assert state.bridge_config.applied is True
 
     @pytest.mark.unit
     def test_swap_notification_dispatcher_returns_previous(self) -> None:

@@ -451,7 +451,7 @@ def _recommend_batch_size(
         vram_table: ``(min_vram_gb, batch_size)`` rows sorted
             descending by threshold; the first row whose threshold the
             detected VRAM clears wins. Sourced from
-            ``app_state.memory_bridge_config.fine_tune_vram_batch_table``
+            ``app_state.bridge_config.memory.fine_tune_vram_batch_table``
             (operator-tunable via ``memory.fine_tune_vram_batch_table``);
             the module constant is the offline/standalone fallback.
 
