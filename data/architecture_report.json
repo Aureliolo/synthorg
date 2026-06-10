@@ -1118,8 +1118,8 @@
     },
     "src/synthorg/settings/resolver.py": {
       "cap": 1100,
-      "loc": 1112,
-      "ratio": 1.011,
+      "loc": 1026,
+      "ratio": 0.933,
       "tier": "complex_service"
     },
     "src/synthorg/settings/service.py": {
@@ -1213,7 +1213,7 @@
     "synthorg.approval.protocol": 42,
     "synthorg.approval.state": 21,
     "synthorg.budget.call_category": 43,
-    "synthorg.budget.config": 25,
+    "synthorg.budget.config": 26,
     "synthorg.budget.cost_record": 24,
     "synthorg.budget.currency": 65,
     "synthorg.budget.errors": 24,
@@ -1281,7 +1281,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 64,
-    "synthorg.observability": 1536,
+    "synthorg.observability": 1537,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 167,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1298,7 +1298,7 @@
     "synthorg.observability.events.ontology": 21,
     "synthorg.observability.events.provider": 28,
     "synthorg.observability.events.security": 66,
-    "synthorg.observability.events.settings": 33,
+    "synthorg.observability.events.settings": 34,
     "synthorg.observability.events.tool": 24,
     "synthorg.observability.events.training": 23,
     "synthorg.observability.events.workflow": 26,

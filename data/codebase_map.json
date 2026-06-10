@@ -18517,6 +18517,13 @@
     },
     {
       "kind": "code",
+      "loc": 106,
+      "loc_cap": 500,
+      "module": "src/synthorg/settings/_resolver_coercions.py",
+      "owning_feature": "settings"
+    },
+    {
+      "kind": "code",
       "loc": 125,
       "loc_cap": 500,
       "module": "src/synthorg/settings/bootstrap_resolver.py",
@@ -18804,7 +18811,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 1112,
+      "loc": 1026,
       "loc_cap": 1100,
       "module": "src/synthorg/settings/resolver.py",
       "owning_feature": "settings"

@@ -12,10 +12,11 @@ from pydantic import BaseModel, ConfigDict
 from synthorg.api.config import RateLimitTimeUnit
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.settings._resolver_coercions import _parse_bool
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.models import SettingValue
-from synthorg.settings.resolver import ConfigResolver, _parse_bool
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from tests.unit.settings.conftest import (
     FakeAgentConfig,
