@@ -6,7 +6,7 @@ and action records.
 
 from collections.abc import Mapping
 from typing import Self
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -129,8 +129,8 @@ class ScalingDecision(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique decision identifier",
     )
     action_type: ScalingActionType = Field(
@@ -223,8 +223,8 @@ class ScalingActionRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique record identifier",
     )
     decision_id: NotBlankStr = Field(

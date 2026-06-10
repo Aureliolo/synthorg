@@ -7,6 +7,7 @@ evaluation cycle reports.
 
 import copy
 from typing import Literal, Self
+from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -190,7 +191,10 @@ class EvalCycleReport(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    cycle_id: NotBlankStr = Field(description="Unique cycle identifier")
+    cycle_id: UUID = Field(
+        default_factory=uuid4,
+        description="Unique cycle identifier",
+    )
     window_start: AwareDatetime = Field(
         description="Start of the evaluation window",
     )

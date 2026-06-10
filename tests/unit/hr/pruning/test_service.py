@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
+from uuid import UUID
 
 import pytest
 
@@ -59,7 +60,7 @@ class FakeOffboardingService:
         return OffboardingRecord(
             agent_id=request.agent_id,
             agent_name=request.agent_name,
-            firing_request_id=request.id,
+            firing_request_id=NotBlankStr(str(request.id)),
             tasks_reassigned=(),
             memory_archive_id=None,
             org_memories_promoted=0,
@@ -393,7 +394,7 @@ class TestPruningCycle:
         assert job.run_at == NOW
         assert job.agents_evaluated == 1
         assert job.elapsed_seconds >= 0.0
-        assert len(job.job_id) > 0
+        assert isinstance(job.job_id, UUID)
 
     async def test_first_eligible_policy_wins(
         self,

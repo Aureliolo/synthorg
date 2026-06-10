@@ -5,6 +5,7 @@ JSONB for array/object columns and native TIMESTAMPTZ for timestamps.
 """
 
 from typing import cast
+from uuid import UUID
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
@@ -97,6 +98,7 @@ def _row_to_result(row: DictRow) -> TrainingResult:
     """
     data = dict(row)
     try:
+        data["id"] = UUID(str(data["id"]))
         data["source_agents_used"] = tuple(
             NotBlankStr(s) for s in data["source_agents_used"]
         )

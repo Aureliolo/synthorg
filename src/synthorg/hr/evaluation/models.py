@@ -10,7 +10,7 @@ from collections.abc import (
     Sequence,
 )
 from typing import Self
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -86,8 +86,8 @@ class InteractionFeedback(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique feedback identifier",
     )
     agent_id: NotBlankStr = Field(description="Agent being rated")
@@ -387,8 +387,8 @@ class EvaluationReport(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique report identifier",
     )
     agent_id: NotBlankStr = Field(description="Agent that was evaluated")

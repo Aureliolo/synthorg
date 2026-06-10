@@ -15,6 +15,7 @@ from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.tools.invocation_record import ToolInvocationRecord
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -68,7 +69,7 @@ def _lifecycle(
     event_id: str = "evt-1",
 ) -> AgentLifecycleEvent:
     return AgentLifecycleEvent(
-        id=NotBlankStr(event_id),
+        id=as_uuid(event_id),
         agent_id=NotBlankStr(_AGENT_ID),
         agent_name=NotBlankStr("alice"),
         event_type=event_type,

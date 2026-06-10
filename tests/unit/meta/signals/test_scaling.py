@@ -20,7 +20,7 @@ from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
 )
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -42,7 +42,7 @@ def _decision(  # noqa: PLR0913
     target_agent_id: str | None = None,
 ) -> ScalingDecision:
     return ScalingDecision(
-        id=NotBlankStr(decision_id),
+        id=as_uuid(decision_id),
         action_type=action_type,
         source_strategy=strategy,
         target_role=NotBlankStr(target_role) if target_role else None,
@@ -62,7 +62,7 @@ def _action(
     executed_at: datetime = _NOW,
 ) -> ScalingActionRecord:
     return ScalingActionRecord(
-        decision_id=NotBlankStr(decision_id),
+        decision_id=sid(decision_id),
         outcome=outcome,
         result_id=NotBlankStr(result_id) if result_id else None,
         reason=NotBlankStr(reason) if reason else None,
@@ -129,8 +129,8 @@ class TestAggregate:
             s.decision_id: s.outcome for s in summary.recent_decisions
         }
         assert outcome_by_decision == {
-            "d-hire": "executed",
-            "d-prune": "failed",
+            sid("d-hire"): "executed",
+            sid("d-prune"): "failed",
         }
         # Counter.most_common preserves insertion order for ties, so
         # the first-inserted strategy (workload) wins deterministically.
@@ -144,7 +144,7 @@ class TestAggregate:
 
         assert summary.total_decisions == 1
         assert summary.success_rate == 0.0
-        assert summary.recent_decisions[0].decision_id == "d-orphan"
+        assert summary.recent_decisions[0].decision_id == sid("d-orphan")
         assert summary.recent_decisions[0].outcome == "pending"
 
     async def test_filters_outside_window(self) -> None:

@@ -159,12 +159,12 @@ class TrainingService:
         if not enabled:
             logger.info(
                 HR_TRAINING_SKIPPED,
-                plan_id=plan.id,
+                plan_id=str(plan.id),
                 reason="training_disabled_by_setting",
             )
             now = datetime.now(UTC)
             return TrainingResult(
-                plan_id=plan.id,
+                plan_id=str(plan.id),
                 new_agent_id=plan.new_agent_id,
                 started_at=now,
                 completed_at=now,
@@ -467,7 +467,7 @@ class TrainingService:
         )
 
         return TrainingResult(
-            plan_id=plan.id,
+            plan_id=str(plan.id),
             new_agent_id=plan.new_agent_id,
             source_agents_used=source_ids,
             items_extracted=extracted,
@@ -511,7 +511,7 @@ class TrainingService:
         )
 
         return TrainingResult(
-            plan_id=plan.id,
+            plan_id=str(plan.id),
             new_agent_id=plan.new_agent_id,
             source_agents_used=source_ids,
             items_extracted=extracted,
@@ -696,7 +696,7 @@ class TrainingService:
             Result of type ``TrainingResult``.
         """
         return TrainingResult(
-            plan_id=plan.id,
+            plan_id=str(plan.id),
             new_agent_id=plan.new_agent_id,
             started_at=started_at,
             completed_at=datetime.now(UTC),

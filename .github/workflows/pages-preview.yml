@@ -189,9 +189,18 @@ jobs:
         with:
           node-version: "24.16.0"
 
+      # npm ci can die mid-stream on a transient registry ECONNRESET;
+      # nick-fields/retry (the repo's standard transient-failure wrapper,
+      # also used in docker.yml) reruns it on a network blip. `uses:`
+      # steps ignore step-level working-directory, so cd into site inside
+      # the command.
       - name: Install Astro dependencies
-        working-directory: site
-        run: npm ci
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: cd site && npm ci
 
       - name: Build Astro
         working-directory: site

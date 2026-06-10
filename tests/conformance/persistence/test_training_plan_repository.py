@@ -13,6 +13,7 @@ from synthorg.hr.training.models import (
 )
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.training_protocol import TrainingPlanFilterSpec
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -28,7 +29,7 @@ def _plan(
     executed_at: datetime | None = None,
 ) -> TrainingPlan:
     return TrainingPlan(
-        id=NotBlankStr(plan_id),
+        id=as_uuid(plan_id),
         new_agent_id=NotBlankStr(agent_id),
         new_agent_role=NotBlankStr("engineer"),
         new_agent_level=SeniorityLevel.JUNIOR,
@@ -49,13 +50,14 @@ class TestTrainingPlanRepository:
     async def test_save_and_get(self, backend: PersistenceBackend) -> None:
         await backend.training_plans.save(_plan())
 
-        fetched = await backend.training_plans.get(NotBlankStr("plan-001"))
+        fetched = await backend.training_plans.get(sid("plan-001"))
         assert fetched is not None
+        assert fetched.id == as_uuid("plan-001")
         assert fetched.new_agent_id == "agent-new-001"
         assert fetched.status is TrainingPlanStatus.PENDING
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
-        assert await backend.training_plans.get(NotBlankStr("ghost")) is None
+        assert await backend.training_plans.get(sid("ghost")) is None
 
     async def test_save_upsert(self, backend: PersistenceBackend) -> None:
         await backend.training_plans.save(_plan())
@@ -66,7 +68,7 @@ class TestTrainingPlanRepository:
             ),
         )
 
-        fetched = await backend.training_plans.get(NotBlankStr("plan-001"))
+        fetched = await backend.training_plans.get(sid("plan-001"))
         assert fetched is not None
         assert fetched.status is TrainingPlanStatus.EXECUTED
 
@@ -92,7 +94,7 @@ class TestTrainingPlanRepository:
             NotBlankStr("agent-new-001"),
         )
         assert latest is not None
-        assert latest.id == "p-new"
+        assert latest.id == as_uuid("p-new")
 
     async def test_latest_pending_none(self, backend: PersistenceBackend) -> None:
         assert await backend.training_plans.latest_pending(NotBlankStr("ghost")) is None
@@ -114,7 +116,7 @@ class TestTrainingPlanRepository:
             NotBlankStr("agent-new-001"),
         )
         assert latest is not None
-        assert latest.id == "p2"
+        assert latest.id == as_uuid("p2")
 
     async def test_list_by_agent_descending(self, backend: PersistenceBackend) -> None:
         await backend.training_plans.save(_plan(plan_id="older", created_at=_NOW))
@@ -126,20 +128,20 @@ class TestTrainingPlanRepository:
             NotBlankStr("agent-new-001"),
         )
         ids = [r.id for r in rows]
-        assert ids == ["newer", "older"]
+        assert ids == [as_uuid("newer"), as_uuid("older")]
 
     async def test_delete(self, backend: PersistenceBackend) -> None:
         await backend.training_plans.save(_plan())
-        deleted = await backend.training_plans.delete(NotBlankStr("plan-001"))
+        deleted = await backend.training_plans.delete(sid("plan-001"))
         assert deleted is True
 
-        fetched = await backend.training_plans.get(NotBlankStr("plan-001"))
+        fetched = await backend.training_plans.get(sid("plan-001"))
         assert fetched is None
 
     async def test_delete_missing_returns_false(
         self, backend: PersistenceBackend
     ) -> None:
-        deleted = await backend.training_plans.delete(NotBlankStr("ghost"))
+        deleted = await backend.training_plans.delete(sid("ghost"))
         assert deleted is False
 
     async def test_list_items_ordered_by_id(self, backend: PersistenceBackend) -> None:
@@ -149,7 +151,12 @@ class TestTrainingPlanRepository:
 
         rows = await backend.training_plans.list_items()
         ids = [r.id for r in rows]
-        assert ids == ["a-plan", "b-plan", "c-plan"]
+        # ``list_items`` orders by the TEXT id column, i.e. the UUID string
+        # form, so the expected order is the labels sorted by ``str(uuid)``.
+        assert ids == sorted(
+            [as_uuid("a-plan"), as_uuid("b-plan"), as_uuid("c-plan")],
+            key=str,
+        )
 
     async def test_list_items_with_pagination(
         self, backend: PersistenceBackend
@@ -191,7 +198,7 @@ class TestTrainingPlanRepository:
         spec = TrainingPlanFilterSpec(status="pending")
         rows = await backend.training_plans.query(spec)
         assert len(rows) == 1
-        assert rows[0].id == "pending-1"
+        assert rows[0].id == as_uuid("pending-1")
 
     async def test_count_all(self, backend: PersistenceBackend) -> None:
         for i in range(3):

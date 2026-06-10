@@ -5,7 +5,7 @@ and agent lifecycle events.
 """
 
 from typing import Self
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -44,8 +44,8 @@ class CandidateCard(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique candidate identifier",
     )
     name: NotBlankStr = Field(description="Proposed agent name")
@@ -90,8 +90,8 @@ class HiringRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique request identifier",
     )
     requested_by: NotBlankStr = Field(description="Request initiator")
@@ -174,8 +174,8 @@ class FiringRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique request identifier",
     )
     agent_id: NotBlankStr = Field(description="Agent to terminate")
@@ -378,8 +378,8 @@ class AgentLifecycleEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique event identifier",
     )
     agent_id: NotBlankStr = Field(description="Agent the event relates to")

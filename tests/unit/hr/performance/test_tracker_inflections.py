@@ -26,7 +26,7 @@ def _make_task_record(
 ) -> TaskMetricRecord:
     now = datetime.now(UTC) - timedelta(days=days_ago)
     return TaskMetricRecord(
-        id=str(uuid4()),
+        id=uuid4(),
         agent_id=agent_id,
         task_id=str(uuid4()),
         task_type=TaskType.DEVELOPMENT,

@@ -5,7 +5,7 @@ and service configuration.
 """
 
 from typing import Self
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -86,8 +86,8 @@ class PruningRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique request identifier",
     )
     agent_id: NotBlankStr = Field(description="Agent to be pruned")
@@ -215,7 +215,10 @@ class PruningJobRun(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    job_id: NotBlankStr = Field(description="Unique cycle identifier")
+    job_id: UUID = Field(
+        default_factory=uuid4,
+        description="Unique cycle identifier",
+    )
     run_at: AwareDatetime = Field(description="When the cycle started")
     agents_evaluated: int = Field(ge=0, description="Agents checked")
     agents_eligible: int = Field(ge=0, description="Agents eligible for pruning")

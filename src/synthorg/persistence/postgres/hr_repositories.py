@@ -8,6 +8,7 @@ Pydantic models as the SQLite backend.
 """
 
 from datetime import datetime
+from uuid import UUID
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
@@ -110,9 +111,10 @@ class PostgresLifecycleEventRepository:
         """
         try:
             data = dict(row)
+            data["id"] = UUID(str(data["id"]))
             # Postgres returns JSONB as dict directly, no json.loads needed
             return AgentLifecycleEvent.model_validate(data)
-        except (ValidationError, KeyError, TypeError) as exc:
+        except (ValueError, ValidationError, KeyError, TypeError) as exc:
             event_id = row.get("id") if row else "unknown"
             msg = f"Failed to deserialize lifecycle event {event_id!r}"
             logger.warning(
@@ -259,8 +261,9 @@ class PostgresTaskMetricRepository:
         """
         try:
             data = dict(row)
+            data["id"] = UUID(str(data["id"]))
             return TaskMetricRecord.model_validate(data)
-        except (ValidationError, KeyError, TypeError) as exc:
+        except (ValueError, ValidationError, KeyError, TypeError) as exc:
             metric_id = row.get("id") if row else "unknown"
             msg = f"Failed to deserialize task metric {metric_id!r}"
             logger.warning(
@@ -404,9 +407,10 @@ class PostgresCollaborationMetricRepository:
         """
         try:
             data = dict(row)
+            data["id"] = UUID(str(data["id"]))
             # Postgres returns BOOLEAN as bool natively
             return CollaborationMetricRecord.model_validate(data)
-        except (ValidationError, KeyError, TypeError) as exc:
+        except (ValueError, ValidationError, KeyError, TypeError) as exc:
             metric_id = row.get("id") if row else "unknown"
             msg = f"Failed to deserialize collaboration metric {metric_id!r}"
             logger.warning(

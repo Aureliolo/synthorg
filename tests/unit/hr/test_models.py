@@ -18,6 +18,7 @@ from synthorg.hr.models import (
     OnboardingStepRecord,
 )
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import as_uuid, sid
 from tests.unit.hr.conftest import (
     make_candidate_card,
     make_firing_request,
@@ -61,7 +62,7 @@ class TestCandidateCard:
 
     def test_explicit_id(self) -> None:
         card = make_candidate_card(candidate_id="custom-id")
-        assert card.id == "custom-id"
+        assert card.id == as_uuid("custom-id")
 
     def test_negative_cost_rejected(self) -> None:
         with pytest.raises(ValidationError, match="greater than or equal"):
@@ -109,11 +110,11 @@ class TestHiringRequest:
         card = make_candidate_card(candidate_id="cand-001")
         req = make_hiring_request(
             status=HiringRequestStatus.INSTANTIATED,
-            selected_candidate_id="cand-001",
+            selected_candidate_id=sid("cand-001"),
             candidates=(card,),
         )
         assert req.status == HiringRequestStatus.INSTANTIATED
-        assert req.selected_candidate_id == "cand-001"
+        assert req.selected_candidate_id == sid("cand-001")
 
     def test_pending_without_candidate_ok(self) -> None:
         req = make_hiring_request(
@@ -138,11 +139,11 @@ class TestHiringRequest:
         card = make_candidate_card(candidate_id="cand-001")
         req = make_hiring_request(
             status=HiringRequestStatus.APPROVED,
-            selected_candidate_id="cand-001",
+            selected_candidate_id=sid("cand-001"),
             candidates=(card,),
         )
         assert req.status == HiringRequestStatus.APPROVED
-        assert req.selected_candidate_id == "cand-001"
+        assert req.selected_candidate_id == sid("cand-001")
 
     def test_budget_limit_non_negative(self) -> None:
         with pytest.raises(ValidationError, match="greater than or equal"):

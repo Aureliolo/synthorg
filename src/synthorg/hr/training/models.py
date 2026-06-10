@@ -8,7 +8,7 @@ validation time.
 
 from enum import StrEnum
 from typing import Self
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -60,8 +60,8 @@ class TrainingItem(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique identifier",
     )
     source_agent_id: NotBlankStr = Field(
@@ -179,8 +179,8 @@ class TrainingPlan(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique identifier and idempotency key",
     )
     new_agent_id: NotBlankStr = Field(
@@ -354,8 +354,8 @@ class TrainingResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique result identifier",
     )
     plan_id: NotBlankStr = Field(

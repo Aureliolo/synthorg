@@ -29,6 +29,7 @@ from synthorg.observability.events.hr import (
 from synthorg.observability.events.training import (
     HR_TRAINING_PLAN_STATUS_TRANSITIONED as _TRANSITION_EVENT,
 )
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
@@ -37,7 +38,7 @@ _NOW = datetime(2026, 4, 24, 12, 0, tzinfo=UTC)
 
 def _plan(plan_id: str = "plan-1", new_agent_id: str = "agent-new") -> TrainingPlan:
     return TrainingPlan(
-        id=NotBlankStr(plan_id),
+        id=as_uuid(plan_id),
         new_agent_id=NotBlankStr(new_agent_id),
         new_agent_role=NotBlankStr("engineer"),
         new_agent_level=SeniorityLevel.MID,
@@ -127,8 +128,8 @@ class TestStartSession:
 
         result = await service.start_session(plan)
 
-        assert result.plan_id == "plan-1"
-        session = await service.get_session(NotBlankStr("plan-1"))
+        assert result.plan_id == sid("plan-1")
+        session = await service.get_session(sid("plan-1"))
         assert session is not None
         assert session.status == TrainingPlanStatus.EXECUTED
         assert session.executed_at is not None
@@ -141,7 +142,7 @@ class TestStartSession:
         with pytest.raises(RuntimeError, match="pipeline exploded"):
             await service.start_session(plan)
 
-        session = await service.get_session(NotBlankStr("plan-2"))
+        session = await service.get_session(sid("plan-2"))
         assert session is not None
         assert session.status == TrainingPlanStatus.FAILED
         assert session.executed_at is not None
@@ -160,7 +161,11 @@ class TestListSessions:
         page, total = await service.list_sessions(offset=0, limit=50)
 
         assert total == 3
-        assert [s.id for s in page] == ["plan-2", "plan-1", "plan-0"]
+        assert [s.id for s in page] == [
+            as_uuid("plan-2"),
+            as_uuid("plan-1"),
+            as_uuid("plan-0"),
+        ]
 
     async def test_paginates(self) -> None:
         service = _build_service()
@@ -172,7 +177,7 @@ class TestListSessions:
         page, total = await service.list_sessions(offset=2, limit=2)
 
         assert total == 5
-        assert [s.id for s in page] == ["plan-2", "plan-1"]
+        assert [s.id for s in page] == [as_uuid("plan-2"), as_uuid("plan-1")]
 
     async def test_empty_returns_zero_total(self) -> None:
         service = _build_service()
@@ -202,15 +207,15 @@ class TestGetSession:
         service = _build_service()
         await service.start_session(_plan("plan-1"))
 
-        session = await service.get_session(NotBlankStr("plan-1"))
+        session = await service.get_session(sid("plan-1"))
 
         assert session is not None
-        assert session.id == "plan-1"
+        assert session.id == as_uuid("plan-1")
 
     async def test_returns_none_when_missing(self) -> None:
         service = _build_service()
 
-        session = await service.get_session(NotBlankStr("nope"))
+        session = await service.get_session(sid("nope"))
 
         assert session is None
 
@@ -241,7 +246,11 @@ class TestSessionCap:
 
         # Older entries dropped; the 3 most recent survive.
         assert total == 3
-        assert [s.id for s in page] == ["plan-4", "plan-3", "plan-2"]
+        assert [s.id for s in page] == [
+            as_uuid("plan-4"),
+            as_uuid("plan-3"),
+            as_uuid("plan-2"),
+        ]
 
 
 class TestStatusTransitionLogs:
@@ -260,7 +269,7 @@ class TestStatusTransitionLogs:
         transitions = [e for e in events if e.get("event") == _TRANSITION_EVENT]
         assert len(transitions) == 1
         entry = transitions[0]
-        assert entry["plan_id"] == "plan-1"
+        assert entry["plan_id"] == sid("plan-1")
         assert entry["from_status"] == TrainingPlanStatus.PENDING.value
         assert entry["to_status"] == TrainingPlanStatus.EXECUTED.value
 
@@ -280,7 +289,7 @@ class TestStatusTransitionLogs:
         transitions = [e for e in events if e.get("event") == _TRANSITION_EVENT]
         assert len(transitions) == 1
         entry = transitions[0]
-        assert entry["plan_id"] == "plan-2"
+        assert entry["plan_id"] == sid("plan-2")
         assert entry["from_status"] == TrainingPlanStatus.PENDING.value
         assert entry["to_status"] == TrainingPlanStatus.FAILED.value
 

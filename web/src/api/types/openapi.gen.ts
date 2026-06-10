@@ -10921,7 +10921,10 @@ export type components = {
             readonly currency: string;
             /** @description Absolute difference between LLM and behavioral scores */
             readonly drift: number;
-            /** @description Unique record identifier */
+            /**
+             * Format: uuid
+             * @description Unique record identifier
+             */
             readonly id: string;
             /** @description ID of the sampled CollaborationMetricRecord */
             readonly interaction_record_id: string;

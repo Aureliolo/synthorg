@@ -7,7 +7,7 @@ rolling-window aggregates.
 """
 
 from typing import Self
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -50,8 +50,8 @@ class TaskMetricRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique record identifier",
     )
     agent_id: NotBlankStr = Field(description="Agent who completed the task")
@@ -122,8 +122,8 @@ class CollaborationMetricRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique record identifier",
     )
     agent_id: NotBlankStr = Field(description="Agent being measured")
@@ -239,10 +239,10 @@ class LlmCalibrationRecord(BaseModel):
         currency: ISO 4217 currency code for ``cost``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique record identifier",
     )
     agent_id: NotBlankStr = Field(description="Agent being evaluated")
@@ -300,8 +300,8 @@ class _BaseOverride(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
+    id: UUID = Field(
+        default_factory=uuid4,
         description="Unique override identifier",
     )
     agent_id: NotBlankStr = Field(

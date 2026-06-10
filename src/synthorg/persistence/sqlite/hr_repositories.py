@@ -6,6 +6,7 @@ LifecycleEvent, TaskMetric, and CollaborationMetric repositories.
 import json
 import sqlite3
 from datetime import datetime
+from uuid import UUID
 
 import aiosqlite
 from pydantic import ValidationError
@@ -109,9 +110,10 @@ INSERT INTO lifecycle_events (
         """
         try:
             data = dict(row)
+            data["id"] = UUID(str(data["id"]))
             data["metadata"] = json.loads(data["metadata"])
             return AgentLifecycleEvent.model_validate(data)
-        except (json.JSONDecodeError, ValidationError, KeyError, TypeError) as exc:
+        except (ValueError, ValidationError, KeyError, TypeError) as exc:
             event_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize lifecycle event {event_id!r}"
             logger.warning(
@@ -257,8 +259,9 @@ INSERT INTO task_metrics (
         """
         try:
             data = dict(row)
+            data["id"] = UUID(str(data["id"]))
             return TaskMetricRecord.model_validate(data)
-        except (ValidationError, KeyError, TypeError) as exc:
+        except (ValueError, ValidationError, KeyError, TypeError) as exc:
             metric_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize task metric {metric_id!r}"
             logger.warning(
@@ -401,12 +404,13 @@ INSERT INTO collaboration_metrics (
         """
         try:
             data = dict(row)
+            data["id"] = UUID(str(data["id"]))
             # Convert SQLite integer booleans.
             if data.get("delegation_success") is not None:
                 data["delegation_success"] = bool(data["delegation_success"])
             data["loop_triggered"] = bool(data["loop_triggered"])
             return CollaborationMetricRecord.model_validate(data)
-        except (ValidationError, KeyError, TypeError) as exc:
+        except (ValueError, ValidationError, KeyError, TypeError) as exc:
             metric_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize collaboration metric {metric_id!r}"
             logger.warning(

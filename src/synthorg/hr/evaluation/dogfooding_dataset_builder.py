@@ -117,7 +117,7 @@ class DogfoodingDatasetBuilder:
                 continue
 
             case = EvalTestCase(
-                id=NotBlankStr(record.id),
+                id=NotBlankStr(str(record.id)),
                 behavior_tags=(tag,),
                 input_data=f"task_id={record.task_id} type={record.task_type.value}",
                 expected_output=(

@@ -70,7 +70,7 @@ class TestTrainingOnboardingBridge:
         onboarding.complete_step.assert_awaited_once_with(
             "new-1",
             OnboardingStep.LEARNED_FROM_SENIORS,
-            notes=result.id,
+            notes=str(result.id),
         )
 
     async def test_skip_training(self) -> None:

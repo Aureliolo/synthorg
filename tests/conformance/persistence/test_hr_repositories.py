@@ -18,7 +18,7 @@ from synthorg.hr.performance.models import (
     TaskMetricRecord,
 )
 from synthorg.persistence.protocol import PersistenceBackend
-from tests._shared import sid
+from tests._shared import as_uuid, sid
 from tests.unit.persistence.conftest import make_task
 
 
@@ -34,7 +34,7 @@ class TestLifecycleEventRepository:
         repo = backend.lifecycle_events
         now = datetime.now(UTC)
         event = AgentLifecycleEvent(
-            id="evt-001",
+            id=as_uuid("evt-001"),
             agent_id="agent-001",
             agent_name="TestAgent",
             event_type=LifecycleEventType.HIRED,
@@ -49,7 +49,7 @@ class TestLifecycleEventRepository:
 
         assert len(events) >= 1
         saved = events[0]
-        assert saved.id == "evt-001"
+        assert saved.id == as_uuid("evt-001")
         assert saved.agent_id == "agent-001"
         assert saved.event_type == LifecycleEventType.HIRED
 
@@ -61,7 +61,7 @@ class TestLifecycleEventRepository:
         repo = backend.lifecycle_events
         now = datetime.now(UTC)
         event1 = AgentLifecycleEvent(
-            id="evt-agent1",
+            id=as_uuid("evt-agent1"),
             agent_id="agent-a",
             agent_name="AgentA",
             event_type=LifecycleEventType.HIRED,
@@ -71,7 +71,7 @@ class TestLifecycleEventRepository:
             metadata={},
         )
         event2 = AgentLifecycleEvent(
-            id="evt-agent2",
+            id=as_uuid("evt-agent2"),
             agent_id="agent-b",
             agent_name="AgentB",
             event_type=LifecycleEventType.FIRED,
@@ -96,7 +96,7 @@ class TestLifecycleEventRepository:
         repo = backend.lifecycle_events
         now = datetime.now(UTC)
         event = AgentLifecycleEvent(
-            id="evt-type",
+            id=as_uuid("evt-type"),
             agent_id="agent-001",
             agent_name="TestAgent",
             event_type=LifecycleEventType.HIRED,
@@ -121,7 +121,7 @@ class TestLifecycleEventRepository:
         now = datetime.now(UTC)
         for i in range(5):
             event = AgentLifecycleEvent(
-                id=f"evt-{i}",
+                id=as_uuid(f"evt-{i}"),
                 agent_id="agent-001",
                 agent_name="TestAgent",
                 event_type=LifecycleEventType.HIRED,
@@ -167,7 +167,7 @@ class TestTaskMetricRepository:
         await task_repo.save(task)
 
         metric = TaskMetricRecord(
-            id="tm-001",
+            id=as_uuid("tm-001"),
             agent_id="agent-001",
             task_id=sid("task-001"),
             task_type=TaskType.RESEARCH,
@@ -188,7 +188,7 @@ class TestTaskMetricRepository:
 
         assert len(records) >= 1
         saved = records[0]
-        assert saved.id == "tm-001"
+        assert saved.id == as_uuid("tm-001")
         assert saved.agent_id == "agent-001"
         assert saved.is_success is True
         # Currency must round-trip through the repository.  A silent drop
@@ -214,7 +214,7 @@ class TestTaskMetricRepository:
         await task_repo.save(task)
 
         metric = TaskMetricRecord(
-            id="tm-agent",
+            id=as_uuid("tm-agent"),
             agent_id="agent-x",
             task_id=sid("task-001"),
             task_type=TaskType.RESEARCH,
@@ -253,7 +253,7 @@ class TestTaskMetricRepository:
         await task_repo.save(task)
 
         metric = TaskMetricRecord(
-            id="tm-time",
+            id=as_uuid("tm-time"),
             agent_id="agent-001",
             task_id=sid("task-001"),
             task_type=TaskType.RESEARCH,
@@ -301,7 +301,7 @@ class TestCollaborationMetricRepository:
         repo = backend.collaboration_metrics
         now = datetime.now(UTC)
         metric = CollaborationMetricRecord(
-            id="cm-001",
+            id=as_uuid("cm-001"),
             agent_id="agent-001",
             recorded_at=now,
             delegation_success=True,
@@ -317,7 +317,7 @@ class TestCollaborationMetricRepository:
 
         assert len(records) >= 1
         saved = records[0]
-        assert saved.id == "cm-001"
+        assert saved.id == as_uuid("cm-001")
         assert saved.agent_id == "agent-001"
         assert saved.delegation_success is True
         assert saved.loop_triggered is False
@@ -330,7 +330,7 @@ class TestCollaborationMetricRepository:
         repo = backend.collaboration_metrics
         now = datetime.now(UTC)
         metric = CollaborationMetricRecord(
-            id="cm-agent",
+            id=as_uuid("cm-agent"),
             agent_id="agent-y",
             recorded_at=now,
             delegation_success=False,
@@ -355,7 +355,7 @@ class TestCollaborationMetricRepository:
         repo = backend.collaboration_metrics
         now = datetime.now(UTC)
         metric = CollaborationMetricRecord(
-            id="cm-nullable",
+            id=as_uuid("cm-nullable"),
             agent_id="agent-001",
             recorded_at=now,
             delegation_success=None,
@@ -370,7 +370,7 @@ class TestCollaborationMetricRepository:
         records = await repo.query(agent_id="agent-001")
 
         assert len(records) >= 1
-        saved = next(r for r in records if r.id == "cm-nullable")
+        saved = next(r for r in records if r.id == as_uuid("cm-nullable"))
         assert saved.delegation_success is None
         assert saved.delegation_response_seconds is None
         assert saved.loop_triggered is False
@@ -383,7 +383,7 @@ class TestCollaborationMetricRepository:
         repo = backend.collaboration_metrics
         now = datetime.now(UTC)
         metric = CollaborationMetricRecord(
-            id="cm-since",
+            id=as_uuid("cm-since"),
             agent_id="agent-001",
             recorded_at=now,
             delegation_success=True,

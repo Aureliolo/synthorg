@@ -8,6 +8,7 @@ import contextlib
 import json
 import sqlite3
 from datetime import UTC, datetime
+from uuid import UUID
 
 import aiosqlite
 from pydantic import ValidationError
@@ -171,6 +172,7 @@ def _row_to_result(row: aiosqlite.Row) -> TrainingResult:
     """
     data = dict(row)
     try:
+        data["id"] = UUID(str(data["id"]))
         data["source_agents_used"] = tuple(
             NotBlankStr(s) for s in json.loads(data["source_agents_used"])
         )

@@ -8003,7 +8003,7 @@
     },
     {
       "kind": "code",
-      "loc": 207,
+      "loc": 211,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/external_benchmark_models.py",
       "owning_feature": "hr"
@@ -8402,7 +8402,7 @@
     },
     {
       "kind": "code",
-      "loc": 239,
+      "loc": 242,
       "loc_cap": 500,
       "module": "src/synthorg/hr/pruning/models.py",
       "owning_feature": "hr"
@@ -15507,7 +15507,7 @@
     },
     {
       "kind": "code",
-      "loc": 424,
+      "loc": 428,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/hr_repositories.py",
       "owning_feature": "persistence"
@@ -15794,14 +15794,14 @@
     },
     {
       "kind": "code",
-      "loc": 447,
+      "loc": 449,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/training_plan_repo.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 355,
+      "loc": 357,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/training_result_repo.py",
       "owning_feature": "persistence"
@@ -16312,7 +16312,7 @@
     },
     {
       "kind": "code",
-      "loc": 417,
+      "loc": 421,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/hr_repositories.py",
       "owning_feature": "persistence"
@@ -16571,14 +16571,14 @@
     },
     {
       "kind": "code",
-      "loc": 466,
+      "loc": 468,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/training_plan_repo.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 393,
+      "loc": 395,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/training_result_repo.py",
       "owning_feature": "persistence"

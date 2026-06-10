@@ -275,7 +275,7 @@ class PruningService:
             now = datetime.now(UTC)
 
         cycle_start = datetime.now(UTC)
-        job_id = NotBlankStr(str(uuid4()))
+        job_id = uuid4()
         logger.info(HR_PRUNING_CYCLE_STARTED, job_id=str(job_id))
 
         errors: list[NotBlankStr] = []
@@ -467,7 +467,7 @@ class PruningService:
             return False
 
         approval_id = NotBlankStr(str(uuid4()))
-        request_id = NotBlankStr(str(uuid4()))
+        request_id = uuid4()
         expires_at = now + timedelta(
             days=self._config.approval_expiry_days,
         )
@@ -480,7 +480,7 @@ class PruningService:
             reason_summary,
             now,
             expires_at,
-            request_id,
+            NotBlankStr(str(request_id)),
         )
         await self._approval_store.add(approval)
 
@@ -502,7 +502,7 @@ class PruningService:
         # records transitions that actually landed.
         logger.info(
             PRUNING_REQUEST_STATUS_TRANSITIONED,
-            request_id=request_id,
+            request_id=str(request_id),
             agent_id=agent_id,
             approval_id=str(approval_id),
             from_status=None,
@@ -641,7 +641,7 @@ class PruningService:
         if approval_id_str not in self._logged_transition_approval_ids:
             logger.info(
                 PRUNING_REQUEST_STATUS_TRANSITIONED,
-                request_id=request.id if request is not None else None,
+                request_id=str(request.id) if request is not None else None,
                 agent_id=agent_id,
                 approval_id=approval_id_str,
                 from_status=ApprovalStatus.PENDING.value,
@@ -720,7 +720,7 @@ class PruningService:
         self._processed_approval_ids.add(str(item.id))
 
         if pending_request is not None:
-            request_id = pending_request.id
+            request_id = NotBlankStr(str(pending_request.id))
         else:
             # Metadata is populated internally at approval-submission
             # time, but defend against corrupted / missing values so a
@@ -786,7 +786,7 @@ class PruningService:
         self._processed_approval_ids.add(str(item.id))
         logger.info(
             PRUNING_REQUEST_STATUS_TRANSITIONED,
-            request_id=request.id if request is not None else None,
+            request_id=str(request.id) if request is not None else None,
             agent_id=agent_id,
             approval_id=str(item.id),
             from_status=ApprovalStatus.PENDING.value,
