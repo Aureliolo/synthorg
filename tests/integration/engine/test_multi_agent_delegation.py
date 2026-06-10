@@ -25,12 +25,8 @@ from synthorg.communication.delegation.models import DelegationRequest
 from synthorg.communication.delegation.service import DelegationService
 from synthorg.communication.loop_prevention.guard import DelegationGuard
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.company import (
-    Company,
-    CompanyConfig,
-    Department,
-    Team,
-)
+from synthorg.core.company import Company, CompanyConfig
+from synthorg.core.company_departments import Department, Team
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, TaskStatus, TaskStructure, TaskType

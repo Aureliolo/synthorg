@@ -10,20 +10,20 @@ seam alongside attaching the service to ``AppState``.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock
 from synthorg.docs_engine.chunker import DocChunker
 from synthorg.docs_engine.indexer import DocIndexer
 from synthorg.docs_engine.retrieval_facade import ProjectAwareMemoryFacade
 from synthorg.docs_engine.service import DocsService
 from synthorg.docs_engine.writer import DocWriter
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.persistence.docs_protocol import DocsRepository
 
 if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
     from synthorg.engine.workspace.git_backend.protocol import GitBackend
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,
     )
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.persistence.docs_protocol import DocsRepository
 
 
 class DocsRuntime:

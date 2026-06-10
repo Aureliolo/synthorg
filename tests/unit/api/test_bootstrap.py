@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import JsonValue
 
-from synthorg.config.schema import AgentConfig
+from synthorg.config.agent_schema import AgentConfig
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.settings.resolver import ConfigResolver

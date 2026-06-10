@@ -22,9 +22,7 @@ from .models import ResolvedModel, RoutingDecision, RoutingRequest
 from .resolver import ModelResolver
 
 if TYPE_CHECKING:
-    # config.schema transitively re-imports providers/__init__ (the routing
-    # package is in its eager chain); a runtime import forms a cycle.
-    from synthorg.config.schema import RoutingConfig, RoutingRuleConfig
+    from synthorg.config.agent_schema import RoutingConfig, RoutingRuleConfig
 
 logger = get_logger(__name__)
 

@@ -1,9 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Unit test configuration and fixtures for templates."""
 
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 import pytest
 
@@ -12,6 +10,12 @@ class TemplateFileFactory(Protocol):
     """Callable signature for the tmp_template_file fixture."""
 
     def __call__(self, content: str, name: str = ...) -> Path: ...
+
+
+class TemplateDictFactory(Protocol):
+    """Callable signature for the make_template_dict fixture."""
+
+    def __call__(self, **overrides: object) -> dict[str, object]: ...
 
 
 MINIMAL_TEMPLATE_YAML = """\
@@ -187,9 +191,9 @@ template:
 """
 
 
-def _make_template_dict(**overrides: Any) -> dict[str, Any]:
-    """Build a minimal valid CompanyTemplate kwargs dict with overrides."""
-    base: dict[str, Any] = {
+def _make_template_dict(**overrides: object) -> dict[str, object]:
+    """Build a minimal valid CompanyTemplate payload dict with overrides."""
+    base: dict[str, object] = {
         "metadata": {
             "name": "Test",
             "description": "desc",
@@ -209,8 +213,8 @@ def _make_template_dict(**overrides: Any) -> dict[str, Any]:
 
 
 @pytest.fixture
-def make_template_dict() -> Callable[..., dict[str, Any]]:
-    """Factory fixture for building template kwargs dicts."""
+def make_template_dict() -> TemplateDictFactory:
+    """Factory fixture for building template payload dicts."""
     return _make_template_dict
 
 

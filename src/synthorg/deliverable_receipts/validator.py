@@ -17,26 +17,26 @@ own snapshot stands (its internal counts are model-enforced).
 
 import hashlib
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import ValidationError
 
-from synthorg.deliverable_receipts.models import ReceiptValidationResult
+from synthorg.deliverable_receipts.models import (
+    DeliverableReceipt,
+    ReceiptValidationResult,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable_receipts import (
     RECEIPT_CASSETTE_UNAVAILABLE,
 )
-from synthorg.persistence.code_execution_protocol import CodeExecutionFilterSpec
+from synthorg.persistence.code_execution_protocol import (
+    CodeExecutionFilterSpec,
+    CodeExecutionRecordRepository,
+)
+from synthorg.persistence.knowledge_protocol import KnowledgeSourceRepository
 from synthorg.providers.cassette.store import CassetteDocument
 from synthorg.security.redteam.errors import RedTeamReportNotFoundError
-
-if TYPE_CHECKING:
-    from synthorg.deliverable_receipts.models import DeliverableReceipt
-    from synthorg.persistence.code_execution_protocol import (
-        CodeExecutionRecordRepository,
-    )
-    from synthorg.persistence.knowledge_protocol import KnowledgeSourceRepository
-    from synthorg.security.redteam.protocol import RedTeamReportRepository
+from synthorg.security.redteam.protocol import RedTeamReportRepository
 
 logger = get_logger(__name__)
 

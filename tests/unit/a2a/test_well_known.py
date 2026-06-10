@@ -3,7 +3,6 @@
 from collections.abc import Iterator
 from datetime import date
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 from uuid import NAMESPACE_DNS, uuid5
 
@@ -273,7 +272,7 @@ def _make_app_state(
     )
 
 
-def _make_request() -> Request[Any, Any, Any]:
+def _make_request() -> Request[object, object, State]:
     """Real litestar ``Request`` whose ``base_url`` is ``http://test.example/``."""
     return RequestFactory(server="test.example", port=80, scheme="http").get(path="/")
 

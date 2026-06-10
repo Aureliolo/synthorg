@@ -5,13 +5,13 @@ adding a new backend means registering its handler factory here rather
 than editing the dispatch site.
 """
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from synthorg.backup.errors import BackupConfigurationError
 from synthorg.backup.handlers.postgres_persistence import (
     PostgresPersistenceComponentHandler,
 )
+from synthorg.backup.handlers.protocol import ComponentHandler
 from synthorg.backup.handlers.sqlite_persistence import (
     SQLitePersistenceComponentHandler,
 )
@@ -21,7 +21,8 @@ from synthorg.observability.events.backup import BACKUP_HANDLER_REGISTRATION_FAI
 from synthorg.persistence.postgres.backup_utils import ensure_pg_tools_available
 
 if TYPE_CHECKING:
-    from synthorg.backup.handlers.protocol import ComponentHandler
+    # Cycle breaker: ``config.schema`` sits on the eager-init config
+    # chain and is named here for signatures only.
     from synthorg.config.schema import RootConfig
 
 logger = get_logger(__name__)
@@ -87,9 +88,6 @@ def _build_postgres_handler(
         raise BackupConfigurationError(msg)
     ensure_pg_tools_available()
     return PostgresPersistenceComponentHandler(config=pg_config)
-
-
-type _PersistenceHandlerFactory = Callable[..., "ComponentHandler"]
 
 
 PERSISTENCE_BACKUP_HANDLER_REGISTRY: StrategyRegistry[ComponentHandler] = (

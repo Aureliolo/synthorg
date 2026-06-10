@@ -506,14 +506,16 @@ jobs:
 
   # ── Python: Test (Integration) ──
   # Sharded 4-way so 12-minute single-runner wall-clock drops to ~3
-  # minutes critical path. A GitHub Actions ``services: postgres``
-  # block exposes postgres:18-alpine to each shard via TCP localhost
-  # plus the SYNTHORG_TEST_POSTGRES_* env vars; the conftest fixtures
+  # minutes critical path. The ``start-postgres`` composite action
+  # exposes postgres:18-alpine to each shard via TCP localhost plus the
+  # SYNTHORG_TEST_POSTGRES_* env vars (a retry-resilient replacement for
+  # a ``services: postgres`` block, whose container-init pull cannot be
+  # retried); the conftest fixtures
   # (``tests/conformance/persistence/conftest.py`` and
   # ``tests/integration/persistence/conftest.py``) detect those env
   # vars and bypass the local testcontainers start-up dance. Local-dev
   # test runs leave the env vars unset and keep using testcontainers.
-  # TimescaleDB tests still use testcontainers because the service
+  # TimescaleDB tests still use testcontainers because the postgres
   # container path cannot host the timescale/timescaledb image.
   test-integration:
     name: Test Integration (shard ${{ matrix.shard }})
@@ -527,20 +529,6 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
-    services:
-      postgres:
-        image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
-        env:
-          POSTGRES_USER: synthorg
-          POSTGRES_PASSWORD: synthorg-test
-          POSTGRES_DB: synthorg
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U synthorg"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
       COVERAGE_FILE: .coverage.integration-${{ matrix.shard }}
       COVERAGE_CORE: sysmon
@@ -554,6 +542,17 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+
+      # Postgres for the persistence suites. Replaces a
+      # ``services: postgres`` block whose Docker Hub image pull cannot
+      # be retried (runner container-init gives up after 3 attempts and
+      # registry-1.docker.io intermittently times out with "context
+      # deadline exceeded"); the composite action retries the pull with
+      # backoff. Same localhost:5432 + SYNTHORG_TEST_POSTGRES_* contract
+      # the service block provided, so the conftest fixtures are
+      # unaffected.
+      - uses: ./.github/actions/start-postgres
+
       - uses: ./.github/actions/setup-python-uv
 
       - uses: ./.github/actions/install-postgres-18-client
@@ -672,10 +671,10 @@ jobs:
           retention-days: 3
 
   # ── Python: Test (E2E) ──
-  # Same service-container Postgres path as test-integration so the
-  # conftest fixtures bypass testcontainers. Not sharded; e2e is small
-  # (~3 min historically) and matrix overhead would mostly cancel the
-  # wall-clock saving.
+  # Same ``start-postgres`` composite-action path as test-integration so
+  # the conftest fixtures bypass testcontainers. Not sharded; e2e is
+  # small (~3 min historically) and matrix overhead would mostly cancel
+  # the wall-clock saving.
   test-e2e:
     name: Test E2E
     needs: changes
@@ -684,20 +683,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-    services:
-      postgres:
-        image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
-        env:
-          POSTGRES_USER: synthorg
-          POSTGRES_PASSWORD: synthorg-test
-          POSTGRES_DB: synthorg
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U synthorg"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
       COVERAGE_FILE: .coverage.e2e
       COVERAGE_CORE: sysmon
@@ -711,6 +696,17 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+
+      # Postgres for the persistence suites. Replaces a
+      # ``services: postgres`` block whose Docker Hub image pull cannot
+      # be retried (runner container-init gives up after 3 attempts and
+      # registry-1.docker.io intermittently times out with "context
+      # deadline exceeded"); the composite action retries the pull with
+      # backoff. Same localhost:5432 + SYNTHORG_TEST_POSTGRES_* contract
+      # the service block provided, so the conftest fixtures are
+      # unaffected.
+      - uses: ./.github/actions/start-postgres
+
       - uses: ./.github/actions/setup-python-uv
 
       - uses: ./.github/actions/install-postgres-18-client

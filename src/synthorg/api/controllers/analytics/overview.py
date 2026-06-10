@@ -22,7 +22,7 @@ from synthorg.api.state import AppState
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.trends import BucketSize, bucket_cost_records
-from synthorg.config.schema import AgentConfig
+from synthorg.config.agent_schema import AgentConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.task import Task

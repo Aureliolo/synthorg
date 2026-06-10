@@ -1,7 +1,7 @@
 """Unit tests for the backend worker-liveness heartbeat subscriber."""
 
 import asyncio
-from typing import Final
+from typing import TYPE_CHECKING, Final, cast
 
 import pytest
 
@@ -11,6 +11,9 @@ from synthorg.workers.heartbeat_models import WorkerHeartbeat
 from synthorg.workers.heartbeat_subscriber import WorkerHeartbeatSubscriber
 from tests._shared.fake_clock import FakeClock
 from tests._shared.fake_task_queue import FakeJetStreamTaskQueue
+
+if TYPE_CHECKING:
+    from nats.aio.msg import Msg
 
 pytestmark = pytest.mark.unit
 
@@ -46,7 +49,7 @@ async def test_observed_beat_records_last_seen() -> None:
     clock = FakeClock()
     sub = _subscriber(queue, clock)
 
-    await sub._on_message(_FakeMsg(_beat("w-0", clock, claims_done=4)))
+    await sub._on_message(_msg(_beat("w-0", clock, claims_done=4)))
 
     assert "w-0" in sub._last_seen
 
@@ -55,7 +58,7 @@ async def test_malformed_payload_is_dropped_not_fatal() -> None:
     queue = FakeJetStreamTaskQueue()
     sub = _subscriber(queue, FakeClock())
 
-    await sub._on_message(_FakeMsg(b"not-json"))
+    await sub._on_message(_msg(b"not-json"))
 
     assert sub._last_seen == {}
 
@@ -64,7 +67,7 @@ async def test_worker_flagged_stale_then_evicted_and_reregistered() -> None:
     queue = FakeJetStreamTaskQueue()
     clock = FakeClock()
     sub = _subscriber(queue, clock)
-    await sub._on_message(_FakeMsg(_beat("w-stale", clock)))
+    await sub._on_message(_msg(_beat("w-stale", clock)))
 
     # stale_after = interval(1) * 3 = 3s; advance well past it.
     clock.advance(10.0)
@@ -80,7 +83,7 @@ async def test_worker_flagged_stale_then_evicted_and_reregistered() -> None:
     assert "w-stale" not in sub._last_seen
 
     # A returning beat re-registers the worker as fresh.
-    await sub._on_message(_FakeMsg(_beat("w-stale", clock)))
+    await sub._on_message(_msg(_beat("w-stale", clock)))
     assert "w-stale" in sub._last_seen
     assert "w-stale" not in sub._flagged_stale
 
@@ -89,7 +92,7 @@ async def test_fresh_worker_not_flagged_stale() -> None:
     queue = FakeJetStreamTaskQueue()
     clock = FakeClock()
     sub = _subscriber(queue, clock)
-    await sub._on_message(_FakeMsg(_beat("w-fresh", clock)))
+    await sub._on_message(_msg(_beat("w-fresh", clock)))
 
     clock.advance(1.0)  # within stale_after
     sub._sweep_once()
@@ -123,3 +126,8 @@ class _FakeMsg:
 
     def __init__(self, data: bytes) -> None:
         self.data = data
+
+
+def _msg(data: bytes) -> Msg:
+    """Wrap the stub as ``Msg`` for the typed ``_on_message`` signature."""
+    return cast("Msg", _FakeMsg(data))

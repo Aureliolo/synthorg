@@ -23,7 +23,6 @@ Construction is via :func:`synthorg.docs_engine.factory.build_docs_service`.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
@@ -40,6 +39,8 @@ from synthorg.knowledge.constants import (
     KNOWLEDGE_PROJECT_TAG_PREFIX,
     SYSTEM_KNOWLEDGE_AGENT_ID,
 )
+from synthorg.memory.models import MemoryEntry, MemoryQuery
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docs import (
     DOC_FACADE_FANOUT,
@@ -50,10 +51,6 @@ from synthorg.project_brain.constants import (
     BRAIN_PROJECT_TAG_PREFIX,
     SYSTEM_BRAIN_AGENT_ID,
 )
-
-if TYPE_CHECKING:
-    from synthorg.memory.models import MemoryEntry, MemoryQuery
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 

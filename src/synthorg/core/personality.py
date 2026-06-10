@@ -6,17 +6,15 @@ Computes pairwise and team-level compatibility scores from
 
 import itertools
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.core.agent import PersonalityConfig
 from synthorg.hr.enums import CollaborationPreference, ConflictApproach
 from synthorg.observability import get_logger
 from synthorg.observability.events.personality import (
     PERSONALITY_COMPATIBILITY_COMPUTED,
     PERSONALITY_TEAM_SCORE_COMPUTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import PersonalityConfig
 
 logger = get_logger(__name__)
 

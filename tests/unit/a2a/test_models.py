@@ -1,9 +1,9 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for A2A protocol models."""
 
-from typing import Any, cast
+from typing import cast
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.a2a.models import (
     A2A_AUTH_REQUIRED,
@@ -57,9 +57,10 @@ class TestJsonRpcRequest:
     @pytest.mark.unit
     def test_params_deep_copied(self) -> None:
         """Params dict is deep-copied at construction."""
-        original: dict[str, Any] = {"nested": {"key": "value"}}
+        nested: dict[str, JsonValue] = {"key": "value"}
+        original: dict[str, JsonValue] = {"nested": nested}
         req = JsonRpcRequest(method="test", params=original)
-        original["nested"]["key"] = "changed"
+        nested["key"] = "changed"
         params = cast("dict[str, dict[str, str]]", req.params)
         assert params["nested"]["key"] == "value"
 
@@ -141,9 +142,10 @@ class TestJsonRpcResponse:
     @pytest.mark.unit
     def test_result_deep_copied(self) -> None:
         """Result dict is deep-copied at construction."""
-        original: dict[str, Any] = {"nested": {"key": "value"}}
+        nested: dict[str, JsonValue] = {"key": "value"}
+        original: dict[str, JsonValue] = {"nested": nested}
         resp = JsonRpcResponse(id="1", result=original)
-        original["nested"]["key"] = "changed"
+        nested["key"] = "changed"
         assert resp.result is not None
         result = cast("dict[str, dict[str, str]]", resp.result)
         assert result["nested"]["key"] == "value"
@@ -221,9 +223,10 @@ class TestA2AMessageParts:
     @pytest.mark.unit
     def test_data_part_deep_copy(self) -> None:
         """DataPart deep-copies data at construction."""
-        original: dict[str, Any] = {"nested": {"k": "v"}}
+        nested: dict[str, JsonValue] = {"k": "v"}
+        original: dict[str, JsonValue] = {"nested": nested}
         part = A2ADataPart(data=original)
-        original["nested"]["k"] = "changed"
+        nested["k"] = "changed"
         assert cast("dict[str, str]", part.data["nested"])["k"] == "v"
 
     @pytest.mark.unit

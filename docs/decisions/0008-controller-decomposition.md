@@ -122,9 +122,11 @@ Bringing the centre under its caps lifts ADR-0006's Section B exemptions:
   the lifecycle runners, and the Any-clean decomposed controller packages
   (`providers`, `memory`) hit the full strict++ bar. Modules that
   inherited the work-pipeline `WorkEntryAdapter[Any]` boundary (same as
-  `api/state.py`) or other explicit-Any keep the `disallow_any_explicit`
-  exemption (the project-wide Any drain is #2056) but re-enable the
-  in-scope `unused-awaitable` check.
+  `api/state.py`) or other explicit-Any kept the `disallow_any_explicit`
+  exemption at decomposition time (the project-wide Any drain was #2056)
+  but re-enabled the in-scope `unused-awaitable` check. EPIC #2056 has
+  since completed: no `synthorg.*` `disallow_any_explicit` exemption
+  remains.
 - **Ruff DOC enforced.** The five ex-god-modules drop their
   `DOC201/202/501` per-file-ignore and carry full docstrings. The
   `BLE001` blind-except drain stays #2062; residual function-complexity

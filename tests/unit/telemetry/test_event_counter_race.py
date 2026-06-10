@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Concurrency test for InMemoryTelemetryEventCounter.
 
 The eviction-flag flip happens inside ``self._lock`` so only one
@@ -9,7 +8,6 @@ public guarantee under heavy thread-pool contention.
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -59,7 +57,7 @@ def test_eviction_logs_exactly_once_under_thread_concurrency() -> None:
     proxy = ec_mod.logger
     original_info = proxy.info
 
-    def _spy(*args: Any, **kwargs: Any) -> Any:
+    def _spy(*args: object, **kwargs: object) -> object:
         # Accept any structlog call shape (positional or keyword
         # event=...) so an unrelated logger.info elsewhere in the
         # under-test code path cannot blow this fixture up with a

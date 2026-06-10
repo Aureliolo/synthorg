@@ -4,6 +4,7 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, override
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
@@ -13,6 +14,7 @@ from synthorg.core.domain_errors import (
 from synthorg.core.task import (
     Task,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -40,12 +42,11 @@ from synthorg.tools.sandbox.lifecycle.config import (
     STRATEGY_PER_CALL,
     STRATEGY_PER_TASK,
 )
+from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.workers.environment_runner import SandboxEnvironmentRunner
 from synthorg.workers.execution_resume import ResumeDispatchMixin
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.types import NotBlankStr
     from synthorg.engine.agent_engine import AgentEngine
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.workspace.environment.service import EnvironmentService
@@ -55,7 +56,6 @@ if TYPE_CHECKING:
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.security.autonomy.models import EffectiveAutonomy
     from synthorg.security.autonomy.resolver import AutonomyResolver
-    from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 

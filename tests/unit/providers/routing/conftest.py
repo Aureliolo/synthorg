@@ -3,11 +3,10 @@
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
+from synthorg.config.agent_schema import RoutingConfig, RoutingRuleConfig
 from synthorg.config.schema import (
     ProviderConfig,
     ProviderModelConfig,
-    RoutingConfig,
-    RoutingRuleConfig,
 )
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.routing.models import (

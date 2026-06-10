@@ -6,6 +6,7 @@ classifying models into cost-based tiers and ranking within each tier
 according to the requirement's priority axis.
 """
 
+from collections.abc import Callable, Mapping, Sequence
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol
 
@@ -20,14 +21,14 @@ from synthorg.observability.events.template import (
     TEMPLATE_MODEL_MATCH_SKIPPED,
     TEMPLATE_MODEL_MATCH_SUCCESS,
 )
-from synthorg.templates.model_requirements import ModelTier
+from synthorg.settings.bridge_configs import EngineBridgeConfig
+from synthorg.templates.model_requirements import ModelRequirement, ModelTier
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
-
+    # Cycle breaker: ``config.schema`` sits on the eager-init config
+    # chain that reaches back into this package, so the provider-model
+    # type is named for signatures only.
     from synthorg.config.schema import ProviderModelConfig
-    from synthorg.settings.bridge_configs import EngineBridgeConfig
-    from synthorg.templates.model_requirements import ModelRequirement
 
 logger = get_logger(__name__)
 

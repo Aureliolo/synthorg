@@ -23,7 +23,6 @@ that pass ``MyConfig(field=X)`` keep getting ``X``.
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
 
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.settings.bootstrap_resolver import resolve_init_value
@@ -205,21 +204,21 @@ class MirrorField:
     field: str
     namespace: SettingNamespace
     key: str
-    parse: Callable[[str], Any] | None = None
+    parse: Callable[[str], object] | None = None
     only_if_env_set: bool = False
 
 
 def apply_settings_mirrors(
-    data: Any,
+    data: object,
     mirrors: tuple[MirrorField, ...],
-) -> Any:
+) -> object:
     """Populate any unset mirror fields in ``data`` from the registry.
 
     Intended for use inside a Pydantic ``model_validator(mode="before")``::
 
         @model_validator(mode="before")
         @classmethod
-        def _apply_mirrors(cls, data: Any) -> Any:
+        def _apply_mirrors(cls, data: object) -> object:
             return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     Args:
@@ -234,7 +233,7 @@ def apply_settings_mirrors(
     """
     if not isinstance(data, dict):
         return data
-    overrides: dict[str, Any] = {}
+    overrides: dict[str, object] = {}
     for mirror in mirrors:
         if mirror.field in data:
             continue

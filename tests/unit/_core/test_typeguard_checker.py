@@ -1,3 +1,7 @@
+# mypy: disable-error-code="explicit-any"
+# ``Any`` is the subject under test here: the checker's tolerance of
+# unresolvable / dynamic annotations is exactly what these tests pin, so the
+# scaffolding deliberately writes ``Any``-typed signatures.
 """Tests for the policy-honouring typeguard checker.
 
 Verifies that a check-time ``NameError`` (raised when a structural checker

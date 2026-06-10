@@ -2,7 +2,7 @@
 
 import asyncio
 import shutil
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
@@ -17,9 +17,6 @@ from synthorg.observability.events.backup import (
     BACKUP_COMPONENT_FAILED,
     BACKUP_COMPONENT_STARTED,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = get_logger(__name__)
 
@@ -171,7 +168,11 @@ class MemoryComponentHandler:
 
         try:
             shutil.copytree(source, data_path, symlinks=True)
-        except Exception:
+        except Exception as exc:
+            # Critical errors skip the rollback: it does filesystem work
+            # that may allocate, and must not run under catastrophic
+            # interpreter state.
+            reraise_critical(exc)
             if bak_path.exists():
                 if data_path.exists():
                     shutil.rmtree(data_path)

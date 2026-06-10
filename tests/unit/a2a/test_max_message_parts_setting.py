@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Coverage for the a2a.max_message_parts resolution chain.
 
 The maximum message-parts ceiling resolves through

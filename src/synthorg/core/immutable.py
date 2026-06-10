@@ -23,10 +23,9 @@ coercion, which is exactly where we want to intercept dict inputs.
 
 import copy
 from types import MappingProxyType
-from typing import Any
 
 
-def deep_copy_mapping(value: Any) -> Any:
+def deep_copy_mapping(value: object) -> object:
     """Deep-copy a mapping value, leaving non-mappings untouched.
 
     Used as a ``field_validator(mode="before")`` body to isolate frozen

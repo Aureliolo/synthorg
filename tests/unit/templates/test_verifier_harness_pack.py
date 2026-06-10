@@ -1,14 +1,35 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for the verifier-harness template pack."""
 
 from pathlib import Path
-from typing import Any
+from typing import TypedDict, cast
 
 import pytest
 import yaml
 
 
-def _load_pack() -> dict[str, Any]:
+class _PackAgent(TypedDict):
+    """The agent keys this pack's assertions navigate."""
+
+    role: str
+    personality_preset: str
+
+
+class _PackTemplate(TypedDict):
+    """The template keys this pack's assertions navigate."""
+
+    agents: list[_PackAgent]
+    tags: list[str]
+    min_agents: int
+    max_agents: int
+    workflow: str
+    communication: str
+
+
+class _Pack(TypedDict):
+    template: _PackTemplate
+
+
+def _load_pack() -> _Pack:
     pack_path = (
         Path(__file__).resolve().parents[3]
         / "src"
@@ -18,8 +39,7 @@ def _load_pack() -> dict[str, Any]:
         / "verifier-harness.yaml"
     )
     with pack_path.open() as f:
-        result: dict[str, Any] = yaml.safe_load(f)
-    return result
+        return cast("_Pack", yaml.safe_load(f))
 
 
 @pytest.mark.unit

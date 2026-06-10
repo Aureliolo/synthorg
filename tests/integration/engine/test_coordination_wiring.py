@@ -142,7 +142,7 @@ class TestBuildCoordinatorFactory:
         """Factory produces a coordinator from default config."""
         from unittest.mock import AsyncMock
 
-        from synthorg.config.schema import TaskAssignmentConfig
+        from synthorg.config.agent_schema import TaskAssignmentConfig
         from synthorg.engine.coordination.factory import build_coordinator
         from synthorg.engine.coordination.section_config import (
             CoordinationSectionConfig,
@@ -169,7 +169,7 @@ class TestBuildCoordinatorFactory:
         """Coordinator built without provider raises on decomposition."""
         from unittest.mock import AsyncMock
 
-        from synthorg.config.schema import TaskAssignmentConfig
+        from synthorg.config.agent_schema import TaskAssignmentConfig
         from synthorg.engine.coordination.factory import build_coordinator
         from synthorg.engine.coordination.section_config import (
             CoordinationSectionConfig,

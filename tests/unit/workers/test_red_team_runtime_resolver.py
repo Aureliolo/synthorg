@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the production grounding-substrate resolver closure.
 
 Every other substrate test injects a hand-built ``lambda: context``; this
@@ -11,7 +10,7 @@ provider registry is empty or absent so the checker degrades to heuristic.
 """
 
 from types import SimpleNamespace
-from typing import Any
+from typing import cast
 
 import pytest
 
@@ -38,21 +37,21 @@ class _FakeAppState:
         self,
         *,
         registry: ProviderRegistry | None,
-        service: Any,
-        cost_tracker: Any,
+        service: KnowledgeService | None,
+        cost_tracker: object,
     ) -> None:
-        self._slices: dict[type, Any] = {
+        self._slices: dict[type, SimpleNamespace] = {
             ProvidersStateSlice: SimpleNamespace(registry=registry),
             KnowledgeStateSlice: SimpleNamespace(service=service),
             BudgetStateSlice: SimpleNamespace(cost_tracker=cost_tracker),
         }
 
-    def slice(self, slice_type: type) -> Any:
+    def slice(self, slice_type: type) -> SimpleNamespace:
         return self._slices[slice_type]
 
 
-def _provider() -> Any:
-    return mock_of[BaseCompletionProvider]()
+def _provider() -> BaseCompletionProvider:
+    return cast("BaseCompletionProvider", mock_of[BaseCompletionProvider]())
 
 
 def test_resolver_returns_context_when_provider_registered() -> None:

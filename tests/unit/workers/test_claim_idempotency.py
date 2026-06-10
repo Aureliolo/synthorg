@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit coverage for TaskClaim idempotency_key + worker dedup.
 
 The worker-side dedup tests use a stub ``SeenClaimsRepository`` that
@@ -13,7 +12,6 @@ mark_seen, RETRY never marks) that the dedup design depends on.
 import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 from typeguard import suppress_type_checks
@@ -53,7 +51,7 @@ class _StubSeenClaims:
         completed_keys: frozenset[str] | None = None,
     ) -> None:
         self.is_completed_calls: list[str] = []
-        self.mark_seen_calls: list[dict[str, Any]] = []
+        self.mark_seen_calls: list[dict[str, object]] = []
         self._completed_keys: set[str] = set(completed_keys or frozenset())
 
     async def is_completed(
@@ -134,9 +132,8 @@ class _NullTaskQueue:
 
     is_running = True
 
-    async def next_claim(self, timeout: float) -> Any:  # noqa: ASYNC109 -- mirrors prod signature; pragma: no cover
+    async def next_claim(self, timeout: float) -> None:  # noqa: ASYNC109 -- mirrors prod signature; pragma: no cover
         del timeout
-        return None
 
 
 class TestTaskClaimIdempotencyKey:

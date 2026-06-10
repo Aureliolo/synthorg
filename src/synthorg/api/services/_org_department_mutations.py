@@ -9,8 +9,8 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, TypedDict
 
 from synthorg.api.concurrency import check_if_match, compute_etag
-from synthorg.config.schema import AgentConfig
-from synthorg.core.company import Department
+from synthorg.config.agent_schema import AgentConfig
+from synthorg.core.company_departments import Department
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.domain_errors import (
     ConflictError,

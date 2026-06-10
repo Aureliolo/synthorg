@@ -11,7 +11,7 @@ from typing import Final
 
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState
-from synthorg.config.schema import AgentConfig
+from synthorg.config.agent_schema import AgentConfig
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.hr.state import agent_registry_of

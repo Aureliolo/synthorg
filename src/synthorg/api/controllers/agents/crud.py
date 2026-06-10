@@ -31,7 +31,7 @@ from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
-from synthorg.config.schema import AgentConfig
+from synthorg.config.agent_schema import AgentConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     AGENT_DELETED_AUDIT,

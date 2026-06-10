@@ -10,10 +10,15 @@ an empty / ``None`` section rather than failing the build.
 """
 
 import hashlib
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from uuid import uuid4
 
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import CurrencyCode
 from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.core.clock import Clock
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
 from synthorg.deliverable_receipts.models import (
     BLOCKING_SEVERITY_FLOOR,
     DeliverableReceipt,
@@ -32,35 +37,28 @@ from synthorg.observability.events.deliverable_receipts import (
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionFilterSpec,
     CodeExecutionPurpose,
+    CodeExecutionRecordRepository,
 )
-from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
-from synthorg.persistence.knowledge_usage_protocol import KnowledgeUsageFilterSpec
+from synthorg.persistence.cost_record_protocol import (
+    CostRecordFilterSpec,
+    CostRecordRepository,
+)
+from synthorg.persistence.knowledge_protocol import KnowledgeSourceRepository
+from synthorg.persistence.knowledge_usage_protocol import (
+    KnowledgeUsageFilterSpec,
+    KnowledgeUsageRecordRepository,
+)
 from synthorg.project_brain.errors import BrainEntryNotFoundError
 from synthorg.project_brain.models import BrainEntryKind
+from synthorg.project_brain.service import ProjectBrainService
+from synthorg.providers.cassette.mode import CassetteConfig
 from synthorg.security.redteam.errors import RedTeamReportNotFoundError
 from synthorg.security.redteam.models import (
     RedTeamReport,
     RedTeamVerdict,
     severity_rank,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.cost_record import CostRecord
-    from synthorg.budget.currency import CurrencyCode
-    from synthorg.core.clock import Clock
-    from synthorg.core.task import Task
-    from synthorg.core.types import NotBlankStr
-    from synthorg.persistence.code_execution_protocol import (
-        CodeExecutionRecordRepository,
-    )
-    from synthorg.persistence.cost_record_protocol import CostRecordRepository
-    from synthorg.persistence.knowledge_protocol import KnowledgeSourceRepository
-    from synthorg.persistence.knowledge_usage_protocol import (
-        KnowledgeUsageRecordRepository,
-    )
-    from synthorg.project_brain.service import ProjectBrainService
-    from synthorg.providers.cassette.mode import CassetteConfig
-    from synthorg.security.redteam.protocol import RedTeamReportRepository
+from synthorg.security.redteam.protocol import RedTeamReportRepository
 
 logger = get_logger(__name__)
 

@@ -76,6 +76,38 @@ class TestReraiseCritical:
         assert issubclass(MemoryError, Exception)
 
 
+class TestExceptionGroupUnwrapping:
+    """A critical exception nested in an `ExceptionGroup` still propagates.
+
+    `asyncio.TaskGroup` wraps a child failure in an `ExceptionGroup`; the
+    helper unwraps recursively so an out-of-memory inside a TaskGroup child
+    is re-raised before the surrounding handler logs.
+    """
+
+    def test_group_with_memory_error_re_raises(self) -> None:
+        group = ExceptionGroup("tg", [MemoryError("oom"), ValueError("v")])
+        with pytest.raises(ExceptionGroup):
+            reraise_critical(group)
+
+    def test_group_with_recursion_error_re_raises(self) -> None:
+        group = ExceptionGroup("tg", [RecursionError("stack")])
+        with pytest.raises(ExceptionGroup):
+            reraise_critical(group)
+
+    def test_nested_group_with_critical_re_raises(self) -> None:
+        inner = ExceptionGroup("inner", [MemoryError("oom")])
+        outer = ExceptionGroup("outer", [ValueError("v"), inner])
+        with pytest.raises(ExceptionGroup):
+            reraise_critical(outer)
+
+    def test_group_without_critical_passes_through(self) -> None:
+        # Contract: an ExceptionGroup of only ordinary exceptions returns
+        # so the caller's broad-handler recovery runs. Returning IS the
+        # assertion.
+        group = ExceptionGroup("tg", [ValueError("v"), KeyError("k")])
+        reraise_critical(group)
+
+
 _MEMORY_MSG = "simulated OOM"
 _VALUE_MSG = "ordinary failure"
 

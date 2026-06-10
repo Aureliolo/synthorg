@@ -25,7 +25,7 @@ _make_value = make_setting_value
 
 
 class _FakeRootConfig(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
     agents: tuple[FakeAgentConfig, ...] = ()
     departments: tuple[FakeDepartment, ...] = ()
     providers: dict[str, FakeProviderConfig] = {}
@@ -104,7 +104,7 @@ class TestGetAgents:
 
     async def test_json_roundtrip(self, mock_settings: AsyncMock) -> None:
         """Agent configs parsed from JSON setting."""
-        from synthorg.config.schema import AgentConfig
+        from synthorg.config.agent_schema import AgentConfig
 
         agent_data = [
             {"name": "alice", "role": "dev", "department": "eng"},
@@ -221,7 +221,7 @@ class TestGetDepartments:
 
     async def test_json_roundtrip(self, mock_settings: AsyncMock) -> None:
         """Departments parsed from JSON setting."""
-        from synthorg.core.company import Department
+        from synthorg.core.company_departments import Department
 
         dept_data = [
             {"name": "engineering", "head": "alice"},

@@ -20,45 +20,62 @@ single audit chokepoint for fragmented resolution paths.
 
 import asyncio
 import json
+from collections.abc import Mapping
 from enum import StrEnum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel
+
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
     SETTINGS_FETCH_FAILED,
     SETTINGS_NOT_FOUND,
     SETTINGS_VALIDATION_FAILED,
 )
+from synthorg.observability.redaction import safe_error_description
+from synthorg.settings._resolver_batch_reads import resolve_bridge_fields
+from synthorg.settings._resolver_coercions import (
+    _build_budget_alerts,
+    _coerce_batch_size,
+    _coerce_vram_gb,
+    _parse_bool,
+)
+from synthorg.settings.bridge_configs import (
+    A2ABridgeConfig,
+    ApiBridgeConfig,
+    ClientBridgeConfig,
+    CommunicationBridgeConfig,
+    CoordinationBridgeConfig,
+    EngineBridgeConfig,
+    IntegrationsBridgeConfig,
+    MemoryBridgeConfig,
+    MetaBridgeConfig,
+    NotificationsBridgeConfig,
+    ObservabilityBridgeConfig,
+    SettingsDispatcherBridgeConfig,
+    ToolsBridgeConfig,
+    WorkersBridgeConfig,
+)
 from synthorg.settings.errors import SettingNotFoundError, SettingsEncryptionError
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from pydantic import BaseModel
-
+    # Cycle breakers: the api / budget / config / core-company / engine
+    # config models all reach back into the settings package at runtime
+    # (mirrors, registry seeds, kill switches), so the bridge-read
+    # signatures name them without importing them.
     from synthorg.api.config import ApiConfig
-    from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
-    from synthorg.config.schema import AgentConfig, ProviderConfig, RootConfig
-    from synthorg.core.autonomy_enums import AutonomyLevel
-    from synthorg.core.company import Department
+    from synthorg.budget.config import BudgetConfig
+    from synthorg.config.agent_schema import AgentConfig
+    from synthorg.config.schema import ProviderConfig, RootConfig
+    from synthorg.core.company_departments import Department
     from synthorg.engine.coordination.config import CoordinationConfig
-    from synthorg.settings.bridge_configs import (
-        A2ABridgeConfig,
-        ApiBridgeConfig,
-        ClientBridgeConfig,
-        CommunicationBridgeConfig,
-        CoordinationBridgeConfig,
-        EngineBridgeConfig,
-        IntegrationsBridgeConfig,
-        MemoryBridgeConfig,
-        MetaBridgeConfig,
-        NotificationsBridgeConfig,
-        ObservabilityBridgeConfig,
-        SettingsDispatcherBridgeConfig,
-        ToolsBridgeConfig,
-        WorkersBridgeConfig,
-    )
+
+    # The service module pulls the communication package (message bus
+    # types) whose import chain reaches back into settings; the resolver
+    # must stay import-light so every runtime consumer of it stays
+    # cycle-free. The service instance arrives via the constructor.
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -291,8 +308,14 @@ class ConfigResolver:
 
         return await self.get_enum("company", "autonomy_level", AutonomyLevel)
 
-    async def get_json(self, namespace: str, key: str) -> Any:
+    async def get_json(  # type: ignore[explicit-any]  # parsed JSON feeds pydantic validation
+        self, namespace: str, key: str
+    ) -> Any:
         """Resolve a setting as parsed JSON.
+
+        ``Any`` is deliberate: callers hand the parsed value straight to
+        a Pydantic constructor or shape-check it themselves, so a
+        narrower static type would only force casts at every call site.
 
         Args:
             namespace: Setting namespace.
@@ -336,13 +359,13 @@ class ConfigResolver:
             msg = f"Setting {namespace}/{key} has an invalid JSON value"
             raise ValueError(msg) from exc
 
-    async def _resolve_list_setting(
+    async def _resolve_list_setting[ModelT: BaseModel](
         self,
         namespace: str,
         key: str,
-        model_cls: type[BaseModel],
-        fallback: tuple[Any, ...],
-    ) -> tuple[Any, ...]:
+        model_cls: type[ModelT],
+        fallback: tuple[ModelT, ...],
+    ) -> tuple[ModelT, ...]:
         """Resolve a JSON list setting to a tuple of validated models.
 
         Falls back to *fallback* on ``None``, invalid JSON, wrong
@@ -387,13 +410,13 @@ class ConfigResolver:
             )
             return fallback
 
-    async def _resolve_dict_setting(
+    async def _resolve_dict_setting[ModelT: BaseModel](
         self,
         namespace: str,
         key: str,
-        model_cls: type[BaseModel],
-        fallback: dict[str, Any],
-    ) -> dict[str, Any]:
+        model_cls: type[ModelT],
+        fallback: dict[str, ModelT],
+    ) -> dict[str, ModelT]:
         """Resolve a JSON dict setting to a dict of validated models.
 
         Falls back to *fallback* on ``None``, invalid JSON, wrong
@@ -454,7 +477,7 @@ class ConfigResolver:
                 in the registry.
             SettingsEncryptionError: If decryption fails.
         """
-        from synthorg.config.schema import AgentConfig  # noqa: PLC0415
+        from synthorg.config.agent_schema import AgentConfig  # noqa: PLC0415
 
         return await self._resolve_list_setting(
             "company",
@@ -479,7 +502,7 @@ class ConfigResolver:
                 in the registry.
             SettingsEncryptionError: If decryption fails.
         """
-        from synthorg.core.company import Department  # noqa: PLC0415
+        from synthorg.core.company_departments import Department  # noqa: PLC0415
 
         return await self._resolve_list_setting(
             "company",
@@ -568,13 +591,16 @@ class ConfigResolver:
                 t_stop = tg.create_task(self.get_int("budget", "alert_hard_stop_at"))
                 t_currency = tg.create_task(self.get_str("budget", "currency"))
         except ExceptionGroup as eg:
+            first_failure = eg.exceptions[0]
             logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace="budget",
                 key="_composed",
                 error_count=len(eg.exceptions),
+                error_type=type(first_failure).__name__,
+                error=safe_error_description(first_failure),
             )
-            raise eg.exceptions[0] from eg
+            raise first_failure from eg
 
         alerts = _build_budget_alerts(t_warn.result(), t_crit.result(), t_stop.result())
         return base.model_copy(
@@ -642,13 +668,16 @@ class ConfigResolver:
                 t_jwt_exp = tg.create_task(self.get_int("api", "jwt_expiry_minutes"))
                 t_min_pw = tg.create_task(self.get_int("api", "min_password_length"))
         except ExceptionGroup as eg:
+            first_failure = eg.exceptions[0]
             logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace="api",
                 key="_composed",
                 error_count=len(eg.exceptions),
+                error_type=type(first_failure).__name__,
+                error=safe_error_description(first_failure),
             )
-            raise eg.exceptions[0] from eg
+            raise first_failure from eg
 
         return base.model_copy(
             update={
@@ -722,13 +751,16 @@ class ConfigResolver:
                 )
                 t_branch = tg.create_task(self.get_str("coordination", "base_branch"))
         except ExceptionGroup as eg:
+            first_failure = eg.exceptions[0]
             logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace="coordination",
                 key="_composed",
                 error_count=len(eg.exceptions),
+                error_type=type(first_failure).__name__,
+                error=safe_error_description(first_failure),
             )
-            raise eg.exceptions[0] from eg
+            raise first_failure from eg
 
         return CoordinationConfig(
             max_concurrency_per_wave=(
@@ -743,21 +775,22 @@ class ConfigResolver:
 
     # ── Config-bridge composed reads (issues #1398, #1400) ──────────
 
-    async def _resolve_bridge_fields(
+    async def _resolve_bridge_fields(  # type: ignore[explicit-any]  # values feed Model(**values)
         self,
         namespace: str,
         specs: tuple[tuple[str, str], ...],
     ) -> dict[str, Any]:
         """Resolve a bundle of same-namespace settings in parallel.
 
-        Each spec is ``(key, kind)`` where ``kind`` is one of
-        ``"int"``, ``"float"``, or ``"str"``.  Returns a mapping from
-        key to parsed value, suitable for passing into a Pydantic
-        model constructor as keyword arguments.
+        Thin delegator: the ``TaskGroup`` fan-out and failed-key
+        pinpointing live in
+        :func:`synthorg.settings._resolver_batch_reads.resolve_bridge_fields`.
 
         Args:
             namespace: Setting namespace (e.g. ``"a2a"``).
-            specs: Tuple of ``(key, kind)`` pairs to resolve.
+            specs: Tuple of ``(key, kind)`` pairs to resolve, where
+                ``kind`` is one of ``"int"``, ``"float"``, ``"str"``,
+                or ``"json"``.
 
         Returns:
             Dict of ``{key: parsed_value}`` for each spec.
@@ -766,67 +799,7 @@ class ConfigResolver:
             SettingNotFoundError: If a key is not in the registry.
             ValueError: If a resolved value cannot be parsed.
         """
-        tasks: dict[str, asyncio.Task[Any]] = {}
-        try:
-            async with asyncio.TaskGroup() as tg:
-                tasks = {
-                    key: tg.create_task(self._resolve_typed(namespace, key, kind))
-                    for key, kind in specs
-                }
-        except ExceptionGroup as eg:
-            # Pinpoint which key(s) failed so an operator has a
-            # concrete setting name in the log instead of just an
-            # ``error_count``. Skip cancelled sibling tasks:
-            # ``TaskGroup`` cancels all other tasks when one fails,
-            # and calling ``task.exception()`` on a cancelled task
-            # would raise ``CancelledError`` -- masking the original
-            # failure and polluting ``failed_keys`` with siblings
-            # that didn't actually fail.
-            failed_keys = [
-                key
-                for key, task in tasks.items()
-                if task.done() and not task.cancelled() and task.exception() is not None
-            ]
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace=namespace,
-                key="_bridge_composed",
-                error_count=len(eg.exceptions),
-                failed_keys=failed_keys,
-            )
-            raise eg.exceptions[0] from eg
-        return {key: task.result() for key, task in tasks.items()}
-
-    async def _resolve_typed(self, namespace: str, key: str, kind: str) -> Any:
-        """Dispatch to the accessor matching ``kind``.
-
-        Args:
-            namespace: Setting namespace (e.g. ``"api"``, ``"tools"``).
-            key: Setting key within the namespace.
-            kind: Type discriminator; one of ``"int"``, ``"float"``,
-                ``"str"``, or ``"json"``. Any other value raises
-                ``ValueError`` so misuse fails loudly rather than
-                silently resolving the wrong accessor.
-
-        Returns:
-            The resolved value coerced to the requested type.
-
-        Raises:
-            ValueError: If *kind* is not one of the four supported
-                discriminators.
-            SettingNotFoundError: If the registry does not contain
-                *key* in *namespace*.
-        """
-        if kind == "int":
-            return await self.get_int(namespace, key)
-        if kind == "float":
-            return await self.get_float(namespace, key)
-        if kind == "str":
-            return await self.get_str(namespace, key)
-        if kind == "json":
-            return await self.get_json(namespace, key)
-        msg = f"Unsupported typed-resolve kind: {kind!r}"
-        raise ValueError(msg)
+        return await resolve_bridge_fields(self, namespace, specs)
 
     async def get_api_bridge_config(self) -> ApiBridgeConfig:
         """Assemble ``ApiBridgeConfig`` from bridged API settings.
@@ -1221,120 +1194,3 @@ class ConfigResolver:
             error_backoff_seconds=values["dispatcher_error_backoff_seconds"],
             max_consecutive_errors=values["dispatcher_max_consecutive_errors"],
         )
-
-
-def _coerce_vram_gb(value: object) -> float:
-    """Coerce a parsed JSON value to a numeric VRAM threshold.
-
-    Plain ``float(value)`` would accept ``True`` / ``False`` (because
-    ``bool`` is an ``int`` subclass and ``int`` is float-coercible), so
-    a payload like ``[true, 64]`` would silently become ``(1.0, 64)``
-    and pass the remaining shape checks. Reject booleans and
-    non-numeric types at the boundary so invalid stored settings fail
-    deterministically.
-
-    Returns:
-        The value coerced to ``float``, guaranteed to be a non-boolean
-        numeric type.
-
-    Raises:
-        TypeError: If *value* is a ``bool`` or any non-numeric type.
-    """
-    if isinstance(value, bool):
-        msg = f"vram_gb must be numeric, got bool {value!r}"
-        raise TypeError(msg)
-    if not isinstance(value, int | float):
-        msg = f"vram_gb must be numeric, got {type(value).__name__} {value!r}"
-        raise TypeError(msg)
-    return float(value)
-
-
-def _coerce_batch_size(value: object) -> int:
-    """Coerce a parsed JSON value to an ``int`` batch size, rejecting bad shapes.
-
-    Plain ``int(value)`` would silently truncate ``64.9`` to ``64`` and
-    accept ``True`` / ``False`` (which are ``int`` subclasses), so a
-    typo in ``memory.fine_tune_vram_batch_table`` would apply with a
-    different value than the operator configured. Reject those at the
-    boundary so invalid stored settings fail deterministically.
-
-    Returns:
-        The value coerced to ``int``, guaranteed to be a whole-number
-        non-boolean numeric type.
-
-    Raises:
-        TypeError: If *value* is a ``bool`` or any non-numeric type.
-        ValueError: If *value* is a fractional (non-integer) float.
-    """
-    if isinstance(value, bool):
-        msg = f"batch_size must be an integer, got bool {value!r}"
-        raise TypeError(msg)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        if not value.is_integer():
-            msg = f"batch_size must be an integer, got fractional float {value!r}"
-            raise ValueError(msg)
-        return int(value)
-    msg = f"batch_size must be an integer, got {type(value).__name__} {value!r}"
-    raise TypeError(msg)
-
-
-def _build_budget_alerts(warn: int, crit: int, stop: int) -> BudgetAlertConfig:
-    """Construct ``BudgetAlertConfig`` with ordering validation.
-
-    Args:
-        warn: Warning threshold percent.
-        crit: Critical threshold percent.
-        stop: Hard-stop threshold percent.
-
-    Returns:
-        A validated ``BudgetAlertConfig``.
-
-    Raises:
-        ValueError: If the thresholds violate the ordering constraint
-            (``warn < crit < stop``).
-    """
-    from pydantic import ValidationError  # noqa: PLC0415
-
-    from synthorg.budget.config import BudgetAlertConfig  # noqa: PLC0415
-
-    try:
-        return BudgetAlertConfig(warn_at=warn, critical_at=crit, hard_stop_at=stop)
-    except ValidationError as exc:
-        logger.warning(
-            SETTINGS_VALIDATION_FAILED,
-            namespace="budget",
-            key="_alerts",
-            reason="threshold_ordering",
-        )
-        msg = "Budget alert thresholds must satisfy warn < critical < hard_stop"
-        raise ValueError(msg) from exc
-
-
-_BOOL_TRUE = frozenset({"true", "1"})
-_BOOL_FALSE = frozenset({"false", "0"})
-
-
-def _parse_bool(value: str) -> bool:
-    """Parse a string into a boolean.
-
-    Accepts ``"true"``/``"false"``/``"1"``/``"0"``
-    (case-insensitive).
-
-    Args:
-        value: String to parse.
-
-    Returns:
-        The parsed boolean.
-
-    Raises:
-        ValueError: If the string is not a recognised boolean.
-    """
-    lower = value.lower()
-    if lower in _BOOL_TRUE:
-        return True
-    if lower in _BOOL_FALSE:
-        return False
-    msg = "Value is not a recognized boolean string"
-    raise ValueError(msg)

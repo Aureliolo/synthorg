@@ -23,7 +23,8 @@ from .strategies import STRATEGY_MAP
 if TYPE_CHECKING:
     # config.schema transitively re-imports providers/__init__ (the routing
     # package is in its eager chain); a runtime import forms a cycle.
-    from synthorg.config.schema import ProviderConfig, RoutingConfig
+    from synthorg.config.agent_schema import RoutingConfig
+    from synthorg.config.schema import ProviderConfig
 
 logger = get_logger(__name__)
 

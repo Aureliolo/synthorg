@@ -10,8 +10,8 @@ mapping of discriminator value to factory callable, then dispatches via
 """
 
 import enum
+from collections.abc import Callable, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
@@ -23,9 +23,6 @@ from synthorg.observability.events.registry import (
     REGISTRY_FACTORY_NOT_FOUND,
 )
 from synthorg.observability.redaction import safe_error_description
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
 
 logger = get_logger(__name__)
 
@@ -80,7 +77,12 @@ class StrategyRegistry[T]:
             entries can never satisfy a lookup).
     """
 
-    def __init__(
+    # ``Callable[..., T]`` is deliberate throughout: each registered
+    # factory is a distinct class with its own ``__init__`` deps, unified
+    # only by its return type. No Protocol can express that (a
+    # ``**deps: object`` Protocol fails contravariance against the
+    # concrete factories' specific keyword params).
+    def __init__(  # type: ignore[explicit-any]  # heterogeneous factory signatures
         self,
         factories: Mapping[str, Callable[..., T]],
         *,
@@ -99,7 +101,7 @@ class StrategyRegistry[T]:
             msg = f"StrategyRegistry({kind!r}) requires at least one factory"
             raise ValueError(msg)
         self._kind = kind
-        self._factories: MappingProxyType[str, Callable[..., T]] = MappingProxyType(
+        self._factories: MappingProxyType[str, Callable[..., T]] = MappingProxyType(  # type: ignore[explicit-any]
             {_key(k): v for k, v in factories.items()},
         )
         logger.info(
@@ -114,7 +116,7 @@ class StrategyRegistry[T]:
         """Subsystem identifier supplied at construction."""
         return self._kind
 
-    def get(self, name: str) -> Callable[..., T]:
+    def get(self, name: str) -> Callable[..., T]:  # type: ignore[explicit-any]
         """Look up a factory by discriminator value.
 
         Args:

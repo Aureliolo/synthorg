@@ -7,7 +7,6 @@ persisted when the entity content has actually changed.
 
 import copy
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
@@ -16,11 +15,9 @@ from synthorg.observability.events.versioning import (
     VERSION_SAVED,
     VERSION_SNAPSHOT_SKIPPED,
 )
+from synthorg.persistence.version_protocol import VersionRepository
 from synthorg.versioning.hashing import compute_content_hash
 from synthorg.versioning.models import VersionSnapshot
-
-if TYPE_CHECKING:
-    from synthorg.persistence.version_protocol import VersionRepository
 
 logger = get_logger(__name__)
 

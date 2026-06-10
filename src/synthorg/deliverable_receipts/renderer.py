@@ -8,25 +8,24 @@ idempotent: any prior receipt section (everything from the receipt
 heading onward) is stripped before the fresh section is appended.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
+from synthorg.deliverable_receipts.models import (
+    DeliverableReceipt,
+    ReceiptTestEntry,
+)
 from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import (
     BulletListBlock,
     DocBlock,
+    DocMetadata,
     HeadingBlock,
+    LivingDocument,
     MetricBlock,
 )
+from synthorg.docs_engine.service import DocsService
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.deliverable_receipts.models import (
-        DeliverableReceipt,
-        ReceiptTestEntry,
-    )
-    from synthorg.docs_engine.models import DocMetadata, LivingDocument
-    from synthorg.docs_engine.service import DocsService
 
 logger = get_logger(__name__)
 

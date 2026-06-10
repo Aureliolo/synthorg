@@ -18,11 +18,13 @@ with no runtime benefit.
 
 import asyncio
 import copy
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast, override
+from typing import TYPE_CHECKING, cast, override
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.company import (
     COMPANY_UPDATED_VIA_MCP,
@@ -37,10 +39,7 @@ from synthorg.observability.events.company import (
 from synthorg.organization.models import UpdateCompanyRequest
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
     from synthorg.api.services.org_mutations import OrgMutationService
-    from synthorg.core.types import NotBlankStr
 
 
 logger = get_logger(__name__)
@@ -79,7 +78,9 @@ class CompanyReadService:
     """Read + light mutation facade over the company/org surface."""
 
     def __init__(self, *, org_mutation: OrgMutationService) -> None:
-        self._org = cast("Any", org_mutation)
+        # Stored as ``object``: the facade probes capabilities via
+        # ``getattr`` + ``callable`` rather than the concrete type.
+        self._org: object = org_mutation
 
     async def get_company(self) -> object:
         """Return the company snapshot or raise if the capability is missing.
@@ -598,7 +599,9 @@ class RoleVersionService:
         *,
         org_mutation: OrgMutationService | None = None,
     ) -> None:
-        self._org = cast("Any", org_mutation) if org_mutation is not None else None
+        # Stored as ``object``: the facade probes capabilities via
+        # ``getattr`` + ``callable`` rather than the concrete type.
+        self._org: object | None = org_mutation
 
     async def list_versions(
         self,

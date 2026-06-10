@@ -17,7 +17,8 @@ from synthorg.communication.delegation.hierarchy import HierarchyResolver
 from synthorg.communication.enums import (
     ConflictType,
 )
-from synthorg.core.company import Company, CompanyConfig, Department, Team
+from synthorg.core.company import Company, CompanyConfig
+from synthorg.core.company_departments import Department, Team
 from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid, sid
 

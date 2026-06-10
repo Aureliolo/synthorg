@@ -5,7 +5,8 @@ parent-child merge, variable flow, and post-merge name deduplication.
 Extracted from ``renderer.py`` to keep file sizes under 800 lines.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol
+from collections.abc import Mapping
+from typing import Final, Protocol
 
 from pydantic import JsonValue
 
@@ -16,12 +17,8 @@ from synthorg.observability.events.template import (
     TEMPLATE_INHERIT_MERGE_ERROR,
 )
 from synthorg.templates.errors import TemplateInheritanceError
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.templates.loader import LoadedTemplate
-    from synthorg.templates.schema import CompanyTemplate
+from synthorg.templates.loader import LoadedTemplate
+from synthorg.templates.schema import CompanyTemplate
 
 
 # Self-referential callback for render_parent_config; consumer:

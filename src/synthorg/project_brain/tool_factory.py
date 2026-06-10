@@ -12,18 +12,14 @@ downstream callers consume the factory without re-importing
 :class:`ProjectBrainService`.
 """
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Iterable
+from typing import Final
 
+from synthorg.core.types import NotBlankStr
+from synthorg.project_brain.service import ProjectBrainService
+from synthorg.tools.base import BaseTool
 from synthorg.tools.brain.search_brain import SearchBrainTool
 from synthorg.tools.brain.write_brain_entry import WriteBrainEntryTool
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.project_brain.service import ProjectBrainService
-    from synthorg.tools.base import BaseTool
-
 
 BRAIN_TOOL_NAMES: Final[tuple[str, ...]] = (
     "write_brain_entry",

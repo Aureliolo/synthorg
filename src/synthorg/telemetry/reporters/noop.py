@@ -5,10 +5,7 @@ no-ops with zero overhead -- no network calls, no buffering, no
 background threads.
 """
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from synthorg.telemetry.protocol import TelemetryEvent
+from synthorg.telemetry.protocol import TelemetryEvent
 
 
 class NoopReporter:

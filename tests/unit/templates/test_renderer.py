@@ -1,6 +1,6 @@
 """Tests for the two-pass template rendering pipeline."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 import structlog
@@ -442,7 +442,7 @@ class TestCollectVariables:
 class TestExpandAgentNarrowing:
     def test_non_string_role_raises(self) -> None:
         """A non-string role fails loud with the non-empty-string render error."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {"role": 123}
         with pytest.raises(
@@ -452,7 +452,7 @@ class TestExpandAgentNarrowing:
 
     def test_non_string_personality_preset_raises(self) -> None:
         """A non-string personality_preset fails loud."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {"role": "Dev", "personality_preset": 123}
         with pytest.raises(TemplateRenderError, match="must be a string"):
@@ -463,7 +463,7 @@ class TestExpandAgentNarrowing:
 class TestInlinePersonality:
     def test_inline_personality_applied(self) -> None:
         """Inline personality dict is applied to agent config."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Dev",
@@ -472,9 +472,13 @@ class TestInlinePersonality:
                 "communication_style": "custom",
             },
         }
-        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
-        assert result["personality"]["communication_style"] == "custom"
-        assert "custom-trait" in result["personality"]["traits"]
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        personality = result["personality"]
+        assert isinstance(personality, dict)
+        assert personality["communication_style"] == "custom"
+        traits = personality["traits"]
+        assert isinstance(traits, tuple | list)
+        assert "custom-trait" in traits
 
 
 @pytest.mark.unit
@@ -493,9 +497,11 @@ class TestDepartmentPassthrough:
                 ],
             },
         ]
-        result: Any = build_departments(raw)
+        result = build_departments(raw)
         assert "reporting_lines" in result[0]
-        assert len(result[0]["reporting_lines"]) == 1
+        reporting_lines = result[0]["reporting_lines"]
+        assert isinstance(reporting_lines, list)
+        assert len(reporting_lines) == 1
 
     def test_policies_passthrough(self) -> None:
         """Policies from rendered data pass through to department dict."""
@@ -511,13 +517,13 @@ class TestDepartmentPassthrough:
                 },
             },
         ]
-        result: Any = build_departments(raw)
+        result = build_departments(raw)
         assert "policies" in result[0]
 
     def test_workflow_handoffs_passthrough(self) -> None:
         """Workflow handoffs pass through to config dict."""
         from synthorg.organization.enums import CompanyType
-        from synthorg.templates.renderer import _build_config_dict
+        from synthorg.templates._config_assembly import _build_config_dict
         from synthorg.templates.schema import (
             CompanyTemplate,
             TemplateAgentConfig,
@@ -539,16 +545,18 @@ class TestDepartmentPassthrough:
                 {"from_department": "eng", "to_department": "qa", "trigger": "done"},
             ],
         }
-        result: Any = _build_config_dict(rendered, template, {})
+        result = _build_config_dict(rendered, template, {})
         assert "workflow_handoffs" in result
-        assert len(result["workflow_handoffs"]) == 1
+        handoffs = result["workflow_handoffs"]
+        assert isinstance(handoffs, list)
+        assert len(handoffs) == 1
 
 
 @pytest.mark.unit
 class TestInlinePersonalityRejection:
     def test_invalid_inline_personality_raises_template_render_error(self) -> None:
         """Invalid inline personality dict raises TemplateRenderError."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Dev",
@@ -559,7 +567,7 @@ class TestInlinePersonalityRejection:
 
     def test_non_dict_personality_raises_template_render_error(self) -> None:
         """Non-dict personality value raises TemplateRenderError."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Dev",
@@ -573,7 +581,7 @@ class TestInlinePersonalityRejection:
 class TestMissingRoleError:
     def test_missing_role_raises_template_render_error(self) -> None:
         """Agent without a 'role' field raises TemplateRenderError."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         with pytest.raises(
             TemplateRenderError, match="requires a non-empty string 'role'"
@@ -616,7 +624,7 @@ class TestEscalationPathsPassthrough:
     def test_escalation_paths_included_in_config_dict(self) -> None:
         """Escalation paths pass through to config dict."""
         from synthorg.organization.enums import CompanyType
-        from synthorg.templates.renderer import _build_config_dict
+        from synthorg.templates._config_assembly import _build_config_dict
         from synthorg.templates.schema import (
             CompanyTemplate,
             TemplateAgentConfig,
@@ -642,25 +650,27 @@ class TestEscalationPathsPassthrough:
                 },
             ],
         }
-        result: Any = _build_config_dict(rendered, template, {})
+        result = _build_config_dict(rendered, template, {})
         assert "escalation_paths" in result
-        assert len(result["escalation_paths"]) == 1
+        escalation_paths = result["escalation_paths"]
+        assert isinstance(escalation_paths, list)
+        assert len(escalation_paths) == 1
 
 
 @pytest.mark.unit
 class TestValidateListErrors:
     def test_non_list_raises(self) -> None:
         """Non-list value for a list field raises TemplateRenderError."""
+        from synthorg.templates._config_assembly import _validate_list
         from synthorg.templates.errors import TemplateRenderError
-        from synthorg.templates.renderer import _validate_list
 
         with pytest.raises(TemplateRenderError, match="must be a list"):
             _validate_list({"agents": "not-a-list"}, "agents")
 
     def test_non_dict_item_raises(self) -> None:
         """Non-dict item in a list field raises TemplateRenderError."""
+        from synthorg.templates._config_assembly import _validate_list
         from synthorg.templates.errors import TemplateRenderError
-        from synthorg.templates.renderer import _validate_list
 
         with pytest.raises(TemplateRenderError, match="must be a mapping"):
             _validate_list({"agents": [{"role": "Dev"}, "bad"]}, "agents")
@@ -673,7 +683,7 @@ class TestValidateListErrors:
 class TestExpandPreservesMergeId:
     def test_expand_preserves_merge_id(self) -> None:
         """Expanded agent dict contains merge_id when set."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Full-Stack Developer",
@@ -685,7 +695,7 @@ class TestExpandPreservesMergeId:
 
     def test_expand_omits_empty_merge_id(self) -> None:
         """Expanded agent dict omits merge_id when empty."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Full-Stack Developer",
@@ -697,19 +707,19 @@ class TestExpandPreservesMergeId:
 
     def test_expand_omits_merge_id_without_extends(self) -> None:
         """Standalone templates do not leak merge_id into output."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Full-Stack Developer",
             "merge_id": "frontend",
             "department": "engineering",
         }
-        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert "merge_id" not in result
 
     def test_preserve_merge_id_without_extends(self) -> None:
         """Parent rendering preserves merge_id even without extends."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Full-Stack Developer",
@@ -766,27 +776,31 @@ class TestJinja2PlaceholderAutoName:
 
     def test_jinja2_placeholder_triggers_auto_name(self) -> None:
         """An agent name containing __JINJA2__ is replaced by an auto-name."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Backend Developer",
             "name": "__JINJA2__ Dev",
             "department": "engineering",
         }
-        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
         # The auto-generated name should NOT contain the placeholder.
-        assert "__JINJA2__" not in result["name"]
-        assert len(result["name"]) > 0
+        name = result["name"]
+        assert isinstance(name, str)
+        assert "__JINJA2__" not in name
+        assert len(name) > 0
 
     def test_jinja2_placeholder_exact_match(self) -> None:
         """An agent name that is exactly __JINJA2__ is auto-named."""
-        from synthorg.templates.renderer import _expand_single_agent
+        from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "CEO",
             "name": "__JINJA2__",
             "department": "executive",
         }
-        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
-        assert "__JINJA2__" not in result["name"]
-        assert len(result["name"]) > 0
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        name = result["name"]
+        assert isinstance(name, str)
+        assert "__JINJA2__" not in name
+        assert len(name) > 0

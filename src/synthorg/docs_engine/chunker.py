@@ -11,7 +11,7 @@ proxy (no LiteLLM tokeniser dependency in the chunker); the proxy is
 defined in :mod:`synthorg.docs_engine.constants`.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
 
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
@@ -34,9 +34,6 @@ from synthorg.docs_engine.models import (
     MetricBlock,
     ProseBlock,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 
 class DocChunker:

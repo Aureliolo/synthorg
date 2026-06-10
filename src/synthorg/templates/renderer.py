@@ -10,19 +10,23 @@ Implements the second pass of the two-pass rendering pipeline:
 Template inheritance (``extends``) is resolved at the renderer level:
 each template's Jinja2 is rendered independently, then configs are
 merged via :func:`~synthorg.templates.merge.merge_template_configs`.
+
+Config-dict assembly lives in
+:mod:`synthorg.templates._config_assembly`; agent expansion lives in
+:mod:`synthorg.templates._agent_expansion`.
 """
 
-from typing import TYPE_CHECKING, cast
+from collections.abc import Mapping
 
 import yaml
 from jinja2 import TemplateError as Jinja2TemplateError
 from jinja2.sandbox import SandboxedEnvironment
-from pydantic import JsonValue, ValidationError
+from pydantic import JsonValue
 
 from synthorg.config.defaults import default_config_dict
 from synthorg.config.errors import ConfigLocation
-from synthorg.config.utils import deep_merge, to_float
-from synthorg.engine.workflow.enums import WorkflowType
+from synthorg.config.schema import RootConfig
+from synthorg.config.utils import deep_merge
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_PACK_CIRCULAR,
@@ -31,36 +35,19 @@ from synthorg.observability.events.template import (
     TEMPLATE_RENDER_JINJA2_ERROR,
     TEMPLATE_RENDER_START,
     TEMPLATE_RENDER_SUCCESS,
-    TEMPLATE_RENDER_TYPE_ERROR,
     TEMPLATE_RENDER_VARIABLE_ERROR,
     TEMPLATE_RENDER_YAML_ERROR,
-    TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY,
 )
+from synthorg.templates._config_assembly import _build_config_dict
 from synthorg.templates._inheritance import (
     deduplicate_merged_agent_names,
     render_parent_config,
 )
-from synthorg.templates._preset_resolution import resolve_agent_personality
-from synthorg.templates._render_helpers import (
-    build_departments,
-    validate_as_root_config,
-)
+from synthorg.templates._render_helpers import validate_as_root_config
 from synthorg.templates.errors import TemplateRenderError
-from synthorg.templates.merge import DEFAULT_MERGE_DEPARTMENT, merge_template_configs
-from synthorg.templates.presets import generate_auto_name
-
-# Placeholder provider name resolved by the engine at startup.
-_DEFAULT_PROVIDER = "default"
-
-# Default department when not specified in template agent config.
-_DEFAULT_DEPARTMENT = DEFAULT_MERGE_DEPARTMENT
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.config.schema import RootConfig
-    from synthorg.templates.loader import LoadedTemplate
-    from synthorg.templates.schema import CompanyTemplate
+from synthorg.templates.loader import LoadedTemplate
+from synthorg.templates.merge import merge_template_configs
+from synthorg.templates.schema import CompanyTemplate
 
 logger = get_logger(__name__)
 
@@ -397,396 +384,3 @@ def _parse_rendered_yaml(
             locations=(ConfigLocation(file_path=source_name),),
         )
     return template_data
-
-
-def _build_workflow_dict(
-    rendered_data: dict[str, object],
-    template: CompanyTemplate,
-) -> dict[str, object]:
-    """Build a WorkflowConfig-compatible dict from workflow type and sub-configs.
-
-    Args:
-        rendered_data: Parsed dict from the rendered YAML.
-        template: Original template metadata (for fallback workflow type).
-
-    Returns:
-        Dict suitable for the ``workflow`` key on ``RootConfig``.
-    """
-    workflow_type_raw = rendered_data.get("workflow", template.workflow.value)
-    workflow_type_str = (
-        workflow_type_raw.value
-        if isinstance(workflow_type_raw, WorkflowType)
-        else str(workflow_type_raw)
-    )
-    workflow_dict: dict[str, object] = {"workflow_type": workflow_type_str}
-    wf_config = rendered_data.get("workflow_config")
-    if isinstance(wf_config, dict):
-        known_keys = {"kanban", "sprint"}
-        for key in known_keys:
-            if key in wf_config:
-                workflow_dict[key] = wf_config[key]
-        unknown = set(wf_config) - known_keys
-        if unknown:
-            logger.warning(
-                TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY,
-                unknown_keys=sorted(unknown),
-                source_name=template.metadata.name,
-            )
-    return workflow_dict
-
-
-def _build_config_dict(  # noqa: PLR0913
-    rendered_data: dict[str, object],
-    template: CompanyTemplate,
-    variables: dict[str, object],
-    *,
-    locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
-    preserve_merge_ids: bool = False,
-) -> dict[str, object]:
-    """Build a RootConfig-compatible dict from rendered template data.
-
-    Args:
-        rendered_data: Parsed dict from the rendered YAML.
-        template: Original template metadata (for fallback values).
-        variables: Collected variables.
-        locales: Faker locale codes for auto-name generation.
-        custom_presets: Optional custom preset mapping.
-        preserve_merge_ids: Force ``merge_id`` preservation even when
-            the template itself has no ``extends``.  Used for parent
-            rendering.
-
-    Returns:
-        Dict suitable for ``RootConfig(**deep_merge(defaults, result))``.
-
-    Raises:
-        TemplateRenderError: When a rendered field has the wrong shape
-            (e.g. ``company`` is not a mapping, or a list field is
-            malformed).
-    """
-    company = rendered_data.get("company")
-    if company is None:
-        company = {}
-    elif not isinstance(company, dict):
-        msg = "Rendered template 'company' must be a mapping"
-        logger.error(TEMPLATE_RENDER_YAML_ERROR, error=msg)
-        raise TemplateRenderError(msg)
-
-    company_name = variables.get(
-        "company_name",
-        template.metadata.name,
-    )
-
-    has_extends = template.extends is not None
-    preserve_merge = has_extends or preserve_merge_ids
-    agents = _expand_agents(
-        _validate_list(rendered_data, "agents"),
-        has_extends=has_extends,
-        locales=locales,
-        custom_presets=custom_presets,
-        preserve_merge_ids=preserve_merge,
-    )
-    departments = build_departments(
-        _validate_list(rendered_data, "departments"),
-        has_extends=has_extends,
-    )
-
-    autonomy, budget_monthly = _extract_numeric_config(company, template)
-
-    result: dict[str, object] = {
-        "company_name": company_name,
-        "company_type": company.get("type", template.metadata.company_type.value),
-        "agents": agents,
-        "departments": departments,
-        "workflow": _build_workflow_dict(rendered_data, template),
-        "config": {
-            "autonomy": autonomy,
-            "budget_monthly": budget_monthly,
-            "communication_pattern": rendered_data.get(
-                "communication",
-                template.communication,
-            ),
-        },
-    }
-
-    _attach_optional_lists(rendered_data, result)
-
-    return result
-
-
-def _attach_optional_lists(
-    rendered_data: dict[str, object],
-    result: dict[str, object],
-) -> None:
-    """Extract optional list fields from rendered data into result."""
-    for key in ("workflow_handoffs", "escalation_paths"):
-        if key in rendered_data and rendered_data[key] is not None:
-            result[key] = _validate_list(rendered_data, key)
-
-
-def _validate_list(
-    rendered_data: dict[str, object],
-    key: str,
-) -> list[dict[str, object]]:
-    """Extract and validate a list field from rendered data.
-
-    Returns:
-        The list value for ``key`` (empty list when absent / ``None``),
-        with every element confirmed to be a mapping.
-
-    Raises:
-        TemplateRenderError: When the field is not a list, or an element
-            is not a mapping.
-    """
-    raw = rendered_data.get(key, [])
-    if raw is None:
-        raw = []
-    if not isinstance(raw, list):
-        msg = f"Rendered template {key!r} must be a list"
-        logger.warning(
-            TEMPLATE_RENDER_TYPE_ERROR,
-            field=key,
-            expected="list",
-            got=type(raw).__name__,
-        )
-        raise TemplateRenderError(msg)
-    for i, item in enumerate(raw):
-        if not isinstance(item, dict):
-            msg = (
-                f"Rendered template {key!r}[{i}] must be a "
-                f"mapping, got {type(item).__name__}"
-            )
-            logger.warning(
-                TEMPLATE_RENDER_TYPE_ERROR,
-                field=f"{key}[{i}]",
-                expected="mapping",
-                got=type(item).__name__,
-            )
-            raise TemplateRenderError(msg)
-    # Every item was just asserted to be a dict above, so narrow the
-    # element type from the list's ``object`` members to
-    # ``dict[str, object]`` for the return signature without the runtime
-    # overhead of re-filtering.
-    return cast("list[dict[str, object]]", raw)
-
-
-def _extract_numeric_config(
-    company: dict[str, object],
-    template: CompanyTemplate,
-) -> tuple[dict[str, object], float]:
-    """Extract autonomy and budget_monthly.
-
-    Autonomy is always a dict (AutonomyConfig-compatible). A copy
-    is returned to prevent mutation of the original rendered data.
-
-    Returns:
-        A ``(autonomy_dict, budget_monthly)`` pair, where ``autonomy_dict``
-        is a shallow copy of the rendered autonomy mapping.
-
-    Raises:
-        TemplateRenderError: When ``autonomy`` is present but not a
-            mapping, or ``budget_monthly`` is not numeric.
-    """
-    source_name = template.metadata.name
-    raw_autonomy = company.get("autonomy", template.autonomy)
-    if not isinstance(raw_autonomy, dict):
-        msg = (
-            f"Invalid autonomy config in template {source_name!r}: "
-            f"expected dict, got {type(raw_autonomy).__name__}"
-        )
-        logger.warning(
-            TEMPLATE_RENDER_TYPE_ERROR,
-            source=source_name,
-            field="autonomy",
-            expected="dict",
-            got=type(raw_autonomy).__name__,
-        )
-        raise TemplateRenderError(msg)
-    try:
-        # Shallow copy -- autonomy dicts have only scalar values.
-        autonomy: dict[str, object] = dict(raw_autonomy)
-        budget_monthly = to_float(
-            company.get("budget_monthly", template.budget_monthly),
-            field_name="budget_monthly",
-        )
-    except ValueError as exc:
-        msg = f"Invalid numeric value in rendered template {source_name!r}: {safe_error_description(exc)}"  # noqa: E501
-        logger.warning(
-            TEMPLATE_RENDER_TYPE_ERROR,
-            source=source_name,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise TemplateRenderError(msg) from exc
-    return autonomy, budget_monthly
-
-
-def _expand_agents(
-    raw_agents: list[dict[str, object]],
-    *,
-    has_extends: bool,
-    locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
-    preserve_merge_ids: bool = False,
-) -> list[dict[str, object]]:
-    """Expand template agent dicts into AgentConfig-compatible dicts.
-
-    Args:
-        raw_agents: List of agent dicts from rendered YAML.
-        has_extends: Whether the template uses inheritance.
-        locales: Faker locale codes for auto-name generation.
-        custom_presets: Optional custom preset mapping.
-        preserve_merge_ids: Preserve ``merge_id`` on expanded agents.
-
-    Returns:
-        List of dicts suitable for ``AgentConfig`` construction.
-    """
-    keep_merge = preserve_merge_ids or has_extends
-    used_names: set[str] = set()
-    expanded: list[dict[str, object]] = []
-    for idx, agent in enumerate(raw_agents):
-        expanded.append(
-            _expand_single_agent(
-                agent,
-                idx,
-                used_names,
-                has_extends=has_extends,
-                locales=locales,
-                custom_presets=custom_presets,
-                preserve_merge_id=keep_merge,
-            ),
-        )
-    return expanded
-
-
-def _expand_single_agent(  # noqa: PLR0913
-    agent: dict[str, object],
-    idx: int,
-    used_names: set[str],
-    *,
-    has_extends: bool,
-    locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
-    preserve_merge_id: bool = False,
-) -> dict[str, object]:
-    """Expand a single template agent dict.
-
-    Steps: auto-name generation, name deduplication, personality
-    preset/inline resolution, model tier assignment, and merge
-    directive handling.
-
-    Args:
-        agent: Raw agent dict from rendered YAML.
-        idx: Zero-based index for error context.
-        used_names: Set of already-used names for deduplication.
-        has_extends: Whether the template uses inheritance.
-        locales: Faker locale codes for auto-name generation.
-        custom_presets: Optional custom preset mapping for resolving
-            user-defined presets.
-        preserve_merge_id: Preserve ``merge_id`` on the expanded agent.
-
-    Returns:
-        Expanded agent dict suitable for ``AgentConfig`` construction.
-
-    Raises:
-        TemplateRenderError: When ``role`` is absent, empty, or not a string.
-    """
-    role = agent.get("role")
-    if not isinstance(role, str) or not role:
-        msg = f"Agent at index {idx} requires a non-empty string 'role' field"
-        logger.warning(TEMPLATE_RENDER_VARIABLE_ERROR, index=idx, field="role")
-        raise TemplateRenderError(msg)
-    name = str(agent.get("name") or "").strip()
-
-    if not name or name.startswith("{{") or "__JINJA2__" in name:
-        name = generate_auto_name(role, seed=idx, locales=locales)
-
-    base_name = name
-    counter = 2
-    while name in used_names:
-        name = f"{base_name} {counter}"
-        counter += 1
-    used_names.add(name)
-
-    agent_dict: dict[str, object] = {
-        "name": name,
-        "role": role,
-        "department": agent.get("department", _DEFAULT_DEPARTMENT),
-        "level": agent.get("level", "mid"),
-    }
-
-    personality = resolve_agent_personality(
-        agent,
-        name,
-        custom_presets=custom_presets,
-    )
-    if personality is not None:
-        agent_dict["personality"] = personality
-
-    model_tier = _resolve_model_tier(agent)
-    agent_dict["model"] = {"provider": _DEFAULT_PROVIDER, "model_id": model_tier}
-
-    # Preserve _remove merge directive for inheritance.
-    if agent.get("_remove"):
-        if not has_extends:
-            msg = (
-                f"Agent {name!r} uses '_remove' but the template "
-                "has no 'extends' -- directive has no effect"
-            )
-            logger.warning(
-                TEMPLATE_RENDER_VARIABLE_ERROR,
-                agent=name,
-                field="_remove",
-            )
-            raise TemplateRenderError(msg)
-        agent_dict["_remove"] = True
-
-    # Preserve merge_id when inheritance is active or when rendering
-    # as a parent (so child templates can target agents by merge_id).
-    keep_merge = preserve_merge_id or has_extends
-    merge_id_raw = agent.get("merge_id") or ""
-    merge_id = str(merge_id_raw).strip()
-    if keep_merge and merge_id:
-        agent_dict["merge_id"] = merge_id
-
-    return agent_dict
-
-
-def _resolve_model_tier(agent: dict[str, object]) -> str:
-    """Extract the model tier from a template agent dict.
-
-    Handles both the string format (``"medium"``) and the structured
-    ``ModelRequirement`` dict format
-    (``{"tier": "medium", "priority": "quality"}``).
-
-    The renderer path sets a placeholder ``model_id``; structured
-    requirements are only fully threaded through the setup wizard path
-    which calls ``match_all_agents``.
-
-    Args:
-        agent: Raw template agent dict from Jinja2 rendering.
-
-    Returns:
-        Tier string (``"large"``, ``"medium"``, or ``"small"``).
-
-    Raises:
-        TemplateRenderError: If a dict model contains invalid fields.
-    """
-    model_raw = agent.get("model", "medium")
-    if isinstance(model_raw, dict):
-        from synthorg.templates.model_requirements import (  # noqa: PLC0415
-            parse_model_requirement,
-        )
-
-        try:
-            return parse_model_requirement(model_raw).tier
-        except (ValidationError, ValueError) as exc:
-            msg = f"Invalid structured model requirement: {safe_error_description(exc)}"
-            logger.warning(
-                TEMPLATE_RENDER_TYPE_ERROR,
-                field="model",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise TemplateRenderError(msg) from exc
-    return str(model_raw)

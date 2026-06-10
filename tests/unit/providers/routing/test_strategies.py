@@ -2,11 +2,10 @@
 
 import pytest
 
+from synthorg.config.agent_schema import RoutingConfig, RoutingRuleConfig
 from synthorg.config.schema import (
     ProviderConfig,
     ProviderModelConfig,
-    RoutingConfig,
-    RoutingRuleConfig,
 )
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.routing.errors import (

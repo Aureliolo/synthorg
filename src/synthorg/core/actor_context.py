@@ -20,19 +20,17 @@ All binding helpers are safe from both sync and async code because
 
 import functools
 import inspect
+from collections.abc import Callable, Coroutine, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
-from typing import TYPE_CHECKING, ClassVar, ParamSpec, TypeVar
+from typing import ClassVar, ParamSpec, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine, Iterator
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")

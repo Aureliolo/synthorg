@@ -12,12 +12,10 @@ Callers that need form equivalence (e.g. ``café`` written as
 upstream.
 """
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Iterable
+from typing import Final
 
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
 
 logger = get_logger(__name__)
 

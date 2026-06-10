@@ -12,7 +12,7 @@ import json
 
 from synthorg._core.features import require_service
 from synthorg.api.state import AppState
-from synthorg.core.company import Team
+from synthorg.core.company_departments import Team
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.normalization import normalize_identifier
 from synthorg.observability import get_logger, safe_error_description

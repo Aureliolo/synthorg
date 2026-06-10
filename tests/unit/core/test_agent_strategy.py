@@ -1,7 +1,6 @@
 """Unit tests for AgentIdentity strategic_output_mode field."""
 
 from datetime import date
-from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -10,8 +9,8 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.hr.strategy_mode import StrategicOutputMode
 
 
-def _make_agent(**kwargs: Any) -> AgentIdentity:
-    defaults: dict[str, Any] = {
+def _make_agent(**kwargs: object) -> AgentIdentity:
+    defaults: dict[str, object] = {
         "name": "Test Agent",
         "role": "CEO",
         "department": "executive",
@@ -19,7 +18,7 @@ def _make_agent(**kwargs: Any) -> AgentIdentity:
         "hiring_date": date(2026, 1, 1),
     }
     defaults.update(kwargs)
-    return AgentIdentity(**defaults)
+    return AgentIdentity.model_validate(defaults)
 
 
 class TestAgentStrategicOutputMode:

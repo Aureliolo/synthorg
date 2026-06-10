@@ -26,7 +26,7 @@ from synthorg.observability.events.setup import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.config.schema import AgentConfig
+    from synthorg.config.agent_schema import AgentConfig
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.settings.resolver import ConfigResolver
 

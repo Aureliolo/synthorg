@@ -9,13 +9,9 @@ the registry unchanged when the brain is not wired (no factory) so the
 augmentation is a no-op on a boot without a memory backend.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.types import NotBlankStr
+from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 from synthorg.tools.registry import ToolRegistry
-
-if TYPE_CHECKING:
-    from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 
 
 def registry_with_brain_tools(

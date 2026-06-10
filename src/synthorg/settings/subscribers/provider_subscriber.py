@@ -9,11 +9,11 @@ from synthorg.observability.events.settings import (
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.providers.routing.router import ModelRouter
+from synthorg.settings.service import SettingsService
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.config.schema import RootConfig
-    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 

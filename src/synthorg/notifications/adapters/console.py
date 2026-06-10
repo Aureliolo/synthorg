@@ -1,14 +1,10 @@
 """Console notification sink -- logs to structured logging."""
 
-from typing import TYPE_CHECKING
-
+from synthorg.notifications.models import Notification
 from synthorg.observability import get_logger
 from synthorg.observability.events.notification import (
     NOTIFICATION_CONSOLE_DELIVERED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.notifications.models import Notification
 
 logger = get_logger(__name__)
 

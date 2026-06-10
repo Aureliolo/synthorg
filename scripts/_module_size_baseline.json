@@ -1,24 +1,4 @@
 {
   "description": "Frozen baseline of oversized src/synthorg/ modules. Each entry under `locations` is `<posix_path>: <current_loc>`. Modules absent from the baseline are enforced strictly against their tier cap. Modules present here may stay at or below the recorded LOC; growing past it fails the gate. Regenerate (rare; requires explicit user approval) with: uv run python scripts/check_module_size_budget.py --update-baseline",
-  "locations": {
-    "src/synthorg/communication/conflict_resolution/human_strategy.py": 521,
-    "src/synthorg/communication/meeting/orchestrator.py": 604,
-    "src/synthorg/communication/meeting/structured_phases.py": 696,
-    "src/synthorg/config/schema.py": 758,
-    "src/synthorg/core/company.py": 637,
-    "src/synthorg/integrations/connections/catalog.py": 685,
-    "src/synthorg/integrations/mcp_services.py": 644,
-    "src/synthorg/providers/base.py": 572,
-    "src/synthorg/providers/cassette/provider.py": 515,
-    "src/synthorg/providers/drivers/litellm_driver.py": 721,
-    "src/synthorg/providers/management/capability_dtos.py": 548,
-    "src/synthorg/providers/management/dtos.py": 733,
-    "src/synthorg/providers/presets.py": 666,
-    "src/synthorg/providers/routing/strategies.py": 526,
-    "src/synthorg/settings/dispatcher.py": 575,
-    "src/synthorg/settings/resolver.py": 1152,
-    "src/synthorg/templates/renderer.py": 658,
-    "src/synthorg/workers/claim.py": 639,
-    "src/synthorg/workers/runtime_builder.py": 836
-  }
+  "locations": {}
 }

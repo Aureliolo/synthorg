@@ -4,18 +4,15 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.company import (
-    Company,
-    CompanyConfig,
+from synthorg.core.company import Company, CompanyConfig, HRRegistry
+from synthorg.core.company_departments import (
     Department,
     DepartmentPolicies,
-    EscalationPath,
-    HRRegistry,
     ReviewRequirements,
     Team,
-    WorkflowHandoff,
     _identity_key,
 )
+from synthorg.core.company_handoffs import EscalationPath, WorkflowHandoff
 from synthorg.organization.enums import CompanyType
 from synthorg.security.timeout.config import (
     DenyOnTimeoutConfig,
@@ -263,7 +260,7 @@ class TestDepartment:
 
     def test_ceremony_policy_is_defensively_copied(self) -> None:
         """Mutating the source dict must not affect the stored policy."""
-        source = {"strategy": "calendar", "cadence": "weekly"}
+        source: dict[str, object] = {"strategy": "calendar", "cadence": "weekly"}
         dept = Department(
             name="marketing",
             head="head",

@@ -11,9 +11,9 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    # Faker stays import-free at runtime: the library is heavy and the
+    # auto-name path imports it lazily inside the generator function.
     from faker import Faker
-
-    from synthorg.templates.schema import CompanyTemplate
 
 from pydantic import JsonValue, ValidationError
 
@@ -28,6 +28,7 @@ from synthorg.observability.events.template import (
     TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
 )
 from synthorg.templates._preset_data import RAW_PRESETS, PresetValue
+from synthorg.templates.schema import CompanyTemplate
 
 logger = get_logger(__name__)
 

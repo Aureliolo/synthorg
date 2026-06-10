@@ -8,7 +8,7 @@ under the ``"postgres"`` discriminator.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
@@ -22,6 +22,7 @@ from synthorg.observability.events.backup import (
     BACKUP_COMPONENT_FAILED,
     BACKUP_COMPONENT_STARTED,
 )
+from synthorg.persistence.config import PostgresConfig
 from synthorg.persistence.postgres.backup_utils import (
     PgToolFailedError,
     PgToolUnavailableError,
@@ -29,9 +30,6 @@ from synthorg.persistence.postgres.backup_utils import (
     pg_restore_from_file,
     pg_restore_list,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.config import PostgresConfig
 
 logger = get_logger(__name__)
 

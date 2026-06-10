@@ -7,7 +7,8 @@ import pytest
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
-from synthorg.config.schema import AgentConfig, RootConfig
+from synthorg.config.agent_schema import AgentConfig
+from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.enums import AgentStatus
@@ -158,7 +159,7 @@ class TestDepartmentHealth:
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """Department exists but has no agents."""
-        from synthorg.core.company import Department
+        from synthorg.core.company_departments import Department
 
         config = RootConfig(
             company_name="test",
@@ -187,7 +188,7 @@ class TestDepartmentHealth:
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """Full scenario with agents, costs, and performance data."""
-        from synthorg.core.company import Department
+        from synthorg.core.company_departments import Department
 
         config = RootConfig(
             company_name="test",
@@ -270,7 +271,7 @@ class TestDepartmentHealth:
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """Agents from other departments are excluded."""
-        from synthorg.core.company import Department
+        from synthorg.core.company_departments import Department
 
         config = RootConfig(
             company_name="test",
@@ -300,7 +301,7 @@ class TestDepartmentHealth:
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """cost_trend should contain daily-bucketed data points."""
-        from synthorg.core.company import Department
+        from synthorg.core.company_departments import Department
 
         config = RootConfig(
             company_name="test",
@@ -517,7 +518,7 @@ class TestDepartmentHealthDegradation:
         """Endpoint returns degraded health when first-stage queries fail."""
         from unittest.mock import AsyncMock
 
-        from synthorg.core.company import Department
+        from synthorg.core.company_departments import Department
 
         config = RootConfig(
             company_name="test",

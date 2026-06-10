@@ -5,7 +5,7 @@
 These facades surface a read-only window (or a capability-gap error)
 over the corresponding AppState primitive for the MCP handler layer.
 
-Primitives are stored internally as :class:`Any` so the facade can
+Primitives are stored internally as ``object`` so the facade can
 introspect capabilities at runtime (``getattr`` + ``callable`` checks)
 without fighting protocol-type narrowing when the primitive is still
 evolving.
@@ -19,7 +19,7 @@ across multiple.
 
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, cast
+from typing import cast
 
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.communication.event_stream.stream import EventStreamHub
@@ -68,7 +68,7 @@ class SimulationFacadeService:
     """Facade over :class:`ClientSimulationState`."""
 
     def __init__(self, *, state: ClientSimulationState) -> None:
-        self._state = cast("Any", state)
+        self._state: object = state
 
     async def list_simulations(
         self,
@@ -136,7 +136,7 @@ class AuditReadService:
     """Read facade over :class:`AuditLog`."""
 
     def __init__(self, *, audit_log: AuditLog) -> None:
-        self._audit = cast("Any", audit_log)
+        self._audit: object = audit_log
 
     async def list_entries(
         self,
@@ -177,7 +177,7 @@ class EventsReadService:
     """Read facade over :class:`EventStreamHub`."""
 
     def __init__(self, *, hub: EventStreamHub) -> None:
-        self._hub = cast("Any", hub)
+        self._hub: object = hub
 
     async def list_events(
         self,
@@ -225,7 +225,7 @@ class IntegrationHealthFacadeService:
     """Read facade over :class:`HealthProberService`."""
 
     def __init__(self, *, prober: HealthProberService) -> None:
-        self._prober = cast("Any", prober)
+        self._prober: object = prober
 
     async def get_all(self) -> Mapping[str, object]:
         """Return the full integration-health snapshot.

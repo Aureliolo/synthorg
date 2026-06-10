@@ -1,7 +1,5 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for the Docker daemon enrichment helper."""
 
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -36,11 +34,11 @@ class TestFetchDockerInfoUnavailablePaths:
 
         real_import = builtins.__import__
 
-        def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        def fake_import(name: str, *args: object, **kwargs: object) -> object:
             if name == "aiodocker":
                 msg = "simulated missing aiodocker"
                 raise ImportError(msg)
-            return real_import(name, *args, **kwargs)
+            return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
 
         monkeypatch.setattr("builtins.__import__", fake_import)
 
@@ -113,7 +111,7 @@ class TestFetchDockerInfoSuccess:
     """Happy-path extraction and the NVIDIA runtime flag."""
 
     @pytest.fixture
-    def mock_daemon(self, monkeypatch: pytest.MonkeyPatch) -> Any:
+    def mock_daemon(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         """Patch socket + aiodocker to return a configurable /info dict."""
         pytest.importorskip("aiodocker")
         import aiodocker

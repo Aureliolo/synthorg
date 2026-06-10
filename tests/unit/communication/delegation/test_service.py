@@ -29,12 +29,8 @@ from synthorg.communication.loop_prevention.guard import (
     DelegationGuard,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.company import (
-    Company,
-    CompanyConfig,
-    Department,
-    Team,
-)
+from synthorg.core.company import Company, CompanyConfig
+from synthorg.core.company_departments import Department, Team
 from synthorg.core.role import Authority
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType

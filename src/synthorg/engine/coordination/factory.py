@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from synthorg.budget.coordination_collector import (
         CoordinationMetricsCollector,
     )
-    from synthorg.config.schema import TaskAssignmentConfig
+    from synthorg.config.agent_schema import TaskAssignmentConfig
     from synthorg.engine.agent_engine import AgentEngine
     from synthorg.engine.shutdown import ShutdownManager
     from synthorg.engine.task_engine import TaskEngine

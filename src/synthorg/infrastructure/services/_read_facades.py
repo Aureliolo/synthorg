@@ -6,10 +6,11 @@ These facades wrap an already-attached AppState primitive (settings,
 provider registry, backup service, auth service) and surface a thin
 capability-checked read/write surface to the MCP handler layer.
 
-Primitives are stored internally as :class:`Any` so the facade can
-introspect capabilities at runtime (``getattr`` + ``callable`` checks)
-without fighting protocol-type narrowing when the primitive is still
-evolving.
+Capability-probed primitives are stored internally as ``object`` so the
+facade can introspect capabilities at runtime (``getattr`` +
+``callable`` checks) without fighting protocol-type narrowing when the
+primitive is still evolving; :class:`BackupFacadeService` calls its
+owner service's methods directly and keeps the concrete type.
 
 The file-level ``EM101`` / ``E501`` suppressions are intentional:
 capability-gap messages are string literals passed straight to
@@ -19,9 +20,11 @@ across multiple.
 """
 
 import json
-from typing import TYPE_CHECKING, Any, cast
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, cast
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.types import NotBlankStr
 from synthorg.infrastructure.services._shared import (
     _require_callable,
     _split_setting_key,
@@ -37,11 +40,12 @@ from synthorg.observability.events.settings import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
+    # Owner-service types stay import-free at runtime so the facades can
+    # be constructed without pulling the full api / providers / backup
+    # service trees into the MCP layer's import graph.
     from synthorg.api.auth.service import AuthService
+    from synthorg.backup.models import BackupComponent, BackupTrigger
     from synthorg.backup.service import BackupService as CoreBackupService
-    from synthorg.core.types import NotBlankStr
     from synthorg.providers.health import ProviderHealthTracker
     from synthorg.providers.management.service import ProviderManagementService
     from synthorg.providers.registry import ProviderRegistry
@@ -54,7 +58,7 @@ class SettingsReadService:
     """Facade over :class:`SettingsService` for MCP."""
 
     def __init__(self, *, settings: SettingsService) -> None:
-        self._settings = cast("Any", settings)
+        self._settings: object = settings
 
     async def list_settings(self) -> Mapping[str, object]:
         """Return a mapping of all resolved settings keyed by ``namespace.key``."""
@@ -136,9 +140,9 @@ class ProviderReadService:
         health: ProviderHealthTracker,
         management: ProviderManagementService,
     ) -> None:
-        self._registry = cast("Any", registry)
-        self._health = cast("Any", health)
-        self._management = cast("Any", management)
+        self._registry: object = registry
+        self._health: object = health
+        self._management: object = management
 
     async def list_providers(self) -> Sequence[object]:
         """Return every registered provider record."""
@@ -203,7 +207,7 @@ class BackupFacadeService:
     """Facade wrapping :class:`BackupService`."""
 
     def __init__(self, *, service: CoreBackupService) -> None:
-        self._service = cast("Any", service)
+        self._service = service
 
     async def list_backups(
         self,
@@ -248,7 +252,10 @@ class BackupFacadeService:
         Returns:
             The backup record created by the underlying backup service.
         """
-        return await self._service.create_backup(trigger=trigger, components=components)
+        return await self._service.create_backup(
+            trigger=cast("BackupTrigger", trigger),
+            components=cast("tuple[BackupComponent, ...] | None", components),
+        )
 
     async def delete_backup(
         self,
@@ -293,7 +300,7 @@ class UserFacadeService:
     """Facade over :class:`AuthService` for user CRUD."""
 
     def __init__(self, *, auth_service: AuthService) -> None:
-        self._auth = cast("Any", auth_service)
+        self._auth: object = auth_service
 
     async def list_users(self) -> Sequence[object]:
         """Return every user record exposed by the auth service."""

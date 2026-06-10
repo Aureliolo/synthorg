@@ -1,6 +1,5 @@
 """Property-based tests for Task model invariants and transitions."""
 
-from typing import Any
 from uuid import UUID
 
 import pytest
@@ -21,7 +20,7 @@ _task_types = st.sampled_from(TaskType)
 _priorities = st.sampled_from(Priority)
 _complexities = st.sampled_from(Complexity)
 
-_TASK_DEFAULTS: dict[str, Any] = {
+_TASK_DEFAULTS: dict[str, object] = {
     "id": as_uuid("task-001"),
     "title": "Test task",
     "description": "A test task",
@@ -35,35 +34,38 @@ _TASK_DEFAULTS: dict[str, Any] = {
 }
 
 
-def _make_task_kwargs(**overrides: Any) -> dict[str, Any]:
-    return {**_TASK_DEFAULTS, **overrides}
-
-
-_roundtrip_st = st.fixed_dictionaries(
-    {
-        "title": _not_blank,
-        "description": _not_blank,
-        "task_type": _task_types,
-        "priority": _priorities,
-        "complexity": _complexities,
-        "budget": st.floats(min_value=0.0, max_value=1000.0, allow_nan=False),
-    }
-)
+def _make_task(**overrides: object) -> Task:
+    return Task.model_validate({**_TASK_DEFAULTS, **overrides})
 
 
 class TestTaskRoundtripProperties:
-    @given(data=_roundtrip_st)
-    def test_model_dump_validate_roundtrip(self, data: dict[str, Any]) -> None:
+    @given(
+        title=_not_blank,
+        description=_not_blank,
+        task_type=_task_types,
+        priority=_priorities,
+        complexity=_complexities,
+        budget=st.floats(min_value=0.0, max_value=1000.0, allow_nan=False),
+    )
+    def test_model_dump_validate_roundtrip(  # noqa: PLR0913 -- one param per drawn strategy
+        self,
+        title: str,
+        description: str,
+        task_type: TaskType,
+        priority: Priority,
+        complexity: Complexity,
+        budget: float,
+    ) -> None:
         task = Task(
             id=as_uuid("task-rt-001"),
-            title=data["title"],
-            description=data["description"],
-            type=data["task_type"],
-            priority=data["priority"],
+            title=title,
+            description=description,
+            type=task_type,
+            priority=priority,
             project="proj-rt",
             created_by="agent-rt",
-            estimated_complexity=data["complexity"],
-            budget_limit=data["budget"],
+            estimated_complexity=complexity,
+            budget_limit=budget,
         )
         dumped = task.model_dump()
         restored = Task.model_validate(dumped)
@@ -74,11 +76,9 @@ class TestSelfDependencyProperties:
     @given(task_id=st.uuids())
     def test_self_dependency_always_rejected(self, task_id: UUID) -> None:
         with pytest.raises(ValidationError, match="cannot depend on itself"):
-            Task(
-                **_make_task_kwargs(
-                    id=task_id,
-                    dependencies=(str(task_id),),
-                ),
+            _make_task(
+                id=task_id,
+                dependencies=(str(task_id),),
             )
 
 
@@ -89,7 +89,7 @@ class TestWithTransitionProperties:
         ),
     )
     def test_valid_transition_from_created(self, target: TaskStatus) -> None:
-        task = Task(**_make_task_kwargs())
+        task = _make_task()
         # CREATED can only go to ASSIGNED, which requires assigned_to.
         # If VALID_TRANSITIONS[CREATED] gains more entries, extend the
         # kwargs mapping below.
@@ -106,12 +106,12 @@ class TestWithTransitionProperties:
         self,
         target: TaskStatus,
     ) -> None:
-        task = Task(**_make_task_kwargs())
+        task = _make_task()
         with pytest.raises(ValueError, match="Invalid task status transition"):
             task.with_transition(target)
 
     def test_valid_transition_chain(self) -> None:
-        task = Task(**_make_task_kwargs())
+        task = _make_task()
         assigned = task.with_transition(
             TaskStatus.ASSIGNED,
             assigned_to="agent-a",
@@ -128,7 +128,7 @@ class TestWithTransitionProperties:
         assert completed.status == TaskStatus.COMPLETED
 
     def test_with_transition_rejects_status_override(self) -> None:
-        task = Task(**_make_task_kwargs())
+        task = _make_task()
         with pytest.raises(ValueError, match="status override is not allowed"):
             task.with_transition(
                 TaskStatus.ASSIGNED,

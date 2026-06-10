@@ -6,13 +6,8 @@ from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
 from synthorg.communication.errors import HierarchyResolutionError
-from synthorg.core.company import (
-    Company,
-    CompanyConfig,
-    Department,
-    ReportingLine,
-    Team,
-)
+from synthorg.core.company import Company, CompanyConfig
+from synthorg.core.company_departments import Department, ReportingLine, Team
 
 
 def _make_company(

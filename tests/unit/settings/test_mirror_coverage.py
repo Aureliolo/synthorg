@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Regression coverage for `_MIRROR_FIELDS` and bridge-default alignment.
 
 Two parametrised gates live in this module:
@@ -23,7 +22,7 @@ import inspect
 import json
 import pkgutil
 import re
-from typing import Any, Final
+from typing import Final
 
 import pytest
 from annotated_types import Ge, Gt, Le, Lt
@@ -41,6 +40,7 @@ from synthorg.settings.mirrors import (
     parse_int,
     parse_str_tuple_json,
 )
+from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 
@@ -89,7 +89,7 @@ _MIRROR_CASES: Final[list[tuple[type[BaseModel], MirrorField]]] = (
 # When a new mirror class is added that cannot be default-constructed,
 # the test fails at construction with a clear error; the fix is to add
 # an entry here with the minimum required non-mirror kwargs.
-_CONSTRUCTION_KWARGS: Final[dict[str, dict[str, Any]]] = {
+_CONSTRUCTION_KWARGS: Final[dict[str, dict[str, object]]] = {
     "RootConfig": {"company_name": "TestCo"},
 }
 
@@ -106,7 +106,7 @@ _ENV_VALUE_OVERRIDES: Final[dict[tuple[str, str], str]] = {
 }
 
 
-def _env_var_name(definition: Any) -> str:
+def _env_var_name(definition: SettingDefinition) -> str:
     """Return the env var name for a registered SettingDefinition."""
     override = getattr(definition, "env_var_override", None)
     if override:
@@ -116,7 +116,7 @@ def _env_var_name(definition: Any) -> str:
     return f"SYNTHORG_{namespace}_{key}"
 
 
-def _registered_default_parsed(definition: Any) -> Any:
+def _registered_default_parsed(definition: SettingDefinition) -> object:
     """Return the registered default parsed to its semantic type."""
     raw = definition.default
     if raw is None:
@@ -154,7 +154,7 @@ def _field_numeric_bounds(field_info: FieldInfo) -> tuple[float, float]:
     return lo, hi
 
 
-def _registry_bounds(definition: Any) -> tuple[float, float]:
+def _registry_bounds(definition: SettingDefinition) -> tuple[float, float]:
     """Return the registered min/max for a numeric setting."""
     lo = float("-inf") if definition.min_value is None else float(definition.min_value)
     hi = float("inf") if definition.max_value is None else float(definition.max_value)
@@ -209,8 +209,8 @@ def _pick_distinct_float(default: float, lo: float, hi: float) -> float:
 
 
 def _pick_distinct_enum(
-    definition: Any,
-    default_value: Any,
+    definition: SettingDefinition,
+    default_value: object,
 ) -> str:
     """Pick an enum value distinct from the registered default."""
     enum_values = getattr(definition, "enum_values", ()) or ()
@@ -227,9 +227,9 @@ def _pick_distinct_enum(
 
 def _choose_env_value(
     mirror: MirrorField,
-    definition: Any,
+    definition: SettingDefinition,
     cls: type[BaseModel],
-    registered_default_parsed: Any,
+    registered_default_parsed: object,
 ) -> str:
     """Pick an env value distinct from the registered default.
 
@@ -249,22 +249,20 @@ def _choose_env_value(
         pyd_lo, pyd_hi = _field_numeric_bounds(field_info)
         lo = max(reg_lo, pyd_lo)
         hi = min(reg_hi, pyd_hi)
-        int_default = (
-            int(registered_default_parsed)
-            if registered_default_parsed is not None
-            else 0
-        )
+        int_default = 0
+        if registered_default_parsed is not None:
+            assert isinstance(registered_default_parsed, int)
+            int_default = registered_default_parsed
         return str(_pick_distinct_int(int_default, lo, hi))
     if parser is parse_float:
         reg_lo, reg_hi = _registry_bounds(definition)
         pyd_lo, pyd_hi = _field_numeric_bounds(field_info)
         lo = max(reg_lo, pyd_lo)
         hi = min(reg_hi, pyd_hi)
-        float_default = (
-            float(registered_default_parsed)
-            if registered_default_parsed is not None
-            else 0.0
-        )
+        float_default = 0.0
+        if registered_default_parsed is not None:
+            assert isinstance(registered_default_parsed, int | float)
+            float_default = float(registered_default_parsed)
         return str(_pick_distinct_float(float_default, lo, hi))
     if parser is parse_str_tuple_json:
         return '["__mirror_alpha__","__mirror_beta__"]'
@@ -287,14 +285,14 @@ def _choose_env_value(
     raise AssertionError(msg)
 
 
-def _expected_value(mirror: MirrorField, env_value: str) -> Any:
+def _expected_value(mirror: MirrorField, env_value: str) -> object:
     """Apply mirror.parse to the env value (identity if no parser)."""
     if mirror.parse is None:
         return env_value
     return mirror.parse(env_value)
 
 
-def _coerce_for_field(field_value: Any, expected: Any) -> Any:
+def _coerce_for_field(field_value: object, expected: object) -> object:
     """Normalise expected value to match Pydantic's post-validator shape.
 
     Tuple fields like `csp_docs_external_origins: tuple[NotBlankStr, ...]`
@@ -309,7 +307,7 @@ def _coerce_for_field(field_value: Any, expected: Any) -> Any:
         # PerOpRateLimitConfig promotes inner list -> tuple in its
         # mode="before" validator; PerOpConcurrencyConfig leaves int
         # values alone. Match the per-key shape from the actual field.
-        coerced: dict[Any, Any] = {}
+        coerced: dict[object, object] = {}
         for k, v in expected.items():
             actual_v = field_value.get(k)
             if isinstance(actual_v, tuple) and isinstance(v, list):
@@ -447,7 +445,10 @@ _BRIDGE_CASES: Final[list[tuple[type[BaseModel], str, str, str, str]]] = (
 )
 
 
-def _coerce_registered_for_bridge(definition: Any, pydantic_default: Any) -> Any:
+def _coerce_registered_for_bridge(
+    definition: SettingDefinition,
+    pydantic_default: object,
+) -> object:
     """Coerce the registered default to match the Pydantic-tier shape.
 
     Mirrors the rules used by `_resolve_bridge_fields`: BOOLEAN -> bool,

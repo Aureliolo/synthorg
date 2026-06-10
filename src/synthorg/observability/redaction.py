@@ -250,7 +250,7 @@ def safe_error_description(exc: BaseException) -> str:
     return candidate[:keep] + _TRUNCATION_MARKER
 
 
-def log_exception_redacted(  # structlog proxy; see docstring
+def log_exception_redacted(  # type: ignore[explicit-any]  # structlog proxy; see docstring
     logger: Any,
     event: str,
     exc: BaseException,

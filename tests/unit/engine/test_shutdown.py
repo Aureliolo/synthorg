@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from synthorg.config.schema import GracefulShutdownConfig
+from synthorg.config.agent_schema import GracefulShutdownConfig
 from synthorg.engine.shutdown import (
     CheckpointSaver,
     CooperativeTimeoutStrategy,

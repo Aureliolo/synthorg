@@ -73,7 +73,7 @@ logger = get_logger(__name__)
 # service bundle -- so the feature can swap its populated state slice in at
 # build time. Typed ``Callable[..., None]`` (like ``ControllerRegistration``'s
 # predicate) so the low-level substrate does not import ``api`` types.
-type ConstructionWirer = Callable[..., None]
+type ConstructionWirer = Callable[..., None]  # type: ignore[explicit-any]
 
 
 class FeatureDependencyError(DomainError):
@@ -236,8 +236,12 @@ class FeatureModule(Protocol):
     def depends_on(self) -> tuple[str, ...]: ...
 
 
-class ControllerRegistration(BaseModel):
+class ControllerRegistration(BaseModel):  # type: ignore[explicit-any]
     """A controller plus the metadata the composition root mounts it with.
+
+    The class-level ``explicit-any`` suppression covers the synthesized
+    ``__init__``, which inherits ``predicate``'s deliberate
+    ``Callable[..., bool]`` (see the field rationale below).
 
     Lets a feature register a controller conditionally and choose its mount
     point. A bare ``type[Controller]`` in a manifest's ``controllers`` tuple
@@ -259,7 +263,7 @@ class ControllerRegistration(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
     controller: type[Controller]
-    predicate: Callable[..., bool] | None = None
+    predicate: Callable[..., bool] | None = None  # type: ignore[explicit-any]
     mount: Literal["api", "root"] = "api"
 
 

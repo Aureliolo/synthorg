@@ -18,7 +18,7 @@ follow-up PR).
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -42,9 +42,11 @@ from synthorg.observability.events.workers import (
     WORKERS_HEARTBEAT_FAILED,
     WORKERS_HEARTBEAT_SENT,
     WORKERS_POOL_STARTED,
+    WORKERS_POOL_STOP_FAILED,
     WORKERS_WORKER_STARTED,
     WORKERS_WORKER_STOPPED,
 )
+from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.workers.claim import (
     JetStreamTaskQueue,
     TaskClaim,
@@ -57,7 +59,10 @@ from synthorg.workers.heartbeat_models import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
+    # nats-py is an optional dependency, so the raw-message type stays
+    # guarded for clean import when it is absent; tests also drive the
+    # worker with duck-typed message fakes.
+    from nats.aio.msg import Msg
 
 logger = get_logger(__name__)
 
@@ -257,7 +262,7 @@ class Worker:
             return
         await self._finalize_claim(raw, status)
 
-    def _is_final_delivery(self, raw: Any) -> bool:
+    def _is_final_delivery(self, raw: Msg) -> bool:
         """Return ``True`` when this is the last allowed delivery.
 
         ``raw.metadata.num_delivered`` is the 1-based delivery count
@@ -270,7 +275,7 @@ class Worker:
         num_delivered = getattr(metadata, "num_delivered", 0)
         return int(num_delivered) >= self._queue_config.max_deliver
 
-    async def _dead_letter(self, claim: TaskClaim, raw: Any) -> None:
+    async def _dead_letter(self, claim: TaskClaim, raw: Msg) -> None:
         """Republish an exhausted claim to the DLQ, then terminal-ack.
 
         Publish-then-ack ordering: if ``publish_dead`` fails the claim
@@ -366,7 +371,7 @@ class Worker:
     async def _execute_claim(
         self,
         claim: TaskClaim,
-        raw: Any,
+        raw: Msg,
     ) -> TaskClaimStatus:
         """Invoke the executor with a concurrent ack-extension loop.
 
@@ -414,7 +419,7 @@ class Worker:
             )
             return TaskClaimStatus.RETRY
 
-    async def _extend_ack_loop(self, raw: Any) -> None:
+    async def _extend_ack_loop(self, raw: Msg) -> None:
         """Working-ack *raw* every ack-extend interval until cancelled.
 
         Sleep-first: the first extension lands one interval in. The
@@ -485,7 +490,7 @@ class Worker:
 
     async def _finalize_claim(
         self,
-        raw: Any,
+        raw: Msg,
         status: TaskClaimStatus,
     ) -> None:
         """Ack or nack the JetStream message based on outcome.
@@ -566,8 +571,18 @@ async def run_worker_pool(  # noqa: PLR0913 -- canonical worker-pool entry point
             for worker in workers:
                 _ = tg.create_task(worker.run())
     finally:
-        with contextlib.suppress(Exception):
-            await asyncio.gather(
-                *(w.stop() for w in workers),
-                return_exceptions=True,
+        # Best-effort drain; surface stop failures instead of swallowing them.
+        # return_exceptions keeps one slow stop from stranding the rest, and a
+        # cancelled gather still propagates (CancelledError is not Exception).
+        results = await asyncio.gather(
+            *(w.stop() for w in workers), return_exceptions=True
+        )
+        failures = [r for r in results if isinstance(r, BaseException)]
+        for failure in failures:
+            reraise_critical(failure)
+        if failures:
+            logger.warning(
+                WORKERS_POOL_STOP_FAILED,
+                failed_count=len(failures),
+                error_types=sorted({type(f).__name__ for f in failures}),
             )

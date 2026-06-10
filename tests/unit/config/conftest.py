@@ -12,14 +12,16 @@ from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.cost_tiers import CostTiersConfig
 from synthorg.budget.quota import DegradationConfig, SubscriptionConfig
 from synthorg.communication.config import CommunicationConfig
-from synthorg.config.schema import (
+from synthorg.config.agent_schema import (
     AgentConfig,
-    ProviderConfig,
-    ProviderModelConfig,
-    RootConfig,
     RoutingConfig,
     RoutingRuleConfig,
     TaskAssignmentConfig,
+)
+from synthorg.config.schema import (
+    ProviderConfig,
+    ProviderModelConfig,
+    RootConfig,
 )
 from synthorg.core.company import CompanyConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig

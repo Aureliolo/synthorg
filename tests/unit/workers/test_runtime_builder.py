@@ -1,9 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the provider-present runtime-services switch."""
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -31,13 +29,13 @@ from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.workers._coordinator_assembly import _build_runtime_coordinator
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
 )
 from synthorg.workers.runtime_builder import (
     RuntimeServices,
-    _build_runtime_coordinator,
     build_runtime_services,
 )
 from tests._shared import FakeClock, make_app_state, mock_of
@@ -304,8 +302,8 @@ class TestBootLogSafetySpineState:
 
     @staticmethod
     def _runtime_services_logs(
-        logs: Sequence[Mapping[str, Any]],
-    ) -> list[Mapping[str, Any]]:
+        logs: Sequence[Mapping[str, object]],
+    ) -> list[Mapping[str, object]]:
         return [
             entry
             for entry in logs

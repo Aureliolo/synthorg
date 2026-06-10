@@ -20,6 +20,10 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 
 if TYPE_CHECKING:
+    # Cycle breaker: hot-path callers across the codebase (including the
+    # communication meeting orchestrator, which sits on the resolver's own
+    # import chain) import this module at runtime, so the resolver is
+    # named for signatures only.
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)

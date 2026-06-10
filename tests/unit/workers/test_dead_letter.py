@@ -7,7 +7,7 @@ proven failed raises loudly rather than acking into silent loss.
 
 import asyncio
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 import pytest
 from typeguard import suppress_type_checks
@@ -25,6 +25,8 @@ from tests._shared.fake_task_queue import FakeJetStreamTaskQueue
 from tests._shared.persistence import make_sqlite_seen_claims
 
 if TYPE_CHECKING:
+    from nats.aio.msg import Msg
+
     from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 
 pytestmark = pytest.mark.unit
@@ -60,10 +62,12 @@ def _fail_handler(outcome: DeadLetterOutcome, *, calls: list[str]) -> TaskFailHa
 
 async def _next_dead(
     queue: FakeJetStreamTaskQueue,
-) -> tuple[TaskClaim, object]:
+) -> tuple[TaskClaim, Msg]:
     pair = await queue.next_dead(timeout=_HARD_CAP_SECONDS)
     assert pair is not None
-    return pair
+    claim, raw = pair
+    # The fake's raw message satisfies the consumer's ``Msg`` surface.
+    return claim, cast("Msg", raw)
 
 
 def _consumer(

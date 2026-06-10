@@ -1,7 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for template inheritance (extends) and merge logic."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 if TYPE_CHECKING:
@@ -39,6 +38,19 @@ from .conftest import (
     CIRCULAR_SELF_YAML,
     DEPT_REMOVE_WITHOUT_EXTENDS_YAML,
 )
+
+
+def _as_dict(value: object) -> dict[str, object]:
+    """Narrow a merged-config value to a dict for typed navigation."""
+    assert isinstance(value, dict)
+    return value
+
+
+def _as_list(value: object) -> list[object]:
+    """Narrow a merged-config value to a list for typed navigation."""
+    assert isinstance(value, list)
+    return value
+
 
 # ── TestMergeAgents ──────────────────────────────────────────────
 
@@ -237,115 +249,118 @@ class TestDepartmentRemoveIntegration:
 class TestMergeTemplateConfigs:
     def test_scalars_child_wins(self) -> None:
         """Child scalars override parent."""
-        parent: dict[str, Any] = {"company_name": "Parent Co"}
-        child: dict[str, Any] = {"company_name": "Child Co"}
-        result: Any = merge_template_configs(parent, child)
+        parent: dict[str, object] = {"company_name": "Parent Co"}
+        child: dict[str, object] = {"company_name": "Child Co"}
+        result = merge_template_configs(parent, child)
         assert result["company_name"] == "Child Co"
 
     def test_scalars_parent_fallback(self) -> None:
         """Parent scalar used when child doesn't provide it."""
-        parent: dict[str, Any] = {
+        parent: dict[str, object] = {
             "company_name": "Parent Co",
             "company_type": "startup",
         }
-        child: dict[str, Any] = {}
-        result: Any = merge_template_configs(parent, child)
+        child: dict[str, object] = {}
+        result = merge_template_configs(parent, child)
         assert result["company_name"] == "Parent Co"
         assert result["company_type"] == "startup"
 
     def test_config_deep_merge(self) -> None:
         """Config dicts are deep-merged."""
-        parent: dict[str, Any] = {
+        parent: dict[str, object] = {
             "config": {
                 "autonomy": {"level": "semi"},
                 "budget_monthly": 100.0,
             },
         }
-        child: dict[str, Any] = {
+        child: dict[str, object] = {
             "config": {"autonomy": {"level": "full"}},
         }
-        result: Any = merge_template_configs(parent, child)
-        assert result["config"]["autonomy"] == {"level": "full"}
-        assert result["config"]["budget_monthly"] == 100.0
+        result = merge_template_configs(parent, child)
+        config = _as_dict(result["config"])
+        assert config["autonomy"] == {"level": "full"}
+        assert config["budget_monthly"] == 100.0
 
     def test_full_merge_integration(self) -> None:
         """Full merge with agents, departments, and config."""
-        parent: dict[str, Any] = {
+        parent: dict[str, object] = {
             "company_name": "Parent",
             "agents": [{"role": "CEO", "department": "exec"}],
             "departments": [{"name": "exec"}],
             "config": {"autonomy": {"level": "semi"}},
         }
-        child: dict[str, Any] = {
+        child: dict[str, object] = {
             "company_name": "Child",
             "agents": [{"role": "Dev", "department": "eng"}],
             "departments": [{"name": "eng"}],
             "config": {"budget_monthly": 200.0},
         }
-        result: Any = merge_template_configs(parent, child)
+        result = merge_template_configs(parent, child)
         assert result["company_name"] == "Child"
-        assert len(result["agents"]) == 2
-        assert len(result["departments"]) == 2
-        assert result["config"]["autonomy"] == {"level": "semi"}
-        assert result["config"]["budget_monthly"] == 200.0
+        assert len(_as_list(result["agents"])) == 2
+        assert len(_as_list(result["departments"])) == 2
+        config = _as_dict(result["config"])
+        assert config["autonomy"] == {"level": "semi"}
+        assert config["budget_monthly"] == 200.0
 
     def test_workflow_handoffs_child_replaces(self) -> None:
         """Child workflow_handoffs replace parent entirely."""
-        parent: dict[str, Any] = {
+        parent: dict[str, object] = {
             "workflow_handoffs": [{"from": "a", "to": "b"}],
         }
-        child: dict[str, Any] = {
+        child: dict[str, object] = {
             "workflow_handoffs": [{"from": "x", "to": "y"}],
         }
-        result: Any = merge_template_configs(parent, child)
-        assert len(result["workflow_handoffs"]) == 1
-        assert result["workflow_handoffs"][0]["from"] == "x"
+        result = merge_template_configs(parent, child)
+        handoffs = _as_list(result["workflow_handoffs"])
+        assert len(handoffs) == 1
+        assert _as_dict(handoffs[0])["from"] == "x"
 
     def test_escalation_paths_parent_fallback(self) -> None:
         """Parent escalation_paths used when child doesn't provide them."""
-        parent: dict[str, Any] = {
+        parent: dict[str, object] = {
             "escalation_paths": [{"from": "eng", "to": "security"}],
         }
-        child: dict[str, Any] = {}
-        result: Any = merge_template_configs(parent, child)
+        child: dict[str, object] = {}
+        result = merge_template_configs(parent, child)
         assert result["escalation_paths"] == [{"from": "eng", "to": "security"}]
 
     def test_none_child_scalar_uses_parent(self) -> None:
         """None child scalar falls back to parent value."""
-        parent: dict[str, Any] = {"company_name": "Parent Co"}
-        child: dict[str, Any] = {"company_name": None}
-        result: Any = merge_template_configs(parent, child)
+        parent: dict[str, object] = {"company_name": "Parent Co"}
+        child: dict[str, object] = {"company_name": None}
+        result = merge_template_configs(parent, child)
         assert result["company_name"] == "Parent Co"
 
     def test_workflow_child_replaces_parent(self) -> None:
         """Child workflow replaces parent workflow entirely."""
-        parent: dict[str, Any] = {
+        parent: dict[str, object] = {
             "workflow": {"type": "kanban", "wip": 3},
         }
-        child: dict[str, Any] = {
+        child: dict[str, object] = {
             "workflow": {"type": "agile_kanban"},
         }
-        result: Any = merge_template_configs(parent, child)
+        result = merge_template_configs(parent, child)
         assert result["workflow"] == {"type": "agile_kanban"}
 
     def test_workflow_inherited_from_parent(self) -> None:
         """Parent workflow inherited when child has no workflow."""
-        parent: dict[str, Any] = {
+        parent: dict[str, object] = {
             "workflow": {"type": "kanban", "wip": 3},
         }
-        child: dict[str, Any] = {}
-        result: Any = merge_template_configs(parent, child)
+        child: dict[str, object] = {}
+        result = merge_template_configs(parent, child)
         assert result["workflow"] == {"type": "kanban", "wip": 3}
 
     def test_workflow_deep_copy_isolation(self) -> None:
         """Inherited workflow is deep-copied from parent."""
-        parent: dict[str, Any] = {
+        parent: dict[str, object] = {
             "workflow": {"type": "kanban", "config": {"wip": 3}},
         }
-        child: dict[str, Any] = {}
-        result: Any = merge_template_configs(parent, child)
-        result["workflow"]["config"]["wip"] = 99
-        assert parent["workflow"]["config"]["wip"] == 3
+        child: dict[str, object] = {}
+        result = merge_template_configs(parent, child)
+        _as_dict(_as_dict(result["workflow"])["config"])["wip"] = 99
+        assert _as_dict(_as_dict(parent["workflow"])["config"])["wip"] == 3
 
 
 # ── TestDeduplicateMergedAgentNames ────────────────────────────
@@ -355,69 +370,71 @@ class TestMergeTemplateConfigs:
 class TestDeduplicateMergedAgentNames:
     def test_empty_agents(self) -> None:
         """No agents key is a no-op."""
-        merged: dict[str, Any] = {}
-        result: Any = deduplicate_merged_agent_names(merged)
+        merged: dict[str, object] = {}
+        result = deduplicate_merged_agent_names(merged)
         assert "agents" not in result
 
     def test_empty_list(self) -> None:
         """Empty agents list is a no-op."""
-        merged: dict[str, Any] = {"agents": []}
-        result: Any = deduplicate_merged_agent_names(merged)
+        merged: dict[str, object] = {"agents": []}
+        result = deduplicate_merged_agent_names(merged)
         assert result["agents"] == []
 
     def test_no_duplicates(self) -> None:
         """Unique names are unchanged."""
-        merged: dict[str, Any] = {
+        merged: dict[str, object] = {
             "agents": [{"name": "Alice"}, {"name": "Bob"}],
         }
-        result: Any = deduplicate_merged_agent_names(merged)
-        names = [a["name"] for a in result["agents"]]
+        result = deduplicate_merged_agent_names(merged)
+        names = [_as_dict(a)["name"] for a in _as_list(result["agents"])]
         assert names == ["Alice", "Bob"]
 
     def test_single_duplicate(self) -> None:
         """Second occurrence gets ' 2' suffix."""
-        merged: dict[str, Any] = {
+        merged: dict[str, object] = {
             "agents": [{"name": "Alice"}, {"name": "Alice"}],
         }
-        result: Any = deduplicate_merged_agent_names(merged)
-        names = [a["name"] for a in result["agents"]]
+        result = deduplicate_merged_agent_names(merged)
+        names = [_as_dict(a)["name"] for a in _as_list(result["agents"])]
         assert names == ["Alice", "Alice 2"]
 
     def test_triple_duplicate(self) -> None:
         """Third occurrence gets ' 3' suffix."""
-        merged: dict[str, Any] = {
+        merged: dict[str, object] = {
             "agents": [{"name": "A"}, {"name": "A"}, {"name": "A"}],
         }
-        result: Any = deduplicate_merged_agent_names(merged)
-        names = [a["name"] for a in result["agents"]]
+        result = deduplicate_merged_agent_names(merged)
+        names = [_as_dict(a)["name"] for a in _as_list(result["agents"])]
         assert names == ["A", "A 2", "A 3"]
 
     def test_empty_names_skipped(self) -> None:
         """Empty-string names are not deduplicated."""
-        merged: dict[str, Any] = {
+        merged: dict[str, object] = {
             "agents": [{"name": ""}, {"name": ""}, {"name": "Alice"}],
         }
-        result: Any = deduplicate_merged_agent_names(merged)
-        names = [a["name"] for a in result["agents"]]
+        result = deduplicate_merged_agent_names(merged)
+        names = [_as_dict(a)["name"] for a in _as_list(result["agents"])]
         assert names == ["", "", "Alice"]
 
     def test_missing_name_key_skipped(self) -> None:
         """Agents without a name key are skipped."""
-        merged: dict[str, Any] = {
+        merged: dict[str, object] = {
             "agents": [{"role": "Dev"}, {"name": "Alice"}],
         }
-        result: Any = deduplicate_merged_agent_names(merged)
-        assert "name" not in result["agents"][0]
-        assert result["agents"][1]["name"] == "Alice"
+        result = deduplicate_merged_agent_names(merged)
+        agents = _as_list(result["agents"])
+        assert "name" not in _as_dict(agents[0])
+        assert _as_dict(agents[1])["name"] == "Alice"
 
     def test_does_not_mutate_input(self) -> None:
         """Original dict is not mutated."""
-        merged: dict[str, Any] = {
+        merged: dict[str, object] = {
             "agents": [{"name": "Alice"}, {"name": "Alice"}],
         }
-        result: Any = deduplicate_merged_agent_names(merged)
+        result = deduplicate_merged_agent_names(merged)
         assert result is not merged
-        assert [a["name"] for a in merged["agents"]] == ["Alice", "Alice"]
+        original_names = [_as_dict(a)["name"] for a in _as_list(merged["agents"])]
+        assert original_names == ["Alice", "Alice"]
 
 
 # ── TestNamelessDepartmentMerge ─────────────────────────────────
@@ -428,7 +445,7 @@ class TestNamelessDepartmentMerge:
     def test_parent_nameless_dept_passes_through(self) -> None:
         """Parent department with empty name passes through."""
         parent = [{"name": ""}, {"name": "engineering"}]
-        child: list[dict[str, Any]] = []
+        child: list[dict[str, object]] = []
         result = _merge_departments(parent, child)
         assert len(result) == 2
         assert result[0]["name"] == ""

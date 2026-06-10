@@ -13,13 +13,17 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 _DEFAULT_LIMIT: Final[int] = 100
 
 
-def _require_callable(
-    target: Any,
+def _require_callable(  # type: ignore[explicit-any]  # dynamic capability probe
+    target: object,
     method_name: str,
     capability: str,
     detail: str,
 ) -> Any:
     """Return a callable attribute or raise ``CapabilityNotSupportedError``.
+
+    The probed method's call signature and return shape are
+    target-specific, so ``Any`` is the honest type for the result of
+    this dynamic lookup; callers immediately call or await it.
 
     Raises:
         CapabilityNotSupportedError: When ``method_name`` is absent or not

@@ -6,8 +6,6 @@ a bug in the collector accidentally includes sensitive data, the
 scrubber blocks it.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.observability import get_logger
 from synthorg.observability.events.telemetry import (
     TELEMETRY_PRIVACY_VIOLATION,
@@ -23,9 +21,7 @@ from synthorg.telemetry.property_rules import (
     TelemetryPropertyError,
     validate_event_properties,
 )
-
-if TYPE_CHECKING:
-    from synthorg.telemetry.protocol import TelemetryEvent
+from synthorg.telemetry.protocol import TelemetryEvent
 
 logger = get_logger(__name__)
 

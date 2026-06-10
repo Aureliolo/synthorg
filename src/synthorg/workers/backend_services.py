@@ -18,14 +18,18 @@ connected). Stop order is reversed and best-effort so one slow
 component cannot strand the others.
 """
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
+    WORKERS_BACKEND_BUNDLE_START_FAILED,
     WORKERS_BACKEND_BUNDLE_STARTED,
     WORKERS_BACKEND_BUNDLE_STOP_FAILED,
 )
+from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
+from synthorg.workers.config import QueueConfig
 from synthorg.workers.dead_letter import (
     DeadLetterConsumer,
     make_engine_task_fail_handler,
@@ -34,10 +38,14 @@ from synthorg.workers.heartbeat_subscriber import WorkerHeartbeatSubscriber
 from synthorg.workers.seen_claims_pruner import SeenClaimsPruner
 
 if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
-    from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
+    # TaskEngine is named for signatures only: the engine package must
+    # not load when the distributed path is unused, and tests inject
+    # duck-typed engine fakes.
+    from synthorg.engine.task_engine import TaskEngine
+
+    # Concrete-faked collaborator: tests inject duck-typed queue stubs,
+    # so a runtime import would make typeguard reject the fakes.
     from synthorg.workers.claim import JetStreamTaskQueue
-    from synthorg.workers.config import QueueConfig
 
 logger = get_logger(__name__)
 
@@ -93,11 +101,23 @@ class DistributedBackendServices:
         stopped before the error propagates.
         """
         started: list[tuple[str, _LifecycleComponent]] = []
+        failed_component = "<unknown>"
         try:
             for name, component in self._start_order:
+                failed_component = name
                 await component.start()
                 started.append((name, component))
-        except Exception:
+        except Exception as exc:
+            # Critical errors skip the rollback: stopping components is
+            # async teardown work that may allocate, and must not run
+            # under catastrophic interpreter state.
+            reraise_critical(exc)
+            logger.error(
+                WORKERS_BACKEND_BUNDLE_START_FAILED,
+                component=failed_component,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             for _name, component in reversed(started):
                 try:
                     await component.stop()
@@ -130,7 +150,7 @@ class DistributedBackendServices:
 def build_distributed_backend_services(
     *,
     task_queue: JetStreamTaskQueue,
-    engine: Any,
+    engine: TaskEngine,
     queue_config: QueueConfig,
     seen_claims: SeenClaimsRepository,
     clock: Clock | None = None,

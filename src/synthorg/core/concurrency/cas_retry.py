@@ -16,14 +16,12 @@ mutation method without each one carrying its own
 ``for attempt in range(_MAX_CAS_ATTEMPTS)`` block.
 """
 
-from typing import TYPE_CHECKING, Final, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Final, TypeVar
 
 from synthorg.core.domain_errors import VersionConflictError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_CONCURRENCY_CONFLICT
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
 logger = get_logger(__name__)
 

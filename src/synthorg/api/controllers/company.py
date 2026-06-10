@@ -25,7 +25,7 @@ from synthorg.api.guards import (
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
-from synthorg.core.company import Department
+from synthorg.core.company_departments import Department
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.settings.state import config_resolver_of

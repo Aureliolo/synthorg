@@ -27,6 +27,7 @@ from synthorg.docs_engine.constants import (
     DOCS_WORKSPACE_SUBDIR,
 )
 from synthorg.docs_engine.errors import DocCommitError
+from synthorg.docs_engine.models import LivingDocument
 from synthorg.docs_engine.serializer import serialize_doc
 from synthorg.engine.workspace._git_subprocess import run_git_subprocess
 from synthorg.observability import get_logger, safe_error_description
@@ -37,7 +38,6 @@ from synthorg.observability.events.docs import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.docs_engine.models import LivingDocument
     from synthorg.engine.workspace.git_backend import GitBackend
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,

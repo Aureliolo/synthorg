@@ -3,7 +3,7 @@
 import copy
 from collections import Counter
 from datetime import datetime
-from typing import Any, Self
+from typing import Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -179,7 +179,7 @@ class Task(BaseModel):
         default=None,
         description=("Per-task middleware chain override (None = use company default)"),
     )
-    metadata: dict[str, Any] = Field(
+    metadata: dict[str, object] = Field(
         default_factory=dict,
         description="Arbitrary key-value metadata for pipeline tracking and labels",
     )
@@ -324,7 +324,7 @@ class Task(BaseModel):
             raise ValueError(msg)
         return self
 
-    def with_transition(self, target: TaskStatus, **overrides: Any) -> Task:
+    def with_transition(self, target: TaskStatus, **overrides: object) -> Task:
         """Create a new Task with a validated status transition.
 
         Calls :func:`~synthorg.core.task_transitions.validate_transition`

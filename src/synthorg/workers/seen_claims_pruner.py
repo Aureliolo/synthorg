@@ -12,7 +12,7 @@ fail-open so a transient DB error never wedges the loop.
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.persistence_errors import QueryError
@@ -23,9 +23,7 @@ from synthorg.observability.events.workers import (
     WORKERS_SEEN_CLAIMS_PRUNER_STARTED,
     WORKERS_SEEN_CLAIMS_PRUNER_STOPPED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
+from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 
 logger = get_logger(__name__)
 
@@ -83,17 +81,24 @@ class SeenClaimsPruner:
             )
 
     async def stop(self) -> None:
-        """Stop the prune loop and await its exit. Idempotent."""
+        """Stop the prune loop and await its exit. Idempotent.
+
+        The lifecycle lock is held across the cancellation await so a
+        concurrent ``start()`` waits for the stop to finish rather than
+        observing the transient ``_running is True`` and raising a
+        misleading "already running". This cannot deadlock: only
+        ``start()`` / ``stop()`` acquire this lock and the loop never
+        re-enters it.
+        """
         async with self._lifecycle_lock:
             if not self._running:
                 return
             self._stop_event.set()
             task = self._task
-        if task is not None:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-        async with self._lifecycle_lock:
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
             self._running = False
             self._task = None
             logger.info(WORKERS_SEEN_CLAIMS_PRUNER_STOPPED)

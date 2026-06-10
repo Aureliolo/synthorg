@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.config.schema import TaskAssignmentConfig
+from synthorg.config.agent_schema import TaskAssignmentConfig
 from synthorg.engine.coordination.factory import (
     _NoProviderDecompositionStrategy,
     build_coordinator,

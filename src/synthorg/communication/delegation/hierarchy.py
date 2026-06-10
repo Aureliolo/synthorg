@@ -1,14 +1,21 @@
 """Hierarchy resolver for organizational structure."""
 
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 from synthorg.communication.errors import HierarchyResolutionError
-from synthorg.core.company import Company
 from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
     DELEGATION_HIERARCHY_BUILT,
     DELEGATION_HIERARCHY_CYCLE,
 )
+
+if TYPE_CHECKING:
+    # Cycle breaker: ``core.company`` reaches up into the security hub
+    # for ``CompanyConfig.autonomy``, and that hub's eager init chain
+    # re-enters this package; ``Company`` is named here for signatures
+    # only, so a first-touch import of ``core.company`` does not loop.
+    from synthorg.core.company import Company
 
 logger = get_logger(__name__)
 

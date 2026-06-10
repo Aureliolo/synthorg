@@ -5,7 +5,7 @@ Defines frozen Pydantic config models for each pluggable axis
 with safe defaults matching the issue specification.
 """
 
-from typing import ClassVar, Literal, Self, cast
+from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -277,4 +277,4 @@ class EvolutionConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: object) -> object:
-        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)

@@ -9,16 +9,12 @@ to that seam, running each setup command inside the same sandbox the
 agent's tools use.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from pathlib import Path
 
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.environment.protocol import CommandOutcome
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from pathlib import Path
-
-    from synthorg.core.types import NotBlankStr
-    from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.sandbox.protocol import SandboxBackend
 
 
 class SandboxEnvironmentRunner:

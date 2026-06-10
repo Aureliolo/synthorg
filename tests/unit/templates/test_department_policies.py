@@ -3,7 +3,7 @@
 import pytest
 
 from synthorg.config.schema import RootConfig
-from synthorg.core.company import ApprovalChain, Department
+from synthorg.core.company_departments import ApprovalChain, Department
 from synthorg.templates.loader import load_template
 from synthorg.templates.renderer import render_template
 

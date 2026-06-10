@@ -4,12 +4,10 @@ Defines the structural interface that each backup component
 handler must satisfy.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from pathlib import Path
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
-    from synthorg.backup.models import BackupComponent
+from synthorg.backup.models import BackupComponent
 
 
 @runtime_checkable

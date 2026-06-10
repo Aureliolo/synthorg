@@ -20,7 +20,7 @@ import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -40,11 +40,20 @@ from synthorg.observability.events.workers import (
     WORKERS_DEAD_LETTER_FAILED,
     WORKERS_DEAD_LETTER_TRANSITIONED,
 )
+from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim
 from synthorg.workers.config import QueueConfig
 
 if TYPE_CHECKING:
-    from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
+    # nats-py is an optional dependency, so the raw-message type stays
+    # guarded for clean import when it is absent; tests also drive the
+    # consumer with duck-typed message fakes.
+    from nats.aio.msg import Msg
+
+    # TaskEngine is named for signatures only: this module must stay
+    # importable without the engine package, and tests inject
+    # duck-typed engine fakes.
+    from synthorg.engine.task_engine import TaskEngine
 
 logger = get_logger(__name__)
 
@@ -78,7 +87,7 @@ tests inject a fake.
 """
 
 
-def make_engine_task_fail_handler(engine: Any) -> TaskFailHandler:
+def make_engine_task_fail_handler(engine: TaskEngine) -> TaskFailHandler:
     """Build a :data:`TaskFailHandler` backed by a ``TaskEngine``.
 
     Maps engine exceptions onto :class:`DeadLetterOutcome` so the
@@ -184,17 +193,24 @@ class DeadLetterConsumer:
             logger.info(WORKERS_DEAD_LETTER_CONSUMER_STARTED)
 
     async def stop(self) -> None:
-        """Stop the consume loop and await its exit. Idempotent."""
+        """Stop the consume loop and await its exit. Idempotent.
+
+        The lifecycle lock is held across the cancellation await so a
+        concurrent ``start()`` waits for the stop to finish rather than
+        observing the transient ``_running is True`` and raising a
+        misleading "already running". This cannot deadlock: only
+        ``start()`` / ``stop()`` acquire this lock and the loop never
+        re-enters it.
+        """
         async with self._lifecycle_lock:
             if not self._running:
                 return
             self._stop_event.set()
             task = self._task
-        if task is not None:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-        async with self._lifecycle_lock:
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
             self._running = False
             self._task = None
             logger.info(WORKERS_DEAD_LETTER_CONSUMER_STOPPED)
@@ -222,7 +238,7 @@ class DeadLetterConsumer:
                 )
                 continue
 
-    async def _handle(self, claim: TaskClaim, raw: Any) -> None:
+    async def _handle(self, claim: TaskClaim, raw: Msg) -> None:
         """Drive one dead claim to FAILED, idempotently.
 
         Raises:
@@ -265,7 +281,7 @@ class DeadLetterConsumer:
         await self._mark_handled(claim)
         await JetStreamTaskQueue.ack(raw)
 
-    async def _handle_retryable(self, claim: TaskClaim, raw: Any) -> None:
+    async def _handle_retryable(self, claim: TaskClaim, raw: Msg) -> None:
         """Nack a retryable dead claim, or fail loudly when exhausted.
 
         If the engine is transiently unavailable, redeliver. If the

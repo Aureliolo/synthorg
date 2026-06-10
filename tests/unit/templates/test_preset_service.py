@@ -1,7 +1,6 @@
 """Tests for PersonalityPresetService."""
 
 import json
-from typing import Any
 
 import pytest
 from pydantic import JsonValue
@@ -257,11 +256,15 @@ class TestDelete:
 @pytest.mark.unit
 class TestGetSchema:
     def test_returns_json_schema(self) -> None:
-        schema: Any = PersonalityPresetService.get_schema()
+        schema = PersonalityPresetService.get_schema()
         assert "properties" in schema
-        assert "openness" in schema["properties"]
-        assert "traits" in schema["properties"]
-        assert schema["properties"]["openness"]["type"] == "number"
+        properties = schema["properties"]
+        assert isinstance(properties, dict)
+        assert "openness" in properties
+        assert "traits" in properties
+        openness = properties["openness"]
+        assert isinstance(openness, dict)
+        assert openness["type"] == "number"
 
 
 @pytest.mark.unit

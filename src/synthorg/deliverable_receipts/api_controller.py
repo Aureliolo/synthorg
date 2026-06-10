@@ -7,8 +7,6 @@ receipt itself is built in-process on deliverable completion; this
 controller only reads and validates.
 """
 
-from typing import TYPE_CHECKING
-
 from litestar import Controller, Response, get
 from litestar.datastructures import State
 
@@ -21,11 +19,9 @@ from synthorg.deliverable_receipts.models import (
     DeliverableReceipt,
     ReceiptValidationResult,
 )
+from synthorg.deliverable_receipts.service import DeliverableReceiptService
 from synthorg.deliverable_receipts.state_slice import deliverable_receipt_service_of
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.deliverable_receipts.service import DeliverableReceiptService
 
 logger = get_logger(__name__)
 

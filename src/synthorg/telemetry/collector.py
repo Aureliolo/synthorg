@@ -30,7 +30,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
@@ -51,7 +50,11 @@ from synthorg.observability.events.telemetry import (
     TELEMETRY_SHUTDOWN_WITHOUT_START,
     TELEMETRY_TOKEN_MISSING,
 )
-from synthorg.telemetry.config import DEFAULT_ENVIRONMENT, MAX_STRING_LENGTH
+from synthorg.telemetry.config import (
+    DEFAULT_ENVIRONMENT,
+    MAX_STRING_LENGTH,
+    TelemetryConfig,
+)
 from synthorg.telemetry.host_info import DockerHostInfo, fetch_docker_info
 from synthorg.telemetry.privacy import PrivacyScrubber, PrivacyViolationError
 from synthorg.telemetry.protocol import TelemetryEvent, TelemetryReporter
@@ -208,9 +211,6 @@ def _resolve_environment(
         return stripped_config[:MAX_STRING_LENGTH]
     return DEFAULT_ENVIRONMENT
 
-
-if TYPE_CHECKING:
-    from synthorg.telemetry.config import TelemetryConfig
 
 logger = get_logger(__name__)
 
@@ -577,6 +577,7 @@ class TelemetryCollector:
                     try:
                         params = self._session_summary_snapshot_provider()
                     except Exception as exc:
+                        reraise_critical(exc)
                         logger.warning(
                             TELEMETRY_REPORT_FAILED,
                             detail="session_summary_snapshot_failed",
@@ -586,6 +587,7 @@ class TelemetryCollector:
                 try:
                     await self.send_session_summary(params)
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         TELEMETRY_REPORT_FAILED,
                         detail="send_session_summary_failed",
@@ -595,6 +597,7 @@ class TelemetryCollector:
                 try:
                     await self._send_shutdown_event()
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         TELEMETRY_REPORT_FAILED,
                         detail="send_shutdown_event_failed",
@@ -604,6 +607,7 @@ class TelemetryCollector:
             try:
                 await self._reporter.shutdown()
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     TELEMETRY_REPORT_FAILED,
                     detail="reporter_shutdown_failed",
@@ -746,6 +750,7 @@ class TelemetryCollector:
         try:
             await self._reporter.report(event)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 event_type=event.event_type,
@@ -786,6 +791,7 @@ class TelemetryCollector:
         try:
             docker_info: DockerHostInfo = await fetch_docker_info()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 detail="docker_info_fetch_unexpected_exception",
@@ -837,9 +843,11 @@ class TelemetryCollector:
                     else None
                 )
                 await self.send_heartbeat(params)
-            except asyncio.CancelledError:
-                raise
             except Exception as exc:
+                # CancelledError is a BaseException, so this broad clause
+                # never catches it: cancellation propagates out of the
+                # loop unaided for graceful shutdown.
+                reraise_critical(exc)
                 logger.warning(
                     TELEMETRY_REPORT_FAILED,
                     detail="heartbeat_loop",

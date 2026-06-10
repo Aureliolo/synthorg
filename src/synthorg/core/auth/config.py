@@ -1,6 +1,6 @@
 """Authentication configuration."""
 
-from typing import Any, ClassVar, Final, Literal, Self
+from typing import ClassVar, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -218,7 +218,7 @@ class AuthConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
+    def _apply_mirrors(cls, data: object) -> object:
         """Populate unset mirror fields from the settings registry.
 
         Returns:

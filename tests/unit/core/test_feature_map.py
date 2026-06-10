@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.feature_map import FeatureIndex, FeatureMap
+from synthorg.core.feature_map import FeatureIndex, FeatureMap, protocol_exports
 
 pytestmark = pytest.mark.unit
 
@@ -151,3 +151,50 @@ class TestFeatureIndex:
         original = _minimal_index()
         restored = FeatureIndex.model_validate_json(original.model_dump_json())
         assert restored == original
+
+
+class TestProtocolExportsProbe:
+    """``protocol_exports`` is best-effort ONLY for import-shape failures.
+
+    A missing package or a package without the probed attributes returns
+    the empty tuple (missing optional deps must not block the index
+    build), but any other failure during the probe propagates: it is a
+    real defect in the feature package, not an absent dependency.
+    """
+
+    def test_missing_package_returns_empty(self) -> None:
+        assert protocol_exports("src/synthorg/nonexistent_feature_pkg") == ()
+
+    def test_attribute_error_returns_empty(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def _boom(_name: str) -> object:
+            msg = "module attribute access failed"
+            raise AttributeError(msg)
+
+        monkeypatch.setattr("synthorg.core.feature_map.importlib.import_module", _boom)
+        assert protocol_exports("src/synthorg/core") == ()
+
+    def test_unexpected_error_propagates(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def _boom(_name: str) -> object:
+            msg = "feature package bug at import time"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr("synthorg.core.feature_map.importlib.import_module", _boom)
+        with pytest.raises(RuntimeError, match="feature package bug"):
+            protocol_exports("src/synthorg/core")
+
+    def test_memory_error_propagates(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def _boom(_name: str) -> object:
+            raise MemoryError
+
+        monkeypatch.setattr("synthorg.core.feature_map.importlib.import_module", _boom)
+        with pytest.raises(MemoryError):
+            protocol_exports("src/synthorg/core")

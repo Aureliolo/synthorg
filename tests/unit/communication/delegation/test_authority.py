@@ -12,12 +12,8 @@ from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.company import (
-    Company,
-    CompanyConfig,
-    Department,
-    Team,
-)
+from synthorg.core.company import Company, CompanyConfig
+from synthorg.core.company_departments import Department, Team
 from synthorg.core.role import Authority
 from synthorg.hr.seniority import SeniorityLevel
 

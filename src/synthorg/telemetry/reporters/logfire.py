@@ -13,18 +13,16 @@ just accepts whatever token its caller passes.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.telemetry import (
     TELEMETRY_REPORT_FAILED,
     TELEMETRY_REPORTER_INITIALIZED,
 )
 from synthorg.telemetry.config import DEFAULT_ENVIRONMENT
+from synthorg.telemetry.protocol import TelemetryEvent
 from synthorg.telemetry.reporters.errors import LogfireConfigureError
-
-if TYPE_CHECKING:
-    from synthorg.telemetry.protocol import TelemetryEvent
 
 logger = get_logger(__name__)
 
@@ -165,6 +163,7 @@ class LogfireReporter:
         try:
             await asyncio.to_thread(self._logfire.force_flush)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 detail="flush",
@@ -177,6 +176,7 @@ class LogfireReporter:
         try:
             await asyncio.to_thread(self._logfire.shutdown)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 detail="shutdown",

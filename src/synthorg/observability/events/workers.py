@@ -12,6 +12,7 @@ from typing import Final
 WORKERS_WORKER_STARTED: Final[str] = "workers.worker.started"
 WORKERS_WORKER_STOPPED: Final[str] = "workers.worker.stopped"
 WORKERS_POOL_STARTED: Final[str] = "workers.pool.started"
+WORKERS_POOL_STOP_FAILED: Final[str] = "workers.pool.stop_failed"
 
 # Claim execution
 WORKERS_CLAIM_RECEIVED: Final[str] = "workers.worker.claim_received"
@@ -57,6 +58,7 @@ WORKERS_SEEN_CLAIMS_PRUNE_FAILED: Final[str] = "workers.seen_claims_pruner.prune
 
 # Backend distributed-path service bundle
 WORKERS_BACKEND_BUNDLE_STARTED: Final[str] = "workers.backend_bundle.started"
+WORKERS_BACKEND_BUNDLE_START_FAILED: Final[str] = "workers.backend_bundle.start_failed"
 WORKERS_BACKEND_BUNDLE_STOP_FAILED: Final[str] = "workers.backend_bundle.stop_failed"
 
 # Heartbeat liveness subscriber (backend-side)

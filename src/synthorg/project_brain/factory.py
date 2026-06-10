@@ -13,6 +13,10 @@ factory), so this factory returns only the service and the tool factory.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
 from synthorg.project_brain.chunker import BrainChunker
 from synthorg.project_brain.indexer import BrainIndexer
 from synthorg.project_brain.replay import reindex_unindexed
@@ -21,14 +25,10 @@ from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 from synthorg.project_brain.writer import BrainWriter
 
 if TYPE_CHECKING:
-    from synthorg.core.clock import Clock
-    from synthorg.core.types import NotBlankStr
     from synthorg.engine.workspace.git_backend.protocol import GitBackend
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,
     )
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
 
 
 class ProjectBrainRuntime:

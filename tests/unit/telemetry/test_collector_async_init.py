@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Async-init contract for ``TelemetryCollector``.
 
 Pins the resource-hygiene rule that the collector's ``__init__``
@@ -13,9 +12,8 @@ through ``Path.read_text`` or ``codecs.open``.
 import asyncio
 import os
 import threading
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Protocol
 from unittest.mock import patch
 
 import pytest
@@ -28,6 +26,12 @@ from synthorg.observability.events.telemetry import (
 )
 from synthorg.telemetry.collector import TelemetryCollector
 from synthorg.telemetry.config import TelemetryBackend, TelemetryConfig
+
+
+class _ToThreadFunc(Protocol):
+    """Shape of the sync helpers the collector offloads via ``to_thread``."""
+
+    def __call__(self, *args: object, **kwargs: object) -> object: ...
 
 
 @pytest.fixture(autouse=True)
@@ -135,10 +139,10 @@ class TestStartLoadsDeploymentIdAsynchronously:
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
 
         original_to_thread = asyncio.to_thread
-        seen_callables: list[Callable[..., Any]] = []
+        seen_callables: list[_ToThreadFunc] = []
 
         async def spy_to_thread(
-            func: Callable[..., Any], *args: object, **kwargs: object
+            func: _ToThreadFunc, *args: object, **kwargs: object
         ) -> object:
             seen_callables.append(func)
             return await original_to_thread(func, *args, **kwargs)
@@ -188,8 +192,8 @@ class TestStartLoadsDeploymentIdAsynchronously:
         original_to_thread = asyncio.to_thread
 
         def instrumented_helper(
-            inner: Callable[..., Any], *args: object, **kwargs: object
-        ) -> Any:
+            inner: _ToThreadFunc, *args: object, **kwargs: object
+        ) -> object:
             events.append("slow_func_start")
             # Ask the loop (running on a different thread) to fire
             # the heartbeat callback NOW. Waiting on the threading
@@ -206,7 +210,7 @@ class TestStartLoadsDeploymentIdAsynchronously:
                 events.append("slow_func_end")
 
         async def slow_to_thread(
-            func: Callable[..., Any], *args: Any, **kwargs: Any
+            func: _ToThreadFunc, *args: object, **kwargs: object
         ) -> object:
             return await original_to_thread(instrumented_helper, func, *args, **kwargs)
 
@@ -419,7 +423,7 @@ class TestStartIdempotenceAndSideEffects:
             call_count = 0
 
             async def counting_to_thread(
-                func: Callable[..., Any], *args: Any, **kwargs: Any
+                func: _ToThreadFunc, *args: object, **kwargs: object
             ) -> object:
                 nonlocal call_count
                 call_count += 1

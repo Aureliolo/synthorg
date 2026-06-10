@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit coverage for :class:`TaskExecutionExecutor`.
 
 The executor turns each :class:`TaskClaim` into a typed HTTP POST
@@ -8,8 +7,6 @@ docstring: every HTTP shape lands on exactly one
 :class:`TaskClaimStatus` so worker ack/nack behaviour is predictable
 from logs alone.
 """
-
-from typing import Any
 
 import httpx
 import pytest
@@ -158,7 +155,7 @@ async def test_timeout_returns_retry() -> None:
 
 
 async def test_bearer_token_header_sent() -> None:
-    captured: dict[str, Any] = {}
+    captured: dict[str, str | None] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["auth"] = request.headers.get("authorization")

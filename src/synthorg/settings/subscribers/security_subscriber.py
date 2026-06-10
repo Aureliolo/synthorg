@@ -5,7 +5,7 @@ the ``ProviderDiscoveryPolicy`` when it changes.
 """
 
 import json
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -13,11 +13,7 @@ from synthorg.observability.events.security import (
     SECURITY_ALLOWLIST_UPDATE_FAILED,
     SECURITY_ALLOWLIST_UPDATED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from synthorg.settings.service import SettingsService
+from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 

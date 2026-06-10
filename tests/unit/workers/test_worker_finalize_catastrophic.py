@@ -7,12 +7,17 @@ escape that handler entirely so they propagate without log-handler work
 (which may itself allocate or recurse) running first.
 """
 
+from typing import TYPE_CHECKING, cast
+
 import pytest
 
 from synthorg.communication.config import NatsConfig
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim, TaskClaimStatus
 from synthorg.workers.config import QueueConfig
 from synthorg.workers.worker import Worker
+
+if TYPE_CHECKING:
+    from nats.aio.msg import Msg
 
 
 async def _noop_executor(claim: TaskClaim) -> TaskClaimStatus:
@@ -61,7 +66,7 @@ class TestFinalizeClaimCatastrophicErrors:
         worker = _make_worker()
         with pytest.raises(exc_cls):
             await worker._finalize_claim(
-                _RaisingRaw(exc=exc_cls),
+                cast("Msg", _RaisingRaw(exc=exc_cls)),
                 TaskClaimStatus.SUCCESS,
             )
 
@@ -74,7 +79,7 @@ class TestFinalizeClaimCatastrophicErrors:
         worker = _make_worker()
         with pytest.raises(exc_cls):
             await worker._finalize_claim(
-                _RaisingRaw(exc=exc_cls),
+                cast("Msg", _RaisingRaw(exc=exc_cls)),
                 TaskClaimStatus.RETRY,
             )
 
@@ -94,6 +99,6 @@ class TestFinalizeClaimCatastrophicErrors:
 
         with pytest.raises(RuntimeError, match="transient ack failure"):
             await worker._finalize_claim(
-                _RuntimeRaisingRaw(),
+                cast("Msg", _RuntimeRaisingRaw()),
                 TaskClaimStatus.SUCCESS,
             )
