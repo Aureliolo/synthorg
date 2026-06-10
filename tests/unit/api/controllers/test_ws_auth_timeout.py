@@ -1,8 +1,8 @@
 """Tests for the ``ws_auth_timeout_seconds`` kill-switch wiring.
 
 The WebSocket first-message auth handler reads the timeout from
-``app_state.ws_auth_timeout_seconds``, which is baked in at startup
-by ``_apply_bridge_config`` from the ``api.ws_auth_timeout_seconds``
+``app_state.ws_auth_limits.auth_timeout_seconds``, which is baked in at
+startup by ``_apply_bridge_config`` from the ``api.ws_auth_timeout_seconds``
 setting.  Flipping the value on ``app_state`` must change the
 effective timeout the handler passes to ``asyncio.wait_for``.
 
@@ -48,7 +48,9 @@ class _NeverResolvingSocket:
         # must be subscriptable.
         state: dict[str, Any] = {
             "app_state": SimpleNamespace(
-                ws_auth_timeout_seconds=ws_auth_timeout_seconds,
+                ws_auth_limits=SimpleNamespace(
+                    auth_timeout_seconds=ws_auth_timeout_seconds,
+                ),
             ),
         }
         self.app = SimpleNamespace(state=state)
@@ -102,7 +104,7 @@ class TestWsAuthTimeoutKillSwitch:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Handler passes ``app_state.ws_auth_timeout_seconds`` to ``wait_for``."""
+        """Handler passes ``ws_auth_limits.auth_timeout_seconds`` to ``wait_for``."""
         socket = _NeverResolvingSocket(ws_auth_timeout_seconds=100.0)
         seen: dict[str, float] = {}
 
@@ -131,14 +133,14 @@ class TestWsAuthTimeoutKillSwitch:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Mutating ``app_state.ws_auth_timeout_seconds`` before entry takes effect.
+        """Mutating ``ws_auth_limits.auth_timeout_seconds`` before entry takes effect.
 
         Confirms the handler does not cache the timeout behind its own
         module constant -- the in-flight value on ``app_state`` is the
         value actually passed to ``wait_for`` at entry.
         """
         socket = _NeverResolvingSocket(ws_auth_timeout_seconds=10.0)
-        socket.app.state["app_state"].ws_auth_timeout_seconds = 42.0
+        socket.app.state["app_state"].ws_auth_limits.auth_timeout_seconds = 42.0
         seen: dict[str, float] = {}
 
         async def _fake_wait_for(awaitable: Any, timeout: float) -> str:  # noqa: ASYNC109 -- signature mirrors asyncio.wait_for

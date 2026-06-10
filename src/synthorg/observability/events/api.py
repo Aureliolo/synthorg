@@ -246,6 +246,7 @@ API_BRIDGE_CONFIG_RESOLVE_FAILED: Final[str] = "api.bridge_config.resolve_failed
 REQUEST_LOCK_RELEASE_SKIPPED_WHILE_HELD: Final[str] = (
     "api.request_lock.release_skipped_while_held"
 )
+REQUEST_LOCK_EVICTED_AT_CAP: Final[str] = "api.request_lock.evicted_at_cap"
 
 # Shutdown
 API_APP_SHUTDOWN_TIMEOUT: Final[str] = "api.app.shutdown.timeout"

@@ -75,8 +75,9 @@ def _make_app_state(  # noqa: PLR0913
     app_state = make_app_state(persistence=persistence, session_store=session_store)
     # Revalidation failure tolerance is resolved from these AppState
     # primitives (shared with the WS loop), not config_resolver.
-    app_state._auth_revalidate_window_seconds = auth_revalidate_window_seconds
-    app_state._auth_revalidate_max_failures = auth_revalidate_max_failures
+    ws_limits = app_state.ws_auth_limits
+    ws_limits.set_auth_revalidate_window_seconds(auth_revalidate_window_seconds)
+    ws_limits.set_auth_revalidate_max_failures(auth_revalidate_max_failures)
     return app_state
 
 

@@ -1020,14 +1020,14 @@ class TestOAuthController:
         from synthorg.api.state import AppState
 
         app_state_stub = MagicMock(spec=AppState)
-        # ``MagicMock(spec=AppState)`` would otherwise satisfy the
-        # ``has_per_op_rate_limit_config`` getattr probe and pass back
-        # another MagicMock as the live config; unpacking
+        # ``MagicMock(spec=AppState)`` would otherwise hand the per-op
+        # rate-limit guard a live-looking ``per_op_limits`` owner whose
+        # ``rate_limit_config`` is another MagicMock; unpacking
         # ``mock.overrides.get(...)`` into ``(limit_max, limit_window)``
-        # then explodes with "expected 2, got 0". Force the rate-limit
-        # guard down its Litestar-state-dict fallback path so it picks
-        # up the real config installed below.
-        app_state_stub.has_per_op_rate_limit_config = False
+        # then explodes with "expected 2, got 0". Force the guard down
+        # its Litestar-state-dict fallback path (``per_op_limits is None``)
+        # so it picks up the real config installed below.
+        app_state_stub.per_op_limits = None
         # The route applies a per-op rate-limit guard which runs ahead
         # of body validation. Without a wired store + config the guard
         # raises ``ServiceUnavailableError`` (503) and masks the

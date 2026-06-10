@@ -16,8 +16,8 @@ Covers the consumer-side plumbing added for #1398 / #1400:
   to defaults on a resolver error.
 - :class:`MessageBusBridge` throttles resolver-failure warnings to
   once-per-run-of-failures and re-arms on recovery.
-- :class:`AppState.bridge_config_applied` starts ``False`` and flips
-  to ``True`` exactly once via :meth:`mark_bridge_config_applied`;
+- ``app_state.bridge_config.applied`` starts ``False`` and flips
+  to ``True`` exactly once via ``app_state.bridge_config.mark_applied``;
   :meth:`swap_notification_dispatcher` swaps the active dispatcher and
   returns the previous instance so the caller can close its sinks.
 - :func:`build_notification_dispatcher` threads timeouts from a
@@ -414,9 +414,9 @@ class TestAppStateBridgeConfigFlags:
             config=RootConfig(company_name="test"),
             approval_store=ApprovalStore(),
         )
-        assert state.bridge_config_applied is False
-        state.mark_bridge_config_applied()
-        assert state.bridge_config_applied is True
+        assert state.bridge_config.applied is False
+        state.bridge_config.mark_applied()
+        assert state.bridge_config.applied is True
 
     @pytest.mark.unit
     def test_swap_notification_dispatcher_returns_previous(self) -> None:

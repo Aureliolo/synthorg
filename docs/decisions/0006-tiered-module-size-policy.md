@@ -118,8 +118,10 @@ All baseline-driven, all wired into `.pre-commit-config.yaml`:
 
 1. `check_module_size_budget.py` -- the tier-cap enforcer above.
 2. `check_no_growth_in_god_modules.py` -- god-module net-shrink rule.
-3. `check_no_central_junk_drawer.py` -- no new entries in
-   `core/enums.py` / `AppState.__slots__`. Dissolution tracked in
+3. `check_no_central_junk_drawer.py` -- the dissolved `core/enums.py`
+   must not be recreated. (The former `AppState.__slots__` count was
+   drained to zero; that invariant now lives in
+   `check_no_implicit_state_attribute.py`.) Dissolution tracked in
    #2051.
 4. `check_no_circular_imports.py` -- AST-driven Tarjan SCC detection
    across `src/synthorg/`. Excludes `TYPE_CHECKING` and function-local

@@ -98,7 +98,7 @@ class WsTicketStore:
             ``api.ws_ticket_max_pending_per_user`` setting. The API
             startup hook in ``src/synthorg/api/app.py`` calls
             :meth:`set_max_pending_per_user` once at boot with the
-            operator-resolved value (see ``bridge_config_applied``
+            operator-resolved value (see ``bridge_config.applied``
             guard), so a setting change takes effect only on the
             next restart / process reload.
 

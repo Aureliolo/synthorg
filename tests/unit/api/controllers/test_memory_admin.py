@@ -241,7 +241,7 @@ class TestRecommendBatchSize:
         """An operator-tuned VRAM table (from the memory bridge) wins.
 
         ``run_preflight`` passes
-        ``app_state.memory_bridge_config.fine_tune_vram_batch_table``;
+        ``app_state.bridge_config.memory.fine_tune_vram_batch_table``;
         this proves the bridge value reaches the lookup and overrides
         the module-constant tiers.
         """

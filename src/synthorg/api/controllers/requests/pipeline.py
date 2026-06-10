@@ -104,7 +104,7 @@ async def _approved_or_none(
     """
     handed_off = False
     try:
-        async with app_state.acquire_request_lock(request_id):
+        async with app_state.request_locks.acquire(request_id):
             try:
                 stored = await sim_state.request_store.get(request_id)
             except KeyError:
@@ -127,7 +127,7 @@ async def _approved_or_none(
             return stored
     finally:
         if not handed_off:
-            app_state.release_request_lock_if_idle(request_id)
+            app_state.request_locks.release_if_idle(request_id)
 
 
 async def process_intake_pipeline(
@@ -280,7 +280,7 @@ async def _reconcile_success(
     it; the failure itself propagates to :func:`_safe_finalize`.
     """
     try:
-        async with app_state.acquire_request_lock(request_id):
+        async with app_state.request_locks.acquire(request_id):
             current = await _current_if_approved(sim_state, request_id)
             if current is None:
                 return
@@ -301,7 +301,7 @@ async def _reconcile_success(
             if publish is not None:
                 publish(WsEventType.REQUEST_TASK_CREATED, created)
     finally:
-        app_state.release_request_lock_if_idle(request_id)
+        app_state.request_locks.release_if_idle(request_id)
 
 
 async def _reconcile_cancel(
@@ -318,7 +318,7 @@ async def _reconcile_cancel(
     :func:`_reconcile_success`).
     """
     try:
-        async with app_state.acquire_request_lock(request_id):
+        async with app_state.request_locks.acquire(request_id):
             current = await _current_if_approved(sim_state, request_id)
             if current is None:
                 return
@@ -340,7 +340,7 @@ async def _reconcile_cancel(
             if publish is not None:
                 publish(WsEventType.REQUEST_REJECTED, cancelled)
     finally:
-        app_state.release_request_lock_if_idle(request_id)
+        app_state.request_locks.release_if_idle(request_id)
 
 
 async def _current_if_approved(

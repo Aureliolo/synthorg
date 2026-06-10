@@ -104,12 +104,12 @@ async def _periodic_revalidate(
     window = (
         failure_window_seconds
         if failure_window_seconds is not None
-        else app_state.auth_revalidate_window_seconds
+        else app_state.ws_auth_limits.auth_revalidate_window_seconds
     )
     max_failures = (
         failure_max
         if failure_max is not None
-        else app_state.auth_revalidate_max_failures
+        else app_state.ws_auth_limits.auth_revalidate_max_failures
     )
     # The loop performs one persistence check per ``interval_seconds``.
     # A sliding window measured in wall-clock seconds is meaningless

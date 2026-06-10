@@ -1,7 +1,7 @@
 """Tests for the ``_apply_workers_bridge_config_snapshot`` startup helper.
 
 :class:`DistributedDispatcher` reads its publish retry budget from
-``app_state.workers_bridge_config`` (via a late-bound provider). At
+``app_state.bridge_config.workers`` (via a late-bound provider). At
 startup the helper resolves the full ``WorkersBridgeConfig`` from
 ``ConfigResolver`` and atomically swaps it onto ``AppState``. On
 failure the default snapshot -- whose Field defaults equal the
@@ -53,7 +53,7 @@ class TestApplyWorkersBridgeConfigSnapshot:
     async def test_no_resolver_keeps_default_snapshot(self) -> None:
         state = _make_state(config_resolver=None)
         await _apply_workers_bridge_config_snapshot(state)
-        assert state.workers_bridge_config == WorkersBridgeConfig()
+        assert state.bridge_config.workers == WorkersBridgeConfig()
 
     async def test_happy_path_swaps_snapshot(self) -> None:
         custom = WorkersBridgeConfig(dispatcher_publish_max_attempts=9)
@@ -61,8 +61,8 @@ class TestApplyWorkersBridgeConfigSnapshot:
 
         await _apply_workers_bridge_config_snapshot(state)
 
-        assert state.workers_bridge_config is custom
-        assert state.workers_bridge_config.dispatcher_publish_max_attempts == 9
+        assert state.bridge_config.workers is custom
+        assert state.bridge_config.workers.dispatcher_publish_max_attempts == 9
 
     async def test_failure_keeps_default_and_logs_warning(
         self,
@@ -86,7 +86,7 @@ class TestApplyWorkersBridgeConfigSnapshot:
 
         await _apply_workers_bridge_config_snapshot(state)
 
-        assert state.workers_bridge_config == WorkersBridgeConfig()
+        assert state.bridge_config.workers == WorkersBridgeConfig()
         assert len(warnings) == 1
         event_name, fields = warnings[0]
         assert event_name == "api.bridge_config.resolve_failed"

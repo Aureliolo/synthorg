@@ -2,17 +2,18 @@
 # module-kind: code
 """AppState attribute lock.
 
-Forbids growing :class:`synthorg.api.state.AppState`'s ``__slots__`` past
-the hard-coded approved set. Any new application state must go through a
-feature state slice (``AppStateSliceMixin``) rather than being bolted onto
-the composition root.
+Requires :class:`synthorg.api.state.AppState` to declare an EMPTY
+``__slots__``. The composition root carries no direct mutable slots: every
+piece of application state lives either on a feature state slice
+(``AppStateSliceMixin``) or on a cohesive primitive owner object composed
+onto ``AppState`` (``bridge_config`` / ``per_op_limits`` / ``request_locks``
+/ ``ws_auth_limits``). Adding any slot back to ``AppState`` fails this gate.
 
-The approved set lives inside this gate as :data:`APPROVED_SLOTS`. Adding
-a slot is a deliberate decision: the contributor edits this gate, which
-makes the change visible in the diff and forces alignment with the
-feature-manifest substrate. Removal of a slot is also caught (an attribute
-disappearing from ``AppState`` without updating the gate means the gate is
-stale and must be refreshed in the same PR).
+The approved set lives inside this gate as :data:`APPROVED_SLOTS` (now
+empty). Re-introducing a slot is a deliberate decision: the contributor
+would have to edit this gate, which makes the regression visible in the
+diff and forces a conversation about whether the state belongs on a slice
+or an owner instead of the central composition root.
 
 Run from the repo root::
 
@@ -29,36 +30,16 @@ _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 _STATE_PY_REL: Final[str] = "src/synthorg/api/state.py"
 _APP_STATE_CLASS: Final[str] = "AppState"
 
-APPROVED_SLOTS: Final[frozenset[str]] = frozenset(
-    {
-        "_api_bridge_config",
-        "_api_bridge_config_lock",
-        "_auth_revalidate_max_failures",
-        "_auth_revalidate_window_seconds",
-        "_bridge_config_applied",
-        "_brownfield_background_tasks",
-        "_memory_bridge_config",
-        "_memory_bridge_config_lock",
-        "_objective_background_tasks",
-        "_per_op_concurrency_config",
-        "_per_op_rate_limit_config",
-        "_request_lock_refs",
-        "_request_locks",
-        "_request_locks_guard",
-        "_shutdown_requested",
-        "_workers_bridge_config",
-        "_workers_bridge_config_lock",
-        "_ws_auth_timeout_seconds",
-        "_ws_frame_timeout_seconds",
-        "clock",
-        "config",
-        "startup_time",
-    }
-)
-"""Cross-cutting mutable primitives that AppState may carry directly.
+APPROVED_SLOTS: Final[frozenset[str]] = frozenset()
+"""Slots ``AppState`` may declare directly: none.
 
-Every other piece of application state belongs in a feature state slice
-(``BaseFeatureStateSlice``). This set is the contract the gate enforces.
+``AppState`` is a thin composition root. Its lifecycle identity (clock,
+config, uptime baseline, shutdown event, background-task sets) lives in
+``__dict__``; its cross-cutting mutable primitives live on cohesive owner
+objects (``bridge_config`` / ``per_op_limits`` / ``request_locks`` /
+``ws_auth_limits``); every domain service lives on a feature state slice
+(``BaseFeatureStateSlice``). The empty set is the contract the gate
+enforces: no state may be bolted back onto the composition root's slots.
 """
 
 
@@ -138,10 +119,12 @@ def check(*, state_py: Path) -> list[str]:
     removed = APPROVED_SLOTS - actual
     if added:
         findings.append(
-            "AppState.__slots__ grew with un-approved attributes "
-            f"({sorted(added)}). Move them into a feature state slice "
-            "(BaseFeatureStateSlice subclass) OR update APPROVED_SLOTS in "
-            "scripts/check_no_implicit_state_attribute.py with a rationale."
+            "AppState.__slots__ must stay empty but declares "
+            f"({sorted(added)}). AppState is a thin composition root: move "
+            "this state onto a feature state slice (BaseFeatureStateSlice "
+            "subclass) or a cohesive primitive owner object (e.g. "
+            "bridge_config / per_op_limits / request_locks / ws_auth_limits) "
+            "instead of bolting a slot onto the root."
         )
     if removed:
         findings.append(

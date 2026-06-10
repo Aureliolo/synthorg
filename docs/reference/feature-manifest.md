@@ -99,19 +99,19 @@ absolute).
 ### `check_no_implicit_state_attribute.py`
 
 Parses `src/synthorg/api/state.py` for `AppState.__slots__` and
-asserts it equals the gate's hard-coded `APPROVED_SLOTS` frozenset (21
-slots today: the cross-cutting mutable primitives a frozen slice
-cannot own, plus `clock`, `config`, `startup_time`).
+asserts it equals the gate's `APPROVED_SLOTS` frozenset, which is now
+**empty**: `AppState` is a thin `__slots__ = ()` facade. The
+cross-cutting mutable primitives a frozen slice cannot own live on
+cohesive owner objects composed onto it (`bridge_config` /
+`per_op_limits` / `request_locks` / `ws_auth_limits`); `clock` /
+`config` / `startup_time` live in `__dict__`.
 
-Growing a slot fails the gate; the contributor either:
+Declaring any direct slot on `AppState` fails the gate; the
+contributor either:
 
 - moves the new state into a feature state slice
   (`BaseFeatureStateSlice` subclass), or
-- updates `APPROVED_SLOTS` with a rationale in the same change (the
-  gate edit IS the decision record).
-
-Removing a slot also fails (the gate is stale until the contributor
-trims `APPROVED_SLOTS` to match).
+- adds it to a primitive owner object (or composes a new one).
 
 ### `check_feature_index_freshness.py`
 
@@ -204,6 +204,6 @@ missing step fails at pre-push.
 | `LOC <n> exceeds feature-tier cap 100` | Logic crept into the manifest. | Move logic out into the feature's services / factory modules; keep `feature.py` declarative. |
 | `missing module-level FEATURE attribute` | Typo in the attribute name, or `FEATURE` set inside `if __name__ == "__main__":`. | Assign `FEATURE: FeatureModule = FeatureManifest(...)` at module top level. |
 | `data/feature_index.json is stale` | `feature.py` changed; index was not regenerated. | Run `uv run python scripts/generate_feature_index.py` and commit. |
-| `AppState.__slots__ grew with un-approved attributes` | Service was bolted onto `AppState` instead of a slice. | Move the field into a `BaseFeatureStateSlice` subclass on the owning feature. |
+| `AppState.__slots__ must stay empty` | A slot was declared on the thin `AppState` facade instead of a slice or primitive owner. | Move the field into a `BaseFeatureStateSlice` subclass, or onto a primitive owner object (`bridge_config` / `per_op_limits` / `request_locks` / `ws_auth_limits`). |
 | `ghost-wiring parity: ENFORCED symbols missing from every feature.py` | New manifest entry without a feature claim. | Add the symbol to the owning feature's `ghost_wired_symbols`. |
 | `ghost-wiring parity: symbols claimed by a feature.py but missing from manifest` | Feature claims a symbol that was removed from the central manifest. | Either restore the manifest entry or remove the feature's claim, depending on intent. |

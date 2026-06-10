@@ -884,12 +884,12 @@ repos:
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
-      # core/enums.py must not exist; no AppState __slots__ growth.
+      # core/enums.py was dissolved and must not be recreated.
       - id: no-central-junk-drawer
-        name: no central-junk-drawer (core/enums.py deleted; AppState shrinking)
+        name: no central-junk-drawer (core/enums.py deleted, stays deleted)
         entry: uv run python scripts/check_no_central_junk_drawer.py
         language: system
-        files: ^(src/synthorg/(core/enums\.py|api/state\.py)|scripts/check_no_central_junk_drawer\.py|scripts/_central_junk_drawer_baseline\.json|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/core/enums\.py|scripts/check_no_central_junk_drawer\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
