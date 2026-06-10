@@ -57,7 +57,7 @@ runs:
             echo "::error::docker pull ${PG_IMAGE} failed after 5 attempts"
             exit 1
           fi
-          backoff=$((attempt * 10))
+          backoff=$((10 * (2 ** (attempt - 1))))
           echo "::warning::docker pull failed (attempt ${attempt}/5); retrying in ${backoff}s"
           sleep "${backoff}"
         done
