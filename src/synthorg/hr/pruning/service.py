@@ -641,7 +641,7 @@ class PruningService:
         if approval_id_str not in self._logged_transition_approval_ids:
             logger.info(
                 PRUNING_REQUEST_STATUS_TRANSITIONED,
-                request_id=request.id if request is not None else None,
+                request_id=str(request.id) if request is not None else None,
                 agent_id=agent_id,
                 approval_id=approval_id_str,
                 from_status=ApprovalStatus.PENDING.value,
@@ -786,7 +786,7 @@ class PruningService:
         self._processed_approval_ids.add(str(item.id))
         logger.info(
             PRUNING_REQUEST_STATUS_TRANSITIONED,
-            request_id=request.id if request is not None else None,
+            request_id=str(request.id) if request is not None else None,
             agent_id=agent_id,
             approval_id=str(item.id),
             from_status=ApprovalStatus.PENDING.value,

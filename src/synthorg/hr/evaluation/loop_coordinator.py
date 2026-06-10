@@ -184,7 +184,7 @@ class EvalLoopCoordinator:
 
         logger.info(
             EVAL_LOOP_CYCLE_START,
-            cycle_id=cycle_id,
+            cycle_id=str(cycle_id),
             window_seconds=window.total_seconds(),
         )
 
@@ -208,7 +208,7 @@ class EvalLoopCoordinator:
             if training_triggered:
                 logger.info(
                     EVAL_LOOP_TRAINING_TRIGGERED,
-                    cycle_id=cycle_id,
+                    cycle_id=str(cycle_id),
                     action_count=len(proposed_actions),
                     actions=list(proposed_actions),
                 )
@@ -236,7 +236,7 @@ class EvalLoopCoordinator:
 
             logger.info(
                 EVAL_LOOP_CYCLE_COMPLETE,
-                cycle_id=cycle_id,
+                cycle_id=str(cycle_id),
                 agents_evaluated=len(ids),
                 duration_seconds=duration,
             )
@@ -245,7 +245,7 @@ class EvalLoopCoordinator:
 
         except Exception as exc:
             log_exception_redacted(
-                logger, EVAL_LOOP_CYCLE_FAILED, exc, cycle_id=cycle_id
+                logger, EVAL_LOOP_CYCLE_FAILED, exc, cycle_id=str(cycle_id)
             )
             raise
 

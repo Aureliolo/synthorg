@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import ContentType, TrainingPlan, TrainingPlanStatus
 from synthorg.persistence.sqlite.training_plan_repo import (
@@ -188,3 +189,18 @@ class TestSQLiteTrainingPlanRepository:
         fetched = await repo.get(sid("plan-001"))
         assert fetched is not None
         assert fetched.override_sources == ("senior-1", "senior-2")
+
+    async def test_get_rejects_non_uuid_id(
+        self,
+        repo: SQLiteTrainingPlanRepository,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        await repo.save(_make_plan())
+        await migrated_db.execute(
+            "UPDATE training_plans SET id = ? WHERE id = ?",
+            ("not-a-uuid", sid("plan-001")),
+        )
+        await migrated_db.commit()
+
+        with pytest.raises(QueryError, match="Failed to deserialize"):
+            await repo.get("not-a-uuid")

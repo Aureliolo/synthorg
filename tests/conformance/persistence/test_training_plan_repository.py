@@ -52,6 +52,7 @@ class TestTrainingPlanRepository:
 
         fetched = await backend.training_plans.get(sid("plan-001"))
         assert fetched is not None
+        assert fetched.id == as_uuid("plan-001")
         assert fetched.new_agent_id == "agent-new-001"
         assert fetched.status is TrainingPlanStatus.PENDING
 

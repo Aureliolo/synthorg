@@ -67,6 +67,7 @@ class TestTrainingResultRepository:
             sid("plan-001"),
         )
         assert fetched is not None
+        assert fetched.id == as_uuid("res-001")
         assert fetched.new_agent_id == "agent-new-001"
 
     async def test_get_by_plan_missing(self, backend: PersistenceBackend) -> None:
@@ -116,6 +117,7 @@ class TestTrainingResultRepository:
 
         fetched = await backend.training_results.get(sid("res-001"))
         assert fetched is not None
+        assert fetched.id == as_uuid("res-001")
         assert fetched.new_agent_id == "agent-new-001"
 
     async def test_get_by_id_missing(self, backend: PersistenceBackend) -> None:
