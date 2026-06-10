@@ -506,14 +506,16 @@ jobs:
 
   # ── Python: Test (Integration) ──
   # Sharded 4-way so 12-minute single-runner wall-clock drops to ~3
-  # minutes critical path. A GitHub Actions ``services: postgres``
-  # block exposes postgres:18-alpine to each shard via TCP localhost
-  # plus the SYNTHORG_TEST_POSTGRES_* env vars; the conftest fixtures
+  # minutes critical path. The ``start-postgres`` composite action
+  # exposes postgres:18-alpine to each shard via TCP localhost plus the
+  # SYNTHORG_TEST_POSTGRES_* env vars (a retry-resilient replacement for
+  # a ``services: postgres`` block, whose container-init pull cannot be
+  # retried); the conftest fixtures
   # (``tests/conformance/persistence/conftest.py`` and
   # ``tests/integration/persistence/conftest.py``) detect those env
   # vars and bypass the local testcontainers start-up dance. Local-dev
   # test runs leave the env vars unset and keep using testcontainers.
-  # TimescaleDB tests still use testcontainers because the service
+  # TimescaleDB tests still use testcontainers because the postgres
   # container path cannot host the timescale/timescaledb image.
   test-integration:
     name: Test Integration (shard ${{ matrix.shard }})
@@ -669,10 +671,10 @@ jobs:
           retention-days: 3
 
   # ── Python: Test (E2E) ──
-  # Same service-container Postgres path as test-integration so the
-  # conftest fixtures bypass testcontainers. Not sharded; e2e is small
-  # (~3 min historically) and matrix overhead would mostly cancel the
-  # wall-clock saving.
+  # Same ``start-postgres`` composite-action path as test-integration so
+  # the conftest fixtures bypass testcontainers. Not sharded; e2e is
+  # small (~3 min historically) and matrix overhead would mostly cancel
+  # the wall-clock saving.
   test-e2e:
     name: Test E2E
     needs: changes
