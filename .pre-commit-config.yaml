@@ -237,6 +237,14 @@ repos:
         files: ^src/synthorg/(api/lifecycle_helpers/boot_resolvers\.py|settings/definitions/security\.py)$
         stages: [pre-commit, pre-push]
 
+      - id: no-synthorg-any-override
+        name: no synthorg.* mypy override may lift disallow_any_explicit (#2056)
+        entry: uv run python scripts/check_no_synthorg_any_override.py
+        language: system
+        files: ^(pyproject\.toml|scripts/check_no_synthorg_any_override\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: no-bare-time-in-business-logic
         name: clock-seam (no bare time.monotonic/time.time/datetime.utcnow)
         entry: uv
