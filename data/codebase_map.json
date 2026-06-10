@@ -20673,7 +20673,7 @@
     },
     {
       "kind": "code",
-      "loc": 501,
+      "loc": 500,
       "loc_cap": 500,
       "module": "src/synthorg/workers/worker.py",
       "owning_feature": "runtime"

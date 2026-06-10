@@ -1190,8 +1190,8 @@
     },
     "src/synthorg/workers/worker.py": {
       "cap": 500,
-      "loc": 501,
-      "ratio": 1.002,
+      "loc": 500,
+      "ratio": 1.0,
       "tier": "code"
     }
   },
