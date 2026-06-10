@@ -68,7 +68,7 @@ async def _departments_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -92,7 +92,7 @@ async def _departments_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -127,7 +127,7 @@ async def _departments_create(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -159,7 +159,7 @@ async def _departments_update(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -207,7 +207,7 @@ async def _departments_delete(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -232,7 +232,7 @@ async def _departments_get_health(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

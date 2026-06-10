@@ -134,7 +134,7 @@ async def _resolve_max_message_parts(app_state: AppState | None) -> int:
         return value  # noqa: TRY300 -- explicit return type; not a try-success path
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # SETTINGS_FETCH_FAILED is the correct surface for an
         # internal settings-resolution failure; A2A_JSONRPC_INVALID_PARAMS
@@ -372,7 +372,7 @@ def _parse_jsonrpc(body: bytes) -> JsonRpcRequest | None:
             error=safe_error_description(exc),
         )
         return None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # No ``exc_info=True``: a traceback attached here would
         # serialise frame-local variables (including the raw request
@@ -562,7 +562,7 @@ async def _dispatch_method(
             media_type="application/json",
             status_code=400,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # A2A is a credential-bearing path: a traceback attached via
         # ``logger.exception`` would serialise frame-local values from
@@ -689,7 +689,7 @@ async def _verify_peer_credentials(
                 )
                 return False
         # mTLS/none: no header-level check needed
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # Credential verification sits alongside ``request``,
         # ``credentials``, and raw auth headers in the local frame;

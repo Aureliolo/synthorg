@@ -87,7 +87,7 @@ class ProactiveAlertService:
             """Run emit."""
             try:
                 await sink.on_alert(alert)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 failed_sinks.append(type(sink).__name__)
                 log_exception_redacted(

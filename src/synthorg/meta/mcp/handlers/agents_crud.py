@@ -94,7 +94,7 @@ async def _agents_list(
     try:
         agents = await agent_registry_of(app_state).list_active()
         page, meta = paginate_sequence(agents, offset=offset, limit=limit)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -121,7 +121,7 @@ async def _agents_get(
         return err(exc)
     try:
         identity = await agent_registry_of(app_state).get_by_name(name)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -163,7 +163,7 @@ async def _agents_create(
     except AgentAlreadyRegisteredError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="already_exists")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -204,7 +204,7 @@ async def _agents_update(
         # Blocked-field rejection from the registry surfaces here.
         log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -242,7 +242,7 @@ async def _agents_delete(
     except AgentNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -284,7 +284,7 @@ async def _agents_get_performance(
         snapshot = await performance_tracker_of(app_state).get_snapshot(
             str(identity.id),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -323,7 +323,7 @@ async def _agents_get_activity(
             offset=offset,
             limit=limit,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -363,7 +363,7 @@ async def _agents_get_history(
             offset=offset,
             limit=limit,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -400,7 +400,7 @@ async def _agents_get_health(
         report = await agent_health_service_of(app_state).get_agent_health(
             NotBlankStr(str(identity.id)),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

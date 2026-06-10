@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from synthorg.backup.models import BackupTrigger
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import backup_facade_service_of
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -70,7 +71,8 @@ async def _backup_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -97,7 +99,8 @@ async def _backup_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(_to_jsonable(manifest))
@@ -143,7 +146,8 @@ async def _backup_create(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(_to_jsonable(manifest))
@@ -185,7 +189,8 @@ async def _backup_delete(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(None)
@@ -227,7 +232,8 @@ async def _backup_restore(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(dict(result))

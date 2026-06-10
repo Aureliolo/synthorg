@@ -138,7 +138,7 @@ class WorkerHeartbeatSubscriber:
             if subscription is not None:
                 try:
                     await subscription.unsubscribe()
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     # A failed unsubscribe can leave a duplicate callback
                     # on restart; surface it instead of swallowing.

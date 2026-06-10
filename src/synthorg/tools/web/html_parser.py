@@ -245,7 +245,7 @@ class HtmlParserTool(BaseWebTool):
                 content = self._extract_links(html_content)
             else:
                 content = self._extract_metadata(html_content)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 WEB_PARSE_FAILED,

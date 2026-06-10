@@ -134,7 +134,7 @@ class WebSearchTool(BaseWebTool):
 
         try:
             results = await self._provider.search(query, max_results)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 WEB_SEARCH_FAILED,
@@ -166,7 +166,7 @@ class WebSearchTool(BaseWebTool):
                     if isinstance(item, SearchResult)
                     else SearchResult.model_validate(item, from_attributes=True)
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Drop exc_info + scrub -- the malformed provider
                 # result might still be readable in frame-locals on

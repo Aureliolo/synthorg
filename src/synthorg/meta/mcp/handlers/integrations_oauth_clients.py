@@ -72,7 +72,7 @@ async def _oauth_list_providers(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -111,7 +111,7 @@ async def _oauth_configure_provider(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -156,7 +156,7 @@ async def _oauth_remove_provider(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -188,7 +188,7 @@ async def _clients_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -212,7 +212,7 @@ async def _clients_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -252,7 +252,7 @@ async def _clients_create(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -297,7 +297,7 @@ async def _clients_deactivate(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -322,7 +322,7 @@ async def _clients_get_satisfaction(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)

@@ -375,7 +375,7 @@ async def _resolve_dns(
             "dns_resolution_error",
             f"DNS resolution for {hostname!r} failed: {safe_error_description(exc)}",
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         log_exception_redacted(
             logger, GIT_CLONE_DNS_FAILED, exc, hostname=hostname, reason="unexpected"

@@ -40,7 +40,7 @@ def close_subprocess_transport(proc: asyncio.subprocess.Process) -> None:
         if transport.is_closing():
             return
         transport.close()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.debug(
             TOOL_SUBPROCESS_TRANSPORT_CLOSE_FAILED,

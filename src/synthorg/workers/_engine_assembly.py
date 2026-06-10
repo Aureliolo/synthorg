@@ -162,7 +162,7 @@ async def _build_external_api_runtime(
     resolver = config_resolver_of(app_state)
     try:
         enabled = await resolver.get_bool(_EXTERNAL_API_NS, "enabled")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -193,7 +193,7 @@ async def _build_external_api_runtime(
         )
         default_max_rpm = await resolver.get_int(_EXTERNAL_API_NS, "default_max_rpm")
         provider = build_external_access_provider(provider_type=provider_type)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         log_exception_redacted(
             logger,
@@ -352,7 +352,7 @@ def _build_vision_gate_or_none(
             cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
             clock=app_state.clock,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

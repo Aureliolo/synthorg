@@ -298,7 +298,7 @@ def evaluate_condition(
 
     try:
         return _evaluate_inner(expr, context)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             CONDITION_EVAL_PARSE_ERROR,

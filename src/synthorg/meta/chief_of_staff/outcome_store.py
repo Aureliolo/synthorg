@@ -139,7 +139,7 @@ class MemoryBackendOutcomeStore:
         for entry in entries:
             try:
                 outcome = ProposalOutcome.model_validate_json(entry.content)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     COS_OUTCOME_RECORD_FAILED,
@@ -201,7 +201,7 @@ class MemoryBackendOutcomeStore:
                 results.append(
                     ProposalOutcome.model_validate_json(entry.content),
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     COS_OUTCOME_RECORD_FAILED,

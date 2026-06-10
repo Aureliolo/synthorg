@@ -173,7 +173,7 @@ class AgentEnginePostExecMixin:
                     task_id,
                     config=self._error_taxonomy_config,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     EXECUTION_ENGINE_ERROR,
@@ -343,7 +343,7 @@ class AgentEnginePostExecMixin:
                     is_multi_agent=False,
                 ),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 EXECUTION_ENGINE_ERROR,
@@ -422,7 +422,7 @@ class AgentEnginePostExecMixin:
         )
         try:
             self._log_completion(result, agent_id, task_id, duration)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 EXECUTION_ENGINE_ERROR,

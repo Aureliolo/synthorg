@@ -91,7 +91,7 @@ class ScalingSignalAggregator:
             raise
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- signal aggregation boundary
             log_exception_redacted(
                 logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain="scaling"
             )

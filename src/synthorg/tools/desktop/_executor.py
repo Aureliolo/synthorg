@@ -593,7 +593,7 @@ def main() -> int:
         return 2
     try:
         result = _dispatch(payload)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         _reraise_critical(exc)
         # Redact the raw message: str(exc) can carry filesystem paths,
         # env vars, or window content. Emit only the class name plus a

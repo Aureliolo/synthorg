@@ -119,7 +119,7 @@ class EvolutionService:
             context = await self._build_context(agent_id)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 EVOLUTION_CONTEXT_BUILD_FAILED,
@@ -337,7 +337,7 @@ class EvolutionService:
             await adapter.apply(proposal, agent_id)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Adapter should log via EVOLUTION_ADAPTATION_FAILED;
             # this defensive fallback runs only when the adapter
@@ -428,7 +428,7 @@ class EvolutionService:
         """
         try:
             return await self._tracker.get_snapshot(agent_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 EVOLUTION_CONTEXT_SNAPSHOT_FAILED,
@@ -467,7 +467,7 @@ class EvolutionService:
                     limit=10,
                 ),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 EVOLUTION_CONTEXT_MEMORY_FAILED,

@@ -139,7 +139,7 @@ class SelfImprovementLifecycleMixin:
         if self._outcome_store is not None:
             try:
                 await self._outcome_store.record_outcome(outcome)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     COS_OUTCOME_RECORD_FAILED,
@@ -163,7 +163,7 @@ class SelfImprovementLifecycleMixin:
             if close is not None:
                 try:
                     await close()
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         META_SERVICE_CLOSE_FAILED,
@@ -175,7 +175,7 @@ class SelfImprovementLifecycleMixin:
         if self._analytics_emitter is not None:
             try:
                 await self._analytics_emitter.aclose()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     XDEPLOY_EVENT_EMIT_FAILED,

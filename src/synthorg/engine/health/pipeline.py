@@ -94,7 +94,7 @@ class HealthMonitoringPipeline:
                 task_id=task_id,
                 execution_duration=execution_duration,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger, HEALTH_PIPELINE_ERROR, exc, agent_id=agent_id, task_id=task_id
@@ -138,7 +138,7 @@ class HealthMonitoringPipeline:
         notification = _ticket_to_notification(ticket)
         try:
             await self._sink.send(notification)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

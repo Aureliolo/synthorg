@@ -356,7 +356,7 @@ class SteeringService:
                     requested_by=author,
                     reason=reason,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     STEERING_TASK_SUPERSEDE_FAILED,
@@ -433,7 +433,7 @@ class SteeringService:
             return
         try:
             await self._notifier(event, payload)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 event,

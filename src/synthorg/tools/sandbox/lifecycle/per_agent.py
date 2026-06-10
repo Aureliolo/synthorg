@@ -133,7 +133,7 @@ class PerAgentStrategy:
         if loser is not None:
             try:
                 await destroy_fn(loser)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,
@@ -194,7 +194,7 @@ class PerAgentStrategy:
                     )
                     try:
                         await destroy_fn(handle)
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                         reraise_critical(exc)
                         logger.warning(
                             SANDBOX_LIFECYCLE_DESTROY_FAILED,
@@ -244,7 +244,7 @@ class PerAgentStrategy:
         for handle in handles:
             try:
                 await destroy_fn(handle)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,
@@ -314,7 +314,7 @@ class PerAgentStrategy:
                 )
                 try:
                     await destroy_fn(handle)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         SANDBOX_LIFECYCLE_DESTROY_FAILED,

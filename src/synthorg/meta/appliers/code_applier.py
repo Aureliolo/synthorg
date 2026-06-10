@@ -147,7 +147,7 @@ class CodeApplier:
                 branch,
                 project_root,
             )
-        except Exception as outer_exc:
+        except Exception as outer_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(outer_exc)
             # Drop ``logger.exception`` here -- the outer handler
             # runs after the ``_write_changes`` / GitHub-client
@@ -175,7 +175,7 @@ class CodeApplier:
                     project_root,
                     defensive=True,
                 )
-            except Exception as revert_exc:
+            except Exception as revert_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(revert_exc)
                 logger.warning(
                     META_APPLY_FAILED,
@@ -256,7 +256,7 @@ class CodeApplier:
                     applied,
                     project_root,
                 )
-            except Exception as revert_exc:
+            except Exception as revert_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(revert_exc)
                 logger.warning(
                     META_APPLY_FAILED,
@@ -302,7 +302,7 @@ class CodeApplier:
             if branch_created:
                 try:
                     await self._github.delete_branch(branch)
-                except Exception as cleanup_exc:
+                except Exception as cleanup_exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(cleanup_exc)
                     # Same scrub as the other GitHub-client-error
                     # path above.

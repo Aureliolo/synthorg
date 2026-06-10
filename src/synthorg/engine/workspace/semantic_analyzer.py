@@ -290,7 +290,7 @@ class CompositeSemanticAnalyzer:
                     base_sources=base_sources,
                     merged_sources=merged_sources,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,

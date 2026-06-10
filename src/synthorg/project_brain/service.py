@@ -627,7 +627,7 @@ class ProjectBrainService:
         """
         try:
             await self._writer.write(project_id=entry.project_id, entry=entry)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 BRAIN_SNAPSHOT_FAILED,
@@ -658,7 +658,7 @@ class ProjectBrainService:
             await self._repo.mark_indexed(
                 entry.project_id, entry.entry_id, entry.revision
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 BRAIN_ENTRY_INDEX_FAILED,

@@ -76,7 +76,7 @@ class StartAsyncTaskTool(BaseTool):
                 supervisor_id=self._supervisor_id,
                 task_spec=spec,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 ASYNC_TASK_TOOL_START_FAILED,
@@ -219,7 +219,7 @@ class CancelAsyncTaskTool(BaseTool):
                 task_id=cast("str", arguments["task_id"]),
                 supervisor_id=self._supervisor_id,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 ASYNC_TASK_TOOL_CANCEL_FAILED,

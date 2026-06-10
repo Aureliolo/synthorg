@@ -354,7 +354,7 @@ class WorkflowService:
             stored_revision: int | None = None
             try:
                 existing = await self._definitions.get(definition.id)
-            except Exception as lookup_exc:
+            except Exception as lookup_exc:  # noqa: BLE001 -- criticals re-raised
                 # ``reraise_critical`` propagates fatal system errors
                 # even from this best-effort probe; otherwise the
                 # outer ``raise`` below would swallow them.
@@ -432,7 +432,7 @@ class WorkflowService:
                 snapshot=definition,
                 saved_by=saved_by,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # ``reraise_critical`` propagates fatal system errors
             # so the workload can shed load; best-effort logging is
             # the wrong response here.
@@ -503,7 +503,7 @@ class WorkflowService:
 
         try:
             await self._versions.delete_versions_for_entity(definition_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,

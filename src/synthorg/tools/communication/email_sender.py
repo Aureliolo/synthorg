@@ -232,7 +232,7 @@ class EmailSenderTool(BaseCommunicationTool):
                 body=body,
                 body_is_html=body_is_html,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COMM_TOOL_EMAIL_SEND_FAILED,

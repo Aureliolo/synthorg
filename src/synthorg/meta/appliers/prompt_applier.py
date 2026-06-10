@@ -124,7 +124,7 @@ class PromptApplier:
                 note="prompt persistence not yet implemented",
             )
             return ApplyResult(success=True, changes_applied=count)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -193,7 +193,7 @@ class PromptApplier:
                         seen_texts=seen_texts,
                     )
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 return self._fail(
                     proposal,

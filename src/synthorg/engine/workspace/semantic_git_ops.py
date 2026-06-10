@@ -389,7 +389,7 @@ async def _do_analysis(  # noqa: PLR0913
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             WORKSPACE_SEMANTIC_ANALYSIS_FAILED,

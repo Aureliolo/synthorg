@@ -13,6 +13,7 @@ from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import evaluation_version_service_of
 from synthorg.infrastructure.state import (
@@ -161,7 +162,8 @@ async def _quality_get_summary(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(dict(summary))
@@ -189,7 +191,8 @@ async def _quality_get_agent_quality(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(dict(result))
@@ -220,7 +223,8 @@ async def _quality_list_scores(
         return err(exc)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     pagination = PaginationMeta(total=total, offset=offset, limit=limit)
@@ -253,7 +257,8 @@ async def _reviews_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -276,7 +281,8 @@ async def _reviews_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
@@ -312,7 +318,8 @@ async def _reviews_create(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(record.to_dict())
@@ -343,7 +350,8 @@ async def _reviews_update(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
@@ -374,7 +382,8 @@ async def _evaluation_versions_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok([_to_jsonable(v) for v in versions])
@@ -400,7 +409,8 @@ async def _evaluation_versions_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if version is None:

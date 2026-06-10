@@ -113,7 +113,7 @@ class BeforeAfterRollout:
 
         try:
             baseline = await self._snapshot_builder()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 META_ROLLOUT_FAILED,
@@ -151,7 +151,7 @@ class BeforeAfterRollout:
                 baseline=baseline,
                 detector=detector,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 META_ROLLOUT_FAILED,

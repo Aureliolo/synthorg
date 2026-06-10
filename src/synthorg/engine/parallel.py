@@ -138,13 +138,13 @@ class ParallelExecutor:
                 fatal_errors,
                 progress,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- captured, re-raised below
             task_error = exc
         finally:
             if lock is not None:
                 try:
                     await release_all_locks(group, lock)
-                except Exception as release_exc:
+                except Exception as release_exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(release_exc)
                     logger.warning(
                         PARALLEL_LOCK_RELEASE_ERROR,
@@ -225,7 +225,7 @@ class ParallelExecutor:
                             semaphore=semaphore,
                         ),
                     )
-        except* Exception as eg:
+        except* Exception as eg:  # noqa: BLE001 -- TaskGroup boundary
             # TaskGroup wraps exceptions in ExceptionGroup when
             # _run_guarded re-raises (fail_fast enabled).
             # Individual errors already logged in _record_error_outcome.
@@ -509,7 +509,7 @@ class ParallelExecutor:
         )
         try:
             self._progress_callback(snapshot)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PARALLEL_PROGRESS_UPDATE,

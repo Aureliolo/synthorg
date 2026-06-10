@@ -198,7 +198,7 @@ class MetricCollectorTool(BaseAnalyticsTool):
                 tags=tags,
                 unit=unit,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 ANALYTICS_TOOL_METRIC_RECORD_FAILED,

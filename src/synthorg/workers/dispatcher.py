@@ -215,7 +215,7 @@ class DistributedDispatcher:
         max_attempts = retry.max_attempts
         try:
             await retry.execute(publish, task_id=task_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Preserve the original, less-severe event on the final
             # failure so downstream monitoring that still filters on

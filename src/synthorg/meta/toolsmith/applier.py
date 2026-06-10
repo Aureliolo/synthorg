@@ -125,7 +125,7 @@ class ToolCreationApplier:
             ok = await self._apply_one(blueprint)
         except ProviderError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TOOLSMITH_APPLY_FAILED,

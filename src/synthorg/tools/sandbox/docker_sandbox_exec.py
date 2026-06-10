@@ -840,7 +840,7 @@ class DockerSandboxExecMixin:
         """Close an exec stream, swallowing best-effort close errors."""
         try:
             await stream.close()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.debug(
                 DOCKER_EXEC_STREAM_CLOSE_FAILED,
@@ -857,7 +857,7 @@ class DockerSandboxExecMixin:
         """
         try:
             info = await exec_obj.inspect()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DOCKER_EXEC_INSPECT_FAILED,
@@ -980,7 +980,7 @@ class DockerSandboxExecMixin:
                     handle.sidecar_id,
                     config=cfg,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     SANDBOX_CONTAINER_LOGS_COLLECT_FAILED,
@@ -1002,7 +1002,7 @@ class DockerSandboxExecMixin:
                 sidecar_logs=sidecar_logs,
                 execution_time_ms=_ms,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Honour the "never raises ordinary errors" contract: a
             # shipping failure must not propagate into execute()'s

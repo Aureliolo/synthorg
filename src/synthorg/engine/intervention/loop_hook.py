@@ -115,7 +115,7 @@ async def check_steering(
             agent_id=agent_id,
             already_adopted=ctx.adopted_steering_ids,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             STEERING_INBOX_READ_FAILED,

@@ -73,7 +73,7 @@ async def record_tool_invocation(
                 error_message=(result.content[:2048] if result.is_error else None),
             )
             await tracker.record(record)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TOOL_INVOCATION_RECORD_FAILED,
@@ -101,7 +101,7 @@ async def record_tool_invocation(
             outcome=outcome,
             duration_sec=duration_sec,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             TOOL_INVOCATION_RECORD_FAILED,

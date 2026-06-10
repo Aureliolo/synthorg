@@ -24,6 +24,7 @@ from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.agent import (
     AgentIdentity,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -120,7 +121,8 @@ async def _snapshot(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_signals_get_org_snapshot", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_signals_get_org_snapshot", exc)
         return err(exc)
 
@@ -151,7 +153,8 @@ def _make_window_handler(
         except ArgumentValidationError as exc:
             log_handler_argument_invalid(tool_name, exc)
             return err(exc)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+            reraise_critical(exc)
             log_handler_invoke_failed(tool_name, exc)
             return err(exc)
 
@@ -178,7 +181,8 @@ async def _list_proposals(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_signals_get_proposals", exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_signals_get_proposals", exc)
         return err(exc)
 
@@ -213,7 +217,8 @@ async def _submit_proposal(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool_name, exc)
         return err(exc)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool_name, exc)
         return err(exc)
 

@@ -97,7 +97,7 @@ class SearchLivingDocsTool(BaseTool):
                 ),
                 is_error=True,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger, DOC_SEARCH_FAILED, exc, project_id=self._project_id

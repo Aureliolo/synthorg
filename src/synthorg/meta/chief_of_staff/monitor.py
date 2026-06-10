@@ -165,7 +165,7 @@ class OrgInflectionMonitor:
                 # Loop was already cancelled before observing
                 # ``_stop_event``; treat as drained successfully.
                 pass
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     COS_INFLECTION_CHECK_FAILED,
@@ -203,7 +203,7 @@ class OrgInflectionMonitor:
                 await self._tick()
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     COS_INFLECTION_CHECK_FAILED,
@@ -250,7 +250,7 @@ class OrgInflectionMonitor:
             """Run emit."""
             try:
                 await sink.on_inflection(inflection)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     COS_INFLECTION_CHECK_FAILED,

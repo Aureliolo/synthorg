@@ -335,7 +335,7 @@ class MagenticReplanHook:
                 await self._budget_enforcer.check_can_execute(
                     agent_id="coordination-replan",
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     COORDINATION_REPLAN_BUDGET_BLOCKED,

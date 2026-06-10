@@ -133,7 +133,7 @@ class ScoringBasedAssignmentStrategy:
             return ranking.reason
         try:
             return rewriter(ranking.selected)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TASK_ASSIGNMENT_REASON_REWRITER_FAILED,

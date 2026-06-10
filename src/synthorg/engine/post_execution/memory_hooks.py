@@ -85,7 +85,7 @@ async def try_capture_distillation(
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             DISTILLATION_CAPTURE_FAILED,
@@ -154,7 +154,7 @@ async def try_procedural_memory(  # noqa: PLR0913
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             PROCEDURAL_MEMORY_ERROR,
@@ -216,7 +216,7 @@ async def try_capture_success(  # noqa: PLR0913
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             CAPTURE_STRATEGY_FAILED,
@@ -268,7 +268,7 @@ async def try_evolution_trigger(
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             EVOLUTION_TRIGGER_FAILED,

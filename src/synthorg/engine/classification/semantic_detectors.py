@@ -365,7 +365,7 @@ class _BaseSemanticDetector:
                 )
                 settled = True
             return _parse_findings(response.content, self.category)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 DETECTOR_ERROR,

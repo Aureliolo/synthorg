@@ -384,7 +384,7 @@ class SubworkflowService:
                         offset=offset,
                     ),
                 )
-            except Exception as recheck_exc:
+            except Exception as recheck_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(recheck_exc)
                 # Use the neutral ``SUBWORKFLOW_DELETE_FAILED`` event
                 # rather than ``SUBWORKFLOW_DELETE_BLOCKED``: at this
