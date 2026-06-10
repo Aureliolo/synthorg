@@ -118,6 +118,11 @@
             "type": "command",
             "command": "bash scripts/check_no_throttle_override_creation.sh",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_no_audit_scratch_scripts.sh",
+            "timeout": 5000
           }
         ]
       }

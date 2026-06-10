@@ -15,6 +15,21 @@ When invoked:
 3. Focus on modified `.py` files
 4. Begin review immediately
 
+## Scope in a multi-agent review
+
+When you run as part of a roster (pre-pr-review / aurelio-review-pr), specialist agents run alongside you and own these domains -- do NOT re-report their findings (it only creates duplicates the triage must dedupe):
+
+- deep security (injection, SEC-1 prompt safety, secret-log redaction, crypto) -> `security-reviewer`
+- logging conventions (logger setup, event constants, structured kwargs) -> `logging-audit`
+- async / concurrency / race conditions / locks -> `async-concurrency-reviewer`
+- persistence boundary / raw SQL / migrations -> `persistence-reviewer`
+- retry / rate-limit / error hierarchy -> `resilience-audit`
+- test conventions (markers, isolation, mocks) -> `test-quality-reviewer`
+
+Concentrate your review on what no specialist fully owns: **Pythonic idioms, type-hint completeness/correctness, Pydantic v2 model design, mutable-default / immutability bugs, and general Python correctness.** The sections below remain your full checklist for STANDALONE use (when no specialist roster is running); in a roster, treat the deferred domains as another agent's job and skip them.
+
+The PEP 758 carve-out below is LOAD-BEARING and applies in every mode: never flag `except (A, B) as exc:` (binding requires parens).
+
 ## Review Priorities
 
 ### CRITICAL: Security

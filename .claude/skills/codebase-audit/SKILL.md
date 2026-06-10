@@ -36,11 +36,13 @@ Flags:
 
 ### Setup output directory
 
-Use the run-history layout (see "Phase 0 setup: run-history layout" below for the full description):
+Create a fresh timestamped run directory and repoint `_audit/latest` at it. The timestamp uses second-level precision (`%H%M%S`) so back-to-back runs in the same minute do not collide. All findings, INDEX, REWORK, DIFF, and JSON live in the run-specific directory; `_audit/latest` always points at the most recent run.
 
 ```bash
-RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M%S)" && mkdir -p "$RUN_DIR/findings" && if test -d _audit/latest && ! test -L _audit/latest; then rm -rf _audit/latest; else rm -f _audit/latest; fi && ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest && echo "RUN_DIR=$RUN_DIR"
+RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M%S)" && mkdir -p "$RUN_DIR/findings" && if test -d _audit/latest && ! test -L _audit/latest; then rm -rf _audit/latest; else rm -f _audit/latest; fi && ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest && touch _audit/.audit-run-active && echo "RUN_DIR=$RUN_DIR"
 ```
+
+The `touch _audit/.audit-run-active` marker arms the `check_no_audit_scratch_scripts.sh` PreToolUse hook for the duration of this run. While the marker exists, that hook blocks any agent attempt to Write a `*.py` / `*.sh` file at the project root or directly under `scripts/` (the documented scratch-script leak pattern); it stays inert otherwise, so normal development is unaffected. Phase 7 removes the marker; a stale marker (>12h, from a crashed run) is auto-ignored by the hook.
 
 Notes for the setup command:
 - The `if test -d _audit/latest && ! test -L _audit/latest` branch detects the case where `_audit/latest` is a real directory (Junction on Windows from a prior run, or an accidental `mkdir _audit/latest`); plain `rm -f` would refuse and break the relink chain. The conditional handles both cases inline.
@@ -1615,7 +1617,7 @@ Read `roadmap.md`, all files matching `docs/*roadmap*`, `docs/future-vision*`,
 3. Check every "future" / "planned" / "upcoming" claim against shipped
    work -- if the feature is shipped, the claim is stale.
 
-## Evidence Requirement
+#### Evidence Requirement
 You MUST emit Bash output for every numeric/temporal claim you verify:
 - Test count: paste output of `uv run python -m pytest tests/ --collect-only -q | tail -1`
 - Release list: paste output of `gh release list --limit 10`
@@ -1624,7 +1626,7 @@ You MUST emit Bash output for every numeric/temporal claim you verify:
 
 Findings without evidence are inadmissible.
 
-## Severity Calibration
+#### Severity Calibration
 - Medium for version-theme drift on internal pages.
 - HIGH for stale numeric claims on pages reachable from synthorg.io top
   nav (homepage, roadmap, comparison, vision).
@@ -1668,12 +1670,12 @@ For each number, verify against live source:
 
 Flag EVERY stale number, not just obvious ones.
 
-## Evidence Requirement
+#### Evidence Requirement
 You MUST emit Bash output for every numeric claim you verify. Findings
 without evidence are inadmissible -- the validation phase rejects
 evidence-free numeric findings with severity downgrade to info.
 
-## Severity Calibration
+#### Severity Calibration
 - HIGH for stale numbers on pages reachable from synthorg.io top nav
   (homepage, roadmap, comparison, vision, architecture, decisions,
   getting-started).
@@ -2626,7 +2628,7 @@ For each, suggest a bounded alternative: bucket the value (latency_bucket
 instead of latency_ms), use exemplars instead of labels for high-cardinality
 context, or move the data to logs.
 
-## Evidence Requirement
+#### Evidence Requirement
 For each flagged metric, paste the metric definition (with file:line) and
 note the unbounded label.
 
@@ -3085,7 +3087,7 @@ each page in nav, scan for:
 
 For each claim, verify against live source.
 
-## Evidence Requirement
+#### Evidence Requirement
 You MUST emit Bash output for every numeric/temporal claim you verify.
 Do not assert "verified" without a corresponding Bash result. Examples:
 - Test count: paste output of `uv run python -m pytest tests/ --collect-only -q | tail -1`
@@ -3097,7 +3099,7 @@ Do not assert "verified" without a corresponding Bash result. Examples:
 Findings WITHOUT evidence are inadmissible. Validation phase rejects
 evidence-free numeric findings with severity downgrade to info.
 
-## Severity Calibration
+#### Severity Calibration
 - Every stale public-facing number is severity MEDIUM minimum.
 - HIGH if the page is reachable from synthorg.io top nav (homepage,
   roadmap, comparison, vision, architecture, decisions, getting-started).
@@ -3135,11 +3137,11 @@ For each fetched page:
 - Flag claims that contradict the source (live page says X, source page
   in docs/ says Y -- means a deploy is missing or rendering is broken)
 
-## Evidence Requirement
+#### Evidence Requirement
 Same as agent 151: you MUST paste Bash output for every numerical claim
 you verify against live source.
 
-## Severity Calibration
+#### Severity Calibration
 HIGH for any stale claim on a public synthorg.io page. Public-facing
 inaccuracies are an investor / user trust issue.
 
@@ -3759,6 +3761,10 @@ These concerns are already enforced by hooks, linters, or external tooling today
 | go-resource-leaks | `golangci-lint` + `go vet` pre-commit + CI |
 | changelog-release-notes | `release-please` (automated) |
 | changelog-releases-parity | `release-please` (automated) |
+| long-files | `scripts/check_module_size_budget.py` + `scripts/check_no_growth_in_god_modules.py` (tiered `# module-kind:` budget, ADR-0006) pre-push + CI |
+| long-functions | `ruff` `C901` / `PLR0915` (selected in `pyproject.toml`; per-file ignores are the decomposition ratchet, not an opt-out) |
+| vendor-name-leaks | `scripts/check_forbidden_literals.py` (vendor-agnostic naming; `providers/presets.py` etc. allow-listed) |
+| docs-links-refs | `lychee` pre-commit internal-links gate (offline) + `.github/workflows/lychee.yml` / `lychee-external.yml` |
 | tests-without-assertions (slot 98) | Retired 2026-04-20. Regex-based detection cannot distinguish helper-function assertions, `pytest.raises`/guard-raises patterns, or Pydantic validation-raises from truly empty tests. Produced ~93% false positives in validation (14/15 sampled findings were valid tests). Rely on coverage + mutation testing for vacuous-test detection instead. |
 | unused-python-exports (slot 14) | Retired 2026-05-15. Regex-based detection cannot see type annotations, Litestar framework dependency injection (`data: SomeRequestModel`), factory pattern returns (only `build_x()` imported, not the `X` class returned), `__all__` re-exports, isinstance / typing.Protocol structural usage, or test fixture return types. 2026-05-15 run produced 84 findings, 100% false-positive (validate-batch-01 sampled 28, found 0 confirmed). Use `vulture` for Python dead-code detection (add to dev deps + pre-push gate) or `ruff` `F401` for unused imports. The semantic gap between "imported by name" and "used at runtime via framework / annotation / Protocol structural matching" is too wide for regex. Slot 14 has since been reassigned to the semantic `ghost-wiring` agent (a different concern: runtime reachability, not unused exports); the original regex prompt is preserved in this row's history only. |
 
@@ -3770,14 +3776,10 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 |---|---|
 | wrong-logger-pattern | Custom ruff rule or pre-commit regex hook (TODO: add) |
 | unstructured-logging | Custom ruff rule (TODO: add) |
-| unused-web-components | `knip` in CI (TODO: wire) |
-| unused-web-hooks | `knip` in CI (TODO: wire) |
-| unused-web-utils | `knip` / `ts-prune` in CI (TODO: wire) |
-| vendor-name-leaks | Extend `scripts/check_forbidden_literals.py` (TODO) |
-| long-functions | Ruff `C901` / `PLR0915` + eslint `max-lines-per-function` (TODO: enable) |
-| long-files | Ruff + eslint `max-lines` (TODO: enable) |
+| unused-web-components | `knip` (config at `web/knip.ts`; keep launching until it runs blocking in CI) |
+| unused-web-hooks | `knip` (config at `web/knip.ts`; keep launching until it runs blocking in CI) |
+| unused-web-utils | `knip` / `ts-prune` (config at `web/knip.ts`; keep launching until it runs blocking in CI) |
 | future-annotations-leak | Ruff `FA100` / `FA102` (TODO: enable) |
-| docs-links-refs | `lychee` in CI: internal-links gate (offline) + weekly external-links workflow |
 
 ---
 
@@ -3876,12 +3878,61 @@ Findings to validate:
 {BATCH_OF_FINDINGS}
 ```
 
+### Evidence-requirement enforcement
+
+When validation reads a finding from agent 73, 75, 132, 151, or 152 (the numeric/temporal-claim agents), it MUST verify the finding includes the Bash output proving the numeric claim. Findings without that evidence are downgraded to severity `info` and excluded from triage.
+
 ### After Validation
 
 1. Read all `validate-batch-*.md` files
 2. Delete FALSE_POSITIVE findings entirely from the audit files (edit in place)
 3. Mark INTENTIONAL findings as excluded (keep in file but prefix with `[INTENTIONAL]`)
 4. Report: "Validated N findings. Removed M false positives (X%)."
+
+---
+
+## Phase 3.5: Synthesis & Quality Pass
+
+Runs after validation, before INDEX.md. Launches one **sonnet** synthesis agent that:
+
+1. Reads every finding file in the current run.
+2. Clusters findings by `file:line` (or by file alone when line numbers don't match across agents). Two agents reporting the same line collapse into one consolidated entry showing both perspectives. Single-agent findings pass through unchanged. Writes to `_audit/latest/findings-clustered.md`.
+3. Applies severity normalization across the clustered findings using a single rubric:
+   - `critical`: active security hole, data corruption risk, production outage potential
+   - `high`: broken behavior, missing safety check, public-facing factual error
+   - `medium`: convention violation, dead code, missing wiring, internal inconsistency
+   - `low`: style, minor docs gaps, cosmetic
+   - `info`: TODO, deferred work, opportunity
+4. Adds an `effort` field to each finding: `trivial` / `small` / `medium` / `large`.
+5. **Public-facing severity bump**: any finding whose file is in the public-facing set (README.md, docs/ tree reachable from mkdocs.yml nav, comparison page output) gets severity bumped one level. Reason: stale or wrong claims on synthorg.io are visible to investors and search engines. (This is why Phase 3 validates every severity uniformly: an unvalidated `low` here becomes an unvalidated `medium` in INDEX.md.)
+
+Then a dedicated **opus** Wave 28 meta-synthesis agent reads all 15 Wave 28 finding files plus the clustered output and writes `_audit/latest/REWORK.md`:
+
+```markdown
+# Recommended Reworks
+
+## Top N Architectural Recommendations
+
+### 1. Centralize timestamp formatting (effort: medium)
+
+**Pattern**: 7 different ISO-8601 formatters across the codebase
+(agents 137, 141 both flag this from different angles).
+
+**Affected files**: ...
+
+**Proposal**: introduce `synthorg.core.formatters.iso_timestamp()` and migrate the 7 sites.
+
+**Migration path**:
+1. Land the new helper.
+2. Migrate sites in alphabetical order over 2-3 PRs.
+3. Add a ruff custom rule to forbid new formatters.
+
+**Recommended next action**: open RFC issue with this proposal.
+
+---
+```
+
+The meta-synthesis agent groups Wave 28 findings by underlying root cause (not by which agent flagged them), assigns effort, proposes migration paths, and ranks by impact-to-effort ratio. INDEX.md links to REWORK.md from its Architectural Recommendations section.
 
 ---
 
@@ -3954,6 +4005,54 @@ may not match the codebase's conventions:
 - ...
 ```
 
+### Architectural Recommendations section + JSON export
+
+Append a section to INDEX.md, populated from Wave 28 findings via REWORK.md (Phase 3.5):
+
+```markdown
+## Architectural Recommendations
+
+These are systemic patterns -- not single-line bugs. Each is a candidate
+for centralization, rework, or design change rather than a one-off fix.
+
+See [REWORK.md](REWORK.md) for the full ranked list with proposals.
+
+### Top 5
+
+1. [Pattern name] -- effort: small/medium/large
+   ...
+```
+
+Also write `_audit/latest/findings.json` (machine-readable), which enables external tooling (GitHub Actions integration, dashboards, history analysis):
+
+```json
+{
+  "run_id": "<run-id-timestamp>",
+  "scope": "full",
+  "agents_launched": 159,
+  "validation": {"validated": 412, "false_positives": 67, "intentional": 12},
+  "findings": [
+    {
+      "id": "75:docs/roadmap.md:42",
+      "agent_id": 75,
+      "file": "docs/roadmap.md",
+      "line": 42,
+      "severity_raw": "medium",
+      "severity_normalized": "high",
+      "public_facing": true,
+      "effort": "small",
+      "validated": "confirmed",
+      "description": "Stale test count claim: doc says 13k, actual is X",
+      "evidence": "...bash output..."
+    }
+  ],
+  "clusters": [...],
+  "rework_recommendations": [...]
+}
+```
+
+When building INDEX, also read `_audit/.ignore.yaml` (see Persistent ignore list under Phase 7): findings whose `finding`/`agent` pair matches are filtered out before counting and triage, with an INDEX footer "N findings suppressed by `.ignore.yaml`."
+
 ---
 
 ## Phase 5: Triage with User
@@ -4017,154 +4116,17 @@ Use AskUserQuestion with these options (in order):
 3. **Create GitHub issues for top N issue classes**: one issue per row in the deduped list above a chosen severity floor.
 4. **Open RFC issues for REWORK.md only**: skip per-finding work, file architectural recommendations only.
 
+### Walk architectural reworks separately
+
+After the per-finding triage above, walk `REWORK.md` (from Phase 3.5) with the user as a separate step. Each recommendation gets a per-item triage option: open RFC issue / open implementation issue / skip (judged YAGNI). Keep this separate from per-line finding triage so structural reworks don't compete with surface bugs for attention.
+
+The triage option list also includes **"Ignore permanently"** (see Persistent ignore list under Phase 7), which appends the finding to `_audit/.ignore.yaml` with a reason and optional expiry so it is suppressed on future runs.
+
 If `--report-only` flag was passed at command time, skip the AskUserQuestion entirely and finalise as report-only.
 
 ---
 
-## All-Round Improvements
-
-These are structural improvements to the audit lifecycle, not new agents. They apply to every run.
-
-### Phase 0 setup: run-history layout
-
-Phase 0 setup uses this run-history layout:
-
-```bash
-RUN_DIR="_audit/runs/$(date +%Y-%m-%d-%H%M%S)"
-mkdir -p "$RUN_DIR/findings"
-ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest
-```
-
-The timestamp uses second-level precision (`%H%M%S`) so back-to-back runs in the same minute do not collide and overwrite each other's findings. On Windows, the OpenCode adapter first attempts `New-Item -ItemType SymbolicLink` (requires Developer Mode or admin); on failure it falls back to `New-Item -ItemType Junction`, which needs no special privileges. Either link type makes `_audit/latest` resolve as a directory, so downstream writes to `_audit/latest/findings/<file>` succeed regardless of which one was created. All findings, INDEX, REWORK, DIFF, and JSON live in the run-specific directory. `_audit/latest` always points at the most recent run. Older runs accumulate; never delete `_audit/runs/*`.
-
-Verify `_audit/` is in `.gitignore` (existing behavior). The `_audit/.ignore.yaml` ignore list (see below) is also gitignored by virtue of the parent.
-
-### Persistent ignore list
-
-`_audit/.ignore.yaml` (gitignored):
-
-```yaml
-- finding: "src/synthorg/foo.py:42"
-  agent: 21
-  reason: "Intentional silent except -- cleanup path, see docstring"
-  added: 2026-04-25
-- finding: "docs/roadmap.md:#numeric-claim:13k"
-  agent: 75
-  reason: "Will fix in next docs sweep"
-  added: 2026-04-25
-  expires: 2026-05-25
-```
-
-When building INDEX (Phase 4), read `.ignore.yaml`. Findings with a matching `finding`/`agent` pair are filtered out before counting and triage. Add a footer: "N findings suppressed by `.ignore.yaml`."
-
-Phase 5 triage gets a new option: "Ignore permanently" appends to `.ignore.yaml` with reason and optional expiry.
-
-### Phase 3 update: validate every finding
-
-Validation runs over **every finding at every severity** (critical, high, medium, low, info). There is no opt-out and no severity threshold. The previous "skip lower severities to save validation work" carve-out is removed: this skill is for HUGE audits, the false-positive filter must apply uniformly, and public-facing drift (the "13k tests" precedent) survived past audits precisely because lower-severity findings were untriaged. Phase 3.5 also promotes public-facing findings up one severity, so an unvalidated `low` becomes an unvalidated `medium` in INDEX.md, exactly the noise this validation phase exists to remove.
-
-### Phase 3 update: evidence requirement enforcement
-
-When validation reads a finding from agent 73, 75, 132, 151, or 152, it MUST verify that the finding includes Bash output proving the numeric claim. Findings without evidence are downgraded to severity `info` and excluded from triage.
-
-### Phase 3.5: Synthesis & Quality Pass (NEW)
-
-Runs after validation, before INDEX.md. Launches one **sonnet** synthesis agent that:
-
-1. Reads every finding file in the current run.
-2. Clusters findings by `file:line` (or by file alone when line numbers don't match across agents). Two agents reporting the same line collapse into one consolidated entry showing both perspectives. Single-agent findings pass through unchanged. Writes to `_audit/latest/findings-clustered.md`.
-3. Applies severity normalization across the clustered findings using a single rubric:
-   - `critical`: active security hole, data corruption risk, production outage potential
-   - `high`: broken behavior, missing safety check, public-facing factual error
-   - `medium`: convention violation, dead code, missing wiring, internal inconsistency
-   - `low`: style, minor docs gaps, cosmetic
-   - `info`: TODO, deferred work, opportunity
-4. Adds an `effort` field to each finding: `trivial` / `small` / `medium` / `large`.
-5. **Public-facing severity bump**: any finding whose file is in the public-facing set (README.md, docs/ tree reachable from mkdocs.yml nav, comparison page output) gets severity bumped one level. Reason: stale or wrong claims on synthorg.io are visible to investors and search engines.
-
-Then a dedicated **opus** Wave 28 meta-synthesis agent reads all 15 Wave 28 finding files plus the clustered output and writes `_audit/latest/REWORK.md`:
-
-```markdown
-# Recommended Reworks
-
-## Top N Architectural Recommendations
-
-### 1. Centralize timestamp formatting (effort: medium)
-
-**Pattern**: 7 different ISO-8601 formatters across the codebase
-(agents 137, 141 both flag this from different angles).
-
-**Affected files**: ...
-
-**Proposal**: introduce `synthorg.core.formatters.iso_timestamp()` and migrate the 7 sites.
-
-**Migration path**:
-1. Land the new helper.
-2. Migrate sites in alphabetical order over 2-3 PRs.
-3. Add a ruff custom rule to forbid new formatters.
-
-**Recommended next action**: open RFC issue with this proposal.
-
----
-```
-
-The meta-synthesis agent groups Wave 28 findings by underlying root cause (not by which agent flagged them), assigns effort, proposes migration paths, and ranks by impact-to-effort ratio. INDEX.md links to REWORK.md from its Architectural Recommendations section.
-
-### Phase 4 update: INDEX.md Architectural Recommendations + JSON export
-
-Append a new section to INDEX.md, populated from Wave 28 findings via REWORK.md:
-
-```markdown
-## Architectural Recommendations
-
-These are systemic patterns -- not single-line bugs. Each is a candidate
-for centralization, rework, or design change rather than a one-off fix.
-
-See [REWORK.md](REWORK.md) for the full ranked list with proposals.
-
-### Top 5
-
-1. [Pattern name] -- effort: small/medium/large
-   ...
-```
-
-Also write `_audit/latest/findings.json` (machine-readable):
-
-```json
-{
-  "run_id": "<run-id-timestamp>",
-  "scope": "full",
-  "agents_launched": 159,
-  "validation": {"validated": 412, "false_positives": 67, "intentional": 12},
-  "findings": [
-    {
-      "id": "75:docs/roadmap.md:42",
-      "agent_id": 75,
-      "file": "docs/roadmap.md",
-      "line": 42,
-      "severity_raw": "medium",
-      "severity_normalized": "high",
-      "public_facing": true,
-      "effort": "small",
-      "validated": "confirmed",
-      "description": "Stale test count claim: doc says 13k, actual is X",
-      "evidence": "...bash output..."
-    }
-  ],
-  "clusters": [...],
-  "rework_recommendations": [...]
-}
-```
-
-Enables external tooling: GitHub Actions integration, dashboards, history analysis.
-
-### Phase 5 update: walk Architectural Recommendations separately
-
-Phase 5 triage gets one extra step: walk REWORK.md with the user. Each recommendation gets a per-item triage option: open RFC issue / open implementation issue / skip (judged YAGNI). This is separate from the per-line finding triage so structural reworks don't compete with surface bugs for attention.
-
-Plus the "Ignore permanently" option from the persistent ignore list above.
-
-### Phase 6: Diff-since-last-run (NEW)
+## Phase 6: Diff-since-last-run
 
 Runs after Phase 5. Generates `_audit/latest/DIFF.md`:
 
@@ -4225,7 +4187,7 @@ Bootstrap: not all 159 agents need golden tests upfront. Start with the 25 agent
 
 If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 
-### Phase 7: Cleanup (NEW, MANDATORY)
+## Phase 7: Cleanup (MANDATORY)
 
 Runs after triage / report-only output is finalised. Sweep agent-leaked scratch files from the working tree.
 
@@ -4255,7 +4217,31 @@ Show the user the list before deleting anything that's not on the known leak lis
 
 If `git status` shows any new untracked `.py` file at project root or in `scripts/` that didn't exist before the audit run started, flag it as a candidate for removal.
 
-The cleanup phase is REQUIRED on every run. Skipping it means the next run's diagnostic stream is contaminated by the previous run's leakage.
+Finally, disarm the scratch-script hook by removing the run marker created in Phase 0:
+
+```bash
+rm -f _audit/.audit-run-active
+```
+
+The cleanup phase is REQUIRED on every run. Skipping it means the next run's diagnostic stream is contaminated by the previous run's leakage, and the leftover `_audit/.audit-run-active` marker would keep the scratch-script hook armed (until its 12h staleness guard expires).
+
+### Persistent ignore list
+
+`_audit/.ignore.yaml` is a cross-run suppression file (gitignored by virtue of the `_audit/` parent entry):
+
+```yaml
+- finding: "src/synthorg/foo.py:42"
+  agent: 21
+  reason: "Intentional silent except -- cleanup path, see docstring"
+  added: 2026-04-25
+- finding: "docs/roadmap.md:#numeric-claim:13k"
+  agent: 75
+  reason: "Will fix in next docs sweep"
+  added: 2026-04-25
+  expires: 2026-05-25
+```
+
+Phase 4 reads it when building INDEX (findings matching a `finding`/`agent` pair are filtered before counting and triage, with the footer "N findings suppressed by `.ignore.yaml`"). Phase 5 triage offers "Ignore permanently", which appends a new entry here with reason and optional expiry.
 
 ---
 
@@ -4274,7 +4260,7 @@ The cleanup phase is REQUIRED on every run. Skipping it means the next run's dia
 7. **Rerunnable**: never delete `_audit/runs/*`; always create a fresh `_audit/runs/<timestamp>/` and repoint `_audit/latest` at it
 8. **Never use em-dashes** in any output files (project convention)
 9. **Report progress** after each batch completes
-10. **No scratch scripts**: agents may NOT write helper Python / shell scripts to disk anywhere outside `_audit/latest/findings/<their-finding-file>.md`. Use Grep / Glob / Read inline. The Phase 7 cleanup will sweep any leakage but the prevention rule lives at the agent level.
+10. **No scratch scripts**: agents may NOT write helper Python / shell scripts to disk anywhere outside `_audit/latest/findings/<their-finding-file>.md`. Use Grep / Glob / Read inline. Three layers enforce this: the agent-prompt rule (prevention), the `check_no_audit_scratch_scripts.sh` PreToolUse hook armed by the Phase 0 marker (blocks root / `scripts/` `*.py` / `*.sh` writes mid-run), and the Phase 7 cleanup sweep (backstop for anything that slips through, e.g. via OpenCode where the Claude hook is absent).
 11. **No Bash redirects**: this project's PreToolUse hook blocks `>`, `>>`, `2>`, `&>` in any Bash call. Use `||` chains and let stderr surface. Use the Write/Edit tools for file creation.
 12. **Verify FP signals end-of-run**: after Phase 6, if `_audit/metrics/agent-quality.json` shows any agent at >30% rolling FP rate, list the agent and its FP rate in the final summary so the user can prioritize prompt revision before the next run.
 

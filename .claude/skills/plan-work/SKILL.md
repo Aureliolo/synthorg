@@ -43,8 +43,8 @@ This is exactly why a program that sequences a sweeping rework (an identifier or
 ## Hard rules (INVARIANTS, never violate)
 
 1. **Every proposed worktree must FULLY close at least one issue.** No exploratory, "groundwork", or partial worktrees. If a candidate can't be driven to an issue's full acceptance criteria, it is not proposed. (Epic-validation worktrees satisfy this by closing the epic; see Step 6.)
-2. **Max 300 files touched per worktree.** Estimate the footprint (Step 4). If a single issue alone is estimated above 300 files, flag it as "must be split first" and do NOT propose it as one worktree.
-3. **Small worktrees may bundle, as an OPTION only.** If a worktree's estimated footprint is small (about 20 to 50 files), it MAY absorb a second unblocked, conflict-free, sensibly-adjacent issue to bring the total to about 200 (never past 300). Bundling is offered, never forced: it's fine to leave a small worktree single if no second issue fits cleanly. Suppressed entirely by `--no-bundle`.
+2. **Size: 300 files is the only HARD cap; ~50-250 files / ~3-15k LOC is the WISHED target.** The single hard limit is **300 files** touched per worktree (estimate the footprint in Step 4); a single issue estimated above 300 files is flagged "must be split first" and never proposed as one worktree. There is **NO hard LOC cap**. Within the file ceiling, AIM for the wished sweet spot of about **50 to 250 files and about 3k to 15k LOC** per worktree, the reviewable range. These are targets, not gates: a worktree may land below 50 files when nothing adjacent fits cleanly (Rule 3), and LOC may run past 15k when one issue genuinely needs it. Decomposition work inflates file count ~3-4x (original modules + new split modules + import-site updates), so roughly 15-25 oversized source files per worktree lands in the target band.
+3. **Bundle toward the target; never over-fragment.** Do NOT propose absurdly small single-concern worktrees (one per package, "decompose settings (2 files)", and the like). When carving an epic into worktrees, BUNDLE file-disjoint, unblocked, conflict-free, sensibly-adjacent issues/packages until each bundle reaches the ~50-250 file target, and let that one worktree close the several sub-issues it covers (multiple `Closes #N`). Bundling small fragments up to the target is the planning DEFAULT, not an afterthought; adding a *second whole issue* to an already-target-sized worktree stays an offered option (Step 5). It is still fine to leave a worktree single when nothing adjacent fits cleanly. Never exceed the 300-file hard cap when bundling. `--no-bundle` suppresses the optional second-issue bundle (one issue per worktree), but does not license proposing absurdly small fragments.
 4. **Conflict-free.** A proposed worktree's file/package footprint must be disjoint from (a) every inflight worktree and (b) every other proposed worktree in the same wave. Any shared `src/`, `web/`, or `cli/` file is a conflict (be conservative; shared generated `data/*.json` also counts).
 5. **Respect declared dependencies.** Only the head of a sequential chain is startable. A candidate is "unblocked" only when every `#N` in its `## Dependencies` section is closed, or is an inflight worktree whose landing-first is *established* by the Step 3a order-of-trust rule (a declared chain, or a green-and-approved PR), never merely assumed.
 6. **Exclusions (standing).** Drop `renovate`, `label:backlog`, `label:maybe`, `label:maybe-future`, and Renovate/dependency-update PRs from the candidate pool unless the user explicitly asks for them. Epics/trackers are NOT startable issues: they're used only for grouping and epic-completion detection (Step 6).
@@ -131,23 +131,7 @@ Establish the landing order of a still-open inflight dependency in this order of
 2. `spec:*` labels mapped to source directories (mapping below).
 3. A glob count of those directories for the 300-file check: `git ls-files src/synthorg/<pkg> tests/unit/<pkg> | wc -l` for in-package work, or count the top-level bucket directly for `web/` or `cli/` (`git ls-files web | wc -l`, `git ls-files cli | wc -l`). Never prefix the top-level buckets with `src/synthorg/`; those paths hold no files. Bare; never pipe git through head/tail.
 
-Compact `spec:*` to directory map (full table lives in the `worktree` skill, Step 6c; keep them in sync):
-
-| label | dirs |
-|---|---|
-| `spec:communication` | `communication/` |
-| `spec:architecture` | `core/`, `config/` |
-| `spec:task-workflow` / `spec:agent-system` | `engine/` (plus `core/`) |
-| `spec:persistence` | `persistence/` |
-| `spec:memory` | `memory/` |
-| `spec:security` | `security/` |
-| `spec:budget` | `budget/` |
-| `spec:tools` | `tools/` |
-| `spec:hr` | `hr/` |
-| `spec:api` / `spec:human-interaction` | `api/` (plus `cli/`) |
-| `spec:web` | `web/` |
-| `spec:providers` | `providers/` |
-| `spec:templates` | `templates/` |
+**`spec:*` to directory map: use the canonical table in the `worktree` skill (Step 6c).** It is the single source of truth; do NOT duplicate it here (a local copy drifted from the canonical one once already). Read that table for the label-to-directory mapping. It is a coarse fallback only: an issue's explicit `## Scope` file list (trust level 1 above) always beats it.
 
 Record per candidate: unblocked?, package set, estimated file count, the issue(s) it fully closes.
 

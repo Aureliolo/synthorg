@@ -266,8 +266,8 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 | **python-reviewer** | Any `src_py` or `test_py` | `python-reviewer` |
 | **pr-test-analyzer** | `test_py` changed, OR `src_py` changed with no corresponding test changes | `pr-test-analyzer` |
 | **silent-failure-hunter** | Diff contains `try`, `except`, `raise`, error handling patterns | `silent-failure-hunter` |
-| **comment-analyzer** | Diff contains docstring changes (`"""`) or significant comment changes | `comment-analyzer` |
-| **type-design-analyzer** | Diff contains `class` definitions, `BaseModel`, `TypedDict`, type aliases | `type-design-analyzer` |
+| **comment-analyzer** | Diff ADDS or substantially rewrites docstrings or comment blocks (a new `"""..."""`, or 3+ changed comment lines in one hunk). Do NOT trigger on mere one-line comment touches, moved lines, or a docstring that only shifted position | `comment-analyzer` |
+| **type-design-analyzer** | Diff ADDS a new type definition: a new `class` subclassing `BaseModel`/`TypedDict`/`Enum`/dataclass, or a new type alias / `NewType`. Do NOT trigger on edits to an existing class body (a new method or field on an existing model is convention-enforcer / python-reviewer territory, not a type-design review) | `type-design-analyzer` |
 | **logging-audit** | Any `src_py` changed | `logging-audit` |
 | **resilience-audit** | Any `src_py` changed | `resilience-audit` |
 | **conventions-enforcer** | Any `src_py` or `test_py` | `conventions-enforcer` |
@@ -278,7 +278,7 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 | **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `infra-reviewer` |
 | **persistence-reviewer** | Any file in `src/synthorg/persistence/` | `persistence-reviewer` |
 | **test-quality-reviewer** | Any `test_py` or `web_test` | `test-quality-reviewer` |
-| **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `async-concurrency-reviewer` |
+| **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite`, OR sync-concurrency markers `threading`, `Thread`, `Lock`, `concurrent.futures` in `src_py` files (it now owns race-condition review, including the TOCTOU / shared-mutable-state / read-modify-write checks formerly run as a mini-pass) | `async-concurrency-reviewer` |
 | **go-reviewer** | Any `cli_go` | `go-reviewer` |
 | **go-security-reviewer** | Any `cli_go` whose diff contains `exec.Command`, `os/exec`, `http`, `os.Remove`, `os.WriteFile`, `filepath`, user-supplied paths | `go-security-reviewer` |
 | **go-conventions-enforcer** | Any `cli_go` | `go-conventions-enforcer` |
@@ -473,7 +473,7 @@ The conventions-enforcer agent checks for project-specific code conventions from
 
 **Python 3.14 conventions (MAJOR):**
 8. `from __future__ import annotations`: forbidden, Python 3.14 has PEP 649 (CRITICAL)
-9. Parenthesized `except (A, B):` instead of PEP 758 `except A, B:` (MAJOR)
+9. Unparenthesized `except (A, B):` when NOT binding: flag the parens as removable, prefer `except A, B:` (MAJOR). **Do NOT flag `except (A, B) as exc:` -- when binding with `as`, PEP 758 REQUIRES the parens; it is correct, not a violation.** (See "Known false positives" below.)
 
 **Code structure (MAJOR):**
 10. Functions exceeding 50 lines (MAJOR)
@@ -484,10 +484,17 @@ The conventions-enforcer agent checks for project-specific code conventions from
 13. Storing derived/redundant fields instead of using `@computed_field` (MAJOR)
 14. Using raw `str` for identifier/name fields instead of `NotBlankStr` (from `core.types`) (MAJOR)
 15. Mixing static config fields with mutable runtime fields in the same model (MAJOR)
+16. Frozen model missing `extra="forbid"` -- but a model that declares any `@computed_field` is AUTO-EXEMPT (the `check_frozen_model_extra_forbid.py` gate exempts it, and the gate already passed on push). Do NOT flag a `@computed_field`-bearing model, nor a line carrying `# lint-allow: frozen-extra-forbid`. (See "Known false positives" below.)
 
 **Async patterns (SUGGESTION):**
-16. Bare `asyncio.create_task()` instead of `asyncio.TaskGroup` for fan-out/fan-in operations in new code (SUGGESTION)
-17. Unstructured concurrency patterns that could benefit from `TaskGroup` (SUGGESTION)
+17. Bare `asyncio.create_task()` instead of `asyncio.TaskGroup` for fan-out/fan-in operations in new code (SUGGESTION)
+18. Unstructured concurrency patterns that could benefit from `TaskGroup` (SUGGESTION)
+
+**Known false positives (do NOT flag; observed on the #2292 run, all confirmed invalid):**
+- `except (A, B) as exc:` -- parens are MANDATORY when binding with `as`. Only the non-binding `except (A, B):` form should prefer dropping parens.
+- A frozen model missing `extra="forbid"` that has a `@computed_field`, or carries `# lint-allow: frozen-extra-forbid` -- auto-exempt; the gate passed for this reason.
+- Isolated frozen-model construction/validation tests using descriptive string literals (`"plan-1"`, `"fire-001"`) for `NotBlankStr` foreign-key fields where NO parent PK is referenced -- this is the repo's established model-test style. Do not demand `sid()`/`as_uuid()` on FK fields in pure model tests, and never propose converting a SUBSET of sibling FK fields (it reduces internal consistency). `sid()` applies to cross-referenced ids in repository/integration tests, not isolated model construction.
+- Any rule that a green pre-push gate already enforces (ruff, mypy, frozen-extra-forbid, module-size): if the branch pushed clean, a finding contradicting that gate is almost certainly a false positive -- verify against the actual gate before flagging.
 
 ### Security-reviewer supplemental prompt
 
@@ -683,10 +690,11 @@ The test-quality-reviewer agent checks test code quality beyond basic coverage m
 
 The async-concurrency-reviewer agent checks for async/concurrency correctness and best practices.
 
-**Race conditions (CRITICAL):**
-1. Shared mutable state accessed from multiple async tasks without synchronization (CRITICAL)
-2. Check-then-act patterns without atomicity (e.g., `if key not in dict: dict[key] = ...` in async context) (CRITICAL)
-3. Missing locks around critical sections that modify shared state (CRITICAL)
+**Race conditions (CRITICAL):** this agent owns race-condition review for BOTH async and sync concurrency (it absorbed the former `mini-pass-race-conditions`); race conditions are not exclusive to async code.
+1. Shared mutable state accessed from multiple async tasks OR threads (`threading`, `concurrent.futures`) without synchronization (CRITICAL)
+2. Check-then-act / TOCTOU patterns without atomicity (e.g., `if key not in dict: dict[key] = ...`) (CRITICAL)
+3. Missing locks around critical sections that modify shared state; concurrent dict/list mutation (CRITICAL)
+4. Database read-modify-write sequences not wrapped in a single transaction (CRITICAL)
 
 **Resource leaks (CRITICAL):**
 4. `asyncio.create_task()` without awaiting or storing the task reference (fire-and-forget; exceptions are silently lost) (CRITICAL)
@@ -738,7 +746,9 @@ Read the linked issue's title, body, acceptance criteria, labels, and comments i
 
 ## Phase 3.5: Audit-Skill Mini-Pass (diff scope)
 
-The full `/codebase-audit` runs ~159 agents and is too expensive for every PR. But a small, high-recurrence subset is cheap enough to run on the PR diff alone, catching new violations at PR time instead of waiting for the next scheduled audit. This phase adds six extra agents to Phase 4's parallel launch with their file scope constrained to the changed files.
+The full `/codebase-audit` runs ~159 agents and is too expensive for every PR. Two of its checks catch a high-recurrence, high-value defect class that NO other pre-PR agent covers -- runtime boot-reachability -- and are cheap enough to run on the PR diff alone. This phase adds those two agents to Phase 4's parallel launch with their file scope constrained to the changed files.
+
+The audit's logging checks (missing-logger, missing-event-constants, missing-state-transition-log) and its race-condition check are deliberately NOT mirrored here: the dedicated `logging-audit` and `async-concurrency-reviewer` agents already run on the diff in Phase 4 and fully subsume them. Mini-pass copies only produced duplicate findings to dedupe, for extra token cost.
 
 **Scope:** the same unified diff captured in Phase 3 (`git diff --staged main`) -- compute the set of changed files and pass it to each mini-pass agent as a hard scope override.
 
@@ -746,33 +756,28 @@ The full `/codebase-audit` runs ~159 agents and is too expensive for every PR. B
 
 | Mini-pass agent | Source prompt | What it catches |
 |---|---|---|
-| `mini-pass-missing-logger` | Agent 01 in `.claude/skills/codebase-audit/SKILL.md` (section "Agent 01: missing-logger") | Business-logic modules without `logger = get_logger(__name__)` |
-| `mini-pass-missing-event-constants` | Agent 02 (section "Agent 02: missing-event-constants") | Logger calls using string / f-string / %-format literals instead of constants from `synthorg.observability.events.*` |
-| `mini-pass-missing-state-transition-log` | Agent 04 (section "Agent 04: missing-state-transition-log") | State / status mutations without an INFO log near the write |
-| `mini-pass-unwired-settings` | Agent 09 (section "Agent 09: unwired-settings") | Settings registered but consumed by no service started at boot |
-| `mini-pass-race-conditions` | Agent 39 (section "Agent 39: race-conditions") | Shared mutable state without locks, TOCTOU patterns, concurrent dict / list mutation, DB read-modify-write without transactions |
+| `mini-pass-unwired-settings` | Agent 09 in `.claude/skills/codebase-audit/SKILL.md` (section "Agent 09: unwired-settings") | Settings registered but consumed by no service started at boot |
 | `mini-pass-ghost-wiring` | Agent 14 (section "Agent 14: ghost-wiring") | New runtime component (engine/workers/api/budget/security/meta/client/settings) defined + tested but not constructed/reachable at boot; boot-wired store with no producer; endpoint gated on a never-wired dep; setting with no constructed consumer. The EPIC #1955 / #1951 defect class. |
 
 **Prompt construction (per agent):** read the source prompt from `.claude/skills/codebase-audit/SKILL.md` by section header (line numbers drift; section headers are stable). Prepend a hard scope override:
 
 ```text
-SCOPE OVERRIDE (mini-pass): only inspect the following files (the PR diff). Do not sweep the rest of src/. If a file in this list is outside the agent's normal scope (e.g. a test file for an agent that targets src/), skip it silently. File list:
-<one path per line from `git diff --staged main --name-only`, filtered to .py only for the four src-targeted agents>
+SCOPE OVERRIDE (mini-pass): only inspect the following files (the PR diff). Do not sweep the rest of src/. If a file in this list is outside the agent's normal scope, skip it silently. File list:
+<one .py path per line from `git diff --staged main --name-only`>
 ```
 
-For `mini-pass-missing-event-constants` and `mini-pass-race-conditions`, also include `tests/` paths from the diff so test-side regressions are caught. For `mini-pass-unwired-settings`, the diff scope must include `src/synthorg/settings/definitions/` AND `src/synthorg/api/lifecycle_helpers.py` whenever either changed (settings can be defined in one PR and ghost-wired in another -- the diff scope alone is too narrow).
+For `mini-pass-unwired-settings`, the diff scope must include `src/synthorg/settings/definitions/` AND `src/synthorg/api/lifecycle_helpers.py` whenever either changed (settings can be defined in one PR and ghost-wired in another -- the diff scope alone is too narrow).
 
-**Launch:** add the six mini-pass agents to the parallel Task call in Phase 4. Use `subagent_type: general-purpose`. The triage gate lock from Phase 4 covers their output too -- no separate lock needed.
+**Launch:** add the two mini-pass agents to the parallel Task call in Phase 4. Use `subagent_type: general-purpose`. The triage gate lock from Phase 4 covers their output too -- no separate lock needed.
 
 `mini-pass-ghost-wiring` is src-targeted (runtime modules only). Give it the changed `.py` files under `src/synthorg/{engine,workers,api,budget,security,meta,client,settings}/` as scope, but allow it to read `src/synthorg/api/{app,auto_wire,lifecycle,lifecycle_builder,lifecycle_helpers}.py` and `scripts/_ghost_wiring_manifest.txt` for boot-path tracing even when those are not in the diff (proving non-reachability requires reading the boot path, not just the new file). It must apply the SCOPE RULE in Agent 14's prompt and must not re-flag symbols whose manifest line is `PENDING` (those are tracked by EPIC #1955).
 
 **Traceability:** every finding emitted by a mini-pass agent MUST set `Source: mini-pass-<agent-name>` in the Phase 5 triage table so users can downweight a category if it gets noisy without affecting the main agent roster.
 
-**Skip condition:** skip the mini-pass only when the diff has zero relevant `.py` changes for any of the six agents after scope expansion above. Concretely:
+**Skip condition:** skip the mini-pass entirely when the diff has zero relevant `.py` changes:
 
-- skip the mini-pass entirely when the diff is `docs/`-only, `web/`-only, or `cli/`-only AND has zero `.py` changes under `src/synthorg/` AND zero `.py` changes under `tests/`;
-- when the diff touches `tests/` Python files but has zero `.py` changes under `src/synthorg/`, run only `mini-pass-missing-event-constants` and `mini-pass-race-conditions` (the two agents whose scope already extends into `tests/`) and skip the other four;
-- `mini-pass-unwired-settings` runs whenever EITHER `src/synthorg/settings/definitions/` OR `src/synthorg/api/lifecycle_helpers.py` changed (settings can be defined in one PR and ghost-wired in another -- requiring both is too narrow).
+- skip both when the diff is `docs/`-only, `web/`-only, or `cli/`-only AND has zero `.py` changes under `src/synthorg/`;
+- `mini-pass-unwired-settings` runs whenever EITHER `src/synthorg/settings/definitions/` OR `src/synthorg/api/lifecycle_helpers.py` changed (settings can be defined in one PR and ghost-wired in another -- requiring both is too narrow);
 - `mini-pass-ghost-wiring` runs whenever any `.py` under `src/synthorg/{engine,workers,api,budget,security,meta,client,settings}/` changed (a PR that adds a new runtime class/factory/store/endpoint without wiring it at boot is exactly the regression this catches). Skip it only when the diff has zero `.py` changes under those runtime modules.
 
 ## Phase 4: Launch Review Agents (parallel)
@@ -840,7 +845,9 @@ fixes as individual agents complete. The lock from Phase 4 blocks
 source edits anyway; breaking that gate is a workflow bug.
 
 Build a single consolidated table of **ALL** findings from all agents
-and write it to `_audit/pre-pr-review/triage.md`. Writing the table to
+and write it to `_audit/pre-pr-review/triage.md`. Use ASCII punctuation
+only in this file (`--`, `:`, `(...)`): the `no-em-dashes` PreToolUse hook
+blocks any Write containing U+2014, so an em-dash forces a wasted rewrite. Writing the table to
 a file (not just showing it in chat) is part of the agreed workflow
 so the user can review the table independently of the chat buffer.
 The triage gate hook only checks the lock file; it does not verify
