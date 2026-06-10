@@ -660,17 +660,15 @@ jobs:
       - name: Export OpenAPI schema (required by frontend codegen)
         run: uv run python scripts/export_openapi.py
 
-      # `npm ci` hits the npm registry for every transitive dep -- a single
-      # registry blip drops the whole frontend build. Retry the install so a
-      # 5xx burst on registry.npmjs.org doesn't fail the workflow. The build
-      # step is local and stays unwrapped.
+      # `npm ci` hits the npm registry for every transitive dep, and npm's
+      # optional-dependency reify bug (npm/cli#4828) can silently drop a
+      # platform native binding. The composite retries on registry blips and
+      # verifies + repairs any missing native binding before the build runs.
       - name: Install frontend deps
-        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
+        uses: ./.github/actions/install-js-deps
         with:
-          timeout_minutes: 10
-          max_attempts: 3
-          retry_wait_seconds: 30
-          command: cd web && npm ci --ignore-scripts
+          working-directory: web
+          npm-ci-args: --ignore-scripts
 
       - name: Build SPA
         working-directory: web

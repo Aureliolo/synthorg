@@ -24,6 +24,7 @@
  *   PreToolUse (Edit|Write): scripts/check_no_em_dashes_hook.sh
  *   PreToolUse (Edit|Write): scripts/check_pre_pr_review_triage_gate.sh
  *   PreToolUse (Edit|Write): scripts/check_no_throttle_override_creation.sh
+ *   PreToolUse (Edit|Write): scripts/check_no_audit_scratch_scripts.sh
  *   PostToolUse (Edit|Write): scripts/check_web_design_system.py
  *   PostToolUse (Edit|Write): scripts/check_backend_regional_defaults.py
  *   PostToolUse (Bash): scripts/record_push_throttle.sh
@@ -304,6 +305,23 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
                 filePathInput,
                 5000,
                 input.tool === "edit" ? "Edit" : "Write",
+              );
+              const denyReason = denyReasonFromOutcome(outcome);
+              if (denyReason) {
+                throw new Error(denyReason);
+              }
+            }
+
+            // check_no_audit_scratch_scripts.sh: during a /codebase-audit run
+            // (marker _audit/.audit-run-active present), blocks agents writing
+            // helper *.py / *.sh scripts to the project root or scripts/. Inert
+            // otherwise, so normal development is unaffected. Mirrors the
+            // corresponding hook in .claude/settings.json.
+            {
+              const outcome = runHookScript(
+                "scripts/check_no_audit_scratch_scripts.sh",
+                filePathInput,
+                5000,
               );
               const denyReason = denyReasonFromOutcome(outcome);
               if (denyReason) {

@@ -1181,8 +1181,9 @@ jobs:
           node-version: 24.16.0
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
-        working-directory: web
+      - uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: web
       - run: npm run lint
         working-directory: web
       - run: npm run lint:circular
@@ -1212,8 +1213,9 @@ jobs:
         with:
           name: openapi-schema
           path: docs/openapi
-      - run: npm ci
-        working-directory: web
+      - uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: web
       - run: npm run type-check
         working-directory: web
 
@@ -1249,8 +1251,9 @@ jobs:
         with:
           name: openapi-schema
           path: docs/openapi
-      - run: npm ci
-        working-directory: web
+      - uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: web
       - name: Run Vitest (active-handle detection is part of the test run)
         working-directory: web
         env:
@@ -1301,8 +1304,9 @@ jobs:
       # and test don't.
       - name: Set up Python + uv (DTO drift gate)
         uses: ./.github/actions/setup-python-uv
-      - run: npm ci
-        working-directory: web
+      - uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: web
       - name: DTO TypeScript drift gate
         run: uv run python scripts/check_dto_types_ts_in_sync.py
       - name: Production build
@@ -1335,8 +1339,9 @@ jobs:
           node-version: 24.16.0
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
-        working-directory: web
+      - uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: web
       - name: npm audit (critical + high)
         run: npm audit --audit-level=high
         working-directory: web
@@ -1360,8 +1365,9 @@ jobs:
           node-version: 24.16.0
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
-        working-directory: web
+      - uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: web
       - name: Run npm run storybook:build -- --disable-telemetry
         run: npm run storybook:build -- --disable-telemetry
         working-directory: web

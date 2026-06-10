@@ -157,8 +157,9 @@ jobs:
           node-version: "24.16.0"
 
       - name: Install Astro dependencies
-        working-directory: site
-        run: npm ci
+        uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: site
 
       - name: Build Astro
         working-directory: site

@@ -249,14 +249,17 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    - `spec:providers` → `src/synthorg/providers/`
    - `spec:budget` → `src/synthorg/budget/`
    - `spec:tools` → `src/synthorg/tools/`
-   - `spec:hr` → `src/synthorg/core/`
+   - `spec:hr` → `src/synthorg/hr/`
    - `spec:human-interaction` → `src/synthorg/api/`, `src/synthorg/cli/`
+   - `spec:api` → `src/synthorg/api/`, `src/synthorg/cli/`
    - `spec:memory` → `src/synthorg/memory/`
+   - `spec:persistence` → `src/synthorg/persistence/`
    - `spec:security` → `src/synthorg/security/`
+   - `spec:observability` → `src/synthorg/observability/`
    - `spec:architecture` → `src/synthorg/core/`, `src/synthorg/config/`
-   - `spec:providers-scope` → `src/synthorg/providers/`
+   - `spec:web` → `web/`
 
-   **Note:** This mapping is repository-specific. Update it when new `spec:*` labels are added or when the directory structure changes.
+   **Note:** This mapping is repository-specific and is the single source of truth: the `plan-work` skill (Step 3b) references this table instead of duplicating it, so update it here only. Add rows when new `spec:*` labels appear or the directory structure changes. It is a coarse fallback heuristic for footprint estimation: an issue's explicit `## Scope` file list always wins over it.
 
    Also read the issue bodies for `§` references to DESIGN_SPEC sections.
 

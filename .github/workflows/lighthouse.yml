@@ -125,10 +125,13 @@ jobs:
         run: uv run python scripts/export_openapi.py
 
       - name: Install dashboard deps
-        # Retry transient npm registry 5xx / network blips with
-        # exponential backoff so a flaky registry doesn't fail
-        # the gate.
-        run: npm --prefix web ci --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
+        # The composite retries on registry blips and verifies + repairs any
+        # native binding npm's optional-dep race (npm/cli#4828) drops, then
+        # --fetch-retries layers npm's own backoff on top.
+        uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: web
+          npm-ci-args: --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
 
       - name: Build dashboard (production)
         run: npm --prefix web run build
@@ -236,9 +239,13 @@ jobs:
 
       - name: Install lhci (reuse web's @lhci/cli)
         if: steps.pr.outputs.skip == 'false'
-        # Retry transient npm registry 5xx / network blips with
-        # exponential backoff.
-        run: npm --prefix web ci --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
+        # The composite retries on registry blips and verifies + repairs any
+        # native binding npm's optional-dep race (npm/cli#4828) drops, then
+        # --fetch-retries layers npm's own backoff on top.
+        uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: web
+          npm-ci-args: --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
 
       - name: Lighthouse CI (site)
         if: steps.pr.outputs.skip == 'false'
