@@ -7,6 +7,7 @@ they carry no autonomy gating.
 """
 
 from typing import ClassVar, Final, override
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -142,7 +143,7 @@ class KnowledgeArchitectSearchTool(BaseTool):
                 content="No results found.",
                 is_error=False,
             )
-        lines = [f"[{f.id}] ({f.category.value}) {f.content}" for f in facts]
+        lines = [f"[{f.id!s}] ({f.category.value}) {f.content}" for f in facts]
         return ToolExecutionResult(
             content="\n".join(lines),
             is_error=False,
@@ -181,13 +182,20 @@ class KnowledgeArchitectReadTool(BaseTool):
         try:
             args = KnowledgeArchitectReadArgs.model_validate(arguments)
             entry_id = args.entry_id
+            try:
+                entry_uuid = UUID(entry_id)
+            except ValueError:
+                return ToolExecutionResult(
+                    content=f"Entry id {entry_id!r} is not a valid UUID.",
+                    is_error=True,
+                )
             query = OrgMemoryQuery(
                 context=entry_id,
                 limit=_READ_BY_ID_SCAN_LIMIT,
             )
             facts = await self._org_backend.query(query)
             match = next(
-                (f for f in facts if str(f.id) == entry_id),
+                (f for f in facts if f.id == entry_uuid),
                 None,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -210,7 +218,7 @@ class KnowledgeArchitectReadTool(BaseTool):
             )
         return ToolExecutionResult(
             content=(
-                f"ID: {match.id}\n"
+                f"ID: {match.id!s}\n"
                 f"Category: {match.category.value}\n"
                 f"Content: {match.content}"
             ),

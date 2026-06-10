@@ -50,6 +50,7 @@ class TestDecisionRepository:
 
         fetched = await backend.decision_records.get(sid("dec-001"))
         assert fetched is not None
+        assert fetched.id == as_uuid("dec-001")
         assert fetched.decision == DecisionOutcome.APPROVED
         assert fetched.task_id == sid("task-001")
 

@@ -9,7 +9,11 @@ from uuid import UUID
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.checkpoint.models import Checkpoint
 from synthorg.observability import get_logger, safe_error_description
@@ -178,7 +182,7 @@ INSERT INTO checkpoints (
         checkpoint = self._row_to_model(dict(row))
         logger.debug(
             PERSISTENCE_CHECKPOINT_QUERIED,
-            checkpoint_id=checkpoint.id,
+            checkpoint_id=str(checkpoint.id),
             turn_number=checkpoint.turn_number,
         )
         return checkpoint
@@ -304,7 +308,7 @@ INSERT INTO checkpoints (
         """Convert a database row to a ``Checkpoint`` model.
 
         Raises:
-            QueryError: If the row cannot be deserialized.
+            MalformedRowError: If the row cannot be deserialized.
 
         Returns:
             Result of type ``Checkpoint``.
@@ -320,4 +324,4 @@ INSERT INTO checkpoints (
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise QueryError(msg) from exc
+            raise MalformedRowError(msg) from exc

@@ -99,6 +99,12 @@ class TestSnapshotRowToOrgFact:
         with pytest.raises(OrgMemoryQueryError):
             snapshot_row_to_org_fact(row)
 
+    def test_malformed_fact_id_raises(self) -> None:
+        row = _snapshot_row(_fact())
+        row["fact_id"] = "not-a-uuid"
+        with pytest.raises(OrgMemoryQueryError):
+            snapshot_row_to_org_fact(row)
+
 
 @pytest.mark.unit
 class TestOperationLogMarshalling:
@@ -164,6 +170,24 @@ class TestOperationLogMarshalling:
             "operation_type": "PUBLISH",
             "content": "body",
             "category": "not-a-category",
+            "tags": tags_to_json((NotBlankStr("x"),)),
+            "author_agent_id": "agent-1",
+            "author_seniority": SeniorityLevel.LEAD.value,
+            "author_is_human": 0,
+            "author_autonomy_level": AutonomyLevel.FULL.value,
+            "timestamp": _NOW.isoformat(),
+            "version": 3,
+        }
+        with pytest.raises(OrgMemoryQueryError):
+            row_to_operation_log_entry(row)
+
+    def test_operation_log_malformed_operation_id_raises(self) -> None:
+        row: dict[str, object] = {
+            "operation_id": "not-a-uuid",
+            "fact_id": "fact-1",
+            "operation_type": "PUBLISH",
+            "content": "body",
+            "category": OrgFactCategory.ADR.value,
             "tags": tags_to_json((NotBlankStr("x"),)),
             "author_agent_id": "agent-1",
             "author_seniority": SeniorityLevel.LEAD.value,

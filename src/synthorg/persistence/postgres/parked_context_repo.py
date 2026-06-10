@@ -14,7 +14,7 @@ from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.parked_context import (
@@ -317,7 +317,7 @@ ON CONFLICT(id) DO UPDATE SET
             Result of type ``ParkedContext``.
 
         Raises:
-            QueryError: If the row cannot be deserialized.
+            MalformedRowError: If the row cannot be deserialized.
         """
         try:
             row["id"] = UUID(str(row["id"]))
@@ -325,7 +325,7 @@ ON CONFLICT(id) DO UPDATE SET
             if raw is not None and not isinstance(raw, str):
                 row["context_json"] = json.dumps(raw)
             return ParkedContext.model_validate(row)
-        except (ValidationError, ValueError) as exc:
+        except (ValidationError, ValueError, TypeError) as exc:
             msg = f"Failed to deserialize parked context {row.get('id')!r}"
             logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
@@ -333,4 +333,4 @@ ON CONFLICT(id) DO UPDATE SET
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise QueryError(msg) from exc
+            raise MalformedRowError(msg) from exc

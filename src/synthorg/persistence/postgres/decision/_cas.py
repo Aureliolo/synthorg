@@ -128,12 +128,12 @@ class _CasMixin(_DecisionRepoBase):
                 version=1,  # placeholder; overwritten after insert
                 metadata=metadata_view,
             )
-        except ValidationError:
+        except (ValidationError, ValueError) as exc:
             logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
                 record_id=record_id,
                 task_id=task_id,
-                error_type="ValidationError",
+                error_type=type(exc).__name__,
             )
             raise
 

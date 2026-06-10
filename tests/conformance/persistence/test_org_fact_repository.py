@@ -57,6 +57,7 @@ class TestOrgFactRepository:
         await backend.org_facts.save(_fact())
         fetched = await backend.org_facts.get(sid("fact_1"))
         assert fetched is not None
+        assert fetched.id == as_uuid("fact_1")
         assert fetched.content == "We ship on Tuesdays."
         assert fetched.category == OrgFactCategory.CORE_POLICY
 

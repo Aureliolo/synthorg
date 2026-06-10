@@ -45,6 +45,7 @@ class TestSsrfViolationRepository:
 
         fetched = await backend.ssrf_violations.get(sid("sv-001"))
         assert fetched is not None
+        assert fetched.id == as_uuid("sv-001")
         assert fetched.hostname == "blocked.internal"
         assert fetched.status == SsrfViolationStatus.PENDING
         assert fetched.port == 443

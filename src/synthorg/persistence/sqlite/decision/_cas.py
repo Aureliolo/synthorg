@@ -148,17 +148,18 @@ class _CasMixin(_DecisionRepoBase):
                 version=1,  # placeholder; overwritten after insert
                 metadata=metadata_view,
             )
-        except ValidationError:
+        except (ValidationError, ValueError) as exc:
             # Log contextual detail for operators, then re-raise the
-            # original ValidationError.  Wrapping as QueryError would
-            # let the review-gate service's narrowed
+            # original error (a ValidationError from Pydantic, or a
+            # ValueError from a malformed ``record_id`` UUID).  Wrapping
+            # as QueryError would let the review-gate service's narrowed
             # ``except (QueryError, DuplicateRecordError)`` catch
             # schema drift and treat it as silent audit loss.
             logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
                 record_id=record_id,
                 task_id=task_id,
-                error_type="ValidationError",
+                error_type=type(exc).__name__,
             )
             raise
 

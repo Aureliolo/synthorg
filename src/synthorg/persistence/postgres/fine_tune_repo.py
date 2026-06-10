@@ -26,7 +26,7 @@ from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -78,7 +78,7 @@ def _run_from_row(row: DictRow) -> FineTuneRun:
     parsing.
 
     Raises:
-        QueryError: If the row contains invalid data.
+        MalformedRowError: If the row contains invalid data.
 
     Returns:
         Result of type ``FineTuneRun``.
@@ -97,7 +97,7 @@ def _run_from_row(row: DictRow) -> FineTuneRun:
         )
     except (ValidationError, ValueError, TypeError) as exc:
         msg = f"Corrupt fine-tune run row: {safe_error_description(exc)}"
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 def _checkpoint_from_row(row: DictRow) -> CheckpointRecord:
@@ -114,7 +114,7 @@ def _checkpoint_from_row(row: DictRow) -> CheckpointRecord:
     object's ``str``) holds regardless of the JSONB value's type.
 
     Raises:
-        QueryError: If the row contains invalid data.
+        MalformedRowError: If the row contains invalid data.
 
     Returns:
         Result of type ``CheckpointRecord``.
@@ -144,7 +144,7 @@ def _checkpoint_from_row(row: DictRow) -> CheckpointRecord:
         )
     except (ValidationError, ValueError, TypeError) as exc:
         msg = f"Corrupt checkpoint row: {safe_error_description(exc)}"
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 class PostgresFineTuneRunRepository:

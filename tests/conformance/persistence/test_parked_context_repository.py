@@ -40,6 +40,7 @@ class TestParkedContextRepository:
 
         fetched = await backend.parked_contexts.get(sid("park-001"))
         assert fetched is not None
+        assert fetched.id == as_uuid("park-001")
         assert fetched.execution_id == "exec-001"
         assert fetched.metadata == {"tool": "send_email"}
 

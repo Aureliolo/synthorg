@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.evidence import EvidencePackage
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APPROVAL_REPO_FAILED
 from synthorg.persistence._shared import coerce_row_timestamp
@@ -61,7 +61,7 @@ def row_to_item(row: DictRow) -> ApprovalItem:
         Result of type ``ApprovalItem``.
 
     Raises:
-        QueryError: If the row contains corrupt or unparseable data.
+        MalformedRowError: If the row contains corrupt or unparseable data.
     """
     try:
         # Normalise only NULL explicitly; preserve other falsy payloads
@@ -128,7 +128,7 @@ def row_to_item(row: DictRow) -> ApprovalItem:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 __all__ = ["item_save_params", "row_to_item"]

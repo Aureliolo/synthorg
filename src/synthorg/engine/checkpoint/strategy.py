@@ -277,7 +277,7 @@ class CheckpointRecoveryStrategy:
         logger.info(
             CHECKPOINT_RECOVERY_RESUME,
             execution_id=execution_id,
-            task_id=task_execution.task.id,
+            task_id=str(task_execution.task.id),
             checkpoint_id=str(checkpoint.id),
             turn_number=checkpoint.turn_number,
             resume_attempt=resume_attempt,

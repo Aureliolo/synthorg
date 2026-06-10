@@ -51,7 +51,7 @@ def _checkpoint(
 ) -> CheckpointRecord:
     return CheckpointRecord(
         id=as_uuid(checkpoint_id),
-        run_id=NotBlankStr("run-1"),
+        run_id=NotBlankStr(sid("run-1")),
         model_path=NotBlankStr("local/ckpt-1"),
         base_model=NotBlankStr("all-MiniLM-L6-v2"),
         doc_count=10,

@@ -7,7 +7,7 @@ from uuid import UUID
 
 import aiosqlite
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.memory.embedding.fine_tune_models import CheckpointRecord, EvalMetrics
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import MEMORY_FINE_TUNE_PERSIST_FAILED
@@ -27,7 +27,7 @@ def _checkpoint_from_row(row: aiosqlite.Row) -> CheckpointRecord:
         Result of type ``CheckpointRecord``.
 
     Raises:
-        QueryError: If the row contains invalid data.
+        MalformedRowError: If the row contains invalid data.
     """
     try:
         eval_metrics = None
@@ -49,7 +49,7 @@ def _checkpoint_from_row(row: aiosqlite.Row) -> CheckpointRecord:
         )
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         msg = f"Corrupt checkpoint row: {safe_error_description(exc)}"
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 class SQLiteFineTuneCheckpointRepository:
@@ -114,7 +114,7 @@ class SQLiteFineTuneCheckpointRepository:
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                msg = f"Failed to save checkpoint {checkpoint.id}"
+                msg = f"Failed to save checkpoint {checkpoint.id!s}"
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
                     checkpoint_id=str(checkpoint.id),
@@ -252,7 +252,7 @@ class SQLiteFineTuneCheckpointRepository:
                     raise QueryError(msg)
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error, ValueError):
                     await self._db.rollback()
                 msg = f"Failed to activate checkpoint {checkpoint_id}"
                 logger.warning(

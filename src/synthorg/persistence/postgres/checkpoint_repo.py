@@ -14,7 +14,11 @@ from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.checkpoint.models import Checkpoint
 from synthorg.observability import get_logger, safe_error_description
@@ -183,7 +187,7 @@ INSERT INTO checkpoints (
         checkpoint = self._row_to_model(dict(row))
         logger.debug(
             PERSISTENCE_CHECKPOINT_QUERIED,
-            checkpoint_id=checkpoint.id,
+            checkpoint_id=str(checkpoint.id),
             turn_number=checkpoint.turn_number,
         )
         return checkpoint
@@ -316,7 +320,7 @@ INSERT INTO checkpoints (
         so the round-trip is lossless.
 
         Raises:
-            QueryError: If the row cannot be deserialized.
+            MalformedRowError: If the row cannot be deserialized.
 
         Returns:
             Result of type ``Checkpoint``.
@@ -327,7 +331,7 @@ INSERT INTO checkpoints (
             if raw is not None and not isinstance(raw, str):
                 row["context_json"] = json.dumps(raw)
             return Checkpoint.model_validate(row)
-        except (ValidationError, ValueError) as exc:
+        except (ValidationError, ValueError, TypeError) as exc:
             msg = f"Failed to deserialize checkpoint {row.get('id')!r}"
             logger.warning(
                 PERSISTENCE_CHECKPOINT_DESERIALIZE_FAILED,
@@ -335,4 +339,4 @@ INSERT INTO checkpoints (
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise QueryError(msg) from exc
+            raise MalformedRowError(msg) from exc

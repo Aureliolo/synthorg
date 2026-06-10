@@ -7,7 +7,7 @@ from uuid import UUID
 
 import aiosqlite
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import FineTuneRun, FineTuneRunConfig
 from synthorg.observability import get_logger, safe_error_description
@@ -42,7 +42,7 @@ def _run_from_row(row: aiosqlite.Row) -> FineTuneRun:
         Result of type ``FineTuneRun``.
 
     Raises:
-        QueryError: If the row contains invalid data.
+        MalformedRowError: If the row contains invalid data.
     """
     try:
         config = FineTuneRunConfig.model_validate_json(row["config_json"])
@@ -64,7 +64,7 @@ def _run_from_row(row: aiosqlite.Row) -> FineTuneRun:
         )
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         msg = f"Corrupt fine-tune run row: {safe_error_description(exc)}"
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 class SQLiteFineTuneRunRepository:
@@ -130,7 +130,7 @@ class SQLiteFineTuneRunRepository:
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                msg = f"Failed to save fine-tune run {run.id}"
+                msg = f"Failed to save fine-tune run {run.id!s}"
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
                     run_id=str(run.id),
@@ -330,7 +330,7 @@ class SQLiteFineTuneRunRepository:
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                msg = f"Failed to update fine-tune run {run.id}"
+                msg = f"Failed to update fine-tune run {run.id!s}"
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
                     run_id=str(run.id),

@@ -15,7 +15,7 @@ from typing import LiteralString
 from uuid import UUID
 
 from synthorg.budget.forecast_models import Forecast, ForecastDecision, HaltContext
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.cost_forecast import (
     PERSISTENCE_COST_FORECAST_FAILED,
@@ -46,7 +46,7 @@ def row_to_forecast(row: RowLike) -> Forecast:
         Result of type ``Forecast``.
 
     Raises:
-        QueryError: If the row contains corrupt or unparseable data.
+        MalformedRowError: If the row contains corrupt or unparseable data.
     """
     try:
         decided_at_raw = row["decided_at"]
@@ -102,7 +102,7 @@ def row_to_forecast(row: RowLike) -> Forecast:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 def forecast_save_params(entity: Forecast) -> tuple[object, ...]:

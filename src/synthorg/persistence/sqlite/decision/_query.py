@@ -13,7 +13,7 @@ from uuid import UUID
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decisions import DecisionRecord
 from synthorg.observability import get_logger, safe_error_description
@@ -435,4 +435,4 @@ class _QueryMixin(_DecisionRepoBase):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise QueryError(msg) from exc
+            raise MalformedRowError(msg) from exc
