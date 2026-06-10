@@ -160,7 +160,7 @@ Convergence holds when ALL true:
   2. **Per-review fallback.** If the summary comment is unavailable (very early PR, or CodeRabbit changed its banner format), accept the older signal: the most recent CodeRabbit review body contains `Actionable comments posted: 0`.
   3. **Silent-approval fallback (last resort).** If the most recent CodeRabbit review's `commit_id` is older than the current head AND the rolling summary comment is also stale (its `updated_at` predates `HEAD_COMMIT_TIME` from the Phase 1 fetch), AND the CodeRabbit `StatusContext` (`__typename: "StatusContext", context: "CodeRabbit"`) for the current head is `state: SUCCESS`, AND no rate-limit / "currently processing" / "I'll be back" markers (as defined in the Phase 4 marker table) were detected on the most recent CodeRabbit-authored item across reviews + issue comments (the same scan set Phase 4 uses) -- treat as silent approval. Used only when neither (1) nor (2) is conclusive.
 - **Zero open security alerts in scope.** Scope is per-scanner (matches Phase 6b): zero open **code-scanning** alerts visible on EITHER `ref=refs/heads/$HEAD_BRANCH` OR `ref=refs/pull/$N/head` (CodeQL's PR workflow uses the latter; the branch ref only sees alerts from workflows that run on `push` events), zero **Dependabot** vulnerabilities introduced/surfaced by the PR's dependency changes (via `/dependency-graph/compare/<base>...<head>`), and zero open **secret-scanning** alerts at the repository level (secret-scanning is always repo-scoped because a leaked secret is a leaked secret regardless of which PR happened to surface it). Every in-scope alert must be either fixed or explicitly dismissed via Phase 6b.
-- No new reviews / inline comments / issue comments since cached IDs from any author other than `synthorg-repo-bot[bot]` or you (skip your own ping comments via Phase 4).
+- No new reviews / inline comments / issue comments since cached IDs from any author other than `synthorg-repo-bot[bot]` or you (skip your own ping comments via Phase 4). **Evaluate this over EVERY review with `id > last_review_id`, not the highest-id review or `reviewDecision` alone:** CodeRabbit posts a `COMMENTED` review (outside-diff findings) immediately followed by an empty `APPROVED` review on the same head, so a max-id-only or `reviewDecision == APPROVED` check reads as "converged" while actionable findings sit unread in the lower-id `COMMENTED` review (see the Phase 6 caution). Open each review body before declaring convergence.
 
 If converged:
 - Append history `{round, action: "converged", checks_passed: N}`.
@@ -246,9 +246,9 @@ There is NO upper bound on `rate_limit_pings`. The user explicitly said 10x with
 Compute deltas vs. cached IDs:
 
 - `new_commits` = current `headRefOid` != `state.last_head_sha`
-- `new_reviews` = `max(review.id) > state.last_review_id` AND review author is not self/synthorg-repo-bot
-- `new_pr_comments` = `max(pr_comment.id) > state.last_pr_comment_id` AND author is not self
-- `new_issue_comments` = `max(issue_comment.id) > state.last_issue_comment_id` AND comment is not self-authored AND body is not `@coderabbitai review` (our own pings)
+- `new_reviews` = at least one review has `id > state.last_review_id` whose author is not self/synthorg-repo-bot. **Apply the author filter BEFORE the id comparison** (filter, then `any` / `max` over the filtered set), never `max(review.id) > cursor AND <that review's author> is external`: a higher-id self/bot review -- e.g. your own `APPROVED` review or a `synthorg-repo-bot` review -- would otherwise mask a lower-id new external review. (Change-detection gate ONLY; when it fires, Phase 6 inspects EVERY qualifying review past the cursor, never just the max -- see the Phase 6 CodeRabbit two-review caution.)
+- `new_pr_comments` = at least one PR comment has `id > state.last_pr_comment_id` whose author is not self (filter author BEFORE the id comparison, same masking guard).
+- `new_issue_comments` = at least one issue comment has `id > state.last_issue_comment_id` that is not self-authored AND whose body is not `@coderabbitai review` (filter self + own pings BEFORE the id comparison, same masking guard -- otherwise your own newest `@coderabbitai review` ping masks a real new issue comment beneath it).
 - `ci_state_change` = current overall CI state differs from cached state
 
 If NONE of these AND no rate-limit dance fired in Phase 4:
@@ -275,7 +275,7 @@ Build the working set:
   ```
 
   If `targetUrl` is missing on an entry (rare; happens with status-check rollups that aren't workflow runs, e.g. external GitHub Apps), surface the check name and conclusion in the round summary and skip log collection for that entry rather than blocking the whole tick.
-- **New review submissions:** every review with `id > last_review_id` (excluding self/bot). Parse review body for embedded outside-diff-range comments (CodeRabbit puts them in `<details>` blocks at the top, same parser as `/aurelio-review-pr` Phase 4).
+- **New review submissions:** **enumerate EVERY review with `id > last_review_id`** (excluding self/bot), not just the highest-id one. The Phase 5 `max(review.id)` test only answers "did anything new arrive"; the working set is every review past the cursor. **CodeRabbit routinely posts a `COMMENTED` review carrying outside-diff findings and then, seconds later, a separate empty `APPROVED` review on the SAME head.** So the highest-id review is the empty approval AND `reviewDecision` flips to `APPROVED` while actionable findings sit in the lower-id `COMMENTED` review. NEVER treat `reviewDecision == APPROVED`, the highest-id review, or an empty-bodied latest review as proof of "no findings" -- open each review body past the cursor. Parse each review body for embedded outside-diff-range comments (CodeRabbit puts them in `<details>` blocks at the top, same parser as `/aurelio-review-pr` Phase 4).
 - **New inline comments:** every PR comment with `id > last_pr_comment_id` (excluding self).
 - **New issue comments:** every issue comment with `id > last_issue_comment_id` (excluding self + `@coderabbitai review` pings).
 
