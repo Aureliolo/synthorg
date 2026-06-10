@@ -6,10 +6,13 @@ The global ``[tool.mypy] disallow_any_explicit = true`` holds across all of
 
 That global flag catches a bare explicit ``Any``, but a ``[[tool.mypy.overrides]]``
 block can re-open the flag for a ``synthorg.*`` module while keeping mypy green, in
-two ways: ``disallow_any_explicit = false``, or ``explicit-any`` listed in
-``disable_error_code``. This gate parses ``pyproject.toml`` (no project import, so
-it stays fast in pre-push) and fails when either form targets ``synthorg.*``. Only
-the ``tests.*`` override may lift the flag.
+three ways: ``disallow_any_explicit = false``; ``explicit-any`` listed in
+``disable_error_code``; or ``ignore_errors = true`` (which silences every error,
+explicit-``Any`` included). This gate parses ``pyproject.toml`` (no project import,
+so it stays fast in pre-push) and fails when any of those forms targets
+``synthorg.*`` -- including via a leading-wildcard ``module`` glob such as ``*.api``
+that mypy compiles to a dot-spanning match. Only the ``tests.*`` override may lift
+the flag.
 
 Usage:
     uv run python scripts/check_no_synthorg_any_override.py
@@ -23,7 +26,6 @@ Exit codes:
 """
 
 import argparse
-import fnmatch
 import sys
 import tomllib
 from collections.abc import Mapping
@@ -36,21 +38,32 @@ _PYPROJECT_REL: Final[str] = "pyproject.toml"
 def _targets_synthorg(pattern: str) -> bool:
     """Return True if a mypy override ``module`` pattern covers ``synthorg`` code.
 
-    mypy matches a ``module`` pattern against dotted module names with
-    ``fnmatch``-style globbing, so a pattern targets synthorg if it matches the
-    ``synthorg`` package itself or any ``synthorg.<sub>`` submodule. The literal
-    prefix checks cover the common exact / dotted-wildcard forms
-    (``synthorg``, ``synthorg.api.*``); the ``fnmatch`` probes additionally
-    catch catch-all globs that would re-open the flag for synthorg without
-    naming it (``*``, ``synthorg*``, ``synth*``), while leaving an unrelated
-    ``synthorgX`` package untouched.
+    mypy compiles a ``module`` override pattern with its own glob rules
+    (``Options.compile_glob``): the pattern is split on ``.``; a component that
+    is exactly ``*`` becomes a dot-spanning wildcard (a leading ``*`` ->
+    ``.*``), while every other component is matched literally -- crucially, a
+    ``*`` glued to other characters (``synthorg*``, ``*persistence``) is a
+    *literal* asterisk that matches no real module. A pattern therefore covers
+    synthorg code in exactly two cases:
+
+    * it names ``synthorg`` literally -- the exact package, any dotted submodule,
+      or a trailing-wildcard form (``synthorg``, ``synthorg.api``,
+      ``synthorg.engine.*``); the ``synthorg.`` prefix keeps the check dotted so
+      an unrelated adjacent package (``synthorgX``) stays untouched; or
+    * its first dotted component is a bare ``*``, which compiles to a leading
+      ``.*`` that spans the ``synthorg`` prefix (``*``, ``*.api``,
+      ``*.controllers.*``). Any other leading component is a literal that cannot
+      match ``synthorg``.
+
+    The bare-``*`` branch deliberately flags even a leading-``*`` glob whose
+    suffix names no real synthorg module (``*.not_a_pkg``): such a flag-lift is
+    either an effective project-wide weakening of ``disallow_any_explicit`` (must
+    block) or a no-op misconfiguration (worth surfacing), so flagging is correct
+    on both readings, and it never lets a real synthorg-targeting lift through.
     """
-    return (
-        pattern == "synthorg"
-        or pattern.startswith("synthorg.")
-        or fnmatch.fnmatch("synthorg", pattern)
-        or fnmatch.fnmatch("synthorg.probe", pattern)
-    )
+    if pattern == "synthorg" or pattern.startswith("synthorg."):
+        return True
+    return pattern.split(".", 1)[0] == "*"
 
 
 def _module_patterns(block: Mapping[str, object]) -> list[str]:
@@ -66,13 +79,17 @@ def _module_patterns(block: Mapping[str, object]) -> list[str]:
 def _lifts_explicit_any(block: Mapping[str, object]) -> bool:
     """Return True if an override block re-opens explicit ``Any`` for its modules.
 
-    Two equivalent forms both suppress the ``explicit-any`` error: the boolean
-    ``disallow_any_explicit = false`` and ``explicit-any`` appearing in
-    ``disable_error_code`` (which may be a bare string or a list). Either keeps
-    mypy green while allowing explicit ``Any`` again, so both count as lifting
-    the flag.
+    Three forms each suppress the ``explicit-any`` error: the boolean
+    ``disallow_any_explicit = false``; ``explicit-any`` appearing in
+    ``disable_error_code`` (a bare string or a list); and ``ignore_errors =
+    true``, which silences *every* error for the matched modules and so lifts
+    ``explicit-any`` along with the rest. Any of the three keeps mypy green while
+    allowing explicit ``Any`` again, so all count as lifting the flag.
     """
-    if block.get("disallow_any_explicit") is False:
+    if (
+        block.get("disallow_any_explicit") is False
+        or block.get("ignore_errors") is True
+    ):
         return True
     disabled = block.get("disable_error_code")
     if isinstance(disabled, str):
@@ -91,7 +108,8 @@ def find_violations(data: Mapping[str, object]) -> list[str]:
     Returns:
         The offending ``module`` patterns, in source order. Empty when no
         ``synthorg.*`` override lifts the flag (via ``disallow_any_explicit =
-        false`` or an ``explicit-any`` entry in ``disable_error_code``).
+        false``, an ``explicit-any`` entry in ``disable_error_code``, or
+        ``ignore_errors = true``).
     """
     tool = data.get("tool")
     if not isinstance(tool, Mapping):
@@ -152,8 +170,9 @@ def main(argv: list[str] | None = None) -> int:
     for pattern in violations:
         print(
             f"forbidden: [[tool.mypy.overrides]] block for module {pattern!r} "
-            "lifts disallow_any_explicit (via disallow_any_explicit = false or "
-            "an explicit-any entry in disable_error_code). The global "
+            "lifts disallow_any_explicit (via disallow_any_explicit = false, "
+            "an explicit-any entry in disable_error_code, or ignore_errors = "
+            "true). The global "
             "disallow_any_explicit = true must hold for all of synthorg.*. "
             "Remove the override, or suppress an irreducible site with a "
             "reasoned # type: ignore[explicit-any]. Only the tests.* "
