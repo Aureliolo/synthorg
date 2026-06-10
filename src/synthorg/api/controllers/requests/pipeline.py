@@ -163,7 +163,7 @@ async def process_intake_pipeline(
         # Task cancelled (e.g. app shutdown): let it propagate; do not
         # convert a cancellation into a CANCELLED request.
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         if not isinstance(exc, WorkIntakeRejectedError):
             # Intake declining the work is a normal outcome, not a
@@ -250,7 +250,7 @@ async def _safe_finalize(
         await finalizer()
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         log_exception_redacted(
             logger,

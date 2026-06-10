@@ -85,7 +85,7 @@ async def _reread_approval_item(
             app_state.slice(ApprovalStateSlice).store, "Approval Store"
         )
         return await store.get(approval_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             APPROVAL_GATE_RESUME_FAILED,
@@ -271,7 +271,7 @@ async def _execute_conversational_proposal(
         raise
     except ServiceUnavailableError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- pipeline failure: don't 5xx
         # The approve decision is already persisted; a pipeline failure
         # must not 5xx the response. Revert EXECUTING -> PENDING so the
         # proposal is retryable rather than stuck in EXECUTING forever.
@@ -492,7 +492,7 @@ async def _accept_invite(
         return
     try:
         await _add_invited_participant(app_state, invite, decided_by)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         reverted = await invite_repo.transition_if(
             str(invite.id),

@@ -102,7 +102,7 @@ async def _resolve_webhook_receipt_cleanup_enabled(app_state: AppState) -> bool:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         if not _resolver_throttle.cleanup_enabled_failed:
             logger.warning(
@@ -152,7 +152,7 @@ async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # ``logger.exception`` would attach a traceback that could leak
         # secret-bearing frame state into structured logs; use
@@ -210,7 +210,7 @@ async def _cleanup_connection_receipts(
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
@@ -287,7 +287,7 @@ async def _webhook_receipt_cleanup_tick(app_state: AppState) -> None:
         connections = tuple(collected)
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
@@ -351,7 +351,7 @@ async def _resolve_webhook_receipt_cleanup_tick_seconds(app_state: AppState) -> 
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         if not _resolver_throttle.cleanup_tick_failed:
             logger.warning(

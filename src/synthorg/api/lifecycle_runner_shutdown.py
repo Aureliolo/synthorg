@@ -241,7 +241,7 @@ async def _run_shutdown(  # noqa: PLR0913
         )
 
         await _rate_limit_shared_state.set_coordinator_factory(None)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_SHUTDOWN,
@@ -285,7 +285,7 @@ async def _run_shutdown(  # noqa: PLR0913
         a2a_client_obj = app_state.slice(A2aStateSlice).client
         if a2a_client_obj is not None and hasattr(a2a_client_obj, "aclose"):
             await a2a_client_obj.aclose()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_SHUTDOWN,

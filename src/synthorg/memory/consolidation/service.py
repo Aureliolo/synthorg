@@ -464,7 +464,7 @@ class MemoryConsolidationService:
         )
         try:
             archival_id = await self._archival_store.archive(archival_entry)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 ARCHIVAL_FAILED,

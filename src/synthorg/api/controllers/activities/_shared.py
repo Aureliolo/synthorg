@@ -183,7 +183,7 @@ async def _run_async_fetchers(
             error=safe_error_description(svc_exc),
         )
         raise svc_exc from svc_eg
-    except* Exception as other_eg:
+    except* Exception as other_eg:  # noqa: BLE001 -- TaskGroup boundary
         failed_sources = [
             src
             for src, task in [
@@ -258,7 +258,7 @@ async def _resolve_currency(
             detail="Could not load budget configuration; aborting request.",
         )
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- best-effort: log and default
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="activities",
@@ -369,7 +369,7 @@ async def _fetch_task_metrics(
             detail="service unavailable",
         )
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 -- best-effort: log and skip
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="activities",
@@ -419,7 +419,7 @@ async def _fetch_cost_records(
             detail="service unavailable",
         )
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 -- best-effort: log and skip
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="activities",
@@ -469,7 +469,7 @@ async def _fetch_tool_invocations(
             detail="service unavailable",
         )
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 -- best-effort: log and skip
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="activities",
@@ -510,7 +510,7 @@ async def _safe_delegation_query(
             detail="service unavailable",
         )
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 -- best-effort: log and skip
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="activities",

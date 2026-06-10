@@ -187,7 +187,7 @@ class ProjectAwareMemoryFacade:
         """
         try:
             return await self._backend.retrieve(agent_id, query)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             return exc
 

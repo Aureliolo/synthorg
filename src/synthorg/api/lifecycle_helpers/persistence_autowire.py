@@ -59,7 +59,7 @@ async def _wire_oauth_state_service(
             oauth_state_service=OAuthStateService(repo=persistence.oauth_states),
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="oauth_state_service")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_SERVICE_AUTO_WIRE_FAILED,
@@ -99,7 +99,7 @@ async def _wire_training_plan_service(
             ),
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="training_plan_service")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_SERVICE_AUTO_WIRE_FAILED,
@@ -140,7 +140,7 @@ async def _wire_workflow_rollback_service(
             ),
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="workflow_rollback_service")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_SERVICE_AUTO_WIRE_FAILED,
@@ -180,7 +180,7 @@ async def _wire_workflow_version_service(
             ),
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="workflow_version_service")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_SERVICE_AUTO_WIRE_FAILED,
@@ -217,7 +217,7 @@ async def _wire_agent_version_service(
             ),
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="agent_version_service")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_SERVICE_AUTO_WIRE_FAILED,

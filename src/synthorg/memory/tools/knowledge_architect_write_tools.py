@@ -182,7 +182,7 @@ class KnowledgeArchitectWriteTool(BaseTool):
                 request,
                 author=author,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             safe_error = safe_error_description(exc)
             logger.warning(
@@ -280,7 +280,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
                 entry_id,
                 author=author,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             safe_error = safe_error_description(exc)
             logger.warning(

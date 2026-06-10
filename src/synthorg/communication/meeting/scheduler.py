@@ -665,7 +665,7 @@ class MeetingScheduler:
                 )
                 try:
                     await self._execute_meeting(meeting_type)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         MEETING_SCHEDULER_ERROR,
@@ -704,7 +704,7 @@ class MeetingScheduler:
 
         try:
             agenda = self._build_default_agenda(meeting_type, context)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
@@ -747,7 +747,7 @@ class MeetingScheduler:
                 meeting_type=meeting_type.name,
             )
             return None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
@@ -797,7 +797,7 @@ class MeetingScheduler:
                 participant_ids=tuple(participant_ids),
                 token_budget=meeting_type.duration_tokens,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
@@ -833,7 +833,7 @@ class MeetingScheduler:
                     "status": record.status.value,
                 },
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
@@ -859,7 +859,7 @@ class MeetingScheduler:
                     "status": "in_progress",
                 },
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEETING_SCHEDULER_ERROR,

@@ -158,7 +158,7 @@ async def _run_embedder_auto_select(
             provider_preset_name=provider_preset_name,
             has_gpu=has_gpu,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             SETUP_COMPLETE_CHECK_ERROR,
@@ -180,7 +180,7 @@ async def _read_has_gpu_setting(settings_svc: SettingsService) -> bool | None:
     """
     try:
         entry = await settings_svc.get("api", "setup_has_gpu")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             SETUP_COMPLETE_CHECK_ERROR,

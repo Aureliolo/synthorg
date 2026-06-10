@@ -152,7 +152,7 @@ class LLMQuerySpecificReranker:
                 cached_ids = await self._cache.get(cache_key)
             except builtins.MemoryError, RecursionError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     MEMORY_RERANK_CACHE_MISS,
@@ -177,7 +177,7 @@ class LLMQuerySpecificReranker:
                 query_length=len(query.text),
             )
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Reranking is optional post-fusion enhancement -- degrade
             # to the pre-rerank order on any provider failure
@@ -201,7 +201,7 @@ class LLMQuerySpecificReranker:
                     )
                 except builtins.MemoryError, RecursionError:
                     raise
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         MEMORY_RERANK_CACHE_MISS,

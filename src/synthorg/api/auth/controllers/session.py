@@ -320,7 +320,7 @@ class AuthSessionController(Controller):
                         session_id=jti,
                         user_id=user_id,
                     )
-            except Exception as err:
+            except Exception as err:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(err)
                 logger.warning(
                     API_SESSION_REVOKE_FAILED,

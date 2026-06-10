@@ -15,7 +15,7 @@ Call :func:`reraise_critical` as the first statement of every broad
 
     try:
         ...
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(EVENT, error_type=type(exc).__name__, ...)
 

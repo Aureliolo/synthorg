@@ -65,7 +65,7 @@ async def _safe_call(
             error_type=type(exc).__qualname__,
         )
         return ()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.error(
             MEMORY_RETRIEVAL_DEGRADED,

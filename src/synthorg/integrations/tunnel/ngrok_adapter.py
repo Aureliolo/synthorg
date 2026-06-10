@@ -180,7 +180,7 @@ class NgrokAdapter:
                             ngrok.disconnect,
                             getattr(tunnel, "public_url", None),
                         )
-                    except Exception as cleanup_exc:
+                    except Exception as cleanup_exc:  # noqa: BLE001 -- criticals re-raised
                         reraise_critical(cleanup_exc)
                         logger.warning(
                             TUNNEL_ERROR,
@@ -222,7 +222,7 @@ class NgrokAdapter:
                 return
             try:
                 await asyncio.to_thread(ngrok.disconnect, self._public_url)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     TUNNEL_ERROR,

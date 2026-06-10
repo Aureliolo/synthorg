@@ -134,7 +134,7 @@ class DiscoveryAllowlistManager:
                 host_port=hp,
                 entry_count=len(updated.host_port_allowlist),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
@@ -188,7 +188,7 @@ class DiscoveryAllowlistManager:
                 host_port=hp,
                 entry_count=len(updated.host_port_allowlist),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
@@ -241,7 +241,7 @@ class DiscoveryAllowlistManager:
                 new_host_port=new_hp,
                 entry_count=len(updated.host_port_allowlist),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,

@@ -109,7 +109,7 @@ class OAuthTokenManager:
                 SettingNamespace.INTEGRATIONS.value,
                 "oauth_http_timeout_seconds",
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Logging this as OAUTH_TOKEN_REFRESH_FAILED would
             # falsely mark an OAuth refresh as failed and trip any
@@ -147,7 +147,7 @@ class OAuthTokenManager:
                     SettingNamespace.INTEGRATIONS.value,
                     key,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.info(
                     SETTINGS_FETCH_FAILED,
@@ -206,7 +206,7 @@ class OAuthTokenManager:
                 await self._check_and_refresh()
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger,
@@ -282,7 +282,7 @@ class OAuthTokenManager:
         """
         try:
             credentials = await self._catalog.get_credentials(conn.name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
@@ -391,7 +391,7 @@ class OAuthTokenManager:
                 meta_updates = dict(conn.metadata)
                 meta_updates["token_expires_at"] = refreshed.expires_at.isoformat()
                 await self._catalog.update(conn.name, metadata=meta_updates)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
@@ -406,7 +406,7 @@ class OAuthTokenManager:
                     status=ConnectionStatus.DEGRADED,
                     checked_at=now,
                 )
-            except Exception as health_exc:
+            except Exception as health_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(health_exc)
                 logger.warning(
                     OAUTH_TOKEN_REFRESH_FAILED,

@@ -186,7 +186,7 @@ class ApprovalExpirationMixin:
         if self._on_expire is not None:
             try:
                 self._on_expire(expired)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # ERROR (matching ``_fire_expire_callback``): the
                 # approval is already EXPIRED in cache + repo, so
@@ -238,7 +238,7 @@ class ApprovalExpirationMixin:
             return
         try:
             self._on_expire(expired)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # ERROR rather than WARNING: the approval is already
             # EXPIRED in cache + repo, so the callback can't

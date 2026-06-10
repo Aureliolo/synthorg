@@ -309,7 +309,7 @@ class SettingsChangeDispatcher:
                         _SETTINGS_CHANNEL,
                         _SUBSCRIBER_ID,
                     )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     # Best-effort rollback -- a failed unsubscribe
                     # during already-failed start() leaves the bus with
@@ -561,7 +561,7 @@ class SettingsChangeDispatcher:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             if not self._resolve_failed_logged:
                 logger.warning(
@@ -609,7 +609,7 @@ class SettingsChangeDispatcher:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             return bootstrap_default
 
@@ -646,7 +646,7 @@ class SettingsChangeDispatcher:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             return bootstrap_default
 
@@ -713,7 +713,7 @@ class SettingsChangeDispatcher:
                     error=safe_error_description(exc),
                 )
                 await asyncio.sleep(_ERROR_BACKOFF)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(logger, SETTINGS_DISPATCHER_CHANNEL_DEAD, exc)
                 break
@@ -745,7 +745,7 @@ class SettingsChangeDispatcher:
                     namespace=namespace,
                     key=key,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger,

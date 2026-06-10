@@ -186,7 +186,7 @@ class PerformancePruningStrategy:
                 agents_processed += 1
             except MemoryError, RecursionError, asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 agents_error += 1
                 logger.error(

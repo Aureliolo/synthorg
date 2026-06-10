@@ -249,7 +249,7 @@ def _run() -> int:
         print(f"STAGE_START:{stage_name}", flush=True)  # noqa: T201
         try:
             asyncio.run(_dispatch_stage(stage, config, token))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             print(  # noqa: T201
                 f"ERROR: {stage_name} failed: {safe_error_description(exc)}",

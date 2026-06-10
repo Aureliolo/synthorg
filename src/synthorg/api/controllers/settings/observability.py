@@ -159,7 +159,7 @@ class SettingsObservabilityController(Controller):
             return ApiResponse(
                 data=TestSinkConfigResponse(valid=False, error=msg),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger, SETTINGS_OBSERVABILITY_VALIDATION_FAILED, exc

@@ -391,7 +391,7 @@ async def wire_brownfield_intake(app_state: AppState) -> bool:
 
     try:
         await wire_real_brownfield_entry(app_state)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.info(
             API_APP_STARTUP,

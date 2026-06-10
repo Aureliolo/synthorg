@@ -364,7 +364,7 @@ class EventStreamHub:
                 await self._prune_idle_subscribers(idle_ttl_seconds)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     EVENT_STREAM_HUB_JANITOR_FAILED,

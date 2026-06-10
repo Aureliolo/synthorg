@@ -205,7 +205,7 @@ async def unsubscribe(
     if sub is not None:
         try:
             await sub.unsubscribe()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COMM_SUBSCRIPTION_REMOVED,

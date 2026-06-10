@@ -204,7 +204,7 @@ def generate_auto_name(
         else:
             fake = _get_faker(tuple(locale_list))
         return str(fake.name())
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         from synthorg.observability.events.template import (  # noqa: PLC0415
             TEMPLATE_NAME_GEN_FAKER_ERROR,

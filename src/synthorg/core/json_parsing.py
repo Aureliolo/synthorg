@@ -59,7 +59,7 @@ def _safe_log(callback: Callable[[str], None] | None, detail: str) -> None:
         return
     try:
         callback(detail)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         return
 

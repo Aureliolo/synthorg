@@ -214,7 +214,7 @@ class BackupScheduler:
                     await task
                 except asyncio.CancelledError:
                     pass
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         BACKUP_FAILED,
@@ -331,7 +331,7 @@ class BackupScheduler:
                 await self._service.create_backup(BackupTrigger.SCHEDULED)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     BACKUP_FAILED,

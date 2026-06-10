@@ -171,7 +171,7 @@ class HealthProberService:
                 await self._probe_all()
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Routine probe-loop failure: log a redacted
                 # structured warning instead of ``logger.exception``
@@ -222,7 +222,7 @@ class HealthProberService:
         # ``TaskGroup``.
         try:
             conn = await self._catalog.get(name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Routine catalog-load failure: redacted warning, not
             # full traceback (see _probe_loop comment).
@@ -244,7 +244,7 @@ class HealthProberService:
 
         try:
             report = await checker.check(conn)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Routine checker failure: redacted warning, not full
             # traceback (see _probe_loop comment).
@@ -274,7 +274,7 @@ class HealthProberService:
                 status=new_status,
                 checked_at=now,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Routine catalog-write failure: redacted warning, not
             # full traceback (see _probe_loop comment).

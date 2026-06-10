@@ -149,7 +149,7 @@ class RetentionManager:
                         backup_id=manifest.backup_id,
                         error="Backup not found for deletion",
                     )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger, BACKUP_RETENTION_FAILED, exc, backup_id=manifest.backup_id
@@ -309,7 +309,7 @@ class RetentionManager:
                 if data.get("backup_id") == backup_id:
                     shutil.rmtree(entry)
                     return True
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     BACKUP_MANIFEST_INVALID,

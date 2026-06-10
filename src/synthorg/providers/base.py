@@ -446,7 +446,7 @@ class BaseCompletionProvider(ABC):
                 return m, await self.get_model_capabilities(m)
             except MemoryError, RecursionError, RetryExhaustedError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     PROVIDER_BATCH_CAPABILITIES_PARTIAL,

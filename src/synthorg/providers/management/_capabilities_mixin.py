@@ -171,7 +171,7 @@ class ProviderCapabilitiesMixin:
                 actor=actor or SYSTEM_ACTOR,
                 payload=dict(payload) if payload else {},
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PROVIDER_AUDIT_WRITE_FAILED,

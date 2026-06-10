@@ -298,7 +298,7 @@ async def _probe_daemon_info(aiodocker_mod: object) -> object | None:
     """
     try:
         client = aiodocker_mod.Docker()  # type: ignore[attr-defined]
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             TELEMETRY_REPORT_FAILED,
@@ -317,7 +317,7 @@ async def _probe_daemon_info(aiodocker_mod: object) -> object | None:
             error_type=type(exc).__name__,
         )
         return None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             TELEMETRY_REPORT_FAILED,

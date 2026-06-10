@@ -323,7 +323,7 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
             except asyncio.CancelledError, MemoryError, RecursionError:
                 # Non-recoverable: propagate so shutdown / OOM is not hidden.
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- GC best-effort
                 # GC is best-effort -- never block acquire progress.
                 # ``safe_error_description`` scrubs attacker-controllable
                 # bytes from the serialised error so a misbehaving

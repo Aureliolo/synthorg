@@ -92,7 +92,7 @@ class ProviderConnectionController(Controller):
                     model_count=result.model_count,
                     candidates_tried=result.candidates_tried,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 errors[preset.name] = safe_error_description(exc)
                 logger.warning(

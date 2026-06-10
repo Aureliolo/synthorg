@@ -82,7 +82,7 @@ class HttpBatchHandler(logging.Handler):
                 self._pending_count += 1
                 if self._pending_count >= self._batch_size:
                     self._batch_ready.set()
-        except Exception:
+        except Exception:  # noqa: BLE001 -- logging handler emit boundary
             self.handleError(record)
 
     def _flush_loop(self) -> None:
@@ -95,7 +95,7 @@ class HttpBatchHandler(logging.Handler):
                 break
             try:
                 self._drain_and_flush()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 print(  # noqa: T201
                     f"ERROR: log-http-flusher encountered unexpected error: {safe_error_description(exc)}",  # noqa: E501
@@ -129,7 +129,7 @@ class HttpBatchHandler(logging.Handler):
         for record in records:
             try:
                 entries.append(self.format(record))
-            except Exception:
+            except Exception:  # noqa: BLE001 -- logging handler boundary
                 self.handleError(record)
                 with self._pending_lock:
                     self._dropped_count += 1
@@ -183,7 +183,7 @@ class HttpBatchHandler(logging.Handler):
                     timeout=self._timeout,
                 ):
                     pass  # Response body not needed
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # HTTPError wraps a response FP -- close to avoid FD leak.
                 if isinstance(exc, urllib.error.HTTPError):

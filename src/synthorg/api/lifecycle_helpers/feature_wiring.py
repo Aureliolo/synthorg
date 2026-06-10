@@ -173,7 +173,7 @@ async def _replay_project_brain_index(
             note="index replay complete",
             reindexed=reindexed,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -312,7 +312,7 @@ async def _wire_research_engine(
             ResearchStateSlice(service=service, tool_factory=tool_factory)
         )
         logger.info(API_APP_STARTUP, service="research_engine", note="wired")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -424,7 +424,7 @@ async def _wire_charter_engine(
             )
         )
         logger.info(API_APP_STARTUP, service="charter_engine", note="wired")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             CHARTER_SUBSTRATE_UNAVAILABLE,

@@ -178,7 +178,7 @@ class InMemoryInflightStore(InflightStore):
             # propagate; everything else is logged and swallowed.
             try:
                 await self._release_lock_ref(key)
-            except Exception as ref_exc:
+            except Exception as ref_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(ref_exc)
                 logger.warning(
                     API_REQUEST_ERROR,
@@ -217,7 +217,7 @@ class InMemoryInflightStore(InflightStore):
             # exception (if any) from the release body.
             try:
                 await self._release_lock_ref(key)
-            except Exception as ref_exc:
+            except Exception as ref_exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(ref_exc)
                 logger.warning(
                     API_REQUEST_ERROR,
@@ -331,7 +331,7 @@ class InMemoryInflightStore(InflightStore):
             except asyncio.CancelledError, MemoryError, RecursionError:
                 # Non-recoverable: propagate so shutdown / OOM is not hidden.
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- GC best-effort
                 # ``safe_error_description`` strips attacker-controllable
                 # bytes from the serialised error so a misbehaving
                 # bucket-key or exception subclass cannot inject text

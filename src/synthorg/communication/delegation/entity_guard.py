@@ -125,7 +125,7 @@ class EntityAlignmentGuard:
 
         try:
             manifest = await self._ontology.get_version_manifest()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 ONTOLOGY_GUARD_BLOCKED,

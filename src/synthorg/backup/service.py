@@ -331,7 +331,7 @@ class BackupService(BackupServiceArchiveMixin):
 
         try:
             await self._retention.prune()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Drop exc_info on retention failure so the filesystem
             # path / connection details that ``str(exc)`` would

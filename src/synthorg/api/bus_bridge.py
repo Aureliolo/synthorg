@@ -153,7 +153,7 @@ class MessageBusBridge:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             if not self._poll_timeout_fallback_logged:
                 # No exc_info on a settings-resolver fallback path.
@@ -195,7 +195,7 @@ class MessageBusBridge:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             if not self._drain_timeout_fallback_logged:
                 # No exc_info on settings-resolver fallback.
@@ -233,7 +233,7 @@ class MessageBusBridge:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             if not self._max_errors_fallback_logged:
                 # No exc_info on settings-resolver fallback.
@@ -333,7 +333,7 @@ class MessageBusBridge:
                                 channel=channel_name,
                             ),
                         )
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                         reraise_critical(exc)
                         # Best-effort unsubscribe -- if the bus backend
                         # itself is broken, the subscribe rollback may
@@ -348,7 +348,7 @@ class MessageBusBridge:
                                 _SUBSCRIBER_ID,
                             )
                             subscribed_channels.remove(channel_name)
-                        except Exception as exc:
+                        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                             reraise_critical(exc)
                             logger.warning(
                                 API_BUS_BRIDGE_SUBSCRIBE_FAILED,
@@ -385,7 +385,7 @@ class MessageBusBridge:
                             channel_name,
                             _SUBSCRIBER_ID,
                         )
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                         reraise_critical(exc)
                         rollback_unsubscribe_failed = True
                         orphaned_channels.append(channel_name)
@@ -582,7 +582,7 @@ class MessageBusBridge:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             if not self._enabled_fallback_logged:
                 logger.warning(
@@ -693,7 +693,7 @@ class MessageBusBridge:
                     error=safe_error_description(exc),
                 )
                 await asyncio.sleep(poll_timeout)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
                     logger, API_BRIDGE_CHANNEL_DEAD, exc, channel=channel_name

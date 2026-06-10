@@ -308,7 +308,7 @@ class ApprovalTimeoutScheduler:
             logger.debug(TIMEOUT_SCHEDULER_TICK)
             try:
                 await self._check_pending_approvals()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.error(
                     TIMEOUT_SCHEDULER_ERROR,
@@ -321,7 +321,7 @@ class ApprovalTimeoutScheduler:
             items = await self._store.list_items(
                 status=ApprovalStatus.PENDING,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.error(
                 TIMEOUT_SCHEDULER_ERROR,
@@ -345,7 +345,7 @@ class ApprovalTimeoutScheduler:
         with actor_scope(ActorIdentity.system(TIMEOUT_POLICY_DECIDER)):
             try:
                 updated, action = await self._checker.check_and_resolve(item)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     TIMEOUT_SCHEDULER_ERROR,
@@ -385,7 +385,7 @@ class ApprovalTimeoutScheduler:
         """Persist an APPROVE/DENY resolution and invoke callback."""
         try:
             saved = await self._store.save_if_pending(item)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.error(
                 TIMEOUT_SCHEDULER_ERROR,
@@ -408,7 +408,7 @@ class ApprovalTimeoutScheduler:
         if self._on_resolve is not None:
             try:
                 await self._on_resolve(saved, action)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.error(
                     TIMEOUT_SCHEDULER_ERROR,

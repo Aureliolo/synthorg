@@ -382,7 +382,7 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
                 error=safe_error_description(exc),
             )
             return SEARCH_UNAVAILABLE
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -454,7 +454,7 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
                 error=safe_error_description(exc),
             )
             return RECALL_UNAVAILABLE
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

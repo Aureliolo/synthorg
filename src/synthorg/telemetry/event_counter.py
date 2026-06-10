@@ -102,7 +102,7 @@ class InMemoryTelemetryEventCounter:
                     TELEMETRY_COUNTER_EVICTED,
                     max_events=self._max_events,
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 TELEMETRY_COUNTER_RECORD_FAILED,

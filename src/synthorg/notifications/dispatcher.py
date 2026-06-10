@@ -150,7 +150,7 @@ class NotificationDispatcher:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             if not self._resolve_failed_logged:
                 logger.warning(
@@ -250,7 +250,7 @@ class NotificationDispatcher:
         """
         try:
             await sink.start()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             failed.append(sink)
             logger.warning(
@@ -265,7 +265,7 @@ class NotificationDispatcher:
         """Run ``sink.close()`` with per-sink error isolation."""
         try:
             await sink.close()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 NOTIFICATION_SINK_CLOSE_FAILED,
@@ -421,7 +421,7 @@ class NotificationDispatcher:
         """Send to a single sink, capturing errors."""
         try:
             await sink.send(notification)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             description = safe_error_description(exc)
             errors[index] = description

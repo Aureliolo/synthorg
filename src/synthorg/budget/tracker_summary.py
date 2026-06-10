@@ -344,7 +344,7 @@ class CostTrackerSummaryMixin:
             return None
         try:
             return self._department_resolver(agent_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 BUDGET_DEPARTMENT_RESOLVE_FAILED,

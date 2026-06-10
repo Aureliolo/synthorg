@@ -99,7 +99,7 @@ class SecOpsServiceSafetyMixin:
                 result.reason,
                 metadata,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
@@ -224,7 +224,7 @@ class SecOpsServiceSafetyMixin:
                 metadata["embedding_similarity"] = str(
                     result.embedding_similarity,
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
                 logger,

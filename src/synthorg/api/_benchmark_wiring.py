@@ -161,7 +161,7 @@ async def seed_benchmark_scores(app_state: AppState) -> None:
             error=safe_error_description(exc),
         )
         return
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

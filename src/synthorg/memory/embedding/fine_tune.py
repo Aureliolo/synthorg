@@ -1030,7 +1030,7 @@ async def deploy_checkpoint(
                 sv = await settings_service.get("memory", key)
                 if sv and hasattr(sv, "value") and sv.value:
                     backup[key] = sv.value
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED,

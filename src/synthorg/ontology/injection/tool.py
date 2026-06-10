@@ -107,7 +107,7 @@ class LookupEntityTool(BaseTool):
             entity = await self._backend.get(name)
         except OntologyNotFoundError:
             entity = None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 ONTOLOGY_TOOL_LOOKUP,
@@ -149,7 +149,7 @@ class LookupEntityTool(BaseTool):
         """
         try:
             results = await self._backend.search(query)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 ONTOLOGY_TOOL_LOOKUP,

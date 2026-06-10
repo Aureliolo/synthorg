@@ -415,7 +415,7 @@ async def _trip_breaker_and_close(
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:  # noqa: S110
+    except Exception:  # noqa: BLE001, S110 -- ws close best-effort
         # Intentional suppression: see comment above. Logging the
         # close-time failure here would just add noise -- the
         # breaker-tripped warning above already told the operator
@@ -530,7 +530,7 @@ async def _outbound_consumer(
             except WebSocketDisconnect:
                 logger.debug(API_WS_SEND_FAILED, reason="client_disconnected")
                 return
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(logger, API_WS_SEND_FAILED, exc)
                 await socket.close(code=1011, reason="Internal error")
@@ -662,7 +662,7 @@ async def _setup_connection(
     all_subs = [*ALL_CHANNELS, user_ch]
     try:
         subscriber = await channels_plugin.subscribe(all_subs)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.error(
             API_WS_TRANSPORT_ERROR,
@@ -682,7 +682,7 @@ async def _setup_connection(
         require_service(
             app_state.slice(ApiCoreStateSlice).user_presence, "User Presence"
         ).connect(user.user_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.error(
             API_WS_TRANSPORT_ERROR,
@@ -692,7 +692,7 @@ async def _setup_connection(
         )
         try:
             await channels_plugin.unsubscribe(subscriber)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.error(
                 API_WS_TRANSPORT_ERROR,
@@ -710,11 +710,11 @@ async def _setup_connection(
     # don't leak past a half-open connection.
     try:
         await _send_auth_ok(socket)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         try:
             await channels_plugin.unsubscribe(subscriber)
-        except Exception as unsub_exc:
+        except Exception as unsub_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(unsub_exc)
             logger.error(
                 API_WS_TRANSPORT_ERROR,
@@ -798,7 +798,7 @@ async def _teardown_connection(
             outer_cancelled_exc = exc
     except WebSocketDisconnect:
         pass
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.error(
             API_WS_TRANSPORT_ERROR,
@@ -807,7 +807,7 @@ async def _teardown_connection(
         )
     try:
         await channels_plugin.unsubscribe(subscriber)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.error(
             API_WS_TRANSPORT_ERROR,
@@ -823,7 +823,7 @@ async def _teardown_connection(
         require_service(
             app_state.slice(ApiCoreStateSlice).user_presence, "User Presence"
         ).disconnect(user.user_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_WS_TRANSPORT_ERROR,
@@ -943,7 +943,7 @@ async def ws_handler(
     except* asyncio.CancelledError:
         # Expected: receive loop returned, we cancelled the workers.
         pass
-    except* Exception as eg:
+    except* Exception as eg:  # noqa: BLE001 -- TaskGroup boundary
         # Real failure from a background task -- log each and proceed
         # with teardown so subscriber/presence cleanup still runs.
         for exc in eg.exceptions:

@@ -246,7 +246,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 billing_cost = await tracker.get_total_cost(
                     start=period_start,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     METRICS_SCRAPE_FAILED,
@@ -291,7 +291,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             return
         try:
             stats = pool.get_stats()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(METRICS_SCRAPE_FAILED, component="pg_pool_stats")
             return
@@ -423,7 +423,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 )
             else:
                 self._budget_used_percent.set(0.0)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             self._budget_used_percent.set(0.0)
             self._budget_monthly_cost.set(0.0)
@@ -485,7 +485,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             self._budget_daily_used_percent.set(
                 min(100.0, (daily_cost / daily_budget) * 100.0),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             self._budget_daily_used_percent.set(0.0)
             logger.warning(
@@ -529,7 +529,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             return ()
         try:
             agents = await agent_registry_of(app_state).list_active()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Keep the prior gauge values intact so the dashboard
             # doesn't drop to "0 active agents" on a transient
@@ -614,7 +614,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                     self._agent_budget_used_percent.labels(
                         agent_id=aid,
                     ).set(pct)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 METRICS_SCRAPE_FAILED,
@@ -672,7 +672,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                     status=status,
                     agent=agent,
                 ).set(count)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 METRICS_SCRAPE_FAILED,

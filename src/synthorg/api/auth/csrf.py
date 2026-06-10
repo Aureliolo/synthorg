@@ -190,7 +190,7 @@ def _parse_cookies(
         if name.lower() == b"cookie":
             try:
                 morsel = SimpleCookie(value.decode("latin-1"))
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Malformed cookie header -- treat as absent.
                 continue

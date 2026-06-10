@@ -99,7 +99,7 @@ async def drain_partial_client(state: _NatsState) -> None:
         return
     try:
         await client.drain()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             COMM_BUS_DISCONNECTED,
@@ -236,7 +236,7 @@ async def stop(state: _NatsState) -> None:
         for key, sub in list(state.subscriptions.items()):
             try:
                 await sub.unsubscribe()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     COMM_BUS_DISCONNECTED,
@@ -273,7 +273,7 @@ async def stop(state: _NatsState) -> None:
                 state.js = None
                 state.kv = None
                 raise BusStopTimeoutError(msg) from exc
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     COMM_BUS_DISCONNECTED,

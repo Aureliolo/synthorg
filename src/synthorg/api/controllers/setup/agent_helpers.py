@@ -260,7 +260,7 @@ async def check_needs_admin(
     count: int | None = None
     try:
         count = await persistence.users.count_by_role(HumanRole.CEO)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
@@ -293,7 +293,7 @@ async def check_needs_setup(
         raise
     except SettingNotFoundError:
         return True
-    except Exception:
+    except Exception:  # noqa: BLE001 -- settings best-effort: log and skip
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
         )
@@ -421,7 +421,7 @@ async def auto_create_template_agents(
         try:
             bridge_cfg = await config_resolver_of(app_state).get_engine_bridge_config()
             return ModelMatcherConfig.from_bridge_config(bridge_cfg)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 SETUP_STATUS_SETTINGS_UNAVAILABLE,
@@ -481,7 +481,7 @@ async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
             str(model.id) for pc in configs.values() for model in pc.models
         ]
         return tuple(ids)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             SETUP_MODEL_ID_COLLECTION_ERROR,
@@ -557,7 +557,7 @@ async def auto_select_embedder(
             "embedder_dims",
             str(ranking.output_dims),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         reason = "failed to persist embedder settings"
         logger.warning(

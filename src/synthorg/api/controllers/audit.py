@@ -77,7 +77,7 @@ async def _resolve_audit_cap(state: State) -> int:
         )
     except asyncio.CancelledError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         if not _audit_cap_fallback_logged:
             logger.warning(

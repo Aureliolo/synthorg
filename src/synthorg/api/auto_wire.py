@@ -204,7 +204,7 @@ async def auto_wire_ontology(
         await service.bootstrap()
         if ontology_config.entities.entries:
             await service.bootstrap_from_config(ontology_config.entities)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             ONTOLOGY_AUTO_WIRE_FAILED,

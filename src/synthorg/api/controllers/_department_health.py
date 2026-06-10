@@ -145,7 +145,7 @@ async def _resolve_active_count(
             dept_name,
         )
         return sum(1 for a in dept_agents if a.status == AgentStatus.ACTIVE)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_REQUEST_ERROR,
@@ -225,7 +225,7 @@ async def _resolve_agent_ids(
         raise
     except ServiceUnavailableError:
         raise
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- best-effort: log and degrade
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.health.resolve_id",

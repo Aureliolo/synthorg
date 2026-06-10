@@ -165,7 +165,7 @@ async def _resolve_client_bridge_config(app_state: AppState) -> ClientBridgeConf
         return ClientBridgeConfig()
     try:
         return await config_resolver_of(app_state).get_client_bridge_config()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_BRIDGE_CONFIG_RESOLVE_FAILED,

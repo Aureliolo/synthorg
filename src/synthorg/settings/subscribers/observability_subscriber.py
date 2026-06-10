@@ -165,7 +165,7 @@ class ObservabilitySettingsSubscriber:
                 custom_sinks_json=cust_result.value,
                 log_dir=self._log_dir,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.error(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
@@ -187,7 +187,7 @@ class ObservabilitySettingsSubscriber:
                 build_result.config,
                 routing_overrides=routing,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Pipeline may be degraded -- stderr as fallback.
             sys.stderr.write(
@@ -218,7 +218,7 @@ class ObservabilitySettingsSubscriber:
         """Full pipeline rebuild: read, parse, build, apply."""
         try:
             results = await self._read_all_settings()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.error(
                 SETTINGS_OBSERVABILITY_REBUILD_FAILED,

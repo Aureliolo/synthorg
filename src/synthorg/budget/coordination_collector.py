@@ -435,7 +435,7 @@ class CoordinationMetricsCollector:
                 metrics=metrics,
             )
             self._metrics_store.record(record)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
@@ -474,7 +474,7 @@ class CoordinationMetricsCollector:
                 turns_mas=turns_mas,
                 turns_sas=turns_sas,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
@@ -512,7 +512,7 @@ class CoordinationMetricsCollector:
                 turns_mas=turns_mas,
                 turns_sas=turns_sas,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
@@ -553,7 +553,7 @@ class CoordinationMetricsCollector:
                 error_rate_mas=error_rate_mas,
                 error_rate_sas=error_rate_sas,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
@@ -597,7 +597,7 @@ class CoordinationMetricsCollector:
                 inter_agent_messages=inter_agent_messages,
                 reasoning_turns=reasoning_turns,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
@@ -635,7 +635,7 @@ class CoordinationMetricsCollector:
                 value=result.value,
                 sample_count=result.sample_count,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
@@ -661,7 +661,7 @@ class CoordinationMetricsCollector:
             # Estimate parallelizable fraction from team size: p = (n-1)/n
             p = (team_size - 1) / team_size
             return compute_amdahl_ceiling(parallelizable_fraction=p)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
@@ -685,7 +685,7 @@ class CoordinationMetricsCollector:
             return None
         try:
             return compute_straggler_gap(agent_durations=list(agent_durations))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
@@ -725,7 +725,7 @@ class CoordinationMetricsCollector:
                 duration_mas=duration_mas,
                 duration_sas=duration_sas,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
@@ -754,7 +754,7 @@ class CoordinationMetricsCollector:
                 team_size=team_size,
                 message_count=message_density.inter_agent_messages,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
@@ -845,7 +845,7 @@ class CoordinationMetricsCollector:
                     source="budget.coordination_collector",
                 ),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,

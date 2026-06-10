@@ -877,7 +877,7 @@ class MemoryService:
                 reason="read_for_rollback_not_found",
             )
             return None, "was_unset"
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
@@ -910,7 +910,7 @@ class MemoryService:
         """
         try:
             await coro
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Emit both the aggregate event (broad dashboards /
             # alerting) AND the step-specific event so alerts can pick

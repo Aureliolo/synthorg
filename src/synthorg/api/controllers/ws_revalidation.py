@@ -56,7 +56,7 @@ async def _close_socket_safely(
     """
     try:
         await socket.close(code=code, reason=reason)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             API_WS_TRANSPORT_ERROR,
@@ -137,7 +137,7 @@ async def _periodic_revalidate(
             return
         try:
             db_user = await persistence_of(app_state).users.get(user.user_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             admitted = await failure_limiter.take(user.user_id)
             logger.warning(

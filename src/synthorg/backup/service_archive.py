@@ -181,7 +181,7 @@ class BackupServiceArchiveMixin:
             )
             if m is not None:
                 return BackupInfo.from_manifest(m, compressed=True)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # ``_read_manifest_from_archive`` handles its expected
             # failure set internally; anything escaping is unexpected
             # and must not break listing -- but critical errors do.
@@ -274,7 +274,7 @@ class BackupServiceArchiveMixin:
         try:
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
             return bool(data.get("backup_id") == backup_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
@@ -338,7 +338,7 @@ class BackupServiceArchiveMixin:
                     and archive_manifest.backup_id == backup_id
                 ):
                     return archive_manifest
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 # ``_read_manifest_from_archive`` handles its expected
                 # failure set internally; anything escaping is
                 # unexpected, but critical errors must propagate.
@@ -409,7 +409,7 @@ class BackupServiceArchiveMixin:
                 )
             except ManifestError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     BACKUP_FAILED,
@@ -440,7 +440,7 @@ class BackupServiceArchiveMixin:
             return True
         try:
             m = self._read_manifest_from_archive(entry)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 BACKUP_MANIFEST_INVALID,

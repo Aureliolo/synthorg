@@ -166,7 +166,7 @@ class GitHubHealthCheck:
         # TaskGroup.
         try:
             credentials = await self._catalog.get_credentials(connection.name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             error_desc = safe_error_description(exc)
             logger.warning(

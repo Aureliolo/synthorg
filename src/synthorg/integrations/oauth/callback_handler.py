@@ -62,7 +62,7 @@ async def resolve_oauth_http_timeout(
             SettingNamespace.INTEGRATIONS.value,
             "oauth_http_timeout_seconds",
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # This is a setting-resolution fallback, not an OAuth flow
         # failure -- logging as OAUTH_FLOW_FAILED would inflate

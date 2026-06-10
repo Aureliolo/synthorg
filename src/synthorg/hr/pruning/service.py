@@ -233,7 +233,7 @@ class PruningService:
                 if not task.done():
                     raise
                 # Loop already finished; drained successfully.
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
@@ -333,7 +333,7 @@ class PruningService:
                         agent_id=str(agent.id),
                         policy=str(evaluation.policy_name),
                     )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # The ``errors`` list lands on
                 # ``PruningJobRun.errors`` and is later
@@ -421,7 +421,7 @@ class PruningService:
                 )
                 if submitted:
                     created += 1
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Same scrub as the eligibility loop -- the
                 # ``errors`` list crosses the persistence boundary
@@ -691,7 +691,7 @@ class PruningService:
             return await self._offboarding_service.offboard(
                 firing_request,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Drop ``logger.exception`` here -- the
             # ``FiringRequest`` carries agent identity / reason and
@@ -757,7 +757,7 @@ class PruningService:
         if callback is not None:
             try:
                 await callback(record)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # No traceback on the notification callback path --
                 # frame-locals could carry the ``record`` body the
@@ -829,7 +829,7 @@ class PruningService:
                 await self.run_pruning_cycle()
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 # Drop ``logger.exception`` -- the scheduler-loop
                 # traceback can carry FiringRequest fields and

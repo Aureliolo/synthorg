@@ -86,7 +86,7 @@ def _make_expire_callback(
                 event.model_dump_json(),
                 channels=[CHANNEL_APPROVALS],
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_APPROVAL_PUBLISH_FAILED,
@@ -205,7 +205,7 @@ def _make_meeting_publisher(
                 event.model_dump_json(),
                 channels=[CHANNEL_MEETINGS],
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_WS_SEND_FAILED,
@@ -245,7 +245,7 @@ def make_personality_trim_notifier(
                 event.model_dump_json(),
                 channels=[CHANNEL_AGENTS],
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 PROMPT_PERSONALITY_NOTIFY_FAILED,
@@ -294,7 +294,7 @@ def make_steering_notifier(channels_plugin: ChannelsPlugin) -> SteeringNotifier:
                 event.model_dump_json(),
                 channels=[CHANNEL_COCKPIT],
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
                 API_WS_SEND_FAILED,
