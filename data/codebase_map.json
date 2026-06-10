@@ -18510,7 +18510,7 @@
     },
     {
       "kind": "code",
-      "loc": 99,
+      "loc": 101,
       "loc_cap": 500,
       "module": "src/synthorg/settings/_resolver_batch_reads.py",
       "owning_feature": "settings"

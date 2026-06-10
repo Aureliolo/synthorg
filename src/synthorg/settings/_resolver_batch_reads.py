@@ -10,6 +10,7 @@ the operator log actionable when one key in a bundle fails.
 import asyncio
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.observability.redaction import safe_error_description
@@ -64,6 +65,7 @@ async def resolve_bridge_fields(
                 for key, kind in specs
             }
     except ExceptionGroup as eg:
+        reraise_critical(eg)
         # Pinpoint which key(s) failed so an operator has a concrete
         # setting name in the log instead of just an ``error_count``.
         # Skip cancelled sibling tasks: ``TaskGroup`` cancels all other

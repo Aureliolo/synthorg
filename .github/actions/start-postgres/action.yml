@@ -1,0 +1,100 @@
+name: Start Postgres (resilient pull)
+description: |
+  Start a postgres:18-alpine container for the persistence test suites,
+  pulling the image from Docker Hub with exponential-backoff retries so a
+  transient registry timeout does not fail the job.
+
+  A GitHub Actions ``services: postgres`` block cannot retry its image
+  pull: the runner's container-init gives up after three internal
+  attempts, and Docker Hub (registry-1.docker.io) periodically times out
+  from the hosted runners with "context deadline exceeded", failing the
+  whole job before any step runs. Pulling in a step we control lets the
+  retry outlast a sub-minute registry blip, mirroring the npm / docker
+  retry pattern already used in codspeed.yml, lighthouse.yml, and
+  docker.yml.
+
+  The container exposes 5432 on localhost with the same user / password /
+  database and readiness contract the former ``services: postgres`` block
+  provided, so the persistence conftest fixtures (which key off the
+  SYNTHORG_TEST_POSTGRES_* env vars) are unaffected.
+
+inputs:
+  image:
+    description: Digest-pinned postgres image reference (single source of truth).
+    required: false
+    default: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+  user:
+    description: POSTGRES_USER for the container.
+    required: false
+    default: synthorg
+  password:
+    description: POSTGRES_PASSWORD for the container.
+    required: false
+    default: synthorg-test
+  db:
+    description: POSTGRES_DB for the container.
+    required: false
+    default: synthorg
+  container-name:
+    description: Name for the started container.
+    required: false
+    default: synthorg-postgres
+
+runs:
+  using: composite
+  steps:
+    - name: Pull postgres image (retry transient Docker Hub blips)
+      shell: bash
+      env:
+        PG_IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        for attempt in 1 2 3 4 5; do
+          if docker pull "${PG_IMAGE}"; then
+            exit 0
+          fi
+          if [ "${attempt}" -eq 5 ]; then
+            echo "::error::docker pull ${PG_IMAGE} failed after 5 attempts"
+            exit 1
+          fi
+          backoff=$((attempt * 10))
+          echo "::warning::docker pull failed (attempt ${attempt}/5); retrying in ${backoff}s"
+          sleep "${backoff}"
+        done
+    - name: Start postgres container
+      shell: bash
+      env:
+        PG_IMAGE: ${{ inputs.image }}
+        PG_USER: ${{ inputs.user }}
+        PG_PASSWORD: ${{ inputs.password }}
+        PG_DB: ${{ inputs.db }}
+        PG_NAME: ${{ inputs.container-name }}
+      run: |
+        set -euo pipefail
+        docker run -d --name "${PG_NAME}" \
+          -e POSTGRES_USER="${PG_USER}" \
+          -e POSTGRES_PASSWORD="${PG_PASSWORD}" \
+          -e POSTGRES_DB="${PG_DB}" \
+          -p 5432:5432 \
+          --health-cmd "pg_isready -U ${PG_USER}" \
+          --health-interval 5s \
+          --health-timeout 5s \
+          --health-retries 10 \
+          "${PG_IMAGE}"
+    - name: Wait for postgres readiness
+      shell: bash
+      env:
+        PG_USER: ${{ inputs.user }}
+        PG_NAME: ${{ inputs.container-name }}
+      run: |
+        set -euo pipefail
+        for attempt in $(seq 1 30); do
+          if docker exec "${PG_NAME}" pg_isready -U "${PG_USER}" >/dev/null 2>&1; then
+            echo "postgres ready after ${attempt} readiness check(s)"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "::error::postgres did not become ready within 60s"
+        docker logs "${PG_NAME}" || true
+        exit 1

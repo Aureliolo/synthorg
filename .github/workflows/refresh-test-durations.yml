@@ -34,20 +34,6 @@ jobs:
     environment: apko-lock
     permissions:
       contents: read
-    services:
-      postgres:
-        image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
-        env:
-          POSTGRES_USER: synthorg
-          POSTGRES_PASSWORD: synthorg-test
-          POSTGRES_DB: synthorg
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       SYNTHORG_TEST_POSTGRES_HOST: localhost
       SYNTHORG_TEST_POSTGRES_PORT: "5432"
@@ -65,6 +51,13 @@ jobs:
         with:
           ref: refs/heads/main
           persist-credentials: false
+
+      # Postgres for the persistence suites. Replaces a
+      # ``services: postgres`` block whose Docker Hub image pull cannot
+      # be retried (runner container-init gives up after 3 attempts and
+      # registry-1.docker.io intermittently times out); the composite
+      # action retries the pull with backoff.
+      - uses: ./.github/actions/start-postgres
 
       # Capture the actual checked-out main HEAD as the immutable base
       # SHA for the bot PR. github.sha is the dispatch ref; that ref

@@ -220,13 +220,13 @@ def _extract_numeric_config(
     if not isinstance(raw_autonomy, Mapping):
         msg = (
             f"Invalid autonomy config in template {source_name!r}: "
-            f"expected dict, got {type(raw_autonomy).__name__}"
+            f"expected mapping, got {type(raw_autonomy).__name__}"
         )
         logger.warning(
             TEMPLATE_RENDER_TYPE_ERROR,
             source=source_name,
             field="autonomy",
-            expected="dict",
+            expected="mapping",
             got=type(raw_autonomy).__name__,
         )
         raise TemplateRenderError(msg)
