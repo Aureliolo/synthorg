@@ -860,13 +860,21 @@ jobs:
           # reason for moving away from `cmd | while read`.
           # Retry transient API/auth blips; keep the loud exit on a
           # persistent failure (anti-silent-failure: a real outage must not
-          # leave the failure-tracking array silently empty).
+          # leave the failure-tracking array silently empty). Capture gh's
+          # stderr so a definitive client error (4xx) fails fast instead of
+          # burning the full ladder, matching the publish step's gh_retry().
+          cleanup_errf=$(mktemp)
           attempt=0
           until GH_RELEASES_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$")) | .tag_name'); do
+            --jq '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$")) | .tag_name' \
+            2>"$cleanup_errf"); do
+            if grep -qE 'HTTP 4(00|03|04|09|22)' "$cleanup_errf"; then
+              echo "::error::Failed to list dev releases for cleanup (definitive client error): $(tr '\n' ' ' < "$cleanup_errf")"
+              exit 1
+            fi
             attempt=$((attempt + 1))
             if [ "$attempt" -ge 4 ]; then
-              echo "::error::Failed to list dev releases for cleanup after $attempt attempts (gh api non-zero exit)"
+              echo "::error::Failed to list dev releases for cleanup after $attempt attempts (transient API error)"
               exit 1
             fi
             sleep $((attempt * 5))
@@ -898,15 +906,21 @@ jobs:
           # matches) fails.
           attempt=0
           until GH_TAGS_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
+            2>"$cleanup_errf" \
             | sed 's|^refs/tags/||' \
             | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$' || true; }); do
+            if grep -qE 'HTTP 4(00|03|04|09|22)' "$cleanup_errf"; then
+              echo "::error::Failed to list orphan dev tags for cleanup (definitive client error): $(tr '\n' ' ' < "$cleanup_errf")"
+              exit 1
+            fi
             attempt=$((attempt + 1))
             if [ "$attempt" -ge 4 ]; then
-              echo "::error::Failed to list orphan dev tags for cleanup after $attempt attempts (gh api or sed non-zero exit)"
+              echo "::error::Failed to list orphan dev tags for cleanup after $attempt attempts (transient API error)"
               exit 1
             fi
             sleep $((attempt * 5))
           done
+          rm -f "$cleanup_errf"
           if [ -z "$GH_TAGS_OUTPUT" ]; then
             orphan_tags=()
           else

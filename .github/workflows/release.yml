@@ -25,6 +25,13 @@ jobs:
     # Forks don't have those env-scoped secrets; skip cleanly.
     if: ${{ !github.event.repository.fork }}
     runs-on: ubuntu-latest
+    # Bound total wall time. The retry-wrapped gh calls below (LICENSE
+    # read, PR-body read, head-SHA read, and the four required-status
+    # POSTs) each carry the gh_with_retry.sh ladder (~1m45s worst case);
+    # a black-holed connection is not bounded by the ladder itself. Cap
+    # the job so a stuck API call cannot hold a runner up to the 6h
+    # default and block the cancel-in-progress:false concurrency group.
+    timeout-minutes: 15
     environment: release
     permissions:
       contents: write
