@@ -239,7 +239,7 @@ class LlmCalibrationRecord(BaseModel):
         currency: ISO 4217 currency code for ``cost``.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: UUID = Field(
         default_factory=uuid4,
