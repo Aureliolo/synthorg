@@ -64,17 +64,18 @@ class RowLike(Protocol):
 def _safe_row_id(row: RowLike) -> str:
     """Best-effort raw ``id`` for error context when marshalling fails.
 
-    The marshallers catch ``KeyError`` (a missing ``id`` column), so the
-    ``id`` access in the error path must not itself raise. Returns a
-    sentinel when the value is absent or unrenderable so the warning still
-    pins the offending row where possible.
+    The marshallers catch a missing ``id`` column (``KeyError`` on
+    dict rows, ``IndexError`` on ``sqlite3.Row``), so the ``id`` access
+    in the error path must not itself raise. Returns a sentinel when the
+    value is absent or unrenderable so the warning still pins the
+    offending row where possible.
 
     Returns:
         The raw id as text, or ``"<unknown>"`` if it cannot be read.
     """
     try:
         return str(row["id"])
-    except KeyError, TypeError, ValueError:
+    except KeyError, IndexError, TypeError, ValueError:
         return "<unknown>"
 
 
@@ -96,7 +97,7 @@ def row_to_conversation(row: RowLike) -> Conversation:
             status=ConversationStatus(str(row["status"])),
             kind=ConversationKind(str(row["kind"])),
         )
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, IndexError) as exc:
         msg = "Failed to parse conversation row"
         logger.warning(
             PERSISTENCE_CONVERSATION_FAILED,
@@ -136,7 +137,7 @@ def row_to_turn(row: RowLike) -> ConversationTurn:
             ),
             created_at=coerce_row_timestamp(row["created_at"]),
         )
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, IndexError) as exc:
         msg = "Failed to parse conversation turn row"
         logger.warning(
             PERSISTENCE_CONVERSATION_TURN_FAILED,
@@ -168,7 +169,7 @@ def row_to_participant(row: RowLike) -> ConversationParticipant:
             added_by=str(row["added_by"]),
             added_at=coerce_row_timestamp(row["added_at"]),
         )
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, IndexError) as exc:
         msg = "Failed to parse conversation participant row"
         logger.warning(
             COS_GROUP_PARTICIPANT_FAILED,
@@ -202,7 +203,7 @@ def row_to_invite(row: RowLike) -> ConversationInvite:
             status=ConversationInviteStatus(str(row["status"])),
             created_at=coerce_row_timestamp(row["created_at"]),
         )
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, IndexError) as exc:
         msg = "Failed to parse conversation invite row"
         logger.warning(
             COS_GROUP_INVITE_FAILED,
@@ -236,7 +237,7 @@ def row_to_proposal(row: RowLike) -> ConversationalProposal:
             status=ConversationalProposalStatus(str(row["status"])),
             created_at=coerce_row_timestamp(row["created_at"]),
         )
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, IndexError) as exc:
         msg = "Failed to parse conversational proposal row"
         logger.warning(
             PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED,
