@@ -16,8 +16,8 @@ stats:
     raw: 26
     display: '26'
   convention_gates:
-    raw: 69
-    display: '69'
+    raw: 70
+    display: '70'
 sources:
   tests: uv run python -m pytest --collect-only -q
   providers_curated: synthorg.providers.presets.list_featured_presets
