@@ -860,8 +860,8 @@
     },
     "src/synthorg/persistence/postgres/hr_repositories.py": {
       "cap": 500,
-      "loc": 424,
-      "ratio": 0.848,
+      "loc": 428,
+      "ratio": 0.856,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/ontology_entity_repo.py": {
@@ -896,8 +896,8 @@
     },
     "src/synthorg/persistence/postgres/training_plan_repo.py": {
       "cap": 500,
-      "loc": 447,
-      "ratio": 0.894,
+      "loc": 449,
+      "ratio": 0.898,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/version_repo.py": {
@@ -938,8 +938,8 @@
     },
     "src/synthorg/persistence/sqlite/hr_repositories.py": {
       "cap": 500,
-      "loc": 417,
-      "ratio": 0.834,
+      "loc": 421,
+      "ratio": 0.842,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/ontology_entity_repo.py": {
@@ -986,8 +986,8 @@
     },
     "src/synthorg/persistence/sqlite/training_plan_repo.py": {
       "cap": 500,
-      "loc": 466,
-      "ratio": 0.932,
+      "loc": 468,
+      "ratio": 0.936,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/version_repo.py": {
@@ -1234,7 +1234,7 @@
     "synthorg.core.auth.roles": 27,
     "synthorg.core.autonomy_enums": 34,
     "synthorg.core.clock": 159,
-    "synthorg.core.critical_errors": 484,
+    "synthorg.core.critical_errors": 485,
     "synthorg.core.domain_errors": 184,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 48,
