@@ -262,7 +262,12 @@ jobs:
           DEV_TAG: ${{ steps.version.outputs.dev_tag }}
         run: |
           set -euo pipefail
-          if ! gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$DEV_TAG" \
+          # Retry-wrap so a transient 401/5xx does not fire a FALSE "tag
+          # deleted" alarm. The helper fail-fasts on a real 404 (the tag
+          # genuinely vanished), which is exactly the #1818 signal we want
+          # the guard to catch; it only retries transient classes.
+          if ! .github/scripts/gh_with_retry.sh "minted-tag survival check" \
+               gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$DEV_TAG" \
                >/dev/null 2>&1; then
             echo "::error::Tag $DEV_TAG was deleted during this run -- downstream Docker/CLI workflows are about to 404 on actions/checkout. Investigate dev-release.yml."
             exit 1

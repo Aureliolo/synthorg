@@ -1452,6 +1452,11 @@ jobs:
       - name: Audit
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
+          # Pass the repo explicitly so the script never depends on
+          # `gh repo view` inference, which is fragile under
+          # persist-credentials: false (and masked a transient 401 as a
+          # bogus "could not infer repo" failure).
+          GH_REPO: ${{ github.repository }}
         run: bash scripts/audit_branch_protection.sh
 
   # ── Gate: all required checks passed ──

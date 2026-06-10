@@ -50,10 +50,29 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$REPO" ]; then
-  REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo "")
+  if [ -n "${GH_REPO:-}" ]; then
+    # CI passes the repo explicitly via GH_REPO; this avoids `gh repo view`
+    # inference, which is fragile under persist-credentials: false.
+    REPO="$GH_REPO"
+  else
+    # Local fallback: infer from the gh context. The inference error is NOT
+    # masked -- a real failure (auth blip, no remote) surfaces on stderr
+    # rather than collapsing into the generic "could not infer" below.
+    REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner) || REPO=""
+  fi
 fi
 if [ -z "$REPO" ]; then
-  echo "error: could not infer repo -- pass --repo owner/name" >&2
+  echo "error: could not resolve repo -- set GH_REPO or pass --repo owner/name" >&2
+  exit 2
+fi
+
+# Retry-wrap the read-only rulesets API calls: a transient GitHub 401/5xx on
+# this post-merge audit must not redden the main CI run. Resolve the shared
+# helper relative to this script so it works from any cwd.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GH_RETRY="${SCRIPT_DIR}/../.github/scripts/gh_with_retry.sh"
+if [ ! -x "$GH_RETRY" ]; then
+  echo "error: retry helper not found or not executable: $GH_RETRY" >&2
   exit 2
 fi
 
@@ -105,7 +124,7 @@ LIVE_TMP=$(mktemp)
 trap 'rm -f "$LIVE_TMP" "$SPEC_TMP"' EXIT
 SPEC_TMP=$(mktemp)
 
-IDS=$(gh api "repos/${REPO}/rulesets" --paginate --jq '.[].id')
+IDS=$("$GH_RETRY" "rulesets list" gh api "repos/${REPO}/rulesets" --paginate --jq '.[].id')
 
 # Fetch each ruleset into its own temp file so a partial failure never
 # produces a half-written JSON that the NORMALISE_FILTER would happily
@@ -120,7 +139,7 @@ trap 'rm -f "$LIVE_TMP" "$SPEC_TMP"; rm -rf "$RULESETS_DIR"' EXIT
 FAILED_IDS=()
 while read -r id; do
   [ -z "$id" ] && continue
-  if ! gh api "repos/${REPO}/rulesets/${id}" > "${RULESETS_DIR}/${id}.json" 2>"${RULESETS_DIR}/${id}.err"; then
+  if ! "$GH_RETRY" "ruleset ${id}" gh api "repos/${REPO}/rulesets/${id}" > "${RULESETS_DIR}/${id}.json" 2>"${RULESETS_DIR}/${id}.err"; then
     FAILED_IDS+=("$id")
   fi
 done <<< "$IDS"

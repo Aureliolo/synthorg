@@ -148,7 +148,11 @@ jobs:
           set -euo pipefail
 
           PARENT_SHA=$(git rev-parse HEAD)
-          TREE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$PARENT_SHA" --jq '.tree.sha')
+          # Retry-wrap the read (transient 401/5xx absorbed); the commit
+          # POST + ref PATCH below stay un-retried -- a write failure on this
+          # manual, human-watched graduation should page, not silently retry.
+          TREE_SHA=$(.github/scripts/gh_with_retry.sh "graduation parent-tree read" \
+            gh api "repos/$GITHUB_REPOSITORY/git/commits/$PARENT_SHA" --jq '.tree.sha')
 
           # Empty commit (reuses parent tree) via Git Data API. The App
           # token produces a GitHub-signed commit that verifies as
@@ -179,7 +183,8 @@ jobs:
           COMMIT_SHA: ${{ steps.commit.outputs.commit_sha }}
         run: |
           set -euo pipefail
-          v=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$COMMIT_SHA" --jq '.verification')
+          v=$(.github/scripts/gh_with_retry.sh "graduation verification read" \
+            gh api "repos/$GITHUB_REPOSITORY/git/commits/$COMMIT_SHA" --jq '.verification')
           verified=$(jq -r '.verified' <<< "$v")
           reason_code=$(jq -r '.reason' <<< "$v")
           {
