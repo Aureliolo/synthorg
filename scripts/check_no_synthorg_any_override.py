@@ -23,6 +23,7 @@ Exit codes:
 """
 
 import argparse
+import fnmatch
 import sys
 import tomllib
 from collections.abc import Mapping
@@ -33,9 +34,22 @@ _PYPROJECT_REL: Final[str] = "pyproject.toml"
 
 
 def _targets_synthorg(pattern: str) -> bool:
-    """Return True if a mypy override ``module`` pattern covers ``synthorg.*``."""
-    return pattern == "synthorg" or pattern.startswith(
-        ("synthorg.", "src/synthorg", "src.synthorg")
+    """Return True if a mypy override ``module`` pattern covers ``synthorg`` code.
+
+    mypy matches a ``module`` pattern against dotted module names with
+    ``fnmatch``-style globbing, so a pattern targets synthorg if it matches the
+    ``synthorg`` package itself or any ``synthorg.<sub>`` submodule. The literal
+    prefix checks cover the common exact / dotted-wildcard forms
+    (``synthorg``, ``synthorg.api.*``); the ``fnmatch`` probes additionally
+    catch catch-all globs that would re-open the flag for synthorg without
+    naming it (``*``, ``synthorg*``, ``synth*``), while leaving an unrelated
+    ``synthorgX`` package untouched.
+    """
+    return (
+        pattern == "synthorg"
+        or pattern.startswith("synthorg.")
+        or fnmatch.fnmatch("synthorg", pattern)
+        or fnmatch.fnmatch("synthorg.probe", pattern)
     )
 
 
@@ -53,9 +67,10 @@ def _lifts_explicit_any(block: Mapping[str, object]) -> bool:
     """Return True if an override block re-opens explicit ``Any`` for its modules.
 
     Two equivalent forms both suppress the ``explicit-any`` error: the boolean
-    ``disallow_any_explicit = false`` and listing ``explicit-any`` in
-    ``disable_error_code``. Either keeps mypy green while allowing explicit
-    ``Any`` again, so both count as lifting the flag.
+    ``disallow_any_explicit = false`` and ``explicit-any`` appearing in
+    ``disable_error_code`` (which may be a bare string or a list). Either keeps
+    mypy green while allowing explicit ``Any`` again, so both count as lifting
+    the flag.
     """
     if block.get("disallow_any_explicit") is False:
         return True
@@ -101,7 +116,11 @@ def find_violations(data: Mapping[str, object]) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Scan ``pyproject.toml`` and return the gate exit code."""
+    """Scan ``pyproject.toml`` and return the gate exit code.
+
+    Exit codes are 0 (clean), 1 (a forbidden override was found), and 2
+    (config error); see the module docstring for the full contract.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", default=".", help="Repository root.")
     args = parser.parse_args(argv)
@@ -114,8 +133,11 @@ def main(argv: list[str] | None = None) -> int:
     pyproject = root / _PYPROJECT_REL
     try:
         raw = pyproject.read_text(encoding="utf-8")
-    except OSError:
-        print(f"error: could not read {_PYPROJECT_REL} under {root}", file=sys.stderr)
+    except OSError as exc:
+        print(
+            f"error: could not read {_PYPROJECT_REL} under {root}: {exc}",
+            file=sys.stderr,
+        )
         return 2
     try:
         data = tomllib.loads(raw)
