@@ -14,7 +14,7 @@ from synthorg.engine.task_engine_models import (
     TaskMutationResult,
     TaskStateChanged,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_SNAPSHOT_PUBLISH_FAILED,
     TASK_ENGINE_SNAPSHOT_PUBLISHED,
@@ -111,4 +111,6 @@ async def publish_snapshot(
             mutation_type=mutation.mutation_type,
             request_id=mutation.request_id,
             task_id=event.task_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )

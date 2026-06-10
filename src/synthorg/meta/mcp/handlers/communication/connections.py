@@ -5,6 +5,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.state import connection_service_of
 from synthorg.meta.mcp.errors import (
@@ -85,6 +86,7 @@ async def _connections_list(
         log_handler_argument_invalid("synthorg_connections_list", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_connections_list", exc)
         return err(exc)
 
@@ -113,6 +115,7 @@ async def _connections_get(
         log_handler_argument_invalid("synthorg_connections_get", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_connections_get", exc)
         return err(exc)
 
@@ -162,6 +165,7 @@ async def _connections_create(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -202,6 +206,7 @@ async def _connections_delete(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -230,6 +235,7 @@ async def _connections_check_health(
         log_handler_argument_invalid("synthorg_connections_check_health", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_connections_check_health", exc)
         return err(exc)
 

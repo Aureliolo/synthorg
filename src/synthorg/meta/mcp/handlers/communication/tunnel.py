@@ -5,6 +5,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.state import tunnel_service_of
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -42,6 +43,7 @@ async def _tunnel_get_status(
         status = await tunnel_service_of(app_state).get_status()
         return ok(status.to_dict())
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_tunnel_get_status", exc)
         return err(exc)
 
@@ -76,6 +78,7 @@ async def _tunnel_connect(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 

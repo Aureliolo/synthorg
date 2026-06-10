@@ -10,6 +10,7 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.communication.message import Message
 from synthorg.communication.state import message_service_of
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -93,6 +94,7 @@ async def _messages_list(
         log_handler_argument_invalid("synthorg_messages_list", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_messages_list", exc)
         return err(exc)
 
@@ -125,6 +127,7 @@ async def _messages_get(
         log_handler_argument_invalid("synthorg_messages_get", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_messages_get", exc)
         return err(exc)
 
@@ -151,6 +154,7 @@ async def _messages_send(
         log_handler_argument_invalid("synthorg_messages_send", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_messages_send", exc)
         return err(exc)
 
@@ -200,6 +204,7 @@ async def _messages_delete(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 

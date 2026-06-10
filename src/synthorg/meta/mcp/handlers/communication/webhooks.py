@@ -8,6 +8,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.state import webhook_service_of
 from synthorg.integrations.webhooks.models import WebhookDefinition
 from synthorg.meta.mcp.errors import (
@@ -87,6 +88,7 @@ async def _webhooks_list(
         log_handler_argument_invalid("synthorg_webhooks_list", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_webhooks_list", exc)
         return err(exc)
 
@@ -115,6 +117,7 @@ async def _webhooks_get(
         log_handler_argument_invalid("synthorg_webhooks_get", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_webhooks_get", exc)
         return err(exc)
 
@@ -160,6 +163,7 @@ async def _webhooks_create(
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -186,6 +190,7 @@ async def _webhooks_update(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return await _apply_webhook_update(
@@ -223,6 +228,7 @@ async def _apply_webhook_update(
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(
@@ -277,6 +283,7 @@ async def _webhooks_delete(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 

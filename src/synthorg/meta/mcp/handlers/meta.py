@@ -178,6 +178,7 @@ async def _meta_list_mcp_tools(
         tools = list(registry.get_tool_definitions())
         response = ok(data=tools)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -202,6 +203,7 @@ async def _meta_get_mcp_server_config(
         config = get_server_config()
         response = ok(data=config)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)

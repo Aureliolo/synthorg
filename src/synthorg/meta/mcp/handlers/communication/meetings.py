@@ -8,6 +8,7 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.communication.state import meeting_service_of
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -92,6 +93,7 @@ async def _meetings_list(
         log_handler_argument_invalid("synthorg_meetings_list", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_meetings_list", exc)
         return err(exc)
 
@@ -120,6 +122,7 @@ async def _meetings_get(
         log_handler_argument_invalid("synthorg_meetings_get", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_meetings_get", exc)
         return err(exc)
 
@@ -141,6 +144,7 @@ async def _meetings_create(
     except CapabilityNotSupportedError as exc:
         return _map_capability_not_supported(tool, exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(None)
@@ -163,6 +167,7 @@ async def _meetings_update(
     except CapabilityNotSupportedError as exc:
         return _map_capability_not_supported(tool, exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(None)
@@ -208,6 +213,7 @@ async def _meetings_delete(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 

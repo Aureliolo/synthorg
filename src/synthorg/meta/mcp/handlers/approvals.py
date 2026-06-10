@@ -29,6 +29,7 @@ from synthorg.core.agent import (
     AgentIdentity,
 )
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -186,6 +187,7 @@ async def _list_approvals(
         )
         page, meta = paginate_sequence(items, offset=offset, limit=limit)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -215,6 +217,7 @@ async def _get_approval(
     try:
         item = await approval_store_of(app_state).get(approval_id)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -277,6 +280,7 @@ async def _create_approval(
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -387,6 +391,7 @@ async def _approve(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -427,6 +432,7 @@ async def _reject(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         # Covers _NotFoundError, _ConflictError, and any other service-layer
         # failure.  The ``err()`` envelope picks up ``domain_code`` off the
         # handler-local errors automatically.

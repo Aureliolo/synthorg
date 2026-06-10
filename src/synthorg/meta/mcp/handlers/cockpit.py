@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Final, cast
 
 from synthorg._core.features import require_service
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
@@ -138,6 +139,7 @@ async def _get_live_activity(
         )
         return ok(snapshot.model_dump(mode="json"))
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_cockpit_get_live_activity", exc)
         return err(exc)
 
@@ -170,6 +172,7 @@ async def _get_frames(
         log_handler_argument_invalid("synthorg_cockpit_get_flight_recorder_frames", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_cockpit_get_flight_recorder_frames", exc)
         return err(exc)
 
@@ -198,6 +201,7 @@ async def _seek(
         log_handler_argument_invalid("synthorg_cockpit_seek_flight_recorder", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_cockpit_seek_flight_recorder", exc)
         return err(exc)
 
@@ -227,6 +231,7 @@ async def _intervene_pause(
         log_handler_argument_invalid("synthorg_cockpit_intervene_pause", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_cockpit_intervene_pause", exc)
         return err(exc)
 
@@ -255,6 +260,7 @@ async def _intervene_kill(
         log_handler_argument_invalid("synthorg_cockpit_intervene_kill", exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_cockpit_intervene_kill", exc)
         return err(exc)
 
@@ -308,6 +314,7 @@ async def _steer(
         log_handler_argument_invalid(tool_name, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool_name, exc)
         return err(exc)
 
@@ -353,6 +360,7 @@ async def _steer_supersede(
         log_handler_argument_invalid(tool_name, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool_name, exc)
         return err(exc)
 
@@ -381,6 +389,7 @@ async def _steer_list(
         log_handler_argument_invalid(tool_name, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
         log_handler_invoke_failed(tool_name, exc)
         return err(exc)
 
