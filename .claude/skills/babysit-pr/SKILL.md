@@ -246,9 +246,9 @@ There is NO upper bound on `rate_limit_pings`. The user explicitly said 10x with
 Compute deltas vs. cached IDs:
 
 - `new_commits` = current `headRefOid` != `state.last_head_sha`
-- `new_reviews` = `max(review.id) > state.last_review_id` AND review author is not self/synthorg-repo-bot. (Change-detection gate ONLY; when it fires, Phase 6 inspects EVERY review with `id > last_review_id`, never just the max -- see the Phase 6 CodeRabbit two-review caution.)
-- `new_pr_comments` = `max(pr_comment.id) > state.last_pr_comment_id` AND author is not self
-- `new_issue_comments` = `max(issue_comment.id) > state.last_issue_comment_id` AND comment is not self-authored AND body is not `@coderabbitai review` (our own pings)
+- `new_reviews` = at least one review has `id > state.last_review_id` whose author is not self/synthorg-repo-bot. **Apply the author filter BEFORE the id comparison** (filter, then `any` / `max` over the filtered set), never `max(review.id) > cursor AND <that review's author> is external`: a higher-id self/bot review -- e.g. your own `APPROVED` review or a `synthorg-repo-bot` review -- would otherwise mask a lower-id new external review. (Change-detection gate ONLY; when it fires, Phase 6 inspects EVERY qualifying review past the cursor, never just the max -- see the Phase 6 CodeRabbit two-review caution.)
+- `new_pr_comments` = at least one PR comment has `id > state.last_pr_comment_id` whose author is not self (filter author BEFORE the id comparison, same masking guard).
+- `new_issue_comments` = at least one issue comment has `id > state.last_issue_comment_id` that is not self-authored AND whose body is not `@coderabbitai review` (filter self + own pings BEFORE the id comparison, same masking guard -- otherwise your own newest `@coderabbitai review` ping masks a real new issue comment beneath it).
 - `ci_state_change` = current overall CI state differs from cached state
 
 If NONE of these AND no rate-limit dance fired in Phase 4:
