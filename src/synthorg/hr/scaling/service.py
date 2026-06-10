@@ -369,9 +369,9 @@ class ScalingService:
             ScalingActionType.HOLD,
         }:
             return ScalingActionRecord(
-                decision_id=decision.id,
+                decision_id=str(decision.id),
                 outcome=ScalingOutcome.EXECUTED,
-                result_id=decision.id,
+                result_id=str(decision.id),
                 executed_at=now,
             )
 
@@ -390,9 +390,9 @@ class ScalingService:
         # Service not configured -- surface as DEFERRED with the
         # decision id as the result id so operators can investigate.
         return ScalingActionRecord(
-            decision_id=decision.id,
+            decision_id=str(decision.id),
             outcome=ScalingOutcome.DEFERRED,
-            result_id=decision.id,
+            result_id=str(decision.id),
             reason=NotBlankStr("execution service not configured"),
             executed_at=now,
         )
@@ -432,7 +432,7 @@ class ScalingService:
                 error=safe_error_description(exc),
             )
             return ScalingActionRecord(
-                decision_id=decision.id,
+                decision_id=str(decision.id),
                 outcome=ScalingOutcome.FAILED,
                 reason=NotBlankStr(
                     f"{type(exc).__name__}: {safe_error_description(exc)}"
@@ -440,7 +440,7 @@ class ScalingService:
                 executed_at=now,
             )
         return ScalingActionRecord(
-            decision_id=decision.id,
+            decision_id=str(decision.id),
             outcome=ScalingOutcome.EXECUTED,
             result_id=NotBlankStr(str(request.id)),
             executed_at=now,
@@ -493,7 +493,7 @@ class ScalingService:
                 error=safe_error_description(exc),
             )
             return ScalingActionRecord(
-                decision_id=decision.id,
+                decision_id=str(decision.id),
                 outcome=ScalingOutcome.FAILED,
                 reason=NotBlankStr(
                     f"{type(exc).__name__}: {safe_error_description(exc)}"
@@ -504,7 +504,7 @@ class ScalingService:
             getattr(record, "firing_request_id", None) or decision.target_agent_id
         )
         return ScalingActionRecord(
-            decision_id=decision.id,
+            decision_id=str(decision.id),
             outcome=ScalingOutcome.EXECUTED,
             result_id=NotBlankStr(str(result_id)),
             executed_at=now,

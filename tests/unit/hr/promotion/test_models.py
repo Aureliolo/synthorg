@@ -1,6 +1,7 @@
 """Unit tests for promotion domain models."""
 
 from datetime import UTC, datetime
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -206,7 +207,7 @@ class TestPromotionRecord:
             effective_at=datetime.now(UTC),
             initiated_by="system",
         )
-        assert record.id  # auto-generated UUID
+        assert isinstance(record.id, UUID)
         assert record.approved_by is None
         assert record.approval_id is None
         assert record.model_changed is False
@@ -452,7 +453,7 @@ class TestPromotionRequest:
             created_at=datetime.now(UTC),
         )
         assert request.status == ApprovalStatus.PENDING
-        assert request.id  # auto-generated UUID
+        assert isinstance(request.id, UUID)
         assert request.approval_id is None
 
     def test_frozen(self) -> None:

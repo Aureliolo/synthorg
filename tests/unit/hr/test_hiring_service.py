@@ -13,6 +13,7 @@ from synthorg.hr.errors import (
 from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
+from tests._shared import sid
 from tests.unit.hr.conftest import make_candidate_card, make_hiring_request
 
 
@@ -212,7 +213,7 @@ class TestHiringServiceInstantiateAgent:
         card = make_candidate_card(candidate_id="cand-001")
         req = make_hiring_request(
             status=HiringRequestStatus.REJECTED,
-            selected_candidate_id="cand-001",
+            selected_candidate_id=sid("cand-001"),
             candidates=(card,),
         )
         # Register request in service's internal store so _get_request finds it.
@@ -227,7 +228,7 @@ class TestHiringServiceInstantiateAgent:
         card = make_candidate_card(candidate_id="cand-001")
         req = make_hiring_request(
             status=HiringRequestStatus.PENDING,
-            selected_candidate_id="cand-001",
+            selected_candidate_id=sid("cand-001"),
             candidates=(card,),
         )
         # Register request in service's internal store so _get_request finds it.

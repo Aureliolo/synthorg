@@ -94,7 +94,7 @@ def make_candidate_card(  # noqa: PLR0913
         "template_source": template_source,
     }
     if candidate_id is not None:
-        kwargs["id"] = candidate_id
+        kwargs["id"] = as_uuid(candidate_id)
     return CandidateCard.model_validate(kwargs)
 
 
@@ -129,7 +129,7 @@ def make_hiring_request(  # noqa: PLR0913
         "created_at": datetime.now(UTC),
     }
     if request_id is not None:
-        kwargs["id"] = request_id
+        kwargs["id"] = as_uuid(request_id)
     return HiringRequest.model_validate(kwargs)
 
 

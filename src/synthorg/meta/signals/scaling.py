@@ -115,7 +115,7 @@ class ScalingSignalAggregator:
 
             outcome_by_decision = {a.decision_id: a.outcome for a in actions}
             summaries = tuple(
-                _build_summary(d, outcome_by_decision.get(d.id)) for d in filtered
+                _build_summary(d, outcome_by_decision.get(str(d.id))) for d in filtered
             )
 
             total_decisions = len(filtered)
@@ -173,7 +173,7 @@ def _build_summary(
         NotBlankStr(outcome.value) if outcome is not None else _PENDING_OUTCOME
     )
     return ScalingDecisionSummary(
-        decision_id=decision.id,
+        decision_id=str(decision.id),
         action_type=NotBlankStr(decision.action_type.value),
         outcome=outcome_str,
         source_strategy=NotBlankStr(decision.source_strategy.value),

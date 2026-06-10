@@ -13,6 +13,7 @@ from synthorg.hr.pruning.models import (
     PruningRequest,
     PruningServiceConfig,
 )
+from tests._shared import as_uuid
 
 from .conftest import NOW, make_performance_snapshot
 
@@ -413,7 +414,7 @@ class TestPruningJobRun:
 
         with pytest.raises(ValidationError, match=r"agents_eligible.*cannot exceed"):
             PruningJobRun(
-                job_id=NotBlankStr("job-001"),
+                job_id=as_uuid("job-001"),
                 run_at=NOW,
                 agents_evaluated=5,
                 agents_eligible=10,
@@ -429,7 +430,7 @@ class TestPruningJobRun:
             match=r"approval_requests_created.*cannot exceed",
         ):
             PruningJobRun(
-                job_id=NotBlankStr("job-001"),
+                job_id=as_uuid("job-001"),
                 run_at=NOW,
                 agents_evaluated=10,
                 agents_eligible=3,
@@ -441,7 +442,7 @@ class TestPruningJobRun:
         from synthorg.hr.pruning.models import PruningJobRun
 
         job = PruningJobRun(
-            job_id=NotBlankStr("job-001"),
+            job_id=as_uuid("job-001"),
             run_at=NOW,
             agents_evaluated=10,
             agents_eligible=3,

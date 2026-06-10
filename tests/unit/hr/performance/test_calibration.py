@@ -78,7 +78,7 @@ class TestCalibrationFacade:
         store = CollaborationOverrideStore()
         agent_id = "agent-3"
         override = CollaborationOverride(
-            id=NotBlankStr(str(uuid4())),
+            id=uuid4(),
             agent_id=NotBlankStr(agent_id),
             score=9.5,
             reason="manual calibration after offsite",

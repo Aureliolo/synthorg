@@ -78,7 +78,7 @@ class TestTrainingPersistencePipeline:
         await plan_repo.save(plan)
 
         # Verify plan is persisted.
-        fetched_plan = await plan_repo.get(plan.id)
+        fetched_plan = await plan_repo.get(str(plan.id))
         assert fetched_plan is not None
         assert fetched_plan.status is TrainingPlanStatus.PENDING
 
@@ -114,7 +114,7 @@ class TestTrainingPersistencePipeline:
 
         # 3. Execute the plan.
         result = await service.execute(plan)
-        assert result.plan_id == plan.id
+        assert result.plan_id == str(plan.id)
         assert result.new_agent_id == "new-hire-001"
         assert len(result.source_agents_used) == 1
 
@@ -129,7 +129,7 @@ class TestTrainingPersistencePipeline:
         await result_repo.save(result)
 
         # 5. Fetch and verify.
-        stored_plan = await plan_repo.get(plan.id)
+        stored_plan = await plan_repo.get(str(plan.id))
         assert stored_plan is not None
         assert stored_plan.status is TrainingPlanStatus.EXECUTED
         assert stored_plan.executed_at is not None
@@ -137,9 +137,9 @@ class TestTrainingPersistencePipeline:
         stored_result = await result_repo.get_latest("new-hire-001")
         assert stored_result is not None
         assert stored_result.id == result.id
-        assert stored_result.plan_id == plan.id
+        assert stored_result.plan_id == str(plan.id)
 
         # Also verify get_by_plan.
-        by_plan = await result_repo.get_by_plan(plan.id)
+        by_plan = await result_repo.get_by_plan(str(plan.id))
         assert by_plan is not None
         assert by_plan.id == result.id

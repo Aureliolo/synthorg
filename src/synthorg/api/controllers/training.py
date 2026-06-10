@@ -155,7 +155,7 @@ def _result_to_response(result: TrainingResult) -> TrainingResultResponse:
         ``TrainingResultResponse`` instance.
     """
     return TrainingResultResponse(
-        id=result.id,
+        id=str(result.id),
         plan_id=result.plan_id,
         new_agent_id=result.new_agent_id,
         source_agents_used=result.source_agents_used,
@@ -588,7 +588,7 @@ def _plan_to_response(plan: TrainingPlan) -> TrainingPlanResponse:
         ``TrainingPlanResponse`` instance.
     """
     return TrainingPlanResponse(
-        id=plan.id,
+        id=str(plan.id),
         new_agent_id=plan.new_agent_id,
         new_agent_role=plan.new_agent_role,
         source_selector_type=plan.source_selector_type,

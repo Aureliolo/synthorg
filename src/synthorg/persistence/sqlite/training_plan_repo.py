@@ -8,6 +8,7 @@ import contextlib
 import json
 import sqlite3
 from datetime import UTC, datetime
+from uuid import UUID
 
 import aiosqlite
 from pydantic import ValidationError
@@ -131,6 +132,7 @@ def _row_to_plan(row: aiosqlite.Row) -> TrainingPlan:
     """
     data = dict(row)
     try:
+        data["id"] = UUID(str(data["id"]))
         data["new_agent_level"] = SeniorityLevel(data["new_agent_level"])
         data["enabled_content_types"] = frozenset(
             ContentType(ct) for ct in json.loads(data["enabled_content_types"])

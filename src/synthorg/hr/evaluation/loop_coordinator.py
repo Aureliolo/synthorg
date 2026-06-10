@@ -177,7 +177,7 @@ class EvalLoopCoordinator:
         Raises:
             Exception: Raised when the relevant invariant fails.
         """
-        cycle_id = NotBlankStr(str(uuid4()))
+        cycle_id = uuid4()
         now = datetime.now(UTC)
         window_start = now - window
         start_time = self._clock.monotonic()

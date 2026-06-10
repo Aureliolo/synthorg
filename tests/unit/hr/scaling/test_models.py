@@ -1,5 +1,7 @@
 """Tests for scaling domain models."""
 
+from uuid import UUID
+
 import pytest
 from pydantic import ValidationError
 
@@ -127,7 +129,7 @@ class TestScalingDecision:
         )
         assert decision.action_type == ScalingActionType.HIRE
         assert decision.target_role == "backend_developer"
-        assert decision.id  # auto-generated UUID
+        assert isinstance(decision.id, UUID)
 
     def test_valid_prune_decision(self) -> None:
         decision = make_decision(
@@ -232,7 +234,7 @@ class TestScalingActionRecord:
         )
         assert record.outcome == ScalingOutcome.EXECUTED
         assert record.result_id == "hire-request-001"
-        assert record.id  # auto-generated
+        assert isinstance(record.id, UUID)
 
     def test_valid_deferred_record(self) -> None:
         record = ScalingActionRecord(

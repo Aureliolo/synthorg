@@ -38,6 +38,7 @@ from synthorg.persistence.training_protocol import (
     TrainingPlanRepository,
     TrainingResultRepository,
 )
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
@@ -45,7 +46,7 @@ pytestmark = pytest.mark.unit
 def _plan(plan_id: str = "plan-1", agent_id: str = "agent-1") -> TrainingPlan:
     """Build a minimal valid TrainingPlan for the tests."""
     return TrainingPlan(
-        id=NotBlankStr(plan_id),
+        id=as_uuid(plan_id),
         new_agent_id=NotBlankStr(agent_id),
         new_agent_role=NotBlankStr("developer"),
         new_agent_level=SeniorityLevel.SENIOR,
@@ -61,8 +62,8 @@ def _plan(plan_id: str = "plan-1", agent_id: str = "agent-1") -> TrainingPlan:
 def _result(plan_id: str = "plan-1", agent_id: str = "agent-1") -> TrainingResult:
     """Build a minimal TrainingResult mapped to ``plan_id``."""
     return TrainingResult(
-        id=NotBlankStr(f"res-{plan_id}"),
-        plan_id=NotBlankStr(plan_id),
+        id=as_uuid(f"res-{plan_id}"),
+        plan_id=sid(plan_id),
         new_agent_id=NotBlankStr(agent_id),
         started_at=datetime(2026, 1, 2, tzinfo=UTC),
         completed_at=datetime(2026, 1, 2, tzinfo=UTC),

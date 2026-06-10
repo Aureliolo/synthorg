@@ -161,7 +161,7 @@ class OffboardingService:
         record = OffboardingRecord(
             agent_id=NotBlankStr(agent_id),
             agent_name=identity.name,
-            firing_request_id=request.id,
+            firing_request_id=NotBlankStr(str(request.id)),
             tasks_reassigned=tasks_reassigned,
             memory_archive_id=None,
             org_memories_promoted=archival_result.promoted_to_org,

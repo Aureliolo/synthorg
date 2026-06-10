@@ -1,6 +1,7 @@
 """Tests for performance tracking domain models."""
 
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -52,7 +53,7 @@ class TestTaskMetricRecord:
         r1 = make_task_metric()
         r2 = make_task_metric()
         assert r1.id != r2.id
-        assert len(r1.id) > 0
+        assert isinstance(r1.id, UUID)
 
     def test_quality_score_none_allowed(self) -> None:
         record = make_task_metric(quality_score=None)

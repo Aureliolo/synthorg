@@ -10,6 +10,7 @@ from synthorg.hr.training.models import ContentType, TrainingPlan, TrainingPlanS
 from synthorg.persistence.sqlite.training_plan_repo import (
     SQLiteTrainingPlanRepository,
 )
+from tests._shared import as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 
 
@@ -26,7 +27,7 @@ def _make_plan(  # noqa: PLR0913
     executed_at: datetime | None = None,
 ) -> TrainingPlan:
     return TrainingPlan(
-        id=plan_id,
+        id=as_uuid(plan_id),
         new_agent_id=agent_id,
         new_agent_role=agent_role,
         new_agent_level=agent_level,
@@ -60,9 +61,9 @@ class TestSQLiteTrainingPlanRepository:
     ) -> None:
         plan = _make_plan()
         await repo.save(plan)
-        fetched = await repo.get("plan-001")
+        fetched = await repo.get(sid("plan-001"))
         assert fetched is not None
-        assert fetched.id == "plan-001"
+        assert fetched.id == as_uuid("plan-001")
         assert fetched.new_agent_id == "agent-new-001"
         assert fetched.new_agent_role == "engineer"
         assert fetched.new_agent_level is SeniorityLevel.JUNIOR
@@ -77,7 +78,7 @@ class TestSQLiteTrainingPlanRepository:
         self,
         repo: SQLiteTrainingPlanRepository,
     ) -> None:
-        result = await repo.get("nonexistent")
+        result = await repo.get(sid("nonexistent"))
         assert result is None
 
     async def test_save_upsert_updates_existing(
@@ -93,7 +94,7 @@ class TestSQLiteTrainingPlanRepository:
             }
         )
         await repo.save(updated)
-        fetched = await repo.get("plan-001")
+        fetched = await repo.get(sid("plan-001"))
         assert fetched is not None
         assert fetched.status is TrainingPlanStatus.EXECUTED
         assert fetched.executed_at is not None
@@ -122,7 +123,7 @@ class TestSQLiteTrainingPlanRepository:
 
         latest = await repo.latest_pending("agent-new-001")
         assert latest is not None
-        assert latest.id == "plan-new"
+        assert latest.id == as_uuid("plan-new")
 
     async def test_latest_pending_returns_none(
         self,
@@ -153,8 +154,8 @@ class TestSQLiteTrainingPlanRepository:
 
         plans = await repo.list_by_agent("agent-new-001")
         assert len(plans) == 2
-        assert plans[0].id == "plan-b"
-        assert plans[1].id == "plan-a"
+        assert plans[0].id == as_uuid("plan-b")
+        assert plans[1].id == as_uuid("plan-a")
 
     async def test_list_by_agent_empty(
         self,
@@ -169,7 +170,7 @@ class TestSQLiteTrainingPlanRepository:
     ) -> None:
         plan = _make_plan(department=None)
         await repo.save(plan)
-        fetched = await repo.get("plan-001")
+        fetched = await repo.get(sid("plan-001"))
         assert fetched is not None
         assert fetched.new_agent_department is None
 
@@ -184,6 +185,6 @@ class TestSQLiteTrainingPlanRepository:
             }
         )
         await repo.save(plan)
-        fetched = await repo.get("plan-001")
+        fetched = await repo.get(sid("plan-001"))
         assert fetched is not None
         assert fetched.override_sources == ("senior-1", "senior-2")

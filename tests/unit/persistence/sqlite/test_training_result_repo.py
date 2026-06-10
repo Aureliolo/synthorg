@@ -18,6 +18,7 @@ from synthorg.persistence.sqlite.training_plan_repo import (
 from synthorg.persistence.sqlite.training_result_repo import (
     SQLiteTrainingResultRepository,
 )
+from tests._shared import as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 
 
@@ -27,7 +28,7 @@ def _make_plan(
     agent_id: str = "agent-new-001",
 ) -> TrainingPlan:
     return TrainingPlan(
-        id=plan_id,
+        id=as_uuid(plan_id),
         new_agent_id=agent_id,
         new_agent_role="engineer",
         new_agent_level=SeniorityLevel.JUNIOR,
@@ -49,8 +50,8 @@ def _make_result(  # noqa: PLR0913
     review_pending: bool = False,
 ) -> TrainingResult:
     return TrainingResult(
-        id=result_id,
-        plan_id=plan_id,
+        id=as_uuid(result_id),
+        plan_id=sid(plan_id),
         new_agent_id=agent_id,
         source_agents_used=("senior-1", "senior-2"),
         items_extracted=(
@@ -102,10 +103,10 @@ class TestSQLiteTrainingResultRepository:
         result = _make_result()
         await result_repo.save(result)
 
-        fetched = await result_repo.get_by_plan("plan-001")
+        fetched = await result_repo.get_by_plan(sid("plan-001"))
         assert fetched is not None
-        assert fetched.id == "result-001"
-        assert fetched.plan_id == "plan-001"
+        assert fetched.id == as_uuid("result-001")
+        assert fetched.plan_id == sid("plan-001")
         assert fetched.new_agent_id == "agent-new-001"
         assert len(fetched.source_agents_used) == 2
         assert len(fetched.items_extracted) == 2
@@ -119,7 +120,7 @@ class TestSQLiteTrainingResultRepository:
         ],
     ) -> None:
         _, result_repo = repos
-        result = await result_repo.get_by_plan("nonexistent")
+        result = await result_repo.get_by_plan(sid("nonexistent"))
         assert result is None
 
     async def test_get_latest(
@@ -150,7 +151,7 @@ class TestSQLiteTrainingResultRepository:
 
         latest = await result_repo.get_latest("agent-new-001")
         assert latest is not None
-        assert latest.id == "result-new"
+        assert latest.id == as_uuid("result-new")
 
     async def test_get_latest_returns_none(
         self,
@@ -188,7 +189,7 @@ class TestSQLiteTrainingResultRepository:
         )
         await result_repo.save(result)
 
-        fetched = await result_repo.get_by_plan("plan-001")
+        fetched = await result_repo.get_by_plan(sid("plan-001"))
         assert fetched is not None
         assert fetched.review_pending is True
         assert fetched.approval_item_id == "approval-1"
@@ -218,6 +219,6 @@ class TestSQLiteTrainingResultRepository:
         )
         await result_repo.save(updated)
 
-        fetched = await result_repo.get_by_plan("plan-001")
+        fetched = await result_repo.get_by_plan(sid("plan-001"))
         assert fetched is not None
         assert fetched.review_pending is True

@@ -150,7 +150,7 @@ class LlmCalibrationSampler:
         calibration_record = LlmCalibrationRecord(
             agent_id=record.agent_id,
             sampled_at=datetime.now(UTC),
-            interaction_record_id=record.id,
+            interaction_record_id=NotBlankStr(str(record.id)),
             llm_score=llm_score,
             behavioral_score=behavioral_score,
             rationale=NotBlankStr(rationale),

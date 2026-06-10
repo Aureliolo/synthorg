@@ -4,6 +4,8 @@ Postgres-native port of the SQLite training plan repository.  Uses
 JSONB for array/object columns and native TIMESTAMPTZ for timestamps.
 """
 
+from uuid import UUID
+
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
@@ -43,6 +45,7 @@ def _row_to_plan(row: DictRow) -> TrainingPlan:
     """
     data = dict(row)
     try:
+        data["id"] = UUID(str(data["id"]))
         data["new_agent_level"] = SeniorityLevel(
             data["new_agent_level"],
         )

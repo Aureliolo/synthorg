@@ -47,7 +47,7 @@ class _SlowOffboardingService:
         return OffboardingRecord(
             agent_id=request.agent_id,
             agent_name=request.agent_name,
-            firing_request_id=request.id,
+            firing_request_id=NotBlankStr(str(request.id)),
             tasks_reassigned=(),
             memory_archive_id=None,
             org_memories_promoted=0,
@@ -160,7 +160,7 @@ class TestProcessDecidedApprovalsConcurrency:
                 return OffboardingRecord(
                     agent_id=request.agent_id,
                     agent_name=request.agent_name,
-                    firing_request_id=request.id,
+                    firing_request_id=NotBlankStr(str(request.id)),
                     tasks_reassigned=(),
                     memory_archive_id=None,
                     org_memories_promoted=0,

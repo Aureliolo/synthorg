@@ -12,6 +12,7 @@ from synthorg.hr.scaling.decision_service import ScalingDecisionService
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
 from synthorg.hr.scaling.models import ScalingDecision
 from synthorg.observability.events.hr import HR_SCALING_CONTROLLER_INVALID_REQUEST
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
@@ -25,7 +26,7 @@ def _decision(
     decision_id: str | None = None,
 ) -> ScalingDecision:
     return ScalingDecision(
-        id=NotBlankStr(decision_id or str(uuid4())),
+        id=as_uuid(decision_id) if decision_id else uuid4(),
         action_type=action,
         source_strategy=strategy,
         target_role=NotBlankStr("engineer"),
@@ -85,7 +86,11 @@ class TestListDecisions:
         page, total = await service.list_decisions(offset=0, limit=50)
 
         assert total == 3
-        assert [d.id for d in page] == ["d-2", "d-1", "d-0"]
+        assert [d.id for d in page] == [
+            as_uuid("d-2"),
+            as_uuid("d-1"),
+            as_uuid("d-0"),
+        ]
 
     async def test_paginates(self) -> None:
         decisions = [_decision(decision_id=f"d-{i}") for i in range(5)]
@@ -95,7 +100,7 @@ class TestListDecisions:
         page, total = await service.list_decisions(offset=2, limit=2)
 
         assert total == 5
-        assert [d.id for d in page] == ["d-2", "d-1"]
+        assert [d.id for d in page] == [as_uuid("d-2"), as_uuid("d-1")]
 
     async def test_empty(self) -> None:
         svc = _FakeScalingService()
@@ -139,16 +144,16 @@ class TestGetDecision:
         svc = _FakeScalingService(decisions=decisions)
         service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
 
-        result = await service.get_decision(NotBlankStr("d-2"))
+        result = await service.get_decision(sid("d-2"))
 
         assert result is not None
-        assert result.id == "d-2"
+        assert result.id == as_uuid("d-2")
 
     async def test_returns_none_for_unknown(self) -> None:
         svc = _FakeScalingService(decisions=[_decision(decision_id="d-1")])
         service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
 
-        result = await service.get_decision(NotBlankStr("d-missing"))
+        result = await service.get_decision(sid("d-missing"))
 
         assert result is None
 

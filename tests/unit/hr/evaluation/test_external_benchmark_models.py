@@ -14,6 +14,7 @@ from synthorg.hr.evaluation.external_benchmark_models import (
     EvalDataset,
     EvalTestCase,
 )
+from tests._shared import as_uuid
 
 
 @pytest.mark.unit
@@ -122,7 +123,7 @@ class TestEvalCycleReport:
 
     def test_valid_construction(self) -> None:
         report = EvalCycleReport(
-            cycle_id="cycle-1",
+            cycle_id=as_uuid("cycle-1"),
             window_start=datetime(2026, 1, 1, tzinfo=UTC),
             window_end=datetime(2026, 1, 2, tzinfo=UTC),
             duration_seconds=10.5,

@@ -128,7 +128,7 @@ class TestSample:
         assert result.model_used == "test-small-001"
         assert result.cost == 0.001
         assert result.agent_id == "agent-001"
-        assert result.interaction_record_id == record.id
+        assert result.interaction_record_id == str(record.id)
 
     async def test_skips_record_without_summary(self) -> None:
         """Records without interaction_summary are skipped."""
@@ -399,4 +399,4 @@ class TestRetentionPruning:
         # Old record should be pruned, only new remains.
         records = sampler.get_calibration_records()
         assert len(records) == 1
-        assert records[0].interaction_record_id == new_record.id
+        assert records[0].interaction_record_id == str(new_record.id)
