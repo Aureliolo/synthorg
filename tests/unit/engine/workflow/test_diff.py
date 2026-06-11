@@ -22,7 +22,7 @@ from synthorg.engine.workflow.enums import (
     WorkflowType,
 )
 from synthorg.versioning import VersionSnapshot, compute_content_hash
-from tests._shared import as_uuid, coerce_id, sid
+from tests._shared import as_uuid, sid
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ def _ver(
     overrides.pop("saved_at", None)
     def_defaults.update(overrides)
     # Override id to match entity_id
-    def_defaults["id"] = coerce_id(entity_id)
+    def_defaults["id"] = as_uuid(entity_id)
     definition = WorkflowDefinition.model_validate(def_defaults)
     return VersionSnapshot(
         entity_id=sid(entity_id),

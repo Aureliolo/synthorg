@@ -273,7 +273,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         for row in rows:
             try:
                 page_items.append(_row_to_escalation(row))
-            except QueryError as exc:
+            except MalformedRowError as exc:
                 logger.warning(
                     PERSISTENCE_ESCALATION_DESERIALIZE_FAILED,
                     error_type="escalation_row_corrupt_skipped",

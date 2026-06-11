@@ -33,7 +33,7 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionFilterSpec,
 )
-from tests._shared import as_pk, as_uuid, coerce_id, sid
+from tests._shared import as_pk, as_uuid, sid
 
 
 def _make_workflow_definition(
@@ -98,8 +98,8 @@ def _make_workflow_execution(
     """Build a valid WorkflowExecution."""
     now = datetime.now(UTC)
     defaults: dict[str, object] = {
-        "id": coerce_id(execution_id),
-        "definition_id": coerce_id(definition_id),
+        "id": as_uuid(execution_id),
+        "definition_id": sid(definition_id),
         "definition_revision": 1,
         "status": WorkflowExecutionStatus.RUNNING,
         "node_executions": (

@@ -18,7 +18,7 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictPosition,
 )
 from synthorg.communication.enums import ConflictType
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
@@ -132,7 +132,7 @@ async def test_get_rejects_non_uuid_id(backend: SQLitePersistenceBackend) -> Non
     )
     await backend._db.commit()
 
-    with pytest.raises(QueryError, match="Failed to parse escalation row"):
+    with pytest.raises(MalformedRowError, match="Failed to parse escalation row"):
         await repo.get("not-a-uuid")
 
 

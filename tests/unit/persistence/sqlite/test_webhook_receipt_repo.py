@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.persistence.sqlite.webhook_receipt_repo import (
@@ -62,7 +62,7 @@ async def test_get_rejects_non_uuid_id(
     )
     await migrated_db.commit()
 
-    with pytest.raises(QueryError, match="Failed to deserialize"):
+    with pytest.raises(MalformedRowError, match="Failed to deserialize"):
         await repo.get("not-a-uuid")
 
 

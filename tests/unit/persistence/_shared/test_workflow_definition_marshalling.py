@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -119,14 +119,14 @@ class TestRowToWorkflowDefinition:
         data = _sqlite_data(_definition())
         data["workflow_type"] = "not-a-type"
 
-        with pytest.raises(QueryError):
+        with pytest.raises(MalformedRowError):
             row_to_workflow_definition(data, "ctx")
 
     def test_non_list_json_column_raises(self) -> None:
         data = _sqlite_data(_definition())
         data["nodes"] = '{"not": "a list"}'
 
-        with pytest.raises(QueryError):
+        with pytest.raises(MalformedRowError):
             row_to_workflow_definition(data, "ctx")
 
 
