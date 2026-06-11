@@ -16,6 +16,7 @@ when the brief passes and ``require_golden_delta`` is set.
 
 from collections.abc import Callable, Mapping
 from copy import deepcopy
+from types import MappingProxyType
 from typing import Final
 
 from pydantic import JsonValue
@@ -47,14 +48,20 @@ _BRIEF_PASS_SCORE: Final[int] = 100
 _BRIEF_FAIL_SCORE: Final[int] = 0
 _DEFAULT_BRIEF_TIMEOUT_SECONDS: Final[float] = 30.0
 
-_PROBE_VALUES: Mapping[str, object] = {
-    "string": "probe",
-    "integer": 1,
-    "number": 1.0,
-    "boolean": True,
-    "array": [],
-    "object": {},
-}
+# Read-only registry; the list/dict probe values stay mutable JSON shapes
+# (an "array" probe must be a real list, "object" a real dict) but each is
+# deep-copied at the callsite before it ever reaches a tool, so the shared
+# singletons are never exposed for mutation.
+_PROBE_VALUES: Mapping[str, object] = MappingProxyType(
+    {
+        "string": "probe",
+        "integer": 1,
+        "number": 1.0,
+        "boolean": True,
+        "array": [],
+        "object": {},
+    }
+)
 
 
 def _synthesize_probe(parameters_schema: dict[str, JsonValue]) -> dict[str, object]:

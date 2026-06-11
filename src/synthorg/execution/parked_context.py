@@ -76,3 +76,6 @@ class ParkedContext(BaseModel):
     def metadata_view(self) -> MappingProxyType[str, str]:
         """Read-only view of metadata."""
         return MappingProxyType(self.metadata)
+
+
+__all__ = ["ParkedContext"]

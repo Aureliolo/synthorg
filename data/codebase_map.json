@@ -2263,7 +2263,7 @@
     },
     {
       "kind": "code",
-      "loc": 65,
+      "loc": 64,
       "loc_cap": 500,
       "module": "src/synthorg/approval/__init__.py",
       "owning_feature": "approval"
@@ -6155,7 +6155,7 @@
     },
     {
       "kind": "code",
-      "loc": 125,
+      "loc": 115,
       "loc_cap": 500,
       "module": "src/synthorg/engine/park_service.py",
       "owning_feature": "engine"
@@ -7919,7 +7919,7 @@
     },
     {
       "kind": "code",
-      "loc": 65,
+      "loc": 66,
       "loc_cap": 500,
       "module": "src/synthorg/execution/parked_context.py",
       "owning_feature": null
@@ -11027,7 +11027,7 @@
     },
     {
       "kind": "code",
-      "loc": 385,
+      "loc": 383,
       "loc_cap": 500,
       "module": "src/synthorg/meta/charter/dispatch.py",
       "owning_feature": "charter"
@@ -11076,7 +11076,7 @@
     },
     {
       "kind": "code",
-      "loc": 37,
+      "loc": 35,
       "loc_cap": 500,
       "module": "src/synthorg/meta/charter/state.py",
       "owning_feature": "charter"
@@ -11384,7 +11384,7 @@
     },
     {
       "kind": "code",
-      "loc": 354,
+      "loc": 357,
       "loc_cap": 500,
       "module": "src/synthorg/meta/factory.py",
       "owning_feature": "meta"
@@ -11783,7 +11783,7 @@
     },
     {
       "kind": "code",
-      "loc": 197,
+      "loc": 195,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/agents_autonomy.py",
       "owning_feature": "meta"
@@ -12273,7 +12273,7 @@
     },
     {
       "kind": "code",
-      "loc": 141,
+      "loc": 173,
       "loc_cap": 500,
       "module": "src/synthorg/meta/rollout/_observation.py",
       "owning_feature": "meta"
@@ -12301,7 +12301,7 @@
     },
     {
       "kind": "code",
-      "loc": 168,
+      "loc": 178,
       "loc_cap": 500,
       "module": "src/synthorg/meta/rollout/before_after.py",
       "owning_feature": "meta"
@@ -12714,7 +12714,7 @@
     },
     {
       "kind": "code",
-      "loc": 166,
+      "loc": 165,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/factory.py",
       "owning_feature": "toolsmith"
@@ -12791,7 +12791,7 @@
     },
     {
       "kind": "code",
-      "loc": 219,
+      "loc": 222,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/validation_gate.py",
       "owning_feature": "toolsmith"
@@ -14240,7 +14240,7 @@
     },
     {
       "kind": "code",
-      "loc": 17,
+      "loc": 19,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/timeout.py",
       "owning_feature": "observability"

@@ -21,7 +21,7 @@ from synthorg.meta.models import (
 from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 from synthorg.meta.rollout._observation import observe_until_verdict
 from synthorg.meta.rollout.before_after import (
-    SnapshotBuilder,
+    RolloutSnapshotBuilder,
     _default_snapshot_builder,
 )
 from synthorg.meta.rollout.roster import NoOpOrgRoster, OrgRoster
@@ -54,7 +54,7 @@ class CanarySubsetRollout:
         canary_fraction: float = _DEFAULT_CANARY_FRACTION,
         clock: Clock | None = None,
         roster: OrgRoster | None = None,
-        snapshot_builder: SnapshotBuilder | None = None,
+        snapshot_builder: RolloutSnapshotBuilder | None = None,
         check_interval_hours: float = _DEFAULT_CHECK_INTERVAL_HOURS,
         thresholds: RegressionThresholds | None = None,
     ) -> None:
@@ -67,7 +67,7 @@ class CanarySubsetRollout:
         self._canary_fraction = canary_fraction
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._roster: OrgRoster = roster or NoOpOrgRoster()
-        self._snapshot_builder: SnapshotBuilder = (
+        self._snapshot_builder: RolloutSnapshotBuilder = (
             snapshot_builder or _default_snapshot_builder
         )
         self._check_interval_hours = check_interval_hours

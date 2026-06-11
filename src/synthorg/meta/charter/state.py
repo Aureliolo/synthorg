@@ -7,18 +7,14 @@ store, and budget config). Controllers read this slice and raise 503 on a
 ``None`` field so charter endpoints stay unavailable until wired.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.meta.charter.dispatch import CharterDispatcher
 from synthorg.meta.charter.service import (
     CharterInterviewService,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 
 class CharterStateSlice(BaseFeatureStateSlice):

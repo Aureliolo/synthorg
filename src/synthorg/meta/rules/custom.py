@@ -36,6 +36,12 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.meta import META_CUSTOM_RULE_LISTED
 
 if TYPE_CHECKING:
+    # Cold-import cycle-breaker: persistence.custom_rule_protocol imports
+    # CustomRuleDefinition from THIS module, so a runtime import of
+    # CustomRuleRepository from there closes a cycle
+    # (persistence.protocol -> custom_rule_protocol -> meta.rules.custom ->
+    # custom_rule_protocol). Resolving the model side would need
+    # CustomRuleDefinition relocated to a shared leaf.
     from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
 
 logger = get_logger(__name__)

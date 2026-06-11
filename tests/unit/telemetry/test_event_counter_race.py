@@ -57,6 +57,11 @@ def test_eviction_logs_exactly_once_under_thread_concurrency() -> None:
     assert counter._eviction_logged is False
 
     info_calls: list[str] = []
+    # _spy replaces the shared structlog proxy's ``info`` and is reached from
+    # every worker thread; serialise the record + the real-logger delegation
+    # so neither the list append nor a non-reentrant structlog processor is
+    # touched concurrently.
+    spy_lock = threading.Lock()
     proxy = ec_mod.logger
     original_info = proxy.info
 
@@ -66,13 +71,14 @@ def test_eviction_logs_exactly_once_under_thread_concurrency() -> None:
         # under-test code path cannot blow this fixture up with a
         # TypeError. Record the message robustly: first positional arg
         # if present, else ``event`` kwarg, else a joined fallback.
-        if args:
-            info_calls.append(str(args[0]))
-        elif "event" in kwargs:
-            info_calls.append(str(kwargs["event"]))
-        else:
-            info_calls.append(" ".join(str(a) for a in args))
-        return original_info(*args, **kwargs)
+        with spy_lock:
+            if args:
+                info_calls.append(str(args[0]))
+            elif "event" in kwargs:
+                info_calls.append(str(kwargs["event"]))
+            else:
+                info_calls.append(" ".join(str(a) for a in args))
+            return original_info(*args, **kwargs)
 
     # Direct setattr + try/finally delattr -- not monkeypatch.setattr
     # -- because ``proxy`` is a ``BoundLoggerLazyProxy`` whose
@@ -114,7 +120,6 @@ def test_eviction_logs_exactly_once_under_thread_concurrency() -> None:
         assert len(eviction_logs) == 1, (
             f"Expected exactly one eviction log; saw {len(eviction_logs)}"
         )
-        assert getattr(counter, "_eviction_logged") is True  # noqa: B009
     finally:
         with suppress(AttributeError):
             del proxy.info

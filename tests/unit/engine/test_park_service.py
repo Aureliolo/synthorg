@@ -9,7 +9,10 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.park_service import ParkService
+from synthorg.execution.parked_context import ParkedContext
 from synthorg.hr.seniority import SeniorityLevel
+
+pytestmark = pytest.mark.unit
 
 
 def _make_agent_context() -> AgentContext:
@@ -31,7 +34,6 @@ def _make_agent_context() -> AgentContext:
     )
 
 
-@pytest.mark.unit
 class TestParkService:
     """Tests for ParkService park/resume round-trip."""
 
@@ -88,3 +90,23 @@ class TestParkService:
         assert restored.turn_count == context.turn_count
         assert restored.identity.name == context.identity.name
         assert restored.identity.role == context.identity.role
+
+    def test_resume_rejects_well_formed_json_that_is_not_a_context(self) -> None:
+        """A ParkedContext whose JSON is not a valid AgentContext fails loud.
+
+        ``context_json`` is valid JSON (so it passes ParkedContext's own
+        construction validator) but does not deserialise into an
+        ``AgentContext``; resume must surface that as a ValueError rather
+        than letting the underlying ValidationError escape unlogged.
+        """
+        service = ParkService()
+        parked = ParkedContext(
+            execution_id="exec-1",
+            agent_id="agent-1",
+            approval_id="approval-1",
+            parked_at=datetime.now(UTC),
+            context_json="{}",
+        )
+
+        with pytest.raises(ValueError, match="Failed to resume parked context"):
+            service.resume(parked)

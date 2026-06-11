@@ -53,7 +53,7 @@ class _RecordingInvoker:
         tool_name: str,
         arguments: dict[str, object],
         *,
-        app_state: object,
+        app_state: AppState,
         actor: AgentIdentity | None,
     ) -> ToolExecutionResult:
         self.calls.append(

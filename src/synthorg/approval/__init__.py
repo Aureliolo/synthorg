@@ -3,8 +3,7 @@
 A neutral subsystem module so ``engine`` and ``tools`` can both depend on
 approval event models (``EscalationInfo``, ``ResumePayload``) and on the
 ``ApprovalStoreProtocol`` contract without either module importing the
-other.  This avoids the former cycle that was dodged by ``TYPE_CHECKING``
-imports and deferred runtime imports inside function bodies.
+other.
 
 ``ApprovalStoreProtocol`` is exported lazily (PEP 562) so importing the
 lightweight ``approval.enums`` / ``approval.models`` leaves does not pull

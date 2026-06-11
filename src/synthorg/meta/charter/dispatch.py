@@ -17,8 +17,8 @@ import asyncio
 import uuid
 from collections.abc import Callable
 from datetime import datetime
-from typing import TYPE_CHECKING
 
+from synthorg.api.services.project_service import ProjectService
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.forecaster import BriefSignal, compute_brief_hash
@@ -55,9 +55,6 @@ from synthorg.observability.events.charter import (
 from synthorg.persistence.charter_protocol import CharterRepository
 from synthorg.persistence.conversation_protocol import ConversationRepository
 from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
-
-if TYPE_CHECKING:
-    from synthorg.api.services.project_service import ProjectService
 
 logger = get_logger(__name__)
 

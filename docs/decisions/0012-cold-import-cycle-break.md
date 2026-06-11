@@ -106,6 +106,12 @@ leaf package, and the collector was given a structural view to depend on:
 - `execution/view.py` -- a `@runtime_checkable ExecutionResultView` protocol
   exposing only `turns: tuple[TurnRecord, ...]`, the minimal surface the
   collector reads.
+- `execution/parked_context.py` -- `ParkedContext`, the serialised
+  parked-agent snapshot (moved out of `security/timeout/`). It applies the
+  same leaf-placement rule: the persistence, worker, and API layers name the
+  type without dragging the heavy `engine` package in, breaking an
+  engine<->security edge that the `ParkService` relocation to `engine/`
+  surfaced.
 
 `engine.loop_protocol` and `engine.trajectory` now import the moved types from
 the leaf (a legitimate downward dependency); `ExecutionResult` structurally
@@ -182,6 +188,9 @@ This change is broader than the three cuts in isolation, and intentionally so:
   `COLD_IMPORT_LEAVES`. Breaking it would require leaning `engine`'s init (see
   above). `config.schema` importing cold already discharges the named
   `config.schema <-> communication.config` acceptance cycle.
-- **Hub lazification** (PEP 562 `__getattr__` on the heavy package inits) is a
-  larger refactor the issue does not require and that was explicitly rejected
-  for this change.
+- **Broad hub lazification** (PEP 562 `__getattr__` across the heavy package
+  inits) remains a larger refactor out of scope here. Targeted single-module
+  lazification is the documented exception: `synthorg.approval.__init__`
+  lazily exports `ApprovalStoreProtocol` (mirroring `synthorg.ontology`) so
+  importing the `approval.enums` / `approval.models` leaves does not eagerly
+  pull `approval.protocol -> core.approval` and close that package-init cycle.

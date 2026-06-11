@@ -6,10 +6,9 @@ the same ``app_state`` services and returns the standard envelope; the
 file only contains the four handlers and their argument helpers.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ValidationError
 
+from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
@@ -29,9 +28,6 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

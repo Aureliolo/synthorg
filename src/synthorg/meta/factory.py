@@ -38,7 +38,10 @@ from synthorg.meta.guards.scope_check import ScopeCheckGuard
 from synthorg.meta.models import ProposalAltitude
 from synthorg.meta.protocol import ImprovementStrategy, ProposalApplier, ProposalGuard
 from synthorg.meta.rollout.ab_test import ABTestRollout
-from synthorg.meta.rollout.before_after import BeforeAfterRollout, SnapshotBuilder
+from synthorg.meta.rollout.before_after import (
+    BeforeAfterRollout,
+    RolloutSnapshotBuilder,
+)
 from synthorg.meta.rollout.canary import CanarySubsetRollout
 from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
 from synthorg.meta.rollout.inverse_dispatch import (
@@ -305,7 +308,7 @@ def build_rollout_strategies(
     *,
     clock: Clock | None = None,
     roster: OrgRoster | None = None,
-    snapshot_builder: SnapshotBuilder | None = None,
+    snapshot_builder: RolloutSnapshotBuilder | None = None,
     group_aggregator: GroupSignalAggregator | None = None,
 ) -> Mapping[str, BeforeAfterRollout | CanarySubsetRollout | ABTestRollout]:
     """Build available rollout strategies wired with injected dependencies.
