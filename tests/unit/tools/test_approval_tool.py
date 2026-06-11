@@ -52,7 +52,7 @@ class TestToolCreation:
     def test_has_parameters_schema(self, tool: RequestHumanApprovalTool) -> None:
         schema = tool.parameters_schema
         assert schema is not None
-        props = cast(JsonDict, schema)["properties"]
+        props = cast("JsonDict", schema)["properties"]
         assert "action_type" in props
         assert "title" in props
         assert "description" in props
@@ -79,7 +79,9 @@ class TestExecute:
         assert "approval_id" in result.metadata
 
         # Verify item was created in store
-        item = await approval_store.get(cast(JsonDict, result.metadata)["approval_id"])
+        item = await approval_store.get(
+            cast("JsonDict", result.metadata)["approval_id"]
+        )
         assert item is not None
         assert item.action_type == "deploy:production"
         assert item.title == "Deploy v2.0"
@@ -126,7 +128,7 @@ class TestExecute:
                 "description": "Full deployment",
             },
         )
-        assert cast(JsonDict, result.metadata)["approval_id"] in result.content
+        assert cast("JsonDict", result.metadata)["approval_id"] in result.content
 
     async def test_no_task_id(
         self,
@@ -145,7 +147,9 @@ class TestExecute:
             },
         )
         assert not result.is_error
-        item = await approval_store.get(cast(JsonDict, result.metadata)["approval_id"])
+        item = await approval_store.get(
+            cast("JsonDict", result.metadata)["approval_id"]
+        )
         assert item is not None
         assert item.task_id is None
 

@@ -97,8 +97,7 @@ def _disabled_codes(value: str) -> list[str]:
 
 def _classify(body: str) -> str | None:
     """Return a violation reason for a ``# mypy:`` directive body, or None."""
-    code_match = _DISABLE_CODE.search(body)
-    if code_match is not None:
+    for code_match in _DISABLE_CODE.finditer(body):
         lifted = sorted(set(_disabled_codes(code_match.group("value"))) & _LIFTED_CODES)
         if lifted:
             return f"disable-error-code lifts {', '.join(lifted)}"

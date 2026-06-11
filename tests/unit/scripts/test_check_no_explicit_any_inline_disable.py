@@ -84,6 +84,12 @@ _FLAGGED_CASES = [
         '# mypy: disable-error-code="union-attr explicit-any"',
         id="disable_space_separated_quoted",
     ),
+    # A benign first ``disable-error-code`` directive must not mask a lifting
+    # second one: the scan inspects every occurrence, not just the first.
+    pytest.param(
+        "# mypy: disable-error-code=union-attr, disable-error-code=explicit-any",
+        id="disable_second_directive_lifts",
+    ),
 ]
 
 _CLEAN_CASES = [

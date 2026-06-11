@@ -11,7 +11,6 @@ raw tokens are returned (not placeholder ``pending-*`` refs).
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -261,12 +260,12 @@ class TestCallbackOidcBinding:
     """
 
     @staticmethod
-    def _harness(  # type: ignore[explicit-any]  # heterogeneous OAuth flow harness tuple
+    def _harness(
         *,
         credentials: dict[str, str],
         id_token: str | None,
         nonce: str | None = "flow-nonce",
-    ) -> tuple[Any, Any, Any]:
+    ) -> tuple[MagicMock, MagicMock, MagicMock]:
         now = datetime.now(UTC)
         state = OAuthState(
             state_token=NotBlankStr("state-oidc"),
