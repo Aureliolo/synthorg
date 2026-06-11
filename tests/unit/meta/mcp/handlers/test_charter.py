@@ -15,10 +15,12 @@ and live behind ``app_state.has_charter_service`` /
 
 import json
 from types import SimpleNamespace
-from typing import Any, override
+from typing import Any, cast, override
+from unittest.mock import create_autospec
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.engine.prompt_safety import TAG_TASK_DATA
 from synthorg.meta.charter.dispatch import CharterDispatcher
@@ -106,20 +108,24 @@ class _StubDispatcher(CharterDispatcher):
         return self.result
 
 
-def _state(  # type: ignore[explicit-any]  # loose AppState-shaped double
+def _state(
     *,
     service: _StubService | None = None,
     dispatcher: _StubDispatcher | None = None,
-) -> Any:
-    """Build a minimal AppState-shaped object for handler injection.
+) -> AppState:
+    """Build a minimal AppState double for handler injection.
 
     The handlers read their feature slice via ``app_state.slice(
-    CharterStateSlice)``; the double exposes a duck-typed slice carrying the
-    stub service / dispatcher (a real frozen slice would reject the stubs,
-    which are not concrete service instances).
+    CharterStateSlice)``; the autospec double's ``slice`` returns a duck-typed
+    slice carrying the stub service / dispatcher (a real frozen slice would
+    reject the stubs, which are not concrete service instances). The autospec
+    is a ``Mock``, so typeguard skips it at the handler's ``app_state``
+    boundary rather than rejecting the lightweight double.
     """
     charter_slice = SimpleNamespace(interview_service=service, dispatcher=dispatcher)
-    return SimpleNamespace(slice=lambda _slice_type: charter_slice)
+    state = create_autospec(AppState, spec_set=True, instance=True)
+    state.slice.return_value = charter_slice
+    return cast("AppState", state)
 
 
 def _actor(name: str = "operator-1") -> AgentIdentity:

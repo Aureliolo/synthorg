@@ -30,6 +30,8 @@ from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
+from synthorg.engine.park_service import ParkService
+from synthorg.execution.parked_context import ParkedContext
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.approval_gate import (
@@ -47,8 +49,6 @@ from synthorg.observability.events.approval_gate import (
 from synthorg.persistence.parked_context_protocol import (
     ParkedContextRepository,
 )
-from synthorg.security.timeout.park_service import ParkService
-from synthorg.security.timeout.parked_context import ParkedContext
 
 logger = get_logger(__name__)
 _DEFAULT_INTERRUPT_TIMEOUT_SECONDS: Final[float] = 300.0

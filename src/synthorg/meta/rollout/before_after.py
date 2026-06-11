@@ -7,7 +7,6 @@ terminate the loop immediately. A clean window yields SUCCESS with
 the observed elapsed time.
 """
 
-from collections.abc import Awaitable, Callable
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
@@ -21,18 +20,19 @@ from synthorg.meta.models import (
     RolloutResult,
 )
 from synthorg.meta.protocol import ProposalApplier, RegressionDetector
-from synthorg.meta.rollout._observation import observe_until_verdict
+from synthorg.meta.rollout._observation import (
+    RolloutSnapshotBuilder,
+    observe_until_verdict,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_ROLLOUT_FAILED,
     META_ROLLOUT_STARTED,
 )
+from synthorg.providers.errors import ProviderError
 
 logger = get_logger(__name__)
 _DEFAULT_CHECK_INTERVAL_HOURS: Final[float] = 4.0
-
-SnapshotBuilder = Callable[[], Awaitable[OrgSignalSnapshot]]
-"""Coroutine producing the current org-wide signal snapshot."""
 
 
 async def _default_snapshot_builder() -> OrgSignalSnapshot:
@@ -54,6 +54,33 @@ async def _default_snapshot_builder() -> OrgSignalSnapshot:
     raise RuntimeError(msg)
 
 
+def _rollout_failed(
+    *,
+    proposal: ImprovementProposal,
+    exc: Exception,
+    stage: str,
+) -> RolloutResult:
+    """Log a non-provider rollout failure and build the FAILED result.
+
+    Returns:
+        ``RolloutResult`` with ``outcome=FAILED`` and the redacted error.
+    """
+    logger.warning(
+        META_ROLLOUT_FAILED,
+        strategy="before_after",
+        proposal_id=str(proposal.id),
+        stage=stage,
+        error=type(exc).__name__,
+        details=safe_error_description(exc),
+    )
+    return RolloutResult(
+        proposal_id=proposal.id,
+        outcome=RolloutOutcome.FAILED,
+        observation_hours_elapsed=0.0,
+        details=safe_error_description(exc),
+    )
+
+
 class BeforeAfterRollout:
     """Applies a proposal to the whole org with periodic regression checks.
 
@@ -68,7 +95,7 @@ class BeforeAfterRollout:
         self,
         *,
         clock: Clock | None = None,
-        snapshot_builder: SnapshotBuilder | None = None,
+        snapshot_builder: RolloutSnapshotBuilder | None = None,
         check_interval_hours: float = _DEFAULT_CHECK_INTERVAL_HOURS,
         thresholds: RegressionThresholds | None = None,
     ) -> None:
@@ -76,7 +103,7 @@ class BeforeAfterRollout:
             msg = "check_interval_hours must be positive"
             raise ValueError(msg)
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._snapshot_builder: SnapshotBuilder = (
+        self._snapshot_builder: RolloutSnapshotBuilder = (
             snapshot_builder or _default_snapshot_builder
         )
         self._check_interval_hours = check_interval_hours
@@ -102,6 +129,11 @@ class BeforeAfterRollout:
 
         Returns:
             ``RolloutResult`` instance.
+
+        Raises:
+            ProviderError: Propagated when the snapshot builder exhausts
+                provider retries, so the engine can fall back rather than
+                masking it as a generic rollout failure.
         """
         logger.info(
             META_ROLLOUT_STARTED,
@@ -113,22 +145,14 @@ class BeforeAfterRollout:
 
         try:
             baseline = await self._snapshot_builder()
+        except ProviderError:
+            # Provider exhaustion is the engine layer's signal to act on
+            # (fallback chains); it must not be flattened into a generic
+            # rollout FAILED that hides which subsystem broke.
+            raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.warning(
-                META_ROLLOUT_FAILED,
-                strategy="before_after",
-                proposal_id=str(proposal.id),
-                stage="baseline_capture",
-                error=type(exc).__name__,
-                details=safe_error_description(exc),
-            )
-            return RolloutResult(
-                proposal_id=proposal.id,
-                outcome=RolloutOutcome.FAILED,
-                observation_hours_elapsed=0.0,
-                details=safe_error_description(exc),
-            )
+            return _rollout_failed(proposal=proposal, exc=exc, stage="baseline_capture")
 
         apply_result = await applier.apply(proposal)
         if not apply_result.success:
@@ -136,7 +160,7 @@ class BeforeAfterRollout:
                 META_ROLLOUT_FAILED,
                 strategy="before_after",
                 proposal_id=str(proposal.id),
-                error=apply_result.error_message,
+                reason=apply_result.error_message,
             )
             return RolloutResult(
                 proposal_id=proposal.id,
@@ -151,22 +175,13 @@ class BeforeAfterRollout:
                 baseline=baseline,
                 detector=detector,
             )
+        except ProviderError:
+            # See baseline_capture: provider exhaustion propagates so the
+            # engine can fall back rather than seeing an opaque rollout FAILED.
+            raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.warning(
-                META_ROLLOUT_FAILED,
-                strategy="before_after",
-                proposal_id=str(proposal.id),
-                stage="observation",
-                error=type(exc).__name__,
-                details=safe_error_description(exc),
-            )
-            return RolloutResult(
-                proposal_id=proposal.id,
-                outcome=RolloutOutcome.FAILED,
-                observation_hours_elapsed=0.0,
-                details=safe_error_description(exc),
-            )
+            return _rollout_failed(proposal=proposal, exc=exc, stage="observation")
 
     async def _observe_window(
         self,
@@ -190,3 +205,6 @@ class BeforeAfterRollout:
             thresholds=self._thresholds,
             strategy_name="before_after",
         )
+
+
+__all__ = ["BeforeAfterRollout", "RolloutSnapshotBuilder"]

@@ -1,14 +1,10 @@
 """Timeout policy and risk tier classifier protocols."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.core.approval import ApprovalItem
 from synthorg.security.timeout.models import TimeoutAction
-
-if TYPE_CHECKING:
-    # Runtime-deferred to avoid an ontology-consolidation import cycle
-    # through ``core.approval``; PEP 649 keeps this safe for annotations.
-    from synthorg.core.approval import ApprovalItem
 
 
 @runtime_checkable

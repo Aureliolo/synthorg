@@ -5,19 +5,20 @@ persistence repository, returns the deletion bool, and emits the
 audit-grade ``COMMUNICATION_MESSAGE_DELETED`` event on success only.
 """
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 import structlog.testing
 
 from synthorg.communication.bus_protocol import MessageBus
+from synthorg.communication.message import Message
 from synthorg.communication.messages.service import MessageService
 from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.communication import (
     COMMUNICATION_MESSAGE_DELETED,
 )
 from synthorg.persistence.message_protocol import MessageRepository
+from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
@@ -26,7 +27,7 @@ pytestmark = pytest.mark.unit
 def _make_service(*, deleted: bool) -> tuple[MessageService, Mock]:
     repo = mock_of[MessageRepository]()
     repo.delete.return_value = deleted
-    persistence = SimpleNamespace(messages=repo)
+    persistence = mock_of[PersistenceBackend](messages=repo)
     bus = AsyncMock(spec=MessageBus)
     service = MessageService(bus=bus, persistence=persistence)
     return service, repo
@@ -76,10 +77,10 @@ class TestMessageServiceGetMessage:
     async def test_delegates_to_get_by_id_and_never_scans_history(
         self,
     ) -> None:
-        sentinel = object()
+        sentinel = mock_of[Message]()
         repo = mock_of[MessageRepository]()
         repo.get_by_id.return_value = sentinel
-        persistence = SimpleNamespace(messages=repo)
+        persistence = mock_of[PersistenceBackend](messages=repo)
         service = MessageService(
             bus=AsyncMock(spec=MessageBus),
             persistence=persistence,
@@ -99,7 +100,7 @@ class TestMessageServiceGetMessage:
         repo.get_by_id.return_value = None
         service = MessageService(
             bus=AsyncMock(spec=MessageBus),
-            persistence=SimpleNamespace(messages=repo),
+            persistence=mock_of[PersistenceBackend](messages=repo),
         )
 
         result = await service.get_message(

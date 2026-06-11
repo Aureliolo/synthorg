@@ -24,6 +24,22 @@ if TYPE_CHECKING:
     # PullSubscription is a nested class on JetStreamContext, not a
     # module-level export, so it cannot be imported directly.
     PullSubscription = JetStreamContext.PullSubscription
+else:
+    # nats-py is the optional ``[distributed]`` extra. It is always present in
+    # dev/CI, so these resolve to the real types and typeguard enforces the bus
+    # boundary; without the extra they fall back to ``object`` so importing this
+    # module (e.g. for the in-memory bus) still succeeds.
+    try:
+        from nats.aio.client import Client as NatsClient
+        from nats.js import JetStreamContext
+        from nats.js.kv import KeyValue
+
+        PullSubscription = JetStreamContext.PullSubscription
+    except ImportError:
+        NatsClient = object
+        JetStreamContext = object
+        KeyValue = object
+        PullSubscription = object
 
 
 # Hard deadline on the ``client.drain()`` call inside ``stop()``.

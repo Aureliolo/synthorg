@@ -3,8 +3,8 @@
 from typing import Protocol, override, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
+from synthorg.execution.parked_context import ParkedContext
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
-from synthorg.security.timeout.parked_context import ParkedContext
 
 
 @runtime_checkable

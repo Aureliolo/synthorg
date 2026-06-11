@@ -9,20 +9,16 @@ store is published here at runtime wiring so the deliverable-receipt builder
 can snapshot a run's red-team findings into its receipt.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.security.audit import AuditLog
 from synthorg.security.autonomy.protocol import (
     AutonomyChangeStrategy,
 )
 from synthorg.security.redteam.protocol import RedTeamReportRepository
 from synthorg.security.trust.service import TrustService
-
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 
 class SecurityStateSlice(BaseFeatureStateSlice):

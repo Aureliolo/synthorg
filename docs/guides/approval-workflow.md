@@ -10,7 +10,7 @@ The approval gate is SynthOrg's human-in-the-loop control surface: certain actio
 ## Concepts
 
 - **Escalation**: a structured request that an action requires approval. Carries `approval_id`, `action_type`, `agent_id`, `task_id`, and rationale.
-- **Parked context**: the agent state frozen while an escalation is pending (`ParkedContext` in `synthorg.security.timeout.parked_context`).
+- **Parked context**: the agent state frozen while an escalation is pending (`ParkedContext` in `synthorg.execution.parked_context`).
 - **Approval verdict**: `approve` / `reject` / `request_changes` with an actor identity and timestamp.
 - **Park service**: stores parked contexts, supplies their `id` and `approval_id`.
 

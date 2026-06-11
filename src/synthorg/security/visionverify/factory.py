@@ -7,29 +7,25 @@ trust-strategy factory). A selected ``llm_vision`` kind missing its
 provider / tier resolver fails fast with :class:`VisionVerifyConfigError`.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from pathlib import Path
 
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.security.visionverify.config import (
     VisionVerifierKind,
     VisionVerifyConfig,
 )
 from synthorg.security.visionverify.errors import VisionVerifyConfigError
+from synthorg.security.visionverify.protocol import VisionVerifier
 from synthorg.security.visionverify.verifiers import (
     HeuristicVisionVerifier,
     LLMVisionVerifier,
     NoOpVisionVerifier,
 )
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-    from pathlib import Path
-
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.security.visionverify.protocol import VisionVerifier
-
-    TierResolver = Callable[[ModelTier], str | None]
+type TierResolver = Callable[[ModelTier], str | None]
 
 
 def build_vision_verifier(

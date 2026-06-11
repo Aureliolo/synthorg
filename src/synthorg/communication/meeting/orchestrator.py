@@ -8,7 +8,7 @@ from action items, and records audit trail entries.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 from uuid import uuid4
 
 from synthorg.communication.meeting._meeting_utils import (
@@ -54,11 +54,7 @@ from synthorg.observability.events.meeting import (
     MEETING_TASKS_CAPPED,
 )
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
-
-if TYPE_CHECKING:
-    # ConfigResolver is concrete and injected via mocks in tests; a runtime
-    # import would make typeguard reject the fake.
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 

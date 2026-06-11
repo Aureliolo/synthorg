@@ -6,8 +6,7 @@ approval (returns ``False``). Downgrade, recovery, and the override
 store delegate to the wrapped base strategy.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
@@ -15,13 +14,8 @@ from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
 from synthorg.security.autonomy._base_delegate import BaseDelegatingStrategy
-
-if TYPE_CHECKING:
-    from synthorg.core.autonomy_enums import AutonomyLevel
-    from synthorg.security.autonomy.change_strategy import (
-        HumanOnlyPromotionStrategy,
-    )
-    from synthorg.security.autonomy.signals import PerformanceSignalProvider
+from synthorg.security.autonomy.change_strategy import HumanOnlyPromotionStrategy
+from synthorg.security.autonomy.signals import PerformanceSignalProvider
 
 logger = get_logger(__name__)
 

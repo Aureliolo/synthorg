@@ -14,9 +14,10 @@ back on approval and routes it to ``SteeringService.issue``.
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TypeGuard
 
 from synthorg._core.features import require_service
+from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalSource, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.communication.conversation.enums import ConversationalProposalStatus
@@ -46,9 +47,6 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_CONVERSATIONAL_REJECTED,
 )
 from synthorg.observability.events.chief_of_staff import COS_PROPOSE_FAILED
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

@@ -8,7 +8,7 @@ enforcement level, from no-op to strict rejection.
 import copy
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -21,14 +21,8 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_GUARD_DRIFT_DETECTED,
     ONTOLOGY_GUARD_STAMPED,
 )
-from synthorg.ontology.config import GuardMode
-
-if TYPE_CHECKING:
-    # DelegationGuardConfig (ontology.config) and the OntologyEntityRepository
-    # protocol are mock-injected collaborators; a runtime import would make
-    # typeguard reject the fakes.
-    from synthorg.ontology.config import DelegationGuardConfig
-    from synthorg.persistence.ontology_protocol import OntologyEntityRepository
+from synthorg.ontology.config import DelegationGuardConfig, GuardMode
+from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 
 logger = get_logger(__name__)
 

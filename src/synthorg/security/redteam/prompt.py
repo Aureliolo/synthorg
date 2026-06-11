@@ -7,8 +7,9 @@ agent to call ``submit_red_team_report`` exactly once, and wraps all
 untrusted deliverable content via ``wrap_untrusted``.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -16,9 +17,6 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.redteam_review_input import RedTeamReviewInput
 
 _BASE_PROMPT: Final[str] = """\
 You are a built-in adversarial red-team skeptic for this organisation.

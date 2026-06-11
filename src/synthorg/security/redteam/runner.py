@@ -10,22 +10,19 @@ through the tool's arguments.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Complexity, Priority, Stakes, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.agent_engine import AgentEngine
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import RED_TEAM_AGENT_FAILED
 from synthorg.security.redteam.errors import RedTeamDispatchError
 from synthorg.security.redteam.prompt import build_red_team_system_prompt
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.agent_engine import AgentEngine
 
 logger = get_logger(__name__)
 

@@ -31,10 +31,10 @@ aspirational layering. The current contracts are:
   above it. (`security` is intentionally absent: `core.company` reads a
   small set of `security` config models, a deliberate pre-existing edge.)
 - **execution-is-a-leaf** -- `synthorg.execution` (the light leaf holding
-  `TurnRecord`, the trajectory enums, `EfficiencyRatios`, and the
-  `ExecutionResultView` protocol) has no path up to `engine`, `api`,
-  `workers`, or `meta`. `engine` depends downward on the leaf; the leaf
-  never reaches back into `engine`. See
+  `TurnRecord`, the trajectory enums, `EfficiencyRatios`, the
+  `ExecutionResultView` protocol, and `ParkedContext`) has no path up to
+  `engine`, `api`, `workers`, or `meta`. `engine` depends downward on the
+  leaf; the leaf never reaches back into `engine`. See
   [ADR-0012](../decisions/0012-cold-import-cycle-break.md).
 - **persistence-app-boundary** -- `synthorg.persistence` does not
   *directly* import `api` or `workers`. Domain-model imports into

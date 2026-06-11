@@ -12,15 +12,16 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.security.config import McpSelfConsumerConfig, McpSelfConsumerMode
 from synthorg.tools.base import BaseTool, ToolExecutionResult
+from tests._shared import mock_of
 from tests._shared.scripted_provider import make_e2e_identity
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.meta.mcp.invoker import MCPToolInvoker
 
 pytestmark = pytest.mark.unit
@@ -35,10 +36,10 @@ _READ_TOOL = "synthorg_tasks_list"
 _ADMIN_TOOL = "synthorg_agents_delete"
 
 # Identity-only sentinel: the adapter and builder thread ``app_state``
-# through opaquely (the bridge never inspects it), and the real
-# ``AppState`` is TYPE_CHECKING-guarded in the source so typeguard
-# skips the runtime check.
-_SENTINEL_STATE = cast("AppState", object())
+# through opaquely (the bridge never inspects it). A spec'd mock satisfies
+# the invoker's runtime ``app_state: AppState`` check while still serving
+# as a stable identity token for the threading assertions.
+_SENTINEL_STATE = mock_of[AppState]()
 
 
 class _RecordingInvoker:
@@ -52,7 +53,7 @@ class _RecordingInvoker:
         tool_name: str,
         arguments: dict[str, object],
         *,
-        app_state: object,
+        app_state: AppState,
         actor: AgentIdentity | None,
     ) -> ToolExecutionResult:
         self.calls.append(
@@ -196,7 +197,7 @@ class TestAdminGuardrailFailsClosed:
                 "reason": "valid reason",
                 "agent_name": "some-agent",
             },
-            app_state=cast("AppState", object()),
+            app_state=mock_of[AppState](),
             actor=None,
         )
 

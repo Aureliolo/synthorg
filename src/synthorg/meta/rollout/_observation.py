@@ -7,7 +7,7 @@ into a single coroutine so each strategy only owns its strategy-name
 log tag and baseline-capture semantics.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
 
 from synthorg.core.clock import Clock
 from synthorg.meta.models import (
@@ -28,10 +28,97 @@ from synthorg.observability.events.meta import (
     META_ROLLOUT_REGRESSION_DETECTED,
 )
 
-if TYPE_CHECKING:
-    from synthorg.meta.rollout.before_after import SnapshotBuilder
+# Produces the current org-signal snapshot each observation tick. Defined
+# here (the shared consumer) rather than imported from ``before_after`` so
+# this leaf does not take a back-edge into a strategy module. Named
+# distinctly from ``meta.signals.snapshot.SnapshotBuilder`` (the concrete
+# aggregator class) since this is the zero-arg callable the strategies poll.
+type RolloutSnapshotBuilder = Callable[[], Awaitable[OrgSignalSnapshot]]
 
 logger = get_logger(__name__)
+
+
+def _regression_exit_result(
+    *,
+    result: RegressionResult,
+    proposal: ImprovementProposal,
+    elapsed: float,
+    strategy_name: str,
+) -> RolloutResult:
+    """Build the early-exit result for a mid-window regression.
+
+    Returns:
+        ``RolloutResult`` instance.
+    """
+    logger.warning(
+        META_ROLLOUT_REGRESSION_DETECTED,
+        strategy=strategy_name,
+        proposal_id=str(proposal.id),
+        verdict=result.verdict.value,
+        elapsed_hours=elapsed,
+    )
+    return RolloutResult(
+        proposal_id=proposal.id,
+        outcome=RolloutOutcome.REGRESSED,
+        regression_verdict=result.verdict,
+        observation_hours_elapsed=elapsed,
+        details=(
+            str(result.breached_metric) if result.breached_metric is not None else None
+        ),
+    )
+
+
+def _window_closed_result(
+    *,
+    last_result: RegressionResult | None,
+    proposal: ImprovementProposal,
+    elapsed: float,
+    strategy_name: str,
+) -> RolloutResult:
+    """Map the final verdict to an outcome after a clean window close.
+
+    Returns:
+        ``RolloutResult`` instance.
+    """
+    logger.info(
+        META_ROLLOUT_OBSERVATION_COMPLETED,
+        strategy=strategy_name,
+        proposal_id=str(proposal.id),
+        observation_hours_elapsed=elapsed,
+    )
+    # Preserve the final verdict so INSUFFICIENT_DATA / other non-regression
+    # non-clean outcomes are not collapsed into SUCCESS. A window that closed
+    # without any observation tick (no data) is INSUFFICIENT_DATA, not a clean
+    # NO_REGRESSION pass, so it maps to INCONCLUSIVE rather than a false SUCCESS.
+    final_verdict = (
+        last_result.verdict
+        if last_result is not None
+        else RegressionVerdict.INSUFFICIENT_DATA
+    )
+    final_breached = last_result.breached_metric if last_result is not None else None
+    if final_verdict == RegressionVerdict.NO_REGRESSION:
+        outcome = RolloutOutcome.SUCCESS
+    elif final_verdict == RegressionVerdict.INSUFFICIENT_DATA:
+        # "Don't know yet" must not be reported as a regression.
+        # Map to INCONCLUSIVE so callers can decide whether to extend
+        # the window or abort rather than rolling back on no data.
+        outcome = RolloutOutcome.INCONCLUSIVE
+    else:
+        outcome = RolloutOutcome.REGRESSED
+    logger.info(
+        META_ROLLOUT_COMPLETED,
+        strategy=strategy_name,
+        proposal_id=str(proposal.id),
+        outcome=outcome.value,
+        verdict=final_verdict.value,
+    )
+    return RolloutResult(
+        proposal_id=proposal.id,
+        outcome=outcome,
+        regression_verdict=final_verdict,
+        observation_hours_elapsed=elapsed,
+        details=str(final_breached) if final_breached is not None else None,
+    )
 
 
 async def observe_until_verdict(  # noqa: PLR0913
@@ -40,7 +127,7 @@ async def observe_until_verdict(  # noqa: PLR0913
     baseline: OrgSignalSnapshot,
     detector: RegressionDetector,
     clock: Clock,
-    snapshot_builder: SnapshotBuilder,
+    snapshot_builder: RolloutSnapshotBuilder,
     check_interval_hours: float,
     thresholds: RegressionThresholds,
     strategy_name: str,
@@ -101,59 +188,16 @@ async def observe_until_verdict(  # noqa: PLR0913
             elapsed >= observation_hours
             and result.verdict == RegressionVerdict.STATISTICAL_REGRESSION
         ):
-            logger.warning(
-                META_ROLLOUT_REGRESSION_DETECTED,
-                strategy=strategy_name,
-                proposal_id=str(proposal.id),
-                verdict=result.verdict.value,
-                elapsed_hours=elapsed,
-            )
-            return RolloutResult(
-                proposal_id=proposal.id,
-                outcome=RolloutOutcome.REGRESSED,
-                regression_verdict=result.verdict,
-                observation_hours_elapsed=elapsed,
-                details=(
-                    str(result.breached_metric)
-                    if result.breached_metric is not None
-                    else None
-                ),
+            return _regression_exit_result(
+                result=result,
+                proposal=proposal,
+                elapsed=elapsed,
+                strategy_name=strategy_name,
             )
 
-    logger.info(
-        META_ROLLOUT_OBSERVATION_COMPLETED,
-        strategy=strategy_name,
-        proposal_id=str(proposal.id),
-        observation_hours_elapsed=elapsed,
-    )
-    # Preserve the final verdict so INSUFFICIENT_DATA / other non-regression
-    # non-clean outcomes are not collapsed into SUCCESS.
-    final_verdict = (
-        last_result.verdict
-        if last_result is not None
-        else RegressionVerdict.NO_REGRESSION
-    )
-    final_breached = last_result.breached_metric if last_result is not None else None
-    if final_verdict == RegressionVerdict.NO_REGRESSION:
-        outcome = RolloutOutcome.SUCCESS
-    elif final_verdict == RegressionVerdict.INSUFFICIENT_DATA:
-        # "Don't know yet" must not be reported as a regression.
-        # Map to INCONCLUSIVE so callers can decide whether to extend
-        # the window or abort rather than rolling back on no data.
-        outcome = RolloutOutcome.INCONCLUSIVE
-    else:
-        outcome = RolloutOutcome.REGRESSED
-    logger.info(
-        META_ROLLOUT_COMPLETED,
-        strategy=strategy_name,
-        proposal_id=str(proposal.id),
-        outcome=outcome.value,
-        verdict=final_verdict.value,
-    )
-    return RolloutResult(
-        proposal_id=proposal.id,
-        outcome=outcome,
-        regression_verdict=final_verdict,
-        observation_hours_elapsed=elapsed,
-        details=str(final_breached) if final_breached is not None else None,
+    return _window_closed_result(
+        last_result=last_result,
+        proposal=proposal,
+        elapsed=elapsed,
+        strategy_name=strategy_name,
     )

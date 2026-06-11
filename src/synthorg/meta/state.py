@@ -7,11 +7,11 @@ for the proposer, a provider) are available; readers guard on a
 ``None`` field.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.state import AppState
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.experiments import ExperimentService
 from synthorg.meta.analytics.service import AnalyticsService
 from synthorg.meta.chief_of_staff.actor import ConversationalActor
@@ -33,10 +33,6 @@ from synthorg.persistence.conversation_participant_protocol import (
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 
 class MetaStateSlice(BaseFeatureStateSlice):

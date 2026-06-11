@@ -13,19 +13,17 @@ provider-less boot), the factory degrades to the heuristic rather than
 failing the boot.
 """
 
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.red_team import (
     RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED,
 )
 from synthorg.security.redteam.grounding.heuristic import HeuristicGroundingChecker
-
-if TYPE_CHECKING:
-    from synthorg.security.redteam.grounding.protocol import GroundingChecker
-    from synthorg.security.redteam.grounding.resolver import (
-        GroundingSubstrateResolver,
-    )
+from synthorg.security.redteam.grounding.protocol import GroundingChecker
+from synthorg.security.redteam.grounding.resolver import (
+    GroundingSubstrateResolver,
+)
 
 logger = get_logger(__name__)
 

@@ -68,7 +68,7 @@ class TestApprovalGateTimeoutWiring:
         not a second factory-built gate.
         """
         from synthorg.engine.approval_gate import ApprovalGate
-        from synthorg.security.timeout.park_service import ParkService
+        from synthorg.engine.park_service import ParkService
 
         provider = MockCompletionProvider([])
         approval_store = AsyncMock(spec=ApprovalStore)
@@ -88,7 +88,7 @@ class TestApprovalGateTimeoutWiring:
         not be dropped by the ``approval_store is None`` early return.
         """
         from synthorg.engine.approval_gate import ApprovalGate
-        from synthorg.security.timeout.park_service import ParkService
+        from synthorg.engine.park_service import ParkService
 
         provider = MockCompletionProvider([])
         injected = ApprovalGate(park_service=ParkService())

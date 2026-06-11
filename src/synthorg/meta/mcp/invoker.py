@@ -8,11 +8,12 @@ import json
 import time
 from collections.abc import Mapping
 from copy import deepcopy
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.handler_protocol import ToolHandler
@@ -26,9 +27,6 @@ from synthorg.observability.events.mcp import (
 from synthorg.observability.metrics_hub import record_mcp_handler_outcome
 from synthorg.observability.prometheus_labels import register_mcp_tool_names
 from synthorg.tools.base import ToolExecutionResult
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

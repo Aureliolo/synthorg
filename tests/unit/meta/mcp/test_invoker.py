@@ -1,7 +1,6 @@
 """Unit tests for MCP tool invoker."""
 
 import json
-from typing import cast
 
 import pytest
 from typeguard import suppress_type_checks
@@ -9,6 +8,7 @@ from typeguard import suppress_type_checks
 from synthorg.api.state import AppState
 from synthorg.meta.mcp.invoker import MCPToolInvoker
 from synthorg.meta.mcp.registry import MCPToolDef
+from tests._shared import mock_of
 from tests.unit.meta.mcp.conftest import make_test_actor, make_tool, registry_with
 
 pytestmark = pytest.mark.unit
@@ -31,7 +31,7 @@ class TestMCPToolInvoker:
 
         invoker = MCPToolInvoker(registry, {"synthorg_test_get": handler})
         result = await invoker.invoke(
-            "synthorg_test_get", {}, app_state=cast("AppState", None)
+            "synthorg_test_get", {}, app_state=mock_of[AppState]()
         )
         assert result.is_error is False
         assert json.loads(result.content) == {"result": "ok"}
@@ -39,9 +39,7 @@ class TestMCPToolInvoker:
     async def test_invoke_unknown_tool(self) -> None:
         registry = registry_with()
         invoker = MCPToolInvoker(registry, {})
-        result = await invoker.invoke(
-            "nonexistent", {}, app_state=cast("AppState", None)
-        )
+        result = await invoker.invoke("nonexistent", {}, app_state=mock_of[AppState]())
         assert result.is_error is True
         body = json.loads(result.content)
         assert "Unknown tool" in body["error"]
@@ -52,7 +50,7 @@ class TestMCPToolInvoker:
         # Register tool but no handler
         invoker = MCPToolInvoker(registry, {})
         result = await invoker.invoke(
-            "synthorg_test_get", {}, app_state=cast("AppState", None)
+            "synthorg_test_get", {}, app_state=mock_of[AppState]()
         )
         assert result.is_error is True
         body = json.loads(result.content)
@@ -73,7 +71,7 @@ class TestMCPToolInvoker:
 
         invoker = MCPToolInvoker(registry, {"synthorg_test_get": bad_handler})
         result = await invoker.invoke(
-            "synthorg_test_get", {}, app_state=cast("AppState", None)
+            "synthorg_test_get", {}, app_state=mock_of[AppState]()
         )
         assert result.is_error is True
         body = json.loads(result.content)
@@ -102,7 +100,7 @@ class TestMCPToolInvoker:
         await invoker.invoke(
             "synthorg_test_get",
             {"key": "value"},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert captured == {"key": "value"}
 
@@ -120,11 +118,9 @@ class TestMCPToolInvoker:
             captured.append(app_state)
             return json.dumps({"ok": True})
 
-        sentinel = object()
+        sentinel = mock_of[AppState]()
         invoker = MCPToolInvoker(registry, {"synthorg_test_get": handler})
-        await invoker.invoke(
-            "synthorg_test_get", {}, app_state=cast("AppState", sentinel)
-        )
+        await invoker.invoke("synthorg_test_get", {}, app_state=sentinel)
         assert captured[0] is sentinel
 
     async def test_invoke_passes_actor_when_provided(self) -> None:
@@ -147,7 +143,7 @@ class TestMCPToolInvoker:
         await invoker.invoke(
             "synthorg_test_get",
             {},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
             actor=actor_sentinel,
         )
         assert captured[0] is actor_sentinel
@@ -168,7 +164,7 @@ class TestMCPToolInvoker:
             return json.dumps({"ok": True})
 
         invoker = MCPToolInvoker(registry, {"synthorg_test_get": handler})
-        await invoker.invoke("synthorg_test_get", {}, app_state=cast("AppState", None))
+        await invoker.invoke("synthorg_test_get", {}, app_state=mock_of[AppState]())
         assert captured[0] is None
 
     async def test_invoke_handler_key_different_from_name(self) -> None:
@@ -192,7 +188,7 @@ class TestMCPToolInvoker:
 
         invoker = MCPToolInvoker(registry, {"custom_key": handler})
         result = await invoker.invoke(
-            "synthorg_test_get", {}, app_state=cast("AppState", None)
+            "synthorg_test_get", {}, app_state=mock_of[AppState]()
         )
         assert result.is_error is False
         assert json.loads(result.content) == {"handler": "custom"}
@@ -212,9 +208,7 @@ class TestMCPToolInvoker:
 
         invoker = MCPToolInvoker(registry, {"synthorg_test_get": oom_handler})
         with pytest.raises(MemoryError):
-            await invoker.invoke(
-                "synthorg_test_get", {}, app_state=cast("AppState", None)
-            )
+            await invoker.invoke("synthorg_test_get", {}, app_state=mock_of[AppState]())
 
     async def test_invoke_reraises_recursion_error(self) -> None:
         """RecursionError must propagate, not be caught as an error result."""
@@ -231,9 +225,7 @@ class TestMCPToolInvoker:
 
         invoker = MCPToolInvoker(registry, {"synthorg_test_get": recursion_handler})
         with pytest.raises(RecursionError):
-            await invoker.invoke(
-                "synthorg_test_get", {}, app_state=cast("AppState", None)
-            )
+            await invoker.invoke("synthorg_test_get", {}, app_state=mock_of[AppState]())
 
 
 class TestMCPToolInvokerArgsModelValidation:
@@ -278,7 +270,7 @@ class TestMCPToolInvokerArgsModelValidation:
         result = await invoker.invoke(
             "synthorg_test_validated",
             {"name": "alice", "count": 7},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is False
         assert captured == [{"name": "alice", "count": 7}]
@@ -311,7 +303,7 @@ class TestMCPToolInvokerArgsModelValidation:
         result = await invoker.invoke(
             "synthorg_test_validated",
             {"name": "alice"},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is False
         assert captured == [{"name": "alice", "count": 1}]
@@ -337,7 +329,7 @@ class TestMCPToolInvokerArgsModelValidation:
         result = await invoker.invoke(
             "synthorg_test_validated",
             {"name": "   ", "count": "not-an-int"},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is True
         assert invoked == []  # handler must NOT have been invoked
@@ -380,7 +372,7 @@ class TestMCPToolInvokerArgsModelValidation:
             result = await invoker.invoke(
                 "synthorg_test_validated",
                 [("name", "alice"), ("count", 1)],  # type: ignore[arg-type]
-                app_state=cast("AppState", None),
+                app_state=mock_of[AppState](),
             )
         assert result.is_error is True
         assert invoked == []  # handler MUST NOT be reached
@@ -406,7 +398,7 @@ class TestMCPToolInvokerArgsModelValidation:
         result = await invoker.invoke(
             "synthorg_test_validated",
             {},  # missing required `name`
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is True
         body = json.loads(result.content)
@@ -429,7 +421,7 @@ class TestMCPToolInvokerArgsModelValidation:
         result = await invoker.invoke(
             "synthorg_test_validated",
             {"name": "alice", "unknown": 42},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is True
         body = json.loads(result.content)
@@ -452,6 +444,6 @@ class TestMCPToolInvokerArgsModelValidation:
         result = await invoker.invoke(
             "synthorg_test_get",
             {"anything": "works"},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is False

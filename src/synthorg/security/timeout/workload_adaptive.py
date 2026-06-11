@@ -8,15 +8,11 @@ classifier never owns a runtime dependency on the rate-limit
 subsystem.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
 
+from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.security.timeout.protocol import RiskTierClassifier
 from synthorg.security.timeout.risk_tier_classifier import elevate_one_tier
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from synthorg.approval.enums import ApprovalRiskLevel
-    from synthorg.security.timeout.protocol import RiskTierClassifier
 
 
 class WorkloadAdaptiveRiskClassifier:

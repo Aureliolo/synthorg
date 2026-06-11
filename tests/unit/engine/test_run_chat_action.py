@@ -34,6 +34,7 @@ from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.park_service import ParkService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -42,7 +43,6 @@ from synthorg.providers.models import (
     CompletionResponse,
     ToolCall,
 )
-from synthorg.security.timeout.park_service import ParkService
 from synthorg.tools.registry import ToolRegistry
 
 from .chat_action_fakes import InMemoryParkedRepo, QueryTool

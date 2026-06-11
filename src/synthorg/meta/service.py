@@ -39,7 +39,7 @@ from synthorg.meta.models import (
     RuleMatch,
 )
 from synthorg.meta.protocol import ImprovementStrategy
-from synthorg.meta.rollout.before_after import SnapshotBuilder
+from synthorg.meta.rollout.before_after import RolloutSnapshotBuilder
 from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
 from synthorg.meta.rollout.roster import OrgRoster
 from synthorg.meta.rules.builtin import default_rules
@@ -134,7 +134,7 @@ class SelfImprovementService(
         architecture_context: ArchitectureApplierContext | None = None,
         clock: Clock | None = None,
         roster: OrgRoster | None = None,
-        snapshot_builder: SnapshotBuilder | None = None,
+        snapshot_builder: RolloutSnapshotBuilder | None = None,
         group_aggregator: GroupSignalAggregator | None = None,
         approval_store: ApprovalStoreProtocol | None = None,
         config_resolver: ConfigResolver | None = None,

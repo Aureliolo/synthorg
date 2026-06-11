@@ -9,13 +9,42 @@ supplied ``_PendingChanges``.
 """
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Final
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.meta.appliers._validation import validate_payload_keys
 from synthorg.meta.models import ArchitectureChange
 
-if TYPE_CHECKING:
-    from synthorg.meta.appliers.architecture_applier import ArchitectureApplierContext
+
+@runtime_checkable
+class ArchitectureApplierContext(Protocol):
+    """Read-only view of role/department/workflow registries.
+
+    Defined alongside the validators that consume it (the per-operation
+    dry-run checks below) so the applier can import it together with
+    ``_validate_change`` without a back-edge from this module into the
+    applier.
+    """
+
+    def has_role(self, name: str) -> bool:
+        """Return True when a role with ``name`` is registered."""
+        ...
+
+    def has_department(self, name: str) -> bool:
+        """Return True when a department with ``name`` is registered."""
+        ...
+
+    def has_workflow(self, name: str) -> bool:
+        """Return True when a workflow with ``name`` is registered."""
+        ...
+
+    def role_in_use(self, name: str) -> bool:
+        """Return True when removing the role would dangle references."""
+        ...
+
+    def department_in_use(self, name: str) -> bool:
+        """Return True when removing the department would dangle references."""
+        ...
+
 
 _OP_CREATE_ROLE: Final[str] = "create_role"
 _OP_CREATE_DEPARTMENT: Final[str] = "create_department"

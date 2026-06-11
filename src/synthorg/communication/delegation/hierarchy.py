@@ -11,10 +11,10 @@ from synthorg.observability.events.delegation import (
 )
 
 if TYPE_CHECKING:
-    # Cycle breaker: ``core.company`` reaches up into the security hub
-    # for ``CompanyConfig.autonomy``, and that hub's eager init chain
-    # re-enters this package; ``Company`` is named here for signatures
-    # only, so a first-touch import of ``core.company`` does not loop.
+    # ``core.company`` imports ``security.autonomy.models``, whose eager init
+    # chain (security -> engine -> communication) re-enters this package while
+    # ``core.company`` is mid-init; a module-level import here closes that cold
+    # cycle. Kept guarded.
     from synthorg.core.company import Company
 
 logger = get_logger(__name__)

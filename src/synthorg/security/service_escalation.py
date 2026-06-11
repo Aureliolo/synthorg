@@ -9,9 +9,9 @@ concrete service.
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.approval.enums import ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.security import (
@@ -25,9 +25,6 @@ from synthorg.security.models import (
     SecurityVerdictType,
 )
 from synthorg.security.service_safety import SecOpsServiceSafetyMixin
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
 
 logger = get_logger(__name__)
 

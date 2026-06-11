@@ -17,31 +17,34 @@ red-team symbol in the ghost-wiring manifest.
 
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
+from synthorg.core.agent import ModelConfig
 from synthorg.core.clock import Clock
+from synthorg.engine.agent_engine import AgentEngine
 from synthorg.observability import get_logger
 from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_BUILD_FAILED,
     RED_TEAM_GATE_SKIPPED,
 )
+from synthorg.security.config import RedTeamConfig
 from synthorg.security.redteam.agent import build_red_team_agent_identity
 from synthorg.security.redteam.errors import RedTeamRuntimeSeedIncompleteError
 from synthorg.security.redteam.gate import RedTeamGateService
 from synthorg.security.redteam.grounding.factory import build_grounding_checker
+from synthorg.security.redteam.grounding.resolver import (
+    GroundingSubstrateResolver,
+)
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
 from synthorg.security.redteam.runner import AgentEngineRunner
 from synthorg.security.redteam.tools.submit_report import SubmitRedTeamReportTool
-from synthorg.tools.base import BaseTool
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import ModelConfig
-    from synthorg.engine.agent_engine import AgentEngine
+    # ``persistence.red_team_report_protocol`` imports ``redteam.models``, which
+    # is mid-init when ``redteam.__init__`` eagerly loads this builder; a
+    # module-level import here closes that cycle. Kept guarded.
     from synthorg.persistence.red_team_report_protocol import (
         RedTeamReportArchiveRepository,
     )
-    from synthorg.security.config import RedTeamConfig
-    from synthorg.security.redteam.grounding.resolver import (
-        GroundingSubstrateResolver,
-    )
+from synthorg.tools.base import BaseTool
 
 logger = get_logger(__name__)
 

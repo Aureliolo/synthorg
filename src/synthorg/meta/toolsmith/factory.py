@@ -22,6 +22,7 @@ from synthorg.meta.toolsmith.strategy import LLMToolBlueprintGenerator
 from synthorg.meta.toolsmith.validation_gate import (
     BenchmarkToolValidationGate,
     SandboxBriefRunner,
+    SandboxResolver,
 )
 
 if TYPE_CHECKING:
@@ -39,9 +40,7 @@ if TYPE_CHECKING:
     )
     from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
     from synthorg.providers.base import BaseCompletionProvider
-    from synthorg.tools.sandbox.protocol import SandboxBackend
 
-    SandboxResolver = Callable[[ToolBlueprint], SandboxBackend]
     SnapshotProvider = Callable[[], Awaitable[OrgSignalSnapshot]]
 
 

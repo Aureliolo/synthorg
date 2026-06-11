@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import override
 
 import pytest
 
@@ -75,6 +76,29 @@ class _FakeSandbox:
         return True
 
 
+class _RaisingSandbox(_FakeSandbox):
+    """Sandbox whose execute raises a transport fault (non-ToolsmithError)."""
+
+    def __init__(self) -> None:
+        super().__init__(SandboxResult(stdout="", stderr="", returncode=0))
+
+    @override
+    async def execute(
+        self,
+        *,
+        command: str,
+        args: tuple[str, ...],
+        cwd: Path | None = None,
+        env_overrides: Mapping[str, str] | None = None,
+        timeout: float | None = None,
+        owner_id: str | None = None,
+        project_id: str | None = None,
+    ) -> SandboxResult:
+        del command, args, cwd, env_overrides, timeout, owner_id, project_id
+        msg = "backend unavailable"
+        raise RuntimeError(msg)
+
+
 class _FakeScorecard:
     def __init__(self, baseline: int, candidate: int) -> None:
         self._baseline = baseline
@@ -119,6 +143,20 @@ class TestSandboxBriefRunner:
 
     async def test_failure_envelope_fails(self) -> None:
         sandbox = _FakeSandbox(SandboxResult(stdout="", stderr="boom", returncode=1))
+        runner = SandboxBriefRunner(lambda _bp: sandbox)
+        passed, score = await runner.run(_blueprint())
+        assert passed is False
+        assert score == 0
+
+    async def test_unexpected_probe_exception_fails_closed(self) -> None:
+        """A transport fault during the probe fails the brief, not the gate.
+
+        ``run_dynamic_tool_probe`` maps script/sandbox failures to an error
+        envelope, but a fault in the runner's own decode path (here forced by
+        a sandbox that raises) must be caught and scored as a brief failure
+        rather than propagating out of ``run``.
+        """
+        sandbox = _RaisingSandbox()
         runner = SandboxBriefRunner(lambda _bp: sandbox)
         passed, score = await runner.run(_blueprint())
         assert passed is False

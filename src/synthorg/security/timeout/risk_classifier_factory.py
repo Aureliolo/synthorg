@@ -8,13 +8,12 @@ non-default kinds whose required dependency is absent raise
 :class:`RiskClassifierConfigError` at construction (fail fast).
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.registry import StrategyRegistry
 from synthorg.security.timeout.errors import RiskClassifierConfigError
 from synthorg.security.timeout.operator_configurable import (
     OperatorConfigurableRiskClassifier,
 )
+from synthorg.security.timeout.protocol import RiskTierClassifier
 from synthorg.security.timeout.risk_classifier_config import (
     RiskClassifierConfig,
     RiskClassifierDeps,
@@ -29,9 +28,6 @@ from synthorg.security.timeout.time_based_elevation import (
 from synthorg.security.timeout.workload_adaptive import (
     WorkloadAdaptiveRiskClassifier,
 )
-
-if TYPE_CHECKING:
-    from synthorg.security.timeout.protocol import RiskTierClassifier
 
 
 def _build_default(

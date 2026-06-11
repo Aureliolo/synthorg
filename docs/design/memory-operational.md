@@ -132,7 +132,7 @@ persistence:
 | `CostRecord` | `budget/cost_record.py` | `CostRecordRepository` | by agent, by task, aggregations |
 | `Message` | `communication/message.py` | `MessageRepository` | by channel |
 | `AuditEntry` | `security/models.py` | `AuditRepository` | by agent, by action type, by verdict, by risk level, time range |
-| `ParkedContext` | `security/timeout/parked_context.py` | `ParkedContextRepository` | by execution_id, by agent_id, by task_id |
+| `ParkedContext` | `execution/parked_context.py` | `ParkedContextRepository` | by execution_id, by agent_id, by task_id |
 | `AgentRuntimeState` | `engine/agent_state.py` | `AgentStateRepository` | by agent_id, active agents |
 | Setting | `settings/models.py` | `SettingsRepository` | by namespace+key, by namespace, all |
 | `Artifact` | `core/artifact.py` | `ArtifactRepository` | by task_id, by created_by, by artifact_type |

@@ -10,8 +10,6 @@ provider and raise :class:`AutonomyStrategyConfigError` when it is
 absent (fail fast at construction).
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.registry import StrategyRegistry
 from synthorg.security.autonomy.budget_aware import (
     BudgetAwarePromotionStrategy,
@@ -31,9 +29,7 @@ from synthorg.security.autonomy.escalation_chain import (
 from synthorg.security.autonomy.performance_gated import (
     PerformanceGatedPromotionStrategy,
 )
-
-if TYPE_CHECKING:
-    from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
+from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
 
 
 def _base(deps: AutonomyStrategyDeps) -> HumanOnlyPromotionStrategy:

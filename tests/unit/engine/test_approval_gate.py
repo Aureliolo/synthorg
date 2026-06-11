@@ -8,9 +8,9 @@ import pytest
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.errors import ExecutionStateError
+from synthorg.engine.park_service import ParkService
+from synthorg.execution.parked_context import ParkedContext
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
-from synthorg.security.timeout.park_service import ParkService
-from synthorg.security.timeout.parked_context import ParkedContext
 from tests._shared import as_uuid, sid
 from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
 

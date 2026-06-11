@@ -29,6 +29,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import DocMetadata
 from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
 from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
+from synthorg.execution.parked_context import ParkedContext
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (
@@ -55,7 +56,6 @@ from synthorg.project_brain.errors import BrainEntryRevisionConflictError
 from synthorg.project_brain.models import BrainEntry
 from synthorg.security.models import AuditEntry
 from synthorg.security.redteam.models import RedTeamReportRecord
-from synthorg.security.timeout.parked_context import ParkedContext
 
 if TYPE_CHECKING:
     # Type-only re-export of ``FakePersistenceBackend`` so callers can

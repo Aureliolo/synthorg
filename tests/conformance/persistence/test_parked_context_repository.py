@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.types import NotBlankStr
+from synthorg.execution.parked_context import ParkedContext
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.security.timeout.parked_context import ParkedContext
 from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration

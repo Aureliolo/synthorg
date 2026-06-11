@@ -85,6 +85,7 @@ COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.execution.turn",
     "synthorg.execution.efficiency",
     "synthorg.execution.view",
+    "synthorg.execution.parked_context",
     "synthorg.budget.coordination_collector",
     "synthorg.budget.cost_record",
     "synthorg.approval.enums",

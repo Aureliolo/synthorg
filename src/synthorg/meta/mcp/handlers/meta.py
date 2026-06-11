@@ -93,8 +93,6 @@ def _custom_rules_service(app_state: AppState) -> CustomRulesService:
         service="custom_rules_service",
         reason="app_state.custom_rules_service not wired -- building per-call",
     )
-    from synthorg.meta.rules.service import CustomRulesService  # noqa: PLC0415
-
     return CustomRulesService(repo=persistence_of(app_state).custom_rules)
 
 

@@ -16,7 +16,7 @@ reimplementing windowed counts and top-type ranking.
 import threading
 from collections import deque
 from datetime import datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.signal_models import OrgTelemetrySummary
@@ -25,12 +25,7 @@ from synthorg.observability.events.telemetry import (
     TELEMETRY_COUNTER_EVICTED,
     TELEMETRY_COUNTER_RECORD_FAILED,
 )
-
-if TYPE_CHECKING:
-    # Concrete-faked collaborator: the concurrency tests feed duck-typed
-    # event stubs into ``on_event``, so a runtime import would make
-    # typeguard reject the fakes.
-    from synthorg.telemetry.protocol import TelemetryEvent
+from synthorg.telemetry.protocol import TelemetryEvent
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_TOP: Final[int] = 10

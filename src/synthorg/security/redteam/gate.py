@@ -46,6 +46,7 @@ from synthorg.observability.events.red_team import (
 )
 from synthorg.security.redteam._grounding_findings import claim_to_finding
 from synthorg.security.redteam.errors import RedTeamDispatchError
+from synthorg.security.redteam.grounding.models import UngroundedClaim
 from synthorg.security.redteam.grounding.protocol import GroundingChecker
 from synthorg.security.redteam.models import (
     RedTeamAttackSurface,
@@ -67,10 +68,12 @@ from synthorg.security.redteam.runtime_context import (
 )
 
 if TYPE_CHECKING:
+    # ``persistence.red_team_report_protocol`` imports ``redteam.models``, which
+    # is mid-init when ``redteam.__init__`` eagerly loads this gate; a
+    # module-level import here closes that cycle. Kept guarded.
     from synthorg.persistence.red_team_report_protocol import (
         RedTeamReportArchiveRepository,
     )
-    from synthorg.security.redteam.grounding.models import UngroundedClaim
 
 logger = get_logger(__name__)
 

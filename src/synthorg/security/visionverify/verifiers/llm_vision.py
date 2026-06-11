@@ -7,12 +7,13 @@ text-only model never silently drops the images.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 from synthorg.api.boundary import parse_typed
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.vision_verify import (
@@ -44,9 +45,6 @@ from synthorg.security.visionverify.verifiers._image import (
     read_png_base64,
     resolve_screenshot,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
 
 logger = get_logger(__name__)
 

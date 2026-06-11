@@ -1,8 +1,12 @@
 """Parked context model for suspended agent executions.
 
-When an agent's execution is parked (awaiting human approval), the
-full ``AgentContext`` is serialized and stored as a ``ParkedContext``
-so it can be resumed when the approval decision arrives.
+When an agent's execution is parked (awaiting human approval), the full
+``AgentContext`` is serialized and stored as a ``ParkedContext`` so it can be
+resumed when the approval decision arrives. The serialized form is a pure data
+shape with no ``engine`` dependency, so it lives in the ``synthorg.execution``
+leaf: ``engine`` produces it and the persistence, worker, and API layers consume
+it without any of them having to drag the heavy ``engine`` package in to name
+the type.
 """
 
 import copy
@@ -72,3 +76,6 @@ class ParkedContext(BaseModel):
     def metadata_view(self) -> MappingProxyType[str, str]:
         """Read-only view of metadata."""
         return MappingProxyType(self.metadata)
+
+
+__all__ = ["ParkedContext"]

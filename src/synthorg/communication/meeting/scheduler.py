@@ -19,6 +19,7 @@ import time
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING
 
+from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.errors import (
     NoParticipantsResolvedError,
     SchedulerAlreadyRunningError,
@@ -52,16 +53,16 @@ from synthorg.observability.events.meeting import (
     MEETING_SCHEDULER_STOPPED,
     MEETING_SCHEDULER_TASK_DIED,
 )
+from synthorg.persistence.meeting_cooldown_protocol import (
+    MeetingCooldownRepository,
+)
 
 if TYPE_CHECKING:
-    # communication.config is a cycle hub (communication.__init__ -> bus ->
-    # config reaches back here); MeetingCooldownRepository is a mock-injected
-    # protocol whose runtime import would make typeguard reject the fake.
+    # ``communication.config`` is mid-init when ``communication.__init__`` ->
+    # ``config`` -> ``meeting.config`` -> ``meeting.__init__`` eagerly loads this
+    # scheduler; a module-level import of ``MeetingsConfig`` closes that cold
+    # cycle. Kept guarded.
     from synthorg.communication.config import MeetingsConfig
-    from synthorg.communication.meeting.config import MeetingTypeConfig
-    from synthorg.persistence.meeting_cooldown_protocol import (
-        MeetingCooldownRepository,
-    )
 
 # Map meeting status values to WS event name strings.
 # Mirrors WsEventType.MEETING_* values without importing the API layer.

@@ -1906,7 +1906,7 @@
     },
     {
       "kind": "code",
-      "loc": 187,
+      "loc": 185,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_runner_support.py",
       "owning_feature": "api_core"
@@ -3229,21 +3229,21 @@
     },
     {
       "kind": "code",
-      "loc": 166,
+      "loc": 173,
       "loc_cap": 500,
       "module": "src/synthorg/communication/bus/_nats_consumers.py",
       "owning_feature": "communication"
     },
     {
       "kind": "code",
-      "loc": 256,
+      "loc": 265,
       "loc_cap": 500,
       "module": "src/synthorg/communication/bus/_nats_history.py",
       "owning_feature": "communication"
     },
     {
       "kind": "code",
-      "loc": 233,
+      "loc": 240,
       "loc_cap": 500,
       "module": "src/synthorg/communication/bus/_nats_kv.py",
       "owning_feature": "communication"
@@ -3257,14 +3257,14 @@
     },
     {
       "kind": "code",
-      "loc": 441,
+      "loc": 450,
       "loc_cap": 500,
       "module": "src/synthorg/communication/bus/_nats_receive.py",
       "owning_feature": "communication"
     },
     {
       "kind": "code",
-      "loc": 69,
+      "loc": 80,
       "loc_cap": 500,
       "module": "src/synthorg/communication/bus/_nats_state.py",
       "owning_feature": "communication"
@@ -3292,7 +3292,7 @@
     },
     {
       "kind": "code",
-      "loc": 316,
+      "loc": 314,
       "loc_cap": 500,
       "module": "src/synthorg/communication/bus/nats.py",
       "owning_feature": "communication"
@@ -3432,7 +3432,7 @@
     },
     {
       "kind": "code",
-      "loc": 408,
+      "loc": 407,
       "loc_cap": 500,
       "module": "src/synthorg/communication/conflict_resolution/escalation/notify.py",
       "owning_feature": "communication"
@@ -3460,7 +3460,7 @@
     },
     {
       "kind": "code",
-      "loc": 284,
+      "loc": 283,
       "loc_cap": 500,
       "module": "src/synthorg/communication/conflict_resolution/escalation/sweeper.py",
       "owning_feature": "communication"
@@ -3530,7 +3530,7 @@
     },
     {
       "kind": "code",
-      "loc": 206,
+      "loc": 204,
       "loc_cap": 500,
       "module": "src/synthorg/communication/delegation/entity_guard.py",
       "owning_feature": "communication"
@@ -3691,7 +3691,7 @@
     },
     {
       "kind": "code",
-      "loc": 148,
+      "loc": 146,
       "loc_cap": 500,
       "module": "src/synthorg/communication/loop_prevention/guard.py",
       "owning_feature": "communication"
@@ -3824,7 +3824,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 584,
+      "loc": 583,
       "loc_cap": 600,
       "module": "src/synthorg/communication/meeting/orchestrator.py",
       "owning_feature": "communication"
@@ -3880,7 +3880,7 @@
     },
     {
       "kind": "code",
-      "loc": 133,
+      "loc": 131,
       "loc_cap": 500,
       "module": "src/synthorg/communication/meetings/service.py",
       "owning_feature": "communication"
@@ -3901,7 +3901,7 @@
     },
     {
       "kind": "code",
-      "loc": 144,
+      "loc": 142,
       "loc_cap": 500,
       "module": "src/synthorg/communication/messages/service.py",
       "owning_feature": "communication"
@@ -3915,7 +3915,7 @@
     },
     {
       "kind": "code",
-      "loc": 80,
+      "loc": 78,
       "loc_cap": 500,
       "module": "src/synthorg/communication/state.py",
       "owning_feature": "communication"
@@ -4783,7 +4783,7 @@
     },
     {
       "kind": "code",
-      "loc": 368,
+      "loc": 366,
       "loc_cap": 500,
       "module": "src/synthorg/engine/agent_engine_factories.py",
       "owning_feature": "engine"
@@ -6151,6 +6151,13 @@
       "loc": 22,
       "loc_cap": 500,
       "module": "src/synthorg/engine/parallel_protocol.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
+      "loc": 115,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/park_service.py",
       "owning_feature": "engine"
     },
     {
@@ -7908,6 +7915,13 @@
       "loc": 170,
       "loc_cap": 500,
       "module": "src/synthorg/execution/efficiency.py",
+      "owning_feature": null
+    },
+    {
+      "kind": "code",
+      "loc": 66,
+      "loc_cap": 500,
+      "module": "src/synthorg/execution/parked_context.py",
       "owning_feature": null
     },
     {
@@ -10929,7 +10943,7 @@
     },
     {
       "kind": "code",
-      "loc": 458,
+      "loc": 479,
       "loc_cap": 500,
       "module": "src/synthorg/meta/appliers/_architecture_validators.py",
       "owning_feature": "meta"
@@ -10957,7 +10971,7 @@
     },
     {
       "kind": "code",
-      "loc": 223,
+      "loc": 206,
       "loc_cap": 500,
       "module": "src/synthorg/meta/appliers/architecture_applier.py",
       "owning_feature": "meta"
@@ -11013,7 +11027,7 @@
     },
     {
       "kind": "code",
-      "loc": 385,
+      "loc": 383,
       "loc_cap": 500,
       "module": "src/synthorg/meta/charter/dispatch.py",
       "owning_feature": "charter"
@@ -11062,7 +11076,7 @@
     },
     {
       "kind": "code",
-      "loc": 37,
+      "loc": 35,
       "loc_cap": 500,
       "module": "src/synthorg/meta/charter/state.py",
       "owning_feature": "charter"
@@ -11083,7 +11097,7 @@
     },
     {
       "kind": "code",
-      "loc": 260,
+      "loc": 259,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/_intake_parking.py",
       "owning_feature": "meta"
@@ -11370,7 +11384,7 @@
     },
     {
       "kind": "code",
-      "loc": 354,
+      "loc": 357,
       "loc_cap": 500,
       "module": "src/synthorg/meta/factory.py",
       "owning_feature": "meta"
@@ -12077,7 +12091,7 @@
     },
     {
       "kind": "code",
-      "loc": 269,
+      "loc": 268,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/meta.py",
       "owning_feature": "meta"
@@ -12175,7 +12189,7 @@
     },
     {
       "kind": "code",
-      "loc": 235,
+      "loc": 234,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/invoker.py",
       "owning_feature": "meta"
@@ -12259,7 +12273,7 @@
     },
     {
       "kind": "code",
-      "loc": 142,
+      "loc": 173,
       "loc_cap": 500,
       "module": "src/synthorg/meta/rollout/_observation.py",
       "owning_feature": "meta"
@@ -12287,7 +12301,7 @@
     },
     {
       "kind": "code",
-      "loc": 170,
+      "loc": 178,
       "loc_cap": 500,
       "module": "src/synthorg/meta/rollout/before_after.py",
       "owning_feature": "meta"
@@ -12546,7 +12560,7 @@
     },
     {
       "kind": "code",
-      "loc": 182,
+      "loc": 180,
       "loc_cap": 500,
       "module": "src/synthorg/meta/state.py",
       "owning_feature": "meta"
@@ -12700,7 +12714,7 @@
     },
     {
       "kind": "code",
-      "loc": 166,
+      "loc": 165,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/factory.py",
       "owning_feature": "toolsmith"
@@ -12749,7 +12763,7 @@
     },
     {
       "kind": "code",
-      "loc": 122,
+      "loc": 187,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/script_handler.py",
       "owning_feature": "toolsmith"
@@ -12777,7 +12791,7 @@
     },
     {
       "kind": "code",
-      "loc": 221,
+      "loc": 223,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/validation_gate.py",
       "owning_feature": "toolsmith"
@@ -14226,7 +14240,7 @@
     },
     {
       "kind": "code",
-      "loc": 17,
+      "loc": 19,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/timeout.py",
       "owning_feature": "observability"
@@ -17719,14 +17733,14 @@
     },
     {
       "kind": "code",
-      "loc": 56,
+      "loc": 52,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/_base_delegate.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 66,
+      "loc": 62,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/budget_aware.py",
       "owning_feature": "security"
@@ -17740,14 +17754,14 @@
     },
     {
       "kind": "code",
-      "loc": 62,
+      "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/change_strategy_config.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 135,
+      "loc": 133,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/change_strategy_factory.py",
       "owning_feature": "security"
@@ -17768,7 +17782,7 @@
     },
     {
       "kind": "code",
-      "loc": 63,
+      "loc": 59,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/escalation_chain.py",
       "owning_feature": "security"
@@ -17782,7 +17796,7 @@
     },
     {
       "kind": "code",
-      "loc": 64,
+      "loc": 60,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/performance_gated.py",
       "owning_feature": "security"
@@ -17852,7 +17866,7 @@
     },
     {
       "kind": "code",
-      "loc": 414,
+      "loc": 417,
       "loc_cap": 500,
       "module": "src/synthorg/security/llm_evaluator.py",
       "owning_feature": "security"
@@ -17901,7 +17915,7 @@
     },
     {
       "kind": "code",
-      "loc": 90,
+      "loc": 89,
       "loc_cap": 500,
       "module": "src/synthorg/security/policy_engine/config.py",
       "owning_feature": "security"
@@ -17985,7 +17999,7 @@
     },
     {
       "kind": "code",
-      "loc": 64,
+      "loc": 63,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/grounding/factory.py",
       "owning_feature": "security"
@@ -18034,7 +18048,7 @@
     },
     {
       "kind": "code",
-      "loc": 90,
+      "loc": 89,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/prompt.py",
       "owning_feature": "security"
@@ -18055,14 +18069,14 @@
     },
     {
       "kind": "code",
-      "loc": 128,
+      "loc": 127,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/routing.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 117,
+      "loc": 115,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/runner.py",
       "owning_feature": "security"
@@ -18181,7 +18195,7 @@
     },
     {
       "kind": "code",
-      "loc": 206,
+      "loc": 205,
       "loc_cap": 500,
       "module": "src/synthorg/security/rules/risk_override.py",
       "owning_feature": "security"
@@ -18202,7 +18216,7 @@
     },
     {
       "kind": "code",
-      "loc": 138,
+      "loc": 136,
       "loc_cap": 500,
       "module": "src/synthorg/security/service_escalation.py",
       "owning_feature": "security"
@@ -18223,14 +18237,14 @@
     },
     {
       "kind": "code",
-      "loc": 41,
+      "loc": 39,
       "loc_cap": 500,
       "module": "src/synthorg/security/state.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 16,
+      "loc": 12,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/__init__.py",
       "owning_feature": "security"
@@ -18279,42 +18293,28 @@
     },
     {
       "kind": "code",
-      "loc": 123,
-      "loc_cap": 500,
-      "module": "src/synthorg/security/timeout/park_service.py",
-      "owning_feature": "security"
-    },
-    {
-      "kind": "code",
-      "loc": 61,
-      "loc_cap": 500,
-      "module": "src/synthorg/security/timeout/parked_context.py",
-      "owning_feature": "security"
-    },
-    {
-      "kind": "code",
-      "loc": 285,
+      "loc": 284,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/policies.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 36,
+      "loc": 35,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/protocol.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 69,
+      "loc": 68,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/risk_classifier_config.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 122,
+      "loc": 120,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/risk_classifier_factory.py",
       "owning_feature": "security"
@@ -18335,21 +18335,21 @@
     },
     {
       "kind": "code",
-      "loc": 80,
+      "loc": 77,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/time_based_elevation.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 117,
+      "loc": 115,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/timeout_checker.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 42,
+      "loc": 40,
       "loc_cap": 500,
       "module": "src/synthorg/security/timeout/workload_adaptive.py",
       "owning_feature": "security"
@@ -18447,7 +18447,7 @@
     },
     {
       "kind": "code",
-      "loc": 374,
+      "loc": 373,
       "loc_cap": 500,
       "module": "src/synthorg/security/uncertainty.py",
       "owning_feature": "security"
@@ -18461,7 +18461,7 @@
     },
     {
       "kind": "code",
-      "loc": 45,
+      "loc": 43,
       "loc_cap": 500,
       "module": "src/synthorg/security/visionverify/builder.py",
       "owning_feature": "security"
@@ -18482,7 +18482,7 @@
     },
     {
       "kind": "code",
-      "loc": 95,
+      "loc": 93,
       "loc_cap": 500,
       "module": "src/synthorg/security/visionverify/factory.py",
       "owning_feature": "security"
@@ -18503,7 +18503,7 @@
     },
     {
       "kind": "code",
-      "loc": 48,
+      "loc": 47,
       "loc_cap": 500,
       "module": "src/synthorg/security/visionverify/prompt.py",
       "owning_feature": "security"
@@ -18517,7 +18517,7 @@
     },
     {
       "kind": "code",
-      "loc": 57,
+      "loc": 56,
       "loc_cap": 500,
       "module": "src/synthorg/security/visionverify/routing.py",
       "owning_feature": "security"
@@ -18545,7 +18545,7 @@
     },
     {
       "kind": "code",
-      "loc": 317,
+      "loc": 316,
       "loc_cap": 500,
       "module": "src/synthorg/security/visionverify/verifiers/llm_vision.py",
       "owning_feature": "security"
@@ -19021,7 +19021,7 @@
     },
     {
       "kind": "code",
-      "loc": 167,
+      "loc": 166,
       "loc_cap": 500,
       "module": "src/synthorg/telemetry/event_counter.py",
       "owning_feature": "telemetry"
