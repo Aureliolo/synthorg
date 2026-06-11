@@ -1421,7 +1421,11 @@ jobs:
       && github.ref == 'refs/heads/main'
       && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # The audit retries every ruleset read; bounding the per-call budget below
+    # (GH_RETRY_ATTEMPTS) caps audit runtime regardless of ruleset count, but
+    # this job also runs a yq install with its own ~5-minute curl retry budget,
+    # so give the whole job headroom rather than risk a mid-retry kill.
+    timeout-minutes: 10
     environment: release
     permissions:
       contents: read
@@ -1452,6 +1456,19 @@ jobs:
       - name: Audit
         env:
           GH_TOKEN: ${{ steps.setup.outputs.token }}
+          # Pass the repo explicitly so the script never depends on
+          # `gh repo view` inference, which is fragile under
+          # persist-credentials: false (and masked a transient 401 as a
+          # bogus "could not infer repo" failure).
+          GH_REPO: ${{ github.repository }}
+          # Bound the retry budget for this read-only, best-effort audit: it
+          # makes a rulesets-list call plus one fetch per ruleset, each retried
+          # by gh_with_retry.sh, so the default 4-attempt ladder can accumulate
+          # backoff across rulesets and exhaust the job timeout. Two attempts
+          # still absorb the common single-call 401 blip; sustained degradation
+          # defers via exit 75 (the audit's designed re-audit-next-push path)
+          # instead of being killed mid-ladder.
+          GH_RETRY_ATTEMPTS: 2
         run: bash scripts/audit_branch_protection.sh
 
   # ── Gate: all required checks passed ──

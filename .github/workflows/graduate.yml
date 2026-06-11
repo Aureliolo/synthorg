@@ -148,7 +148,11 @@ jobs:
           set -euo pipefail
 
           PARENT_SHA=$(git rev-parse HEAD)
-          TREE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$PARENT_SHA" --jq '.tree.sha')
+          # Retry-wrap the read (transient 401/5xx absorbed); the commit
+          # POST + ref PATCH below stay un-retried -- a write failure on this
+          # manual, human-watched graduation should page, not silently retry.
+          TREE_SHA=$(.github/scripts/gh_with_retry.sh "graduation parent-tree read" \
+            gh api "repos/$GITHUB_REPOSITORY/git/commits/$PARENT_SHA" --jq '.tree.sha')
 
           # Empty commit (reuses parent tree) via Git Data API. The App
           # token produces a GitHub-signed commit that verifies as
@@ -179,9 +183,22 @@ jobs:
           COMMIT_SHA: ${{ steps.commit.outputs.commit_sha }}
         run: |
           set -euo pipefail
-          v=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$COMMIT_SHA" --jq '.verification')
-          verified=$(jq -r '.verified' <<< "$v")
-          reason_code=$(jq -r '.reason' <<< "$v")
+          # This read feeds only the step SUMMARY -- the graduation commit has
+          # already landed. Bound the retry budget (2 attempts, not the default
+          # 4) so a degraded API cannot eat the 5-minute job timeout on a purely
+          # cosmetic read, and degrade gracefully on any failure rather than
+          # failing an already-completed graduation.
+          rc=0
+          v=$(GH_RETRY_ATTEMPTS=2 .github/scripts/gh_with_retry.sh "graduation verification read" \
+            gh api "repos/$GITHUB_REPOSITORY/git/commits/$COMMIT_SHA" --jq '.verification') || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            verified=$(jq -r '.verified' <<< "$v")
+            reason_code=$(jq -r '.reason' <<< "$v")
+          else
+            echo "::warning::graduation verification read failed (exit ${rc}); summary will show verification as unknown."
+            verified="unknown"
+            reason_code="read-failed"
+          fi
           {
             echo "## Graduation"
             echo ""

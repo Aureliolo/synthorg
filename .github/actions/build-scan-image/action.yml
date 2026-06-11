@@ -380,6 +380,11 @@ runs:
 
     - name: Upload SARIF amd64 to GitHub Security
       if: always()
+      # Cosmetic Security-tab upload, NOT a required check, and the real
+      # vulnerability gate is the separate `Evaluate Trivy results` step
+      # above (which stays loud). A transient code-scanning API 401/5xx must
+      # not fail the image build/publish; the SARIF re-uploads next run.
+      continue-on-error: true
       uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
       with:
         sarif_file: trivy-${{ inputs.image-name }}-amd64.sarif
@@ -397,6 +402,8 @@ runs:
 
     - name: Upload SARIF arm64 to GitHub Security
       if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      # See the amd64 upload above: cosmetic, non-gating, re-uploads next run.
+      continue-on-error: true
       uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
       with:
         sarif_file: trivy-${{ inputs.image-name }}-arm64.sarif

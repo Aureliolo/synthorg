@@ -25,6 +25,13 @@ jobs:
     # Forks don't have those env-scoped secrets; skip cleanly.
     if: ${{ !github.event.repository.fork }}
     runs-on: ubuntu-latest
+    # Bound total wall time. The retry-wrapped gh calls below (LICENSE
+    # read, PR-body read, head-SHA read, and the four required-status
+    # POSTs) each carry the gh_with_retry.sh ladder (~1m45s worst case);
+    # a black-holed connection is not bounded by the ladder itself. Cap
+    # the job so a stuck API call cannot hold a runner up to the 6h
+    # default and block the cancel-in-progress:false concurrency group.
+    timeout-minutes: 15
     environment: release
     permissions:
       contents: write
@@ -93,7 +100,8 @@ jobs:
           # release branch -- so the sha we send always matches the sha the
           # API holds. This is the canonical read-sha-then-conditional-write
           # pattern; no branch checkout is needed.
-          api_json=$(gh api "repos/$GITHUB_REPOSITORY/contents/LICENSE?ref=$BRANCH")
+          api_json=$(.github/scripts/gh_with_retry.sh "LICENSE contents read" \
+            gh api "repos/$GITHUB_REPOSITORY/contents/LICENSE?ref=$BRANCH")
           cur_sha=$(printf '%s' "$api_json" | jq -re '.sha')
           printf '%s' "$api_json" | jq -r '.content' | tr -d '\n' | base64 -d > LICENSE
 
@@ -138,7 +146,21 @@ jobs:
           PR_NUMBER: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
         run: |
           set -euo pipefail
-          BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
+          # Highlights generation is best-effort. A transient-exhaustion
+          # (EX_TEMPFAIL, exit 75) on the body read must NOT abort the
+          # release-please workflow -- skip Highlights and let the required
+          # status posting proceed. Any other non-zero is a real failure.
+          rc=0
+          BODY=$(.github/scripts/gh_with_retry.sh "release PR body read" \
+            gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body') || rc=$?
+          if [ "$rc" -eq 75 ]; then
+            echo "::warning::release PR body read deferred (transient GitHub API failure); skipping best-effort Highlights generation."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::release PR body read failed (exit ${rc})"
+            exit "$rc"
+          fi
 
           # Skip if the PR body opts out.
           if printf '%s' "$BODY" | grep -qiE '^[[:space:]]*no-highlights:'; then
@@ -329,7 +351,12 @@ jobs:
           BRANCH: release-please--branches--main--components--synthorg
         run: |
           set -euo pipefail
-          HEAD_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" --jq '.object.sha')
+          # Release-BLOCKING step: these statuses satisfy branch protection
+          # on the release PR. Retry-wrap the head-SHA read AND each status
+          # POST (idempotent) so a transient 401/5xx does not leave the PR
+          # permanently un-mergeable with "Expected, waiting".
+          HEAD_SHA=$(.github/scripts/gh_with_retry.sh "release-PR head-SHA read" \
+            gh api "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" --jq '.object.sha')
           DESCRIPTION="release-please PR -- auto-passes (no source changes to test)"
           # Keep in sync with .github/branch_protection.yml ::
           # rulesets[name=protect-main] :: required_status_checks.
@@ -338,7 +365,8 @@ jobs:
             "CodSpeed Python Pass" \
             "CodSpeed Web Pass" \
             "Lighthouse Pass"; do
-            gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            .github/scripts/gh_with_retry.sh "status post '$context'" \
+              gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
               -f "state=success" \
               -f "context=$context" \
               -f "description=$DESCRIPTION"

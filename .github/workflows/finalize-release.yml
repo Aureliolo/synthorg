@@ -73,11 +73,25 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+          # This is a COSMETIC status annotation. It must never abort the
+          # real release work that follows, so a transient API/auth blip is
+          # retried and then tolerated (the status row simply stays unset)
+          # rather than failing the step. The earlier behaviour -- a bare
+          # POST under `set -e` -- let a momentary 401 here skip the entire
+          # draft-publish pipeline.
+          attempt=0
+          until gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
             -f state=pending \
             -f context=finalize-release \
             -f description="Finalising $TAG" \
-            -f target_url="$RUN_URL"
+            -f target_url="$RUN_URL"; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 4 ]; then
+              echo "::warning::Could not post pending status after $attempt attempts; continuing (cosmetic)."
+              break
+            fi
+            sleep $((attempt * 5))
+          done
 
       - name: Preflight (both workflows succeeded + draft exists)
         id: preflight
@@ -322,8 +336,10 @@ jobs:
               fi
               # Definitive client errors will not heal within the budget.
               # ("could not resolve" is deliberately ABSENT here -- DNS is
-              # transient and must retry.)
-              if grep -qiE 'HTTP 4(00|01|03|04|09|22)|release not found' "$errf"; then
+              # transient and must retry. 401 is also ABSENT: the GHA auth
+              # service intermittently 401s on a fresh token and the next
+              # attempt succeeds, so 401 must retry like 5xx.)
+              if grep -qiE 'HTTP 4(00|03|04|09|22)|release not found' "$errf"; then
                 echo "::warning::gh definitive client error (no retry): $(tr '\n' ' ' < "$errf")" >&2
                 rm -f "$errf"
                 return "$rc"
@@ -842,11 +858,27 @@ jobs:
           # `mapfile <<< "$VAR"` (here-string, no subshell) keeps the
           # failure-tracking array in scope, which was the original
           # reason for moving away from `cmd | while read`.
-          if ! GH_RELEASES_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$")) | .tag_name'); then
-            echo "::error::Failed to list dev releases for cleanup (gh api non-zero exit)"
-            exit 1
-          fi
+          # Retry transient API/auth blips; keep the loud exit on a
+          # persistent failure (anti-silent-failure: a real outage must not
+          # leave the failure-tracking array silently empty). Capture gh's
+          # stderr so a definitive client error (4xx) fails fast instead of
+          # burning the full ladder, matching the publish step's gh_retry().
+          cleanup_errf=$(mktemp)
+          attempt=0
+          until GH_RELEASES_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$")) | .tag_name' \
+            2>"$cleanup_errf"); do
+            if grep -qE 'HTTP 4(00|03|04|09|22)' "$cleanup_errf"; then
+              echo "::error::Failed to list dev releases for cleanup (definitive client error): $(tr '\n' ' ' < "$cleanup_errf")"
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 4 ]; then
+              echo "::error::Failed to list dev releases for cleanup after $attempt attempts (transient API error)"
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
           if [ -z "$GH_RELEASES_OUTPUT" ]; then
             dev_releases=()
           else
@@ -872,12 +904,23 @@ jobs:
           # sed | grep` pipeline fail loudly if any stage other than
           # the trailing `grep || true` (which is allowed to find no
           # matches) fails.
-          if ! GH_TAGS_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
+          attempt=0
+          until GH_TAGS_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
+            2>"$cleanup_errf" \
             | sed 's|^refs/tags/||' \
-            | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$' || true; }); then
-            echo "::error::Failed to list orphan dev tags for cleanup (gh api or sed non-zero exit)"
-            exit 1
-          fi
+            | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$' || true; }); do
+            if grep -qE 'HTTP 4(00|03|04|09|22)' "$cleanup_errf"; then
+              echo "::error::Failed to list orphan dev tags for cleanup (definitive client error): $(tr '\n' ' ' < "$cleanup_errf")"
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 4 ]; then
+              echo "::error::Failed to list orphan dev tags for cleanup after $attempt attempts (transient API error)"
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
+          rm -f "$cleanup_errf"
           if [ -z "$GH_TAGS_OUTPUT" ]; then
             orphan_tags=()
           else
@@ -968,11 +1011,22 @@ jobs:
             DESC="Finalize-release completed for ${TAG}"
           fi
 
-          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+          # Cosmetic final status: retry transient blips, then tolerate
+          # (the release outcome is already decided; a missing annotation
+          # must not turn a green finalize red).
+          attempt=0
+          until gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
             -f state="$STATE" \
             -f context=finalize-release \
             -f description="$DESC" \
-            -f target_url="$RUN_URL"
+            -f target_url="$RUN_URL"; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 4 ]; then
+              echo "::warning::Could not post final status after $attempt attempts; continuing (cosmetic)."
+              break
+            fi
+            sleep $((attempt * 5))
+          done
 
   report-failure:
     name: Open / update tracking issue on finalize-release failure

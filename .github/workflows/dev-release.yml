@@ -262,12 +262,33 @@ jobs:
           DEV_TAG: ${{ steps.version.outputs.dev_tag }}
         run: |
           set -euo pipefail
-          if ! gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$DEV_TAG" \
-               >/dev/null 2>&1; then
+          # Retry-wrap so a transient 401/5xx does not fire a FALSE "tag
+          # deleted" alarm. The helper fail-fasts on a real 404 (the tag
+          # genuinely vanished), which is exactly the #1818 signal we want
+          # the guard to catch; it only retries transient classes.
+          #
+          # Branch on the helper's outcome rather than treating any non-zero
+          # as a deletion. The wrapped `gh` only exits 0-4 (never the HTTP
+          # status), so a 404 and a 403 both surface as the same exit code; the
+          # deleted-vs-other distinction must come from the stderr signature,
+          # the same way the helper itself classifies (grep 'HTTP 4xx'). Capture
+          # stderr (stdout, the ref JSON, is discarded) and echo it back so the
+          # helper's diagnostics still reach the log.
+          rc=0
+          errout="$(.github/scripts/gh_with_retry.sh "minted-tag survival check" \
+            gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$DEV_TAG" 2>&1 >/dev/null)" || rc=$?
+          printf '%s\n' "$errout" >&2
+          if [ "$rc" -eq 0 ]; then
+            echo "Tag $DEV_TAG present at end-of-run."
+          elif [ "$rc" -eq 75 ]; then
+            echo "::warning::Could not confirm tag $DEV_TAG survival -- transient GitHub API failure (EX_TEMPFAIL), not a deletion. Skipping the guard for this run."
+          elif printf '%s' "$errout" | grep -qiE 'HTTP 404|not found'; then
             echo "::error::Tag $DEV_TAG was deleted during this run -- downstream Docker/CLI workflows are about to 404 on actions/checkout. Investigate dev-release.yml."
             exit 1
+          else
+            echo "::error::Tag $DEV_TAG survival check failed (exit ${rc}) for a reason other than deletion (likely auth/config, e.g. HTTP 403). Investigate dev-release.yml."
+            exit 1
           fi
-          echo "Tag $DEV_TAG present at end-of-run."
 
   report-failure:
     name: Open / update tracking issue on dev-release failure

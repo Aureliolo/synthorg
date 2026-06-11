@@ -34,7 +34,10 @@ jobs:
       && !startsWith(github.event.head_commit.message, 'chore(main): release')
       && !startsWith(github.event.head_commit.message, 'chore: auto-rollover')
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Headroom for the gh_with_retry.sh ladder (~1m45s worst case) on top of
+    # checkout + App-token mint, so the transient-exhaustion fail-closed path
+    # is reachable rather than the job being killed mid-retry.
+    timeout-minutes: 8
     environment: release
     permissions:
       contents: write
@@ -133,9 +136,29 @@ jobs:
           # rollover never suppresses the next version's rollover. A
           # CLOSED-not-merged rollover (e.g. a manual cancel) is intentionally
           # NOT a skip: it never took effect.
-          PRIOR_ROLLOVER=$(gh pr list --state all --head "$ROLLOVER_BRANCH" \
+          # gh_with_retry.sh absorbs the transient `HTTP 401: Requires
+          # authentication` the GHA auth service occasionally returns on a
+          # job's first API call (and 5xx/network blips). On exhaustion it
+          # exits 75: fail CLOSED (skip this run), since a missed rollover
+          # self-heals on the next push to main and the dedup branch makes the
+          # next run idempotent. Any OTHER non-zero exit is a definitive client
+          # error (e.g. 403 token-scope / ruleset drift) -- fail LOUD so the
+          # regression tracker surfaces a real config bug rather than masking
+          # it as a self-healing skip.
+          rc=0
+          PRIOR_ROLLOVER=$(.github/scripts/gh_with_retry.sh \
+            "rollover-dedup PR query (v${NEXT_VERSION})" \
+            gh pr list --state all --head "$ROLLOVER_BRANCH" \
             --json number,state \
-            --jq '[.[] | select(.state == "MERGED" or .state == "OPEN")] | .[0].number // ""')
+            --jq '[.[] | select(.state == "MERGED" or .state == "OPEN")] | .[0].number // ""') || rc=$?
+          if [ "$rc" -eq 75 ]; then
+            echo "::warning::Could not query existing rollover PRs after retries; skipping rollover this run (self-heals on next push)."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::Definitive API error querying existing rollover PRs (exit ${rc}); not transient. Failing so the tracker surfaces it."
+            exit 1
+          fi
           if [ -n "$PRIOR_ROLLOVER" ]; then
             echo "Rollover PR #${PRIOR_ROLLOVER} for v${NEXT_VERSION} already merged/open; skipping."
             echo "needed=false" >> "$GITHUB_OUTPUT"
@@ -167,8 +190,21 @@ jobs:
           # body carries a Release-As trailer. That directive isn't in git
           # history until the RP PR merges, so without this check the rollover
           # could race ahead and push a conflicting 0.(X+1).0 target.
-          RP_PR_BODY=$(gh pr list --state open --label 'autorelease: pending' \
-            --json body --jq '.[0].body // ""')
+          # Same retry posture and fail-closed-on-exhaustion / fail-loud-on-
+          # definitive-error contract as the dedup query above.
+          rc=0
+          RP_PR_BODY=$(.github/scripts/gh_with_retry.sh \
+            "Release-Please pending-PR body query" \
+            gh pr list --state open --label 'autorelease: pending' \
+            --json body --jq '.[0].body // ""') || rc=$?
+          if [ "$rc" -eq 75 ]; then
+            echo "::warning::Could not query the Release-Please PR after retries; skipping rollover this run (self-heals on next push)."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::Definitive API error querying the Release-Please PR (exit ${rc}); not transient. Failing so the tracker surfaces it."
+            exit 1
+          fi
           if printf '%s' "$RP_PR_BODY" | grep -qE '^Release-As:'; then
             echo "Release-As trailer already queued in Release Please PR body; skipping."
             echo "needed=false" >> "$GITHUB_OUTPUT"
@@ -199,8 +235,23 @@ jobs:
           # prior run created the PR but auto-merge has not landed yet).
           # The earlier PR is the one that should merge; opening a second
           # would diverge and leave reviewers triaging duplicates.
-          EXISTING_PR=$(gh pr list --state open --head "$BRANCH_NAME" \
-            --json number --jq '.[0].number // ""')
+          # Retry-wrap this dedup read (transient 401/5xx absorbed). On
+          # exhaustion (exit 75) skip THIS run: the rollover re-evaluates on
+          # the next push, so deferring is safe and avoids a false tracker.
+          # The mutating calls below (commit/ref/PR create + merge) are left
+          # un-retried on purpose -- a real write failure there SHOULD page.
+          rc=0
+          EXISTING_PR=$(.github/scripts/gh_with_retry.sh \
+            "open rollover-PR check (v${NEXT_VERSION})" \
+            gh pr list --state open --head "$BRANCH_NAME" \
+            --json number --jq '.[0].number // ""') || rc=$?
+          if [ "$rc" -eq 75 ]; then
+            echo "::warning::Could not check for an open rollover PR after retries; skipping this run (self-heals on next push)."
+            exit 0
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::Definitive API error checking for an open rollover PR (exit ${rc}); not transient."
+            exit 1
+          fi
           if [ -n "$EXISTING_PR" ]; then
             echo "Auto-rollover PR #${EXISTING_PR} already open for v${NEXT_VERSION}; skipping."
             exit 0
@@ -292,11 +343,18 @@ jobs:
 
           Run: ${RUN_URL}
 
-          Likely cause: the App-token \`gh pr create\` / \`gh pr merge\`
-          flow could not push (synthorg-repo-bot App token mint failure,
-          GraphQL permission denial, branch-protection ruleset drift),
-          OR the rollover ref-update failed because main moved between
-          tree fetch and commit-creation.
+          Open the run and read the failing step before assuming a cause.
+          The dedup-read \`gh pr list\` calls retry transient 401/5xx and
+          fail CLOSED on exhaustion (skip, no failure), so a job that
+          reaches THIS tracker failed on something non-transient:
+
+          - A definitive client error (e.g. \`HTTP 403\`) from the dedup
+            reads -- token-scope narrowing or branch-protection ruleset
+            drift. This fails loud by design.
+          - The App-token \`gh pr create\` / \`gh pr merge\` write flow
+            (synthorg-repo-bot App token mint failure, GraphQL permission
+            denial, ruleset drift), or the rollover ref-update failing
+            because main moved between tree fetch and commit-creation.
 
           When this stays red, the .9 -> next-minor bump is silently
           replaced by a routine .10 patch bump. Release Please continues
