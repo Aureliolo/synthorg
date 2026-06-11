@@ -281,7 +281,7 @@ class MemoryFineTuneController(Controller):
                         _recommend_batch_size,
                         default_batch_size=thresholds.default_batch_size,
                         vram_table=(
-                            app_state.memory_bridge_config.fine_tune_vram_batch_table
+                            app_state.bridge_config.memory.fine_tune_vram_batch_table
                         ),
                     ),
                 )

@@ -25,7 +25,7 @@ class AppStateSliceMixin:
     """Typed per-feature state-slice store mixed into ``AppState``.
 
     Slices are keyed by their concrete class. ``set_slice`` is once-only
-    (mirroring the historic ``set_<service>`` seams); ``swap_slice`` hot-
+    (a second install of the same slice type raises); ``swap_slice`` hot-
     replaces an already-composed slice atomically under the slice lock, so a
     reader holding the old slice keeps its references and the next ``slice``
     call returns the new one.
@@ -121,9 +121,8 @@ class AppStateSliceMixin:
 
         Reads the current slice (composing an empty one if absent),
         produces a frozen copy with *updates* applied, and atomically
-        installs it under the slice lock. The one-line replacement for
-        the historic per-service ``set_<service>`` seams:
-        ``app_state.wire(XStateSlice, field=service)``.
+        installs it under the slice lock. One call installs a service into
+        its owning slice: ``app_state.wire(XStateSlice, field=service)``.
 
         Args:
             slice_type: The feature's :class:`BaseFeatureStateSlice` subclass.

@@ -1,6 +1,6 @@
 """Workers bridge-config settings subscriber.
 
-Hot-swaps :attr:`AppState.workers_bridge_config` when an operator edits
+Hot-swaps ``app_state.bridge_config.workers`` when an operator edits
 a watched ``workers.*`` setting whose value lives on
 :class:`~synthorg.settings.bridge_configs.WorkersBridgeConfig`. The
 dispatcher already filters out ``restart_required=True`` keys before
@@ -53,12 +53,12 @@ for _, _key in _WATCHED:
 
 
 class WorkersBridgeSettingsSubscriber:
-    """Hot-swap ``workers_bridge_config`` when watched settings change.
+    """Hot-swap the workers bridge config when watched settings change.
 
     On a watched-key change the new value is resolved via
     :class:`~synthorg.settings.resolver.ConfigResolver` (int or float
     per the watched-set partition) and applied through
-    ``AppState.mutate_workers_bridge_config({key: value})``, which
+    ``app_state.bridge_config.mutate_workers({key: value})``, which
     re-validates the merged snapshot under the per-bridge lock so an
     out-of-range operator value raises and the prior snapshot is kept.
 
@@ -103,7 +103,7 @@ class WorkersBridgeSettingsSubscriber:
                 value = await resolver.get_int(namespace, key)
             else:
                 value = await resolver.get_float(namespace, key)
-            self._app_state.mutate_workers_bridge_config({key: value})
+            self._app_state.bridge_config.mutate_workers({key: value})
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

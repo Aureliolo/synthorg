@@ -1,8 +1,0 @@
-{
-  "counts": {
-    "src/synthorg/api/state.py": {
-      "state_slots": 22
-    }
-  },
-  "description": "Frozen counts of central junk-drawer modules. Each entry under `counts` is `<posix_path>: {metric_name: current_count}`. Modules may shrink; growth fails the gate. Regenerate with `check_no_central_junk_drawer.py --update-baseline`."
-}

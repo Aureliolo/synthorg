@@ -49,7 +49,7 @@ def _make_subscriber(
         config_resolver=resolver,
     )
     if snapshot is not None:
-        app_state.swap_memory_bridge_config(snapshot)
+        app_state.bridge_config.swap_memory(snapshot)
 
     sub = MemoryBridgeSettingsSubscriber(
         app_state=app_state,
@@ -93,7 +93,7 @@ class TestRebuild:
 
         await sub.on_settings_changed("memory", "fine_tune_chunk_size")
 
-        swapped = app_state.memory_bridge_config
+        swapped = app_state.bridge_config.memory
         assert swapped is resolved
         assert swapped.fine_tune_chunk_size == 2048
         assert swapped.consolidation_enforce_batch_size == 5000
@@ -108,17 +108,17 @@ class TestRebuild:
         with pytest.raises(RuntimeError, match="resolver outage"):
             await sub.on_settings_changed("memory", "fine_tune_chunk_size")
 
-        assert app_state.memory_bridge_config is original
-        assert app_state.memory_bridge_config.fine_tune_chunk_size == 768
+        assert app_state.bridge_config.memory is original
+        assert app_state.bridge_config.memory.fine_tune_chunk_size == 768
 
     async def test_memory_error_propagates(self) -> None:
         sub, app_state = _make_subscriber(side_effect=MemoryError())
-        before = app_state.memory_bridge_config
+        before = app_state.bridge_config.memory
 
         with pytest.raises(MemoryError):
             await sub.on_settings_changed("memory", "fine_tune_chunk_size")
 
-        assert app_state.memory_bridge_config is before
+        assert app_state.bridge_config.memory is before
 
 
 class TestUnexpectedRouting:
@@ -133,7 +133,7 @@ class TestUnexpectedRouting:
 
         await sub.on_settings_changed("other", "fine_tune_chunk_size")
 
-        assert app_state.memory_bridge_config is original
+        assert app_state.bridge_config.memory is original
 
     async def test_unknown_key_is_ignored(self) -> None:
         original = MemoryBridgeConfig(fine_tune_chunk_size=640)
@@ -144,4 +144,4 @@ class TestUnexpectedRouting:
 
         await sub.on_settings_changed("memory", "some_unrelated_key")
 
-        assert app_state.memory_bridge_config is original
+        assert app_state.bridge_config.memory is original

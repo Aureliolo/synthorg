@@ -1,7 +1,7 @@
 """Tests for the ``_apply_memory_bridge_config_snapshot`` startup helper.
 
 The fine-tune preflight controller reads
-``app_state.memory_bridge_config.fine_tune_vram_batch_table``. At
+``app_state.bridge_config.memory.fine_tune_vram_batch_table``. At
 startup the helper resolves the full ``MemoryBridgeConfig`` from
 ``ConfigResolver`` and atomically swaps it onto ``AppState``. On
 failure the default snapshot -- whose Field defaults equal the
@@ -53,7 +53,7 @@ class TestApplyMemoryBridgeConfigSnapshot:
     async def test_no_resolver_keeps_default_snapshot(self) -> None:
         state = _make_state(config_resolver=None)
         await _apply_memory_bridge_config_snapshot(state)
-        assert state.memory_bridge_config == MemoryBridgeConfig()
+        assert state.bridge_config.memory == MemoryBridgeConfig()
 
     async def test_happy_path_swaps_snapshot(self) -> None:
         custom = MemoryBridgeConfig(fine_tune_chunk_size=1024)
@@ -61,8 +61,8 @@ class TestApplyMemoryBridgeConfigSnapshot:
 
         await _apply_memory_bridge_config_snapshot(state)
 
-        assert state.memory_bridge_config is custom
-        assert state.memory_bridge_config.fine_tune_chunk_size == 1024
+        assert state.bridge_config.memory is custom
+        assert state.bridge_config.memory.fine_tune_chunk_size == 1024
 
     async def test_failure_keeps_default_and_logs_warning(
         self,
@@ -86,7 +86,7 @@ class TestApplyMemoryBridgeConfigSnapshot:
 
         await _apply_memory_bridge_config_snapshot(state)
 
-        assert state.memory_bridge_config == MemoryBridgeConfig()
+        assert state.bridge_config.memory == MemoryBridgeConfig()
         assert len(warnings) == 1
         event_name, fields = warnings[0]
         assert event_name == "api.bridge_config.resolve_failed"

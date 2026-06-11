@@ -14,6 +14,7 @@ import pytest
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig
 from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
 from synthorg.api.state import AppState
+from synthorg.api.state_per_op_limits import PerOpLimitsState
 from synthorg.settings.service import SettingsService
 from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.per_op_rate_limit_subscriber import (
@@ -50,24 +51,25 @@ def _make_subscriber(
     """Build a subscriber with a mock AppState + SettingsService.
 
     Returns the subscriber plus the AppState mock so the caller can
-    assert on its ``swap_*`` calls.
+    assert on its ``per_op_limits.swap_*`` calls.
     """
     settings_service = MagicMock(spec=SettingsService)
     settings_service.get = _settings_map_to_async_mock(settings_values or {})
 
-    app_state = MagicMock(spec=AppState)
-    app_state.has_per_op_rate_limit_config = existing_rl is not None
-    app_state.has_per_op_concurrency_config = existing_concurrency is not None
-    app_state.per_op_rate_limit_config = (
+    per_op = MagicMock(spec=PerOpLimitsState)
+    per_op.has_rate_limit_config = existing_rl is not None
+    per_op.has_concurrency_config = existing_concurrency is not None
+    per_op.rate_limit_config = (
         existing_rl if existing_rl is not None else PerOpRateLimitConfig()
     )
-    app_state.per_op_concurrency_config = (
+    per_op.concurrency_config = (
         existing_concurrency
         if existing_concurrency is not None
         else PerOpConcurrencyConfig()
     )
-    app_state.swap_per_op_rate_limit_config = MagicMock()
-    app_state.swap_per_op_concurrency_config = MagicMock()
+
+    app_state = MagicMock(spec=AppState)
+    app_state.per_op_limits = per_op
 
     sub = PerOpRateLimitSettingsSubscriber(
         app_state=app_state,
@@ -113,9 +115,9 @@ class TestRateLimitRebuild:
 
         await sub.on_settings_changed("api", "per_op_rate_limit_enabled")
 
-        app_state.swap_per_op_rate_limit_config.assert_called_once()
+        app_state.per_op_limits.swap_rate_limit_config.assert_called_once()
         swapped: PerOpRateLimitConfig = (
-            app_state.swap_per_op_rate_limit_config.call_args[0][0]
+            app_state.per_op_limits.swap_rate_limit_config.call_args[0][0]
         )
         assert swapped.enabled is False
         assert swapped.overrides["memory.fine_tune"] == (2, 60)
@@ -130,9 +132,9 @@ class TestRateLimitRebuild:
 
         await sub.on_settings_changed("api", "per_op_rate_limit_overrides")
 
-        app_state.swap_per_op_rate_limit_config.assert_called_once()
+        app_state.per_op_limits.swap_rate_limit_config.assert_called_once()
         swapped: PerOpRateLimitConfig = (
-            app_state.swap_per_op_rate_limit_config.call_args[0][0]
+            app_state.per_op_limits.swap_rate_limit_config.call_args[0][0]
         )
         assert swapped.enabled is True
         assert swapped.overrides["agents.create"] == (3, 90)
@@ -150,7 +152,7 @@ class TestRateLimitRebuild:
             existing_rl=existing,
         )
         await sub.on_settings_changed("api", "per_op_rate_limit_overrides")
-        swapped = app_state.swap_per_op_rate_limit_config.call_args[0][0]
+        swapped = app_state.per_op_limits.swap_rate_limit_config.call_args[0][0]
         assert swapped.backend == existing.backend
 
     async def test_malformed_json_raises_does_not_swap(self) -> None:
@@ -162,7 +164,7 @@ class TestRateLimitRebuild:
         )
         with pytest.raises(Exception):  # noqa: B017,PT011 -- dispatcher catches
             await sub.on_settings_changed("api", "per_op_rate_limit_overrides")
-        app_state.swap_per_op_rate_limit_config.assert_not_called()
+        app_state.per_op_limits.swap_rate_limit_config.assert_not_called()
 
     async def test_bad_override_shape_raises_does_not_swap(self) -> None:
         sub, app_state = _make_subscriber(
@@ -173,7 +175,7 @@ class TestRateLimitRebuild:
         )
         with pytest.raises(Exception):  # noqa: B017,PT011
             await sub.on_settings_changed("api", "per_op_rate_limit_overrides")
-        app_state.swap_per_op_rate_limit_config.assert_not_called()
+        app_state.per_op_limits.swap_rate_limit_config.assert_not_called()
 
 
 class TestConcurrencyRebuild:
@@ -189,9 +191,9 @@ class TestConcurrencyRebuild:
 
         await sub.on_settings_changed("api", "per_op_concurrency_enabled")
 
-        app_state.swap_per_op_concurrency_config.assert_called_once()
+        app_state.per_op_limits.swap_concurrency_config.assert_called_once()
         swapped: PerOpConcurrencyConfig = (
-            app_state.swap_per_op_concurrency_config.call_args[0][0]
+            app_state.per_op_limits.swap_concurrency_config.call_args[0][0]
         )
         assert swapped.enabled is False
         assert swapped.overrides["memory.fine_tune"] == 2
@@ -206,7 +208,7 @@ class TestConcurrencyRebuild:
 
         await sub.on_settings_changed("api", "per_op_concurrency_overrides")
 
-        swapped = app_state.swap_per_op_concurrency_config.call_args[0][0]
+        swapped = app_state.per_op_limits.swap_concurrency_config.call_args[0][0]
         assert swapped.overrides == {"providers.pull_model": 1}
 
     async def test_non_object_json_raises_does_not_swap(self) -> None:
@@ -218,7 +220,7 @@ class TestConcurrencyRebuild:
         )
         with pytest.raises(Exception):  # noqa: B017,PT011
             await sub.on_settings_changed("api", "per_op_concurrency_overrides")
-        app_state.swap_per_op_concurrency_config.assert_not_called()
+        app_state.per_op_limits.swap_concurrency_config.assert_not_called()
 
 
 class TestUnexpectedRouting:
@@ -227,14 +229,14 @@ class TestUnexpectedRouting:
     async def test_unknown_namespace_is_ignored(self) -> None:
         sub, app_state = _make_subscriber()
         await sub.on_settings_changed("other", "per_op_rate_limit_enabled")
-        app_state.swap_per_op_rate_limit_config.assert_not_called()
-        app_state.swap_per_op_concurrency_config.assert_not_called()
+        app_state.per_op_limits.swap_rate_limit_config.assert_not_called()
+        app_state.per_op_limits.swap_concurrency_config.assert_not_called()
 
     async def test_unknown_key_in_api_namespace_is_ignored(self) -> None:
         sub, app_state = _make_subscriber()
         await sub.on_settings_changed("api", "some_unrelated_key")
-        app_state.swap_per_op_rate_limit_config.assert_not_called()
-        app_state.swap_per_op_concurrency_config.assert_not_called()
+        app_state.per_op_limits.swap_rate_limit_config.assert_not_called()
+        app_state.per_op_limits.swap_concurrency_config.assert_not_called()
 
 
 class TestStrictValidation:
@@ -252,7 +254,7 @@ class TestStrictValidation:
         )
         with pytest.raises(ValueError, match="not a valid boolean"):
             await sub.on_settings_changed("api", "per_op_rate_limit_enabled")
-        app_state.swap_per_op_rate_limit_config.assert_not_called()
+        app_state.per_op_limits.swap_rate_limit_config.assert_not_called()
 
     async def test_float_override_rejected(self) -> None:
         # ``1.9`` would be silently truncated to ``1`` by blind
@@ -269,7 +271,7 @@ class TestStrictValidation:
         )
         with pytest.raises(TypeError, match="must be an integer"):
             await sub.on_settings_changed("api", "per_op_rate_limit_overrides")
-        app_state.swap_per_op_rate_limit_config.assert_not_called()
+        app_state.per_op_limits.swap_rate_limit_config.assert_not_called()
 
     async def test_bool_override_rejected(self) -> None:
         # ``True`` is a subclass of ``int`` in Python and would
@@ -286,7 +288,7 @@ class TestStrictValidation:
         )
         with pytest.raises(TypeError, match="must be an integer"):
             await sub.on_settings_changed("api", "per_op_concurrency_overrides")
-        app_state.swap_per_op_concurrency_config.assert_not_called()
+        app_state.per_op_limits.swap_concurrency_config.assert_not_called()
 
     async def test_digit_string_override_accepted(self) -> None:
         # Operators who wrote ``"5"`` (JSON string of a whole number)
@@ -303,5 +305,5 @@ class TestStrictValidation:
             }
         )
         await sub.on_settings_changed("api", "per_op_concurrency_overrides")
-        swapped = app_state.swap_per_op_concurrency_config.call_args[0][0]
+        swapped = app_state.per_op_limits.swap_concurrency_config.call_args[0][0]
         assert swapped.overrides == {"memory.fine_tune": 5}

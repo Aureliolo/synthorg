@@ -1,14 +1,12 @@
-"""Tests for the surviving :class:`AppState` hot-swap seams.
+"""Tests for the :class:`AppState` hot-swap seams.
 
-After the feature-manifest collapse the per-service ``set_X`` / ``swap_X``
-accessors are gone; the boot install and ``post_setup_reinit`` keep a
-small set of named seams as thin shims over ``AppStateSliceMixin.wire``.
-Each shim composes the owning feature slice and preserves its historic
-contract: ``swap_*`` hot-replaces, ``set_*`` is once-only,
-``set_*_if_absent`` installs only when the slot is empty (injection wins
-over autowire), and ``swap_notification_dispatcher`` returns the
-previous dispatcher so the caller can close its sinks. Readers observe
-the result through the owning slice.
+The boot install and ``post_setup_reinit`` expose a small set of named
+seams as thin shims over ``AppStateSliceMixin.wire``. Each shim composes
+the owning feature slice: ``swap_*`` hot-replaces, ``set_*`` is
+once-only, ``set_*_if_absent`` installs only when the slot is empty
+(injection wins over autowire), and ``swap_notification_dispatcher``
+returns the previous dispatcher so the caller can close its sinks.
+Readers observe the result through the owning slice.
 """
 
 from collections.abc import Callable

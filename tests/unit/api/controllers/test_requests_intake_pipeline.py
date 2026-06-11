@@ -203,7 +203,7 @@ async def test_vanished_request_evicts_lock_registry_entry() -> None:
         request_id=_REQUEST_ID,
     )
 
-    assert _REQUEST_ID not in app_state._request_locks
+    assert _REQUEST_ID not in app_state.request_locks._locks
     assert adapter.calls == 0
 
 
@@ -220,5 +220,5 @@ async def test_non_approved_request_evicts_lock_registry_entry() -> None:
         request_id=_REQUEST_ID,
     )
 
-    assert _REQUEST_ID not in app_state._request_locks
+    assert _REQUEST_ID not in app_state.request_locks._locks
     assert adapter.calls == 0

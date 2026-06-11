@@ -1,12 +1,10 @@
 """Test helper for building a thin ``AppState`` with services wired into slices.
 
-After the feature-manifest collapse, ``AppState`` holds only
-``config`` / ``clock`` / ``startup_time`` + cross-cutting primitives;
-every domain service lives on its feature state slice. Test fixtures
-that used to construct ``AppState(<45 service kwargs>)`` call
-:func:`make_app_state` instead: it builds the thin ``AppState`` and
-composes the supplied services into their owning slices via ``wire``,
-keeping the old keyword names so call sites only swap the constructor.
+``AppState`` holds only ``config`` / ``clock`` / ``startup_time`` +
+cross-cutting primitive owners; every domain service lives on its
+feature state slice. Test fixtures pass services as keyword arguments
+to :func:`make_app_state`: it builds the thin ``AppState`` and composes
+the supplied services into their owning slices via ``wire``.
 
 All ``synthorg`` imports are function-local: importing the feature
 slice modules at module top triggers the cold-import cycle through

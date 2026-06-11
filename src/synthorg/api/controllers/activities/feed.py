@@ -95,7 +95,7 @@ class ActivityController(Controller):
         app_state: AppState = state.app_state
         now = app_state.clock.now()
         since = now - timedelta(hours=last_n_hours)
-        lifecycle_cap = app_state.api_bridge_config.max_lifecycle_events_per_query
+        lifecycle_cap = app_state.bridge_config.api.max_lifecycle_events_per_query
 
         lifecycle_events = await persistence_of(app_state).lifecycle_events.list_events(
             agent_id=agent_id,

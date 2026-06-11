@@ -93,10 +93,9 @@ class FeatureDependencyError(DomainError):
 def require_service[ServiceT](value: ServiceT | None, label: str) -> ServiceT:
     """Return *value* or raise 503 when a feature slice field is unwired.
 
-    The slice-reader counterpart to the historic ``AppState._require_service``
-    seam: controllers and MCP handlers read a slice field (typed ``T | None``)
-    and pass it through this guard so a not-yet-wired service surfaces as a
-    clean ``ServiceUnavailableError`` rather than an ``AttributeError``.
+    Controllers and MCP handlers read a slice field (typed ``T | None``) and
+    pass it through this guard so a not-yet-wired service surfaces as a clean
+    ``ServiceUnavailableError`` rather than an ``AttributeError``.
 
     Args:
         value: The slice field value (``None`` when the service is unwired).
@@ -118,9 +117,9 @@ class BaseFeatureStateSlice(BaseModel):
     """Frozen base for a feature's slice of application state.
 
     Service references are typed ``T | None`` on subclasses: ``None`` means
-    not-yet-wired (the controller raises 503), mirroring the historic
-    ``has_<service>`` guard. The slice is frozen, so a hot-reload composes a
-    new slice and swaps it atomically rather than mutating in place.
+    not-yet-wired (the controller raises 503 via ``require_service``). The
+    slice is frozen, so a hot-reload composes a new slice and swaps it
+    atomically rather than mutating in place.
 
     ``arbitrary_types_allowed`` lets subclasses hold plain (non-Pydantic)
     service references; Pydantic merges it down the MRO, so each subclass

@@ -1,7 +1,7 @@
 """Tests for the ``_apply_api_bridge_config_snapshot`` startup helper.
 
 The activities controller (and any future consumer) reads
-``app_state.api_bridge_config.<field>`` for operator-tunable knobs.
+``app_state.bridge_config.api.<field>`` for operator-tunable knobs.
 At startup the helper resolves the full ``ApiBridgeConfig`` from
 ``ConfigResolver`` and atomically swaps it onto ``AppState``. On
 failure the default snapshot is retained and a single structured
@@ -53,7 +53,7 @@ class TestApplyApiBridgeConfigSnapshot:
     async def test_no_resolver_keeps_default_snapshot(self) -> None:
         state = _make_state(config_resolver=None)
         await _apply_api_bridge_config_snapshot(state)
-        assert state.api_bridge_config == ApiBridgeConfig()
+        assert state.bridge_config.api == ApiBridgeConfig()
 
     async def test_happy_path_swaps_snapshot(self) -> None:
         custom = ApiBridgeConfig(max_lifecycle_events_per_query=25_000)
@@ -61,8 +61,8 @@ class TestApplyApiBridgeConfigSnapshot:
 
         await _apply_api_bridge_config_snapshot(state)
 
-        assert state.api_bridge_config is custom
-        assert state.api_bridge_config.max_lifecycle_events_per_query == 25_000
+        assert state.bridge_config.api is custom
+        assert state.bridge_config.api.max_lifecycle_events_per_query == 25_000
 
     async def test_failure_keeps_default_and_logs_warning(
         self,
@@ -86,7 +86,7 @@ class TestApplyApiBridgeConfigSnapshot:
 
         await _apply_api_bridge_config_snapshot(state)
 
-        assert state.api_bridge_config == ApiBridgeConfig()
+        assert state.bridge_config.api == ApiBridgeConfig()
         # Single warning emitted with the canonical event name and the
         # redacted error description -- never the raw exception string.
         assert len(warnings) == 1

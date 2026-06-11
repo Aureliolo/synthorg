@@ -378,13 +378,13 @@ The pattern has four pieces:
    the fallback value: no controller carries a duplicate constant.
 2. **Resolver builder.** `ConfigResolver.get_<ns>_bridge_config()`
    resolves every field at once via `_resolve_bridge_fields()`.
-3. **AppState slot + accessors.** `AppState.__init__` default-
-   constructs the bridge model so consumers always see a valid
-   snapshot, even before `_apply_bridge_config` has run.
-   `AppState.<name>_bridge_config` returns the current snapshot;
-   `AppState.swap_<name>_bridge_config(config)` does a wholesale
-   replace under a per-bridge `threading.Lock`;
-   `AppState.mutate_<name>_bridge_config({field: value, ...})`
+3. **`BridgeConfigState` owner + accessors.** The
+   `app_state.bridge_config` owner default-constructs each bridge
+   model so consumers always see a valid snapshot, even before
+   `_apply_bridge_config` has run. `app_state.bridge_config.<name>`
+   returns the current snapshot; `app_state.bridge_config.swap_<name>(config)`
+   does a wholesale replace under a per-bridge `threading.Lock`;
+   `app_state.bridge_config.mutate_<name>({field: value, ...})`
    applies a partial update under the same lock so two concurrent
    subscribers cannot lose each other's writes.
 4. **Settings subscriber.** A `SettingsSubscriber` implementation in

@@ -77,7 +77,7 @@ def build_litestar(  # noqa: PLR0913
     per_op_rate_limit_store: SlidingWindowStore = build_sliding_window_store(
         api_config.per_op_rate_limit,
     )
-    app_state.set_per_op_rate_limit_config(api_config.per_op_rate_limit)
+    app_state.per_op_limits.set_rate_limit_config(api_config.per_op_rate_limit)
     if not skip_lifecycle_shutdown:
         shutdown = [*shutdown, per_op_rate_limit_store.close]
 
@@ -88,7 +88,7 @@ def build_litestar(  # noqa: PLR0913
     per_op_inflight_store: InflightStore = build_inflight_store(
         api_config.per_op_concurrency,
     )
-    app_state.set_per_op_concurrency_config(api_config.per_op_concurrency)
+    app_state.per_op_limits.set_concurrency_config(api_config.per_op_concurrency)
     if not skip_lifecycle_shutdown:
         shutdown = [*shutdown, per_op_inflight_store.close]
 

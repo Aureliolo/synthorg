@@ -1,10 +1,12 @@
-"""Typed application-state container.
+"""Typed application-state composition root.
 
-``AppState`` is the composition root over the feature-manifest state
-slices (``AppStateSliceMixin``) plus the cross-cutting mutable
-primitives a frozen slice cannot own (request locks, bridge-config
-snapshots, WS timeouts, background-task sets, the shutdown event), which
-live on ``_RequestLockPrimitivesMixin`` + ``_BridgeConfigPrimitivesMixin``.
+``AppState`` composes the per-feature state slices (``AppStateSliceMixin``)
+with its own lifecycle identity (clock, config, uptime baseline, shutdown
+event, background-task sets) and the cohesive primitive owner objects that
+hold the cross-cutting mutable state a frozen slice cannot: the
+bridge-config snapshots (``bridge_config``), the per-op rate-limit /
+concurrency configs (``per_op_limits``), the request-lock registry
+(``request_locks``), and the WS/auth timeout knobs (``ws_auth_limits``).
 
 Every domain service is read through its feature slice
 (``app_state.slice(XStateSlice).field`` or a ``*_of`` accessor); the
@@ -14,22 +16,14 @@ keep their once-only / if-absent / hot-replace semantics.
 """
 
 import asyncio
-import threading
-from collections import OrderedDict
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, cast
 
-from synthorg.api.state_services_bridge import _BridgeConfigPrimitivesMixin
-from synthorg.api.state_services_locks import _RequestLockPrimitivesMixin
+from synthorg.api.state_bridge_config import BridgeConfigState
+from synthorg.api.state_per_op_limits import PerOpLimitsState
+from synthorg.api.state_request_locks import RequestLockRegistry
 from synthorg.api.state_slices import AppStateSliceMixin
+from synthorg.api.state_ws_auth_limits import WsAuthLimits
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_SERVICE_UNAVAILABLE
-from synthorg.settings.bridge_configs import (
-    ApiBridgeConfig,
-    MemoryBridgeConfig,
-    WorkersBridgeConfig,
-)
 
 if TYPE_CHECKING:
     from synthorg.client.models import ClientRequest
@@ -46,45 +40,29 @@ if TYPE_CHECKING:
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.workers.execution_service import WorkerExecutionService
 
-logger = get_logger(__name__)
 
+class AppState(AppStateSliceMixin):
+    """Composition root: feature state slices + identity + primitive owners.
 
-class AppState(
-    AppStateSliceMixin,
-    _RequestLockPrimitivesMixin,
-    _BridgeConfigPrimitivesMixin,
-):
-    """Composition root: feature state slices + cross-cutting primitives.
-
-    Domain services are read through their feature slice; the seams
+    Domain services are read through their feature slice; the cross-cutting
+    mutable primitives live on cohesive owner objects (``bridge_config`` /
+    ``per_op_limits`` / ``request_locks`` / ``ws_auth_limits``). The seams
     below preserve the once-only / if-absent / hot-replace contracts the
     boot install and ``post_setup_reinit`` rebuild rely on.
     """
 
-    __slots__ = (
-        "_api_bridge_config",
-        "_api_bridge_config_lock",
-        "_auth_revalidate_max_failures",
-        "_auth_revalidate_window_seconds",
-        "_bridge_config_applied",
-        "_brownfield_background_tasks",
-        "_memory_bridge_config",
-        "_memory_bridge_config_lock",
-        "_objective_background_tasks",
-        "_per_op_concurrency_config",
-        "_per_op_rate_limit_config",
-        "_request_lock_refs",
-        "_request_locks",
-        "_request_locks_guard",
-        "_shutdown_requested",
-        "_workers_bridge_config",
-        "_workers_bridge_config_lock",
-        "_ws_auth_timeout_seconds",
-        "_ws_frame_timeout_seconds",
-        "clock",
-        "config",
-        "startup_time",
-    )
+    __slots__ = ()
+
+    # Lifecycle identity + primitive owners live in ``__dict__`` (the base
+    # ``AppStateSliceMixin`` carries no slots). These are bare annotations
+    # for readability, not slots, so ``__slots__`` stays empty.
+    config: RootConfig
+    clock: Clock
+    startup_time: float
+    bridge_config: BridgeConfigState
+    per_op_limits: PerOpLimitsState
+    request_locks: RequestLockRegistry
+    ws_auth_limits: WsAuthLimits
 
     def __init__(
         self,
@@ -93,7 +71,7 @@ class AppState(
         clock: Clock | None = None,
         startup_time: float | None = None,
     ) -> None:
-        """Build the composition root with empty slices + default primitives.
+        """Build the composition root with its identity, owners, and slices.
 
         Args:
             config: The resolved root configuration.
@@ -107,61 +85,21 @@ class AppState(
         self.startup_time = (
             startup_time if startup_time is not None else self.clock.monotonic()
         )
-        self._init_primitives()
-        # Per-feature typed state slices, composed at boot by the
-        # feature-manifest substrate (``compose_feature_slices``).
-        self._init_slice_store()
-
-    def _init_primitives(self) -> None:
-        """Initialise the cross-cutting mutable primitives to their defaults."""
-        # Bridge-config snapshots: default-constructed so consumers see
-        # valid defaults before ``_apply_bridge_config`` runs; each lock
-        # guards its ``mutate_*`` read-modify-write.
-        self._api_bridge_config: ApiBridgeConfig = ApiBridgeConfig()
-        self._api_bridge_config_lock: threading.Lock = threading.Lock()
-        self._workers_bridge_config: WorkersBridgeConfig = WorkersBridgeConfig()
-        self._workers_bridge_config_lock: threading.Lock = threading.Lock()
-        self._memory_bridge_config: MemoryBridgeConfig = MemoryBridgeConfig()
-        self._memory_bridge_config_lock: threading.Lock = threading.Lock()
-        # One-shot flag: bridge config applied exactly once per lifetime
-        # even across re-entered lifespans (shared-app test fixtures).
-        self._bridge_config_applied: bool = False
-        # Per-op rate-limit + concurrency configs, hot-swapped by the
-        # settings subscribers; ``None`` until the startup snapshot lands.
-        self._per_op_rate_limit_config = None
-        self._per_op_concurrency_config = None
-        # WS / auth-revalidation knobs (read_only_post_init); sane
-        # built-in defaults so the handler never reaches the resolver.
-        self._ws_auth_timeout_seconds: float = 10.0
-        self._ws_frame_timeout_seconds: int = 30
-        self._auth_revalidate_window_seconds: int = 60
-        self._auth_revalidate_max_failures: int = 5
-        # Per-request-id lifecycle-lock registry (bounded, refcounted).
-        self._request_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
-        self._request_locks_guard: threading.Lock = threading.Lock()
-        self._request_lock_refs: dict[str, int] = {}
         # Background-task sets for the objective / brownfield entry paths.
         self._objective_background_tasks: set[asyncio.Task[None]] = set()
         self._brownfield_background_tasks: set[asyncio.Task[None]] = set()
         # Shutdown flag observable by long-lived subsystems; constructed
         # eagerly so concurrent first-reads share one ``Event``.
         self._shutdown_requested: asyncio.Event = asyncio.Event()
-
-    @override
-    def _require_service[T](self, service: T | None, name: str) -> T:
-        """Return *service* or raise 503 if not configured.
-
-        Returns:
-            The non-``None`` service.
-
-        Raises:
-            ServiceUnavailableError: When *service* is ``None``.
-        """
-        if service is None:
-            logger.warning(API_SERVICE_UNAVAILABLE, service=name)
-            msg = f"{name.replace('_', ' ').title()} not configured"
-            raise ServiceUnavailableError(msg)
-        return service
+        # Cohesive owners of the cross-cutting mutable primitives a frozen
+        # slice cannot hold.
+        self.bridge_config = BridgeConfigState()
+        self.per_op_limits = PerOpLimitsState()
+        self.request_locks = RequestLockRegistry()
+        self.ws_auth_limits = WsAuthLimits()
+        # Per-feature typed state slices, composed at boot by the
+        # feature-manifest substrate (``compose_feature_slices``).
+        self._init_slice_store()
 
     @property
     def shutdown_requested(self) -> asyncio.Event:
@@ -171,19 +109,6 @@ class AppState(
             The process-shared shutdown ``asyncio.Event``.
         """
         return self._shutdown_requested
-
-    @property
-    def bridge_config_applied(self) -> bool:
-        """Whether the one-shot bridge-config apply has already run.
-
-        Returns:
-            ``True`` once ``mark_bridge_config_applied`` has been called.
-        """
-        return self._bridge_config_applied
-
-    def mark_bridge_config_applied(self) -> None:
-        """Flip :attr:`bridge_config_applied` to ``True`` (one-way)."""
-        self._bridge_config_applied = True
 
     @property
     def objective_background_tasks(self) -> set[asyncio.Task[None]]:

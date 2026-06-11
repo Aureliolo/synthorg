@@ -1,12 +1,12 @@
 """Tests for the AppState attribute lock.
 
-The gate forbids growing :class:`AppState`'s ``__slots__`` past the
-hard-coded approved set so new application state goes through a feature
-state slice instead of being bolted onto the composition root.
+The gate pins :class:`AppState`'s ``__slots__`` to the hard-coded approved
+set (now empty: the thin composition root carries no direct slots), so new
+application state goes onto a feature state slice or a primitive owner
+object instead of being bolted onto the root.
 """
 
 import importlib.util
-import textwrap
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -44,23 +44,23 @@ _GATE = _load()
 
 
 def _write_app_state(tmp_path: Path, *, slot_names: tuple[str, ...]) -> Path:
-    """Write a stub ``state.py`` declaring ``AppState`` with *slot_names*."""
-    formatted = ",\n        ".join(f'"{name}"' for name in slot_names)
-    body = textwrap.dedent(
-        f'''\
-        """Stub AppState for gate tests."""
+    """Write a stub ``state.py`` declaring ``AppState`` with *slot_names*.
 
-
-        class AppState:
-            """Test stub."""
-
-            __slots__ = (
-                {formatted},
-            )
-        '''
+    An empty slot set renders as a valid empty tuple ``()`` rather than a
+    bare-comma ``( , )`` syntax error (the production AppState now declares
+    ``__slots__ = ()``).
+    """
+    header = (
+        '"""Stub AppState for gate tests."""\n\n\n'
+        'class AppState:\n    """Test stub."""\n\n'
     )
+    if slot_names:
+        elements = "\n".join(f'        "{name}",' for name in slot_names)
+        slots = f"    __slots__ = (\n{elements}\n    )\n"
+    else:
+        slots = "    __slots__ = ()\n"
     target = tmp_path / "state.py"
-    target.write_text(body, encoding="utf-8")
+    target.write_text(header + slots, encoding="utf-8")
     return target
 
 

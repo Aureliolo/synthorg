@@ -1,6 +1,6 @@
 """Tests for ``ApiBridgeSettingsSubscriber``.
 
-The subscriber hot-swaps ``app_state.api_bridge_config`` when the
+The subscriber hot-swaps ``app_state.bridge_config.api`` when the
 operator changes a watched API setting. Tests cover protocol
 conformance, happy-path swap (single field updated via
 ``model_copy``, every other field preserved), unexpected key/namespace
@@ -36,7 +36,7 @@ def _make_subscriber(
     """Build a subscriber with a real AppState + spec'd ConfigResolver.
 
     Returns the subscriber plus the AppState so callers can assert
-    on the post-call ``api_bridge_config`` snapshot.
+    on the post-call ``bridge_config.api`` snapshot.
     """
     settings_service = create_autospec(SettingsService, instance=True)
 
@@ -52,7 +52,7 @@ def _make_subscriber(
         config_resolver=resolver,
     )
     if snapshot is not None:
-        app_state.swap_api_bridge_config(snapshot)
+        app_state.bridge_config.swap_api(snapshot)
 
     sub = ApiBridgeSettingsSubscriber(
         app_state=app_state,
@@ -94,7 +94,7 @@ class TestRebuild:
 
         await sub.on_settings_changed("api", "max_lifecycle_events_per_query")
 
-        swapped = app_state.api_bridge_config
+        swapped = app_state.bridge_config.api
         assert swapped.max_lifecycle_events_per_query == 50_000
         # Every other field is preserved verbatim from the prior snapshot.
         assert swapped.max_audit_records_per_query == 42_000
@@ -110,19 +110,19 @@ class TestRebuild:
             await sub.on_settings_changed("api", "max_lifecycle_events_per_query")
 
         # Snapshot retained from before the change.
-        assert app_state.api_bridge_config is original
-        assert app_state.api_bridge_config.max_lifecycle_events_per_query == 8_000
+        assert app_state.bridge_config.api is original
+        assert app_state.bridge_config.api.max_lifecycle_events_per_query == 8_000
 
     async def test_memory_error_propagates(self) -> None:
         sub, app_state = _make_subscriber(
             resolver_int_side_effect=MemoryError(),
         )
-        before = app_state.api_bridge_config
+        before = app_state.bridge_config.api
 
         with pytest.raises(MemoryError):
             await sub.on_settings_changed("api", "max_lifecycle_events_per_query")
 
-        assert app_state.api_bridge_config is before
+        assert app_state.bridge_config.api is before
 
     async def test_out_of_range_value_rejected_keeps_prior_snapshot(self) -> None:
         # ``ApiBridgeConfig.max_lifecycle_events_per_query`` is bounded by
@@ -142,8 +142,8 @@ class TestRebuild:
 
         # Prior snapshot retained because the swap never happens when
         # validation fails.
-        assert app_state.api_bridge_config is original
-        assert app_state.api_bridge_config.max_lifecycle_events_per_query == 12_345
+        assert app_state.bridge_config.api is original
+        assert app_state.bridge_config.api.max_lifecycle_events_per_query == 12_345
 
 
 class TestUnexpectedRouting:
@@ -158,7 +158,7 @@ class TestUnexpectedRouting:
 
         await sub.on_settings_changed("other", "max_lifecycle_events_per_query")
 
-        assert app_state.api_bridge_config is original
+        assert app_state.bridge_config.api is original
 
     async def test_unknown_key_is_ignored(self) -> None:
         original = ApiBridgeConfig(max_lifecycle_events_per_query=4_321)
@@ -169,4 +169,4 @@ class TestUnexpectedRouting:
 
         await sub.on_settings_changed("api", "some_unrelated_key")
 
-        assert app_state.api_bridge_config is original
+        assert app_state.bridge_config.api is original

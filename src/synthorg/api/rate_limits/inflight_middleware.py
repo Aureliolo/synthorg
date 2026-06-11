@@ -56,12 +56,9 @@ def _read_live_inflight_config(state: State | None) -> PerOpConcurrencyConfig | 
         The ``PerOpConcurrencyConfig`` value when present, ``None`` otherwise.
     """
     app_state = getattr(state, "app_state", None)
-    if app_state is not None and getattr(
-        app_state,
-        "has_per_op_concurrency_config",
-        False,
-    ):
-        live: PerOpConcurrencyConfig = app_state.per_op_concurrency_config
+    per_op_limits = getattr(app_state, "per_op_limits", None)
+    if per_op_limits is not None and per_op_limits.has_concurrency_config:
+        live: PerOpConcurrencyConfig = per_op_limits.concurrency_config
         return live
     dict_value: PerOpConcurrencyConfig | None = getattr(
         state,
