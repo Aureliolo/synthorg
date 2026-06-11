@@ -373,6 +373,7 @@ jobs:
           if grep -q "CLI_VERIFICATION_DATA" <<< "$BODY"; then
             CLI_CHECKSUMS=$(sed -n '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/p' <<< "$BODY" \
               | sed '1d;$d' | grep -E '^\|' || true)
+            # shellcheck disable=SC2016  # the $ tokens are literal sed anchors/addresses, not shell expansions
             CLI_SLSA=$(sed -n '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/p' <<< "$BODY" \
               | sed '1d;$d' | sed -n '/^```bash$/,/^```$/p' || true)
             if [ -z "$CLI_CHECKSUMS" ]; then
@@ -385,6 +386,7 @@ jobs:
 
           CLI_COSIGN=""
           if grep -q "CLI_COSIGN_DATA" <<< "$BODY"; then
+            # shellcheck disable=SC2016  # the $ tokens are literal sed anchors/addresses, not shell expansions
             CLI_COSIGN=$(sed -n '/<!-- CLI_COSIGN_DATA/,/CLI_COSIGN_DATA -->/p' <<< "$BODY" \
               | sed '1d;$d' | sed -n '/^```bash$/,/^```$/p' || true)
             if [ -z "$CLI_COSIGN" ]; then
@@ -394,6 +396,7 @@ jobs:
 
           CLI_SLSA_BUNDLE=""
           if grep -q "CLI_SLSA_BUNDLE_DATA" <<< "$BODY"; then
+            # shellcheck disable=SC2016  # the $ tokens are literal sed anchors/addresses, not shell expansions
             CLI_SLSA_BUNDLE=$(sed -n '/<!-- CLI_SLSA_BUNDLE_DATA/,/CLI_SLSA_BUNDLE_DATA -->/p' <<< "$BODY" \
               | sed '1d;$d' | sed -n '/^```bash$/,/^```$/p' || true)
             if [ -z "$CLI_SLSA_BUNDLE" ]; then
@@ -498,6 +501,7 @@ jobs:
             fi
 
             if [ -n "$CLI_SLSA_BUNDLE" ]; then
+              # shellcheck disable=SC2016  # backticks in the printf format are literal markdown code spans
               VERIFICATION="$(printf '%s\n\n### CLI Provenance Bundle\n\nVerify the Sigstore provenance bundle (`.sigstore.json`):\n\n%s\n' "$VERIFICATION" "$CLI_SLSA_BUNDLE")"
             fi
 
@@ -515,6 +519,7 @@ jobs:
                 # Merge: strip closing ``` from CLI, strip opening ```bash from container
                 CLI_COMMANDS=$(printf '%s' "$CLI_SLSA" | sed '1d' | sed '/^```$/d')
                 CONTAINER_COMMANDS=$(printf '%s' "$CONTAINER_SLSA" | sed '1d' | sed '/^```$/d')
+                # shellcheck disable=SC2016  # the backtick fence in the printf format is literal markdown
                 SLSA_BLOCK="$(printf '```bash\n%s\n\n%s\n```' "$CLI_COMMANDS" "$CONTAINER_COMMANDS")"
               else
                 SLSA_BLOCK="$CONTAINER_SLSA"

@@ -96,9 +96,11 @@ jobs:
             exit 1
           fi
 
-          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          echo "same_repo=$SAME_REPO" >> "$GITHUB_OUTPUT"
+          {
+            echo "pr_number=$PR_NUMBER"
+            echo "head_sha=$HEAD_SHA"
+            echo "same_repo=$SAME_REPO"
+          } >> "$GITHUB_OUTPUT"
 
       # zizmor: ignore[untrusted-checkout]; intentional: preview builds require
       # PR code. Mitigated: no secrets in this job, contents:read + pull-requests:read

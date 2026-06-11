@@ -19,7 +19,8 @@ Usage:
 Exit codes:
     0 -- the two defaults agree.
     1 -- drift detected, or a required literal could not be found.
-    2 -- configuration error (e.g. invalid ``--repo-root``).
+    2 -- configuration error (invalid ``--repo-root``, or a required
+         source file could not be read or parsed -- fail-closed).
 """
 
 import argparse
@@ -27,6 +28,15 @@ import ast
 import sys
 from pathlib import Path
 from typing import Final
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_source import (  # type: ignore[import-not-found]
+        GateSourceError,
+        parse_source,
+    )
+else:
+    from scripts._gate_source import GateSourceError, parse_source
 
 _RESOLVERS_REL: Final[str] = "src/synthorg/api/lifecycle_helpers/boot_resolvers.py"
 _SECURITY_REL: Final[str] = "src/synthorg/settings/definitions/security.py"
@@ -78,13 +88,6 @@ def _registered_default(tree: ast.Module, key: str) -> float | None:
     return None
 
 
-def _parse(path: Path) -> ast.Module | None:
-    try:
-        return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    except OSError, SyntaxError:
-        return None
-
-
 def main(argv: list[str] | None = None) -> int:
     """Compare the two defaults and return the gate exit code."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -96,14 +99,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: --repo-root is not a directory: {root}", file=sys.stderr)
         return 2
 
-    app_tree = _parse(root / _RESOLVERS_REL)
-    sec_tree = _parse(root / _SECURITY_REL)
-    if app_tree is None or sec_tree is None:
-        print(
-            f"error: could not parse {_RESOLVERS_REL} or {_SECURITY_REL}",
-            file=sys.stderr,
-        )
-        return 1
+    try:
+        app_tree = parse_source(root / _RESOLVERS_REL)
+        sec_tree = parse_source(root / _SECURITY_REL)
+    except GateSourceError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
     constant = _module_constant(app_tree, _CONSTANT_NAME)
     registered = _registered_default(sec_tree, _SETTING_KEY)

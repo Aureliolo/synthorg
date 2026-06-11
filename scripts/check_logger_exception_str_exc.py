@@ -113,7 +113,7 @@ import re
 import sys
 import tokenize
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -486,6 +486,7 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         # base set for the module body.
         self._leak_aliases: set[str] = set()
 
+    @override
     def visit_Module(self, node: ast.Module) -> None:
         """Walk module body in natural source order.
 
@@ -504,10 +505,12 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         self.generic_visit(node)
         self._leak_aliases = previous_aliases
 
+    @override
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         """Walk function body with a fresh inherited alias set."""
         self._visit_function_scope(node)
 
+    @override
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         """Walk async function body with a fresh inherited alias set."""
         self._visit_function_scope(node)
@@ -528,6 +531,7 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         self.generic_visit(node)
         self._leak_aliases = previous_aliases
 
+    @override
     def visit_Lambda(self, node: ast.Lambda) -> None:
         """Lambda body is its own scope; isolate alias additions."""
         previous_aliases = self._leak_aliases
@@ -582,17 +586,20 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         if isinstance(target, ast.Starred):
             self._apply_assignment(target.value, value, is_aug=is_aug)
 
+    @override
     def visit_Assign(self, node: ast.Assign) -> None:
         """Update aliases for each Name target then descend."""
         for target in node.targets:
             self._apply_assignment(target, node.value, is_aug=False)
         self.generic_visit(node)
 
+    @override
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         """Update aliases for the annotated target then descend."""
         self._apply_assignment(node.target, node.value, is_aug=False)
         self.generic_visit(node)
 
+    @override
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
         """Update aliases for the augmented target then descend.
 
@@ -604,6 +611,7 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         self._apply_assignment(node.target, node.value, is_aug=True)
         self.generic_visit(node)
 
+    @override
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
         """Update aliases for a walrus binding then descend.
 
@@ -644,6 +652,7 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
             for inner in _walk_alias_aware(value)
         )
 
+    @override
     def visit_Call(self, node: ast.Call) -> None:
         """Match ``<logger>.<method>(...)`` calls against both rules.
 

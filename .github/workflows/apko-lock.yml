@@ -183,6 +183,7 @@ jobs:
           #    additions JSON from disk (no argv pressure) and binds
           #    it as a single-element array, hence `$additions[0]`
           #    in the filter to get back the original FileAddition[].
+          # shellcheck disable=SC2016  # $branchName etc. are GraphQL variables, not shell expansions
           query='mutation($branchName: String!, $repoWithOwner: String!, $expectedOid: GitObjectID!, $additions: [FileAddition!]!) {
             createCommitOnBranch(input: {
               branch: { repositoryNameWithOwner: $repoWithOwner, branchName: $branchName }

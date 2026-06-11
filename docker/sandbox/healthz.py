@@ -8,6 +8,7 @@ stdlib -- no external dependencies.
 import http.server
 import json
 import time
+from typing import override
 
 
 class _Handler(http.server.BaseHTTPRequestHandler):
@@ -28,7 +29,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+    @override
+    def log_message(self, format: str, *args: object) -> None:
         pass  # Suppress access logs.
 
 

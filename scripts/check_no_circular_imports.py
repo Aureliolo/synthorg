@@ -32,6 +32,15 @@ import sys
 from pathlib import Path
 from typing import Final
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_source import (  # type: ignore[import-not-found]
+        GateSourceError,
+        parse_source,
+    )
+else:
+    from scripts._gate_source import GateSourceError, parse_source
+
 _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 _BASELINE_REL = Path("scripts") / "_circular_imports_baseline.txt"
 _SCAN_REL: Final[str] = "src/synthorg"
@@ -62,10 +71,7 @@ def extract_imports(path: Path) -> set[str]:
     relative to the file's package, but only ``synthorg.*`` targets are
     retained.
     """
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except SyntaxError, OSError:
-        return set()
+    tree = parse_source(path)
     imports: set[str] = set()
     _walk_module_body(tree.body, imports)
     return imports
@@ -333,7 +339,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entry. ``0`` clean, ``1`` on new cycle OR stale baseline entry."""
+    """CLI entry.
+
+    Returns ``0`` clean, ``1`` on a new cycle or stale baseline entry, and
+    ``2`` (fail-closed) when a source file cannot be read or parsed.
+    """
     args = _build_arg_parser().parse_args(argv)
     project_root: Path = args.project_root.resolve()
     baseline_path: Path = (
@@ -341,7 +351,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.baseline is not None
         else project_root / _BASELINE_REL
     )
-    result = check(project_root=project_root, baseline_path=baseline_path)
+    try:
+        result = check(project_root=project_root, baseline_path=baseline_path)
+    except GateSourceError as exc:
+        print(f"FAIL (cycle scan could not parse a module): {exc}", file=sys.stderr)
+        return 2
     if result.is_clean():
         return 0
     if result.new_cycles:

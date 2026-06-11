@@ -56,7 +56,7 @@ import re
 import sys
 import tokenize
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -97,6 +97,7 @@ class _Finder(ast.NodeVisitor):
         self.allow = allow
         self.violations: list[tuple[int, int, str]] = []
 
+    @override
     def visit_Call(self, node: ast.Call) -> None:
         # ``<receiver>.record_exception(...)``
         if (

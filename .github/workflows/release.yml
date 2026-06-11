@@ -296,6 +296,7 @@ jobs:
           # header so every reader sees the section is AI-generated before
           # they read the bullets. Keep the model identifier in sync with
           # the ``model:`` input on the Generate Highlights step above.
+          # shellcheck disable=SC2016  # the backticks are literal markdown code spans, not command substitution
           DISCLAIMER='> _AI-generated summary (model: `openai/gpt-4.1-mini` via GitHub Models). Commit-based changelog below._'
 
           NEW_BODY=$(printf '<!-- HIGHLIGHTS_START -->\n## Highlights\n\n%s\n\n%s\n\n<!-- HIGHLIGHTS_END -->\n\n%s' \

@@ -681,6 +681,13 @@ def check_file(file_path: Path, project_root: Path) -> list[str]:
     try:
         content = file_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
+        # Deliberate fail-open: this is a best-effort PostToolUse hook that
+        # scans only the single file the Edit/Write just produced, so a
+        # transient read failure must not block that edit (same rationale
+        # as check_backend_regional_defaults). It is advisory only -- there
+        # is no whole-tree CI gate for these design-token rules, so the
+        # skip cannot mask a violation that some authoritative gate would
+        # otherwise catch.
         print(
             f"WARNING: Could not read {file_path}: {exc} "
             f"-- design system check skipped.",

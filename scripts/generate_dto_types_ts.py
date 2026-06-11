@@ -53,7 +53,7 @@ import sys
 import tempfile
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -166,7 +166,14 @@ def _collect_strenum_classes() -> dict[str, type]:
     return name_to_class
 
 
-def _normalise_enum_descriptions(schema: dict[str, Any]) -> dict[str, Any]:
+def _as_dict(value: object) -> dict[str, object]:
+    """Narrow an arbitrary JSON value to a string-keyed dict (``{}`` if not)."""
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _normalise_enum_descriptions(schema: dict[str, object]) -> dict[str, object]:
     """Override string-enum schema descriptions with class docstrings.
 
     Litestar's schema generation occasionally substitutes an enum
@@ -178,7 +185,7 @@ def _normalise_enum_descriptions(schema: dict[str, Any]) -> dict[str, Any]:
     none) makes the export byte-stable.
     """
     name_to_class = _collect_strenum_classes()
-    schemas = schema.get("components", {}).get("schemas", {})
+    schemas = _as_dict(_as_dict(schema.get("components")).get("schemas"))
     for schema_name, defn in schemas.items():
         if not isinstance(defn, dict):
             continue
@@ -195,7 +202,7 @@ def _normalise_enum_descriptions(schema: dict[str, Any]) -> dict[str, Any]:
     return schema
 
 
-def _harvest_refs_under(subtree: Any, targets: set[str]) -> None:
+def _harvest_refs_under(subtree: object, targets: set[str]) -> None:
     """Recursively harvest every ``$ref`` value into ``targets``."""
     if isinstance(subtree, dict):
         ref = subtree.get("$ref")
@@ -208,7 +215,7 @@ def _harvest_refs_under(subtree: Any, targets: set[str]) -> None:
             _harvest_refs_under(item, targets)
 
 
-def _walk_to_key(subtree: Any, key: str, targets: set[str]) -> None:
+def _walk_to_key(subtree: object, key: str, targets: set[str]) -> None:
     """Walk ``subtree`` collecting refs under every node named ``key``."""
     if isinstance(subtree, dict):
         for child_key, child_value in subtree.items():
@@ -221,7 +228,9 @@ def _walk_to_key(subtree: Any, key: str, targets: set[str]) -> None:
             _walk_to_key(item, key, targets)
 
 
-def _collect_ref_targets(node: Any, key: str, schemas: dict[str, Any]) -> set[str]:
+def _collect_ref_targets(
+    node: object, key: str, schemas: dict[str, object]
+) -> set[str]:
     """Collect the transitive ``$ref`` closure reachable under ``key``.
 
     Returned names are bare ``components.schemas`` keys (the
@@ -255,8 +264,8 @@ def _collect_ref_targets(node: Any, key: str, schemas: dict[str, Any]) -> set[st
 
 
 def _promote_response_defaults_to_required(
-    schema: dict[str, Any],
-) -> dict[str, Any]:
+    schema: dict[str, object],
+) -> dict[str, object]:
     """Promote every property to ``required[]`` on response-side schemas.
 
     ``openapi-typescript`` reads JSON Schema's ``required[]`` literally
@@ -283,7 +292,7 @@ def _promote_response_defaults_to_required(
     re-runs are byte-stable for the drift gate.
     """
     paths = schema.get("paths", {})
-    schemas = schema.get("components", {}).get("schemas", {})
+    schemas = _as_dict(_as_dict(schema.get("components")).get("schemas"))
     request_refs = _collect_ref_targets(paths, "requestBody", schemas)
     response_refs = _collect_ref_targets(paths, "responses", schemas)
     request_only_names = request_refs - response_refs
@@ -312,7 +321,7 @@ def _promote_response_defaults_to_required(
     return schema
 
 
-def export_openapi_schema() -> dict[str, Any]:
+def export_openapi_schema() -> dict[str, object]:
     """Boot the app and return the enriched OpenAPI schema dict.
 
     Mirrors ``scripts/export_openapi.py`` step-for-step so the codegen
@@ -335,8 +344,11 @@ def export_openapi_schema() -> dict[str, Any]:
         from synthorg.api.openapi import inject_rfc9457_responses
 
         app = create_app()
-        schema = app.openapi_schema.to_schema()
-        schema = inject_rfc9457_responses(schema)
+        enriched = inject_rfc9457_responses(app.openapi_schema.to_schema())
+        # inject_rfc9457_responses returns dict[str, JsonValue]; widen to the
+        # mutable dict[str, object] our normalisers operate on (dict value
+        # types are invariant, so this needs an explicit cast).
+        schema = cast("dict[str, object]", enriched)
         schema = _normalise_enum_descriptions(schema)
         return _promote_response_defaults_to_required(schema)
 
@@ -416,13 +428,15 @@ def _pretty_envelope_name(raw: str) -> str | None:
     return None
 
 
-def _is_string_enum_schema(defn: dict[str, Any]) -> bool:
+def _is_string_enum_schema(defn: object) -> bool:
     """Return True when this schema is a Pydantic ``StrEnum`` mirror.
 
     Enums own a dedicated ``enum-values.gen.ts`` export with a runtime
     ``*_VALUES`` tuple plus a derived string-union type; emitting a
     second alias in ``dtos.gen.ts`` would collide with that name.
     """
+    if not isinstance(defn, dict):
+        return False
     if defn.get("type") != "string":
         return False
     members = defn.get("enum")
@@ -433,7 +447,7 @@ def _is_string_enum_schema(defn: dict[str, Any]) -> bool:
     )
 
 
-def render_dtos(schema: dict[str, Any]) -> str:
+def render_dtos(schema: dict[str, object]) -> str:
     """Render the ``dtos.gen.ts`` body from the OpenAPI schema dict.
 
     Pure: same input always produces the same output. Names are sorted
@@ -447,7 +461,7 @@ def render_dtos(schema: dict[str, Any]) -> str:
     Returns:
         The full ``dtos.gen.ts`` contents (header + import + aliases).
     """
-    components = schema.get("components", {}).get("schemas", {})
+    components = _as_dict(_as_dict(schema.get("components")).get("schemas"))
     lines: list[str] = []
     seen_aliases: set[str] = set()
     for name in sorted(components):
@@ -480,7 +494,7 @@ def _to_screaming_snake(name: str) -> str:
     return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", intermediate).upper()
 
 
-_TS_SINGLE_QUOTE_ESCAPES: Final[dict[str, str]] = {
+_TS_SINGLE_QUOTE_ESCAPES: Final[dict[str, str | int | None]] = {
     "\\": "\\\\",
     "'": "\\'",
     "\n": "\\n",
@@ -501,19 +515,21 @@ def _escape_for_ts_single_quoted(value: str) -> str:
     return value.translate(str.maketrans(_TS_SINGLE_QUOTE_ESCAPES))
 
 
-def render_enum_values(schema: dict[str, Any]) -> str:
+def render_enum_values(schema: dict[str, object]) -> str:
     """Render the ``enum-values.gen.ts`` body from the schema dict.
 
     Pure. Walks ``components.schemas`` for entries that are
     string-typed enums with a clean PascalCase title, and emits one
     ``*_VALUES`` tuple plus a derived type per entry. Sorted output.
     """
-    components = schema.get("components", {}).get("schemas", {})
+    components = _as_dict(_as_dict(schema.get("components")).get("schemas"))
     blocks: list[str] = []
     for name in sorted(components):
         if not _PASCAL_CASE.match(name):
             continue
         defn = components[name]
+        if not isinstance(defn, dict):
+            continue
         if defn.get("type") != "string":
             continue
         members = defn.get("enum")
@@ -535,7 +551,7 @@ def render_enum_values(schema: dict[str, Any]) -> str:
     return f"{_HEADER}{body}"
 
 
-def generate_all(schema: dict[str, Any] | None = None) -> tuple[str, str, str]:
+def generate_all(schema: dict[str, object] | None = None) -> tuple[str, str, str]:
     """Run the full pipeline and return the three rendered files.
 
     Args:

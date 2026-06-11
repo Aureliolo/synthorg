@@ -51,7 +51,7 @@ import sys
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -120,16 +120,19 @@ class _Collector(ast.NodeVisitor):
         self.candidates: list[_BareMockSite] = []
         self._fn_stack: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
 
+    @override
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._fn_stack.append(node)
         self.generic_visit(node)
         self._fn_stack.pop()
 
+    @override
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self._fn_stack.append(node)
         self.generic_visit(node)
         self._fn_stack.pop()
 
+    @override
     def visit_Call(self, node: ast.Call) -> None:
         if _is_bare_mock_call(node):
             enclosing: ast.FunctionDef | ast.AsyncFunctionDef | ast.Module

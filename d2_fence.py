@@ -32,7 +32,18 @@ _D2_CONFIG = {
 
 
 def _build_fence(executable: str = "d2") -> D2CustomFence:
-    """Build a D2CustomFence with hardcoded config matching mkdocs.yml."""
+    """Build a D2CustomFence with hardcoded config matching mkdocs.yml.
+
+    Args:
+        executable: Name of the D2 binary to probe for the version check.
+
+    Returns:
+        A configured D2CustomFence ready to register in superfences.
+
+    Raises:
+        RuntimeError: If the D2 executable is missing, times out, or exits
+            non-zero during the version check.
+    """
     try:
         subprocess.run(  # noqa: S603
             [executable, "--version"],

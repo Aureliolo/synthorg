@@ -7,7 +7,6 @@ to BOOLEAN, and extracts table-level PRIMARY KEY / UNIQUE constraints.
 """
 
 import sys
-from typing import Any
 
 import sqlglot
 from sqlglot import expressions as exp
@@ -151,7 +150,7 @@ def _extract_table_uniques(schema: exp.Schema) -> set[tuple[str, ...]]:
 def _normalise_column(
     coldef: exp.ColumnDef,
     dialect: str,
-    table_check_exprs: list[Any],
+    table_check_exprs: list[exp.Expression],
 ) -> NormalizedColumn | None:
     """Convert a ``ColumnDef`` AST into :class:`NormalizedColumn`.
 
@@ -207,13 +206,13 @@ def _has_boolean_check_in_column(
 
 def _has_boolean_check_in_table(
     column_name: str,
-    table_check_exprs: list[Any],
+    table_check_exprs: list[exp.Expression],
 ) -> bool:
     """Return True if any table-level CHECK encodes ``IN (0, 1)`` for *column_name*."""
     return any(_is_zero_one_in_check(expr, column_name) for expr in table_check_exprs)
 
 
-def _is_zero_one_in_check(expr: Any, column_name: str) -> bool:
+def _is_zero_one_in_check(expr: exp.Expression, column_name: str) -> bool:
     """Return True iff *expr* is the AST shape ``column_name IN (0, 1)``.
 
     Order of values is irrelevant: ``IN (1, 0)`` matches too. String

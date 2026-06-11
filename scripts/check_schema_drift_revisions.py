@@ -180,9 +180,7 @@ async def _dump_sqlite_schema(revisions_path: Path) -> str:
 async def _dump_postgres_schema(revisions_path: Path) -> str:
     """Apply revisions to a Postgres testcontainer and return its schema dump."""
     try:
-        from testcontainers.postgres import (
-            PostgresContainer,  # type: ignore[import-untyped]
-        )
+        from testcontainers.postgres import PostgresContainer
     except ImportError as exc:
         msg = (
             "testcontainers is required for the Postgres drift gate; "

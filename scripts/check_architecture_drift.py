@@ -25,32 +25,36 @@ Usage::
 """
 
 import argparse
-import importlib.util
 import json
 import sys
 from pathlib import Path
-from types import ModuleType
-from typing import Any, cast
+from typing import cast
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _architecture_lib import (  # type: ignore[import-not-found]
+        FAN_IN_DRIFT_TOLERANCE,
+        FAN_IN_FAIL_THRESHOLD,
+        LCOM_COHESIVE_MAX,
+        compute_budget_pressure,
+        compute_fan_in,
+        compute_lcom,
+    )
+else:
+    from scripts._architecture_lib import (
+        FAN_IN_DRIFT_TOLERANCE,
+        FAN_IN_FAIL_THRESHOLD,
+        LCOM_COHESIVE_MAX,
+        compute_budget_pressure,
+        compute_fan_in,
+        compute_lcom,
+    )
 
 _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 _REPORT_REL = Path("data") / "architecture_report.json"
 
 
-def _load_lib() -> ModuleType:
-    lib_path = Path(__file__).resolve().parent / "_architecture_lib.py"
-    spec = importlib.util.spec_from_file_location("_architecture_lib", lib_path)
-    if spec is None or spec.loader is None:
-        msg = f"could not load module spec for {lib_path}"
-        raise RuntimeError(msg)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_LIB: Any = cast("Any", _load_lib())
-
-
-def check(*, project_root: Path, baseline: dict[str, Any]) -> list[str]:
+def check(*, project_root: Path, baseline: dict[str, object]) -> list[str]:
     """Return human-readable regression messages (empty when clean).
 
     Args:
@@ -62,13 +66,13 @@ def check(*, project_root: Path, baseline: dict[str, Any]) -> list[str]:
     """
     violations: list[str] = []
 
-    base_fan: dict[str, int] = baseline.get("fan_in", {})
-    live_fan: dict[str, int] = _LIB.compute_fan_in(record_floor=0)
+    base_fan = cast("dict[str, int]", baseline.get("fan_in", {}))
+    live_fan = compute_fan_in(record_floor=0)
     for module, fan_in in sorted(live_fan.items()):
-        if fan_in < _LIB.FAN_IN_FAIL_THRESHOLD:
+        if fan_in < FAN_IN_FAIL_THRESHOLD:
             continue
         recorded = base_fan.get(module, 0)
-        if fan_in > recorded + _LIB.FAN_IN_DRIFT_TOLERANCE:
+        if fan_in > recorded + FAN_IN_DRIFT_TOLERANCE:
             violations.append(
                 f"fan-in: {module} is imported by {fan_in} modules "
                 f"(baseline {recorded}); it is becoming a coupling hub. "
@@ -76,8 +80,8 @@ def check(*, project_root: Path, baseline: dict[str, Any]) -> list[str]:
                 f"module, or regenerate the baseline if this is intended."
             )
 
-    base_bp: dict[str, Any] = baseline.get("budget_pressure", {})
-    live_bp: dict[str, Any] = _LIB.compute_budget_pressure(project_root)
+    base_bp = cast("dict[str, dict[str, object]]", baseline.get("budget_pressure", {}))
+    live_bp = compute_budget_pressure(project_root)
     for path, info in sorted(live_bp.items()):
         if path not in base_bp:
             violations.append(
@@ -87,12 +91,12 @@ def check(*, project_root: Path, baseline: dict[str, Any]) -> list[str]:
                 f"breaches the module-size cap."
             )
 
-    base_lcom: dict[str, Any] = baseline.get("lcom", {})
-    live_lcom: dict[str, Any] = _LIB.compute_lcom(project_root)
+    base_lcom = cast("dict[str, dict[str, int]]", baseline.get("lcom", {}))
+    live_lcom = compute_lcom(project_root)
     for cls, info in sorted(live_lcom.items()):
         recorded_cls = base_lcom.get(cls)
         if recorded_cls is None:
-            if info["lcom4"] > _LIB.LCOM_COHESIVE_MAX:
+            if info["lcom4"] > LCOM_COHESIVE_MAX:
                 violations.append(
                     f"lcom: new large service class {cls} "
                     f"({info['loc']} LOC) has LCOM4 {info['lcom4']} (>= 2): it "

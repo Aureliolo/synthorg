@@ -9,8 +9,8 @@ service-layer callers depend on the protocol, never on a backend impl.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.{{.Domain}}.models import {{.ClassName}}Item  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.{{.Domain}}.models import {{.ClassName}}Item
 
 
 @runtime_checkable

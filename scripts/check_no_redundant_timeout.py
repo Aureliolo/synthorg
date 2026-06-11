@@ -15,8 +15,15 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def main() -> int:
-    """Scan files for redundant pytest.mark.timeout(30) and report locations."""
+    """Scan files for redundant pytest.mark.timeout(30) and report locations.
+
+    Returns ``0`` clean, ``1`` when a redundant marker is found, and ``2``
+    (fail-closed) when a file cannot be read or decoded: a skipped file
+    could hide a redundant marker, so an unreadable file fails the gate
+    rather than passing silently.
+    """
     found = False
+    read_errors: list[str] = []
     for path in sys.argv[1:]:
         resolved = Path(path).resolve()
         if not resolved.is_relative_to(_REPO_ROOT):
@@ -28,8 +35,12 @@ def main() -> int:
                         print(f"{path}:{lineno}: {line.rstrip()}")
                         found = True
         except (UnicodeDecodeError, OSError) as exc:
-            print(f"WARNING: skipping {path}: {exc}", file=sys.stderr)
-            continue
+            read_errors.append(f"{path}: {exc}")
+    if read_errors:
+        print("ERROR: timeout-marker scan could not read these files:", file=sys.stderr)
+        for err in read_errors:
+            print(f"  {err}", file=sys.stderr)
+        return 2
     if found:
         print(
             "\npytest.mark.timeout(30) is redundant"

@@ -31,7 +31,7 @@ Run after ``scripts/generate_runtime_stats.py`` and before
 import re
 import sys
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 import yaml
 
@@ -75,7 +75,7 @@ class _UnknownStatError(Exception):
         super().__init__(message)
 
 
-def _lookup_display(stats: dict[str, Any], name: str) -> str:
+def _lookup_display(stats: dict[str, object], name: str) -> str:
     """Return ``stats[name]['display']`` or raise _UnknownStatError."""
     entry = stats.get(name)
     if not isinstance(entry, dict):
@@ -94,7 +94,7 @@ def _lookup_display(stats: dict[str, Any], name: str) -> str:
     return display
 
 
-def rewrite_text(text: str, stats: dict[str, Any]) -> str:
+def rewrite_text(text: str, stats: dict[str, object]) -> str:
     """Return *text* with every marker's inner content replaced by display.
 
     *stats* is the ``stats`` block from ``data/runtime_stats.yaml``,
@@ -108,7 +108,7 @@ def rewrite_text(text: str, stats: dict[str, Any]) -> str:
     return _MARKER_RE.sub(_sub, text)
 
 
-def inject_file(path: Path, stats: dict[str, Any]) -> bool:
+def inject_file(path: Path, stats: dict[str, object]) -> bool:
     """Rewrite *path* in-place; return True iff the file changed.
 
     Missing files are not an error: the gate, not the injector, owns
@@ -125,7 +125,7 @@ def inject_file(path: Path, stats: dict[str, Any]) -> bool:
     return True
 
 
-def _load_stats() -> dict[str, Any]:
+def _load_stats() -> dict[str, object]:
     """Load `data/runtime_stats.yaml` and return its ``stats`` block."""
     if not _STATS_FILE.is_file():
         msg = (

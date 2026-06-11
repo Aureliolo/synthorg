@@ -39,7 +39,7 @@ import json
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Protocol, cast
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _TESTS_ROOT = _REPO_ROOT / "tests"
@@ -82,8 +82,23 @@ def _count_catch_returns(source: str) -> int | None:
     return count
 
 
-def _load_gate() -> Any:
-    """Dynamically import the gate module so the hook always sees live source."""
+class _MockSpecGate(Protocol):
+    """Structural view of the dynamically-loaded ``check_mock_spec`` gate."""
+
+    @staticmethod
+    def _scan_file(path: Path) -> list[tuple[int, int]]:
+        """Return the gate's CATCH findings for the file at *path*."""
+        ...
+
+
+def _load_gate() -> _MockSpecGate:
+    """Dynamically import the gate module so the hook always sees live source.
+
+    The load is dynamic (not a module-level import) on purpose: it lets
+    the caller wrap it in ``try`` and fail OPEN when the gate is mid-edit
+    or otherwise broken, instead of crashing the hook process (which the
+    fail-closed hook layer would turn into a denial that wedges editing).
+    """
     spec = importlib.util.spec_from_file_location(
         "_ratchet_check_mock_spec",
         _GATE_PATH,
@@ -93,7 +108,7 @@ def _load_gate() -> Any:
         raise RuntimeError(msg)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return cast("_MockSpecGate", module)
 
 
 _SCAN_FAILED: int = -1
@@ -107,7 +122,7 @@ double-counting a successful zero against a failed scan.
 """
 
 
-def _scan_text(gate: Any, text: str, suffix: str = ".py") -> int:
+def _scan_text(gate: _MockSpecGate, text: str, suffix: str = ".py") -> int:
     """Return CATCH count for *text*, or ``_SCAN_FAILED`` on error.
 
     The sentinel lets the caller distinguish "scan succeeded with
@@ -140,7 +155,7 @@ def _scan_text(gate: Any, text: str, suffix: str = ".py") -> int:
 
 def _compute_after(
     tool_name: str,
-    tool_input: dict[str, Any],
+    tool_input: dict[str, object],
     before: str,
 ) -> str | None:
     """Return the post-edit content, or None if the edit is a no-op.
@@ -255,7 +270,7 @@ def main() -> int:
 
     tool_name = payload.get("tool_name", "")
     raw_input = payload.get("tool_input")
-    tool_input: dict[str, Any] = raw_input if isinstance(raw_input, dict) else {}
+    tool_input: dict[str, object] = raw_input if isinstance(raw_input, dict) else {}
     if tool_name not in ("Edit", "Write"):
         return 0
 

@@ -18,8 +18,15 @@ _EXCLUDED_RELATIVE: frozenset[str] = frozenset({".github/CHANGELOG.md"})
 
 
 def main() -> int:
-    """Scan files for em-dash characters and report locations."""
+    """Scan files for em-dash characters and report locations.
+
+    Returns ``0`` clean, ``1`` when an em-dash is found, and ``2``
+    (fail-closed) when a file cannot be read or decoded: a skipped file
+    could hide an em-dash, so an unreadable file fails the gate rather
+    than passing silently.
+    """
     found = False
+    read_errors: list[str] = []
     for path in sys.argv[1:]:
         resolved = Path(path).resolve()
         if not resolved.is_relative_to(_REPO_ROOT):
@@ -34,8 +41,12 @@ def main() -> int:
                         print(f"{path}:{lineno}: {line.rstrip()}")
                         found = True
         except (UnicodeDecodeError, OSError) as exc:
-            print(f"WARNING: skipping {path}: {exc}", file=sys.stderr)
-            continue
+            read_errors.append(f"{path}: {exc}")
+    if read_errors:
+        print("ERROR: em-dash scan could not read these files:", file=sys.stderr)
+        for err in read_errors:
+            print(f"  {err}", file=sys.stderr)
+        return 2
     if found:
         print(
             "\nEm-dashes (U+2014) found. Replace with the ASCII punctuation that"

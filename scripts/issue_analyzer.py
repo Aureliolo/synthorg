@@ -17,6 +17,52 @@ import re
 import subprocess
 import sys
 from collections import defaultdict
+from typing import TypedDict
+
+
+class _GhLabel(TypedDict):
+    """A GitHub issue label (only the ``name`` field this script reads)."""
+
+    name: str
+
+
+class _GhIssue(TypedDict):
+    """A GitHub issue from ``gh issue list --json`` (read fields only)."""
+
+    number: int
+    title: str
+    labels: list[_GhLabel]
+    # The GitHub API serialises a bodyless issue as ``"body": null``; callers
+    # normalise with ``or ""`` at the point of use.
+    body: str | None
+
+
+class _ScopeAnalysis(TypedDict):
+    """Technical-scope flags derived from an issue body."""
+
+    has_endpoints: bool
+    has_tests: bool
+    has_ws: bool
+    has_ui: bool
+    has_auth: bool
+    has_complex_logic: bool
+    has_db: bool
+    ac_count: int
+
+
+class _CategorizedIssue(_ScopeAnalysis):
+    """A categorized issue: scope-analysis flags plus priority/scope verdicts."""
+
+    num: int
+    title: str
+    current_prio: str
+    current_scope: str
+    recommended_prio: str
+    recommended_scope: str
+    versions: list[str]
+    issue_type: str
+    reason: str
+
 
 # Constants
 ZAP_REPORT_ISSUE_NUMBER = 760
@@ -41,7 +87,7 @@ DEFERRED_ISSUES: frozenset[int] = frozenset(
 )
 
 
-def run_gh_issue_list(limit: int = 200, state: str = "open") -> list[dict]:
+def run_gh_issue_list(limit: int = 200, state: str = "open") -> list[_GhIssue]:
     """Fetch issues from GitHub CLI.
 
     Args:
@@ -63,7 +109,7 @@ def run_gh_issue_list(limit: int = 200, state: str = "open") -> list[dict]:
         "--limit",
         str(limit),
         "--json",
-        "number,title,labels,body,createdAt,updatedAt",
+        "number,title,labels,body",
     ]
     try:
         result = subprocess.run(
@@ -75,7 +121,7 @@ def run_gh_issue_list(limit: int = 200, state: str = "open") -> list[dict]:
             errors="replace",
             timeout=30,
         )
-        return json.loads(result.stdout)
+        issues: list[_GhIssue] = json.loads(result.stdout)
     except subprocess.TimeoutExpired as e:
         print(
             f"Error: timed out fetching issues after {e.timeout}s",
@@ -94,9 +140,11 @@ def run_gh_issue_list(limit: int = 200, state: str = "open") -> list[dict]:
     except json.JSONDecodeError as e:
         print(f"Error parsing JSON: {e}", file=sys.stderr)
         sys.exit(1)
+    else:
+        return issues
 
 
-def get_label_value(labels: list[dict], prefix: str) -> str:
+def get_label_value(labels: list[_GhLabel], prefix: str) -> str:
     """Extract label value by prefix.
 
     Args:
@@ -113,7 +161,7 @@ def get_label_value(labels: list[dict], prefix: str) -> str:
     return "unknown"
 
 
-def analyze_scope(body: str, title: str) -> dict[str, bool | int]:
+def analyze_scope(body: str, title: str) -> _ScopeAnalysis:
     """Analyze technical scope from issue body.
 
     Args:
@@ -178,7 +226,7 @@ def _determine_priority(
 
 def _reassess_scope(
     current_scope: str,
-    analysis: dict[str, bool | int],
+    analysis: _ScopeAnalysis,
     reason: str,
 ) -> tuple[str, str]:
     """Re-assess scope based on technical analysis.
@@ -210,7 +258,7 @@ def _reassess_scope(
     return current_scope, reason
 
 
-def categorize_issue(issue: dict) -> dict[str, str | int | list[str]]:
+def categorize_issue(issue: _GhIssue) -> _CategorizedIssue:
     """Categorize an issue by priority and scope.
 
     Args:
@@ -251,7 +299,7 @@ def categorize_issue(issue: dict) -> dict[str, str | int | list[str]]:
     }
 
 
-def _format_issue_tags(issue: dict) -> str:
+def _format_issue_tags(issue: _CategorizedIssue) -> str:
     """Format issue attributes as tags string."""
     attrs = []
     if issue["has_endpoints"]:
@@ -267,7 +315,7 @@ def _format_issue_tags(issue: dict) -> str:
     return ", ".join(attrs) if attrs else ""
 
 
-def _print_issue_details(issue: dict) -> None:
+def _print_issue_details(issue: _CategorizedIssue) -> None:
     """Print details for a single issue."""
     print(f"\n  #{issue['num']}: {issue['title'][:60]}")
     print(
@@ -283,7 +331,7 @@ def _print_issue_details(issue: dict) -> None:
         print(f"    Tags: {tags}")
 
 
-def print_full_analysis(issues: list[dict]) -> None:
+def print_full_analysis(issues: list[_GhIssue]) -> None:
     """Print detailed analysis of all issues grouped by priority.
 
     Args:
@@ -299,7 +347,7 @@ def print_full_analysis(issues: list[dict]) -> None:
     print()
 
     # Group by recommended priority
-    groups: dict[str, list[dict]] = {
+    groups: dict[str, list[_CategorizedIssue]] = {
         "critical": [],
         "high": [],
         "medium": [],
@@ -327,7 +375,7 @@ def print_full_analysis(issues: list[dict]) -> None:
             _print_issue_details(issue)
 
 
-def print_summary(issues: list[dict]) -> None:
+def print_summary(issues: list[_GhIssue]) -> None:
     """Print brief summary by version.
 
     Args:
@@ -382,7 +430,7 @@ def print_summary(issues: list[dict]) -> None:
         )
 
 
-def print_critical(issues: list[dict]) -> None:
+def print_critical(issues: list[_GhIssue]) -> None:
     """Print only critical/high priority issues.
 
     Args:
@@ -407,7 +455,7 @@ def print_critical(issues: list[dict]) -> None:
             print(f"  Why: {issue['reason']}")
 
 
-def find_dependencies(issues: list[dict]) -> list[tuple[int, int]]:
+def find_dependencies(issues: list[_GhIssue]) -> list[tuple[int, int]]:
     """Find dependency chains in issue bodies.
 
     Args:
@@ -416,7 +464,7 @@ def find_dependencies(issues: list[dict]) -> list[tuple[int, int]]:
     Returns:
         List of (source_issue, target_issue) dependency tuples.
     """
-    deps = []
+    deps: list[tuple[int, int]] = []
 
     for issue in issues:
         body = issue.get("body", "") or ""
@@ -444,7 +492,7 @@ def find_dependencies(issues: list[dict]) -> list[tuple[int, int]]:
     return deps
 
 
-def propose_reorganization(issues: list[dict]) -> None:
+def propose_reorganization(issues: list[_GhIssue]) -> None:
     """Propose new version organization based on priority analysis.
 
     Args:
@@ -459,10 +507,10 @@ def propose_reorganization(issues: list[dict]) -> None:
     print("=" * 60)
 
     # Define version buckets based on recommended priority
-    v064 = []  # Critical
-    v065 = []  # High
-    v070 = []  # Medium
-    v080 = []  # Low + research
+    v064: list[_CategorizedIssue] = []  # Critical
+    v065: list[_CategorizedIssue] = []  # High
+    v070: list[_CategorizedIssue] = []  # Medium
+    v080: list[_CategorizedIssue] = []  # Low + research
 
     for c in categorized:
         if c["recommended_prio"] == "critical":

@@ -11,15 +11,24 @@ because they define types imported across the entire codebase. The ``.mypy_cache
 directory keeps subsequent full runs fast with warm cache.
 
 Exit codes match mypy: 0 (no errors/nothing to check), 1 (type errors found), etc.
-Git command failures fall back to running full mypy on ``src/`` and ``tests/``.
+Git command failures fall back to running full mypy on the whole-tree scope
+(``src/``, ``tests/``, ``evals/``, ``docker/``, ``d2_fence.py``).
 """
 
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
+from typing import Final
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Full-tree mypy scope, mirroring the CI type-check job so a full local
+# run catches the same surface CI does. evals/, docker/, and the root
+# d2_fence.py are type-clean and included. scripts/ is type-checked
+# separately by ``_run_scripts_mypy`` (it needs different flags).
+_FULL_SCOPE: Final[list[str]] = ["src/", "tests/", "evals/", "docker/", "d2_fence.py"]
 
 # Modules imported by nearly everything -- changes here mean "full mypy".
 _BLAST_RADIUS_MODULES = frozenset({"core", "config", "observability"})
@@ -169,19 +178,45 @@ def _run_mypy(paths: list[str]) -> int:
     return result.returncode
 
 
+def _run_scripts_mypy() -> int:
+    """Type-check ``scripts/`` with the flags its flat layout needs.
+
+    ``scripts/`` is a flat directory whose modules clash on bare vs
+    ``scripts.`` package names, so it needs ``MYPYPATH`` rooted at the
+    repo plus ``--explicit-package-bases`` to resolve to canonical
+    package names. Mirrors the second invocation in the CI type-check job.
+    """
+    cmd = [
+        sys.executable,
+        "-m",
+        "mypy",
+        "--num-workers=4",
+        "--explicit-package-bases",
+        "scripts/",
+    ]
+    env = {**os.environ, "MYPYPATH": str(_REPO_ROOT)}
+    result = subprocess.run(cmd, cwd=_REPO_ROOT, check=False, env=env)
+    return result.returncode
+
+
+def _run_full() -> int:
+    """Run mypy across the whole tree, including the ``scripts/`` pass."""
+    return max(_run_mypy(list(_FULL_SCOPE)), _run_scripts_mypy())
+
+
 def main() -> int:
     """Entry point."""
     try:
         base = _merge_base()
     except _GitError as exc:
         print(f"ERROR: {exc} -- running full mypy", file=sys.stderr)
-        return _run_mypy(["src/", "tests/"])
+        return _run_full()
 
     try:
         changed = _changed_files(base)
     except _GitError as exc:
         print(f"ERROR: {exc} -- running full mypy", file=sys.stderr)
-        return _run_mypy(["src/", "tests/"])
+        return _run_full()
 
     # Filter to Python files only.
     py_changed = [f for f in changed if f.endswith(".py")]
@@ -189,18 +224,26 @@ def main() -> int:
         print("No Python files changed -- skipping mypy.")
         return 0
 
+    scripts_changed = any(f.startswith("scripts/") for f in py_changed)
     paths, run_all = _affected_mypy_paths(py_changed)
 
     if run_all:
         print("Foundational module or conftest changed -- running full mypy.")
-        return _run_mypy(["src/", "tests/"])
+        return _run_full()
 
-    if not paths:
+    exit_code = 0
+    if paths:
+        print(f"Running mypy on: {', '.join(paths)}")
+        exit_code = _run_mypy(paths)
+    elif not scripts_changed:
         print("Changed files don't map to any mypy targets -- skipping.")
         return 0
 
-    print(f"Running mypy on: {', '.join(paths)}")
-    return _run_mypy(paths)
+    if scripts_changed:
+        print("scripts/ changed -- running scripts mypy.")
+        exit_code = max(exit_code, _run_scripts_mypy())
+
+    return exit_code
 
 
 if __name__ == "__main__":

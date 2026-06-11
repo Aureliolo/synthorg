@@ -44,6 +44,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import override
 
 GHCR_REGISTRY = "ghcr.io"
 REPO_PREFIX_DEFAULT = "aureliolo/synthorg-"
@@ -137,6 +138,7 @@ class ImageTag:
     image: str
     tag: str
 
+    @override
     def __str__(self) -> str:
         """Render as ``image:tag`` for log output."""
         return f"{self.image}:{self.tag}"

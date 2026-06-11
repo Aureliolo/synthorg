@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from evals.errors import EvalToolMissingError
 from evals.models.brief import Brief, BriefKind, ExecutableChecks, HiddenCheckSpec
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
     EVALS_EXECUTABLE_TIMEOUT,

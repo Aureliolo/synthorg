@@ -6,9 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.artifact import (
     Artifact,
-    ArtifactType,  # noqa: TC001,RUF100
+    ArtifactType,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001,RUF100
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     FilteredQueryRepository,

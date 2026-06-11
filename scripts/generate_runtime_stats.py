@@ -32,7 +32,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, TypedDict
+from typing import TYPE_CHECKING, Final, TypedDict
 
 import yaml
 
@@ -296,7 +296,7 @@ def _validate_fetcher_source_parity() -> None:
         raise RuntimeError(msg)
 
 
-def _load_existing() -> dict[str, Any]:
+def _load_existing() -> dict[str, object]:
     """Return existing YAML contents.
 
     Returns an empty dict when the file does not exist (first-ever
@@ -417,7 +417,7 @@ def main() -> int:
     # already raises on a non-mapping value.
     existing_stats_raw = existing.get("stats")
     existing_stats = existing_stats_raw if isinstance(existing_stats_raw, dict) else {}
-    new_stats: dict[str, Any] = {
+    new_stats: dict[str, object] = {
         name: value for name, value in existing_stats.items() if name in _FETCHERS
     }
     for name, fetcher in _FETCHERS.items():
@@ -444,7 +444,7 @@ def main() -> int:
     # success marker -- it advances on every run regardless of which
     # fetchers succeeded. To detect staleness, compare individual stat
     # values across runs rather than relying on this field.
-    output: dict[str, Any] = {
+    output: dict[str, object] = {
         "schema_version": _SCHEMA_VERSION,
         "last_generated_utc": _now_utc_iso(),
         "generator_revision": _git_head(),

@@ -38,7 +38,7 @@ import datetime as dt
 import importlib.util
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 import yaml
 
@@ -98,7 +98,7 @@ def _ensure_generator() -> ModuleType:
     return GENERATOR_MODULE
 
 
-def _load_committed() -> dict[str, Any]:
+def _load_committed() -> dict[str, object]:
     """Read committed YAML; raise ``RuntimeError`` on missing / corrupt input."""
     if not _YAML_FILE.is_file():
         msg = f"{_YAML_FILE} does not exist; cannot check freshness"
@@ -132,7 +132,7 @@ def _parse_iso_utc(value: str) -> dt.datetime:
     return parsed.astimezone(dt.UTC)
 
 
-def _check_age(committed: dict[str, Any]) -> list[str]:
+def _check_age(committed: dict[str, object]) -> list[str]:
     """Return age-violation lines (empty if fresh)."""
     raw_ts = committed.get("last_generated_utc")
     if not isinstance(raw_ts, str):
@@ -158,7 +158,7 @@ def _check_age(committed: dict[str, Any]) -> list[str]:
 
 
 def _check_drift(
-    committed: dict[str, Any],
+    committed: dict[str, object],
     gen_mod: ModuleType,
     *,
     skip_network: bool,

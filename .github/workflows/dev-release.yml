@@ -121,10 +121,12 @@ jobs:
 
           DEV_TAG="v${NEXT_VERSION}-dev.${DEV_NUM}"
           echo "Dev version: $DEV_TAG"
-          echo "dev_tag=$DEV_TAG" >> "$GITHUB_OUTPUT"
-          echo "dev_num=$DEV_NUM" >> "$GITHUB_OUTPUT"
-          echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
-          echo "skip=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "dev_tag=$DEV_TAG"
+            echo "dev_num=$DEV_NUM"
+            echo "next_version=$NEXT_VERSION"
+            echo "skip=false"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check if dev tag already exists
         if: steps.check-tag.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
@@ -174,6 +176,7 @@ jobs:
 
           NOTES_FILE=$(mktemp /tmp/dev-release-notes.XXXXXX)
           trap 'rm -f "$NOTES_FILE"' EXIT
+          # shellcheck disable=SC2016  # backticks in the printf format strings are literal markdown code spans
           {
             printf 'Dev build #%s toward v%s\n\n' "$DEV_NUM" "$NEXT_VERSION"
             printf '**Commit:** `%s`\n' "$SHORT_SHA"

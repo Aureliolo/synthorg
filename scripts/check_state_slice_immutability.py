@@ -33,6 +33,15 @@ import sys
 from pathlib import Path
 from typing import Final
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_source import (  # type: ignore[import-not-found]
+        GateSourceError,
+        parse_source,
+    )
+else:
+    from scripts._gate_source import GateSourceError, parse_source
+
 _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 _BASELINE_REL = Path("scripts") / "_state_slice_immutability_baseline.txt"
 _SCAN_REL: Final[str] = "src/synthorg"
@@ -80,7 +89,7 @@ def _find_model_config_call(node: ast.ClassDef) -> ast.Call | None:
     """Return the ``ConfigDict(...)`` call assigned to ``model_config`` in *node*."""
     for stmt in node.body:
         if isinstance(stmt, ast.AnnAssign):
-            target = stmt.target
+            target: ast.expr | None = stmt.target
             value = stmt.value
         elif isinstance(stmt, ast.Assign):
             target = stmt.targets[0] if len(stmt.targets) == 1 else None
@@ -139,11 +148,12 @@ def _violation_reason(node: ast.ClassDef) -> str | None:
 
 
 def find_state_slice_issues(path: Path) -> list[Finding]:
-    """Scan *path* and return every state-slice contract violation."""
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except SyntaxError, OSError:
-        return []
+    """Scan *path* and return every state-slice contract violation.
+
+    Raises:
+        GateSourceError: If *path* cannot be read or parsed (fail-closed).
+    """
+    tree = parse_source(path)
     findings: list[Finding] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
@@ -247,7 +257,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.baseline is not None
         else project_root / _BASELINE_REL
     )
-    findings = check(project_root=project_root, baseline_path=baseline_path)
+    try:
+        findings = check(project_root=project_root, baseline_path=baseline_path)
+    except GateSourceError as exc:
+        print(f"FAIL (state-slice scan could not read a file): {exc}", file=sys.stderr)
+        return 2
     if not findings:
         return 0
     print(

@@ -164,6 +164,7 @@ jobs:
             done <<< "$CHANGED_FILES"
           } | jq -s '.' > "$additions_file"
 
+          # shellcheck disable=SC2016  # $branchName etc. are GraphQL variables, not shell expansions
           query='mutation($branchName: String!, $repoWithOwner: String!, $expectedOid: GitObjectID!, $additions: [FileAddition!]!) {
             createCommitOnBranch(input: {
               branch: { repositoryNameWithOwner: $repoWithOwner, branchName: $branchName }

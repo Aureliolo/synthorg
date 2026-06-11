@@ -7,12 +7,12 @@ layers; services centralize audit logging; repositories must not log
 mutations themselves).
 """
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.persistence.{{.Domain}}_protocol import (
-    {{.ClassName}}Repository,  # noqa: TC001
+    {{.ClassName}}Repository,
 )
-from synthorg.{{.Domain}}.models import {{.ClassName}}Item  # noqa: TC001
+from synthorg.{{.Domain}}.models import {{.ClassName}}Item
 
 logger = get_logger(__name__)
 

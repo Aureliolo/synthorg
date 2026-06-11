@@ -27,9 +27,11 @@ import sys
 from pathlib import Path
 from typing import Final
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from _module_size_lib import count_loc
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _module_size_lib import count_loc  # type: ignore[import-not-found]
+else:
+    from scripts._module_size_lib import count_loc
 
 _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 _SLICE_BASE_NAME: Final[str] = "BaseFeatureStateSlice"
