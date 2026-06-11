@@ -10,7 +10,6 @@ root task as its idempotency key (see
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from litestar import Controller, post
@@ -24,6 +23,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveSubmission
+from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
 from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import log_task_exceptions
@@ -31,9 +31,6 @@ from synthorg.observability.events.objectives import (
     OBJECTIVE_PIPELINE_FAILED,
     OBJECTIVE_SUBMISSION_RECEIVED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
 
 logger = get_logger(__name__)
 

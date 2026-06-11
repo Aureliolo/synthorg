@@ -7,17 +7,21 @@ the Litestar route handlers.
 import asyncio
 import copy
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from litestar.datastructures import State
 from pydantic import ValidationError
 
+from synthorg.api.dto_workflow import (
+    CreateFromBlueprintRequest,
+    UpdateWorkflowDefinitionRequest,
+)
 from synthorg.engine.errors import WorkflowDefinitionValidationError
 from synthorg.engine.workflow.blueprint_errors import (
     BlueprintNotFoundError,
     BlueprintValidationError,
 )
 from synthorg.engine.workflow.blueprint_loader import load_blueprint
+from synthorg.engine.workflow.blueprint_models import BlueprintData
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -26,6 +30,7 @@ from synthorg.engine.workflow.definition import (
 )
 from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 from synthorg.engine.workflow.validation import (
+    WorkflowValidationError,
     validate_subworkflow_graph,
     validate_subworkflow_io,
 )
@@ -37,14 +42,6 @@ from synthorg.observability.events.workflow_definition import (
 from synthorg.observability.metrics_hub import record_blueprint_instantiation
 from synthorg.persistence.state import persistence_of
 from synthorg.versioning import VersioningService
-
-if TYPE_CHECKING:
-    from synthorg.api.dto_workflow import (
-        CreateFromBlueprintRequest,
-        UpdateWorkflowDefinitionRequest,
-    )
-    from synthorg.engine.workflow.blueprint_models import BlueprintData
-    from synthorg.engine.workflow.validation import WorkflowValidationError
 
 logger = get_logger(__name__)
 

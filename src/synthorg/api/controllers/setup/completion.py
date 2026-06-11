@@ -9,8 +9,6 @@ broken provider config leaves the operator a retryable error rather than
 a half-configured runtime that reports itself as "complete".
 """
 
-from typing import TYPE_CHECKING
-
 from litestar import Controller, post
 from litestar.datastructures import State
 
@@ -64,10 +62,8 @@ from synthorg.providers.state import (
     ProvidersStateSlice,
     provider_management_of,
 )
+from synthorg.settings.service import SettingsService
 from synthorg.settings.state import settings_service_of
-
-if TYPE_CHECKING:
-    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 

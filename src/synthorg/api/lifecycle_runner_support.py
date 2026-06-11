@@ -10,7 +10,6 @@ the startup + shutdown runners and the builder import them without a cycle.
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
@@ -23,12 +22,10 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
 )
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.providers.health_prober import ProviderHealthProber
+from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
-
-if TYPE_CHECKING:
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.providers.health_prober import ProviderHealthProber
-    from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
 logger = get_logger(__name__)
 

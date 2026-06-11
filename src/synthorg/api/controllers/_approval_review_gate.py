@@ -11,8 +11,6 @@ Exposes:
 - :func:`signal_resume_intent` -- orchestrates both flows.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.api.controllers._conversational_resume import (
     _reread_approval_item,
     try_conversational_intake_resume,
@@ -35,6 +33,7 @@ from synthorg.engine.errors import (
     TaskNotFoundError,
     TaskVersionConflictError,
 )
+from synthorg.engine.review_gate import ReviewGateService
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -50,9 +49,6 @@ from synthorg.observability.events.security import (
     SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
 )
 from synthorg.workers.state import worker_execution_service_of
-
-if TYPE_CHECKING:
-    from synthorg.engine.review_gate import ReviewGateService
 
 logger = get_logger(__name__)
 

@@ -10,7 +10,6 @@ asynchronously; the operator polls the project's structure map / tasks.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from litestar import Controller, post
 from litestar.datastructures import State
@@ -26,6 +25,7 @@ from synthorg.api.rate_limits import (
 from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.brownfield.models import CodebaseImportSubmission
+from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
 from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import log_task_exceptions
@@ -33,9 +33,6 @@ from synthorg.observability.events.brownfield import (
     BROWNFIELD_IMPORT_STARTED,
     BROWNFIELD_PIPELINE_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
 
 logger = get_logger(__name__)
 

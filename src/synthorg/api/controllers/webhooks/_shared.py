@@ -10,7 +10,6 @@ this module so there is one canonical patch target.
 """
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
 
 from litestar import Request
 from litestar.datastructures import State
@@ -22,12 +21,15 @@ from synthorg.api.controllers._webhooks_wiring import (
     _build_idem_scope,
     _get_replay_protector,
 )
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
     UnauthorizedError,
     ValidationError,
 )
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.models import Connection, ConnectionType
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.integrations.webhooks.event_bus_bridge import publish_webhook_event
 from synthorg.integrations.webhooks.replay_protection import MAX_NONCE_CHARS
@@ -38,11 +40,6 @@ from synthorg.observability.events.integrations import (
     WEBHOOK_ACCEPTED,
     WEBHOOK_REJECTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
-    from synthorg.integrations.connections.models import Connection, ConnectionType
 
 logger = get_logger(__name__)
 

@@ -1,6 +1,6 @@
 """Reports controller -- automated report generation and retrieval."""
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from litestar import Controller, get, post
 from litestar.datastructures import State
@@ -16,15 +16,13 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
+from synthorg.budget.automated_reports import AutomatedReportService
 from synthorg.budget.report_config import ReportPeriod
+from synthorg.budget.report_templates import ComprehensiveReport
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_SERVICE_UNAVAILABLE
-
-if TYPE_CHECKING:
-    from synthorg.budget.automated_reports import AutomatedReportService
-    from synthorg.budget.report_templates import ComprehensiveReport
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50

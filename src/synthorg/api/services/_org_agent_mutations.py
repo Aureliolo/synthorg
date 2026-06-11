@@ -5,7 +5,6 @@ the service orchestration.
 """
 
 import json
-from typing import TYPE_CHECKING
 
 from pydantic import JsonValue
 
@@ -31,13 +30,11 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.organization.models import (
-        CreateAgentOrgRequest,
-        ReorderAgentsRequest,
-        UpdateAgentOrgRequest,
-    )
+from synthorg.organization.models import (
+    CreateAgentOrgRequest,
+    ReorderAgentsRequest,
+    UpdateAgentOrgRequest,
+)
 
 logger = get_logger(__name__)
 

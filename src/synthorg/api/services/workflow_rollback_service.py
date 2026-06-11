@@ -18,7 +18,6 @@ AppState wiring is required.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import NotFoundError, VersionConflictError
@@ -36,14 +35,12 @@ from synthorg.observability.events.workflow_definition import (
 from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_SNAPSHOT_FAILED,
 )
+from synthorg.persistence.version_protocol import VersionRepository
+from synthorg.persistence.workflow_definition_protocol import (
+    WorkflowDefinitionRepository,
+)
 from synthorg.versioning import VersioningService
-
-if TYPE_CHECKING:
-    from synthorg.persistence.version_protocol import VersionRepository
-    from synthorg.persistence.workflow_definition_protocol import (
-        WorkflowDefinitionRepository,
-    )
-    from synthorg.versioning.models import RollbackWorkflowRequest, VersionSnapshot
+from synthorg.versioning.models import RollbackWorkflowRequest, VersionSnapshot
 
 logger = get_logger(__name__)
 

@@ -8,34 +8,32 @@ health-prober / training-backend state now lives on the shared
 """
 
 from collections.abc import Awaitable
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from synthorg.a2a.state import A2aStateSlice
+from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.lifecycle import _safe_shutdown, _try_stop
 from synthorg.api.lifecycle_runner_support import (
     _cancel_with_timeout,
     _LifecycleTasks,
 )
 from synthorg.api.state import AppState
+from synthorg.backup.service import BackupService
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.state import HrStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_SHUTDOWN
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.workers.state import RuntimeStateSlice
-
-if TYPE_CHECKING:
-    from synthorg.api.bus_bridge import MessageBusBridge
-    from synthorg.backup.service import BackupService
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.communication.meeting.scheduler import MeetingScheduler
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-    from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
 logger = get_logger(__name__)
 

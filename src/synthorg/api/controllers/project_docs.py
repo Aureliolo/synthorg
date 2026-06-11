@@ -5,7 +5,7 @@ Writes happen in-process via the agent tool or MCP handler; this
 controller exposes list / get / history / search for the wiki UI.
 """
 
-from typing import TYPE_CHECKING, Annotated, Final
+from typing import Annotated, Final
 
 from litestar import Controller, Response, get
 from litestar.datastructures import State
@@ -34,11 +34,9 @@ from synthorg.docs_engine.models import (
     DocVersion,
     LivingDocument,
 )
+from synthorg.docs_engine.service import DocsService
 from synthorg.docs_engine.state import DocsStateSlice
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.docs_engine.service import DocsService
 
 logger = get_logger(__name__)
 

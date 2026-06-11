@@ -1,7 +1,6 @@
 """Coordination controller -- multi-agent coordination endpoint."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from litestar import Controller, Request, post
 from litestar.datastructures import State
@@ -20,12 +19,15 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     NotFoundError,
     ServiceUnavailableError,
     ValidationError,
 )
+from synthorg.core.task import Task
+from synthorg.engine.coordination.attribution import CoordinationResultWithAttribution
 from synthorg.engine.coordination.models import (
     CoordinationContext,
     CoordinationResult,
@@ -48,13 +50,6 @@ from synthorg.observability.events.api import (
 )
 from synthorg.settings.state import config_resolver_of
 from synthorg.workers.state import RuntimeStateSlice
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.coordination.attribution import (
-        CoordinationResultWithAttribution,
-    )
 
 logger = get_logger(__name__)
 

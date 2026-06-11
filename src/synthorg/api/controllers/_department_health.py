@@ -7,12 +7,13 @@ Litestar route handlers.
 import asyncio
 import math
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, NamedTuple, Self
+from typing import NamedTuple, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg._core.features import require_service
 from synthorg.api.state import AppState
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import (
     DEFAULT_CURRENCY,
     CurrencyCode,
@@ -20,20 +21,17 @@ from synthorg.budget.currency import (
 )
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
+from synthorg.config.agent_schema import AgentConfig
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
-
-if TYPE_CHECKING:
-    from synthorg.budget.cost_record import CostRecord
-    from synthorg.config.agent_schema import AgentConfig
-    from synthorg.hr.performance.models import AgentPerformanceSnapshot
 
 logger = get_logger(__name__)
 

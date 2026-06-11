@@ -7,7 +7,6 @@ file focused on the Litestar route handlers.
 
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
 
 import jwt
 from litestar import Request
@@ -28,10 +27,11 @@ from synthorg.api.auth.cookies import (
     make_refresh_cookie,
     make_session_cookie,
 )
+from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.api.state import AppState
 from synthorg.core.auth.config import AuthConfig
-from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.auth.models import AuthenticatedUser, User
 from synthorg.core.auth.session import Session
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -44,10 +44,6 @@ from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
     SECURITY_SESSION_CREATED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.auth.service import AuthService
-    from synthorg.core.auth.models import User
 
 logger = get_logger(__name__)
 

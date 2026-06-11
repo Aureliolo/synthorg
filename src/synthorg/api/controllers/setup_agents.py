@@ -6,10 +6,12 @@ operations that were previously inline in ``setup.py``.
 
 import json
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from pydantic import JsonValue
 
+from synthorg.api.controllers.setup_models import SetupAgentRequest, SetupAgentSummary
+from synthorg.config.schema import ProviderConfig
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.normalization import normalize_optional_string
 from synthorg.observability import get_logger
@@ -23,19 +25,9 @@ from synthorg.observability.events.setup import (
 )
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
-
-if TYPE_CHECKING:
-    from synthorg.api.controllers.setup_models import (
-        SetupAgentRequest,
-        SetupAgentSummary,
-    )
-    from synthorg.config.schema import ProviderConfig
-    from synthorg.settings.service import SettingsService
-    from synthorg.templates.model_matcher import (
-        ModelMatcherConfig,
-        _ProviderWithModels,
-    )
-    from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
+from synthorg.settings.service import SettingsService
+from synthorg.templates.model_matcher import ModelMatcherConfig, _ProviderWithModels
+from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
 
 logger = get_logger(__name__)
 

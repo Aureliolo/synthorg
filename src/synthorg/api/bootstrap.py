@@ -6,8 +6,7 @@ and registers them as ``AgentIdentity`` instances in the
 and again after setup completion.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.config.agent_schema import AgentConfig
 from synthorg.core.agent import (
     AgentIdentity,
     MemoryConfig,
@@ -19,16 +18,13 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.role import Authority
 from synthorg.hr.errors import AgentAlreadyRegisteredError
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENT_BOOTSTRAP_SKIPPED,
     SETUP_AGENTS_BOOTSTRAPPED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.config.agent_schema import AgentConfig
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 

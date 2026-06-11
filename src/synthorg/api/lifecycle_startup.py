@@ -9,19 +9,23 @@ too. Split out of ``api.lifecycle`` to keep each file under the size budget.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from synthorg.api.api_core_state import ApiCoreStateSlice, auth_service_of
 from synthorg.api.auth.secret import resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import ensure_system_user
+from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.lifecycle_helpers.auth_store_autowire import wire_auth_stores
 from synthorg.api.lifecycle_shared import _cleanup_on_failure
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.backup.models import BackupTrigger
+from synthorg.backup.service import BackupService
 from synthorg.backup.state import BackupStateSlice
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.integrations.state import (
     IntegrationsStateSlice,
     connection_catalog_of,
@@ -33,17 +37,10 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.ontology.state import OntologyStateSlice
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.workers.state import RuntimeStateSlice
-
-if TYPE_CHECKING:
-    from synthorg.api.bus_bridge import MessageBusBridge
-    from synthorg.backup.service import BackupService
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.communication.meeting.scheduler import MeetingScheduler
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-    from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
 logger = get_logger(__name__)
 

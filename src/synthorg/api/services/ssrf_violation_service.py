@@ -21,7 +21,7 @@ implication.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -36,13 +36,11 @@ from synthorg.observability.events.security import (
     SECURITY_SSRF_VIOLATION_RECORDED,
     SECURITY_SSRF_VIOLATION_RESOLUTION_FAILED,
 )
+from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
 from synthorg.security.ssrf_violation import (
     SsrfViolation,
     SsrfViolationStatus,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 100

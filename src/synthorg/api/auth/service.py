@@ -17,6 +17,7 @@ from synthorg.api.auth.claims import JwtClaims
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
 from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.api.boundary import parse_typed
+from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import User
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
@@ -36,7 +37,6 @@ from synthorg.observability.events.security import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.auth.config import AuthConfig
     from synthorg.persistence.auth_protocol import RefreshTokenRepository
     from synthorg.persistence.user_protocol import UserRepository
 

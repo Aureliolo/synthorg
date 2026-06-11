@@ -21,17 +21,18 @@ even after its feature is toggled off:
 parked-context flow in ``_approval_review_gate`` imports it from here.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg._core.features import require_service
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import resolve_decided_by
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import agent_registry_of
+from synthorg.meta.chief_of_staff.group_models import ConversationInvite
+from synthorg.meta.chief_of_staff.models import ConversationalProposal
 from synthorg.meta.state import (
     MetaStateSlice,
     conversation_invite_repo_of,
@@ -56,11 +57,6 @@ from synthorg.observability.events.chief_of_staff import (
     COS_GROUP_INVITE_FAILED,
     COS_GROUP_PARTICIPANTS_ADDED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.approval import ApprovalItem
-    from synthorg.meta.chief_of_staff.group_models import ConversationInvite
-    from synthorg.meta.chief_of_staff.models import ConversationalProposal
 
 logger = get_logger(__name__)
 

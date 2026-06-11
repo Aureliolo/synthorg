@@ -6,8 +6,9 @@ selection, tier coverage) live in ``setup.agent_helpers``.
 """
 
 import json
-from typing import TYPE_CHECKING, Final, NamedTuple
+from typing import Final, NamedTuple
 
+from synthorg.api.controllers.setup_agents import departments_to_json
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.domain_errors import (
@@ -28,12 +29,9 @@ from synthorg.observability.events.setup import (
 )
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
-
-if TYPE_CHECKING:
-    from synthorg.api.controllers.setup_agents import departments_to_json  # noqa: F401
-    from synthorg.settings.service import SettingsService
-    from synthorg.templates.loader import LoadedTemplate
-    from synthorg.templates.schema import CompanyTemplate
+from synthorg.settings.service import SettingsService
+from synthorg.templates.loader import LoadedTemplate
+from synthorg.templates.schema import CompanyTemplate
 
 logger = get_logger(__name__)
 
@@ -366,10 +364,6 @@ def resolve_template(template_name: str | None) -> TemplateResult:
     Returns:
         ``TemplateResult`` instance.
     """
-    from synthorg.api.controllers.setup_agents import (  # noqa: PLC0415
-        departments_to_json,
-    )
-
     if template_name is None:
         return TemplateResult("", 0, None, None)
 

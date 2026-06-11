@@ -8,12 +8,10 @@ without an authenticated user opt into the ``api`` sentinel via the
 :data:`BACKGROUND_AUDIT_ACTOR` constant.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.api.auth.context import get_authenticated_user
-
-if TYPE_CHECKING:
-    from synthorg.api.dto_provider_capabilities import ProviderAuditActor
+from synthorg.api.dto_provider_capabilities import ProviderAuditActor
 
 
 def audit_actor_from_context() -> ProviderAuditActor:

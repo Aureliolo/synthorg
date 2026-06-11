@@ -6,31 +6,26 @@ so ``create_app`` stays under the file-size budget.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+from synthorg.api.config import ApiConfig
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceConnectionError
+from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
+from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.health.prober import HealthProberService
+from synthorg.integrations.mcp_catalog.installations import McpInstallationRepository
+from synthorg.integrations.mcp_catalog.service import CatalogService
+from synthorg.integrations.oauth.token_manager import OAuthTokenManager
+from synthorg.integrations.tunnel.protocol import TunnelProvider
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.config import ApiConfig
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.config.schema import RootConfig
-    from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
-    from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
-    from synthorg.integrations.health.prober import HealthProberService
-    from synthorg.integrations.mcp_catalog.installations import (
-        McpInstallationRepository,
-    )
-    from synthorg.integrations.mcp_catalog.service import CatalogService
-    from synthorg.integrations.oauth.token_manager import OAuthTokenManager
-    from synthorg.integrations.tunnel.protocol import TunnelProvider
-    from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 

@@ -7,12 +7,16 @@ approval-timeout scheduler). The dispatcher is later swapped onto
 ``app_state`` via the lifecycle builder.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.api.state import AppState
+from synthorg.backup.service import BackupService
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.config.schema import RootConfig
 from synthorg.observability import get_logger
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.settings.service import SettingsService
 from synthorg.settings.state import SettingsStateSlice
+from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers import (
     ApiBridgeSettingsSubscriber,
     BackupSettingsSubscriber,
@@ -24,14 +28,6 @@ from synthorg.settings.subscribers import (
     SecurityTimeoutSettingsSubscriber,
     WorkersBridgeSettingsSubscriber,
 )
-
-if TYPE_CHECKING:
-    from synthorg.backup.service import BackupService
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.config.schema import RootConfig
-    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-    from synthorg.settings.service import SettingsService
-    from synthorg.settings.subscriber import SettingsSubscriber
 
 logger = get_logger(__name__)
 

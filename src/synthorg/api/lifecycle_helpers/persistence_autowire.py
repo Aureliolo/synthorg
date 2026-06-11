@@ -13,8 +13,6 @@ others; the controllers behind an unwired service surface 503 until the
 operator fixes the underlying configuration and reboots.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
@@ -26,10 +24,7 @@ from synthorg.observability.events.api import (
     API_SERVICE_AUTO_WIRE_FAILED,
     API_SERVICE_AUTO_WIRED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.protocol import PersistenceBackend
-
+from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 

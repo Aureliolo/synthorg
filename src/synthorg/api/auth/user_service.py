@@ -11,8 +11,6 @@ listing or save failures stay under ``api.user.*`` and do not enter the
 chain.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.auth.models import User
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -28,10 +26,8 @@ from synthorg.observability.events.security import (
     SECURITY_USER_UPDATED,
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-
-if TYPE_CHECKING:
-    from synthorg.persistence.auth_protocol import RefreshTokenRepository
-    from synthorg.persistence.user_protocol import UserRepository
+from synthorg.persistence.auth_protocol import RefreshTokenRepository
+from synthorg.persistence.user_protocol import UserRepository
 
 logger = get_logger(__name__)
 

@@ -11,11 +11,11 @@ re-entering Litestar lifespan does not churn long-lived clients.
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
 
 from synthorg.api.api_core_state import ticket_store_of
 from synthorg.api.state import AppState
 from synthorg.communication.state import CommunicationStateSlice
+from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.notifications.factory import build_notification_dispatcher
@@ -25,14 +25,11 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_BRIDGE_CONFIG_RESOLVE_FAILED,
 )
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from synthorg.settings.bridge_configs import NotificationsBridgeConfig
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_float
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
-
-if TYPE_CHECKING:
-    from synthorg.config.schema import RootConfig
-    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-    from synthorg.settings.bridge_configs import NotificationsBridgeConfig
 
 logger = get_logger(__name__)
 

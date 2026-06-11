@@ -6,7 +6,7 @@ GPU / dependency / disk preflight checks, and recommends a batch size from
 detected VRAM. No Litestar surface; the controller imports these.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,9 +30,7 @@ from synthorg.settings.definitions.memory import (
     FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S,
 )
 from synthorg.settings.errors import SettingNotFoundError
-
-if TYPE_CHECKING:
-    from synthorg.settings.service import SettingsService
+from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
