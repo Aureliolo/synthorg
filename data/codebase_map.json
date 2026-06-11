@@ -15864,7 +15864,7 @@
     },
     {
       "kind": "code",
-      "loc": 406,
+      "loc": 409,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/webhook_receipt_repo.py",
       "owning_feature": "persistence"
@@ -16585,7 +16585,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 769,
+      "loc": 775,
       "loc_cap": 1100,
       "module": "src/synthorg/persistence/sqlite/subworkflow_repo.py",
       "owning_feature": "persistence"
