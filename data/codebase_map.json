@@ -12763,7 +12763,7 @@
     },
     {
       "kind": "code",
-      "loc": 178,
+      "loc": 187,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/script_handler.py",
       "owning_feature": "toolsmith"
