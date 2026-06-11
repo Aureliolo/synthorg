@@ -88,14 +88,14 @@ class SsrfViolationService:
             reraise_critical(exc)
             logger.warning(
                 SECURITY_SSRF_VIOLATION_RECORDED,
-                violation_id=violation.id,
+                violation_id=str(violation.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise
         logger.info(
             SECURITY_SSRF_VIOLATION_RECORDED,
-            violation_id=violation.id,
+            violation_id=str(violation.id),
             hostname=violation.hostname,
             port=violation.port,
             provider_name=violation.provider_name,

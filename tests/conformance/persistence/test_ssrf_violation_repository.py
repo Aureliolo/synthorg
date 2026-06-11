@@ -11,6 +11,7 @@ import pytest
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -25,7 +26,7 @@ def _violation(
     timestamp: datetime = _NOW,
 ) -> SsrfViolation:
     return SsrfViolation(
-        id=NotBlankStr(violation_id),
+        id=as_uuid(violation_id),
         timestamp=timestamp,
         url=NotBlankStr(f"https://{hostname}/api/v1/tool"),
         hostname=NotBlankStr(hostname),
@@ -42,8 +43,9 @@ class TestSsrfViolationRepository:
         v = _violation()
         await backend.ssrf_violations.save(v)
 
-        fetched = await backend.ssrf_violations.get(NotBlankStr("sv-001"))
+        fetched = await backend.ssrf_violations.get(sid("sv-001"))
         assert fetched is not None
+        assert fetched.id == as_uuid("sv-001")
         assert fetched.hostname == "blocked.internal"
         assert fetched.status == SsrfViolationStatus.PENDING
         assert fetched.port == 443
@@ -59,8 +61,8 @@ class TestSsrfViolationRepository:
 
         rows = await backend.ssrf_violations.list_violations()
         ids = [v.id for v in rows]
-        assert "a" in ids
-        assert "b" in ids
+        assert as_uuid("a") in ids
+        assert as_uuid("b") in ids
 
     async def test_list_violations_orders_desc(
         self, backend: PersistenceBackend
@@ -73,8 +75,8 @@ class TestSsrfViolationRepository:
         )
 
         rows = await backend.ssrf_violations.list_violations()
-        ordered = [v.id for v in rows if v.id in {"older", "newer"}]
-        assert ordered == ["newer", "older"]
+        ordered = [v.id for v in rows if v.id in {as_uuid("older"), as_uuid("newer")}]
+        assert ordered == [as_uuid("newer"), as_uuid("older")]
 
     async def test_list_violations_filters_by_status(
         self, backend: PersistenceBackend
@@ -83,7 +85,7 @@ class TestSsrfViolationRepository:
         await backend.ssrf_violations.save(_violation(violation_id="p2"))
 
         await backend.ssrf_violations.update_status(
-            NotBlankStr("p1"),
+            sid("p1"),
             status=SsrfViolationStatus.ALLOWED,
             resolved_by=NotBlankStr("alice"),
             resolved_at=_NOW + timedelta(minutes=1),
@@ -93,14 +95,14 @@ class TestSsrfViolationRepository:
             status=SsrfViolationStatus.PENDING,
         )
         pending_ids = {v.id for v in pending}
-        assert "p2" in pending_ids
-        assert "p1" not in pending_ids
+        assert as_uuid("p2") in pending_ids
+        assert as_uuid("p1") not in pending_ids
 
         allowed = await backend.ssrf_violations.list_violations(
             status=SsrfViolationStatus.ALLOWED,
         )
         allowed_ids = {v.id for v in allowed}
-        assert "p1" in allowed_ids
+        assert as_uuid("p1") in allowed_ids
 
     async def test_list_violations_rejects_non_positive_limit(
         self, backend: PersistenceBackend
@@ -114,14 +116,14 @@ class TestSsrfViolationRepository:
         await backend.ssrf_violations.save(_violation(violation_id="u1"))
 
         updated = await backend.ssrf_violations.update_status(
-            NotBlankStr("u1"),
+            sid("u1"),
             status=SsrfViolationStatus.DENIED,
             resolved_by=NotBlankStr("bob"),
             resolved_at=_NOW + timedelta(minutes=5),
         )
         assert updated is True
 
-        fetched = await backend.ssrf_violations.get(NotBlankStr("u1"))
+        fetched = await backend.ssrf_violations.get(sid("u1"))
         assert fetched is not None
         assert fetched.status == SsrfViolationStatus.DENIED
         assert fetched.resolved_by == "bob"
@@ -131,7 +133,7 @@ class TestSsrfViolationRepository:
     ) -> None:
         await backend.ssrf_violations.save(_violation(violation_id="u2"))
         await backend.ssrf_violations.update_status(
-            NotBlankStr("u2"),
+            sid("u2"),
             status=SsrfViolationStatus.ALLOWED,
             resolved_by=NotBlankStr("alice"),
             resolved_at=_NOW,
@@ -139,7 +141,7 @@ class TestSsrfViolationRepository:
 
         # Second resolution attempt should be a no-op.
         second = await backend.ssrf_violations.update_status(
-            NotBlankStr("u2"),
+            sid("u2"),
             status=SsrfViolationStatus.DENIED,
             resolved_by=NotBlankStr("bob"),
             resolved_at=_NOW + timedelta(minutes=10),
@@ -152,7 +154,7 @@ class TestSsrfViolationRepository:
         await backend.ssrf_violations.save(_violation(violation_id="u3"))
         with pytest.raises(ValueError, match=r"(?i)pending"):
             await backend.ssrf_violations.update_status(
-                NotBlankStr("u3"),
+                sid("u3"),
                 status=SsrfViolationStatus.PENDING,
                 resolved_by=NotBlankStr("alice"),
                 resolved_at=_NOW,

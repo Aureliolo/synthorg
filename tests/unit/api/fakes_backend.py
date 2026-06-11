@@ -156,10 +156,10 @@ class FakeSsrfViolationRepository:
         self._violations: dict[str, SsrfViolation] = {}
 
     async def save(self, entity: SsrfViolation) -> None:
-        if entity.id in self._violations:
-            msg = f"SSRF violation {entity.id!r} already exists"
+        if str(entity.id) in self._violations:
+            msg = f"SSRF violation {str(entity.id)!r} already exists"
             raise DuplicateRecordError(msg)
-        self._violations[entity.id] = entity
+        self._violations[str(entity.id)] = entity
 
     async def get(
         self,

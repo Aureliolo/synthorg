@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import LiteralString
 from uuid import UUID
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import (
@@ -96,7 +96,7 @@ def row_to_charter(row: RowLike) -> ProjectCharter:
         Result of type ``ProjectCharter``.
 
     Raises:
-        QueryError: If the row contains corrupt or unparseable data.
+        MalformedRowError: If the row contains corrupt or unparseable data.
     """
     try:
         deadline_raw = row["envelope_deadline"]
@@ -179,7 +179,7 @@ def row_to_charter(row: RowLike) -> ProjectCharter:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 def charter_save_params(entity: ProjectCharter) -> tuple[object, ...]:

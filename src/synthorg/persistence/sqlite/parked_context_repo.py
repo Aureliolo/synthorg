@@ -3,11 +3,12 @@
 import contextlib
 import json
 import sqlite3
+from uuid import UUID
 
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.parked_context import (
     PERSISTENCE_PARKED_CONTEXT_DELETE_FAILED,
@@ -71,10 +72,10 @@ INSERT OR REPLACE INTO parked_contexts (
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
-                msg = f"Failed to save parked context {context.id!r}"
+                msg = f"Failed to save parked context {str(context.id)!r}"
                 logger.warning(
                     PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
-                    parked_id=context.id,
+                    parked_id=str(context.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -277,17 +278,18 @@ INSERT OR REPLACE INTO parked_contexts (
         """Convert a database row to a ``ParkedContext`` model.
 
         Raises:
-            QueryError: If the row cannot be deserialized.
+            MalformedRowError: If the row cannot be deserialized.
 
         Returns:
             Result of type ``ParkedContext``.
         """
         try:
+            row = {**row, "id": UUID(str(row["id"]))}
             raw_meta = row.get("metadata")
             if isinstance(raw_meta, str):
                 row = {**row, "metadata": json.loads(raw_meta)}
             return ParkedContext.model_validate(row)
-        except (ValidationError, json.JSONDecodeError) as exc:
+        except (ValidationError, json.JSONDecodeError, ValueError) as exc:
             msg = f"Failed to deserialize parked context {row.get('id')!r}"
             logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
@@ -295,4 +297,4 @@ INSERT OR REPLACE INTO parked_contexts (
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise QueryError(msg) from exc
+            raise MalformedRowError(msg) from exc

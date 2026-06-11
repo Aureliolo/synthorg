@@ -12,7 +12,7 @@ from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
@@ -38,7 +38,7 @@ def _row_to_plan(row: DictRow) -> TrainingPlan:
     datetimes, and BOOLEAN as bool -- minimal conversion needed.
 
     Raises:
-        QueryError: If deserialization fails.
+        MalformedRowError: If deserialization fails.
 
     Returns:
         Result of type ``TrainingPlan``.
@@ -69,7 +69,7 @@ def _row_to_plan(row: DictRow) -> TrainingPlan:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 _UPSERT_SQL = """\

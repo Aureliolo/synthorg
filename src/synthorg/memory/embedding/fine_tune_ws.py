@@ -47,7 +47,7 @@ def publish_ws_event(
                 "event_type": event_type,
                 "channel": "system",
                 "payload": {
-                    "run_id": run.id,
+                    "run_id": str(run.id),
                     "stage": run.stage.value,
                     "progress": run.progress,
                 },
@@ -62,7 +62,7 @@ def publish_ws_event(
         logger.warning(
             MEMORY_FINE_TUNE_WS_EMIT_FAILED,
             event_type=event_type,
-            run_id=run.id,
+            run_id=str(run.id),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

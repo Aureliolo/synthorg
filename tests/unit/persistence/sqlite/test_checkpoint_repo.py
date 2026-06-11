@@ -8,6 +8,7 @@ from synthorg.engine.checkpoint.models import Checkpoint
 from synthorg.persistence.sqlite.checkpoint_repo import (
     SQLiteCheckpointRepository,
 )
+from tests._shared import as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 
 if TYPE_CHECKING:
@@ -28,7 +29,7 @@ def _make_checkpoint(  # noqa: PLR0913
     context_json: str = '{"state": "running"}',
 ) -> Checkpoint:
     return Checkpoint(
-        id=checkpoint_id,
+        id=as_uuid(checkpoint_id),
         execution_id=execution_id,
         agent_id=agent_id,
         task_id=task_id,
@@ -88,7 +89,7 @@ class TestSQLiteCheckpointRepository:
 
         result = await repo.get_latest(execution_id="exec-001")
         assert result is not None
-        assert result.id == "cp-high"
+        assert result.id == as_uuid("cp-high")
         assert result.turn_number == 5
 
     async def test_get_latest_filter_by_task_id(
@@ -112,7 +113,7 @@ class TestSQLiteCheckpointRepository:
 
         result = await repo.get_latest(task_id="task-alpha")
         assert result is not None
-        assert result.id == "cp-a"
+        assert result.id == as_uuid("cp-a")
         assert result.task_id == "task-alpha"
 
     async def test_get_latest_filter_by_execution_id(
@@ -136,7 +137,7 @@ class TestSQLiteCheckpointRepository:
 
         result = await repo.get_latest(execution_id="exec-alpha")
         assert result is not None
-        assert result.id == "cp-exec-a"
+        assert result.id == as_uuid("cp-exec-a")
         assert result.execution_id == "exec-alpha"
 
     async def test_get_latest_both_filters(
@@ -162,7 +163,7 @@ class TestSQLiteCheckpointRepository:
 
         result = await repo.get_latest(execution_id="exec-m", task_id="task-m")
         assert result is not None
-        assert result.id == "cp-match"
+        assert result.id == as_uuid("cp-match")
 
     async def test_get_latest_returns_none_when_no_match(
         self, migrated_db: aiosqlite.Connection
@@ -210,7 +211,7 @@ class TestSQLiteCheckpointRepository:
         # The original row is preserved unchanged.
         result = await repo.get_latest(execution_id="exec-001")
         assert result is not None
-        assert result.id == "cp-upsert"
+        assert result.id == as_uuid("cp-upsert")
         assert result.context_json == '{"version": 1}'
         assert result.turn_number == 1
 
@@ -324,7 +325,7 @@ class TestSQLiteCheckpointRepositoryErrors:
             "context_json, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
-                "cp-bad",
+                sid("cp-bad"),
                 "exec-bad",
                 "agent-bad",
                 "task-bad",

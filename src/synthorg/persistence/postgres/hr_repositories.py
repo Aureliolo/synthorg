@@ -16,7 +16,7 @@ from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (
@@ -107,7 +107,7 @@ class PostgresLifecycleEventRepository:
             Result of type ``AgentLifecycleEvent``.
 
         Raises:
-            QueryError: If deserialization or validation fails.
+            MalformedRowError: If deserialization or validation fails.
         """
         try:
             data = dict(row)
@@ -123,7 +123,7 @@ class PostgresLifecycleEventRepository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise QueryError(msg) from exc
+            raise MalformedRowError(msg) from exc
 
     async def list_events(
         self,
@@ -257,7 +257,7 @@ class PostgresTaskMetricRepository:
             Result of type ``TaskMetricRecord``.
 
         Raises:
-            QueryError: If deserialization or validation fails.
+            MalformedRowError: If deserialization or validation fails.
         """
         try:
             data = dict(row)
@@ -272,7 +272,7 @@ class PostgresTaskMetricRepository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise QueryError(msg) from exc
+            raise MalformedRowError(msg) from exc
 
     async def query(
         self,
@@ -403,7 +403,7 @@ class PostgresCollaborationMetricRepository:
             Result of type ``CollaborationMetricRecord``.
 
         Raises:
-            QueryError: If deserialization or validation fails.
+            MalformedRowError: If deserialization or validation fails.
         """
         try:
             data = dict(row)
@@ -419,7 +419,7 @@ class PostgresCollaborationMetricRepository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise QueryError(msg) from exc
+            raise MalformedRowError(msg) from exc
 
     async def query(
         self,

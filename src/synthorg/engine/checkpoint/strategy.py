@@ -213,7 +213,7 @@ class CheckpointRecoveryStrategy:
         logger.debug(
             CHECKPOINT_LOADED,
             execution_id=execution_id,
-            checkpoint_id=checkpoint.id,
+            checkpoint_id=str(checkpoint.id),
             turn_number=checkpoint.turn_number,
         )
         return checkpoint
@@ -277,8 +277,8 @@ class CheckpointRecoveryStrategy:
         logger.info(
             CHECKPOINT_RECOVERY_RESUME,
             execution_id=execution_id,
-            task_id=task_execution.task.id,
-            checkpoint_id=checkpoint.id,
+            task_id=str(task_execution.task.id),
+            checkpoint_id=str(checkpoint.id),
             turn_number=checkpoint.turn_number,
             resume_attempt=resume_attempt,
             max_resume_attempts=self._config.max_resume_attempts,
@@ -298,7 +298,7 @@ class CheckpointRecoveryStrategy:
             failure_category=category,
             failure_context={
                 "strategy_type": self.STRATEGY_TYPE,
-                "checkpoint_id": checkpoint.id,
+                "checkpoint_id": str(checkpoint.id),
                 "turn_number": checkpoint.turn_number,
                 "resume_attempt": resume_attempt,
             },

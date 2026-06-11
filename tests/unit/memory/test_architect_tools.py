@@ -1,5 +1,6 @@
 """Tests for KnowledgeArchitect tools and role."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -7,6 +8,8 @@ import pytest
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.role_catalog import get_builtin_role
 from synthorg.memory.consolidation.wiki_export import WikiExporter
+from synthorg.memory.enums import OrgFactCategory
+from synthorg.memory.org.models import OrgFact, OrgFactAuthor
 from synthorg.memory.tools import (
     KnowledgeArchitectBrowseWikiTool,
     KnowledgeArchitectDeleteTool,
@@ -17,7 +20,7 @@ from synthorg.memory.tools import (
 )
 from synthorg.persistence.memory_protocol import OrgFactRepository
 from synthorg.security.autonomy.enums import ToolCategory
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of, sid
 
 
 def _mock_org_backend() -> AsyncMock:
@@ -26,6 +29,16 @@ def _mock_org_backend() -> AsyncMock:
     backend.write = AsyncMock(return_value="fact-1")
     backend.delete = AsyncMock(return_value=True)
     return backend
+
+
+def _make_org_fact(fact_id: str = "fact-1") -> OrgFact:
+    return OrgFact(
+        id=as_uuid(fact_id),
+        content="Test fact content",
+        category=OrgFactCategory.ADR,
+        author=OrgFactAuthor(is_human=True),
+        created_at=datetime.now(UTC),
+    )
 
 
 class TestKnowledgeArchitectRole:
@@ -195,14 +208,38 @@ class TestKnowledgeArchitectReadTool:
     """Tests for memory.read tool."""
 
     @pytest.mark.unit
+    async def test_read_entry_found(self) -> None:
+        fact = _make_org_fact("fact-1")
+        backend = _mock_org_backend()
+        backend.query = AsyncMock(return_value=(fact,))
+        tool = KnowledgeArchitectReadTool(org_backend=backend)
+        result = await tool.execute(
+            arguments={"entry_id": sid("fact-1")},
+        )
+        assert not result.is_error
+        assert sid("fact-1") in result.content
+        assert "Test fact content" in result.content
+
+    @pytest.mark.unit
     async def test_read_entry_not_found(self) -> None:
         backend = _mock_org_backend()
         tool = KnowledgeArchitectReadTool(org_backend=backend)
         result = await tool.execute(
-            arguments={"entry_id": "fact-missing"},
+            arguments={"entry_id": sid("missing")},
         )
         assert result.is_error
         assert "not found" in result.content.lower()
+
+    @pytest.mark.unit
+    async def test_read_invalid_uuid_returns_error(self) -> None:
+        backend = _mock_org_backend()
+        tool = KnowledgeArchitectReadTool(org_backend=backend)
+        result = await tool.execute(
+            arguments={"entry_id": "not-a-uuid"},
+        )
+        assert result.is_error
+        assert "not a valid uuid" in result.content.lower()
+        backend.query.assert_not_awaited()
 
     @pytest.mark.unit
     async def test_read_malformed_arguments_returns_error(self) -> None:
@@ -221,7 +258,7 @@ class TestKnowledgeArchitectReadTool:
         )
         tool = KnowledgeArchitectReadTool(org_backend=backend)
         result = await tool.execute(
-            arguments={"entry_id": "fact-1"},
+            arguments={"entry_id": sid("fact-1")},
         )
         assert result.is_error
         assert "failed" in result.content.lower()

@@ -9,6 +9,7 @@ continue to work.
 from copy import deepcopy
 from datetime import UTC
 from types import MappingProxyType
+from uuid import UUID
 
 from pydantic import AwareDatetime
 
@@ -89,7 +90,7 @@ class FakeDecisionRepository:
         # the same UTC-normalized value from the fake as from the
         # real repo.
         record = DecisionRecord(
-            id=record_id,
+            id=UUID(record_id),
             task_id=task_id,
             approval_id=approval_id,
             executing_agent_id=executing_agent_id,
@@ -105,10 +106,10 @@ class FakeDecisionRepository:
         return record
 
     async def append(self, event: DecisionRecord) -> None:
-        if event.id in self._records:
-            msg = f"Duplicate decision record {event.id!r}"
+        if str(event.id) in self._records:
+            msg = f"Duplicate decision record {str(event.id)!r}"
             raise DuplicateRecordError(msg)
-        self._records[event.id] = event
+        self._records[str(event.id)] = event
 
     async def query(
         self,

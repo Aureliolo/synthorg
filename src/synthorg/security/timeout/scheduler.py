@@ -400,7 +400,7 @@ class ApprovalTimeoutScheduler:
 
         logger.info(
             TIMEOUT_SCHEDULER_RESOLVED,
-            approval_id=item.id,
+            approval_id=str(item.id),
             action=action.action.value,
             reason=action.reason,
         )

@@ -6,6 +6,7 @@ Postgres stores timestamps as native TIMESTAMPTZ and port as BIGINT.
 
 from datetime import datetime
 from typing import cast
+from uuid import UUID
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
@@ -63,7 +64,7 @@ class PostgresSsrfViolationRepository:
                     f"INSERT INTO ssrf_violations ({_COLS}) "  # noqa: S608
                     "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (
-                        violation.id,
+                        str(violation.id),
                         ts_utc,
                         violation.url,
                         violation.hostname,
@@ -78,19 +79,19 @@ class PostgresSsrfViolationRepository:
                 )
                 await conn.commit()
         except psycopg.errors.UniqueViolation as exc:
-            msg = f"SSRF violation {violation.id!r} already exists"
+            msg = f"SSRF violation {str(violation.id)!r} already exists"
             logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
-                violation_id=violation.id,
+                violation_id=str(violation.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
-            msg = f"Failed to save SSRF violation {violation.id!r}"
+            msg = f"Failed to save SSRF violation {str(violation.id)!r}"
             logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
-                violation_id=violation.id,
+                violation_id=str(violation.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -353,7 +354,7 @@ def _row_to_violation(row: DictRow) -> SsrfViolation:
         Result of type ``SsrfViolation``.
     """
     return SsrfViolation(
-        id=str(row["id"]),
+        id=UUID(str(row["id"])),
         timestamp=normalize_utc(cast("datetime", row["timestamp"])),
         url=str(row["url"]),
         hostname=str(row["hostname"]),

@@ -20,7 +20,11 @@ from pydantic import ValidationError
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.evidence import EvidencePackage
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import (
+    ConstraintViolationError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
@@ -116,7 +120,7 @@ def _row_to_item(row: Row) -> ApprovalItem:
         row: A row from aiosqlite with ``row_factory = aiosqlite.Row``.
 
     Raises:
-        QueryError: If the row contains corrupt or unparseable data.
+        MalformedRowError: If the row contains corrupt or unparseable data.
 
     Returns:
         Result of type ``ApprovalItem``.
@@ -182,7 +186,7 @@ def _row_to_item(row: Row) -> ApprovalItem:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 class SQLiteApprovalRepository:

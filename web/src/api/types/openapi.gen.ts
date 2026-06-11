@@ -8287,7 +8287,10 @@ export type components = {
             readonly doc_count: number;
             /** @description Evaluation metrics */
             readonly eval_metrics: components["schemas"]["EvalMetrics"] | null;
-            /** @description Unique checkpoint ID */
+            /**
+             * Format: uuid
+             * @description Unique checkpoint ID
+             */
             readonly id: string;
             /**
              * @description Currently deployed
@@ -10184,7 +10187,10 @@ export type components = {
             readonly duration_seconds: number | null;
             /** @description Error message if failed */
             readonly error: string | null;
-            /** @description Unique run identifier */
+            /**
+             * Format: uuid
+             * @description Unique run identifier
+             */
             readonly id: string;
             /** @description Progress within current stage */
             readonly progress: number | null;

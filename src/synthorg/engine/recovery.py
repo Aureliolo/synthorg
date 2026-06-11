@@ -425,7 +425,7 @@ class FailAndReassignStrategy:
         """
         logger.info(
             EXECUTION_RECOVERY_START,
-            task_id=task_execution.task.id,
+            task_id=str(task_execution.task.id),
             strategy=self.STRATEGY_TYPE,
             retry_count=task_execution.retry_count,
         )
@@ -433,7 +433,7 @@ class FailAndReassignStrategy:
         snapshot = context.to_snapshot()
         logger.error(
             EXECUTION_RECOVERY_SNAPSHOT,
-            task_id=task_execution.task.id,
+            task_id=str(task_execution.task.id),
             turn_count=snapshot.turn_count,
             cost=snapshot.accumulated_cost.cost,
             error_message=error_message,
@@ -472,7 +472,7 @@ class FailAndReassignStrategy:
         # ambiguous.
         logger.info(
             EXECUTION_RECOVERY_COMPLETE,
-            task_id=task_execution.task.id,
+            task_id=str(task_execution.task.id),
             strategy=self.STRATEGY_TYPE,
             can_reassign=result.can_reassign,
             retry_count=task_execution.retry_count,

@@ -2,7 +2,7 @@
 
 import json
 from datetime import UTC, date, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -51,7 +51,7 @@ class TestParkService:
         assert parked.approval_id == "approval-1"
         assert parked.task_id == "task-1"
         assert parked.execution_id == context.execution_id
-        assert parked.id  # non-empty UUID default
+        assert isinstance(parked.id, UUID)
 
     def test_park_serializes_context_json(self) -> None:
         """Verifies context_json is valid JSON."""

@@ -6,12 +6,13 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
+from tests._shared import as_uuid
 
 
 def _make_record(**overrides: object) -> DecisionRecord:
     """Build a DecisionRecord with sensible defaults."""
     defaults: dict[str, object] = {
-        "id": "decision-001",
+        "id": as_uuid("decision-001"),
         "task_id": "task-1",
         "executing_agent_id": "alice",
         "reviewer_agent_id": "bob",
@@ -31,7 +32,7 @@ class TestDecisionRecordConstruction:
     def test_minimal_construction(self) -> None:
         """All required fields produce a valid record."""
         record = _make_record()
-        assert record.id == "decision-001"
+        assert record.id == as_uuid("decision-001")
         assert record.task_id == "task-1"
         assert record.executing_agent_id == "alice"
         assert record.reviewer_agent_id == "bob"
@@ -80,7 +81,7 @@ class TestDecisionRecordConstruction:
     def test_metadata_defaults_to_empty_dict(self) -> None:
         """metadata has a default_factory -- omitting it yields {}."""
         record = DecisionRecord(
-            id="decision-001",
+            id=as_uuid("decision-001"),
             task_id="task-1",
             executing_agent_id="alice",
             reviewer_agent_id="bob",

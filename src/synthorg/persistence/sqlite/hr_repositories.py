@@ -11,7 +11,7 @@ from uuid import UUID
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (
@@ -106,7 +106,7 @@ INSERT INTO lifecycle_events (
             Result of type ``AgentLifecycleEvent``.
 
         Raises:
-            QueryError: If row deserialization or validation fails.
+            MalformedRowError: If row deserialization or validation fails.
         """
         try:
             data = dict(row)
@@ -122,7 +122,7 @@ INSERT INTO lifecycle_events (
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise QueryError(msg) from exc
+            raise MalformedRowError(msg) from exc
 
     async def list_events(
         self,
@@ -255,7 +255,7 @@ INSERT INTO task_metrics (
             Result of type ``TaskMetricRecord``.
 
         Raises:
-            QueryError: If row deserialization or validation fails.
+            MalformedRowError: If row deserialization or validation fails.
         """
         try:
             data = dict(row)
@@ -270,7 +270,7 @@ INSERT INTO task_metrics (
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise QueryError(msg) from exc
+            raise MalformedRowError(msg) from exc
 
     async def query(
         self,
@@ -400,7 +400,7 @@ INSERT INTO collaboration_metrics (
             Result of type ``CollaborationMetricRecord``.
 
         Raises:
-            QueryError: If row deserialization or validation fails.
+            MalformedRowError: If row deserialization or validation fails.
         """
         try:
             data = dict(row)
@@ -419,7 +419,7 @@ INSERT INTO collaboration_metrics (
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise QueryError(msg) from exc
+            raise MalformedRowError(msg) from exc
 
     async def query(
         self,

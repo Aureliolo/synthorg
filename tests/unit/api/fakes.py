@@ -333,7 +333,7 @@ class FakeParkedContextRepository:
         self._contexts: dict[str, ParkedContext] = {}
 
     async def save(self, entity: ParkedContext) -> None:
-        self._contexts[entity.id] = entity
+        self._contexts[str(entity.id)] = entity
 
     async def get(self, entity_id: NotBlankStr) -> ParkedContext | None:
         return self._contexts.get(entity_id)
@@ -503,7 +503,7 @@ class FakeCheckpointRepository:
         self._checkpoints: dict[str, Checkpoint] = {}
 
     async def append(self, checkpoint: Checkpoint) -> None:
-        self._checkpoints[checkpoint.id] = checkpoint
+        self._checkpoints[str(checkpoint.id)] = checkpoint
 
     async def get_latest(
         self,

@@ -72,7 +72,7 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
     # letters); ``PurePosixPath`` joins the run subpath without emitting Windows
     # separators, keeping the ``out_dir`` string the stage runners receive
     # POSIX regardless of host platform.
-    out_dir = str(PurePosixPath(cfg.output_dir) / "runs" / run.id)
+    out_dir = str(PurePosixPath(cfg.output_dir) / "runs" / str(run.id))
     completed = set(run.stages_completed)
 
     # Stage 1: Generate training data (directory scan or real-trajectory
@@ -168,7 +168,7 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
         else:
             logger.info(
                 MEMORY_FINE_TUNE_CHECKPOINT_REJECTED,
-                run_id=run.id,
+                run_id=str(run.id),
                 checkpoint_path=str(checkpoint_path),
                 metrics_available=eval_metrics is not None,
                 base_ndcg_at_10=(
@@ -179,8 +179,8 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
         # Persist checkpoint record (active only on a promote).
         size_bytes = await asyncio.to_thread(dir_size, checkpoint_path)
         record = CheckpointRecord(
-            id=str(uuid.uuid4()),
-            run_id=run.id,
+            id=uuid.uuid4(),
+            run_id=str(run.id),
             model_path=str(checkpoint_path),
             base_model=cfg.base_model,
             doc_count=0,

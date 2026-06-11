@@ -104,7 +104,7 @@ async def _memory_start_fine_tune(
         tool_name=tool,
         actor_agent_id=actor_id(resolved_actor),
         reason=reason,
-        target_id=run.id,
+        target_id=str(run.id),
     )
     return ok(data=run.model_dump(mode="json"))
 
@@ -158,7 +158,7 @@ async def _memory_resume_fine_tune(
         tool_name=tool,
         actor_agent_id=actor_id(resolved_actor),
         reason=reason,
-        target_id=run.id,
+        target_id=str(run.id),
     )
     return ok(data=run.model_dump(mode="json"))
 

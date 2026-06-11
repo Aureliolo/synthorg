@@ -73,7 +73,7 @@ class TimeoutChecker:
             reraise_critical(exc)
             logger.warning(
                 TIMEOUT_POLICY_EVALUATED,
-                approval_id=item.id,
+                approval_id=str(item.id),
                 elapsed_seconds=elapsed,
                 note="policy.determine_action failed -- defaulting to WAIT",
                 error_type=type(exc).__name__,
@@ -93,7 +93,7 @@ class TimeoutChecker:
 
         logger.info(
             event,
-            approval_id=item.id,
+            approval_id=str(item.id),
             action_type=item.action_type,
             elapsed_seconds=elapsed,
             timeout_action=action.action.value,

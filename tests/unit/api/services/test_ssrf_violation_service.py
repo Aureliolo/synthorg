@@ -31,6 +31,7 @@ from synthorg.observability.events.security import (
     SECURITY_SSRF_VIOLATION_RESOLUTION_FAILED,
 )
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -42,10 +43,10 @@ class _FakeSsrfViolationRepo:
         self._rows: dict[str, SsrfViolation] = {}
 
     async def save(self, violation: SsrfViolation) -> None:
-        if violation.id in self._rows:
-            msg = f"duplicate violation: {violation.id}"
+        if str(violation.id) in self._rows:
+            msg = f"duplicate violation: {violation.id!s}"
             raise DuplicateRecordError(msg)
-        self._rows[violation.id] = violation
+        self._rows[str(violation.id)] = violation
 
     async def get(self, violation_id: NotBlankStr) -> SsrfViolation | None:
         return self._rows.get(violation_id)
@@ -110,7 +111,7 @@ def _make_violation(
     provider_name: str | None = "example-provider",
 ) -> SsrfViolation:
     return SsrfViolation(
-        id=NotBlankStr(violation_id),
+        id=as_uuid(violation_id),
         timestamp=datetime(2026, 4, 25, 10, 0, 0, tzinfo=UTC),
         url=NotBlankStr(f"https://{hostname}:{port}/v1/models"),
         hostname=NotBlankStr(hostname),
@@ -135,13 +136,13 @@ async def test_record_persists_and_emits_audit() -> None:
     with structlog.testing.capture_logs() as logs:
         await service.record(violation)
 
-    fetched = await repo.get(violation.id)
+    fetched = await repo.get(str(violation.id))
     assert fetched == violation
 
     events = [log for log in logs if log["event"] == SECURITY_SSRF_VIOLATION_RECORDED]
     assert len(events) == 1, f"expected one event in {logs}"
     event = events[0]
-    assert event["violation_id"] == violation.id
+    assert event["violation_id"] == str(violation.id)
     assert event["hostname"] == violation.hostname
     assert event["port"] == violation.port
     assert event["provider_name"] == violation.provider_name
@@ -176,7 +177,7 @@ async def test_record_propagates_duplicate_error() -> None:
     )
     assert len(warning_audits) == 1
     assert warning_audits[0]["error_type"] == "DuplicateRecordError"
-    assert warning_audits[0]["violation_id"] == violation.id
+    assert warning_audits[0]["violation_id"] == str(violation.id)
 
 
 async def test_get_returns_persisted_violation() -> None:
@@ -186,7 +187,7 @@ async def test_get_returns_persisted_violation() -> None:
     violation = _make_violation()
     await service.record(violation)
 
-    fetched = await service.get(violation.id)
+    fetched = await service.get(str(violation.id))
     assert fetched == violation
 
 
@@ -315,14 +316,14 @@ async def test_update_status_emits_audit_on_success() -> None:
 
     with structlog.testing.capture_logs() as logs:
         result = await service.update_status(
-            violation.id,
+            str(violation.id),
             status=SsrfViolationStatus.ALLOWED,
             resolved_by=NotBlankStr("op-1"),
             resolved_at=resolved_at,
         )
 
     assert result is True
-    fetched = await repo.get(violation.id)
+    fetched = await repo.get(str(violation.id))
     assert fetched is not None
     assert fetched.status == SsrfViolationStatus.ALLOWED
     assert fetched.resolved_by == "op-1"
@@ -331,7 +332,7 @@ async def test_update_status_emits_audit_on_success() -> None:
     events = [log for log in logs if log["event"] == SECURITY_SSRF_VIOLATION_ALLOWED]
     assert len(events) == 1
     event = events[0]
-    assert event["violation_id"] == violation.id
+    assert event["violation_id"] == str(violation.id)
     assert event["status"] == SsrfViolationStatus.ALLOWED.value
     assert event["resolved_by"] == "op-1"
     # Audit defines the WHO+WHEN contract; both fields must be on the
@@ -380,7 +381,7 @@ async def test_update_status_rejects_pending_target() -> None:
         pytest.raises(ValueError, match="PENDING"),
     ):
         await service.update_status(
-            violation.id,
+            str(violation.id),
             status=SsrfViolationStatus.PENDING,
             resolved_by=NotBlankStr("op-1"),
             resolved_at=resolved_at,
@@ -404,7 +405,7 @@ async def test_update_status_rejects_pending_target() -> None:
     ]
     assert len(warning_audits) == 1
     assert warning_audits[0]["error_type"] == "ValueError"
-    assert warning_audits[0]["violation_id"] == violation.id
+    assert warning_audits[0]["violation_id"] == str(violation.id)
     assert warning_audits[0]["status"] == SsrfViolationStatus.PENDING.value
 
 
@@ -417,7 +418,7 @@ async def test_update_status_no_audit_when_already_resolved() -> None:
     resolved_at = datetime(2026, 4, 25, 11, 0, 0, tzinfo=UTC)
 
     await service.update_status(
-        violation.id,
+        str(violation.id),
         status=SsrfViolationStatus.ALLOWED,
         resolved_by=NotBlankStr("op-1"),
         resolved_at=resolved_at,
@@ -425,7 +426,7 @@ async def test_update_status_no_audit_when_already_resolved() -> None:
 
     with structlog.testing.capture_logs() as logs:
         result = await service.update_status(
-            violation.id,
+            str(violation.id),
             status=SsrfViolationStatus.DENIED,
             resolved_by=NotBlankStr("op-2"),
             resolved_at=resolved_at,

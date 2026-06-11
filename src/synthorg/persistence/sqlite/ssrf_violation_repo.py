@@ -3,6 +3,7 @@
 import contextlib
 import sqlite3
 from datetime import datetime
+from uuid import UUID
 
 import aiosqlite
 from pydantic import ValidationError
@@ -98,7 +99,7 @@ class SQLiteSsrfViolationRepository:
                     f"INSERT INTO ssrf_violations ({_COLS}) "  # noqa: S608
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
-                        violation.id,
+                        str(violation.id),
                         ts_utc,
                         violation.url,
                         violation.hostname,
@@ -115,7 +116,7 @@ class SQLiteSsrfViolationRepository:
             except sqlite3.IntegrityError as exc:
                 await self._rollback_quietly()
                 if is_unique_constraint_error(exc):
-                    msg = f"SSRF violation {violation.id!r} already exists"
+                    msg = f"SSRF violation {str(violation.id)!r} already exists"
                     raise DuplicateRecordError(msg) from exc
                 msg = "Failed to save SSRF violation"
                 logger.warning(
@@ -403,7 +404,7 @@ def _row_to_violation(row: aiosqlite.Row) -> SsrfViolation:
     ) = row
 
     return SsrfViolation(
-        id=id_,
+        id=UUID(str(id_)),
         timestamp=coerce_row_timestamp(timestamp),
         url=url,
         hostname=hostname,

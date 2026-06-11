@@ -18,6 +18,7 @@ exercises identical surfaces.
 
 import json
 from datetime import UTC, datetime
+from uuid import UUID
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
@@ -25,7 +26,7 @@ from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -77,14 +78,14 @@ def _run_from_row(row: DictRow) -> FineTuneRun:
     parsing.
 
     Raises:
-        QueryError: If the row contains invalid data.
+        MalformedRowError: If the row contains invalid data.
 
     Returns:
         Result of type ``FineTuneRun``.
     """
     try:
         return FineTuneRun(
-            id=row["id"],
+            id=UUID(str(row["id"])),
             stage=FineTuneStage(row["stage"]),
             progress=row["progress"],
             error=row["error"],
@@ -94,9 +95,9 @@ def _run_from_row(row: DictRow) -> FineTuneRun:
             completed_at=row["completed_at"],
             stages_completed=tuple(row["stages_completed"] or ()),
         )
-    except (ValidationError, ValueError, TypeError) as exc:
+    except (ValidationError, ValueError, TypeError, KeyError) as exc:
         msg = f"Corrupt fine-tune run row: {safe_error_description(exc)}"
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 def _checkpoint_from_row(row: DictRow) -> CheckpointRecord:
@@ -113,7 +114,7 @@ def _checkpoint_from_row(row: DictRow) -> CheckpointRecord:
     object's ``str``) holds regardless of the JSONB value's type.
 
     Raises:
-        QueryError: If the row contains invalid data.
+        MalformedRowError: If the row contains invalid data.
 
     Returns:
         Result of type ``CheckpointRecord``.
@@ -130,7 +131,7 @@ def _checkpoint_from_row(row: DictRow) -> CheckpointRecord:
             backup_str = json.dumps(backup_payload)
 
         return CheckpointRecord(
-            id=row["id"],
+            id=UUID(str(row["id"])),
             run_id=row["run_id"],
             model_path=row["model_path"],
             base_model=row["base_model"],
@@ -141,9 +142,9 @@ def _checkpoint_from_row(row: DictRow) -> CheckpointRecord:
             is_active=row["is_active"],
             backup_config_json=backup_str,
         )
-    except (ValidationError, ValueError, TypeError) as exc:
+    except (ValidationError, ValueError, TypeError, KeyError) as exc:
         msg = f"Corrupt checkpoint row: {safe_error_description(exc)}"
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 class PostgresFineTuneRunRepository:
@@ -182,7 +183,7 @@ ON CONFLICT (id) DO UPDATE SET
     completed_at = EXCLUDED.completed_at,
     stages_completed = EXCLUDED.stages_completed""",
                     (
-                        run.id,
+                        str(run.id),
                         run.stage.value,
                         run.progress,
                         run.error,
@@ -202,7 +203,7 @@ ON CONFLICT (id) DO UPDATE SET
             msg = f"Failed to save fine-tune run {run.id}"
             logger.warning(
                 MEMORY_FINE_TUNE_PERSIST_FAILED,
-                run_id=run.id,
+                run_id=str(run.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -412,7 +413,7 @@ WHERE id = %s""",
                             else normalize_utc(run.completed_at)
                         ),
                         Jsonb(list(run.stages_completed)),
-                        run.id,
+                        str(run.id),
                     ),
                 )
                 await conn.commit()
@@ -420,7 +421,7 @@ WHERE id = %s""",
             msg = f"Failed to update fine-tune run {run.id}"
             logger.warning(
                 MEMORY_FINE_TUNE_PERSIST_FAILED,
-                run_id=run.id,
+                run_id=str(run.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -492,7 +493,7 @@ class PostgresFineTuneCheckpointRepository:
             )
         backup_payload = self._encode_backup_config(
             checkpoint.backup_config_json,
-            checkpoint_id=checkpoint.id,
+            checkpoint_id=str(checkpoint.id),
         )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -514,7 +515,7 @@ ON CONFLICT (id) DO UPDATE SET
     is_active = EXCLUDED.is_active,
     backup_config_json = EXCLUDED.backup_config_json""",
                     (
-                        checkpoint.id,
+                        str(checkpoint.id),
                         checkpoint.run_id,
                         checkpoint.model_path,
                         checkpoint.base_model,
@@ -531,7 +532,7 @@ ON CONFLICT (id) DO UPDATE SET
             msg = f"Failed to save checkpoint {checkpoint.id}"
             logger.warning(
                 MEMORY_FINE_TUNE_PERSIST_FAILED,
-                checkpoint_id=checkpoint.id,
+                checkpoint_id=str(checkpoint.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

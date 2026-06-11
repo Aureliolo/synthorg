@@ -4,11 +4,16 @@
 import contextlib
 import sqlite3
 from datetime import datetime
+from uuid import UUID
 
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.checkpoint.models import Checkpoint
 from synthorg.observability import get_logger, safe_error_description
@@ -94,18 +99,18 @@ INSERT INTO checkpoints (
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
                 if is_unique_constraint_error(exc):
-                    msg = f"Checkpoint {checkpoint.id!r} already exists"
+                    msg = f"Checkpoint {str(checkpoint.id)!r} already exists"
                     logger.warning(
                         PERSISTENCE_CHECKPOINT_SAVE_FAILED,
-                        checkpoint_id=checkpoint.id,
+                        checkpoint_id=str(checkpoint.id),
                         error_type=type(exc).__name__,
                         error=safe_error_description(exc),
                     )
                     raise DuplicateRecordError(msg) from exc
-                msg = f"Failed to save checkpoint {checkpoint.id!r}"
+                msg = f"Failed to save checkpoint {str(checkpoint.id)!r}"
                 logger.warning(
                     PERSISTENCE_CHECKPOINT_SAVE_FAILED,
-                    checkpoint_id=checkpoint.id,
+                    checkpoint_id=str(checkpoint.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -177,7 +182,7 @@ INSERT INTO checkpoints (
         checkpoint = self._row_to_model(dict(row))
         logger.debug(
             PERSISTENCE_CHECKPOINT_QUERIED,
-            checkpoint_id=checkpoint.id,
+            checkpoint_id=str(checkpoint.id),
             turn_number=checkpoint.turn_number,
         )
         return checkpoint
@@ -303,14 +308,15 @@ INSERT INTO checkpoints (
         """Convert a database row to a ``Checkpoint`` model.
 
         Raises:
-            QueryError: If the row cannot be deserialized.
+            MalformedRowError: If the row cannot be deserialized.
 
         Returns:
             Result of type ``Checkpoint``.
         """
         try:
+            row["id"] = UUID(str(row["id"]))
             return Checkpoint.model_validate(row)
-        except ValidationError as exc:
+        except (ValidationError, ValueError) as exc:
             msg = f"Failed to deserialize checkpoint {row.get('id')!r}"
             logger.warning(
                 PERSISTENCE_CHECKPOINT_DESERIALIZE_FAILED,
@@ -318,4 +324,4 @@ INSERT INTO checkpoints (
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise QueryError(msg) from exc
+            raise MalformedRowError(msg) from exc

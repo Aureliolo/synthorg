@@ -54,7 +54,7 @@ class WaitForeverPolicy:
         """
         logger.debug(
             TIMEOUT_WAITING,
-            approval_id=item.id,
+            approval_id=str(item.id),
             elapsed_seconds=elapsed_seconds,
         )
         return TimeoutAction(
@@ -93,7 +93,7 @@ class DenyOnTimeoutPolicy:
         if elapsed_seconds < self._timeout_seconds:
             logger.debug(
                 TIMEOUT_WAITING,
-                approval_id=item.id,
+                approval_id=str(item.id),
                 elapsed_seconds=elapsed_seconds,
                 timeout_seconds=self._timeout_seconds,
             )
@@ -107,7 +107,7 @@ class DenyOnTimeoutPolicy:
 
         logger.info(
             TIMEOUT_AUTO_DENIED,
-            approval_id=item.id,
+            approval_id=str(item.id),
             elapsed_seconds=elapsed_seconds,
             timeout_seconds=self._timeout_seconds,
         )
@@ -172,7 +172,7 @@ class TieredTimeoutPolicy:
             # No tier configured for this risk level -- wait (safe default).
             logger.warning(
                 TIMEOUT_WAITING,
-                approval_id=item.id,
+                approval_id=str(item.id),
                 risk_level=risk_level.value,
                 available_tiers=sorted(self._tiers.keys()),
                 note="no tier config for this risk level -- defaulting to wait",
@@ -189,7 +189,7 @@ class TieredTimeoutPolicy:
         if elapsed_seconds < timeout_seconds:
             logger.debug(
                 TIMEOUT_WAITING,
-                approval_id=item.id,
+                approval_id=str(item.id),
                 risk_level=risk_level.value,
                 elapsed_seconds=elapsed_seconds,
                 timeout_seconds=timeout_seconds,
@@ -212,7 +212,7 @@ class TieredTimeoutPolicy:
         ):
             logger.warning(
                 TIMEOUT_POLICY_EVALUATED,
-                approval_id=item.id,
+                approval_id=str(item.id),
                 risk_level=risk_level.value,
                 configured_action=effective_action.value,
                 note=(
@@ -223,7 +223,7 @@ class TieredTimeoutPolicy:
 
         logger.info(
             TIMEOUT_POLICY_EVALUATED,
-            approval_id=item.id,
+            approval_id=str(item.id),
             risk_level=risk_level.value,
             on_timeout=effective_action.value,
             elapsed_seconds=elapsed_seconds,
@@ -279,7 +279,7 @@ class EscalationChainPolicy:
         if not self._chain:
             logger.warning(
                 TIMEOUT_ESCALATED,
-                approval_id=item.id,
+                approval_id=str(item.id),
                 on_exhausted=self._on_chain_exhausted.value,
                 note="empty escalation chain -- likely a configuration error",
             )
@@ -297,7 +297,7 @@ class EscalationChainPolicy:
                     # First step hasn't timed out yet -- WAIT.
                     logger.debug(
                         TIMEOUT_WAITING,
-                        approval_id=item.id,
+                        approval_id=str(item.id),
                         escalation_role=step.role,
                         elapsed_seconds=elapsed_seconds,
                     )
@@ -312,7 +312,7 @@ class EscalationChainPolicy:
                 # Previous step timed out -- escalate to this step's role.
                 logger.info(
                     TIMEOUT_ESCALATED,
-                    approval_id=item.id,
+                    approval_id=str(item.id),
                     escalation_role=step.role,
                     elapsed_seconds=elapsed_seconds,
                 )
@@ -328,7 +328,7 @@ class EscalationChainPolicy:
         # All steps exhausted.
         logger.info(
             TIMEOUT_ESCALATED,
-            approval_id=item.id,
+            approval_id=str(item.id),
             elapsed_seconds=elapsed_seconds,
             on_exhausted=self._on_chain_exhausted.value,
             note="escalation chain exhausted",

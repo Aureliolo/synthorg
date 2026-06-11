@@ -13,7 +13,7 @@ from uuid import UUID
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
@@ -128,7 +128,7 @@ def _row_to_plan(row: aiosqlite.Row) -> TrainingPlan:
         Validated ``TrainingPlan`` model instance.
 
     Raises:
-        QueryError: If deserialization fails.
+        MalformedRowError: If deserialization fails.
     """
     data = dict(row)
     try:
@@ -167,7 +167,7 @@ def _row_to_plan(row: aiosqlite.Row) -> TrainingPlan:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 class SQLiteTrainingPlanRepository:

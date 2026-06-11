@@ -326,7 +326,7 @@ class ApprovalGate:
             raise
         logger.info(
             APPROVAL_GATE_CONTEXT_PARKED,
-            parked_id=parked.id,
+            parked_id=str(parked.id),
             approval_id=escalation.approval_id,
             agent_id=agent_id,
             task_id=task_id,
@@ -350,7 +350,7 @@ class ApprovalGate:
                 APPROVAL_GATE_CONTEXT_PARK_FAILED,
                 exc,
                 approval_id=escalation.approval_id,
-                parked_id=parked.id,
+                parked_id=str(parked.id),
                 note="Context serialized but persistence failed",
             )
             raise
@@ -408,7 +408,7 @@ class ApprovalGate:
         logger.info(
             APPROVAL_GATE_CONTEXT_RESUMED,
             approval_id=approval_id,
-            parked_id=parked.id,
+            parked_id=str(parked.id),
         )
 
         if session_id is not None and self._event_hub is not None:
@@ -427,7 +427,7 @@ class ApprovalGate:
                     note="Failed to publish APPROVAL_RESUMED event",
                 )
 
-        return context, parked.id
+        return context, str(parked.id)
 
     async def _resolve_interrupt_from_metadata(
         self,
@@ -507,7 +507,7 @@ class ApprovalGate:
                 APPROVAL_GATE_RESUME_FAILED,
                 exc,
                 approval_id=approval_id,
-                parked_id=parked.id,
+                parked_id=str(parked.id),
                 note="Deserialization failed -- parked record preserved",
             )
             raise
@@ -527,7 +527,7 @@ class ApprovalGate:
         if self._parked_context_repo is None:  # pragma: no cover
             return
         try:
-            deleted = await self._parked_context_repo.delete(parked.id)
+            deleted = await self._parked_context_repo.delete(str(parked.id))
         except Exception as exc:
             reraise_critical(exc)
             # Fail-safe: a delete exception means the parked row may
@@ -542,7 +542,7 @@ class ApprovalGate:
                 APPROVAL_GATE_RESUME_DELETE_FAILED,
                 exc,
                 approval_id=approval_id,
-                parked_id=parked.id,
+                parked_id=str(parked.id),
                 note=(
                     "parked-record delete raised; aborting resume to avoid "
                     "a duplicate re-resume"
@@ -561,12 +561,12 @@ class ApprovalGate:
             logger.error(
                 APPROVAL_GATE_RESUME_DELETE_FAILED,
                 approval_id=approval_id,
-                parked_id=parked.id,
+                parked_id=str(parked.id),
                 note="delete() returned False -- aborting resume to "
                 "avoid duplicate execution",
             )
             msg = (
-                f"Parked record {parked.id!r} was already absent during "
+                f"Parked record {str(parked.id)!r} was already absent during "
                 f"resume cleanup for approval {approval_id!r}; aborting "
                 f"resume to avoid duplicate execution"
             )

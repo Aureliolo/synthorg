@@ -17,13 +17,14 @@ from synthorg.persistence._shared.org_fact_marshalling import (
     tags_from_json,
     tags_to_json,
 )
+from tests._shared import as_uuid, sid
 
 _NOW = datetime(2026, 5, 22, 12, 0, tzinfo=UTC)
 
 
 def _fact() -> OrgFact:
     return OrgFact(
-        id=NotBlankStr("fact-1"),
+        id=as_uuid("fact-1"),
         content=NotBlankStr("The deploy cadence is weekly."),
         category=OrgFactCategory.CONVENTION,
         # Stored sorted, so use sorted order for a clean round-trip identity.
@@ -98,6 +99,12 @@ class TestSnapshotRowToOrgFact:
         with pytest.raises(OrgMemoryQueryError):
             snapshot_row_to_org_fact(row)
 
+    def test_malformed_fact_id_raises(self) -> None:
+        row = _snapshot_row(_fact())
+        row["fact_id"] = "not-a-uuid"
+        with pytest.raises(OrgMemoryQueryError):
+            snapshot_row_to_org_fact(row)
+
 
 @pytest.mark.unit
 class TestOperationLogMarshalling:
@@ -105,7 +112,7 @@ class TestOperationLogMarshalling:
 
     def test_operation_log_entry(self) -> None:
         row: dict[str, object] = {
-            "operation_id": "op-1",
+            "operation_id": sid("op-1"),
             "fact_id": "fact-1",
             "operation_type": "PUBLISH",
             "content": "body",
@@ -119,7 +126,7 @@ class TestOperationLogMarshalling:
             "version": 3,
         }
         entry = row_to_operation_log_entry(row)
-        assert entry.operation_id == "op-1"
+        assert entry.operation_id == as_uuid("op-1")
         assert entry.operation_type == "PUBLISH"
         assert entry.version == 3
         assert entry.tags == (NotBlankStr("x"),)
@@ -158,11 +165,29 @@ class TestOperationLogMarshalling:
 
     def test_operation_log_corrupt_category_raises(self) -> None:
         row: dict[str, object] = {
-            "operation_id": "op-1",
+            "operation_id": sid("op-1"),
             "fact_id": "fact-1",
             "operation_type": "PUBLISH",
             "content": "body",
             "category": "not-a-category",
+            "tags": tags_to_json((NotBlankStr("x"),)),
+            "author_agent_id": "agent-1",
+            "author_seniority": SeniorityLevel.LEAD.value,
+            "author_is_human": 0,
+            "author_autonomy_level": AutonomyLevel.FULL.value,
+            "timestamp": _NOW.isoformat(),
+            "version": 3,
+        }
+        with pytest.raises(OrgMemoryQueryError):
+            row_to_operation_log_entry(row)
+
+    def test_operation_log_malformed_operation_id_raises(self) -> None:
+        row: dict[str, object] = {
+            "operation_id": "not-a-uuid",
+            "fact_id": "fact-1",
+            "operation_type": "PUBLISH",
+            "content": "body",
+            "category": OrgFactCategory.ADR.value,
             "tags": tags_to_json((NotBlankStr("x"),)),
             "author_agent_id": "agent-1",
             "author_seniority": SeniorityLevel.LEAD.value,

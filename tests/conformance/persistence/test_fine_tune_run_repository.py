@@ -10,6 +10,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRunConfig,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -32,7 +33,7 @@ def _run(
     """Build a ``FineTuneRun`` with sensible defaults for tests."""
     base_ts = started_at or datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     defaults: dict[str, object] = {
-        "id": run_id,
+        "id": as_uuid(run_id),
         "stage": stage,
         "config": _cfg(),
         "started_at": base_ts,
@@ -51,9 +52,9 @@ class TestFineTuneRunRepository:
         run = _run()
         await backend.fine_tune_runs.save(run)
 
-        fetched = await backend.fine_tune_runs.get("run-1")
+        fetched = await backend.fine_tune_runs.get(sid("run-1"))
         assert fetched is not None
-        assert fetched.id == "run-1"
+        assert fetched.id == as_uuid("run-1")
         assert fetched.stage is FineTuneStage.GENERATING_DATA
         assert fetched.config.source_dir == "/docs"
         assert fetched.started_at == run.started_at
@@ -71,7 +72,7 @@ class TestFineTuneRunRepository:
         updated = run.model_copy(update={"progress": 0.5})
         await backend.fine_tune_runs.save(updated)
 
-        fetched = await backend.fine_tune_runs.get("run-1")
+        fetched = await backend.fine_tune_runs.get(sid("run-1"))
         assert fetched is not None
         assert fetched.progress == 0.5
         runs, total = await backend.fine_tune_runs.list_items_page()
@@ -90,7 +91,7 @@ class TestFineTuneRunRepository:
 
         active = await backend.fine_tune_runs.get_active_run()
         assert active is not None
-        assert active.id == "r-active"
+        assert active.id == as_uuid("r-active")
 
     async def test_get_active_run_none_when_only_terminal(
         self, backend: PersistenceBackend
@@ -124,7 +125,7 @@ class TestFineTuneRunRepository:
 
         active = await backend.fine_tune_runs.get_active_run()
         assert active is not None
-        assert active.id == "r-new"
+        assert active.id == as_uuid("r-new")
 
     async def test_list_runs_empty(self, backend: PersistenceBackend) -> None:
         runs, total = await backend.fine_tune_runs.list_items_page()
@@ -146,7 +147,11 @@ class TestFineTuneRunRepository:
 
         runs, total = await backend.fine_tune_runs.list_items_page()
         assert total == 3
-        assert [r.id for r in runs] == ["r-new", "r-mid", "r-old"]
+        assert [r.id for r in runs] == [
+            as_uuid("r-new"),
+            as_uuid("r-mid"),
+            as_uuid("r-old"),
+        ]
 
     async def test_list_runs_pagination(self, backend: PersistenceBackend) -> None:
         for i in range(5):
@@ -161,9 +166,9 @@ class TestFineTuneRunRepository:
         page2, _ = await backend.fine_tune_runs.list_items_page(limit=2, offset=2)
         page3, _ = await backend.fine_tune_runs.list_items_page(limit=2, offset=4)
         assert total == 5
-        assert [r.id for r in page1] == ["r4", "r3"]
-        assert [r.id for r in page2] == ["r2", "r1"]
-        assert [r.id for r in page3] == ["r0"]
+        assert [r.id for r in page1] == [as_uuid("r4"), as_uuid("r3")]
+        assert [r.id for r in page2] == [as_uuid("r2"), as_uuid("r1")]
+        assert [r.id for r in page3] == [as_uuid("r0")]
 
     async def test_list_runs_clamps_limit_and_offset(
         self, backend: PersistenceBackend
@@ -194,7 +199,7 @@ class TestFineTuneRunRepository:
         )
         await backend.fine_tune_runs.update_run(updated)
 
-        fetched = await backend.fine_tune_runs.get("run-1")
+        fetched = await backend.fine_tune_runs.get(sid("run-1"))
         assert fetched is not None
         assert fetched.stage is FineTuneStage.TRAINING
         assert fetched.progress == 0.42
@@ -225,7 +230,7 @@ class TestFineTuneRunRepository:
         )
         await backend.fine_tune_runs.update_run(terminal)
 
-        fetched = await backend.fine_tune_runs.get("run-1")
+        fetched = await backend.fine_tune_runs.get(sid("run-1"))
         assert fetched is not None
         assert fetched.stage is FineTuneStage.COMPLETE
         assert fetched.completed_at == datetime(2026, 7, 1, tzinfo=UTC)
@@ -247,17 +252,17 @@ class TestFineTuneRunRepository:
         count = await backend.fine_tune_runs.mark_interrupted()
         assert count == 2
 
-        train = await backend.fine_tune_runs.get("r-train")
+        train = await backend.fine_tune_runs.get(sid("r-train"))
         assert train is not None
         assert train.stage is FineTuneStage.FAILED
         assert train.error == "interrupted by restart"
         assert train.completed_at is not None
 
-        ev = await backend.fine_tune_runs.get("r-eval")
+        ev = await backend.fine_tune_runs.get(sid("r-eval"))
         assert ev is not None
         assert ev.stage is FineTuneStage.FAILED
 
-        done = await backend.fine_tune_runs.get("r-done")
+        done = await backend.fine_tune_runs.get(sid("r-done"))
         assert done is not None
         assert done.stage is FineTuneStage.COMPLETE
 
@@ -278,8 +283,8 @@ class TestFineTuneRunRepository:
 
         await backend.fine_tune_runs.mark_interrupted()
 
-        train = await backend.fine_tune_runs.get("r-train")
-        ev = await backend.fine_tune_runs.get("r-eval")
+        train = await backend.fine_tune_runs.get(sid("r-train"))
+        ev = await backend.fine_tune_runs.get(sid("r-eval"))
         assert train is not None
         assert ev is not None
         assert train.updated_at == ev.updated_at
@@ -316,7 +321,7 @@ class TestFineTuneRunRepository:
         )
         await backend.fine_tune_runs.save(run)
 
-        fetched = await backend.fine_tune_runs.get("run-1")
+        fetched = await backend.fine_tune_runs.get(sid("run-1"))
         assert fetched is not None
         assert fetched.stages_completed == (
             "generating_data",
@@ -342,6 +347,6 @@ class TestFineTuneRunRepository:
         run = _run(config=cfg)
         await backend.fine_tune_runs.save(run)
 
-        fetched = await backend.fine_tune_runs.get("run-1")
+        fetched = await backend.fine_tune_runs.get(sid("run-1"))
         assert fetched is not None
         assert fetched.config == cfg

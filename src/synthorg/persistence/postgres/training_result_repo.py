@@ -13,7 +13,7 @@ from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import (
     ContentType,
@@ -91,7 +91,7 @@ def _row_to_result(row: DictRow) -> TrainingResult:
     aware datetimes, and BOOLEAN as bool.
 
     Raises:
-        QueryError: If deserialization fails.
+        MalformedRowError: If deserialization fails.
 
     Returns:
         Result of type ``TrainingResult``.
@@ -128,7 +128,7 @@ def _row_to_result(row: DictRow) -> TrainingResult:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 def _result_to_params(result: TrainingResult) -> tuple[object, ...]:

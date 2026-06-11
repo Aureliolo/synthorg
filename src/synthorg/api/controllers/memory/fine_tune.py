@@ -98,7 +98,7 @@ class MemoryFineTuneController(Controller):
         run = await orchestrator.start(data)
         return ApiResponse(
             data=FineTuneStatus(
-                run_id=run.id,
+                run_id=str(run.id),
                 stage=run.stage,
                 progress=run.progress,
             ),
@@ -169,7 +169,7 @@ class MemoryFineTuneController(Controller):
             raise NotFoundError(msg) from exc
         return ApiResponse(
             data=FineTuneStatus(
-                run_id=run.id,
+                run_id=str(run.id),
                 stage=run.stage,
                 progress=run.progress,
             ),

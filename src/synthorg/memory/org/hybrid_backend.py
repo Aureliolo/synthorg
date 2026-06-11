@@ -42,6 +42,11 @@ logger = get_logger(__name__)
 
 _HUMAN_AUTHOR = OrgFactAuthor(is_human=True)
 
+# Stable namespace for deriving deterministic ids for the synthetic
+# core-policy facts, so a policy keeps the same id across every
+# ``list_policies`` call (a random uuid4 would change it each time).
+_CORE_POLICY_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_OID, "synthorg.org.core-policy")
+
 
 class HybridPromptRetrievalBackend:
     """Hybrid prompt + retrieval organizational memory backend.
@@ -150,7 +155,7 @@ class HybridPromptRetrievalBackend:
         now = datetime.now(UTC)
         static = tuple(
             OrgFact(
-                id=f"core-policy-{i}",
+                id=uuid.uuid5(_CORE_POLICY_NAMESPACE, str(i)),
                 content=policy,
                 category=OrgFactCategory.CORE_POLICY,
                 author=_HUMAN_AUTHOR,
@@ -263,12 +268,12 @@ class HybridPromptRetrievalBackend:
         self._require_connected()
         require_write_access(self._access_config, request.category, author)
 
-        fact_id = NotBlankStr(str(uuid.uuid4()))
+        fact_id = uuid.uuid4()
         now = datetime.now(UTC)
 
         logger.info(
             ORG_MEMORY_WRITE_START,
-            fact_id=fact_id,
+            fact_id=str(fact_id),
             category=request.category.value,
             author_is_human=author.is_human,
             author_agent_id=author.agent_id,
@@ -287,12 +292,12 @@ class HybridPromptRetrievalBackend:
             await self._store.save(fact)
         except OrgMemoryWriteError as exc:
             log_exception_redacted(
-                logger, ORG_MEMORY_WRITE_FAILED, exc, fact_id=fact_id
+                logger, ORG_MEMORY_WRITE_FAILED, exc, fact_id=str(fact_id)
             )
             raise
         else:
             logger.info(
                 ORG_MEMORY_WRITE_COMPLETE,
-                fact_id=fact_id,
+                fact_id=str(fact_id),
             )
-            return fact_id
+            return NotBlankStr(str(fact_id))

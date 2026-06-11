@@ -8,6 +8,7 @@ materialized snapshot.
 """
 
 from typing import Literal, Self
+from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -130,7 +131,7 @@ class OrgFact(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(description="Unique fact identifier")
+    id: UUID = Field(default_factory=uuid4, description="Unique fact identifier")
     content: NotBlankStr = Field(description="Fact content text")
     category: OrgFactCategory = Field(description="Category classification")
     tags: tuple[NotBlankStr, ...] = Field(
@@ -214,7 +215,8 @@ class OperationLogEntry(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    operation_id: NotBlankStr = Field(
+    operation_id: UUID = Field(
+        default_factory=uuid4,
         description="Globally unique operation identifier",
     )
     fact_id: NotBlankStr = Field(description="Logical fact identifier")

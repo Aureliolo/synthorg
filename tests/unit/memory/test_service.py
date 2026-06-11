@@ -32,6 +32,7 @@ from synthorg.memory.service import (
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.models import SettingValue
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
@@ -45,7 +46,7 @@ def _checkpoint(
     backup_config_json: str | None = None,
 ) -> CheckpointRecord:
     return CheckpointRecord(
-        id=NotBlankStr(checkpoint_id),
+        id=as_uuid(checkpoint_id),
         run_id=NotBlankStr("run-1"),
         model_path=NotBlankStr("local/models/ckpt-1"),
         base_model=NotBlankStr("example-small-001"),
@@ -231,7 +232,9 @@ class TestMemoryServiceCheckpoints:
         )
 
         page, total = await service.list_checkpoints(limit=limit, offset=offset)
-        assert tuple(sorted(c.id for c in page)) == tuple(sorted(expected_ids))
+        assert tuple(sorted(c.id for c in page)) == tuple(
+            sorted(as_uuid(x) for x in expected_ids)
+        )
         assert total == 2
 
     async def test_get_checkpoint_miss_returns_none(self) -> None:
@@ -272,8 +275,8 @@ class TestMemoryServiceCheckpoints:
             run_repo=_FakeRunRepo(),
             settings_service=None,
         )
-        await service.delete_checkpoint(NotBlankStr("a"))
-        assert await repo.get("a") is None
+        await service.delete_checkpoint(sid("a"))
+        assert await repo.get(sid("a")) is None
 
 
 class TestMemoryServiceDeploy:
@@ -288,9 +291,9 @@ class TestMemoryServiceDeploy:
             settings_service=None,
         )
 
-        updated = await service.deploy_checkpoint(NotBlankStr("a"))
+        updated = await service.deploy_checkpoint(sid("a"))
         assert updated.is_active is True
-        assert repo.set_active_calls == ["a"]
+        assert repo.set_active_calls == [sid("a")]
 
     async def test_deploy_with_settings_pushes_embedder_config(self) -> None:
         repo = _FakeCheckpointRepo()
@@ -302,7 +305,7 @@ class TestMemoryServiceDeploy:
             settings_service=settings,
         )
 
-        await service.deploy_checkpoint(NotBlankStr("a"))
+        await service.deploy_checkpoint(sid("a"))
         assert ("memory", "embedder_model", "local/models/ckpt-1") in settings.set_calls
         assert ("memory", "embedder_provider", "local") in settings.set_calls
 
@@ -329,7 +332,7 @@ class TestMemoryServiceDeploy:
         )
 
         with pytest.raises(RuntimeError):
-            await service.deploy_checkpoint(NotBlankStr("a"))
+            await service.deploy_checkpoint(sid("a"))
 
         assert ("memory", "embedder_model") in settings.delete_calls
         assert ("memory", "embedder_provider") in settings.delete_calls
@@ -373,14 +376,14 @@ class TestMemoryServiceDeploy:
         )
 
         with pytest.raises(RuntimeError):
-            await service.deploy_checkpoint(NotBlankStr("a"))
+            await service.deploy_checkpoint(sid("a"))
 
         # Rollback restored the prior active checkpoint in the expected
         # order: first the attempted activation for "a", then the
         # rollback reactivation for "prior". Asserting the exact
         # sequence catches a future regression where rollback fires an
         # extra ``set_active`` or flips the order.
-        assert repo.set_active_calls == ["a", "prior"]
+        assert repo.set_active_calls == [sid("a"), sid("prior")]
         # ``deactivate_all`` must NOT be invoked on this branch -- the
         # prior-active-exists path routes through ``set_active(prior)``
         # instead. Asserting unchanged-from-baseline catches a
@@ -441,7 +444,7 @@ class TestMemoryServiceRollback:
             settings_service=(_FakeSettingsService() if attach_settings else None),
         )
         with pytest.raises(expected_exc, match=match):
-            await service.rollback_checkpoint(NotBlankStr("a"))
+            await service.rollback_checkpoint(sid("a"))
 
     async def test_rollback_with_valid_mapping_restores_settings(self) -> None:
         repo = _FakeCheckpointRepo()
@@ -458,7 +461,7 @@ class TestMemoryServiceRollback:
             settings_service=settings,
         )
 
-        await service.rollback_checkpoint(NotBlankStr("a"))
+        await service.rollback_checkpoint(sid("a"))
         assert (
             "memory",
             "embedder_model",
@@ -484,8 +487,8 @@ class TestMemoryServiceRollback:
             run_repo=_FakeRunRepo(),
             settings_service=_FakeSettingsService(),
         )
-        result = await service.rollback_checkpoint(NotBlankStr("a"))
-        assert result.id == "a"
+        result = await service.rollback_checkpoint(sid("a"))
+        assert result.id == as_uuid("a")
 
 
 class TestMemoryServiceReReadFailure:
@@ -523,7 +526,7 @@ class TestMemoryServiceReReadFailure:
             settings_service=None,
         )
         with pytest.raises(CheckpointNotFoundError):
-            await service.deploy_checkpoint(NotBlankStr("a"))
+            await service.deploy_checkpoint(sid("a"))
 
 
 class TestRollbackStepCatastrophicErrors:
