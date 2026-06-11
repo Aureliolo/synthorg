@@ -92,7 +92,15 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # Mid-loop: only retry if the error looks transient. Echo the captured
   # output to stderr so the build log shows what happened on each attempt
   # without contaminating the caller's captured stdout.
-  if printf '%s' "$out" | grep -qiE "$TRANSIENT_RE"; then
+  #
+  # Grep a here-string, never `printf "$out" | grep -qi`: under `set -o
+  # pipefail` a large `$out` (a GHCR 5xx HTML error body easily exceeds
+  # the 64 KB pipe buffer) makes the early-exiting `grep -q` close the
+  # pipe while printf is still writing, so printf takes EPIPE and the
+  # pipeline inherits its non-zero status -- the match is masked and a
+  # transient push error is misclassified as terminal. A here-string is
+  # not a pipeline, so the status is purely grep's.
+  if grep -qiE "$TRANSIENT_RE" <<<"$out"; then
     printf '%s\n' "$out" >&2
     echo "::warning::${LABEL} hit transient registry error (attempt ${i}/${ATTEMPTS}, rc=${rc}); sleeping ${BACKOFF}s before retry" >&2
     sleep "$BACKOFF"

@@ -63,7 +63,15 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # Idempotency branch: a re-sign that lost the createLogEntry race is
   # success, not a transient error. Check this BEFORE the regex so
   # attempt 1 -> 5xx -> attempt 2 -> conflict resolves cleanly.
-  if printf -- '%s\n' "$out" | grep -q 'createLogEntryConflict'; then
+  #
+  # Grep a here-string, never `printf "$out" | grep -q`: under `set -o
+  # pipefail` a large `$out` (a GHCR 5xx HTML error body easily exceeds
+  # the 64 KB pipe buffer) makes the early-exiting `grep -q` close the
+  # pipe while printf is still writing, so printf takes EPIPE and the
+  # pipeline inherits its non-zero status -- the match is masked and a
+  # transient error is misclassified as terminal. A here-string is not a
+  # pipeline, so the status is purely grep's.
+  if grep -q 'createLogEntryConflict' <<<"$out"; then
     printf '%s\n' "$out"
     echo "::notice::Image ${REF} already signed -- skipping"
     exit 0
@@ -78,7 +86,14 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # Guard against an empty `$TRANSIENT_RE` (e.g. sibling helper drift
   # that silently prints nothing) - `grep -E ""` matches every line,
   # which would retry auth failures and other non-transient errors.
-  if [[ -n "$TRANSIENT_RE" ]] && printf -- '%s\n' "$out" | grep -qiE "$TRANSIENT_RE"; then
+  #
+  # Grep a here-string, not `printf "$out" | grep -qi`: see the
+  # idempotency branch above. A GHCR 5xx HTML error body overruns the
+  # 64 KB pipe buffer, so the piped form takes EPIPE on the early
+  # `grep -q` exit and `pipefail` masks the match -- which is exactly
+  # how a transient `502 Bad Gateway` got misclassified as terminal and
+  # left an image unsigned.
+  if [[ -n "$TRANSIENT_RE" ]] && grep -qiE "$TRANSIENT_RE" <<<"$out"; then
     printf '%s\n' "$out" >&2
     echo "::warning::cosign sign ${REF} hit transient error (attempt ${i}/${ATTEMPTS}, rc=${rc}); sleeping ${BACKOFF}s before retry" >&2
     sleep "$BACKOFF"
