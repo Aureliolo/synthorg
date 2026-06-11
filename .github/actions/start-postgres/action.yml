@@ -59,10 +59,41 @@ runs:
         PG_LOCAL: synthorg-postgres-ci:18-alpine
       run: |
         set -euo pipefail
-        # Same digest as the Docker Hub ref => byte-identical image, so the
-        # supply-chain pin holds even when the bytes come from the mirror.
-        digest="${PG_IMAGE##*@}"
-        mirror_ref="mirror.gcr.io/library/postgres@${digest}"
+        # mirror.gcr.io is a pull-through cache for Docker Hub, so the mirror
+        # ref mirrors the Docker Hub repository path. Derive that path (plus the
+        # digest / tag) from the input rather than assuming a digest-pinned
+        # ``library/postgres`` ref, so a tag-only or non-official override still
+        # yields a valid reference. When the input carries a digest the pin is
+        # preserved (byte-identical image); a tag-only input falls back to the
+        # tag, the best guarantee available without a digest.
+        ref="${PG_IMAGE}"
+        digest=""
+        if [[ "${ref}" == *"@"* ]]; then
+          digest="${ref##*@}"
+          ref="${ref%@*}"
+        fi
+        # Strip an explicit registry host (a first path segment that looks like
+        # a hostname) so the remainder is the Docker Hub repository path.
+        if [[ "${ref}" == *"/"* ]]; then
+          host="${ref%%/*}"
+          case "${host}" in
+            *.* | *:* | localhost) ref="${ref#*/}" ;;
+          esac
+        fi
+        tag=""
+        if [[ "${ref}" == *":"* ]]; then
+          tag="${ref##*:}"
+          ref="${ref%:*}"
+        fi
+        # Official images live under ``library/`` on Docker Hub and its mirror.
+        if [[ "${ref}" != *"/"* ]]; then
+          ref="library/${ref}"
+        fi
+        if [[ -n "${digest}" ]]; then
+          mirror_ref="mirror.gcr.io/${ref}@${digest}"
+        else
+          mirror_ref="mirror.gcr.io/${ref}:${tag:-latest}"
+        fi
         # Re-tag whichever registry served the pull to a fixed local tag so
         # the run step never re-resolves a registry-qualified reference.
         for attempt in 1 2 3 4 5; do
