@@ -11762,7 +11762,7 @@
     },
     {
       "kind": "code",
-      "loc": 122,
+      "loc": 124,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/_memory_service_helpers.py",
       "owning_feature": "meta"
@@ -11783,70 +11783,70 @@
     },
     {
       "kind": "code",
-      "loc": 195,
+      "loc": 197,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/agents_autonomy.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 366,
+      "loc": 368,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/agents_crud.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 262,
+      "loc": 264,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/agents_training.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 385,
+      "loc": 386,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/analytics.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 384,
+      "loc": 386,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/approvals.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 329,
+      "loc": 331,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/brain.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 237,
+      "loc": 239,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/budget.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 252,
+      "loc": 254,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/charter.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 371,
+      "loc": 372,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/cockpit.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 384,
+      "loc": 385,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/common.py",
       "owning_feature": "meta"
@@ -11881,49 +11881,49 @@
     },
     {
       "kind": "code",
-      "loc": 225,
+      "loc": 227,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/communication/connections.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 202,
+      "loc": 204,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/communication/meetings.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 192,
+      "loc": 194,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/communication/messages.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 77,
+      "loc": 79,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/communication/tunnel.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 268,
+      "loc": 270,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/communication/webhooks.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 342,
+      "loc": 344,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/coordination.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 387,
+      "loc": 388,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/docs.py",
       "owning_feature": "meta"
@@ -11944,84 +11944,84 @@
     },
     {
       "kind": "code",
-      "loc": 87,
+      "loc": 89,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/infrastructure/audit_events.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 226,
+      "loc": 228,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/infrastructure/backup.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 45,
+      "loc": 47,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/infrastructure/health.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 76,
+      "loc": 78,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/infrastructure/integration_health.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 203,
+      "loc": 205,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/infrastructure/projects.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 148,
+      "loc": 150,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/infrastructure/providers.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 108,
+      "loc": 110,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/infrastructure/requests.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 163,
+      "loc": 165,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/infrastructure/settings.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 86,
+      "loc": 88,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/infrastructure/setup.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 106,
+      "loc": 108,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/infrastructure/simulations.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 172,
+      "loc": 174,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/infrastructure/template_packs.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 213,
+      "loc": 215,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/infrastructure/users.py",
       "owning_feature": "meta"
@@ -12035,28 +12035,28 @@
     },
     {
       "kind": "code",
-      "loc": 277,
+      "loc": 279,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/integrations_artifacts_ontology.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 194,
+      "loc": 196,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/integrations_catalog.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 296,
+      "loc": 298,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/integrations_oauth_clients.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 296,
+      "loc": 298,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/knowledge.py",
       "owning_feature": "meta"
@@ -12070,28 +12070,28 @@
     },
     {
       "kind": "code",
-      "loc": 214,
+      "loc": 216,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/memory_checkpoints.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 95,
+      "loc": 97,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/memory_entries.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 287,
+      "loc": 289,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/memory_finetune.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 267,
+      "loc": 268,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/meta.py",
       "owning_feature": "meta"
@@ -12105,56 +12105,56 @@
     },
     {
       "kind": "code",
-      "loc": 176,
+      "loc": 178,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/organization_company.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 214,
+      "loc": 216,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/organization_departments.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 258,
+      "loc": 260,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/organization_teams_roles.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 370,
+      "loc": 372,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/quality.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 166,
+      "loc": 168,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/research.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 225,
+      "loc": 227,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/signals.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 474,
+      "loc": 476,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/tasks.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 249,
+      "loc": 251,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/workflow_executions.py",
       "owning_feature": "meta"
@@ -12168,21 +12168,21 @@
     },
     {
       "kind": "code",
-      "loc": 280,
+      "loc": 282,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/workflows_definitions.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 239,
+      "loc": 241,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/workflows_subworkflows.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 142,
+      "loc": 144,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/workflows_versions.py",
       "owning_feature": "meta"
@@ -12791,7 +12791,7 @@
     },
     {
       "kind": "code",
-      "loc": 222,
+      "loc": 223,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/validation_gate.py",
       "owning_feature": "toolsmith"

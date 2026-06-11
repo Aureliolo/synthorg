@@ -7,7 +7,8 @@ destructive and enforces the admin guardrail triple (confirm + reason +
 actor), emitting ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
-from synthorg.api.state import AppState
+from typing import TYPE_CHECKING
+
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
@@ -42,6 +43,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 from synthorg.organization.services import UNSET, UnsetType
 from synthorg.organization.state import role_version_service_of, team_service_of
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

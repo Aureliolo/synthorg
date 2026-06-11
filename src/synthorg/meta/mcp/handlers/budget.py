@@ -12,8 +12,8 @@ app_states).  All budget tools are reads; none are destructive.
 import copy
 from collections.abc import Mapping
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
-from synthorg.api.state import AppState
 from synthorg.budget.state import cost_tracker_of
 from synthorg.budget.version_service import BudgetConfigVersionsService
 from synthorg.core.agent import (
@@ -44,6 +44,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import config_resolver_of
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

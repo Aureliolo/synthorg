@@ -6,7 +6,8 @@ rollback / delete enforce the admin guardrail triple and emit
 forwards to the ``not_supported`` envelope.
 """
 
-from synthorg.api.state import AppState
+from typing import TYPE_CHECKING
+
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
@@ -47,6 +48,9 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

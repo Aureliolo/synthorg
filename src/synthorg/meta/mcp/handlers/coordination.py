@@ -17,8 +17,8 @@ services in the application bootstrap.
 
 from collections.abc import Mapping
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
-from synthorg.api.state import AppState
 from synthorg.coordination.state import (
     CoordinationStateSlice,
     ceremony_policy_service_of,
@@ -55,6 +55,9 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

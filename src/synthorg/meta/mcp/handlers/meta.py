@@ -19,9 +19,14 @@ etc.) already use.
 import copy
 from collections.abc import Mapping
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
-from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
+from synthorg.meta.rules.service import CustomRulesService
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
+
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.errors import SelfImprovementTriggerError
 from synthorg.meta.mcp.errors import (
@@ -45,7 +50,6 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.meta.rules.custom import CustomRuleResponse
-from synthorg.meta.rules.service import CustomRulesService
 from synthorg.meta.state import MetaStateSlice, self_improvement_service_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
@@ -89,8 +93,6 @@ def _custom_rules_service(app_state: AppState) -> CustomRulesService:
         service="custom_rules_service",
         reason="app_state.custom_rules_service not wired -- building per-call",
     )
-    from synthorg.meta.rules.service import CustomRulesService  # noqa: PLC0415
-
     return CustomRulesService(repo=persistence_of(app_state).custom_rules)
 
 

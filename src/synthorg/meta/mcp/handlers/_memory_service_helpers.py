@@ -6,13 +6,17 @@ fine-tune-required variant and a deletion-only variant. Shared by the
 fine-tune, checkpoint, and entry handler modules.
 """
 
-from synthorg.api.state import AppState
+from typing import TYPE_CHECKING
+
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
 from synthorg.memory.service import MemoryService
 from synthorg.memory.state import MemoryStateSlice, memory_service_of
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.settings.state import SettingsStateSlice
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 _TY_NON_BLANK = "non-blank string"
 _ARG_CHECKPOINT_ID = "checkpoint_id"

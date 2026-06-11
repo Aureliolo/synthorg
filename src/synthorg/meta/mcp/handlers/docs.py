@@ -8,9 +8,8 @@ write handler is admin-gated at the registry layer (``docs:write`` uses
 
 from collections.abc import Iterable, Mapping
 from types import MappingProxyType
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
@@ -46,6 +45,9 @@ from synthorg.tools.docs._args import (
     parse_block_arg,
 )
 from synthorg.tools.docs.write_living_doc import _materialise_body
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

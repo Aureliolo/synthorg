@@ -10,8 +10,8 @@ payload, then routes through the service.
 
 from collections.abc import Mapping
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
-from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
@@ -42,6 +42,9 @@ from synthorg.project_brain.errors import (
 from synthorg.project_brain.models import BrainEntry
 from synthorg.project_brain.service import ProjectBrainService
 from synthorg.project_brain.state import ProjectBrainStateSlice
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

@@ -16,10 +16,10 @@ from collections.abc import (
     Mapping,
 )
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.agent import (
     AgentIdentity,
@@ -53,6 +53,9 @@ from synthorg.meta.models import ImprovementProposal
 from synthorg.meta.state import signals_service_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

@@ -277,5 +277,6 @@ class ToolValidationConfigError(ToolsmithError):
 __all__ = [
     "BenchmarkToolValidationGate",
     "SandboxBriefRunner",
+    "SandboxResolver",
     "ToolValidationConfigError",
 ]

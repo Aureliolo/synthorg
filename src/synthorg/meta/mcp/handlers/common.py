@@ -30,11 +30,10 @@ import asyncio
 import json
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -48,6 +47,9 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_NOT_IMPLEMENTED,
     MCP_HANDLER_SERVICE_FALLBACK,
 )
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
