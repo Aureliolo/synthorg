@@ -1,12 +1,14 @@
 """Conformance tests for the collaborator Protocols.
 
-Each ``@runtime_checkable`` Protocol introduced to retire the WARN-era "Option A"
-forward-ref exemption must be satisfied by both the concrete collaborator and the
-canonical test double, so a consumer can annotate against the Protocol and have
-the real object and the injected double both pass an ``isinstance`` boundary
-check. These tests pin that: the real class satisfies the Protocol structurally,
-the ``mock_of`` autospec double satisfies it via ``isinstance``, and a bare
-object never conforms (so the decorator is actually enforcing membership).
+Each ``@runtime_checkable`` collaborator Protocol must be satisfied by both the
+concrete collaborator and the canonical ``mock_of`` autospec double, so a
+consumer can annotate against the Protocol and have the real object and the
+injected double both pass an ``isinstance`` boundary check. These tests pin
+that: the real class satisfies the Protocol structurally, the autospec double
+satisfies it via ``isinstance``, the behavioural ``FakeJetStreamTaskQueue``
+double satisfies ``TaskQueue``, and a bare object never conforms (so the
+decorator is actually enforcing membership). A ``TYPE_CHECKING``-only block adds
+the static guarantee that each concrete class is assignable to its Protocol.
 """
 
 import typing
@@ -60,9 +62,9 @@ def _missing_members(proto: type, candidate: object) -> set[str]:
 def test_real_class_satisfies_protocol(pair: tuple[type, type]) -> None:
     """The concrete collaborator structurally satisfies its Protocol."""
     proto, real_cls = pair
-    assert not _missing_members(proto, real_cls), (
-        f"{real_cls.__name__} is missing {_missing_members(proto, real_cls)} "
-        f"required by {proto.__name__}"
+    missing = _missing_members(proto, real_cls)
+    assert not missing, (
+        f"{real_cls.__name__} is missing {missing} required by {proto.__name__}"
     )
 
 
@@ -112,11 +114,11 @@ if TYPE_CHECKING:
         registry: AgentRegistryService,
         classifier: DefaultRiskTierClassifier,
     ) -> None:
-        """Static-only: mypy proves each concrete collaborator satisfies its Protocol.
+        """Static-only: mypy proves each concrete class is assignable to its Protocol.
 
-        This is the signature-compatibility guarantee the per-package hoist
-        children rely on when they repoint consumer annotations from the
-        concrete type to the Protocol. Never called at runtime.
+        Verifies signature compatibility (parameter and return types, async-ness)
+        that the runtime ``isinstance`` member-presence check cannot. Never called
+        at runtime.
         """
         _accepts_protocols(
             queue,

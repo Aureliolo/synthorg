@@ -467,6 +467,25 @@ Issue #1891 ran a per-candidate keep / inline / refactor decision against the ei
 | 7. `ontology/versioning.py` factories | Invert dependency | Backend-specific factories moved to `persistence/sqlite/ontology_versioning.py` and `persistence/postgres/ontology_versioning.py`; `ontology/versioning.py` keeps only the pure `EntityDefinition` deserializer helpers. Dual-backend conformance test in `tests/conformance/persistence/test_ontology_versioning.py`. |
 | 8. `backup/factory.py` | Backend-pluggable | `backup/registry.py::PERSISTENCE_BACKUP_HANDLER_REGISTRY` dispatches by persistence backend; SQLite handler renamed to `SQLitePersistenceComponentHandler`; new `PostgresPersistenceComponentHandler` shells out to `pg_dump` / `pg_restore` with `PGPASSWORD` env-injection; dual-backend conformance test in `tests/conformance/persistence/test_backup_round_trip.py`. |
 
+## Collaborator protocols added by #2315
+
+Issue #2315 added six `@runtime_checkable` structural Protocols that decouple
+high-fan-in consumers from concrete collaborators (so the real class and the
+test doubles both satisfy a declared contract). They are consumer-decoupling
+seams, KEEP by design intent, and each is covered by
+`tests/unit/_core/test_protocol_conformance.py`. They postdate the
+2026-05-10 snapshot above and are recorded here rather than in the historical
+per-area tables.
+
+| Path | Name | rc | Recommendation | Notes |
+|---|---|---|---|---|
+| workers/queue_protocol.py | `TaskQueue` | 1 | KEEP | Structural seam over the optional `synthorg[distributed]` `JetStreamTaskQueue`. |
+| engine/parallel_protocol.py | `ParallelExecutorProtocol` | 1 | KEEP | `execute_group` seam decoupling dispatchers from the heavy `AgentEngine`. |
+| settings/resolver_protocol.py | `ConfigResolverProtocol` | 1 | KEEP | Scalar + bridge-config read surface of `ConfigResolver`. |
+| settings/service_protocol.py | `SettingsServiceProtocol` | 1 | KEEP | Setting-value lifecycle surface of `SettingsService`. |
+| budget/tracker_protocol.py | `CostTrackerProtocol` | 1 | KEEP | Record/aggregate surface of `CostTracker`. |
+| hr/registry_protocol.py | `AgentRegistryProtocol` | 1 | KEEP | Lookup + identity-lifecycle surface of `AgentRegistryService`. |
+
 ## Out of scope
 
 - Actually deleting any `Protocol` class (cleanup PRs).

@@ -11,8 +11,8 @@ the ``*BridgeConfig`` reads, whose return types resolve at module level. The
 composed-config getters (``get_budget_config`` / ``get_api_config`` /
 ``get_agents`` / ...) are excluded on purpose: their return types are genuine
 import-cycle breakers the resolver itself guards under ``TYPE_CHECKING``, and
-their callers hold the concrete resolver at runtime-wired sites. Pulling them
-into the Protocol would re-create the forward-ref boundary this work removes.
+their callers hold the concrete resolver at runtime-wired sites. Naming those
+return types here would reintroduce the circular import their callers avoid.
 """
 
 from enum import StrEnum

@@ -99,3 +99,7 @@ class CostTrackerProtocol(Protocol):
     def track_pending_record(self, task: asyncio.Task[None]) -> None:
         """Register an in-flight record-write task for graceful drain."""
         ...
+
+    async def drain_pending_records(self) -> None:
+        """Await every in-flight record-write task registered for drain."""
+        ...

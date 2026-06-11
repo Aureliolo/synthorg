@@ -57,6 +57,11 @@ Security subsystem: rule engine, trust strategies, autonomy levels, output scann
 
 ## Autonomy
 
+The resolved-autonomy value object `EffectiveAutonomy` (produced by
+`AutonomyResolver`) is documented under [Core](core.md#effective-autonomy); it is
+a core leaf so engine, workers, and tools can reference it without the security
+package.
+
 ::: synthorg.security.autonomy.enums
 
 ::: synthorg.security.autonomy.protocol

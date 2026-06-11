@@ -62,15 +62,15 @@ _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
 # (``meta.charter.__init__`` -> ``meta.charter.service`` ->
 # ``communication.conversation.enums`` -> ``communication.__init__``). Neither
 # can import cold on its own, and no cold leaf consumes those enums.
-# The ``core.*`` foundation leaves relocated out of heavier hubs so their
-# consumers can annotate against them at module level without a cold cycle:
-# ``core.completion_enums`` (the ``FinishReason`` vocabulary out of the eager
-# ``providers`` hub, which previously re-entered ``budget.cost_record`` mid-init),
-# ``core.effective_autonomy`` and ``core.redteam_review_input`` (resolved-autonomy
-# and red-team gate-input value objects out of the heavy ``security`` package),
-# and ``core.approval`` (the human-approval value object, already cold-safe but
-# pinned so a future dependency cannot regress it). ``budget.cost_record`` itself
-# is pinned now that ``FinishReason`` no longer drags it into the providers hub.
+# Dependency-free ``core.*`` foundation leaves whose consumers annotate against
+# them at module level: ``core.completion_enums`` (the ``FinishReason``
+# completion-outcome enum), ``core.effective_autonomy`` and
+# ``core.redteam_review_input`` (resolved-autonomy and red-team gate-input value
+# objects), and ``core.approval`` (the human-approval value object). Each imports
+# only ``core.*`` / pydantic / stdlib, so adding a heavier import to any of them
+# regresses this gate. ``budget.cost_record`` is pinned because it sources
+# ``FinishReason`` from the ``core`` leaf, so importing it does not pull the heavy
+# ``providers`` package (whose eager init imports ``budget.cost_record`` back).
 COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.providers.enums",
     "synthorg.core.agent",

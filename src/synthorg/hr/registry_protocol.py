@@ -12,7 +12,6 @@ from typing import Protocol, runtime_checkable
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.clock import Clock
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus
@@ -124,23 +123,6 @@ class AgentRegistryProtocol(Protocol):
         clock: Clock | None = None,
     ) -> AutonomyUpdateResult:
         """Request an autonomy change, routing through the approval flow."""
-        ...
-
-    async def snapshot_current_autonomy_level(
-        self,
-        agent_id: NotBlankStr,
-    ) -> AutonomyLevel:
-        """Read an agent's current autonomy level under the registry lock."""
-        ...
-
-    async def apply_autonomy_update_atomic(
-        self,
-        agent_id: NotBlankStr,
-        level: AutonomyLevel,
-        *,
-        saved_by: str,
-    ) -> tuple[AutonomyLevel, AgentIdentity]:
-        """Read the prior level and apply the new level under one lock."""
         ...
 
     async def agent_count(self) -> int:
