@@ -13,6 +13,29 @@ pytestmark = pytest.mark.unit
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "check_no_ruff100_self_cloak.py"
 
+
+@pytest.fixture(autouse=True)
+def _isolate_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Confine every git call in this module to the per-test temp repos.
+
+    ``git push`` exports ``GIT_DIR`` / ``GIT_INDEX_FILE`` / ``GIT_WORK_TREE``
+    into the pre-push hook environment that pytest inherits. Those vars
+    override directory-based repo discovery, so without stripping them a
+    ``git add`` in a temp worktree (and the gate's own ``git ls-files``)
+    would target the REAL repo index instead of ``cwd`` -- staging every
+    real file as deleted, since none of them exist in the temp tree.
+    """
+    for var in (
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_COMMON_DIR",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
 # The suppression token is assembled from fragments so the RUF100-paired
 # fixtures below are not themselves flagged by the gate under test, which
 # scans raw source text (string literals included). At runtime ``_noqa``
