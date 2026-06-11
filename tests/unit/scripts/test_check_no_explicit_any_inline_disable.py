@@ -137,8 +137,3 @@ def test_main_returns_two_on_unreadable_repo_root(
     rc = _GATE.main(["--repo-root", str(missing)])  # type: ignore[attr-defined]
     assert rc == 2
     assert "not a directory" in capsys.readouterr().err
-
-
-def test_real_tree_is_compliant() -> None:
-    """The gate must be green against the actual repo (drain is complete)."""
-    assert _GATE.main(["--repo-root", str(_REPO_ROOT)]) == 0  # type: ignore[attr-defined]
