@@ -13,8 +13,8 @@ from synthorg.communication.event_stream.interrupt import (
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.park_service import ParkService
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
-from synthorg.security.timeout.park_service import ParkService
 from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
 
 pytestmark = pytest.mark.unit

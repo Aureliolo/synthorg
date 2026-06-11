@@ -29,7 +29,7 @@ import sys
 from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import cast, override
+from typing import override
 
 import pytest
 
@@ -59,7 +59,7 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.tools.sandbox.result import SandboxResult
-from tests._shared import FakeClock
+from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.integration
 
@@ -356,7 +356,7 @@ class TestSelfExtensionE2E:
         result = await invoker.invoke(
             "synthorg_textkit_slugify",
             {"text": "Hello Brave World"},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is False
         envelope = json.loads(result.content)

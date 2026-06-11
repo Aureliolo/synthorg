@@ -116,6 +116,7 @@ if TYPE_CHECKING:
     from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
     from synthorg.engine.decisions import DecisionRecord
     from synthorg.engine.workflow.definition import WorkflowDefinition
+    from synthorg.execution.parked_context import ParkedContext
     from synthorg.hr.enums import LifecycleEventType
     from synthorg.hr.models import AgentLifecycleEvent
     from synthorg.hr.performance.models import (
@@ -131,7 +132,6 @@ if TYPE_CHECKING:
     from synthorg.security.models import AuditEntry
     from synthorg.security.redteam.models import RedTeamReportRecord
     from synthorg.security.ssrf_violation import SsrfViolation
-    from synthorg.security.timeout.parked_context import ParkedContext
 
 
 class _FakeTaskRepository:

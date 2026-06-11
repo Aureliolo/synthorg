@@ -2,8 +2,8 @@
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
+from synthorg.api.state import AppState
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
@@ -27,9 +27,6 @@ from synthorg.meta.mcp.handlers.infrastructure._shared import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

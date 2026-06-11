@@ -7,7 +7,7 @@ be revoked, with all changes audit-logged.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, model_validator
 
@@ -20,9 +20,7 @@ from synthorg.observability.events.security import (
     SECURITY_RISK_OVERRIDE_EXPIRED,
     SECURITY_RISK_OVERRIDE_REVOKED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.security.rules.risk_classifier import RiskClassifier
+from synthorg.security.rules.risk_classifier import RiskClassifier
 
 logger = get_logger(__name__)
 

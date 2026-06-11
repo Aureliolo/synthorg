@@ -2,8 +2,8 @@
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import integration_health_facade_service_of
@@ -19,9 +19,6 @@ from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _to_jsonable,
 )
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

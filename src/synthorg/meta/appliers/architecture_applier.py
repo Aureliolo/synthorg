@@ -8,10 +8,9 @@ read-only view of those registries, so operators can preview whether
 validators live in ``_architecture_validators``.
 """
 
-from typing import Protocol, runtime_checkable
-
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.appliers._architecture_validators import (
+    ArchitectureApplierContext,
     _PendingChanges,
     _validate_change,
 )
@@ -34,31 +33,6 @@ from synthorg.observability.events.meta import (
 )
 
 logger = get_logger(__name__)
-
-
-@runtime_checkable
-class ArchitectureApplierContext(Protocol):
-    """Read-only view of role/department/workflow registries."""
-
-    def has_role(self, name: str) -> bool:
-        """Return True when a role with ``name`` is registered."""
-        ...
-
-    def has_department(self, name: str) -> bool:
-        """Return True when a department with ``name`` is registered."""
-        ...
-
-    def has_workflow(self, name: str) -> bool:
-        """Return True when a workflow with ``name`` is registered."""
-        ...
-
-    def role_in_use(self, name: str) -> bool:
-        """Return True when removing the role would dangle references."""
-        ...
-
-    def department_in_use(self, name: str) -> bool:
-        """Return True when removing the department would dangle references."""
-        ...
 
 
 class ArchitectureApplier:
@@ -251,3 +225,6 @@ class ArchitectureApplier:
             error_message=error_message,
             changes_applied=0,
         )
+
+
+__all__ = ["ArchitectureApplier", "ArchitectureApplierContext"]

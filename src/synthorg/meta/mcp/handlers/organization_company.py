@@ -6,8 +6,7 @@ through :func:`company_read_service_of`; capability gaps surface as the
 typed ``not_supported`` envelope via :func:`_map_capability`.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.api.state import AppState
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
@@ -25,9 +24,6 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.organization.state import company_read_service_of
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 
 async def _company_get(

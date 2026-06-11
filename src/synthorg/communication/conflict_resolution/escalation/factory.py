@@ -30,28 +30,22 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
     DecisionProcessor,
     EscalationQueueStore,
 )
+from synthorg.communication.conflict_resolution.escalation.registry import (
+    PendingFuturesRegistry,
+)
+from synthorg.core.clock import Clock
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.settings.resolver import ConfigResolver
 
 if TYPE_CHECKING:
-    # ``PendingFuturesRegistry`` and ``PersistenceBackend`` are kept
-    # under TYPE_CHECKING because a runtime import of either closes a
-    # circular import chain through the ``communication`` package
-    # initialiser (``communication.__init__`` -> ``bus`` ->
-    # ``bus._nats_state`` -> ``communication.config`` -> back into
-    # ``escalation.factory`` via ``conflict_resolution.config`` -> ...)
-    # that the package layout cannot easily restructure. PEP 649 makes
-    # the bare annotations below safe at module-load time --- they are
-    # evaluated lazily only when an introspector calls
-    # ``typing.get_type_hints()``, and that introspector can pass an
-    # explicit ``localns`` mapping (or the equivalent ``include_extras``
-    # / ``globalns``) when it needs the resolved type.
-    from synthorg.communication.conflict_resolution.escalation.registry import (
-        PendingFuturesRegistry,
-    )
-    from synthorg.core.clock import Clock
+    # ``persistence.protocol`` is the heavy persistence hub: it transitively
+    # re-imports ``communication`` (``escalation.config``), which is mid-init
+    # when ``communication.__init__`` eagerly loads this factory (``__init__``
+    # -> ``bus`` -> ``bus._nats_state`` -> ``communication.config`` ->
+    # ``conflict_resolution.config`` -> ``escalation.factory``). A module-level
+    # import here would close that cold cycle. Kept guarded.
     from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 

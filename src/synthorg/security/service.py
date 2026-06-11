@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.effective_autonomy import EffectiveAutonomy
@@ -39,6 +40,9 @@ from synthorg.security.config import (
     SecurityConfig,
     SecurityEnforcementMode,
 )
+from synthorg.security.denial_tracker import (
+    DenialTracker,
+)
 from synthorg.security.models import (
     OUTPUT_SCAN_VERDICT,
     AuditEntry,
@@ -54,16 +58,17 @@ from synthorg.security.output_scan_policy_factory import (
 )
 from synthorg.security.output_scanner import OutputScanner
 from synthorg.security.rules.engine import RuleEngine
+from synthorg.security.safety_classifier import SafetyClassifier
 from synthorg.security.service_escalation import SecOpsServiceEscalationMixin
 from synthorg.security.timeout.protocol import RiskTierClassifier
 
 if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.security.denial_tracker import (
-        DenialTracker,
-    )
+    # These collaborators sit on the security<->engine boot cycle: this module is
+    # imported while ``security.service`` is mid-init, and each transitively pulls
+    # ``engine`` (``uncertainty`` -> ``engine.prompt_safety`` -> ``engine.__init__``)
+    # or the ``config.schema`` cold leaf (``llm_evaluator``), which re-enters
+    # ``security.service`` via ``engine._security_factory``. Kept guarded.
     from synthorg.security.llm_evaluator import LlmSecurityEvaluator
-    from synthorg.security.safety_classifier import SafetyClassifier
     from synthorg.security.uncertainty import UncertaintyChecker
 
 logger = get_logger(__name__)

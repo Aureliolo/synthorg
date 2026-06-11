@@ -21,12 +21,22 @@ from synthorg.observability.events.communication import (
 )
 
 if TYPE_CHECKING:
-    # nats-py is an optional dependency, so these stay guarded for clean import
-    # when it is absent. Entry is a nested class on KeyValue (not a module-level
-    # export), so it cannot be imported directly.
+    # Entry is a nested class on KeyValue (not a module-level export), so it
+    # cannot be imported directly.
     from nats.js.kv import KeyValue
 
     KvEntry = KeyValue.Entry
+else:
+    # nats-py is the optional ``[distributed]`` extra: present in dev/CI (so
+    # typeguard checks the real types), ``object`` fallback otherwise so this
+    # module still imports without the extra.
+    try:
+        from nats.js.kv import KeyValue
+
+        KvEntry = KeyValue.Entry
+    except ImportError:
+        KeyValue = object
+        KvEntry = object
 
 logger = get_logger(__name__)
 

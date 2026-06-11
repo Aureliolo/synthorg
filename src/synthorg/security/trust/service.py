@@ -6,12 +6,13 @@ and trust level changes for agents.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.observability import get_logger
 from synthorg.observability.events.trust import (
     TRUST_APPROVAL_REQUIRED,
@@ -23,6 +24,7 @@ from synthorg.observability.events.trust import (
     TRUST_INITIALIZED,
     TRUST_LEVEL_CHANGED,
 )
+from synthorg.security.trust.config import TrustConfig
 from synthorg.security.trust.enums import TrustChangeReason
 from synthorg.security.trust.errors import TrustEvaluationError
 from synthorg.security.trust.models import (
@@ -30,12 +32,7 @@ from synthorg.security.trust.models import (
     TrustEvaluationResult,
     TrustState,
 )
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.hr.performance.models import AgentPerformanceSnapshot
-    from synthorg.security.trust.config import TrustConfig
-    from synthorg.security.trust.protocol import TrustStrategy
+from synthorg.security.trust.protocol import TrustStrategy
 
 logger = get_logger(__name__)
 

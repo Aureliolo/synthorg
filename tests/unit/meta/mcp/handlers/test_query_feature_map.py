@@ -7,12 +7,12 @@ one feature. Unknown names return an empty feature list (read tools never
 """
 
 import json
-from typing import cast
 
 import pytest
 
 from synthorg.api.state import AppState
 from synthorg.meta.mcp.handlers.meta import META_HANDLERS
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -22,9 +22,7 @@ _TOOL = "synthorg_meta_query_feature_map"
 async def _invoke(arguments: dict[str, object]) -> dict[str, object]:
     """Call the handler with an empty app_state and return the parsed envelope."""
     handler = META_HANDLERS[_TOOL]
-    raw = await handler(
-        app_state=cast("AppState", object()), arguments=arguments, actor=None
-    )
+    raw = await handler(app_state=mock_of[AppState](), arguments=arguments, actor=None)
     parsed = json.loads(raw)
     assert isinstance(parsed, dict)
     return parsed

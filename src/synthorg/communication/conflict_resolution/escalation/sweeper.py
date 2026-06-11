@@ -12,7 +12,7 @@ that was awaiting a decision has died, but the escalation row remains
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.communication.conflict_resolution.escalation.protocol import (
     EscalationQueueStore,
@@ -27,12 +27,7 @@ from synthorg.observability.events.conflict import (
 )
 from synthorg.observability.metrics_hub import record_escalation_outcome
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
-
-if TYPE_CHECKING:
-    # ConfigResolver is concrete and injected via mocks in tests; a runtime
-    # import would make typeguard reject the fake (and closes the escalation
-    # config cycle).
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 _DEFAULT_INTERVAL_SECONDS: Final[float] = 30.0

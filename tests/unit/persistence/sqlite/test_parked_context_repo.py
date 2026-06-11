@@ -7,10 +7,10 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.persistence_errors import QueryError
+from synthorg.execution.parked_context import ParkedContext
 from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
-from synthorg.security.timeout.parked_context import ParkedContext
 from tests._shared import as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 

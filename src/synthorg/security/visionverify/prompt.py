@@ -9,7 +9,7 @@ on the user message, never as text.
 """
 
 import json
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.engine.prompt_safety import (
     TAG_CRITERIA_JSON,
@@ -17,9 +17,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
-
-if TYPE_CHECKING:
-    from synthorg.security.visionverify.models import VisionReviewInput
+from synthorg.security.visionverify.models import VisionReviewInput
 
 _SYSTEM_PROMPT: Final[str] = (
     "You are a meticulous UI verification evaluator. You are shown "

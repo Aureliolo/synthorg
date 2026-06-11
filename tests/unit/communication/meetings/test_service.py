@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import pytest
 import structlog.testing
 
+from synthorg.communication.meeting.models import MeetingRecord
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meetings.service import MeetingService
 from synthorg.core.types import NotBlankStr
@@ -70,7 +71,7 @@ class TestMeetingServiceGetMeeting:
     """``get_meeting`` is an O(1) delegate, not a full-record scan."""
 
     async def test_delegates_to_get_record_and_never_scans(self) -> None:
-        sentinel = object()
+        sentinel = mock_of[MeetingRecord]()
         orch = mock_of[MeetingOrchestrator]()
         orch.get_record.return_value = sentinel
         service = MeetingService(orchestrator=orch)

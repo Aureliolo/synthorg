@@ -20,7 +20,6 @@ synthorg[distributed]``). Importing this module raises
 """
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
 
 from synthorg.communication.bus import _nats_channels as _ch
 from synthorg.communication.bus import _nats_connection as _conn
@@ -49,11 +48,7 @@ from synthorg.observability.events.communication import (
     COMM_BUS_STREAM_SCAN_FAILED,
 )
 from synthorg.settings.enums import SettingNamespace
-
-if TYPE_CHECKING:
-    # ConfigResolver is concrete and injected via mocks in tests; a runtime
-    # import would make typeguard reject the fake.
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 

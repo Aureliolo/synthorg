@@ -17,11 +17,12 @@ at app startup.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from uuid import UUID
 
 from pydantic import TypeAdapter, ValidationError
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -49,9 +50,6 @@ from synthorg.meta.mcp.handlers.common_logging import (
 from synthorg.meta.state import analytics_service_of, reports_service_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

@@ -24,7 +24,8 @@ blocking under low-autonomy and informational under high-autonomy is
 controlled by :data:`AUTONOMY_LEVELS_THAT_BLOCK_MEDIUM`.
 """
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Sequence
+from typing import Final
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.security.redteam.models import (
@@ -33,9 +34,6 @@ from synthorg.security.redteam.models import (
     RedTeamVerdict,
     severity_rank,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 SEVERITY_ALWAYS_BLOCK_FROM: Final[RedTeamSeverity] = RedTeamSeverity.HIGH
 """Severity at and above which the gate ALWAYS blocks, regardless of autonomy."""

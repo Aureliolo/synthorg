@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from synthorg.security.timeout.parked_context import ParkedContext
+from synthorg.execution.parked_context import ParkedContext
 from tests._shared import as_uuid
 
 

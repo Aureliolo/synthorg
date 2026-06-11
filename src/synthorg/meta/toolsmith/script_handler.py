@@ -15,8 +15,9 @@ Authored-script contract:
 """
 
 import json
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.handler_protocol import ToolHandler
@@ -30,9 +31,6 @@ from synthorg.observability.events.toolsmith import (
 )
 from synthorg.tools.sandbox.protocol import SandboxBackend
 
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
-
 logger = get_logger(__name__)
 
 _ARGS_ENV_VAR: Final[str] = "SYNTHORG_TOOL_ARGS"
@@ -43,6 +41,81 @@ class DynamicToolScriptError(ToolsmithError):
     """Raised when an authored tool's sandbox run fails or returns junk."""
 
     default_message = "Authored tool execution failed"
+
+
+async def _execute_script(
+    blueprint: ToolBlueprint,
+    sandbox: SandboxBackend,
+    arguments: dict[str, object],
+    *,
+    timeout_seconds: float,
+) -> object:
+    """Execute the blueprint's script in the sandbox and parse JSON stdout.
+
+    Returns:
+        The parsed JSON value the script printed to stdout.
+
+    Raises:
+        DynamicToolScriptError: On timeout, non-zero exit, or non-JSON stdout.
+    """
+    args_json = json.dumps(arguments, sort_keys=True)
+    result = await sandbox.execute(
+        command="python",
+        args=("-c", str(blueprint.script_body)),
+        env_overrides={_ARGS_ENV_VAR: args_json},
+        timeout=timeout_seconds,
+    )
+    if result.timed_out:
+        msg = f"Authored tool {blueprint.name!r} timed out"
+        raise DynamicToolScriptError(msg)
+    if result.returncode != 0:
+        msg = f"Authored tool {blueprint.name!r} exited {result.returncode}"
+        raise DynamicToolScriptError(msg)
+    try:
+        return json.loads(result.stdout)
+    except (ValueError, TypeError) as exc:
+        msg = f"Authored tool {blueprint.name!r} produced non-JSON stdout"
+        raise DynamicToolScriptError(msg) from exc
+
+
+async def _script_to_envelope(
+    blueprint: ToolBlueprint,
+    sandbox: SandboxBackend,
+    arguments: dict[str, object],
+    *,
+    timeout_seconds: float,
+) -> str:
+    """Run the script and map success / failure to an MCP envelope.
+
+    The app-state-free core shared by the live handler and the validation
+    brief runner, so a caller with no app context can drive the same sandbox
+    execution + envelope mapping without fabricating an ``AppState``.
+
+    Returns:
+        JSON-encoded MCP envelope string (``ok`` on success or ``err`` with
+        ``domain_code="dynamic_tool_failed"`` when the tool raised).
+    """
+    name = blueprint.name
+    try:
+        payload = await _execute_script(
+            blueprint, sandbox, arguments, timeout_seconds=timeout_seconds
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            TOOLSMITH_TOOL_INVOKE_FAILED,
+            tool_name=name,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        wrapped = (
+            exc
+            if isinstance(exc, ToolsmithError)
+            else DynamicToolScriptError(f"Authored tool {name!r} failed")
+        )
+        return err(wrapped, domain_code="dynamic_tool_failed")
+    logger.debug(TOOLSMITH_TOOL_INVOKED, tool_name=name)
+    return ok(data=payload)
 
 
 class _DynamicToolHandler:
@@ -74,53 +147,12 @@ class _DynamicToolHandler:
             the authored tool raised).
         """
         del app_state, actor
-        name = self._blueprint.name
-        try:
-            payload = await self._run(arguments)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                TOOLSMITH_TOOL_INVOKE_FAILED,
-                tool_name=name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            wrapped = (
-                exc
-                if isinstance(exc, ToolsmithError)
-                else DynamicToolScriptError(f"Authored tool {name!r} failed")
-            )
-            return err(wrapped, domain_code="dynamic_tool_failed")
-        logger.debug(TOOLSMITH_TOOL_INVOKED, tool_name=name)
-        return ok(data=payload)
-
-    async def _run(self, arguments: dict[str, object]) -> object:
-        """Execute the script in the sandbox and parse its JSON stdout.
-
-        Returns:
-            ``Any`` instance.
-
-        Raises:
-            DynamicToolScriptError: Raised on the corresponding failure path.
-        """
-        args_json = json.dumps(arguments, sort_keys=True)
-        result = await self._sandbox.execute(
-            command="python",
-            args=("-c", str(self._blueprint.script_body)),
-            env_overrides={_ARGS_ENV_VAR: args_json},
-            timeout=self._timeout_seconds,
+        return await _script_to_envelope(
+            self._blueprint,
+            self._sandbox,
+            arguments,
+            timeout_seconds=self._timeout_seconds,
         )
-        if result.timed_out:
-            msg = f"Authored tool {self._blueprint.name!r} timed out"
-            raise DynamicToolScriptError(msg)
-        if result.returncode != 0:
-            msg = f"Authored tool {self._blueprint.name!r} exited {result.returncode}"
-            raise DynamicToolScriptError(msg)
-        try:
-            return json.loads(result.stdout)
-        except (ValueError, TypeError) as exc:
-            msg = f"Authored tool {self._blueprint.name!r} produced non-JSON stdout"
-            raise DynamicToolScriptError(msg) from exc
 
 
 def make_dynamic_tool_handler(
@@ -143,4 +175,37 @@ def make_dynamic_tool_handler(
     return _DynamicToolHandler(blueprint, sandbox, timeout_seconds=timeout_seconds)
 
 
-__all__ = ["DynamicToolScriptError", "make_dynamic_tool_handler"]
+async def run_dynamic_tool_probe(
+    blueprint: ToolBlueprint,
+    sandbox: SandboxBackend,
+    arguments: dict[str, object],
+    *,
+    timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+) -> str:
+    """Run a blueprint's script once and return its MCP envelope.
+
+    The app-state-free entry point used by the validation brief runner,
+    which has no live app context. It drives the same sandbox execution
+    and envelope mapping as a live tool invocation without requiring an
+    :class:`~synthorg.api.state.AppState`.
+
+    Args:
+        blueprint: The blueprint whose script to execute.
+        sandbox: The sandbox backend resolved for the blueprint.
+        arguments: The already-validated probe arguments.
+        timeout_seconds: Per-invocation wall-clock budget.
+
+    Returns:
+        JSON-encoded MCP envelope string (``ok`` on success or ``err``
+        with ``domain_code="dynamic_tool_failed"`` when the tool raised).
+    """
+    return await _script_to_envelope(
+        blueprint, sandbox, arguments, timeout_seconds=timeout_seconds
+    )
+
+
+__all__ = [
+    "DynamicToolScriptError",
+    "make_dynamic_tool_handler",
+    "run_dynamic_tool_probe",
+]

@@ -4,7 +4,6 @@ import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
 
 import pytest
 
@@ -12,7 +11,7 @@ from synthorg.api.state import AppState
 from synthorg.meta.toolsmith.models import ToolBlueprint
 from synthorg.meta.toolsmith.script_handler import make_dynamic_tool_handler
 from synthorg.tools.sandbox.result import SandboxResult
-from tests._shared import JsonDict
+from tests._shared import JsonDict, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -90,7 +89,7 @@ class TestDynamicToolHandler:
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         raw = await handler(
-            app_state=cast("AppState", None), arguments={"text": "Hello World"}
+            app_state=mock_of[AppState](), arguments={"text": "Hello World"}
         )
         envelope = json.loads(raw)
         assert envelope["status"] == "ok"
@@ -102,7 +101,7 @@ class TestDynamicToolHandler:
         )
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
-        await handler(app_state=cast("AppState", None), arguments={"text": "hi"})
+        await handler(app_state=mock_of[AppState](), arguments={"text": "hi"})
         assert sandbox.last_call is not None
         assert sandbox.last_call["command"] == "python"
         env = sandbox.last_call["env_overrides"]
@@ -113,7 +112,7 @@ class TestDynamicToolHandler:
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         envelope = json.loads(
-            await handler(app_state=cast("AppState", None), arguments={"text": "x"})
+            await handler(app_state=mock_of[AppState](), arguments={"text": "x"})
         )
         assert envelope["status"] == "error"
         assert envelope["domain_code"] == "dynamic_tool_failed"
@@ -125,7 +124,7 @@ class TestDynamicToolHandler:
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         envelope = json.loads(
-            await handler(app_state=cast("AppState", None), arguments={"text": "x"})
+            await handler(app_state=mock_of[AppState](), arguments={"text": "x"})
         )
         assert envelope["status"] == "error"
 
@@ -136,6 +135,6 @@ class TestDynamicToolHandler:
         handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         envelope = json.loads(
-            await handler(app_state=cast("AppState", None), arguments={"text": "x"})
+            await handler(app_state=mock_of[AppState](), arguments={"text": "x"})
         )
         assert envelope["status"] == "error"

@@ -8,10 +8,10 @@ read the run record. All three are standard (non-admin) operations.
 from collections.abc import Mapping
 from datetime import datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ValidationError
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -38,9 +38,6 @@ from synthorg.research.errors import ResearchRunNotFoundError
 from synthorg.research.service import ResearchService
 from synthorg.research.state import ResearchStateSlice
 from synthorg.research.tool import build_research_brief, derive_research_ids
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

@@ -7,13 +7,11 @@ no caller needs to know the concrete ``ApprovalStore`` lives in
 ``synthorg.api.approval_store``.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
-    from synthorg.core.approval import ApprovalItem
 
 
 @runtime_checkable

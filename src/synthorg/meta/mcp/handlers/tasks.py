@@ -11,10 +11,10 @@ Shims the 8 task tools onto ``task_engine_of(app_state)``
 import copy
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import (
     AgentIdentity,
 )
@@ -59,9 +59,6 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

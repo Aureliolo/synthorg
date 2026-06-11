@@ -1,27 +1,30 @@
 """Park/resume service for agent execution contexts.
 
-Creates ``ParkedContext`` objects by serializing an ``AgentContext`` to
-JSON, and restores them by deserializing.  Actual persistence (store /
-delete) is the responsibility of the calling code via the
-``ParkedContextRepository``.
+Creates ``ParkedContext`` objects by serializing an ``AgentContext`` to JSON,
+and restores them by deserializing. Actual persistence (store / delete) is the
+responsibility of the calling code via the ``ParkedContextRepository``.
+
+Lives in ``engine`` (not ``security``) because it operates directly on the
+engine-owned ``AgentContext``: the (de)serializer belongs alongside the type it
+serialises, and its consumers (the approval gate, the engine factories, the boot
+wiring) are all engine/API concerns. The serialized form, ``ParkedContext``,
+lives in the lighter ``execution`` leaf so the persistence layer can name it
+without pulling ``engine``.
 """
 
 import copy
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.context import AgentContext
+from synthorg.execution.parked_context import ParkedContext
 from synthorg.observability import get_logger, safe_error_description
-
-if TYPE_CHECKING:
-    from synthorg.engine.context import AgentContext
 from synthorg.observability.events.timeout import (
     TIMEOUT_CONTEXT_PARKED,
     TIMEOUT_CONTEXT_RESUMED,
 )
-from synthorg.security.timeout.parked_context import ParkedContext
 
 logger = get_logger(__name__)
 
@@ -118,8 +121,6 @@ class ParkService:
         Raises:
             ValueError: If the parked context cannot be deserialized.
         """
-        from synthorg.engine.context import AgentContext  # noqa: PLC0415
-
         try:
             context = AgentContext.model_validate_json(parked.context_json)
         except (ValidationError, ValueError) as exc:

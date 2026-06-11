@@ -2,7 +2,6 @@
 
 import json
 from datetime import UTC, datetime
-from typing import cast
 
 import pytest
 
@@ -16,7 +15,7 @@ from synthorg.meta.toolsmith.dynamic_registry import (
     LayeredToolRegistry,
 )
 from synthorg.meta.toolsmith.models import ToolBlueprint
-from tests._shared import JsonDict
+from tests._shared import JsonDict, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -69,7 +68,7 @@ class TestInvokerLayeredDispatch:
         result = await invoker.invoke(
             "synthorg_textkit_slugify",
             {"text": "Hello"},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is False
         envelope = json.loads(result.content)
@@ -82,7 +81,7 @@ class TestInvokerLayeredDispatch:
         result = await invoker.invoke(
             "synthorg_textkit_slugify",
             {"text": "Hello", "bogus": 1},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is True
         envelope = json.loads(result.content)
@@ -95,13 +94,13 @@ class TestInvokerLayeredDispatch:
         result = await invoker.invoke(
             "synthorg_textkit_slugify",
             {},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is True
 
     async def test_unknown_tool_is_error(self) -> None:
         invoker, _ = await _build_invoker()
         result = await invoker.invoke(
-            "synthorg_nope_nope", {}, app_state=cast("AppState", None)
+            "synthorg_nope_nope", {}, app_state=mock_of[AppState]()
         )
         assert result.is_error is True

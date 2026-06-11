@@ -10,11 +10,10 @@ rest are wired lazily. All fields are ``None`` until wired; readers
 guard accordingly.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.conflict_resolution.escalation.notify import (
     EscalationNotifySubscriber,
@@ -40,10 +39,6 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.communication.meetings.service import MeetingService
 from synthorg.communication.messages.service import MessageService
-
-if TYPE_CHECKING:
-    # api.state_slices imports this feature slice; a runtime import here cycles.
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 
 class CommunicationStateSlice(BaseFeatureStateSlice):

@@ -285,7 +285,7 @@ class TestWireApprovalGate:
 
     async def test_idempotent_when_gate_already_wired(self) -> None:
         from synthorg.engine.approval_gate import ApprovalGate
-        from synthorg.security.timeout.park_service import ParkService
+        from synthorg.engine.park_service import ParkService
 
         existing = ApprovalGate(park_service=ParkService())
         state = _make_state()

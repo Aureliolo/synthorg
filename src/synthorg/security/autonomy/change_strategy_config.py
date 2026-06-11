@@ -8,16 +8,15 @@ A ``StrEnum`` discriminator + frozen Pydantic config, with the safe
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-if TYPE_CHECKING:
-    from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
-    from synthorg.security.autonomy.signals import (
-        PerformanceSignalProvider,
-        RiskBudgetSignalProvider,
-    )
+from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
+from synthorg.security.autonomy.signals import (
+    PerformanceSignalProvider,
+    RiskBudgetSignalProvider,
+)
 
 _DEFAULT_PROMOTION_SUCCESS_THRESHOLD: Final[float] = 0.9
 _DEFAULT_BUDGET_WARN_FRACTION: Final[float] = 0.2

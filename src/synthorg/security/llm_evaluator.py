@@ -28,7 +28,7 @@ import asyncio
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.budget.call_category import LLMCallCategory
@@ -49,9 +49,15 @@ from synthorg.observability.events.security import (
     SECURITY_LLM_EVAL_START,
     SECURITY_LLM_EVAL_TIMEOUT,
 )
+from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, CompletionConfig, ToolDefinition
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    ToolDefinition,
+)
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security._llm_evaluator_support import _LlmEvaluatorSupportMixin
 from synthorg.security._shared_patterns import CONTROL_CHAR_RE
@@ -62,10 +68,6 @@ from synthorg.security.models import (
     SecurityVerdict,
     SecurityVerdictType,
 )
-
-if TYPE_CHECKING:
-    from synthorg.providers.base import BaseCompletionProvider
-    from synthorg.providers.models import CompletionResponse
 
 logger = get_logger(__name__)
 

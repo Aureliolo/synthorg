@@ -10,16 +10,14 @@ Three seams the gate consumes:
   ReviewGateService consumes it as an injected dependency.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from synthorg.security.redteam.models import (
-        RedTeamGateResult,
-        RedTeamReport,
-    )
+from synthorg.security.redteam.models import (
+    RedTeamGateResult,
+    RedTeamReport,
+)
 
 
 @runtime_checkable

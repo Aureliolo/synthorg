@@ -1,8 +1,9 @@
 """Timeout policy implementations -- wait, deny, tiered, escalation chain."""
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.core.approval import ApprovalItem
 from synthorg.observability import get_logger
 from synthorg.observability.events.timeout import (
     TIMEOUT_AUTO_DENIED,
@@ -17,14 +18,6 @@ from synthorg.security.timeout.config import (
 from synthorg.security.timeout.enums import TimeoutActionType
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.protocol import RiskTierClassifier
-
-if TYPE_CHECKING:
-    # Runtime-deferred: importing ``ApprovalItem`` at module level would
-    # re-enter ``core.approval`` while it is still being initialized
-    # (core.approval -> ontology -> persistence -> budget -> security ->
-    # security.timeout.policies -> core.approval).  PEP 649 makes
-    # annotation evaluation lazy under Python 3.14, so this is safe.
-    from synthorg.core.approval import ApprovalItem
 
 logger = get_logger(__name__)
 

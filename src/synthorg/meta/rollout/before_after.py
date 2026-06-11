@@ -7,7 +7,6 @@ terminate the loop immediately. A clean window yields SUCCESS with
 the observed elapsed time.
 """
 
-from collections.abc import Awaitable, Callable
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
@@ -21,7 +20,7 @@ from synthorg.meta.models import (
     RolloutResult,
 )
 from synthorg.meta.protocol import ProposalApplier, RegressionDetector
-from synthorg.meta.rollout._observation import observe_until_verdict
+from synthorg.meta.rollout._observation import SnapshotBuilder, observe_until_verdict
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_ROLLOUT_FAILED,
@@ -30,9 +29,6 @@ from synthorg.observability.events.meta import (
 
 logger = get_logger(__name__)
 _DEFAULT_CHECK_INTERVAL_HOURS: Final[float] = 4.0
-
-SnapshotBuilder = Callable[[], Awaitable[OrgSignalSnapshot]]
-"""Coroutine producing the current org-wide signal snapshot."""
 
 
 async def _default_snapshot_builder() -> OrgSignalSnapshot:
@@ -190,3 +186,6 @@ class BeforeAfterRollout:
             thresholds=self._thresholds,
             strategy_name="before_after",
         )
+
+
+__all__ = ["BeforeAfterRollout", "SnapshotBuilder"]

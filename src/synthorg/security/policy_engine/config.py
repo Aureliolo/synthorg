@@ -1,7 +1,7 @@
 """SecurityPolicyConfig and factory for PolicyEngine construction."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -9,9 +9,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_POLICY_ENGINE_ERROR,
 )
-
-if TYPE_CHECKING:
-    from synthorg.security.policy_engine.protocol import PolicyEngine
+from synthorg.security.policy_engine.protocol import PolicyEngine
 
 logger = get_logger(__name__)
 

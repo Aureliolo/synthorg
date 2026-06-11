@@ -126,9 +126,7 @@ class AgentEngineFactoriesMixin:
         if self._approval_store is None:
             return None
 
-        from synthorg.security.timeout.park_service import (  # noqa: PLC0415
-            ParkService,
-        )
+        from synthorg.engine.park_service import ParkService  # noqa: PLC0415
 
         # The gate's own default interrupt timeout applies when the engine
         # was built without an explicit override (omit, never pass None).

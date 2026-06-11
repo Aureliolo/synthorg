@@ -8,8 +8,8 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.engine.context import AgentContext
+from synthorg.engine.park_service import ParkService
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.security.timeout.park_service import ParkService
 
 
 def _make_agent_context() -> AgentContext:

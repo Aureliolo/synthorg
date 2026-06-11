@@ -6,8 +6,7 @@ triple and emits ``MCP_ADMIN_OP_EXECUTED`` on success. Routes through
 fine-tune repositories), so memory-only deployments retain deletion.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
@@ -40,9 +39,6 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

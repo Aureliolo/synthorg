@@ -7,7 +7,7 @@ into a single coroutine so each strategy only owns its strategy-name
 log tag and baseline-capture semantics.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
 
 from synthorg.core.clock import Clock
 from synthorg.meta.models import (
@@ -28,8 +28,10 @@ from synthorg.observability.events.meta import (
     META_ROLLOUT_REGRESSION_DETECTED,
 )
 
-if TYPE_CHECKING:
-    from synthorg.meta.rollout.before_after import SnapshotBuilder
+# Produces the current org-signal snapshot each observation tick. Defined
+# here (the shared consumer) rather than imported from ``before_after`` so
+# this leaf does not take a back-edge into a strategy module.
+type SnapshotBuilder = Callable[[], Awaitable[OrgSignalSnapshot]]
 
 logger = get_logger(__name__)
 

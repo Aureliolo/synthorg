@@ -6,6 +6,12 @@ from typing import TYPE_CHECKING
 from synthorg.security.state import SecurityStateSlice
 
 if TYPE_CHECKING:
+    # Genuine cycle: ``api.construction_wiring`` imports this security slice
+    # (and ``security.audit`` / ``autonomy.protocol`` / ``trust.service``)
+    # directly, and ``api.state`` transitively pulls ``security``; a module-level
+    # import of either here closes that loop. ``wire_construction`` runs only at
+    # app construction (the blessed back-edge), never in a security unit test, so
+    # this guard is not reached under the typeguard ERROR policy.
     from synthorg.api.construction_wiring import ConstructionDeps
     from synthorg.api.state import AppState
 

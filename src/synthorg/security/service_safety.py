@@ -18,16 +18,20 @@ from synthorg.observability.events.security import (
     SECURITY_TIER_SAFE_TOOL,
     SECURITY_UNCERTAINTY_CHECK_ERROR,
 )
+from synthorg.security.config import SecurityConfig
 from synthorg.security.denial_tracker import DenialAction, DenialTracker
+from synthorg.security.models import SecurityContext, SecurityVerdict
 from synthorg.security.safety_classifier import (
     PermissionTier,
     SafetyClassification,
+    SafetyClassifier,
 )
 
 if TYPE_CHECKING:
-    from synthorg.security.config import SecurityConfig
-    from synthorg.security.models import SecurityContext, SecurityVerdict
-    from synthorg.security.safety_classifier import SafetyClassifier
+    # ``uncertainty`` eagerly imports ``engine.prompt_safety`` (-> heavy
+    # ``engine.__init__``), which re-enters ``security.service`` via
+    # ``engine._security_factory`` while this mixin is imported mid-init of
+    # ``security.service``. Kept guarded.
     from synthorg.security.uncertainty import UncertaintyChecker
 
 logger = get_logger(__name__)

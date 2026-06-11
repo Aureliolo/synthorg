@@ -8,19 +8,16 @@ seam) live in :class:`RiskClassifierDeps`, matching the consolidation
 factory's deps-bundle split.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.approval.enums import ApprovalRiskLevel
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from synthorg.core.clock import Clock
-    from synthorg.security.timeout.protocol import RiskTierClassifier
+from synthorg.core.clock import Clock
+from synthorg.security.timeout.protocol import RiskTierClassifier
 
 _DEFAULT_WORKLOAD_THRESHOLD: Final[int] = 10
 _DEFAULT_OFF_HOURS_START_HOUR: Final[int] = 20

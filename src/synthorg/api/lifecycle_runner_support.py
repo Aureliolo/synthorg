@@ -180,9 +180,7 @@ async def _wire_approval_gate(
     if app_state.slice(ApprovalStateSlice).gate is not None:
         return
     from synthorg.engine.approval_gate import ApprovalGate  # noqa: PLC0415
-    from synthorg.security.timeout.park_service import (  # noqa: PLC0415
-        ParkService,
-    )
+    from synthorg.engine.park_service import ParkService  # noqa: PLC0415
 
     parked_repo = None
     if (

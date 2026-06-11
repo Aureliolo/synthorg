@@ -21,6 +21,7 @@ Design invariants:
 import asyncio
 import html
 import secrets
+from collections.abc import Mapping
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
@@ -28,6 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -48,6 +50,7 @@ from synthorg.observability.events.security import (
     SECURITY_TIER_CLASSIFIED,
     SECURITY_TIER_SAFE_TOOL,
 )
+from synthorg.providers.base import BaseCompletionProvider
 
 # ``cost_recording_scope`` is imported lazily inside the call site
 # (``_run_classifier``) to break a latent circular boot path:
@@ -66,17 +69,18 @@ from synthorg.providers.models import (
     CompletionResponse,
     ToolDefinition,
 )
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.security._shared_patterns import CONTROL_CHAR_RE
 from synthorg.security.config import SafetyClassifierConfig
 from synthorg.security.information_stripper import InformationStripper
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.budget.tracker import CostTracker
+    # ``config.schema`` is a cold-import leaf that transitively reaches this
+    # module (``config.schema`` -> ``communication.config`` -> ... -> ``engine``
+    # -> ``_security_factory`` -> ``service`` -> ``service_safety`` ->
+    # ``safety_classifier``); a module-level import of it here reopens that cold
+    # cycle (and ``security/__init__`` eagerly imports this module). Kept guarded.
     from synthorg.config.schema import ProviderConfig
-    from synthorg.providers.base import BaseCompletionProvider
-    from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 

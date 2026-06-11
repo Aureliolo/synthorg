@@ -31,13 +31,22 @@ from synthorg.observability.events.communication import (
 )
 
 if TYPE_CHECKING:
-    # nats-py is an optional dependency, so these stay guarded for clean import
-    # when it is absent.
     from nats.js import JetStreamContext
 
     # PullSubscription is a nested class on JetStreamContext, not a
     # module-level export, so it cannot be imported directly.
     PullSubscription = JetStreamContext.PullSubscription
+else:
+    # nats-py is the optional ``[distributed]`` extra: present in dev/CI (so
+    # typeguard checks the real types), ``object`` fallback otherwise so this
+    # module still imports without the extra.
+    try:
+        from nats.js import JetStreamContext
+
+        PullSubscription = JetStreamContext.PullSubscription
+    except ImportError:
+        JetStreamContext = object
+        PullSubscription = object
 
 logger = get_logger(__name__)
 

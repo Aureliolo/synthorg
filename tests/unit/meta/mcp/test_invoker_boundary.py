@@ -10,7 +10,6 @@ re-raised :class:`ValidationError` into the wire response.
 """
 
 import json
-from typing import cast
 
 import pytest
 import structlog
@@ -22,6 +21,7 @@ from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.invoker import MCPToolInvoker
 from synthorg.meta.mcp.registry import DomainToolRegistry
 from synthorg.meta.mcp.tool_builder import read_tool
+from tests._shared import mock_of
 
 
 class _SampleArgs(BaseModel):
@@ -66,7 +66,7 @@ class TestMcpInvokerBoundary:
         result = await invoker.invoke(
             _TOOL_NAME,
             {"name": "alice", "count": 7},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is False
         body = json.loads(result.content)
@@ -77,7 +77,7 @@ class TestMcpInvokerBoundary:
         result = await invoker.invoke(
             _TOOL_NAME,
             {"count": 7},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is True
         body = json.loads(result.content)
@@ -89,7 +89,7 @@ class TestMcpInvokerBoundary:
         result = await invoker.invoke(
             _TOOL_NAME,
             {"name": "alice", "count": 7, "extra": "boom"},
-            app_state=cast("AppState", None),
+            app_state=mock_of[AppState](),
         )
         assert result.is_error is True
 
@@ -99,7 +99,7 @@ class TestMcpInvokerBoundary:
             await invoker.invoke(
                 _TOOL_NAME,
                 {"name": "alice", "count": -1},
-                app_state=cast("AppState", None),
+                app_state=mock_of[AppState](),
             )
         boundary_logs = [
             log for log in logs if log.get("event") == "api.boundary.validation_failed"

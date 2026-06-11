@@ -16,7 +16,8 @@ outcomes that vary with the operator's autonomy posture.
 (``PASS+`` is shorthand for :data:`VisionVerdict.PASS_WITH_FINDINGS`.)
 """
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Sequence
+from typing import Final
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.security.visionverify.models import (
@@ -25,9 +26,6 @@ from synthorg.security.visionverify.models import (
     VisionVerdict,
     severity_rank,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 SEVERITY_ALWAYS_BLOCK_FROM: Final[VisionSeverity] = VisionSeverity.HIGH
 """Severity at and above which the gate ALWAYS blocks, regardless of autonomy."""

@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.telemetry.event_counter import InMemoryTelemetryEventCounter
+from synthorg.telemetry.protocol import TelemetryEvent
 
 pytestmark = pytest.mark.unit
 
@@ -28,14 +29,6 @@ _FUTURE_TIMEOUT_S: float = 20.0
 _WORKER_COUNT: int = 16
 
 
-class _FakeEvent:
-    """Minimal stand-in matching the TelemetryEvent shape needed."""
-
-    def __init__(self, ts: datetime, event_type: str) -> None:
-        self.timestamp = ts
-        self.event_type = event_type
-
-
 def test_eviction_logs_exactly_once_under_thread_concurrency() -> None:
     """Verify the eviction warning fires exactly once across 1000
     concurrent ``on_event`` calls -- not just that the boolean flag
@@ -46,10 +39,20 @@ def test_eviction_logs_exactly_once_under_thread_concurrency() -> None:
     counter = InMemoryTelemetryEventCounter(max_events=10)
 
     # Pre-fill to capacity so the very first concurrent on_event triggers
-    # the eviction-log code path.
+    # the eviction-log code path. ``on_event`` only reads ``.timestamp`` /
+    # ``.event_type`` and the eviction lock is independent of event content,
+    # so one real event is reused across every call.
     now = datetime.now(UTC)
-    for i in range(10):
-        counter.on_event(_FakeEvent(now, f"prefill.{i}"))  # type: ignore[arg-type]
+    event = TelemetryEvent(
+        event_type="telemetry.test",
+        deployment_id="test-deployment",
+        synthorg_version="0.0.0",
+        python_version="3.14.0",
+        os_platform="test-os",
+        timestamp=now,
+    )
+    for _ in range(10):
+        counter.on_event(event)
 
     assert counter._eviction_logged is False
 
@@ -94,15 +97,12 @@ def test_eviction_logs_exactly_once_under_thread_concurrency() -> None:
         # accepts a regression.
         start_evt = threading.Event()
 
-        def _gated_on_event(event: _FakeEvent) -> None:
+        def _gated_on_event(evt: TelemetryEvent) -> None:
             start_evt.wait()
-            counter.on_event(event)  # type: ignore[arg-type]
+            counter.on_event(evt)
 
         with ThreadPoolExecutor(max_workers=_WORKER_COUNT) as pool:
-            futures = [
-                pool.submit(_gated_on_event, _FakeEvent(now, f"flood.{i}"))
-                for i in range(1000)
-            ]
+            futures = [pool.submit(_gated_on_event, event) for _ in range(1000)]
             # Release the gate only after every future is queued.
             start_evt.set()
             for fut in futures:

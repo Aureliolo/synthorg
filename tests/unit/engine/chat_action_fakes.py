@@ -9,8 +9,8 @@ two in lockstep (mirrors ``group_chat_fakes`` for the group-chat tests).
 from typing import override
 
 from synthorg.core.types import NotBlankStr
+from synthorg.execution.parked_context import ParkedContext
 from synthorg.security.autonomy.enums import ToolCategory
-from synthorg.security.timeout.parked_context import ParkedContext
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 

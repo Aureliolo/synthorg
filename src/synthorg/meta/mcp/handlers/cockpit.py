@@ -9,9 +9,10 @@ the ``/cockpit`` REST controller.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, cast
+from typing import Final, cast
 
 from synthorg._core.features import require_service
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
@@ -43,9 +44,6 @@ from synthorg.meta.mcp.handlers.common_logging import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 from synthorg.settings.state import config_resolver_of
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

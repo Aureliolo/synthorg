@@ -17,8 +17,14 @@ factory returns a :class:`NoopEscalationNotifySubscriber`.
 import asyncio
 import contextlib
 import re
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
+from synthorg.communication.conflict_resolution.escalation.protocol import (
+    EscalationQueueStore,
+)
+from synthorg.communication.conflict_resolution.escalation.registry import (
+    PendingFuturesRegistry,
+)
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -29,18 +35,7 @@ from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_SUBSCRIBER_STARTED,
     CONFLICT_ESCALATION_SUBSCRIBER_STOPPED,
 )
-
-if TYPE_CHECKING:
-    # escalation imports close the documented communication.__init__ -> bus ->
-    # _nats_state -> config -> conflict_resolution cycle; ConfigResolver is a
-    # concrete collaborator injected via mocks in tests.
-    from synthorg.communication.conflict_resolution.escalation.protocol import (
-        EscalationQueueStore,
-    )
-    from synthorg.communication.conflict_resolution.escalation.registry import (
-        PendingFuturesRegistry,
-    )
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 

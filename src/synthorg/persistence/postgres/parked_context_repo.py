@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.core.types import NotBlankStr
+from synthorg.execution.parked_context import ParkedContext
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.parked_context import (
     PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
@@ -26,7 +27,6 @@ from synthorg.observability.events.persistence.parked_context import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
-from synthorg.security.timeout.parked_context import ParkedContext
 
 logger = get_logger(__name__)
 

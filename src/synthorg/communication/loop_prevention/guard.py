@@ -1,7 +1,5 @@
 """Delegation guard orchestrating all loop prevention mechanisms."""
 
-from typing import TYPE_CHECKING
-
 from synthorg.communication.config import LoopPreventionConfig
 from synthorg.communication.loop_prevention.ancestry import check_ancestry
 from synthorg.communication.loop_prevention.circuit_breaker import (
@@ -21,13 +19,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
     DELEGATION_LOOP_BLOCKED,
 )
-
-if TYPE_CHECKING:
-    # runtime_checkable protocol injected via a duck-typed fake in tests; a
-    # runtime import would make typeguard reject the stub.
-    from synthorg.persistence.circuit_breaker_protocol import (
-        CircuitBreakerStateRepository,
-    )
+from synthorg.persistence.circuit_breaker_protocol import (
+    CircuitBreakerStateRepository,
+)
 
 logger = get_logger(__name__)
 

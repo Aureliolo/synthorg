@@ -14,8 +14,9 @@ The expensive golden run is gated behind the cheap brief: it only runs
 when the brief passes and ``require_golden_delta`` is set.
 """
 
+from collections.abc import Callable, Mapping
 from copy import deepcopy
-from typing import TYPE_CHECKING, Final, cast
+from typing import Final
 
 from pydantic import JsonValue
 
@@ -28,7 +29,7 @@ from synthorg.meta.toolsmith.protocol import (
     GoldenScorecardProvider,
     ToolAcceptanceBriefRunner,
 )
-from synthorg.meta.toolsmith.script_handler import make_dynamic_tool_handler
+from synthorg.meta.toolsmith.script_handler import run_dynamic_tool_probe
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.toolsmith import (
     TOOLSMITH_BRIEF_PARSE_FAILED,
@@ -36,14 +37,9 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_VALIDATION_PASSED,
     TOOLSMITH_VALIDATION_STARTED,
 )
+from synthorg.tools.sandbox.protocol import SandboxBackend
 
-if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
-
-    from synthorg.api.state import AppState
-    from synthorg.tools.sandbox.protocol import SandboxBackend
-
-    SandboxResolver = Callable[[ToolBlueprint], SandboxBackend]
+type SandboxResolver = Callable[[ToolBlueprint], SandboxBackend]
 
 logger = get_logger(__name__)
 
@@ -143,20 +139,20 @@ class SandboxBriefRunner:
         """
         import json as _json  # noqa: PLC0415
 
-        handler = make_dynamic_tool_handler(
-            blueprint,
-            self._sandbox_resolver(blueprint),
-            timeout_seconds=self._timeout_seconds,
-        )
         probe = _synthesize_probe(blueprint.parameters_schema)
-        # The brief passes iff the tool exits cleanly; a handler crash
+        # The brief passes iff the tool exits cleanly; a probe crash
         # (sandbox failure, runtime error) must fail the brief, not
         # propagate out of the gate. System-critical errors still escape.
         try:
-            # The probe runs a dynamic-tool handler that ignores app_state
-            # (it executes ``script_body`` in the sandbox), so ``None`` is the
-            # honest runtime value; the cast satisfies the ToolHandler contract.
-            raw = await handler(app_state=cast("AppState", None), arguments=probe)
+            # The probe path is app-state-free: it executes ``script_body`` in
+            # the sandbox and maps the result to an envelope, so the brief
+            # runner never needs (and never fabricates) an ``AppState``.
+            raw = await run_dynamic_tool_probe(
+                blueprint,
+                self._sandbox_resolver(blueprint),
+                probe,
+                timeout_seconds=self._timeout_seconds,
+            )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(

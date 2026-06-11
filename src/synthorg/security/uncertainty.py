@@ -19,7 +19,7 @@ import math
 import re
 from collections import Counter
 from itertools import combinations
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,15 +46,13 @@ from synthorg.observability.events.security import (
     SECURITY_UNCERTAINTY_CHECK_START,
     SECURITY_UNCERTAINTY_LOW_CONFIDENCE,
 )
+from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 from synthorg.security.config import UncertaintyCheckConfig
-
-if TYPE_CHECKING:
-    from synthorg.providers.base import BaseCompletionProvider
-    from synthorg.providers.routing.models import ResolvedModel
 
 logger = get_logger(__name__)
 

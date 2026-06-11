@@ -5,23 +5,19 @@ returning ``None`` when the subsystem is disabled so the
 ReviewGateService short-circuits as if the gate were absent.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from pathlib import Path
 
+from synthorg.budget.tracker import CostTracker
+from synthorg.core.clock import Clock
+from synthorg.core.types import ModelTier
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.security.visionverify.config import VisionVerifyConfig
 from synthorg.security.visionverify.factory import build_vision_verifier
 from synthorg.security.visionverify.gate import VisionVerifierGateService
+from synthorg.security.visionverify.protocol import VisionVerifierGate
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-    from pathlib import Path
-
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.core.clock import Clock
-    from synthorg.core.types import ModelTier
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.security.visionverify.config import VisionVerifyConfig
-    from synthorg.security.visionverify.protocol import VisionVerifierGate
-
-    TierResolver = Callable[[ModelTier], str | None]
+type TierResolver = Callable[[ModelTier], str | None]
 
 
 def build_vision_verifier_gate(  # noqa: PLR0913 -- verifier deps are intrinsic
