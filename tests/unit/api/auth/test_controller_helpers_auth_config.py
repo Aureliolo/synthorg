@@ -5,6 +5,7 @@ from typing import Never
 
 import pytest
 import structlog.testing
+from typeguard import suppress_type_checks
 
 from synthorg.api.auth.controller_helpers import get_auth_config
 from synthorg.core.auth.config import AuthConfig
@@ -31,7 +32,7 @@ class TestGetAuthConfigFallback:
     def test_missing_auth_logs_warning(self) -> None:
         app_state = SimpleNamespace(config=_RaisesOnAuth())
 
-        with structlog.testing.capture_logs() as logs:
+        with structlog.testing.capture_logs() as logs, suppress_type_checks():
             cfg = get_auth_config(app_state)  # type: ignore[arg-type]
 
         assert isinstance(cfg, AuthConfig)
@@ -49,7 +50,7 @@ class TestGetAuthConfigFallback:
         """Wrong-shaped config (``None``) raises TypeError, logs fallback."""
         app_state = SimpleNamespace(config=None)
 
-        with structlog.testing.capture_logs() as logs:
+        with structlog.testing.capture_logs() as logs, suppress_type_checks():
             cfg = get_auth_config(app_state)  # type: ignore[arg-type]
 
         assert isinstance(cfg, AuthConfig)
@@ -68,7 +69,7 @@ class TestGetAuthConfigFallback:
         config = SimpleNamespace(api=api)
         app_state = SimpleNamespace(config=config)
 
-        with structlog.testing.capture_logs() as logs:
+        with structlog.testing.capture_logs() as logs, suppress_type_checks():
             cfg = get_auth_config(app_state)  # type: ignore[arg-type]
 
         assert cfg is real_auth

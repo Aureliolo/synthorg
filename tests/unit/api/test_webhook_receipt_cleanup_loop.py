@@ -9,7 +9,6 @@ sweep + failure isolation), not the wall-clock loop scheduling.
 """
 
 import asyncio
-from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock
 
@@ -19,6 +18,11 @@ import structlog.testing
 from synthorg.api import webhook_cleanup
 from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.models import (
+    AuthMethod,
+    Connection,
+    ConnectionType,
+)
 from synthorg.persistence.connection_protocol import (
     ConnectionRepository,
     WebhookReceiptRepository,
@@ -47,10 +51,12 @@ def _make_connection(
     name: str,
     *,
     retention_days: int | None = None,
-) -> SimpleNamespace:
-    """Stand-in :class:`Connection` carrying only the fields the loop reads."""
-    return SimpleNamespace(
+) -> Connection:
+    """Real :class:`Connection` carrying the fields the cleanup loop reads."""
+    return Connection(
         name=NotBlankStr(name),
+        connection_type=ConnectionType.GENERIC_HTTP,
+        auth_method=AuthMethod.API_KEY,
         webhook_receipt_retention_days=retention_days,
     )
 
@@ -60,7 +66,7 @@ def _build_app_state(  # noqa: PLR0913 -- each kwarg controls a distinct stub ax
     has_persistence: bool = True,
     has_config_resolver: bool = True,
     default_retention_days: int = 90,
-    connections: list[SimpleNamespace] | None = None,
+    connections: list[Connection] | None = None,
     cleanup_side_effects: dict[str, type[BaseException] | BaseException] | None = None,
     list_all_side_effect: type[BaseException] | BaseException | None = None,
 ) -> AppState:

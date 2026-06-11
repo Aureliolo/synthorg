@@ -13,6 +13,7 @@ from typing import override
 from unittest.mock import patch
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
@@ -120,7 +121,8 @@ class TestSaveConcurrency:
         repo = GatedRepo()
         initial = _make_item()
         repo.items[str(initial.id)] = initial
-        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
         if warm_cache:
             # Pre-warm the cache; without this, both saves fall through
             # to ``repo.get`` under the lock.
@@ -176,7 +178,8 @@ class TestSaveConcurrency:
         repo.gate_enabled = False  # no gating
         initial = _make_item()
         repo.items[str(initial.id)] = initial
-        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
         await store.get(str(initial.id))
 
         updated_a = initial.model_copy(update={"decision_reason": "first"})
@@ -208,7 +211,8 @@ class TestSaveConcurrency:
         repo = FailingRepo()
         initial = _make_item()
         repo.items[str(initial.id)] = initial
-        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
         await store.get(str(initial.id))
 
         updated = initial.model_copy(update={"decision_reason": "first"})
@@ -250,7 +254,8 @@ class TestSaveConcurrency:
         repo = CommittingThenCancellingRepo()
         initial = _make_item()
         repo.items[str(initial.id)] = initial
-        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
         await store.get(str(initial.id))  # warm the cache
 
         updated = initial.model_copy(update={"decision_reason": "cancelled"})
@@ -323,7 +328,8 @@ class TestSaveIfPendingConcurrency:
         repo = GatedRepo()
         initial = _make_item()
         repo.items[str(initial.id)] = initial
-        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
         await store.get(str(initial.id))  # warm cache
 
         updated_a = initial.model_copy(
@@ -416,7 +422,8 @@ class TestAddConstraintViolationPath:
                 raise ConstraintViolationError(msg, constraint="pk")
 
         repo = ConstraintRepo()
-        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
         with pytest.raises(ConflictError, match="already exists"):
             await store.add(_make_item())
 
@@ -581,7 +588,8 @@ class TestLostRaceBatchFetch:
                 return rows[offset : offset + limit]
 
         repo = SnapshotRepo(items=items)
-        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
 
         result = await store.list_items()
 
@@ -622,7 +630,8 @@ class TestLostRaceBatchFetch:
                 return ids
 
         repo = WinningRepo(items=items)
-        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
 
         await store.list_items()
 

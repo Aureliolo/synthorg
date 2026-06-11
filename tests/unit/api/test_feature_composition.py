@@ -7,9 +7,6 @@ feature manifests, normalises bare controllers and registrations, evaluates
 mount predicates, and partitions handlers by mount point.
 """
 
-from types import SimpleNamespace
-from typing import cast
-
 import pytest
 from litestar import Controller
 from litestar.handlers import websocket
@@ -18,6 +15,7 @@ from synthorg._core.features import ControllerRegistration, FeatureManifest
 from synthorg.api import feature_composition
 from synthorg.api.feature_composition import collect_route_handlers
 from synthorg.api.state import AppState
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -44,7 +42,8 @@ async def _ws_handler() -> None: ...  # pragma: no cover - structural only
 
 def _state() -> AppState:
     """Opaque stand-in: the collector only forwards it to predicates."""
-    return cast("AppState", SimpleNamespace())
+    state: AppState = mock_of[AppState]()
+    return state
 
 
 def _patch_discovery(
@@ -80,7 +79,7 @@ def test_registration_mount_root(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_predicate_gates_mounting(monkeypatch: pytest.MonkeyPatch) -> None:
-    sentinel = cast("AppState", SimpleNamespace(marker=object()))
+    sentinel = mock_of[AppState]()
     seen: list[object] = []
 
     def _predicate(state: object) -> bool:

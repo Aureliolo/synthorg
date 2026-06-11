@@ -16,8 +16,9 @@ import pytest
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.models import KnowledgeSource
+from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.state import KnowledgeStateSlice
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, mock_of
 
 _NOW = datetime(2026, 5, 20, tzinfo=UTC)
 
@@ -53,13 +54,32 @@ class _PaginatingKnowledgeService:
         return self._items[offset : offset + limit]
 
 
+def _as_knowledge_service(fake: object) -> KnowledgeService | None:
+    """Wrap a read-path fake as a spec'd ``KnowledgeService`` double.
+
+    The fake duck-types only the read methods a given test exercises; binding
+    them onto a ``mock_of[KnowledgeService]`` autospec satisfies the
+    service-resolver's runtime type boundary while preserving behaviour.
+    ``None`` passes through so the unwired-service path stays exercisable.
+    """
+    if fake is None:
+        return None
+    service: KnowledgeService = mock_of[KnowledgeService]()
+    for method in ("list_sources", "list_global_sources", "query"):
+        if (bound := getattr(fake, method, None)) is not None:
+            setattr(service, method, bound)
+    return service
+
+
 @contextmanager
 def _with_knowledge_service(
     async_test_client: LoopAsyncClient, svc: object
 ) -> Iterator[None]:
     app_state = async_test_client.app.state.app_state
     original_slice = app_state.slice(KnowledgeStateSlice)
-    app_state.swap_slice(KnowledgeStateSlice.model_construct(service=svc))  # type: ignore[arg-type]  # fake duck-types the service for read-path tests
+    app_state.swap_slice(
+        KnowledgeStateSlice.model_construct(service=_as_knowledge_service(svc))
+    )
     try:
         yield
     finally:

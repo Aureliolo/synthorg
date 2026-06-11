@@ -19,8 +19,9 @@ from synthorg.project_brain.models import (
     BrainSearchHit,
     BrainSummary,
 )
+from synthorg.project_brain.service import ProjectBrainService
 from synthorg.project_brain.state import ProjectBrainStateSlice
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, mock_of
 
 _NOW = datetime(2026, 5, 20, tzinfo=UTC)
 
@@ -84,13 +85,32 @@ class _PaginatingBrainService:
         return self._items[offset : offset + limit]
 
 
+def _as_brain_service(fake: object) -> ProjectBrainService | None:
+    """Wrap a read-path fake as a spec'd ``ProjectBrainService`` double.
+
+    The fake duck-types only the read methods a given test exercises; binding
+    them onto a ``mock_of[ProjectBrainService]`` autospec satisfies the
+    service-resolver's runtime type boundary while preserving behaviour.
+    ``None`` passes through so the unwired-service path stays exercisable.
+    """
+    if fake is None:
+        return None
+    service: ProjectBrainService = mock_of[ProjectBrainService]()
+    for method in ("list_current", "query", "git_history"):
+        if (bound := getattr(fake, method, None)) is not None:
+            setattr(service, method, bound)
+    return service
+
+
 @contextmanager
 def _with_brain_service(
     async_test_client: LoopAsyncClient, svc: object
 ) -> Iterator[None]:
     app_state = async_test_client.app.state.app_state
     original_slice = app_state.slice(ProjectBrainStateSlice)
-    app_state.swap_slice(ProjectBrainStateSlice.model_construct(service=svc))  # type: ignore[arg-type]  # fake duck-types the service for read-path tests
+    app_state.swap_slice(
+        ProjectBrainStateSlice.model_construct(service=_as_brain_service(svc))
+    )
     try:
         yield
     finally:

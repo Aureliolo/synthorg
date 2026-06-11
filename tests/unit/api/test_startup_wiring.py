@@ -53,6 +53,7 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.ontology.state import OntologyStateSlice
 from synthorg.persistence.approval_protocol import ApprovalRepository
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.redteam.builder import RedTeamRuntime
@@ -177,7 +178,8 @@ class TestWireWorkflowObserver:
         existing = WorkflowExecutionObserver.__new__(WorkflowExecutionObserver)
         task_engine = _FakeTaskEngine(_observers=[existing])
 
-        await _wire_workflow_observer(task_engine, persistence, state)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            await _wire_workflow_observer(task_engine, persistence, state)  # type: ignore[arg-type]
 
         assert task_engine.registered == []
 
@@ -186,7 +188,8 @@ class TestWireWorkflowObserver:
         task_engine = _FakeTaskEngine()
 
         # `object()` has no workflow_definitions / workflow_executions attrs.
-        await _wire_workflow_observer(task_engine, object(), state)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            await _wire_workflow_observer(task_engine, object(), state)  # type: ignore[arg-type]
 
         assert task_engine.registered == []
 
@@ -214,7 +217,8 @@ class TestWireOntologyService:
             fake_auto_wire,
         )
 
-        await _wire_ontology_service(object(), state)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            await _wire_ontology_service(object(), state)  # type: ignore[arg-type]
 
         assert state.slice(OntologyStateSlice).service is not None
 
@@ -237,7 +241,8 @@ class TestWireOntologyService:
 
         # The helper's slice-presence guard short-circuits when a service
         # is already wired, so the autowired "second" never replaces it.
-        await _wire_ontology_service(object(), state)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            await _wire_ontology_service(object(), state)  # type: ignore[arg-type]
 
         assert cast(object, state.slice(OntologyStateSlice).service) is first
 
@@ -292,7 +297,8 @@ class TestWireApprovalGate:
         state.wire(ApprovalStateSlice, gate=existing)
         persistence = _FakeParkedPersistence(parked_contexts=_FakeParkedContextRepo())
 
-        await _wire_approval_gate(persistence, state)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            await _wire_approval_gate(persistence, state)  # type: ignore[arg-type]
 
         assert state.slice(ApprovalStateSlice).gate is existing
 
@@ -336,13 +342,6 @@ class TestTunnelUnconditionalWiring:
         assert len(tunnel_logs) == 1
 
 
-@dataclass
-class _FakeBackend:
-    """Minimal PersistenceBackend stand-in carrying only ``backend_name``."""
-
-    backend_name: str
-
-
 def _persistent_store() -> ApprovalStore:
     """Build an ApprovalStore whose ``has_persistent_repo`` is ``True``.
 
@@ -366,7 +365,7 @@ class TestConversationalPersistenceGuard:
         with pytest.raises(ServiceUnavailableError):
             _guard_conversational_persistence(
                 ChiefOfStaffConfig(invite_enabled=True),
-                _FakeBackend(backend_name="sqlite"),  # type: ignore[arg-type]
+                mock_of[PersistenceBackend](backend_name="sqlite"),
                 _persistent_store(),
             )
 
@@ -374,7 +373,7 @@ class TestConversationalPersistenceGuard:
         with pytest.raises(ServiceUnavailableError):
             _guard_conversational_persistence(
                 ChiefOfStaffConfig(propose_enabled=True),
-                _FakeBackend(backend_name="sqlite"),  # type: ignore[arg-type]
+                mock_of[PersistenceBackend](backend_name="sqlite"),
                 _persistent_store(),
             )
 
@@ -383,7 +382,7 @@ class TestConversationalPersistenceGuard:
         # conversational source never reaches the SQLite table.
         _guard_conversational_persistence(
             ChiefOfStaffConfig(invite_enabled=True),
-            _FakeBackend(backend_name="sqlite"),  # type: ignore[arg-type]
+            mock_of[PersistenceBackend](backend_name="sqlite"),
             ApprovalStore(),
         )
 
@@ -391,14 +390,14 @@ class TestConversationalPersistenceGuard:
         # Postgres widened its source CHECK, so the durable store is fine.
         _guard_conversational_persistence(
             ChiefOfStaffConfig(invite_enabled=True),
-            _FakeBackend(backend_name="postgres"),  # type: ignore[arg-type]
+            mock_of[PersistenceBackend](backend_name="postgres"),
             _persistent_store(),
         )
 
     def test_allows_when_both_features_off(self) -> None:
         _guard_conversational_persistence(
             ChiefOfStaffConfig(),
-            _FakeBackend(backend_name="sqlite"),  # type: ignore[arg-type]
+            mock_of[PersistenceBackend](backend_name="sqlite"),
             _persistent_store(),
         )
 
