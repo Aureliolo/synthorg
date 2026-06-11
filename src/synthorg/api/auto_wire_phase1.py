@@ -8,7 +8,7 @@ distributed dispatcher), and provider health tracker -- returning them in a
 stays under the module-size budget.
 """
 
-from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.api.channels import ALL_CHANNELS
 from synthorg.budget.tracker import CostTracker
@@ -17,7 +17,6 @@ from synthorg.communication.config import NatsConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -31,6 +30,11 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.cassette import CassetteConfig
 from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.workers.distributed_protocols import (
+    DistributedBackendServicesHandle,
+    DistributedDispatcherHandle,
+    DistributedTaskQueueHandle,
+)
 
 if TYPE_CHECKING:
     # ``workers.config`` sits in a genuine cold-import cycle (via
@@ -43,63 +47,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-@runtime_checkable
-class _TaskQueueHandle(Protocol):
-    """Structural view of the distributed task queue the API lifecycle drives.
-
-    The concrete type is ``synthorg.workers.claim.JetStreamTaskQueue`` (the
-    optional ``synthorg[distributed]`` extra, behind a cold-import cycle). The
-    API only needs to start/stop it and read its running flag, so a local
-    ``@runtime_checkable`` Protocol gives ``Phase1Result`` a runtime-resolvable
-    field type without importing the extra.
-    """
-
-    @property
-    def is_running(self) -> bool:
-        """Whether the queue client is connected and serving."""
-        ...
-
-    async def start(self) -> None:
-        """Connect and provision the stream and consumer."""
-        ...
-
-    async def stop(self) -> None:
-        """Drain and close the connection; idempotent."""
-        ...
-
-
-@runtime_checkable
-class _DispatcherHandle(Protocol):
-    """Structural view of the distributed dispatcher observer.
-
-    The concrete type is ``synthorg.workers.dispatcher.DistributedDispatcher``.
-    The engine registers its ``on_task_state_changed`` coroutine as a task-state
-    observer; that bound method is the only member the API surface touches.
-    """
-
-    async def on_task_state_changed(self, event: TaskStateChanged) -> None:
-        """Handle a task-state-changed event from the engine."""
-        ...
-
-
-@runtime_checkable
-class _BackendServicesHandle(Protocol):
-    """Structural view of the distributed backend-services bundle.
-
-    The concrete type is
-    ``synthorg.workers.backend_services.DistributedBackendServices``. The API
-    lifecycle only starts/stops the bundle.
-    """
-
-    async def start(self) -> None:
-        """Start the distributed-path background services."""
-        ...
-
-    async def stop(self) -> None:
-        """Stop the distributed-path background services; idempotent."""
-        ...
-
-
 class Phase1Result(NamedTuple):
     """Services created during construction-time auto-wiring."""
 
@@ -108,9 +55,9 @@ class Phase1Result(NamedTuple):
     task_engine: TaskEngine | None
     provider_registry: ProviderRegistry | None
     provider_health_tracker: ProviderHealthTracker | None
-    distributed_task_queue: _TaskQueueHandle | None
-    distributed_dispatcher: _DispatcherHandle | None
-    distributed_backend_services: _BackendServicesHandle | None
+    distributed_task_queue: DistributedTaskQueueHandle | None
+    distributed_dispatcher: DistributedDispatcherHandle | None
+    distributed_backend_services: DistributedBackendServicesHandle | None
 
 
 def auto_wire_phase1(  # noqa: PLR0913
@@ -141,9 +88,9 @@ def auto_wire_phase1(  # noqa: PLR0913
     Returns:
         A ``Phase1Result`` with all (possibly auto-wired) services.
     """
-    distributed_task_queue: _TaskQueueHandle | None = None
-    distributed_dispatcher: _DispatcherHandle | None = None
-    distributed_backend_services: _BackendServicesHandle | None = None
+    distributed_task_queue: DistributedTaskQueueHandle | None = None
+    distributed_dispatcher: DistributedDispatcherHandle | None = None
+    distributed_backend_services: DistributedBackendServicesHandle | None = None
 
     if message_bus is None:
         message_bus = _auto_wire_message_bus(effective_config)
@@ -277,9 +224,9 @@ def _wire_task_engine(
     nats_config: NatsConfig | None = None,
 ) -> tuple[
     TaskEngine,
-    _TaskQueueHandle | None,
-    _DispatcherHandle | None,
-    _BackendServicesHandle | None,
+    DistributedTaskQueueHandle | None,
+    DistributedDispatcherHandle | None,
+    DistributedBackendServicesHandle | None,
 ]:
     """Create a TaskEngine from persistence and optional bus.
 
@@ -307,9 +254,9 @@ def _wire_task_engine(
         )
         raise
 
-    task_queue: _TaskQueueHandle | None = None
-    dispatcher: _DispatcherHandle | None = None
-    backend_services: _BackendServicesHandle | None = None
+    task_queue: DistributedTaskQueueHandle | None = None
+    dispatcher: DistributedDispatcherHandle | None = None
+    backend_services: DistributedBackendServicesHandle | None = None
     if queue_config is not None and queue_config.enabled:
         if nats_config is None:
             logger.warning(
@@ -337,9 +284,9 @@ def _register_distributed_dispatcher(
     nats_config: NatsConfig,
     persistence: PersistenceBackend,
 ) -> tuple[
-    _TaskQueueHandle | None,
-    _DispatcherHandle | None,
-    _BackendServicesHandle | None,
+    DistributedTaskQueueHandle | None,
+    DistributedDispatcherHandle | None,
+    DistributedBackendServicesHandle | None,
 ]:
     """Register the distributed dispatcher observer on the task engine.
 

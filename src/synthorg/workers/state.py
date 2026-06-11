@@ -16,10 +16,10 @@ from synthorg._core.features import BaseFeatureStateSlice
 from synthorg.engine.coordination.service import (
     MultiAgentCoordinator,
 )
-from synthorg.workers.backend_services import (
-    DistributedBackendServices,
+from synthorg.workers.distributed_protocols import (
+    DistributedBackendServicesHandle,
+    DistributedTaskQueueHandle,
 )
-from synthorg.workers.claim import JetStreamTaskQueue
 from synthorg.workers.execution_service import (
     WorkerExecutionService,
 )
@@ -35,8 +35,8 @@ class RuntimeStateSlice(BaseFeatureStateSlice):
 
     worker_execution_service: WorkerExecutionService | None = None
     coordinator: MultiAgentCoordinator | None = None
-    distributed_task_queue: JetStreamTaskQueue | None = None
-    distributed_backend_services: DistributedBackendServices | None = None
+    distributed_task_queue: DistributedTaskQueueHandle | None = None
+    distributed_backend_services: DistributedBackendServicesHandle | None = None
 
 
 def worker_execution_service_of(
