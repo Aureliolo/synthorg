@@ -97,7 +97,7 @@ jobs:
       # enforces that this SKIP list equals _COVERED_ELSEWHERE u _LOCAL_ONLY
       # exactly. The two all-files steps share this one job-level SKIP so a hook
       # can never be skipped at one stage but silently run at another.
-      SKIP: go-vet,go-test,golangci-lint,eslint-web,web-knip,web-circular,lychee,hadolint-docker,gitleaks,zizmor,mypy,pytest-unit,vale,caddy-validate,check-single-migration-per-pr,check-no-modify-migration,check-push-rebased
+      SKIP: go-vet,go-test,golangci-lint,eslint-web,web-knip,web-circular,dto-types-ts-in-sync,lychee,hadolint-docker,gitleaks,zizmor,mypy,pytest-unit,vale,caddy-validate,check-single-migration-per-pr,check-no-modify-migration,check-push-rebased
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
@@ -986,6 +986,7 @@ jobs:
           # which is what we observed on PR #2080 (the "file count by
           # shard prefix" line printed and then nothing followed). ``-A``
           # includes dotfiles but excludes ``.`` and ``..``.
+          # shellcheck disable=SC2012  # coverage-data holds controlled CI-artifact names (.coverage.<suite>-<shard>); ls -A is the deliberate dotfile-listing path
           ls -A coverage-data 2>/dev/null \
             | sed -E 's/\.[0-9a-f]+\.[0-9]+\.[0-9a-f]+$//' \
             | sort | uniq -c | sort -rn || true
@@ -1027,6 +1028,7 @@ jobs:
           # coverage" step already fails the job when any suite or shard
           # dropped its artifact, so the loop below is a belt-and-braces
           # guard for the junit upload path specifically.
+          # shellcheck disable=SC2012  # test-results holds controlled CI-artifact names (junit-*.xml); the glob list feeds Codecov's CSV
           files=$(ls test-results/junit-*.xml 2>/dev/null | paste -sd, || true)
           if [ -z "${files}" ]; then
             echo "::error::No junit XML files found under test-results/. Refusing to upload an empty file list to Codecov."
@@ -1200,6 +1202,9 @@ jobs:
           node-version: 24.16.0
           cache: npm
           cache-dependency-path: web/package-lock.json
+      # python+uv is needed for the dto-types parity gate below, which
+      # re-exports the OpenAPI schema from the live app before diffing.
+      - uses: ./.github/actions/setup-python-uv
       - name: Download OpenAPI schema artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -1210,6 +1215,14 @@ jobs:
           working-directory: web
       - run: npm run type-check
         working-directory: web
+      # CI counterpart for the local `dto-types-ts-in-sync` pre-push hook
+      # (parity). It runs here, NOT in the python-only Gates job, because it
+      # shells out to `npx openapi-typescript`, which needs node + the pinned
+      # web/node_modules (openapi-typescript and its typescript peer). The
+      # Gates job has no node toolchain, so the gate is SKIPped there and
+      # mapped to this job in check_local_ci_parity._COVERED_ELSEWHERE.
+      - name: dto-types-ts-in-sync gate (parity)
+        run: uv run python scripts/check_dto_types_ts_in_sync.py
 
   # ── Dashboard: Test ──
   dashboard-test:

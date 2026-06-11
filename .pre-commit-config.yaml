@@ -839,11 +839,12 @@ repos:
         name: local <-> CI parity (every hook has a CI counterpart; cardinal rule)
         entry: uv run python scripts/check_local_ci_parity.py
         language: system
-        # Trigger on this config (hooks added/removed/restaged), the CI
-        # workflow (all-files SKIP list / job conditions), or the gate
-        # script itself so a change that breaks parity or re-introduces a
-        # changed-file-conditioned correctness job cannot bypass the check.
-        files: ^(\.pre-commit-config\.yaml|\.github/workflows/ci\.yml|scripts/check_local_ci_parity\.py)$
+        # Trigger on this config (hooks added/removed/restaged), either CI
+        # workflow the gate polices -- ci.yml (all-files SKIP list / job
+        # conditions) and cli.yml (cardinal-rule job conditions) -- or the
+        # gate script itself, so a change that breaks parity or re-introduces
+        # a changed-file-conditioned correctness job cannot bypass the check.
+        files: ^(\.pre-commit-config\.yaml|\.github/workflows/(ci|cli)\.yml|scripts/check_local_ci_parity\.py)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 

@@ -217,6 +217,49 @@ def test_cardinal_clean_when_only_event_guard(tmp_path: Path) -> None:
     assert _GATE._cardinal_rule_violations(tmp_path) == []
 
 
+def _write_ci_job_with_step_if(root: Path, job_name: str, step_if: str) -> None:
+    wf_dir = root / ".github" / "workflows"
+    wf_dir.mkdir(parents=True, exist_ok=True)
+    (wf_dir / "ci.yml").write_text(
+        f"jobs:\n  {job_name}:\n"
+        "    if: needs.changes.outputs.is_release_please != 'true'\n"
+        "    steps:\n"
+        "      - name: gated step\n"
+        f"        if: {step_if}\n"
+        "        run: echo hi\n",
+        encoding="utf-8",
+    )
+    (wf_dir / "cli.yml").write_text("jobs: {}\n", encoding="utf-8")
+
+
+def test_cardinal_flags_step_level_changed_file_condition(tmp_path: Path) -> None:
+    # An always-run job that hides the paths-filter on a step-level if: must
+    # still trip the cardinal rule.
+    _write_ci_job_with_step_if(
+        tmp_path, "my-correctness-job", "needs.changes.outputs.python == 'true'"
+    )
+    problems = _GATE._cardinal_rule_violations(tmp_path)
+    assert any(
+        "my-correctness-job" in p and "step[0]" in p and "python" in p for p in problems
+    )
+
+
+def test_cardinal_clean_when_step_if_is_event_guard(tmp_path: Path) -> None:
+    _write_ci_job_with_step_if(
+        tmp_path, "my-correctness-job", "needs.changes.outputs.is_release_please"
+    )
+    assert _GATE._cardinal_rule_violations(tmp_path) == []
+
+
+def test_cardinal_step_scan_exempts_build_perf_jobs(tmp_path: Path) -> None:
+    # A justified build/perf job (in the allowlist) may keep path scoping at
+    # both job and step level, so its steps are not scanned.
+    _write_ci_job_with_step_if(
+        tmp_path, "dashboard-build", "needs.changes.outputs.web == 'true'"
+    )
+    assert _GATE._cardinal_rule_violations(tmp_path) == []
+
+
 # ── live-repo regression ────────────────────────────────────────
 
 

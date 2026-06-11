@@ -179,13 +179,15 @@ jobs:
             echo "::warning::Skipping lighthouse-site: no PR number resolvable (likely workflow_dispatch on a branch). The marketing-site Lighthouse audit only runs against the deployed pr-preview URL."
             echo "skip=true" >>"$GITHUB_OUTPUT"
           else
-            echo "pr_number=${PR_EVENT_NUMBER}" >>"$GITHUB_OUTPUT"
             # Compose the preview URL once here; downstream steps
             # reuse via steps.pr.outputs.preview_url so the host
             # template never drifts across the wait loop and the
             # LHCI invocation.
-            echo "preview_url=https://pr-${PR_EVENT_NUMBER}.synthorg-pr-preview.pages.dev" >>"$GITHUB_OUTPUT"
-            echo "skip=false" >>"$GITHUB_OUTPUT"
+            {
+              echo "pr_number=${PR_EVENT_NUMBER}"
+              echo "preview_url=https://pr-${PR_EVENT_NUMBER}.synthorg-pr-preview.pages.dev"
+              echo "skip=false"
+            } >>"$GITHUB_OUTPUT"
           fi
 
       - name: Wait for pr-preview deployment to serve THIS commit

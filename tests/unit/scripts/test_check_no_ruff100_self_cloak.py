@@ -1,6 +1,7 @@
 """Unit tests for ``scripts/check_no_ruff100_self_cloak.py``."""
 
 import importlib.util
+import shutil
 import subprocess
 from pathlib import Path
 from types import ModuleType
@@ -115,6 +116,69 @@ def test_reports_every_offending_line(tmp_path: Path) -> None:
         f"import sys  {_noqa('F401,RUF100')}\n",
     )
     assert _GATE._self_cloak_lines(f) == [1, 3]
+
+
+def test_noqa_pattern_inside_string_literal_is_not_flagged(tmp_path: Path) -> None:
+    # A self-cloak *pattern* embedded in a docstring/string is not a real
+    # directive; comment-token scanning ignores it where a raw-text scan
+    # would false-positive on the literal.
+    f = _write(tmp_path / "a.py", f'DOC = """see {_noqa("F401,RUF100")}"""\n')
+    assert _GATE._self_cloak_lines(f) == []
+
+
+def test_self_cloak_in_unparseable_file_caught_via_fallback(tmp_path: Path) -> None:
+    # An unclosed paren makes the file un-tokenisable; the raw-text
+    # fallback still catches the comment-borne self-cloak.
+    f = _write(tmp_path / "a.py", f"x = (  {_noqa('F401,RUF100')}\n")
+    assert _GATE._self_cloak_lines(f) == [1]
+
+
+# ── guard: cross-check the custom logic against ruff's runtime ──
+
+_TARGET_CODE = "RUF100"
+
+
+def _ruff_reports_unused_noqa(path: Path) -> bool:
+    """Return whether ruff's RUF100 fires on *path*, isolated from repo config."""
+    ruff = shutil.which("ruff")
+    assert ruff is not None, "ruff must be installed to cross-check RUF100 semantics"
+    result = subprocess.run(  # noqa: S603
+        [
+            ruff,
+            "check",
+            "--isolated",
+            "--select",
+            "F401,RUF100",
+            "--output-format",
+            "concise",
+            "--no-cache",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return _TARGET_CODE in result.stdout
+
+
+def test_guard_self_cloak_matches_ruff_runtime_behaviour(tmp_path: Path) -> None:
+    """Pin the hand-rolled self-cloak semantics to ruff's actual RUF100 runtime.
+
+    The gate reimplements RUF100's self-cloak semantics by hand; this guard
+    cross-checks them against ruff itself, so a future ruff change to those
+    semantics surfaces here instead of silently bypassing the custom logic.
+    """
+    # A noqa suppressing F401 on a non-import line is a dead directive.
+    # Unpaired, ruff's RUF100 flags it -- and the gate stays silent (a lone
+    # dead directive is ruff's job, not a self-cloak).
+    uncloaked = _write(tmp_path / "uncloaked.py", f"x = 1  {_noqa('F401')}\n")
+    assert _ruff_reports_unused_noqa(uncloaked)
+    assert _GATE._self_cloak_lines(uncloaked) == []
+    # Pairing RUF100 into the same directive cloaks it: ruff goes silent, so
+    # ONLY the gate catches the now-hidden dead directive.
+    cloaked = _write(tmp_path / "cloaked.py", f"x = 1  {_noqa('F401,RUF100')}\n")
+    assert not _ruff_reports_unused_noqa(cloaked)
+    assert _GATE._self_cloak_lines(cloaked) == [1]
 
 
 # ── _scan / main (end-to-end over a git repo) ───────────────────

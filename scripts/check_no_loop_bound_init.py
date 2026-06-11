@@ -39,7 +39,8 @@ the assignment line.
 Exit codes:
     0 - no new offenders
     1 - new violations detected (CI / pre-commit fails)
-    2 - baseline malformed
+    2 - scan/baseline failure (unreadable or unparseable source, or
+        malformed baseline)
 """
 
 import argparse

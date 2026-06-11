@@ -74,6 +74,11 @@ _COVERED_ELSEWHERE: Final[dict[str, str]] = {
     "eslint-web": "ci.yml :: dashboard-lint (npm run lint)",
     "web-circular": "ci.yml :: dashboard-lint (npm run lint:circular)",
     "web-knip": "ci.yml :: dashboard-lint (npm run lint:knip)",
+    "dto-types-ts-in-sync": (
+        "ci.yml :: dashboard-type-check (runs the gate where the pinned "
+        "web/node_modules provides openapi-typescript + its typescript peer; "
+        "the python+uv Gates job has no node toolchain)"
+    ),
     "lychee": "lychee.yml :: lychee (internal link check)",
     "hadolint-docker": "ci.yml :: dockerfile-lint (hadolint-action)",
     "gitleaks": "secret-scan.yml :: gitleaks",
@@ -343,8 +348,47 @@ def _parity_violations(repo_root: Path) -> list[str]:
     return problems
 
 
+def _changed_file_outputs(wf: _CardinalWorkflow, condition: object) -> set[str]:
+    """Return changed-file output refs in *condition* (empty for non-strings).
+
+    Event-type guards (``non_path_outputs``) are subtracted, since gating on
+    those is allowed; only true changed-file conditions can falsely skip on a
+    shallow-checkout race.
+    """
+    if not isinstance(condition, str):
+        return set()
+    return set(wf.changes_re.findall(condition)) - wf.non_path_outputs
+
+
+def _step_condition_violations(
+    wf: _CardinalWorkflow, job_name: str, job: dict[str, object]
+) -> list[str]:
+    """Flag steps of a correctness job gated on changed-file outputs.
+
+    A job can keep an always-run ``if`` yet move the paths-filter condition
+    onto a step-level ``if:``, which the job-level scan alone would miss.
+    """
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        return []
+    problems: list[str] = []
+    for idx, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        step_outputs = _changed_file_outputs(wf, step.get("if"))
+        if step_outputs:
+            outs = ", ".join(sorted(step_outputs))
+            problems.append(
+                f"{wf.path} :: job '{job_name}' step[{idx}] is a correctness "
+                f"step conditioned on changed-file output(s) [{outs}]. A "
+                "shallow-checkout race can falsely skip it. Remove the "
+                "paths-filter condition from the step."
+            )
+    return problems
+
+
 def _cardinal_rule_violations(repo_root: Path) -> list[str]:
-    """Flag correctness jobs (ci.yml + cli.yml) conditioned on changed files."""
+    """Flag correctness jobs/steps (ci.yml + cli.yml) conditioned on changed files."""
     problems: list[str] = []
     for wf in _CARDINAL_WORKFLOWS:
         workflow = _load_yaml(repo_root / wf.path)
@@ -354,13 +398,11 @@ def _cardinal_rule_violations(repo_root: Path) -> list[str]:
         for job_name, job in jobs.items():
             if not isinstance(job, dict) or not isinstance(job_name, str):
                 continue
-            condition = job.get("if")
-            if not isinstance(condition, str):
+            if job_name in wf.build_perf:
                 continue
-            referenced = set(wf.changes_re.findall(condition))
-            changed_file_outputs = referenced - wf.non_path_outputs
-            if changed_file_outputs and job_name not in wf.build_perf:
-                outs = ", ".join(sorted(changed_file_outputs))
+            job_outputs = _changed_file_outputs(wf, job.get("if"))
+            if job_outputs:
+                outs = ", ".join(sorted(job_outputs))
                 problems.append(
                     f"{wf.path} :: job '{job_name}' is a correctness job "
                     f"conditioned on changed-file output(s) [{outs}]. A "
@@ -368,6 +410,7 @@ def _cardinal_rule_violations(repo_root: Path) -> list[str]:
                     "paths-filter condition, or justify it in the workflow's "
                     "build/perf allowlist."
                 )
+            problems.extend(_step_condition_violations(wf, job_name, job))
     return problems
 
 

@@ -25,6 +25,7 @@ import argparse
 import re
 import subprocess
 import sys
+import tokenize
 from pathlib import Path
 from typing import Final
 
@@ -50,18 +51,44 @@ def _tracked_python_files(root: Path) -> list[Path]:
     return [root / line for line in result.stdout.splitlines() if line]
 
 
+def _is_self_cloak(snippet: str) -> bool:
+    """Return whether *snippet* carries an RUF100 self-cloak directive.
+
+    A self-cloak is a ``noqa`` listing ``RUF100`` alongside at least one
+    other code, so RUF100 suppresses its own complaint about a sibling
+    that may be dead.
+    """
+    match = _NOQA_CODES.search(snippet)
+    if match is None:
+        return False
+    codes = {code.strip() for code in match.group("codes").split(",")}
+    return _TARGET_CODE in codes and len(codes) > 1
+
+
 def _self_cloak_lines(path: Path) -> list[int]:
-    """Return 1-based line numbers carrying an RUF100 self-cloak."""
-    bad: list[int] = []
-    text = path.read_text(encoding="utf-8")
-    for lineno, line in enumerate(text.splitlines(), start=1):
-        match = _NOQA_CODES.search(line)
-        if match is None:
-            continue
-        codes = {code.strip() for code in match.group("codes").split(",")}
-        if _TARGET_CODE in codes and len(codes) > 1:
-            bad.append(lineno)
-    return bad
+    """Return 1-based line numbers carrying an RUF100 self-cloak.
+
+    Scans only comment tokens (via :mod:`tokenize`) so a ``noqa`` pattern
+    living inside a docstring or string literal -- which ruff never reads
+    as a directive -- cannot raise a false positive. Falls back to a raw
+    line scan when the file does not tokenise (e.g. a deliberately
+    malformed fixture); the fallback can only over-report on contrived
+    string literals, never miss a real comment-borne directive.
+    """
+    try:
+        with path.open("rb") as handle:
+            return [
+                token.start[0]
+                for token in tokenize.tokenize(handle.readline)
+                if token.type == tokenize.COMMENT and _is_self_cloak(token.string)
+            ]
+    except tokenize.TokenError, SyntaxError:
+        text = path.read_text(encoding="utf-8")
+        return [
+            lineno
+            for lineno, line in enumerate(text.splitlines(), start=1)
+            if _is_self_cloak(line)
+        ]
 
 
 def _scan(root: Path) -> int:
