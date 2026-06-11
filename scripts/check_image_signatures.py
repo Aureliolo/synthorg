@@ -331,9 +331,10 @@ def signature_present(
     the CodeQL ``py/partial-ssrf`` data-flow.
 
     Raises:
-        urllib.error.URLError: a network-level failure (also covers
-            ``OSError`` subclasses), OR a non-404 registry error
-            (502/503/429/...), that persisted across every attempt.
+        urllib.error.URLError: a network-level failure (a raw ``OSError``
+            is normalised to ``URLError`` with the original kept as
+            ``__cause__``), OR a non-404 registry error (502/503/429/...),
+            that persisted across every attempt.
     """
     if not digest.startswith("sha256:"):
         return False
@@ -345,15 +346,21 @@ def signature_present(
     for attempt in range(1, SIG_PROPAGATION_ATTEMPTS + 1):
         try:
             status, _, _ = _request("HEAD", url, headers)
-        except urllib.error.URLError, OSError:
+        except (urllib.error.URLError, OSError) as exc:
             # A network blip on the referrer check is itself transient:
             # retry within the same budget. If it persists, re-raise on the
             # final attempt so the caller reports a network error rather
-            # than a false "unsigned" verdict.
+            # than a false "unsigned" verdict. URLError is itself an OSError
+            # subclass; a raw (non-URLError) OSError is normalised to URLError
+            # so the raised type matches the documented contract and callers
+            # only need to catch urllib.error.URLError.
             if attempt < SIG_PROPAGATION_ATTEMPTS:
                 time.sleep(SIG_PROPAGATION_BACKOFF_SECONDS)
                 continue
-            raise
+            if isinstance(exc, urllib.error.URLError):
+                raise
+            msg = f"network error on referrer check for {url}"
+            raise urllib.error.URLError(msg) from exc
         if status == HTTP_OK:
             return True
         # A 404 is a real "referrer not (yet) present" answer: retry within

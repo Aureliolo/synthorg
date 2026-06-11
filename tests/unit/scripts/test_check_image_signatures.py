@@ -329,6 +329,28 @@ class TestSignaturePresent:
             gate.signature_present("aureliolo/synthorg-backend", digest, {})
         assert len(slept) == gate.SIG_PROPAGATION_ATTEMPTS - 1
 
+    def test_persistent_raw_oserror_normalised_to_urlerror(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A raw OSError (not already a URLError) that persists past the budget
+        # is normalised to URLError so callers only need to catch URLError;
+        # the original OSError is preserved as __cause__.
+        original = ConnectionResetError("connection reset by peer")
+
+        def fake_request(
+            _method: str, _url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            raise original
+
+        slept: list[float] = []
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
+        digest = "sha256:" + "a" * 64
+        with pytest.raises(urllib.error.URLError) as excinfo:
+            gate.signature_present("aureliolo/synthorg-backend", digest, {})
+        assert excinfo.value.__cause__ is original
+        assert len(slept) == gate.SIG_PROPAGATION_ATTEMPTS - 1
+
     def test_genuine_miss_fails_after_bounded_budget(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
