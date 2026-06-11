@@ -74,7 +74,7 @@ def _snapshot(
     version: int,
 ) -> VersionSnapshot[WorkflowDefinition]:
     return VersionSnapshot(
-        entity_id=sid(str(definition.id)),
+        entity_id=str(definition.id),
         version=version,
         content_hash=NotBlankStr(compute_content_hash(definition)),
         snapshot=definition,
