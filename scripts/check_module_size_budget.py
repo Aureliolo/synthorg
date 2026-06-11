@@ -29,12 +29,23 @@ twice produces an identical file (idempotent).
 
 import argparse
 import dataclasses
-import importlib.util
 import json
 import sys
 from pathlib import Path
-from types import ModuleType
-from typing import Any, cast
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _module_size_lib import (  # type: ignore[import-not-found]
+        TIER_LIMITS,
+        count_loc,
+        resolve_tier,
+    )
+else:
+    from scripts._module_size_lib import (
+        TIER_LIMITS,
+        count_loc,
+        resolve_tier,
+    )
 
 _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 _BASELINE_REL = Path("scripts") / "_module_size_baseline.json"
@@ -48,20 +59,6 @@ _BASELINE_DESCRIPTION = (
     "gate. Regenerate (rare; requires explicit user approval) with: "
     "uv run python scripts/check_module_size_budget.py --update-baseline"
 )
-
-
-def _load_lib() -> ModuleType:
-    lib_path = Path(__file__).resolve().parent / "_module_size_lib.py"
-    spec = importlib.util.spec_from_file_location("_module_size_lib", lib_path)
-    if spec is None or spec.loader is None:
-        msg = f"could not load module spec for {lib_path}"
-        raise RuntimeError(msg)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_LIB: Any = cast("Any", _load_lib())
 
 
 @dataclasses.dataclass(frozen=True)
@@ -143,11 +140,11 @@ def check(*, project_root: Path, baseline_path: Path) -> list[Violation]:
     baseline = _load_baseline(baseline_path)
     violations: list[Violation] = []
     for path in _iter_source_files(project_root):
-        tier = _LIB.resolve_tier(path, project_root=project_root)
+        tier = resolve_tier(path, project_root=project_root)
         if tier == "generated":
             continue
-        cap: int | None = _LIB.TIER_LIMITS[tier]
-        loc = _LIB.count_loc(path)
+        cap: int | None = TIER_LIMITS[tier]
+        loc = count_loc(path)
         rel = _relpath_posix(path, project_root)
         baseline_loc = baseline.get(rel)
         if (
@@ -165,13 +162,13 @@ def _compute_baseline_payload(project_root: Path) -> dict[str, int]:
     """Return ``{rel_path: loc}`` for every file currently over its cap."""
     payload: dict[str, int] = {}
     for path in _iter_source_files(project_root):
-        tier = _LIB.resolve_tier(path, project_root=project_root)
+        tier = resolve_tier(path, project_root=project_root)
         if tier == "generated":
             continue
-        cap: int | None = _LIB.TIER_LIMITS[tier]
+        cap: int | None = TIER_LIMITS[tier]
         if cap is None:
             continue
-        loc = _LIB.count_loc(path)
+        loc = count_loc(path)
         if loc > cap:
             payload[_relpath_posix(path, project_root)] = loc
     return dict(sorted(payload.items()))

@@ -23,10 +23,23 @@ Three metrics, each a distinct shape of architectural pressure:
 """
 
 import ast
-import importlib.util
+import sys
 from pathlib import Path
-from types import ModuleType
-from typing import Any, Final, cast
+from typing import Final
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _module_size_lib import (  # type: ignore[import-not-found]
+        TIER_LIMITS,
+        count_loc,
+        resolve_tier,
+    )
+else:
+    from scripts._module_size_lib import (
+        TIER_LIMITS,
+        count_loc,
+        resolve_tier,
+    )
 
 ROOT_PACKAGE: Final[str] = "synthorg"
 FAN_IN_RECORD_FLOOR: Final[int] = 20
@@ -44,20 +57,6 @@ _LCOM_TIERS: Final[frozenset[str]] = frozenset(
     {"service", "orchestrator", "complex_service"}
 )
 _SCAN_REL: Final[Path] = Path("src") / "synthorg"
-
-
-def _load_module_size_lib() -> ModuleType:
-    lib_path = Path(__file__).resolve().parent / "_module_size_lib.py"
-    spec = importlib.util.spec_from_file_location("_module_size_lib", lib_path)
-    if spec is None or spec.loader is None:
-        msg = f"could not load module spec for {lib_path}"
-        raise RuntimeError(msg)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_SIZE_LIB: Any = cast("Any", _load_module_size_lib())
 
 
 def compute_fan_in(*, record_floor: int = FAN_IN_RECORD_FLOOR) -> dict[str, int]:
@@ -99,11 +98,11 @@ def compute_budget_pressure(project_root: Path) -> dict[str, dict[str, object]]:
     """
     result: dict[str, dict[str, object]] = {}
     for path in _iter_source_files(project_root):
-        tier = _SIZE_LIB.resolve_tier(path, project_root=project_root)
-        cap = _SIZE_LIB.TIER_LIMITS[tier]
+        tier = resolve_tier(path, project_root=project_root)
+        cap = TIER_LIMITS[tier]
         if cap is None:
             continue
-        loc = _SIZE_LIB.count_loc(path)
+        loc = count_loc(path)
         ratio = loc / cap
         if ratio >= BUDGET_PRESSURE_RATIO:
             rel = path.relative_to(project_root).as_posix()
@@ -200,7 +199,7 @@ def compute_lcom(project_root: Path) -> dict[str, dict[str, int]]:
     """
     result: dict[str, dict[str, int]] = {}
     for path in _iter_source_files(project_root):
-        tier = _SIZE_LIB.resolve_tier(path, project_root=project_root)
+        tier = resolve_tier(path, project_root=project_root)
         if tier not in _LCOM_TIERS:
             continue
         text = path.read_text(encoding="utf-8")
@@ -221,7 +220,7 @@ def compute_lcom(project_root: Path) -> dict[str, dict[str, int]]:
     return dict(sorted(result.items()))
 
 
-def build_report(project_root: Path) -> dict[str, Any]:
+def build_report(project_root: Path) -> dict[str, object]:
     """Assemble the full architecture-metrics report.
 
     Returns:

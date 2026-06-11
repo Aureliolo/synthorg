@@ -470,7 +470,7 @@ repos:
         name: mypy type-check (affected modules)
         entry: uv run python scripts/run_affected_mypy.py
         language: system
-        files: ^(src/|tests/).*\.py$
+        files: ^(src/|tests/|scripts/).*\.py$
         pass_filenames: false
         stages: [pre-push]
 

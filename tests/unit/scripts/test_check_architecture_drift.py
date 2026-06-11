@@ -124,9 +124,9 @@ def _patch_metrics(
     budget: JsonDict | None = None,
     lcom: JsonDict | None = None,
 ) -> None:
-    monkeypatch.setattr(_GATE._LIB, "compute_fan_in", lambda **_: fan_in or {})
-    monkeypatch.setattr(_GATE._LIB, "compute_budget_pressure", lambda _: budget or {})
-    monkeypatch.setattr(_GATE._LIB, "compute_lcom", lambda _: lcom or {})
+    monkeypatch.setattr(_GATE, "compute_fan_in", lambda **_: fan_in or {})
+    monkeypatch.setattr(_GATE, "compute_budget_pressure", lambda _: budget or {})
+    monkeypatch.setattr(_GATE, "compute_lcom", lambda _: lcom or {})
 
 
 def test_drift_clean_when_live_matches_baseline(

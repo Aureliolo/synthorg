@@ -312,8 +312,11 @@ jobs:
 
       - name: mypy
         # Whole-tree scope (mirrors run_affected_mypy.py's full-run fallback).
-        # scripts/ is excluded pending its own typing pass (#2322 follow-up).
-        run: uv run mypy --num-workers=4 src/ tests/ evals/ docker/ d2_fence.py
+        # scripts/ is a second invocation: its flat layout clashes on bare vs
+        # scripts.* names, so it needs MYPYPATH + --explicit-package-bases.
+        run: |
+          uv run mypy --num-workers=4 src/ tests/ evals/ docker/ d2_fence.py
+          MYPYPATH=. uv run mypy --num-workers=4 --explicit-package-bases scripts/
 
   # ── Python: OpenAPI Liveness ──
   openapi-liveness:

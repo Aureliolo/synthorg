@@ -17,12 +17,15 @@ Usage::
 """
 
 import argparse
-import importlib.util
 import json
 import sys
 from pathlib import Path
-from types import ModuleType
-from typing import Any, cast
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _architecture_lib import build_report  # type: ignore[import-not-found]
+else:
+    from scripts._architecture_lib import build_report
 
 _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 _REPORT_REL = Path("data") / "architecture_report.json"
@@ -37,27 +40,13 @@ _DESCRIPTION = (
 )
 
 
-def _load_lib() -> ModuleType:
-    lib_path = Path(__file__).resolve().parent / "_architecture_lib.py"
-    spec = importlib.util.spec_from_file_location("_architecture_lib", lib_path)
-    if spec is None or spec.loader is None:
-        msg = f"could not load module spec for {lib_path}"
-        raise RuntimeError(msg)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_LIB: Any = cast("Any", _load_lib())
-
-
 def render(project_root: Path) -> str:
     """Return the deterministic JSON body for the report.
 
     Returns:
         Sorted-key, 2-space-indented JSON with a trailing newline.
     """
-    payload = {"description": _DESCRIPTION, **_LIB.build_report(project_root)}
+    payload = {"description": _DESCRIPTION, **build_report(project_root)}
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 

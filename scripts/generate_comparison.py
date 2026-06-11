@@ -15,7 +15,7 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Required, TypedDict, cast
 
 import yaml
 
@@ -26,6 +26,35 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_FILE = REPO_ROOT / "data" / "competitors.yaml"
 OUTPUT_FILE = REPO_ROOT / "docs" / "reference" / "comparison.md"
 AUTO_SENTINEL = "auto"
+
+
+class _Competitor(TypedDict, total=False):
+    """One competitor entry from ``data/competitors.yaml``.
+
+    ``name`` / ``slug`` / ``category`` are guaranteed present by
+    :func:`_validate_competitors`; the rest are optional.
+    """
+
+    name: Required[str]
+    slug: Required[str]
+    category: Required[str]
+    url: str
+    repo: str
+    license: str
+    pricing: str
+    self_hosted: str
+    is_synthorg: bool
+    features: dict[str, dict[str, str]]
+
+
+class _ComparisonData(TypedDict):
+    """The validated top-level structure of ``data/competitors.yaml``."""
+
+    meta: dict[str, str]
+    dimensions: list[dict[str, str]]
+    categories: list[dict[str, str]]
+    competitors: list[_Competitor]
+
 
 # Support value display symbols
 SUPPORT_ICONS = {
@@ -72,7 +101,7 @@ TABLE_GROUPS = [
 ]
 
 
-def _load_data() -> dict[str, Any]:
+def _load_data() -> _ComparisonData:
     """Load and validate the competitors YAML file.
 
     Validates top-level keys (meta, dimensions, categories, competitors),
@@ -113,12 +142,12 @@ def _load_data() -> dict[str, Any]:
         **data["meta"],
         "last_updated": _resolve_last_updated(data["meta"]["last_updated"]),
     }
-    new_data: dict[str, Any] = {**data, "meta": new_meta}
+    new_data = {**data, "meta": new_meta}
 
     _validate_competitors(new_data["competitors"])
     _validate_dimension_keys(new_data["dimensions"])
 
-    return new_data
+    return cast("_ComparisonData", new_data)
 
 
 def _resolve_last_updated(declared: str) -> str:
@@ -175,8 +204,14 @@ def _resolve_last_updated(declared: str) -> str:
     return derived
 
 
-def _validate_competitors(competitors: list[Any]) -> None:
-    """Validate required fields and enum values on each competitor entry."""
+def _validate_competitors(competitors: list[object]) -> None:
+    """Validate required fields and enum values on each competitor entry.
+
+    Takes ``list[object]`` rather than ``list[_Competitor]`` because the
+    entries are still untrusted YAML at this point: the per-entry
+    ``isinstance`` guard is what proves the :class:`_Competitor` shape the
+    rest of the module relies on.
+    """
     required_keys = {"name", "slug", "category"}
     valid_pricing = set(PRICING_LABELS)
     valid_self_hosted = set(SELF_HOSTED_LABELS)
@@ -199,7 +234,7 @@ def _validate_competitors(competitors: list[Any]) -> None:
             raise ValueError(msg)
 
 
-def _validate_dimension_keys(dimensions: list[dict[str, Any]]) -> None:
+def _validate_dimension_keys(dimensions: list[dict[str, str]]) -> None:
     """Warn if TABLE_GROUPS references keys not in the loaded dimensions."""
     dim_keys = {d["key"] for d in dimensions}
     for group in TABLE_GROUPS:
@@ -283,7 +318,7 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
 
 
 def _competitor_row(
-    comp: dict[str, Any],
+    comp: _Competitor,
     group_keys: Sequence[str],
     categories: list[dict[str, str]],
 ) -> str:
@@ -320,7 +355,7 @@ def _competitor_row(
 def _thematic_tables(
     dimensions: list[dict[str, str]],
     categories: list[dict[str, str]],
-    competitors: list[dict[str, Any]],
+    competitors: list[_Competitor],
 ) -> list[str]:
     """Generate the thematic comparison tables."""
     lines: list[str] = []
@@ -349,7 +384,7 @@ def _thematic_tables(
     return lines
 
 
-def _project_links(competitors: list[dict[str, Any]]) -> list[str]:
+def _project_links(competitors: list[_Competitor]) -> list[str]:
     """Generate the project links section."""
     lines = ["## Project Links", ""]
     for comp in competitors:
@@ -366,7 +401,7 @@ def _project_links(competitors: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
-def _generate_markdown(data: dict[str, Any]) -> str:
+def _generate_markdown(data: _ComparisonData) -> str:
     """Generate the full Markdown page from the structured data."""
     lines: list[str] = []
     lines.extend(_frontmatter_and_intro(data["meta"]["last_updated"]))

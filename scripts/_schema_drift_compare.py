@@ -5,7 +5,7 @@ across the two backends. Emits canonical drift keys (without trailing
 reason) suitable for comparison against baseline entries.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -193,7 +193,7 @@ def _diff_index_attrs(
     return findings
 
 
-def _types_equivalent(a: Any, b: Any) -> bool:
+def _types_equivalent(a: object, b: object) -> bool:
     """Return True iff *a* and *b* are the same logical type.
 
     Equivalent when identical, when both live in one ``TYPE_FAMILIES``
