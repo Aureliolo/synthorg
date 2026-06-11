@@ -10,6 +10,10 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.compaction.protocol import CompactionCallback
+from synthorg.engine.intervention.inbox import SteeringInbox
+from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
@@ -58,11 +62,11 @@ from .loop_tool_execution import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.engine.approval_gate import ApprovalGate
+    # checkpoint.callback's package init imports checkpoint.resume, which
+    # imports ReactLoop; importing it at runtime here would close a
+    # react_loop <-> checkpoint.resume cold cycle. The alias resolves
+    # structurally for the __init__ signature.
     from synthorg.engine.checkpoint.callback import CheckpointCallback
-    from synthorg.engine.compaction.protocol import CompactionCallback
-    from synthorg.engine.intervention.inbox import SteeringInbox
-    from synthorg.engine.stagnation.protocol import StagnationDetector
 
 logger = get_logger(__name__)
 

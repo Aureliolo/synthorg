@@ -1,7 +1,7 @@
 """Middleware event constants.
 
 Constants for structured logging of agent middleware, coordination
-middleware, S1 constraint, and #1257 constraint lifecycle events.
+middleware, S1 constraint, and task-ledger constraint lifecycle events.
 """
 
 # ── Agent middleware lifecycle ─────────────────────────────────────
@@ -63,7 +63,7 @@ MIDDLEWARE_DELEGATION_HASH_RECORDED: str = "middleware.delegation_hash.recorded"
 MIDDLEWARE_DELEGATION_HASH_DRIFT: str = "middleware.delegation_hash.drift"
 """Delegation-chain content hash drifted from root task."""
 
-# ── #1257 constraint events ───────────────────────────────────────
+# ── Task-ledger constraint events ─────────────────────────────────
 
 MIDDLEWARE_TASK_LEDGER_CREATED: str = "middleware.task_ledger.created"
 """TaskLedger created from decomposition plan."""

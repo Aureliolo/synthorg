@@ -7,13 +7,15 @@ pure helpers (or closure builders) consumed only by ``BudgetEnforcer``.
 
 from collections.abc import Callable
 from types import MappingProxyType
-from typing import TYPE_CHECKING, NamedTuple, Protocol, get_args, runtime_checkable
+from typing import NamedTuple, Protocol, get_args, runtime_checkable
 from uuid import UUID
 
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.errors import RunHardCeilingExceededError
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import ModelTier
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
@@ -27,12 +29,8 @@ from synthorg.observability.events.budget import (
     BUDGET_TASK_LIMIT_HIT,
     BUDGET_TIER_PRESERVED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.core.agent import AgentIdentity, ModelConfig
-    from synthorg.providers.routing.models import ResolvedModel
-    from synthorg.providers.routing.resolver import ModelResolver
+from synthorg.providers.routing.models import ResolvedModel
+from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
 
@@ -41,7 +39,11 @@ _VALID_TIERS: frozenset[str] = frozenset(get_args(ModelTier))
 
 @runtime_checkable
 class _RunningCost(Protocol):
-    """The running-cost reader the budget checker needs."""
+    """Cost leaf of ``_BudgetCheckContext``.
+
+    Split out so ``accumulated_cost`` can be typed structurally without
+    importing ``providers.TokenUsage``; satisfied by ``TokenUsage.cost``.
+    """
 
     @property
     def cost(self) -> float:

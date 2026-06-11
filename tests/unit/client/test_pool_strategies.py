@@ -34,8 +34,6 @@ class _StubClient:
         self,
         context: ReviewContext,
     ) -> ClientFeedback:
-        from synthorg.client.models import ClientFeedback
-
         return ClientFeedback(
             task_id="stub",
             client_id=self.profile.client_id,

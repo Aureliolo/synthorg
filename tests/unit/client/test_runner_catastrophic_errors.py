@@ -32,16 +32,13 @@ def _make_feedback() -> ClientFeedback:
 
 
 class _StubClient:
-    """Full ``ClientInterface`` shape for the review path.
+    """``ClientInterface`` stub for the review path.
 
-    Implements every ``ClientInterface`` method so the runtime-checkable
-    protocol check at ``SimulationRunner._review_one`` passes; only
-    ``review_deliverable`` is exercised, the others are unreachable stubs.
+    ``ClientInterface`` declares exactly two methods; both are implemented
+    so the runtime-checkable protocol check at
+    ``SimulationRunner._review_one`` passes.  Only ``review_deliverable`` is
+    exercised; ``submit_requirement`` is an unreachable stub.
     """
-
-    @property
-    def client_id(self) -> str:
-        return "client-1"
 
     async def submit_requirement(
         self,
@@ -52,37 +49,6 @@ class _StubClient:
     async def review_deliverable(self, context: object) -> ClientFeedback:
         del context
         return _make_feedback()
-
-    async def generate(
-        self,
-        context: object,
-    ) -> tuple[TaskRequirement, ...]:
-        raise NotImplementedError
-
-    async def evaluate(
-        self,
-        context: object,
-    ) -> ClientFeedback:
-        raise NotImplementedError
-
-    async def generate_report(
-        self,
-        metrics: object,
-    ) -> dict[str, object]:
-        raise NotImplementedError
-
-    async def select_clients(
-        self,
-        pool: object,
-        constraints: object,
-    ) -> tuple[object, ...]:
-        raise NotImplementedError
-
-    async def route(
-        self,
-        request: object,
-    ) -> object:
-        raise NotImplementedError
 
 
 def _runner_config() -> SimulationRunnerConfig:

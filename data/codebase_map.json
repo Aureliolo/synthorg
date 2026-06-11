@@ -2466,7 +2466,7 @@
     },
     {
       "kind": "code",
-      "loc": 482,
+      "loc": 484,
       "loc_cap": 500,
       "module": "src/synthorg/budget/_enforcer_helpers.py",
       "owning_feature": "budget"
@@ -18657,7 +18657,7 @@
     },
     {
       "kind": "code",
-      "loc": 330,
+      "loc": 329,
       "loc_cap": 500,
       "module": "src/synthorg/settings/definitions/communication.py",
       "owning_feature": "settings"

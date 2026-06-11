@@ -127,8 +127,7 @@ def test_openapi_export_is_live_and_complete(
     """Export produces a full schema under the CI determinism contract.
 
     Mirrors ``scripts/check_openapi_liveness.py``: guards against the
-    ``SYNTHORG_DB_PATH``-unset regression that caused audit #79 to
-    report 107 missing endpoints.  If a future change removes the
+    ``SYNTHORG_DB_PATH``-unset regression.  If a future change removes the
     ``setdefault`` in ``scripts/export_openapi.py`` or breaks wiring so
     controllers silently skip registration, the export still succeeds
     but the schema is partial; this test fails loudly in that case.

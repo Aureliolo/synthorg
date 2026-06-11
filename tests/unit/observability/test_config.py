@@ -544,8 +544,8 @@ class TestLogConfig:
 
     def test_defaults(self) -> None:
         cfg = LogConfig(sinks=(_console_sink(),))
-        # Root defaults to INFO (flipped 2026-04-23, #1538): DEBUG on
-        # root leaked verbose payloads through HTTP sinks. Per-logger
+        # Root defaults to INFO: DEBUG on root leaked verbose payloads
+        # through HTTP sinks. Per-logger
         # overrides still force DEBUG on ``synthorg.engine`` /
         # ``synthorg.memory`` so agent traces stay detailed.
         assert cfg.root_level == LogLevel.INFO
