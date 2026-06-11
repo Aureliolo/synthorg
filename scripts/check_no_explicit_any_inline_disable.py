@@ -12,11 +12,13 @@ honours per-module and which the override gate cannot see. mypy lifts the two
 flags via a file-level comment in several equivalent forms, all blocked here:
 
 * ``# mypy: disable-error-code="explicit-any"`` (or ``unused-ignore``), bare or
-  quoted, alone or among other codes;
-* ``# mypy: disallow-any-explicit = False`` (dash or underscore spelling);
+  quoted, alone or among other comma- or space-separated codes;
+* ``# mypy: disallow-any-explicit = False`` (dash or underscore spelling; any
+  configparser-falsy value -- ``false / no / off / 0``, case-insensitive);
 * ``# mypy: warn-unused-ignores = False`` (which stops ``unused-ignore`` erroring);
-* ``# mypy: ignore-errors`` / ``ignore-errors = True`` (silences every error,
-  explicit-``Any`` and ``unused-ignore`` included).
+* ``# mypy: ignore-errors`` / ``ignore-errors = True`` (any truthy value --
+  ``true / yes / on / 1``; silences every error, explicit-``Any`` and
+  ``unused-ignore`` included).
 
 A per-line ``# type: ignore[explicit-any]`` is the sanctioned escape hatch and is
 NOT a ``# mypy:`` directive, so it is never flagged. File-level disables of other
@@ -52,32 +54,45 @@ _SCAN_DIRS: Final[tuple[str, ...]] = ("src", "tests")
 # matches this, so the sanctioned per-line escape hatch is left untouched.
 _MYPY_DIRECTIVE: Final[re.Pattern[str]] = re.compile(r"#\s*mypy:\s*(?P<body>.+)$")
 
+# mypy parses an inline boolean via configparser, which reads
+# ``0 / no / off / false`` (case-insensitive) as False and ``1 / yes / on /
+# true`` as True. A flag-lift must match every falsy spelling, not just ``False``.
+_FALSY: Final[str] = r"(?i:false|no|off|0)"
+
 # The disabled-codes value: a quoted list (commas live inside the quotes) or a
-# single bare token. Either may carry ``explicit-any`` / ``unused-ignore``.
+# bare value running to the next setting (comma) or end of line. mypy accepts
+# comma- AND space-separated codes, so the bare branch captures the whole value
+# and ``_disabled_codes`` splits on either separator.
 _DISABLE_CODE: Final[re.Pattern[str]] = re.compile(
-    r"disable[-_]error[-_]code\s*=\s*(?P<value>\"[^\"]*\"|'[^']*'|\S+)"
+    r"disable[-_]error[-_]code\s*=\s*(?P<value>\"[^\"]*\"|'[^']*'|[^,\n]+)"
 )
 
 # The two booleans whose flip re-opens explicit-Any (``disallow-any-explicit =
-# False``) or unused-ignore (``warn-unused-ignores = False``).
+# False``) or unused-ignore (``warn-unused-ignores = False``); any falsy spelling
+# lifts the flag.
 _FALSE_FLAG: Final[re.Pattern[str]] = re.compile(
     r"\b(?P<flag>disallow[-_]any[-_]explicit|warn[-_]unused[-_]ignores)\b"
-    r"\s*=\s*(?:False|false)\b"
+    rf"\s*=\s*{_FALSY}\b"
 )
 
-# ``ignore-errors`` silences every error unless explicitly set to ``False``;
-# both the flag-only form and ``= True`` lift the checks.
+# ``ignore-errors`` silences every error unless explicitly set to a falsy value;
+# the flag-only form and every truthy spelling (``= True / yes / on / 1``) lift
+# the checks.
 _IGNORE_ERRORS: Final[re.Pattern[str]] = re.compile(
-    r"\bignore[-_]errors\b(?!\s*=\s*(?:False|false))"
+    rf"\bignore[-_]errors\b(?!\s*=\s*{_FALSY}\b)"
 )
 
 _LIFTED_CODES: Final[frozenset[str]] = frozenset({"explicit-any", "unused-ignore"})
 
 
 def _disabled_codes(value: str) -> list[str]:
-    """Split a ``disable-error-code`` value into its individual error codes."""
+    """Split a ``disable-error-code`` value into its individual error codes.
+
+    mypy accepts both comma- and space-separated codes (``"a, b"`` and
+    ``a b``), so split on either separator.
+    """
     stripped = value.strip().strip("\"'")
-    return [code.strip() for code in stripped.split(",") if code.strip()]
+    return [code for code in re.split(r"[,\s]+", stripped) if code]
 
 
 def _classify(body: str) -> str | None:
@@ -91,7 +106,7 @@ def _classify(body: str) -> str | None:
     flag_match = _FALSE_FLAG.search(body)
     if flag_match is not None:
         flag = flag_match.group("flag").replace("_", "-")
-        return f"{flag} = False re-opens the flag"
+        return f"{flag} set to a falsy value re-opens the flag"
 
     if _IGNORE_ERRORS.search(body) is not None:
         return "ignore-errors silences explicit-any"
@@ -111,7 +126,9 @@ def scan_text(text: str) -> list[tuple[int, str]]:
     violations: list[tuple[int, str]] = []
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
-    except tokenize.TokenError, IndentationError, SyntaxError:
+    except tokenize.TokenError, SyntaxError:
+        # ``IndentationError`` is a ``SyntaxError`` subclass; a file mypy would
+        # itself reject yields no violations here.
         return violations
     for token in tokens:
         if token.type != tokenize.COMMENT:
@@ -136,14 +153,16 @@ def _candidate_files(root: Path) -> list[Path]:
 
 
 def find_violations(paths: Iterable[Path]) -> list[str]:
-    """Return human-readable violation strings for every offending file/line."""
+    """Return human-readable violation strings for every offending file/line.
+
+    Raises:
+        OSError: If a target file cannot be read. An unreadable target is a
+            configuration error (exit 2), distinct from a directive violation
+            (exit 1); the caller routes it accordingly.
+    """
     messages: list[str] = []
     for path in paths:
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError as exc:
-            messages.append(f"{path}: could not read file: {exc}")
-            continue
+        text = path.read_text(encoding="utf-8")
         for lineno, reason in scan_text(text):
             messages.append(f"{path}:{lineno}: forbidden inline # mypy: -- {reason}")
     return messages
@@ -171,7 +190,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         targets = _candidate_files(root)
 
-    violations = find_violations(targets)
+    try:
+        violations = find_violations(targets)
+    except OSError as exc:
+        print(f"error: could not read a target file: {exc}", file=sys.stderr)
+        return 2
     if not violations:
         return 0
 

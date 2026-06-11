@@ -1,8 +1,8 @@
 """Regression gate: no ``synthorg.*`` / ``tests.*`` mypy override may lift ``disallow_any_explicit``.
 
 The global ``[tool.mypy] disallow_any_explicit = true`` holds across all of
-``synthorg.*`` AND ``tests.*`` (the ``tests.*`` Any-disabling override was drained
-by #2121); the irreducible explicit-``Any`` sites carry reasoned per-line
+``synthorg.*`` AND ``tests.*`` (neither surface carries an Any-disabling override);
+the irreducible explicit-``Any`` sites carry reasoned per-line
 ``# type: ignore[explicit-any]`` suppressions.
 
 That global flag catches a bare explicit ``Any``, but a ``[[tool.mypy.overrides]]``
