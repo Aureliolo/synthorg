@@ -439,7 +439,6 @@ class TestLLMRubricGraderInvalidGrades:
 
     async def test_multiple_tool_calls_returns_refer(self) -> None:
         """Two matching tool calls in one response must fail closed."""
-        from synthorg.core.completion_enums import FinishReason
         from synthorg.providers.models import (
             CompletionResponse,
             TokenUsage,
@@ -478,7 +477,6 @@ class TestLLMRubricGraderInvalidGrades:
 
     async def test_unexpected_tool_call_returns_refer(self) -> None:
         """Unrelated tool call in the response must fail closed."""
-        from synthorg.core.completion_enums import FinishReason
         from synthorg.providers.models import (
             CompletionResponse,
             TokenUsage,
