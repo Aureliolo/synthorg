@@ -1,8 +1,9 @@
 """Toolsmith (self-extending toolkit) construction + startup wiring.
 
-Relocated out of the ``create_app`` body: the backend-specific authored-tool
-repository builder, the toolsmith-runtime factory, and the startup step that
-wires the toolsmith once a provider + connected persistence are present.
+Groups the backend-specific authored-tool repository builder, the
+toolsmith-runtime factory, and the startup step that wires the toolsmith once
+a provider and connected persistence are present, so the composition root
+stays a thin caller.
 """
 
 from pathlib import Path

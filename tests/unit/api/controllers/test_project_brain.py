@@ -95,10 +95,12 @@ def _as_brain_service(fake: object) -> ProjectBrainService | None:
     """
     if fake is None:
         return None
-    service: ProjectBrainService = mock_of[ProjectBrainService]()
-    for method in ("list_current", "query", "git_history"):
-        if (bound := getattr(fake, method, None)) is not None:
-            setattr(service, method, bound)
+    overrides = {
+        method: bound
+        for method in ("list_current", "query", "git_history")
+        if (bound := getattr(fake, method, None)) is not None
+    }
+    service: ProjectBrainService = mock_of[ProjectBrainService](**overrides)
     return service
 
 

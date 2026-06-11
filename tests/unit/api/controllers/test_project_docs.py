@@ -107,10 +107,12 @@ def _as_docs_service(fake: object) -> DocsService | None:
     """
     if fake is None:
         return None
-    service: DocsService = mock_of[DocsService]()
-    for method in ("list_docs", "read_doc", "search", "history"):
-        if (bound := getattr(fake, method, None)) is not None:
-            setattr(service, method, bound)
+    overrides = {
+        method: bound
+        for method in ("list_docs", "read_doc", "search", "history")
+        if (bound := getattr(fake, method, None)) is not None
+    }
+    service: DocsService = mock_of[DocsService](**overrides)
     return service
 
 

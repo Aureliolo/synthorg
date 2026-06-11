@@ -6,7 +6,7 @@ operations that were previously inline in ``setup.py``.
 
 import json
 from collections.abc import Mapping, Sequence
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from pydantic import JsonValue
 
@@ -26,8 +26,14 @@ from synthorg.observability.events.setup import (
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.service import SettingsService
-from synthorg.templates.model_matcher import ModelMatcherConfig, _ProviderWithModels
+from synthorg.templates.model_matcher import ModelMatcherConfig
 from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
+
+if TYPE_CHECKING:
+    # Referenced only inside a string-literal ``cast`` annotation, so the name
+    # never resolves at runtime: keep it guarded to avoid importing a private
+    # type across the package boundary.
+    from synthorg.templates.model_matcher import _ProviderWithModels
 
 logger = get_logger(__name__)
 

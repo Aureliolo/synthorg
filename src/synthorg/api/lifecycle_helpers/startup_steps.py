@@ -1,9 +1,8 @@
-"""Module-level startup steps extracted from ``create_app``.
+"""Module-level startup steps for the Litestar ``on_startup`` sequence.
 
-Relocated out of the ``create_app`` body so the composition root stays a
-thin caller. Each step takes its dependencies explicitly (rather than
-closing over ``create_app`` locals) and is scheduled into the Litestar
-``on_startup`` sequence by the composition root.
+Each step takes its dependencies explicitly (rather than closing over
+``create_app`` locals) so the composition root stays a thin caller that
+schedules them into the ``on_startup`` sequence.
 """
 
 from pydantic import ValidationError

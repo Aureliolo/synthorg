@@ -277,9 +277,9 @@ def register_policy_honoring_checker() -> None:
     global _registered  # noqa: PLW0603 -- module-level one-shot guard
     if _registered:
         return
-    # Each ``insert(0, ...)`` prepends, so the LAST inserted runs FIRST.
-    # ``_mocked_annotation_lookup`` must run before the others: a Mock's
-    # ``_is_protocol`` is truthy, so the builtin (delegated to by
+    # Each ``insert(0, ...)`` prepends, so the checker inserted LAST runs FIRST.
+    # ``_mocked_annotation_lookup`` must run before the pydantic/policy lookups:
+    # a Mock's ``_is_protocol`` is truthy, so the builtin (delegated to by
     # ``_policy_honoring_lookup``) would route a mocked annotation type to
     # ``check_protocol`` and raise a ``TypeError`` the NameError wrapper does not
     # catch.
@@ -287,9 +287,9 @@ def register_policy_honoring_checker() -> None:
     typeguard.checker_lookup_functions.insert(0, _policy_honoring_lookup)
     typeguard.checker_lookup_functions.insert(0, _pydantic_discriminated_union_lookup)
     typeguard.checker_lookup_functions.insert(0, _mocked_annotation_lookup)
-    # Runs first (last insert): litestar's ASGI ``Scope`` TypedDicts must be
-    # skipped before ``_policy_honoring_lookup`` delegates them to the builtin
-    # ``check_typed_dict``, whose eager member eval raises ``NameError: Litestar``
-    # from the third-party guard.
+    # Inserted last, so it runs FIRST of all the lookups: litestar's ASGI
+    # ``Scope`` TypedDicts must be skipped before ``_policy_honoring_lookup``
+    # delegates them to the builtin ``check_typed_dict``, whose eager member
+    # eval raises ``NameError: Litestar`` from the third-party guard.
     typeguard.checker_lookup_functions.insert(0, _litestar_scope_lookup)
     _registered = True

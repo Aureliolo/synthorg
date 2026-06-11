@@ -68,6 +68,10 @@ class DistributedBackendServicesHandle(Protocol):
     """The distributed backend-services bundle's start/stop surface.
 
     Satisfied by ``synthorg.workers.backend_services.DistributedBackendServices``.
+    Unlike ``DistributedTaskQueueHandle`` this omits ``is_running``: the API
+    lifecycle only starts and stops the bundle, never interrogating its health
+    through the handle (the concrete type tracks running state internally to
+    compose its sub-components).
     """
 
     async def start(self) -> None:

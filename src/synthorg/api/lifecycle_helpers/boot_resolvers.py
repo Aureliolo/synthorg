@@ -1,8 +1,8 @@
 """Boot-time setting resolvers + the default approval-timeout scheduler.
 
-Pure construction helpers relocated out of ``create_app``: Cat-2 boot-knob
-resolvers that read ``env > registered default`` before the SettingsService
-connects, plus the safe-default approval-timeout scheduler builder.
+Pure construction helpers: Cat-2 boot-knob resolvers that read
+``env > registered default`` before the SettingsService connects, plus the
+safe-default approval-timeout scheduler builder.
 """
 
 from typing import Final

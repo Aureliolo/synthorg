@@ -486,6 +486,22 @@ per-area tables.
 | budget/tracker_protocol.py | `CostTrackerProtocol` | 1 | KEEP | Record/aggregate surface of `CostTracker`. |
 | hr/registry_protocol.py | `AgentRegistryProtocol` | 1 | KEEP | Lookup + identity-lifecycle surface of `AgentRegistryService`. |
 
+## Collaborator protocols added by #2316
+
+The api forward-ref hoist added three `@runtime_checkable` structural handles in
+`workers/distributed_protocols.py`. They give the construction-phase
+`Phase1Result` (in `api/auto_wire_phase1.py`) and the `RuntimeStateSlice` (in
+`workers/state.py`) a runtime-resolvable annotation for the optional
+`synthorg[distributed]` concrete types without importing them (those sit in the
+`workers.config` -> `communication.config` cold-import cycle). The real objects
+satisfy them structurally; KEEP by design intent.
+
+| Path | Name | rc | Recommendation | Notes |
+|---|---|---|---|---|
+| workers/distributed_protocols.py | `DistributedTaskQueueHandle` | 1 | KEEP | `is_running` / `start` / `stop` seam over `JetStreamTaskQueue`. |
+| workers/distributed_protocols.py | `DistributedDispatcherHandle` | 1 | KEEP | `on_task_state_changed` observer + `set_workers_bridge_provider` late-bind seam over `DistributedDispatcher`. |
+| workers/distributed_protocols.py | `DistributedBackendServicesHandle` | 1 | KEEP | `start` / `stop` seam over `DistributedBackendServices`. |
+
 ## Out of scope
 
 - Actually deleting any `Protocol` class (cleanup PRs).

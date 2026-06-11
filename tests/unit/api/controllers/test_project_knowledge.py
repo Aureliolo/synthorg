@@ -64,10 +64,12 @@ def _as_knowledge_service(fake: object) -> KnowledgeService | None:
     """
     if fake is None:
         return None
-    service: KnowledgeService = mock_of[KnowledgeService]()
-    for method in ("list_sources", "list_global_sources", "query"):
-        if (bound := getattr(fake, method, None)) is not None:
-            setattr(service, method, bound)
+    overrides = {
+        method: bound
+        for method in ("list_sources", "list_global_sources", "query")
+        if (bound := getattr(fake, method, None)) is not None
+    }
+    service: KnowledgeService = mock_of[KnowledgeService](**overrides)
     return service
 
 

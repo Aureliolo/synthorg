@@ -7,7 +7,7 @@ import secrets
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
 import argon2
 import jwt
@@ -35,10 +35,8 @@ from synthorg.observability.events.security import (
     SECURITY_AUTH_REFRESH_CREATED,
     SECURITY_AUTH_REFRESH_REJECTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.auth_protocol import RefreshTokenRepository
-    from synthorg.persistence.user_protocol import UserRepository
+from synthorg.persistence.auth_protocol import RefreshTokenRepository
+from synthorg.persistence.user_protocol import UserRepository
 
 logger = get_logger(__name__)
 
