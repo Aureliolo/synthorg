@@ -24,6 +24,7 @@ parked-context flow in ``_approval_review_gate`` imports it from here.
 from typing import TYPE_CHECKING
 
 from synthorg._core.features import require_service
+from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.critical_errors import reraise_critical
@@ -57,7 +58,6 @@ from synthorg.observability.events.chief_of_staff import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.core.approval import ApprovalItem
     from synthorg.meta.chief_of_staff.group_models import ConversationInvite
     from synthorg.meta.chief_of_staff.models import ConversationalProposal

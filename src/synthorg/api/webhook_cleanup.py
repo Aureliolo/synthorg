@@ -15,6 +15,7 @@ Per-connection retention semantics follow ``Connection.webhook_receipt_retention
 import asyncio
 from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
+from synthorg.api.state import AppState
 from synthorg.core.clock import SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
@@ -34,7 +35,6 @@ from synthorg.settings.registry import registered_default_float, registered_defa
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.core.clock import Clock
     from synthorg.integrations.connections.models import Connection
 

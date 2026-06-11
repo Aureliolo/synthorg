@@ -17,12 +17,12 @@ from synthorg.api._benchmark_wiring import (
     build_benchmark_score_repo,
     select_benchmark_provider,
 )
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
     from synthorg.providers.registry import ProviderRegistry
 

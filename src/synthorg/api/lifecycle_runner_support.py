@@ -12,6 +12,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.notifications.state import NotificationsStateSlice
@@ -25,7 +26,6 @@ from synthorg.observability.events.api import (
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.providers.health_prober import ProviderHealthProber
     from synthorg.settings.dispatcher import SettingsChangeDispatcher

@@ -16,6 +16,7 @@ from synthorg.api.lifecycle_runner_support import (
     _cancel_with_timeout,
     _LifecycleTasks,
 )
+from synthorg.api.state import AppState
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.hr.state import HrStateSlice
@@ -28,7 +29,6 @@ from synthorg.workers.state import RuntimeStateSlice
 
 if TYPE_CHECKING:
     from synthorg.api.bus_bridge import MessageBusBridge
-    from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.communication.meeting.scheduler import MeetingScheduler

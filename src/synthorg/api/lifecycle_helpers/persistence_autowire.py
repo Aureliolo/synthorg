@@ -16,6 +16,7 @@ operator fixes the underlying configuration and reboots.
 from typing import TYPE_CHECKING
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import HrStateSlice
@@ -27,7 +28,6 @@ from synthorg.observability.events.api import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.persistence.protocol import PersistenceBackend
 
 

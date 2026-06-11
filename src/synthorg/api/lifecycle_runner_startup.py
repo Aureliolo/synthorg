@@ -43,6 +43,7 @@ from synthorg.api.lifecycle_runner_support import (
     _wire_approval_gate,
     _wire_workflow_observer,
 )
+from synthorg.api.state import AppState
 from synthorg.api.webhook_cleanup import _webhook_receipt_cleanup_loop
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.communication.state import CommunicationStateSlice
@@ -72,7 +73,6 @@ from synthorg.workers.state import RuntimeStateSlice
 
 if TYPE_CHECKING:
     from synthorg.api.bus_bridge import MessageBusBridge
-    from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.communication.meeting.scheduler import MeetingScheduler

@@ -10,8 +10,8 @@ is a compliance risk.
 
 import asyncio
 import math
-from typing import TYPE_CHECKING
 
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_AUDIT_RETENTION
@@ -23,9 +23,6 @@ from synthorg.settings.registry import (
     registered_default_int,
 )
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

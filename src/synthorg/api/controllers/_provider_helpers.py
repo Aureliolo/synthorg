@@ -3,13 +3,13 @@
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from synthorg.api.state import AppState
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_PROVIDER_USAGE_ENRICHMENT_FAILED
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.providers.health import ProviderHealthSummary
 
 logger = get_logger(__name__)

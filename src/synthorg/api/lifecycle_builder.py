@@ -20,6 +20,7 @@ from synthorg.api.lifecycle_runner_support import (
     _wire_approval_gate,
     _wire_workflow_observer,
 )
+from synthorg.api.state import AppState
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import (
     API_AUDIT_RETENTION,
@@ -31,7 +32,6 @@ from synthorg.observability.events.persistence.webhook_receipt import (
 
 if TYPE_CHECKING:
     from synthorg.api.bus_bridge import MessageBusBridge
-    from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.communication.meeting.scheduler import MeetingScheduler

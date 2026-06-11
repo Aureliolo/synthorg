@@ -12,6 +12,7 @@ incomplete and bootstrap is deferred to ``POST /setup/complete``.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.hr.state import HrStateSlice, agent_registry_of
@@ -27,7 +28,6 @@ from synthorg.settings.state import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.core.auth.models import User
 
 logger = get_logger(__name__)

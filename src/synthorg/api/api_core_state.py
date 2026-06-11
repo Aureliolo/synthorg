@@ -16,8 +16,6 @@ background-task sets) are not slice fields: a frozen slice cannot host
 in-place-mutated state.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
@@ -32,6 +30,7 @@ from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.services.workflow_rollback_service import (
     WorkflowRollbackService,
 )
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.persistence.auth_protocol import (
     LockoutRepository as LockoutStore,
 )
@@ -41,9 +40,6 @@ from synthorg.persistence.auth_protocol import (
 from synthorg.persistence.auth_protocol import (
     SessionRepository as SessionStore,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 
 class ApiCoreStateSlice(BaseFeatureStateSlice):

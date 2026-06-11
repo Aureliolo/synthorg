@@ -22,6 +22,7 @@ from synthorg.api.lifecycle_startup import (
     _safe_startup,
     _wire_ontology_service,
 )
+from synthorg.api.state import AppState
 from synthorg.backup.models import BackupTrigger
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -35,7 +36,6 @@ from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.bus_bridge import MessageBusBridge
-    from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.communication.meeting.scheduler import MeetingScheduler

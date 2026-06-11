@@ -25,13 +25,13 @@ from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
 from synthorg.api.lifecycle_helpers.narrative_wiring import wire_run_narrator
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.charter import CHARTER_SUBSTRATE_UNAVAILABLE
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.tracker import CostTracker
     from synthorg.persistence.protocol import PersistenceBackend

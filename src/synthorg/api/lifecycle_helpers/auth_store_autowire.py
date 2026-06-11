@@ -13,12 +13,12 @@ re-load revoked / locked state.
 from typing import TYPE_CHECKING
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import API_APP_STARTUP
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.persistence.auth_protocol import (
         LockoutRepository,
         RefreshTokenRepository,

@@ -8,8 +8,6 @@ operator had not configured -- a minimally-configured install used
 to log 16+ such errors in 57h of runtime.
 """
 
-from typing import TYPE_CHECKING
-
 from litestar import Controller, get
 from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict
@@ -17,15 +15,13 @@ from pydantic import BaseModel, ConfigDict
 from synthorg.a2a.state import A2aStateSlice
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
+from synthorg.api.state import AppState
 from synthorg.client.state import has_simulation_runtime
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger
 from synthorg.ontology.state import OntologyStateSlice
 from synthorg.telemetry.state import TelemetryStateSlice
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, NamedTuple, Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg._core.features import require_service
+from synthorg.api.state import AppState
 from synthorg.budget.currency import (
     DEFAULT_CURRENCY,
     CurrencyCode,
@@ -30,7 +31,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.budget.cost_record import CostRecord
     from synthorg.config.agent_schema import AgentConfig
     from synthorg.hr.performance.models import AgentPerformanceSnapshot

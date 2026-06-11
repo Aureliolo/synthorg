@@ -29,6 +29,7 @@ from synthorg.api.auth.cookies import (
     make_session_cookie,
 )
 from synthorg.api.auth.token_size import get_auth_token_bytes
+from synthorg.api.state import AppState
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.auth.session import Session
@@ -46,7 +47,6 @@ from synthorg.observability.events.security import (
 
 if TYPE_CHECKING:
     from synthorg.api.auth.service import AuthService
-    from synthorg.api.state import AppState
     from synthorg.core.auth.models import User
 
 logger = get_logger(__name__)

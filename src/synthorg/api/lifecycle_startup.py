@@ -17,6 +17,7 @@ from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import ensure_system_user
 from synthorg.api.lifecycle_helpers.auth_store_autowire import wire_auth_stores
 from synthorg.api.lifecycle_shared import _cleanup_on_failure
+from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.backup.models import BackupTrigger
 from synthorg.backup.state import BackupStateSlice
@@ -36,7 +37,6 @@ from synthorg.workers.state import RuntimeStateSlice
 
 if TYPE_CHECKING:
     from synthorg.api.bus_bridge import MessageBusBridge
-    from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.communication.meeting.scheduler import MeetingScheduler

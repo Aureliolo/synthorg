@@ -7,13 +7,9 @@ every other ``_wire_*`` helper: a missing collaborator leaves the
 receipt controllers to 503 rather than poisoning startup.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.api.state import AppState
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

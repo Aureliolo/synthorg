@@ -30,6 +30,7 @@ from synthorg.api.auth.system_user import (
     USER_AUDIENCE,
     USER_ISSUER,
 )
+from synthorg.api.state import AppState
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.normalization import extract_bearer_token
@@ -46,7 +47,6 @@ from synthorg.persistence.state import persistence_of
 
 if TYPE_CHECKING:
     from synthorg.api.auth.service import AuthService
-    from synthorg.api.state import AppState
     from synthorg.core.auth.config import AuthConfig
     from synthorg.core.auth.models import ApiKey
 

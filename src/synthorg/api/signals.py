@@ -15,16 +15,13 @@ import asyncio
 import signal
 import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 
+from synthorg.api.state import AppState
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_SHUTDOWN_HANDLER_SKIPPED,
     API_SHUTDOWN_SIGNAL_RECEIVED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

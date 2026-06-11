@@ -17,6 +17,7 @@ from synthorg.api.dto import (
 from synthorg.api.guards import require_write_access
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.critical_errors import reraise_critical
@@ -49,7 +50,6 @@ from synthorg.settings.state import config_resolver_of
 from synthorg.workers.state import RuntimeStateSlice
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
     from synthorg.engine.coordination.attribution import (

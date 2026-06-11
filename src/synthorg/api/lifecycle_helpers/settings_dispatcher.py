@@ -9,6 +9,7 @@ approval-timeout scheduler). The dispatcher is later swapped onto
 
 from typing import TYPE_CHECKING
 
+from synthorg.api.state import AppState
 from synthorg.observability import get_logger
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.state import SettingsStateSlice
@@ -25,7 +26,6 @@ from synthorg.settings.subscribers import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.config.schema import RootConfig

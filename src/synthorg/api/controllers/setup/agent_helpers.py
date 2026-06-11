@@ -18,6 +18,7 @@ from synthorg.api.controllers.setup_agents import (
     match_and_assign_models,
     validate_agents_value,
 )
+from synthorg.api.state import AppState
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.critical_errors import reraise_critical
@@ -50,7 +51,6 @@ from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.controllers.setup_models import SetupAgentSummary
-    from synthorg.api.state import AppState
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.settings.service import SettingsService
     from synthorg.templates.schema import CompanyTemplate

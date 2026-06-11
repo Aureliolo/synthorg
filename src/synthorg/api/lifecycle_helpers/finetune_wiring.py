@@ -7,14 +7,10 @@ so the anti-ghost-wiring gate sees the ``FineTuneOrchestrator`` reachable
 from the boot path.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

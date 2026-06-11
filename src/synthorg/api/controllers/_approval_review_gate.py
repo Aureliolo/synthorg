@@ -18,6 +18,7 @@ from synthorg.api.controllers._conversational_resume import (
     try_conversational_intake_resume,
     try_conversational_invite_resume,
 )
+from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.critical_errors import reraise_critical
@@ -51,7 +52,6 @@ from synthorg.observability.events.security import (
 from synthorg.workers.state import worker_execution_service_of
 
 if TYPE_CHECKING:
-    from synthorg.api.state import AppState
     from synthorg.engine.review_gate import ReviewGateService
 
 logger = get_logger(__name__)
