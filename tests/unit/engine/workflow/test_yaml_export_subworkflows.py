@@ -18,13 +18,14 @@ from synthorg.engine.workflow.enums import (
     WorkflowValueType,
 )
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
+from tests._shared import as_uuid, sid
 
 _NOW = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 
 
 def _minimal_parent_with_subworkflow_node() -> WorkflowDefinition:
     return WorkflowDefinition(
-        id="wfdef-parent",
+        id=as_uuid("wfdef-parent"),
         name="Parent Workflow",
         description="Uses a subworkflow",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -47,7 +48,7 @@ def _minimal_parent_with_subworkflow_node() -> WorkflowDefinition:
                 type=WorkflowNodeType.SUBWORKFLOW,
                 label="Call Sub",
                 config={
-                    "subworkflow_id": "sub-finance-close",
+                    "subworkflow_id": sid("sub-finance-close"),
                     "version": "1.0.0",
                     "input_bindings": {"quarter": "@parent.current_quarter"},
                     "output_bindings": {"report": "@child.report"},
@@ -87,7 +88,7 @@ def _minimal_parent_with_subworkflow_node() -> WorkflowDefinition:
 
 def _subworkflow_definition() -> WorkflowDefinition:
     return WorkflowDefinition(
-        id="sub-finance-close",
+        id=as_uuid("sub-finance-close"),
         name="Finance Close",
         description="",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -158,7 +159,7 @@ class TestYamlExportSubworkflowFields:
         steps = body["steps"]
         sub_step = next(s for s in steps if s["id"] == "call-sub")
         assert sub_step["type"] == "subworkflow"
-        assert sub_step["subworkflow_id"] == "sub-finance-close"
+        assert sub_step["subworkflow_id"] == sid("sub-finance-close")
         assert sub_step["version"] == "1.0.0"
         assert sub_step["input_bindings"] == {"quarter": "@parent.current_quarter"}
         assert sub_step["output_bindings"] == {"report": "@child.report"}
@@ -181,7 +182,7 @@ class TestYamlExportSubworkflowFields:
     def test_parent_without_subworkflow_still_valid(self) -> None:
         """Parent without any SUBWORKFLOW node omits the io arrays."""
         definition = WorkflowDefinition(
-            id="plain",
+            id=as_uuid("plain"),
             name="Plain",
             description="",
             workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,

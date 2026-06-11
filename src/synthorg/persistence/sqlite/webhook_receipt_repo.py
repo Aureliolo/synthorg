@@ -8,10 +8,11 @@ newest-first and bounded by an explicit ``limit``.
 import contextlib
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import aiosqlite
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.observability import get_logger, safe_error_description
@@ -19,6 +20,7 @@ from synthorg.observability.events.persistence.webhook_receipt import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_DELETE_FAILED,
+    PERSISTENCE_WEBHOOK_RECEIPT_DESERIALIZE_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
 )
@@ -44,27 +46,46 @@ def _row_to_receipt(row: aiosqlite.Row) -> WebhookReceipt:
 
     Returns:
         Result of type ``WebhookReceipt``.
+
+    Raises:
+        MalformedRowError: If the row cannot be parsed (e.g. a stored
+            ``id`` that is not a valid UUID, or a missing column). The
+            failure is deterministic, so it is non-retryable.
     """
-    (
-        receipt_id,
-        connection_name,
-        event_type,
-        status,
-        received_at,
-        processed_at,
-        payload_json,
-        error,
-    ) = row
-    return WebhookReceipt(
-        id=NotBlankStr(receipt_id),
-        connection_name=NotBlankStr(connection_name),
-        event_type=event_type or "",
-        status=status or "received",
-        received_at=coerce_row_timestamp(received_at),
-        processed_at=(coerce_row_timestamp(processed_at) if processed_at else None),
-        payload_json=payload_json or "",
-        error=error,
-    )
+    try:
+        (
+            receipt_id,
+            connection_name,
+            event_type,
+            status,
+            received_at,
+            processed_at,
+            payload_json,
+            error,
+        ) = row
+        return WebhookReceipt(
+            id=UUID(str(receipt_id)),
+            connection_name=NotBlankStr(connection_name),
+            event_type=event_type or "",
+            status=status or "received",
+            received_at=coerce_row_timestamp(received_at),
+            processed_at=(coerce_row_timestamp(processed_at) if processed_at else None),
+            payload_json=payload_json or "",
+            error=error,
+        )
+    except (ValueError, TypeError, KeyError) as exc:
+        try:
+            row_id = str(row["id"])
+        except KeyError, IndexError, TypeError:
+            row_id = "<unknown>"
+        msg = f"Failed to deserialize webhook receipt {row_id!r}"
+        logger.warning(
+            PERSISTENCE_WEBHOOK_RECEIPT_DESERIALIZE_FAILED,
+            receipt_id=row_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise MalformedRowError(msg) from exc
 
 
 class SQLiteWebhookReceiptRepository:
@@ -160,17 +181,7 @@ class SQLiteWebhookReceiptRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        try:
-            return _row_to_receipt(row)
-        except (ValueError, TypeError, KeyError) as exc:
-            msg = f"Failed to deserialize webhook receipt {receipt_id!r}"
-            logger.warning(
-                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
-                receipt_id=str(receipt_id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        return _row_to_receipt(row)
 
     async def update_status(
         self,
@@ -308,16 +319,7 @@ class SQLiteWebhookReceiptRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        try:
-            return tuple(_row_to_receipt(row) for row in rows)
-        except (ValueError, TypeError, KeyError) as exc:
-            msg = "Failed to deserialize webhook receipt rows"
-            logger.warning(
-                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        return tuple(_row_to_receipt(row) for row in rows)
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a webhook receipt by ID.
@@ -383,17 +385,7 @@ class SQLiteWebhookReceiptRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        try:
-            return tuple(_row_to_receipt(row) for row in rows)
-        except (ValueError, TypeError, KeyError) as exc:
-            msg = f"Failed to deserialize webhook receipts for {connection_name!r}"
-            logger.warning(
-                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
-                connection_name=str(connection_name),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        return tuple(_row_to_receipt(row) for row in rows)
 
     async def cleanup_old_for_connection(
         self,

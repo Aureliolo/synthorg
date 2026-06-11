@@ -11,12 +11,17 @@ import sqlite3
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Literal, cast
+from uuid import UUID
 
 import aiosqlite
 from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -91,7 +96,9 @@ def _deserialize_row(
         Result of type ``WorkflowDefinition``.
 
     Raises:
-        QueryError: If the database query fails.
+        MalformedRowError: If row parsing or validation fails. The failure
+            is deterministic (a corrupt row reparses identically), so it is
+            non-retryable.
     """
     try:
         data = dict(row)
@@ -106,7 +113,7 @@ def _deserialize_row(
         created_at = _parse_created_at(data["created_at"])
         updated_at = _parse_created_at(data["updated_at"])
         return WorkflowDefinition(
-            id=str(data["subworkflow_id"]),
+            id=UUID(str(data["subworkflow_id"])),
             name=str(data["name"]),
             description=str(data["description"]),
             workflow_type=WorkflowType(data["workflow_type"]),
@@ -121,7 +128,13 @@ def _deserialize_row(
             updated_at=updated_at,
             revision=1,
         )
-    except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
+    except (
+        ValueError,
+        TypeError,
+        ValidationError,
+        json.JSONDecodeError,
+        KeyError,
+    ) as exc:
         msg = f"Failed to deserialize subworkflow {context_id!r}"
         logger.warning(
             PERSISTENCE_SUBWORKFLOW_DESERIALIZE_FAILED,
@@ -129,7 +142,7 @@ def _deserialize_row(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 def _extract_references(  # noqa: PLR0913
@@ -280,7 +293,7 @@ INSERT INTO subworkflows
      inputs, outputs, nodes, edges, created_by, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        entity.id,
+                        str(entity.id),
                         entity.version,
                         entity.name,
                         entity.description,
@@ -303,7 +316,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 )
                 logger.warning(
                     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-                    subworkflow_id=entity.id,
+                    subworkflow_id=str(entity.id),
                     version=entity.version,
                     error=msg,
                 )
@@ -316,7 +329,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 )
                 logger.warning(
                     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-                    subworkflow_id=entity.id,
+                    subworkflow_id=str(entity.id),
                     version=entity.version,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),

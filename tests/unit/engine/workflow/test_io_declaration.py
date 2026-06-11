@@ -13,6 +13,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
 )
 from synthorg.engine.workflow.enums import WorkflowValueType
+from tests._shared import as_uuid
 from tests.unit.engine.workflow.conftest import (
     make_edge,
     make_end_node,
@@ -24,7 +25,7 @@ from tests.unit.engine.workflow.conftest import (
 def _minimal_kwargs(**overrides: object) -> dict[str, object]:
     """Build the kwargs for a minimal valid workflow definition."""
     defaults: dict[str, object] = {
-        "id": "wf-1",
+        "id": as_uuid("wf-1"),
         "name": "Test Workflow",
         "created_by": "test-user",
         "nodes": (make_start_node(), make_task_node(), make_end_node()),

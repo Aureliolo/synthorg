@@ -75,7 +75,6 @@ class WorkflowValidationController(Controller):
                 WorkflowIODeclaration.model_validate(o) for o in data.outputs
             )
             definition = WorkflowDefinition(
-                id="draft",
                 name=data.name,
                 description=data.description,
                 workflow_type=data.workflow_type,

@@ -28,6 +28,7 @@ from synthorg.engine.workflow.subworkflow_service import (
     SubworkflowHasParentsError,
     SubworkflowService,
 )
+from tests._shared import as_pk, as_uuid
 
 
 def _make_subdef(
@@ -37,7 +38,7 @@ def _make_subdef(
     is_subworkflow: bool = True,
 ) -> WorkflowDefinition:
     return WorkflowDefinition(
-        id=NotBlankStr(sub_id),
+        id=as_pk(sub_id),
         name=NotBlankStr("Inner"),
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
         version=NotBlankStr(version),
@@ -140,7 +141,7 @@ class TestSubworkflowServiceGet:
         registry.get.return_value = defn
         service = _service(registry)
         result = await service.get(NotBlankStr("sub-1"), NotBlankStr("1.0.0"))
-        assert result.id == "sub-1"
+        assert result.id == as_uuid("sub-1")
 
     @pytest.mark.unit
     async def test_resolves_latest_when_version_omitted(self) -> None:
@@ -168,7 +169,7 @@ class TestSubworkflowServiceCreate:
         service = _service(registry)
         defn = _make_subdef()
         result = await service.create(defn, saved_by="alice")
-        assert result.id == "sub-1"
+        assert result.id == as_uuid("sub-1")
         registry.register.assert_awaited_once_with(defn)
 
     @pytest.mark.unit

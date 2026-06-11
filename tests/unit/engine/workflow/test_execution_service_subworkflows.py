@@ -37,7 +37,7 @@ from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,
 )
 from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
-from tests._shared import as_uuid
+from tests._shared import as_pk, as_uuid, sid
 from tests.unit.engine.workflow.test_subworkflow_registry import (
     FakeSubworkflowRepository,
 )
@@ -74,7 +74,7 @@ def _make_child_definition(
     outputs: tuple[WorkflowIODeclaration, ...] = (),
 ) -> WorkflowDefinition:
     return WorkflowDefinition(
-        id=definition_id,
+        id=as_pk(definition_id),
         name="Child",
         description="",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -113,13 +113,13 @@ def _make_parent_definition(
     output_bindings: dict[str, object] | None = None,
 ) -> WorkflowDefinition:
     sub_config: dict[str, object] = {
-        "subworkflow_id": subworkflow_id,
+        "subworkflow_id": sid(subworkflow_id),
         "version": version,
         "input_bindings": input_bindings or {},
         "output_bindings": output_bindings or {},
     }
     return WorkflowDefinition(
-        id="parent-wf",
+        id=as_uuid("parent-wf"),
         name="Parent",
         description="",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -193,7 +193,7 @@ class _FakeDefinitionRepo:
         self._definition = definition
 
     async def get(self, definition_id: str) -> WorkflowDefinition | None:
-        if definition_id == self._definition.id:
+        if definition_id == str(self._definition.id):
             return self._definition
         return None
 
@@ -261,7 +261,7 @@ class TestSubworkflowExecution:
         service, engine, exec_repo = await _build_service(parent, registry)
 
         execution = await service.activate(
-            "parent-wf",
+            sid("parent-wf"),
             project="test",
             activated_by="ceo",
             context={"current_quarter": "Q4"},
@@ -308,7 +308,7 @@ class TestSubworkflowExecution:
             match="no SubworkflowRegistry",
         ):
             await service.activate(
-                "parent-wf",
+                sid("parent-wf"),
                 project="test",
                 activated_by="ceo",
             )
@@ -326,7 +326,7 @@ class TestSubworkflowExecution:
 
         # Middle subworkflow nested one leaf call
         middle = WorkflowDefinition(
-            id="middle-sub",
+            id=as_uuid("middle-sub"),
             name="Middle",
             description="",
             workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -343,7 +343,7 @@ class TestSubworkflowExecution:
                     type=WorkflowNodeType.SUBWORKFLOW,
                     label="Inner",
                     config={
-                        "subworkflow_id": "leaf-sub",
+                        "subworkflow_id": sid("leaf-sub"),
                         "version": "1.0.0",
                         "input_bindings": {},
                         "output_bindings": {},
@@ -377,7 +377,7 @@ class TestSubworkflowExecution:
 
         with pytest.raises(SubworkflowDepthExceededError) as exc_info:
             await service.activate(
-                "parent-wf",
+                sid("parent-wf"),
                 project="test",
                 activated_by="ceo",
             )
@@ -395,7 +395,7 @@ class TestSubworkflowExecution:
         )
         await registry.register(leaf)
         middle = WorkflowDefinition(
-            id="middle-sub",
+            id=as_uuid("middle-sub"),
             name="Middle",
             description="",
             workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -412,7 +412,7 @@ class TestSubworkflowExecution:
                     type=WorkflowNodeType.SUBWORKFLOW,
                     label="Inner",
                     config={
-                        "subworkflow_id": "leaf-sub",
+                        "subworkflow_id": sid("leaf-sub"),
                         "version": "1.0.0",
                         "input_bindings": {},
                         "output_bindings": {},
@@ -437,7 +437,7 @@ class TestSubworkflowExecution:
         parent = _make_parent_definition(subworkflow_id="middle-sub")
         service, engine, _exec = await _build_service(parent, registry)
         execution = await service.activate(
-            "parent-wf",
+            sid("parent-wf"),
             project="test",
             activated_by="ceo",
         )
@@ -474,7 +474,7 @@ class TestSubworkflowExecution:
             match="Missing required input",
         ):
             await service.activate(
-                "parent-wf",
+                sid("parent-wf"),
                 project="test",
                 activated_by="ceo",
             )

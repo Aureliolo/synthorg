@@ -20,13 +20,14 @@ from synthorg.integrations.webhooks.activity_service import (
 )
 from synthorg.observability.events.integrations import WEBHOOK_ACTIVITY_LISTED
 from synthorg.persistence.connection_protocol import WebhookReceiptRepository
+from tests._shared import as_pk
 
 pytestmark = pytest.mark.unit
 
 
 def _make_receipt(receipt_id: str) -> WebhookReceipt:
     return WebhookReceipt(
-        id=NotBlankStr(receipt_id),
+        id=as_pk(receipt_id),
         connection_name=NotBlankStr("test-conn"),
         event_type="event.test",
         status="received",

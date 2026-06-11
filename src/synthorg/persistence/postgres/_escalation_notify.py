@@ -18,7 +18,10 @@ import psycopg
 from psycopg_pool import AsyncConnectionPool
 
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import API_REQUEST_ERROR
+from synthorg.observability.events.persistence.escalation import (
+    PERSISTENCE_ESCALATION_NOTIFY_FAILED,
+    PERSISTENCE_ESCALATION_SUBSCRIBE_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -88,7 +91,7 @@ async def subscribe(
             except psycopg.Error as exc:
                 session_tainted = True
                 logger.warning(
-                    API_REQUEST_ERROR,
+                    PERSISTENCE_ESCALATION_SUBSCRIBE_FAILED,
                     error_type="escalation_unlisten_failed",
                     error=safe_error_description(exc),
                     channel=channel,
@@ -98,7 +101,7 @@ async def subscribe(
             except psycopg.Error as exc:
                 session_tainted = True
                 logger.warning(
-                    API_REQUEST_ERROR,
+                    PERSISTENCE_ESCALATION_SUBSCRIBE_FAILED,
                     error_type="escalation_autocommit_restore_failed",
                     error=safe_error_description(exc),
                     channel=channel,
@@ -149,7 +152,7 @@ async def publish_notifies(
         # Bound the logged ids: a sweep covering thousands of escalations
         # would otherwise emit megabyte-scale warning records.
         logger.warning(
-            API_REQUEST_ERROR,
+            PERSISTENCE_ESCALATION_NOTIFY_FAILED,
             error_type="escalation_notify_failed",
             escalation_id_count=len(valid_ids),
             escalation_ids_sample=valid_ids[:10],

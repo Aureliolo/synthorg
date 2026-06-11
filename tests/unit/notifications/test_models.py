@@ -1,6 +1,7 @@
 """Tests for notification domain models."""
 
 from datetime import UTC, datetime
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -10,6 +11,7 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
+from tests._shared import as_uuid
 
 
 @pytest.mark.unit
@@ -52,14 +54,14 @@ class TestNotification:
         assert n.title == "Budget threshold crossed"
         assert n.body == ""
         assert n.source == "budget.enforcer"
-        assert n.id  # auto-generated
+        assert isinstance(n.id, UUID)  # auto-generated
         assert n.timestamp.tzinfo is not None
         assert n.metadata == {}
 
     def test_construction_with_all_fields(self) -> None:
         ts = datetime(2026, 4, 6, 12, 0, tzinfo=UTC)
         n = Notification(
-            id="custom-id",
+            id=as_uuid("custom-id"),
             category=NotificationCategory.APPROVAL,
             severity=NotificationSeverity.CRITICAL,
             title="Approval escalated",
@@ -68,7 +70,7 @@ class TestNotification:
             timestamp=ts,
             metadata={"approval_id": "abc-123"},
         )
-        assert n.id == "custom-id"
+        assert n.id == as_uuid("custom-id")
         assert n.body == "Approval timed out for agent X"
         assert n.timestamp == ts
         assert n.metadata == {"approval_id": "abc-123"}

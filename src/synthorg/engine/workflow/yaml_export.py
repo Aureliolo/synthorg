@@ -170,7 +170,7 @@ def export_workflow_yaml(definition: WorkflowDefinition) -> str:
     except ValueError as exc:
         logger.warning(
             WORKFLOW_DEF_EXPORT_FAILED,
-            workflow_id=definition.id,
+            workflow_id=str(definition.id),
             reason="cycle_detected",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -179,11 +179,11 @@ def export_workflow_yaml(definition: WorkflowDefinition) -> str:
 
     steps = _generate_steps(sorted_ids, node_map, reverse_adj, outgoing_edges)
     document = _assemble_document(definition, steps)
-    result = _serialize_yaml(document, definition.id)
+    result = _serialize_yaml(document, str(definition.id))
 
     logger.info(
         WORKFLOW_DEF_EXPORTED,
-        workflow_id=definition.id,
+        workflow_id=str(definition.id),
         step_count=len(steps),
     )
 

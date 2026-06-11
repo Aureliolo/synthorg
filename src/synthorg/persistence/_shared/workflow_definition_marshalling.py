@@ -13,10 +13,11 @@ this module never imports a driver).
 
 import json
 from typing import LiteralString
+from uuid import UUID
 
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -71,10 +72,13 @@ def row_to_workflow_definition(
         Validated ``WorkflowDefinition`` model instance.
 
     Raises:
-        QueryError: If deserialisation fails.
+        MalformedRowError: If deserialisation fails. The failure is
+            deterministic (a corrupt row reparses identically), so it is
+            non-retryable.
     """
     data = dict(data)
     try:
+        data["id"] = UUID(str(data["id"]))
         data["workflow_type"] = WorkflowType(str(data["workflow_type"]))
         data["nodes"] = tuple(
             WorkflowNode.model_validate(n) for n in _decode_json_list(data.get("nodes"))
@@ -105,10 +109,11 @@ def row_to_workflow_definition(
         logger.warning(
             PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
             definition_id=context_id,
+            stored_id=str(data.get("id", "<missing>")),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 def definition_jsonb_payloads(

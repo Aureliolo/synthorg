@@ -44,8 +44,11 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_SERVICE_FALLBACK,
 )
 from synthorg.security.autonomy.models import AutonomyUpdateResult
-from tests._shared import JsonDict, make_app_state
+from tests._shared import JsonDict, make_app_state, sid
 from tests.unit.meta.mcp.conftest import make_test_actor
+
+_WFDEF_ID = sid("wfdef-1")
+_WFEXEC_ID = sid("wfexec-1")
 
 pytestmark = pytest.mark.integration
 
@@ -113,7 +116,7 @@ def services(identity: AgentIdentity) -> SimpleNamespace:
     ns.activity_feed_service = activity_service
 
     workflow_service = AsyncMock(spec=WorkflowService)
-    workflow_def = _sync_dumped({"id": "wfdef-1", "name": "Test", "revision": 1})
+    workflow_def = _sync_dumped({"id": _WFDEF_ID, "name": "Test", "revision": 1})
     workflow_service.create_definition.return_value = workflow_def
     workflow_service.update_definition.return_value = workflow_def
     workflow_service.validate_definition.return_value = WorkflowValidationResult()
@@ -121,7 +124,7 @@ def services(identity: AgentIdentity) -> SimpleNamespace:
 
     execution_service = AsyncMock(spec=WorkflowExecutionService)
     dummy_execution = _sync_dumped(
-        {"id": "wfexec-1", "definition_id": "wfdef-1", "status": "RUNNING"}
+        {"id": _WFEXEC_ID, "definition_id": _WFDEF_ID, "status": "RUNNING"}
     )
     execution_service.list_executions.return_value = ()
     execution_service.get_execution.return_value = dummy_execution
@@ -138,7 +141,7 @@ def services(identity: AgentIdentity) -> SimpleNamespace:
     version_service = AsyncMock(spec=WorkflowVersionService)
     version_service.list_versions.return_value = ((), 0)
     version_service.get_version.return_value = _sync_dumped(
-        {"entity_id": "wfdef-1", "version": 1}
+        {"entity_id": _WFDEF_ID, "version": 1}
     )
     ns.workflow_version_service = version_service
 
@@ -185,7 +188,7 @@ def _parse(result: str) -> JsonDict:
 
 def _minimal_workflow_definition_dict(
     *,
-    workflow_id: str = "wfdef-1",
+    workflow_id: str = _WFDEF_ID,
 ) -> JsonDict:
     """Return a dict that round-trips through ``WorkflowDefinition.model_validate``.
 
@@ -267,9 +270,9 @@ class TestNoFallbackEventsEmitted:
             "agent_id": "agent-1",
             "agent_name": "alpha",
             "task_id": "task-1",
-            "workflow_id": "wfdef-1",
+            "workflow_id": _WFDEF_ID,
             "subworkflow_id": "sw-1",
-            "execution_id": "wfexec-1",
+            "execution_id": _WFEXEC_ID,
             "version": "1.0.0",
             "revision": 1,
             "level": "semi",
@@ -541,7 +544,7 @@ class TestErrorPaths:
         services.workflow_service.update_definition.side_effect = (
             WorkflowDefinitionRevisionMismatchError(
                 "stale",
-                definition_id="wfdef-1",
+                definition_id=_WFDEF_ID,
                 expected=2,
                 actual=3,
             )
@@ -620,7 +623,7 @@ class TestErrorPaths:
             await handlers["synthorg_workflow_executions_cancel"](
                 app_state=app_state,
                 arguments={
-                    "execution_id": "wfexec-1",
+                    "execution_id": _WFEXEC_ID,
                     "confirm": True,
                     "reason": "stuck",
                 },
@@ -694,7 +697,7 @@ class TestDestructiveAuditEvents:
                 await handlers["synthorg_workflow_executions_cancel"](
                     app_state=app_state,
                     arguments={
-                        "execution_id": "wfexec-1",
+                        "execution_id": _WFEXEC_ID,
                         "confirm": True,
                         "reason": "stuck",
                     },
@@ -704,7 +707,7 @@ class TestDestructiveAuditEvents:
         assert body["status"] == "ok"
         events = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert events, "expected MCP_ADMIN_OP_EXECUTED audit event"
-        assert events[0]["target_id"] == "wfexec-1"
+        assert events[0]["target_id"] == _WFEXEC_ID
 
 
 class TestCapabilityGapFallbacks:

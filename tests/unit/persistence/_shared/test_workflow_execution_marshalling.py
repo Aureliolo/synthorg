@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError
 from synthorg.engine.workflow.enums import (
     WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
@@ -24,13 +24,14 @@ from synthorg.persistence._shared.workflow_execution_marshalling import (
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionFilterSpec,
 )
+from tests._shared import as_uuid
 
 _NOW = datetime(2026, 5, 22, 12, 0, tzinfo=UTC)
 
 
 def _execution() -> WorkflowExecution:
     return WorkflowExecution(
-        id="wfexec-abc123def456",
+        id=as_uuid("wfexec-abc123def456"),
         definition_id="wfdef-1",
         definition_revision=1,
         status=WorkflowExecutionStatus.RUNNING,
@@ -53,7 +54,7 @@ def _execution() -> WorkflowExecution:
 def _sqlite_data(execution: WorkflowExecution) -> dict[str, object]:
     """A SQLite-shaped row: node_executions as TEXT JSON, ISO timestamps."""
     return {
-        "id": execution.id,
+        "id": str(execution.id),
         "definition_id": execution.definition_id,
         "definition_revision": execution.definition_revision,
         "status": execution.status.value,
@@ -103,7 +104,7 @@ class TestRowToWorkflowExecution:
 
     def test_sqlite_round_trip(self) -> None:
         execution = _execution()
-        result = row_to_workflow_execution(_sqlite_data(execution), execution.id)
+        result = row_to_workflow_execution(_sqlite_data(execution), str(execution.id))
 
         assert result == execution
 
@@ -114,7 +115,7 @@ class TestRowToWorkflowExecution:
         data["created_at"] = _NOW
         data["updated_at"] = _NOW
 
-        result = row_to_workflow_execution(data, execution.id)
+        result = row_to_workflow_execution(data, str(execution.id))
 
         assert result == execution
 
@@ -122,14 +123,14 @@ class TestRowToWorkflowExecution:
         data = _sqlite_data(_execution())
         data["status"] = "not-a-status"
 
-        with pytest.raises(QueryError):
+        with pytest.raises(MalformedRowError):
             row_to_workflow_execution(data, "ctx")
 
     def test_non_list_node_executions_raises(self) -> None:
         data = _sqlite_data(_execution())
         data["node_executions"] = '{"not": "a list"}'
 
-        with pytest.raises(QueryError):
+        with pytest.raises(MalformedRowError):
             row_to_workflow_execution(data, "ctx")
 
     def test_completed_at_sqlite_iso(self) -> None:

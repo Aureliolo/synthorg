@@ -8,7 +8,7 @@ subworkflow registry.
 
 from datetime import UTC, datetime
 from typing import Annotated
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from litestar import Controller, Response, delete, get, post
 from litestar.datastructures import State
@@ -57,7 +57,9 @@ class CreateSubworkflowRequest(BaseModel):
     """Payload for publishing a new subworkflow version.
 
     Attributes:
-        subworkflow_id: Identifier.  Generated server-side when omitted.
+        subworkflow_id: Target subworkflow identity.  Supply an existing
+            subworkflow's UUID to publish a new version of it; omit to
+            mint a fresh subworkflow.
         version: Semver string.  Defaults to ``"1.0.0"``.
         name: Human-readable name.
         description: Optional description.
@@ -70,10 +72,9 @@ class CreateSubworkflowRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    subworkflow_id: NotBlankStr | None = Field(
+    subworkflow_id: UUID | None = Field(
         default=None,
-        max_length=128,
-        description="Stable identifier (generated when omitted)",
+        description="Existing subworkflow UUID to version, or omit to mint",
     )
     version: NotBlankStr = Field(
         default="1.0.0",
@@ -383,10 +384,9 @@ class SubworkflowController(Controller):
         """
         creator = get_authenticated_user_id()
         now = datetime.now(UTC)
-        subworkflow_id = data.subworkflow_id or f"sub-{uuid4().hex[:12]}"
         try:
             definition = WorkflowDefinition(
-                id=subworkflow_id,
+                id=data.subworkflow_id or uuid4(),
                 name=data.name,
                 description=data.description,
                 workflow_type=data.workflow_type,

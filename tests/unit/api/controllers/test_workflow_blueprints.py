@@ -1,6 +1,7 @@
 """Tests for workflow blueprint API endpoints."""
 
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -87,7 +88,7 @@ class TestCreateFromBlueprint:
         assert resp.status_code == 201
         body = resp.json()
         data = body["data"]
-        assert data["id"].startswith("wfdef-")
+        assert str(UUID(data["id"])) == data["id"]
         assert data["name"] == "Feature Pipeline"
         assert data["workflow_type"] == "sequential_pipeline"
 
@@ -211,5 +212,5 @@ class TestCreateFromBlueprint:
         )
         assert resp.status_code == 201
         data = resp.json()["data"]
-        assert data["id"].startswith("wfdef-")
+        assert str(UUID(data["id"])) == data["id"]
         assert len(data["nodes"]) >= 3

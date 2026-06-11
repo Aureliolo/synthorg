@@ -2,6 +2,7 @@
 
 from enum import StrEnum
 from typing import Annotated, Literal, Self
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -79,7 +80,7 @@ class Escalation(BaseModel):
     """A conflict waiting on a human decision.
 
     Attributes:
-        id: Unique escalation identifier (e.g. ``"escalation-a1b2"``).
+        id: Unique escalation identifier.
         conflict: Snapshot of the conflict at escalation time.  Frozen
             so decisions are applied against the exact positions the
             operator reviewed.
@@ -97,7 +98,7 @@ class Escalation(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr
+    id: UUID = Field(default_factory=uuid4)
     conflict: Conflict
     status: EscalationStatus = EscalationStatus.PENDING
     created_at: AwareDatetime

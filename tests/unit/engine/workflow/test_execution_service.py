@@ -62,18 +62,18 @@ class FakeDefinitionRepo:
         self._store: dict[str, WorkflowDefinition] = {}
 
     async def save(self, definition: WorkflowDefinition) -> None:
-        self._store[definition.id] = copy.deepcopy(definition)
+        self._store[str(definition.id)] = copy.deepcopy(definition)
 
     async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
-        if definition.id in self._store:
+        if str(definition.id) in self._store:
             return False
-        self._store[definition.id] = copy.deepcopy(definition)
+        self._store[str(definition.id)] = copy.deepcopy(definition)
         return True
 
     async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
-        if definition.id not in self._store:
+        if str(definition.id) not in self._store:
             return False
-        self._store[definition.id] = copy.deepcopy(definition)
+        self._store[str(definition.id)] = copy.deepcopy(definition)
         return True
 
     async def get(self, definition_id: str) -> WorkflowDefinition | None:
@@ -114,7 +114,7 @@ class FakeExecutionRepo:
         self._store: dict[str, WorkflowExecution] = {}
 
     async def save(self, execution: WorkflowExecution) -> None:
-        stored = self._store.get(execution.id)
+        stored = self._store.get(str(execution.id))
         if stored is None:
             if execution.version != 1:
                 msg = f"Cannot insert with version {execution.version}"
@@ -129,7 +129,7 @@ class FakeExecutionRepo:
                     f" got {execution.version}"
                 )
                 raise PersistenceVersionConflictError(msg)
-        self._store[execution.id] = copy.deepcopy(execution)
+        self._store[str(execution.id)] = copy.deepcopy(execution)
 
     async def get(self, execution_id: str) -> WorkflowExecution | None:
         stored = self._store.get(execution_id)
@@ -300,13 +300,13 @@ class TestActivateSimple:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="test-proj",
             activated_by="user-1",
         )
 
         assert exe.status is WorkflowExecutionStatus.RUNNING
-        assert exe.definition_id == wf.id
+        assert exe.definition_id == str(wf.id)
         assert exe.project == "test-proj"
         assert len(task_engine.created_tasks) == 1
 
@@ -334,7 +334,7 @@ class TestActivateSimple:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="proj",
             activated_by="user",
         )
@@ -371,7 +371,7 @@ class TestActivateSequential:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="proj",
             activated_by="user",
         )
@@ -429,7 +429,7 @@ class TestActivateParallel:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="proj",
             activated_by="user",
         )
@@ -488,7 +488,7 @@ class TestActivateConditional:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="proj",
             activated_by="user",
             context={"enabled": True},
@@ -535,7 +535,7 @@ class TestActivateConditional:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="proj",
             activated_by="user",
             context={"enabled": False},
@@ -573,7 +573,7 @@ class TestActivateAgentAssignment:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="proj",
             activated_by="user",
         )
@@ -624,7 +624,7 @@ class TestActivateErrors:
         await def_repo.save(wf)
         with pytest.raises(WorkflowDefinitionInvalidError):
             await service.activate(
-                wf.id,
+                str(wf.id),
                 project="proj",
                 activated_by="user",
             )
@@ -652,12 +652,12 @@ class TestGetAndList:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="proj",
             activated_by="user",
         )
 
-        loaded = await service.get_execution(exe.id)
+        loaded = await service.get_execution(str(exe.id))
         assert loaded is not None
         assert loaded.id == exe.id
 
@@ -679,10 +679,10 @@ class TestGetAndList:
             ),
         )
         await def_repo.save(wf)
-        await service.activate(wf.id, project="proj", activated_by="user")
-        await service.activate(wf.id, project="proj", activated_by="user")
+        await service.activate(str(wf.id), project="proj", activated_by="user")
+        await service.activate(str(wf.id), project="proj", activated_by="user")
 
-        results = await service.list_executions(wf.id)
+        results = await service.list_executions(str(wf.id))
         assert len(results) == 2
 
 
@@ -708,13 +708,13 @@ class TestCancelExecution:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="proj",
             activated_by="user",
         )
 
         cancelled = await service.cancel_execution(
-            exe.id,
+            str(exe.id),
             cancelled_by="admin",
         )
         assert cancelled.status is WorkflowExecutionStatus.CANCELLED
@@ -751,14 +751,14 @@ class TestCancelExecution:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="proj",
             activated_by="user",
         )
-        await service.cancel_execution(exe.id, cancelled_by="admin")
+        await service.cancel_execution(str(exe.id), cancelled_by="admin")
 
         with pytest.raises(WorkflowExecutionAlreadyTerminalError):
-            await service.cancel_execution(exe.id, cancelled_by="admin")
+            await service.cancel_execution(str(exe.id), cancelled_by="admin")
 
     @pytest.mark.unit
     async def test_cancel_terminal_emits_cancel_conflict_event(
@@ -793,24 +793,24 @@ class TestCancelExecution:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="proj",
             activated_by="user",
         )
-        await service.cancel_execution(exe.id, cancelled_by="admin")
+        await service.cancel_execution(str(exe.id), cancelled_by="admin")
 
         with (
             structlog.testing.capture_logs() as events,
             pytest.raises(WorkflowExecutionAlreadyTerminalError),
         ):
-            await service.cancel_execution(exe.id, cancelled_by="admin")
+            await service.cancel_execution(str(exe.id), cancelled_by="admin")
 
         cancel_conflict = [
             e for e in events if e.get("event") == WORKFLOW_EXEC_CANCEL_CONFLICT
         ]
         assert len(cancel_conflict) == 1
         entry = cancel_conflict[0]
-        assert entry["execution_id"] == exe.id
+        assert entry["execution_id"] == str(exe.id)
         assert entry["current_status"] == WorkflowExecutionStatus.CANCELLED.value
 
     @pytest.mark.unit
@@ -851,7 +851,7 @@ class TestCancelExecution:
 
             @override
             async def save(self, execution: WorkflowExecution) -> None:
-                stored = self._store.get(execution.id)
+                stored = self._store.get(str(execution.id))
                 if stored is not None and not self._raced:
                     self._raced = True
                     winner = stored.model_copy(
@@ -860,7 +860,7 @@ class TestCancelExecution:
                             "version": stored.version + 1,
                         },
                     )
-                    self._store[execution.id] = winner
+                    self._store[str(execution.id)] = winner
                     msg = "simulated optimistic-concurrency race"
                     raise PersistenceVersionConflictError(msg)
                 await super().save(execution)
@@ -886,7 +886,7 @@ class TestCancelExecution:
         )
         await def_repo.save(wf)
         exe = await service.activate(
-            wf.id,
+            str(wf.id),
             project="proj",
             activated_by="user",
         )
@@ -895,14 +895,14 @@ class TestCancelExecution:
             structlog.testing.capture_logs() as events,
             pytest.raises(PersistenceVersionConflictError),
         ):
-            await service.cancel_execution(exe.id, cancelled_by="admin")
+            await service.cancel_execution(str(exe.id), cancelled_by="admin")
 
         cancel_conflict = [
             e for e in events if e.get("event") == WORKFLOW_EXEC_CANCEL_CONFLICT
         ]
         assert len(cancel_conflict) == 1
         entry = cancel_conflict[0]
-        assert entry["execution_id"] == exe.id
+        assert entry["execution_id"] == str(exe.id)
         assert entry["current_status"] == WorkflowExecutionStatus.FAILED.value
 
 

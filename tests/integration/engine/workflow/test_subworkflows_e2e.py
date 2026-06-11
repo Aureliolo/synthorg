@@ -33,6 +33,7 @@ from synthorg.persistence.sqlite.subworkflow_repo import (
 from synthorg.persistence.sqlite.workflow_definition_repo import (
     SQLiteWorkflowDefinitionRepository,
 )
+from tests._shared import as_pk, sid
 from tests._shared.persistence import make_private_write_context
 
 _TS = datetime(2026, 4, 10, 12, 0, 0, tzinfo=UTC)
@@ -96,7 +97,7 @@ def _make_child(
 ) -> WorkflowDefinition:
     """A simple subworkflow with one TASK node."""
     return WorkflowDefinition(
-        id=subworkflow_id,
+        id=as_pk(subworkflow_id),
         name="Greeting Subworkflow",
         description="Greets a user by name",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -160,7 +161,7 @@ def _make_parent(
 ) -> WorkflowDefinition:
     """A parent workflow with START -> SUBWORKFLOW -> END."""
     return WorkflowDefinition(
-        id=definition_id,
+        id=as_pk(definition_id),
         name="Parent Workflow",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
         nodes=(
@@ -174,7 +175,7 @@ def _make_parent(
                 type=WorkflowNodeType.SUBWORKFLOW,
                 label="Call Child",
                 config={
-                    "subworkflow_id": child_id,
+                    "subworkflow_id": sid(child_id),
                     "version": child_version,
                     "input_bindings": {"user_name": "Alice"},
                     "output_bindings": {"greeting": "@child.greeting"},
@@ -219,7 +220,7 @@ class TestSubworkflowVersioning:
         await registry.register(_make_child(version="1.0.0"))
         await registry.register(_make_child(version="2.0.0"))
 
-        versions = await registry.list_versions("sub-greet")
+        versions = await registry.list_versions(sid("sub-greet"))
         assert versions == ("2.0.0", "1.0.0")
 
         summaries = await registry.list_all()
@@ -240,7 +241,7 @@ class TestSubworkflowVersioning:
         await def_repo.save(parent)
 
         # Parent still resolves v1.0.0
-        child = await registry.get("sub-greet", "1.0.0")
+        child = await registry.get(sid("sub-greet"), "1.0.0")
         assert child is not None
         assert child.version == "1.0.0"
 
@@ -277,7 +278,7 @@ class TestSubworkflowVersioning:
         )
         await def_repo.save(repinned)
 
-        loaded = await def_repo.get("wf-parent")
+        loaded = await def_repo.get(sid("wf-parent"))
         assert loaded is not None
         sub_node = next(
             n for n in loaded.nodes if n.type is WorkflowNodeType.SUBWORKFLOW
@@ -302,7 +303,7 @@ class TestSubworkflowDeleteProtection:
         from synthorg.engine.errors import SubworkflowIOError
 
         with pytest.raises(SubworkflowIOError, match="still referenced"):
-            await registry.delete("sub-greet", "1.0.0")
+            await registry.delete(sid("sub-greet"), "1.0.0")
 
     async def test_delete_succeeds_when_no_parents(
         self,
@@ -311,10 +312,10 @@ class TestSubworkflowDeleteProtection:
     ) -> None:
         """Delete succeeds when no parent references the version."""
         await registry.register(_make_child(version="1.0.0"))
-        await registry.delete("sub-greet", "1.0.0")
+        await registry.delete(sid("sub-greet"), "1.0.0")
 
         # Use repo directly since registry.get() raises on not-found.
-        result = await sub_repo.get(("sub-greet", "1.0.0"))
+        result = await sub_repo.get((sid("sub-greet"), "1.0.0"))
         assert result is None
 
 
@@ -332,13 +333,13 @@ class TestSubworkflowYamlRoundTrip:
         parent = _make_parent(child_version="1.0.0")
         await def_repo.save(parent)
 
-        loaded = await def_repo.get("wf-parent")
+        loaded = await def_repo.get(sid("wf-parent"))
         assert loaded is not None
 
         yaml_str = export_workflow_yaml(loaded)
 
         # Verify subworkflow fields are in the YAML output
-        assert "subworkflow_id: sub-greet" in yaml_str
+        assert f"subworkflow_id: {sid('sub-greet')}" in yaml_str
         assert "version: 1.0.0" in yaml_str or "version: '1.0.0'" in yaml_str
         assert "input_bindings" in yaml_str
         assert "output_bindings" in yaml_str

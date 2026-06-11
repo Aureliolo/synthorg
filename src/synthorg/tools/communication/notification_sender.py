@@ -218,7 +218,7 @@ class NotificationSenderTool(BaseCommunicationTool):
 
         logger.info(
             COMM_TOOL_NOTIFICATION_SEND_START,
-            notification_id=notification.id,
+            notification_id=str(notification.id),
             category=category_str,
             severity=severity_str,
         )
@@ -229,7 +229,7 @@ class NotificationSenderTool(BaseCommunicationTool):
             reraise_critical(exc)
             logger.warning(
                 COMM_TOOL_NOTIFICATION_SEND_FAILED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -243,13 +243,13 @@ class NotificationSenderTool(BaseCommunicationTool):
 
         logger.info(
             COMM_TOOL_NOTIFICATION_SEND_SUCCESS,
-            notification_id=notification.id,
+            notification_id=str(notification.id),
         )
 
         return ToolExecutionResult(
             content=(f"Notification dispatched: [{severity_str}] {title}"),
             metadata={
-                "notification_id": notification.id,
+                "notification_id": str(notification.id),
                 "category": category_str,
                 "severity": severity_str,
             },

@@ -188,7 +188,7 @@ class SlackNotificationSink:
         if client is None:
             logger.warning(
                 NOTIFICATION_SLACK_FAILED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 error_type="RuntimeError",
                 detail="send_called_before_start",
             )
@@ -203,13 +203,13 @@ class SlackNotificationSink:
             response.raise_for_status()
             logger.info(
                 NOTIFICATION_SLACK_DELIVERED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
             )
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
                 NOTIFICATION_SLACK_FAILED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

@@ -15,6 +15,7 @@ from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.versioning.hashing import compute_content_hash
 from synthorg.versioning.models import VersionSnapshot
+from tests._shared import as_pk, as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -38,7 +39,7 @@ def _definition(
     revision: int = 1,
 ) -> WorkflowDefinition:
     return WorkflowDefinition(
-        id=NotBlankStr(definition_id),
+        id=as_pk(definition_id),
         name=NotBlankStr("Example"),
         description="",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -60,7 +61,7 @@ def _snapshot(
 ) -> VersionSnapshot[WorkflowDefinition]:
     d = definition or _definition(definition_id=entity_id, revision=version)
     return VersionSnapshot(
-        entity_id=NotBlankStr(entity_id),
+        entity_id=sid(entity_id),
         version=version,
         content_hash=NotBlankStr(compute_content_hash(d)),
         snapshot=d,
@@ -75,12 +76,12 @@ class TestVersionRepository:
         assert inserted is True
 
         fetched = await backend.workflow_versions.get_version(
-            NotBlankStr("wf-001"),
+            sid("wf-001"),
             1,
         )
         assert fetched is not None
         assert fetched.version == 1
-        assert fetched.snapshot.id == "wf-001"
+        assert fetched.snapshot.id == as_uuid("wf-001")
 
     async def test_save_version_is_idempotent(
         self, backend: PersistenceBackend
@@ -116,7 +117,7 @@ class TestVersionRepository:
         )
 
         latest = await backend.workflow_versions.get_latest_version(
-            NotBlankStr("wf-001"),
+            sid("wf-001"),
         )
         assert latest is not None
         assert latest.version == 3
@@ -127,7 +128,7 @@ class TestVersionRepository:
         await backend.workflow_versions.save_version(_snapshot(definition=d))
 
         fetched = await backend.workflow_versions.get_by_content_hash(
-            NotBlankStr("wf-001"),
+            sid("wf-001"),
             NotBlankStr(hash_),
         )
         assert fetched is not None
@@ -139,7 +140,7 @@ class TestVersionRepository:
             _snapshot(version=2, definition=_definition(revision=2)),
         )
 
-        rows = await backend.workflow_versions.list_versions(NotBlankStr("wf-001"))
+        rows = await backend.workflow_versions.list_versions(sid("wf-001"))
         versions = [r.version for r in rows]
         assert versions == [2, 1]
 
@@ -149,7 +150,7 @@ class TestVersionRepository:
             _snapshot(version=2, definition=_definition(revision=2)),
         )
 
-        count = await backend.workflow_versions.count_versions(NotBlankStr("wf-001"))
+        count = await backend.workflow_versions.count_versions(sid("wf-001"))
         assert count == 2
 
     async def test_delete_versions_for_entity(
@@ -161,10 +162,7 @@ class TestVersionRepository:
         )
 
         removed = await backend.workflow_versions.delete_versions_for_entity(
-            NotBlankStr("wf-001"),
+            sid("wf-001"),
         )
         assert removed == 2
-        assert (
-            await backend.workflow_versions.get_latest_version(NotBlankStr("wf-001"))
-            is None
-        )
+        assert await backend.workflow_versions.get_latest_version(sid("wf-001")) is None

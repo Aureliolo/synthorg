@@ -8,12 +8,12 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.observability.events.task import TASK_STATUS_CHANGED
-from tests._shared import as_uuid, sid
+from tests._shared import as_pk, as_uuid, sid
 
 # ── Helpers ──────────────────────────────────────────────────────
 
 _TASK_KWARGS: dict[str, object] = {
-    "id": sid("task-123"),
+    "id": as_pk("task-123"),
     "title": "Implement user authentication",
     "description": "Create REST endpoints for login, register, logout",
     "type": TaskType.DEVELOPMENT,

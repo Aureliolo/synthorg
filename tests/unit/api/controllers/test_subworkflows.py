@@ -1,11 +1,13 @@
 """Tests for the subworkflow API controller."""
 
+from uuid import UUID
+
 import pytest
 
-from tests._shared import JsonDict, LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient, sid
 from tests.unit.api.conftest import make_auth_headers
 
-_SUB_ID = "sub-finance-close"
+_SUB_ID = sid("sub-finance-close")
 
 
 def _sub_payload(
@@ -14,8 +16,7 @@ def _sub_payload(
     version: str = "1.0.0",
     name: str = "Finance Close",
 ) -> JsonDict:
-    return {
-        "subworkflow_id": subworkflow_id,
+    payload: JsonDict = {
         "version": version,
         "name": name,
         "description": "Finance close subworkflow",
@@ -61,6 +62,11 @@ def _sub_payload(
             },
         ],
     }
+    # Only include the key when supplied so the "server mints an id"
+    # tests exercise true omission, not an explicit ``null``.
+    if subworkflow_id is not None:
+        payload["subworkflow_id"] = subworkflow_id
+    return payload
 
 
 async def _create_subworkflow(
@@ -102,18 +108,57 @@ class TestSubworkflowCrud:
         # contract in ``web/CLAUDE.md``.
         assert body["pagination"]["has_more"] is False
 
+    async def test_create_without_id_server_mints_uuid(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        # Omitting ``subworkflow_id`` makes the server self-mint one. The
+        # create response is the ``WorkflowDefinition`` (``id`` field). The
+        # result is a canonical UUID string, never a hex-prefixed ``sub-`` id.
+        result = await _create_subworkflow(
+            async_test_client, _sub_payload(subworkflow_id=None)
+        )
+        minted = result["id"]
+        assert str(UUID(minted)) == minted
+        assert not minted.startswith("sub-")
+
+    async def test_create_without_id_mints_distinct_ids(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        first = await _create_subworkflow(
+            async_test_client, _sub_payload(subworkflow_id=None, name="A")
+        )
+        second = await _create_subworkflow(
+            async_test_client, _sub_payload(subworkflow_id=None, name="B")
+        )
+        assert first["id"] != second["id"]
+
+    async def test_create_with_invalid_uuid_rejected(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        # ``subworkflow_id`` is typed ``UUID``; a non-UUID value is
+        # rejected at the request boundary as a 400 validation error.
+        resp = await async_test_client.post(
+            "/api/v1/subworkflows",
+            json=_sub_payload(subworkflow_id="not-a-uuid"),
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400, resp.text
+
     async def test_list_paginates_with_explicit_limit(
         self,
         async_test_client: LoopAsyncClient,
     ) -> None:
         await _create_subworkflow(
-            async_test_client, _sub_payload(subworkflow_id="sub-a", name="Sub A")
+            async_test_client, _sub_payload(subworkflow_id=sid("sub-a"), name="Sub A")
         )
         await _create_subworkflow(
-            async_test_client, _sub_payload(subworkflow_id="sub-b", name="Sub B")
+            async_test_client, _sub_payload(subworkflow_id=sid("sub-b"), name="Sub B")
         )
         await _create_subworkflow(
-            async_test_client, _sub_payload(subworkflow_id="sub-c", name="Sub C")
+            async_test_client, _sub_payload(subworkflow_id=sid("sub-c"), name="Sub C")
         )
 
         first = (
@@ -149,14 +194,17 @@ class TestSubworkflowCrud:
         # in a stable, total order. Without the subworkflow_id
         # tie-breaker, ``registry.list_all()`` could return them in
         # different orders across requests, producing duplicates or
-        # skips when clients follow ``next_cursor``. Distinct IDs
-        # `sub-a` < `sub-b` lexicographically, so a correct total sort
-        # places `sub-a` first regardless of insertion order.
+        # skips when clients follow ``next_cursor``. The ids are UUID
+        # strings, so the total sort places the lexicographically
+        # smaller id first regardless of insertion order.
+        first_id, second_id = sorted((sid("sub-a"), sid("sub-b")))
         await _create_subworkflow(
-            async_test_client, _sub_payload(subworkflow_id="sub-b", name="shared-name")
+            async_test_client,
+            _sub_payload(subworkflow_id=sid("sub-b"), name="shared-name"),
         )
         await _create_subworkflow(
-            async_test_client, _sub_payload(subworkflow_id="sub-a", name="shared-name")
+            async_test_client,
+            _sub_payload(subworkflow_id=sid("sub-a"), name="shared-name"),
         )
 
         body = (
@@ -166,7 +214,7 @@ class TestSubworkflowCrud:
                 headers=make_auth_headers("ceo"),
             )
         ).json()
-        assert [s["subworkflow_id"] for s in body["data"]] == ["sub-a"]
+        assert [s["subworkflow_id"] for s in body["data"]] == [first_id]
         cursor = body["pagination"]["next_cursor"]
         assert cursor is not None
 
@@ -177,7 +225,7 @@ class TestSubworkflowCrud:
                 headers=make_auth_headers("ceo"),
             )
         ).json()
-        assert [s["subworkflow_id"] for s in second["data"]] == ["sub-b"]
+        assert [s["subworkflow_id"] for s in second["data"]] == [second_id]
         assert second["pagination"]["has_more"] is False
 
     async def test_list_invalid_cursor_returns_400(

@@ -116,7 +116,7 @@ class SQLiteWorkflowExecutionRepository:
             else None
         )
         return (
-            execution.id,
+            str(execution.id),
             execution.definition_id,
             execution.definition_revision,
             execution.status.value,
@@ -153,7 +153,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     msg = f"Workflow execution {execution.id!r} already exists"
                     logger.warning(
                         PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                        execution_id=execution.id,
+                        execution_id=str(execution.id),
                         error=msg,
                     )
                     raise DuplicateRecordError(msg)
@@ -168,14 +168,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     )
                     logger.warning(
                         PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                        execution_id=execution.id,
+                        execution_id=str(execution.id),
                         error=msg,
                     )
                     raise DuplicateRecordError(msg) from exc
                 msg = f"Integrity error saving workflow execution {execution.id!r}"
                 logger.warning(
                     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                    execution_id=execution.id,
+                    execution_id=str(execution.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -185,7 +185,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 msg = f"Failed to save workflow execution {execution.id!r}"
                 logger.warning(
                     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                    execution_id=execution.id,
+                    execution_id=str(execution.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -212,14 +212,14 @@ UPDATE workflow_executions SET
 WHERE id = ? AND version = ?""",
                     (
                         *params[1:],  # skip id (it's in WHERE)
-                        execution.id,
+                        str(execution.id),
                         execution.version - 1,
                     ),
                 )
                 if cursor.rowcount == 0:
                     probe = await self._db.execute(
                         "SELECT version FROM workflow_executions WHERE id = ?",
-                        (execution.id,),
+                        (str(execution.id),),
                     )
                     row = await probe.fetchone()
                     await self._db.rollback()
@@ -230,7 +230,7 @@ WHERE id = ? AND version = ?""",
                         )
                         logger.warning(
                             PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                            execution_id=execution.id,
+                            execution_id=str(execution.id),
                             error=msg,
                         )
                         raise RecordNotFoundError(msg)
@@ -241,7 +241,7 @@ WHERE id = ? AND version = ?""",
                     )
                     logger.warning(
                         PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                        execution_id=execution.id,
+                        execution_id=str(execution.id),
                         error=msg,
                     )
                     raise PersistenceVersionConflictError(msg)
@@ -251,7 +251,7 @@ WHERE id = ? AND version = ?""",
                 msg = f"Failed to save workflow execution {execution.id!r}"
                 logger.warning(
                     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                    execution_id=execution.id,
+                    execution_id=str(execution.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -507,7 +507,7 @@ WHERE id = ? AND version = ?""",
             PERSISTENCE_WORKFLOW_EXEC_FOUND_BY_TASK,
             task_id=task_id,
             found=True,
-            execution_id=execution.id,
+            execution_id=str(execution.id),
         )
         return execution
 

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.versioning.hashing import compute_content_hash
 from synthorg.versioning.models import VersionSnapshot
+from tests._shared import as_uuid
 from tests._shared.persistence import make_private_write_context
 
 _NOW = datetime(2026, 4, 8, 12, 0, tzinfo=UTC)
@@ -83,7 +84,7 @@ async def test_workflow_definition_roundtrip() -> None:
     from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
 
     defn = WorkflowDefinition(
-        id="wfdef-roundtrip",
+        id=as_uuid("wfdef-roundtrip"),
         name="Test Workflow",
         description="A test workflow",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -116,11 +117,11 @@ async def test_workflow_definition_roundtrip() -> None:
             "wf_versions",
             WorkflowDefinition,
         )
-        snap = _make_snapshot("wfdef-roundtrip", defn)
+        snap = _make_snapshot(str(defn.id), defn)
         inserted = await repo.save_version(snap)
         assert inserted is True
 
-        loaded = await repo.get_version("wfdef-roundtrip", 1)
+        loaded = await repo.get_version(str(defn.id), 1)
         assert loaded is not None
         assert loaded.snapshot.name == "Test Workflow"
         assert len(loaded.snapshot.nodes) == 2

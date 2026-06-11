@@ -115,7 +115,7 @@ class SQLiteWorkflowDefinitionRepository:
             )
             logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                definition_id=definition.id,
+                definition_id=str(definition.id),
                 error=msg,
             )
             raise QueryError(msg)
@@ -158,7 +158,7 @@ class SQLiteWorkflowDefinitionRepository:
                         edges_json,
                         definition.updated_at.astimezone(UTC).isoformat(),
                         definition.revision,
-                        definition.id,
+                        str(definition.id),
                         definition.revision - 1,
                     ),
                 )
@@ -167,7 +167,7 @@ class SQLiteWorkflowDefinitionRepository:
                     # different revision" so callers get a precise error.
                     probe = await self._db.execute(
                         "SELECT revision FROM workflow_definitions WHERE id = ?",
-                        (definition.id,),
+                        (str(definition.id),),
                     )
                     existing = await probe.fetchone()
                     await self._db.rollback()
@@ -181,7 +181,7 @@ class SQLiteWorkflowDefinitionRepository:
                     )
                     logger.warning(
                         PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                        definition_id=definition.id,
+                        definition_id=str(definition.id),
                         error=msg,
                     )
                     raise PersistenceVersionConflictError(msg)
@@ -193,7 +193,7 @@ class SQLiteWorkflowDefinitionRepository:
                 msg = f"Failed to update workflow definition {definition.id!r}"
                 logger.warning(
                     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                    definition_id=definition.id,
+                    definition_id=str(definition.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -220,7 +220,7 @@ class SQLiteWorkflowDefinitionRepository:
                 cursor = await self._db.execute(
                     INSERT_IGNORE_SQL,
                     (
-                        definition.id,
+                        str(definition.id),
                         definition.name,
                         definition.description,
                         definition.workflow_type.value,
@@ -242,7 +242,7 @@ class SQLiteWorkflowDefinitionRepository:
                 msg = f"Failed to create workflow definition {definition.id!r}"
                 logger.warning(
                     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                    definition_id=definition.id,
+                    definition_id=str(definition.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -274,7 +274,7 @@ class SQLiteWorkflowDefinitionRepository:
                 cursor = await self._db.execute(
                     UPSERT_SQL,
                     (
-                        entity.id,
+                        str(entity.id),
                         entity.name,
                         entity.description,
                         entity.workflow_type.value,
@@ -296,7 +296,7 @@ class SQLiteWorkflowDefinitionRepository:
                     # revision than expected.
                     check = await self._db.execute(
                         "SELECT revision FROM workflow_definitions WHERE id = ?",
-                        (entity.id,),
+                        (str(entity.id),),
                     )
                     existing = await check.fetchone()
                     await self._db.rollback()
@@ -309,7 +309,7 @@ class SQLiteWorkflowDefinitionRepository:
                     )
                     logger.warning(
                         PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                        definition_id=entity.id,
+                        definition_id=str(entity.id),
                         error=msg,
                     )
                     raise PersistenceVersionConflictError(msg)
@@ -319,7 +319,7 @@ class SQLiteWorkflowDefinitionRepository:
                 msg = f"Failed to save workflow definition {entity.id!r}"
                 logger.warning(
                     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                    definition_id=entity.id,
+                    definition_id=str(entity.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

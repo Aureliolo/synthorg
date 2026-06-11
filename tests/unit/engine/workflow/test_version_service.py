@@ -19,6 +19,7 @@ from synthorg.engine.workflow.enums import (
 from synthorg.engine.workflow.version_service import WorkflowVersionService
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.versioning.models import VersionSnapshot
+from tests._shared import as_uuid, sid
 
 
 def _make_repo() -> AsyncMock:
@@ -38,7 +39,7 @@ def _service(repo: AsyncMock | None = None) -> WorkflowVersionService:
 
 def _definition(revision: int = 1) -> WorkflowDefinition:
     return WorkflowDefinition(
-        id=NotBlankStr("wfdef-1"),
+        id=as_uuid("wfdef-1"),
         name=NotBlankStr("Test"),
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
         version=NotBlankStr(f"1.0.{revision}"),
@@ -77,7 +78,7 @@ def _snapshot(revision: int = 1) -> VersionSnapshot[WorkflowDefinition]:
     pages against the input mock data.
     """
     return VersionSnapshot[WorkflowDefinition](
-        entity_id=NotBlankStr("wfdef-1"),
+        entity_id=sid("wfdef-1"),
         version=revision,
         content_hash=NotBlankStr(f"{revision:064x}"),
         snapshot=_definition(revision),
@@ -96,14 +97,14 @@ class TestListVersions:
         repo.list_versions.return_value = (snap_a, snap_b)
         service = _service(repo)
         page, total = await service.list_versions(
-            NotBlankStr("wfdef-1"),
+            sid("wfdef-1"),
             offset=0,
             limit=2,
         )
         assert total == 7
         assert page == (snap_a, snap_b)
         repo.list_versions.assert_awaited_once_with(
-            NotBlankStr("wfdef-1"),
+            sid("wfdef-1"),
             limit=2,
             offset=0,
         )
@@ -113,7 +114,7 @@ class TestListVersions:
         service = _service()
         with pytest.raises(ValueError, match="offset"):
             await service.list_versions(
-                NotBlankStr("wfdef-1"),
+                sid("wfdef-1"),
                 offset=-1,
                 limit=10,
             )
@@ -123,7 +124,7 @@ class TestListVersions:
         service = _service()
         with pytest.raises(ValueError, match="limit"):
             await service.list_versions(
-                NotBlankStr("wfdef-1"),
+                sid("wfdef-1"),
                 offset=0,
                 limit=0,
             )
@@ -143,7 +144,7 @@ class TestListVersions:
         service = _service(repo)
         with pytest.raises(BaseExceptionGroup) as excinfo:
             await service.list_versions(
-                NotBlankStr("wfdef-1"),
+                sid("wfdef-1"),
                 offset=0,
                 limit=10,
             )
@@ -163,20 +164,20 @@ class TestGetVersion:
         snap = _snapshot(3)
         repo.get_version.return_value = snap
         service = _service(repo)
-        result = await service.get_version(NotBlankStr("wfdef-1"), 3)
+        result = await service.get_version(sid("wfdef-1"), 3)
         assert result == snap
-        repo.get_version.assert_awaited_once_with(NotBlankStr("wfdef-1"), 3)
+        repo.get_version.assert_awaited_once_with(sid("wfdef-1"), 3)
 
     @pytest.mark.unit
     async def test_returns_none_when_missing(self) -> None:
         repo = _make_repo()
         repo.get_version.return_value = None
         service = _service(repo)
-        result = await service.get_version(NotBlankStr("wfdef-1"), 99)
+        result = await service.get_version(sid("wfdef-1"), 99)
         assert result is None
 
     @pytest.mark.unit
     async def test_invalid_revision_rejected(self) -> None:
         service = _service()
         with pytest.raises(ValueError, match="revision"):
-            await service.get_version(NotBlankStr("wfdef-1"), 0)
+            await service.get_version(sid("wfdef-1"), 0)

@@ -13,9 +13,10 @@ function buildWorkflowExecution(
   overrides: Partial<WorkflowExecution> = {},
 ): WorkflowExecution {
   return {
-    id: 'wfx-000000000001',
-    definition_id: 'wf-default',
+    id: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+    definition_id: '123e4567-e89b-12d3-a456-426614174000',
     definition_revision: 1,
+    version: 1,
     status: 'completed',
     activated_by: 'test-user',
     project: 'default',
@@ -23,17 +24,18 @@ function buildWorkflowExecution(
     updated_at: '2026-04-30T10:05:00Z',
     completed_at: '2026-04-30T10:05:00Z',
     error: null,
+    node_executions: [],
     ...overrides,
   }
 }
 
 const defaultExecutions: WorkflowExecution[] = [
   buildWorkflowExecution({
-    id: 'wfx-000000000001',
+    id: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
     status: 'completed',
   }),
   buildWorkflowExecution({
-    id: 'wfx-000000000002',
+    id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
     status: 'running',
     completed_at: null,
   }),
@@ -66,7 +68,9 @@ export const workflowExecutionsHandlers = [
   // MSW handler returns a representative cancelled execution so the
   // wire shape matches the typed client.
   http.post('/api/v1/workflow-executions/:executionId/cancel', ({ params }) => {
-    const executionId = String(params.executionId ?? 'wfx-cancelled')
+    const executionId = String(
+      params.executionId ?? '9b2e4c6a-1d3f-4a5b-8c7d-0e1f2a3b4c5d',
+    )
     // ``updated_at`` and ``completed_at`` carry the same cancellation
     // timestamp because the backend emits them together when a run
     // transitions to the terminal ``cancelled`` state. Letting them

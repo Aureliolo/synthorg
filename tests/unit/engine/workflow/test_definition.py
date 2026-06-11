@@ -13,6 +13,7 @@ from synthorg.engine.workflow.enums import (
     WorkflowNodeType,
     WorkflowType,
 )
+from tests._shared import as_uuid
 from tests.unit.engine.workflow.conftest import (
     make_edge as _edge,
 )
@@ -160,7 +161,7 @@ class TestWorkflowDefinition:
     @pytest.mark.unit
     def test_minimal_valid(self) -> None:
         wf = _minimal_definition()
-        assert wf.id == "wf-1"
+        assert wf.id == as_uuid("wf-1")
         assert wf.name == "Test Workflow"
         assert wf.revision == 1
         assert wf.version == "1.0.0"
@@ -266,7 +267,7 @@ class TestWorkflowDefinition:
     def test_no_start_node_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Expected exactly 1 START"):
             WorkflowDefinition(
-                id="wf-1",
+                id=as_uuid("wf-1"),
                 name="No Start",
                 created_by="test",
                 nodes=(_task_node(), _end_node()),
@@ -277,7 +278,7 @@ class TestWorkflowDefinition:
     def test_no_end_node_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Expected exactly 1 END"):
             WorkflowDefinition(
-                id="wf-1",
+                id=as_uuid("wf-1"),
                 name="No End",
                 created_by="test",
                 nodes=(_start_node(), _task_node()),
@@ -288,7 +289,7 @@ class TestWorkflowDefinition:
     def test_multiple_start_nodes_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Expected exactly 1 START"):
             WorkflowDefinition(
-                id="wf-1",
+                id=as_uuid("wf-1"),
                 name="Two Starts",
                 created_by="test",
                 nodes=(
@@ -306,7 +307,7 @@ class TestWorkflowDefinition:
     def test_multiple_end_nodes_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Expected exactly 1 END"):
             WorkflowDefinition(
-                id="wf-1",
+                id=as_uuid("wf-1"),
                 name="Two Ends",
                 created_by="test",
                 nodes=(
@@ -325,7 +326,7 @@ class TestWorkflowDefinition:
     @pytest.mark.unit
     def test_empty_edges_allowed(self) -> None:
         wf = WorkflowDefinition(
-            id="wf-1",
+            id=as_uuid("wf-1"),
             name="Empty",
             created_by="test",
             nodes=(_start_node(), _end_node()),
@@ -367,7 +368,7 @@ class TestWorkflowDefinition:
             _edge("e8", "test", "end-1"),
         )
         wf = WorkflowDefinition(
-            id="wf-parallel",
+            id=as_uuid("wf-parallel"),
             name="Parallel Pipeline",
             workflow_type=WorkflowType.PARALLEL_EXECUTION,
             created_by="test",
@@ -402,7 +403,7 @@ class TestWorkflowDefinition:
             _edge("e6", "fix", "end-1"),
         )
         wf = WorkflowDefinition(
-            id="wf-cond",
+            id=as_uuid("wf-cond"),
             name="Conditional Pipeline",
             created_by="test",
             nodes=nodes,

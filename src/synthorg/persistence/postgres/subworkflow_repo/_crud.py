@@ -52,7 +52,7 @@ INSERT INTO subworkflows
      inputs, outputs, nodes, edges, created_by, created_at, updated_at)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (
-                        entity.id,
+                        str(entity.id),
                         entity.version,
                         entity.name,
                         entity.description,
@@ -70,7 +70,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             msg = f"Subworkflow {entity.id!r} version {entity.version!r} already exists"
             logger.warning(
                 PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-                subworkflow_id=entity.id,
+                subworkflow_id=str(entity.id),
                 version=entity.version,
                 error=msg,
             )
@@ -79,7 +79,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             msg = f"Failed to save subworkflow {entity.id!r} version {entity.version!r}"
             logger.warning(
                 PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-                subworkflow_id=entity.id,
+                subworkflow_id=str(entity.id),
                 version=entity.version,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

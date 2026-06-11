@@ -59,17 +59,17 @@ class InMemoryEscalationStore(EscalationQueueStore):
             msg = "create() requires status=PENDING"
             logger.warning(
                 CONFLICT_ESCALATION_QUEUED,
-                escalation_id=escalation.id,
+                escalation_id=str(escalation.id),
                 conflict_id=escalation.conflict.id,
                 note="non_pending_rejected",
             )
             raise ValueError(msg)
         async with self._lock:
-            if escalation.id in self._rows:
+            if str(escalation.id) in self._rows:
                 msg = f"Escalation {escalation.id!r} already exists"
                 logger.warning(
                     CONFLICT_ESCALATION_QUEUED,
-                    escalation_id=escalation.id,
+                    escalation_id=str(escalation.id),
                     note="duplicate_id",
                 )
                 raise ValueError(msg)
@@ -85,16 +85,16 @@ class InMemoryEscalationStore(EscalationQueueStore):
                     )
                     logger.warning(
                         CONFLICT_ESCALATION_QUEUED,
-                        escalation_id=escalation.id,
+                        escalation_id=str(escalation.id),
                         conflict_id=conflict_id,
-                        conflicting_escalation_id=existing.id,
+                        conflicting_escalation_id=str(existing.id),
                         note="duplicate_pending_conflict",
                     )
                     raise ValueError(msg)
-            self._rows[escalation.id] = escalation
+            self._rows[str(escalation.id)] = escalation
         logger.info(
             CONFLICT_ESCALATION_QUEUED,
-            escalation_id=escalation.id,
+            escalation_id=str(escalation.id),
             conflict_id=conflict_id,
             expires_at=(
                 escalation.expires_at.isoformat()

@@ -12,13 +12,14 @@ from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.persistence.integration_stubs import (
     InMemoryWebhookReceiptRepository,
 )
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
 
 def _receipt(receipt_id: str, *, status: str = "received") -> WebhookReceipt:
     return WebhookReceipt(
-        id=NotBlankStr(receipt_id),
+        id=as_uuid(receipt_id),
         connection_name=NotBlankStr("conn-1"),
         status=status,
     )
@@ -34,7 +35,7 @@ async def test_save_is_idempotent_upsert_by_id() -> None:
     assert len(items) == 1
     assert items[0].status == "processed"
 
-    fetched = await repo.get(NotBlankStr("r-1"))
+    fetched = await repo.get(sid("r-1"))
     assert fetched is not None
     assert fetched.status == "processed"
 
@@ -46,4 +47,4 @@ async def test_save_keeps_distinct_ids() -> None:
     await repo.save(_receipt("r-2"))
 
     items = await repo.list_items()
-    assert {i.id for i in items} == {"r-1", "r-2"}
+    assert {i.id for i in items} == {as_uuid("r-1"), as_uuid("r-2")}

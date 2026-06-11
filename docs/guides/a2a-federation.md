@@ -70,7 +70,7 @@ payload = {
     "jsonrpc": "2.0",
     "id": str(uuid.uuid4()),
     "method": "tasks/get",
-    "params": {"task_id": "task-12345"},
+    "params": {"task_id": "123e4567-e89b-12d3-a456-426614174000"},
 }
 resp = httpx.post(
     "http://localhost:8001/a2a",

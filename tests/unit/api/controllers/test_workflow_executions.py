@@ -13,7 +13,7 @@ from synthorg.engine.workflow.definition import (
 )
 from synthorg.engine.workflow.enums import WorkflowNodeType
 from synthorg.persistence.state import persistence_of
-from tests._shared import JsonDict, LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient, as_pk, sid
 
 # ── Seed data ─────────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ _EDGE_TASK_TO_END = WorkflowEdge(
 )
 
 _VALID_DEFINITION = WorkflowDefinition(
-    id="wfdef-test001",
+    id=as_pk("wfdef-test001"),
     name="Test Workflow",
     created_by="test-user",
     nodes=(_START_NODE, _TASK_NODE, _END_NODE),
@@ -71,7 +71,7 @@ def _seed_definition(
     defn = definition or _VALID_DEFINITION
     app_state = async_test_client.app.state.app_state
     repo = cast(Any, persistence_of(app_state).workflow_definitions)  # type: ignore[explicit-any]  # reach into fake repo internals
-    repo._definitions[defn.id] = defn
+    repo._definitions[str(defn.id)] = defn
 
 
 # ── Activate endpoint ─────────────────────────────────────────────
@@ -87,12 +87,12 @@ class TestActivateWorkflow:
     ) -> None:
         _seed_definition(async_test_client)
         resp = await async_test_client.post(
-            "/api/v1/workflow-executions/activate/wfdef-test001",
+            f"/api/v1/workflow-executions/activate/{sid('wfdef-test001')}",
             json={"project": "test-project"},
         )
         assert resp.status_code == 201
         body = resp.json()
-        assert body["data"]["definition_id"] == "wfdef-test001"
+        assert body["data"]["definition_id"] == sid("wfdef-test001")
         assert body["data"]["status"] == "running"
         assert body["data"]["project"] == "test-project"
 
@@ -119,7 +119,7 @@ class TestActivateWorkflow:
             config={"title": "Orphan"},
         )
         invalid_def = WorkflowDefinition(
-            id="wfdef-invalid",
+            id=as_pk("wfdef-invalid"),
             name="Invalid",
             created_by="test",
             nodes=(_START_NODE, _TASK_NODE, orphan_node, _END_NODE),
@@ -129,7 +129,7 @@ class TestActivateWorkflow:
         )
         _seed_definition(async_test_client, invalid_def)
         resp = await async_test_client.post(
-            "/api/v1/workflow-executions/activate/wfdef-invalid",
+            f"/api/v1/workflow-executions/activate/{sid('wfdef-invalid')}",
             json={"project": "proj"},
         )
         assert resp.status_code == 422
@@ -141,7 +141,7 @@ class TestActivateWorkflow:
     ) -> None:
         _seed_definition(async_test_client)
         resp = await async_test_client.post(
-            "/api/v1/workflow-executions/activate/wfdef-test001",
+            f"/api/v1/workflow-executions/activate/{sid('wfdef-test001')}",
             json={"project": "proj"},
         )
         assert resp.status_code == 201
@@ -166,7 +166,7 @@ class TestListExecutions:
         async_test_client: LoopAsyncClient,
     ) -> None:
         resp = await async_test_client.get(
-            "/api/v1/workflow-executions/by-definition/wfdef-test001",
+            f"/api/v1/workflow-executions/by-definition/{sid('wfdef-test001')}",
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -179,11 +179,11 @@ class TestListExecutions:
     ) -> None:
         _seed_definition(async_test_client)
         await async_test_client.post(
-            "/api/v1/workflow-executions/activate/wfdef-test001",
+            f"/api/v1/workflow-executions/activate/{sid('wfdef-test001')}",
             json={"project": "proj"},
         )
         resp = await async_test_client.get(
-            "/api/v1/workflow-executions/by-definition/wfdef-test001",
+            f"/api/v1/workflow-executions/by-definition/{sid('wfdef-test001')}",
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -197,12 +197,12 @@ class TestListExecutions:
         _seed_definition(async_test_client)
         for _ in range(4):
             await async_test_client.post(
-                "/api/v1/workflow-executions/activate/wfdef-test001",
+                f"/api/v1/workflow-executions/activate/{sid('wfdef-test001')}",
                 json={"project": "proj"},
             )
 
         resp = await async_test_client.get(
-            "/api/v1/workflow-executions/by-definition/wfdef-test001?limit=2",
+            f"/api/v1/workflow-executions/by-definition/{sid('wfdef-test001')}?limit=2",
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -234,7 +234,7 @@ class TestGetExecution:
     ) -> None:
         _seed_definition(async_test_client)
         activate_resp = await async_test_client.post(
-            "/api/v1/workflow-executions/activate/wfdef-test001",
+            f"/api/v1/workflow-executions/activate/{sid('wfdef-test001')}",
             json={"project": "proj"},
         )
         exec_id = activate_resp.json()["data"]["id"]

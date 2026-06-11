@@ -7,13 +7,14 @@ newest-first and bounded by an explicit ``limit``.
 
 import json
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.observability import get_logger, safe_error_description
@@ -21,6 +22,7 @@ from synthorg.observability.events.persistence.webhook_receipt import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_DELETE_FAILED,
+    PERSISTENCE_WEBHOOK_RECEIPT_DESERIALIZE_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
 )
@@ -49,29 +51,45 @@ def _row_to_receipt(row: DictRow) -> WebhookReceipt:
 
     Returns:
         Result of type ``WebhookReceipt``.
+
+    Raises:
+        MalformedRowError: If the row cannot be parsed (e.g. a stored
+            ``id`` that is not a valid UUID, or a missing column). The
+            failure is deterministic, so it is non-retryable.
     """
-    raw_payload = row.get("payload_json")
-    if raw_payload is None:
-        payload_str = ""
-    elif isinstance(raw_payload, str):
-        payload_str = raw_payload
-    else:
-        # Use compact separators so a round-trip through JSONB produces a
-        # string that compares equal byte-for-byte with the caller's
-        # compact input (the model contract is "string of JSON", not a
-        # canonical pretty-print).
-        payload_str = json.dumps(raw_payload, separators=(",", ":"))
-    processed_at = row.get("processed_at")
-    return WebhookReceipt(
-        id=NotBlankStr(row["id"]),
-        connection_name=NotBlankStr(row["connection_name"]),
-        event_type=row.get("event_type") or "",
-        status=row.get("status") or "received",
-        received_at=coerce_row_timestamp(row["received_at"]),
-        processed_at=(coerce_row_timestamp(processed_at) if processed_at else None),
-        payload_json=payload_str,
-        error=row.get("error"),
-    )
+    try:
+        raw_payload = row.get("payload_json")
+        if raw_payload is None:
+            payload_str = ""
+        else:
+            # Use compact separators so a round-trip through JSONB produces a
+            # string that compares equal byte-for-byte with the caller's
+            # compact input (the model contract is "string of JSON", not a
+            # canonical pretty-print). A scalar JSON string decodes to a plain
+            # ``str``; it must still be re-serialised so its quotes survive,
+            # hence no ``isinstance(str)`` verbatim shortcut.
+            payload_str = json.dumps(raw_payload, separators=(",", ":"))
+        processed_at = row.get("processed_at")
+        return WebhookReceipt(
+            id=UUID(str(row["id"])),
+            connection_name=NotBlankStr(row["connection_name"]),
+            event_type=row.get("event_type") or "",
+            status=row.get("status") or "received",
+            received_at=coerce_row_timestamp(row["received_at"]),
+            processed_at=(coerce_row_timestamp(processed_at) if processed_at else None),
+            payload_json=payload_str,
+            error=row.get("error"),
+        )
+    except (ValueError, TypeError, KeyError) as exc:
+        row_id = row.get("id", "<missing>")
+        msg = f"Failed to deserialize webhook receipt {row_id!r}"
+        logger.warning(
+            PERSISTENCE_WEBHOOK_RECEIPT_DESERIALIZE_FAILED,
+            receipt_id=str(row_id),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise MalformedRowError(msg) from exc
 
 
 class PostgresWebhookReceiptRepository:
@@ -159,6 +177,7 @@ class PostgresWebhookReceiptRepository:
             The matching entity, or ``None`` when no row matches.
 
         Raises:
+            MalformedRowError: If the stored row cannot be deserialized.
             QueryError: If the database query fails.
         """
         try:
@@ -184,17 +203,7 @@ class PostgresWebhookReceiptRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        try:
-            return _row_to_receipt(row)
-        except (ValueError, TypeError, KeyError) as exc:
-            msg = f"Failed to deserialize webhook receipt {receipt_id!r}"
-            logger.warning(
-                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
-                receipt_id=str(receipt_id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        return _row_to_receipt(row)
 
     async def update_status(
         self,
@@ -303,6 +312,7 @@ class PostgresWebhookReceiptRepository:
             The matching entities.
 
         Raises:
+            MalformedRowError: If any stored row cannot be deserialized.
             QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
@@ -331,16 +341,7 @@ class PostgresWebhookReceiptRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        try:
-            return tuple(_row_to_receipt(row) for row in rows)
-        except (ValueError, TypeError) as exc:
-            msg = "Failed to deserialize webhook receipt rows"
-            logger.warning(
-                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        return tuple(_row_to_receipt(row) for row in rows)
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a webhook receipt by ID.
@@ -384,6 +385,7 @@ class PostgresWebhookReceiptRepository:
             Tuple of matching rows; empty when no rows match.
 
         Raises:
+            MalformedRowError: If any stored row cannot be deserialized.
             QueryError: If the database query fails.
         """
         if limit <= 0:
@@ -410,17 +412,7 @@ class PostgresWebhookReceiptRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        try:
-            return tuple(_row_to_receipt(row) for row in rows)
-        except (ValueError, TypeError, KeyError) as exc:
-            msg = f"Failed to deserialize webhook receipts for {connection_name!r}"
-            logger.warning(
-                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
-                connection_name=str(connection_name),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        return tuple(_row_to_receipt(row) for row in rows)
 
     async def cleanup_old_for_connection(
         self,

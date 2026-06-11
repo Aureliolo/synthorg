@@ -153,11 +153,11 @@ class WorkflowExecutionService:
         definition = await self._load_and_validate(definition_id)
 
         # 2. Walk nodes in topological order, starting from the root frame.
-        execution_id = f"wfexec-{uuid4().hex[:12]}"
+        execution_id = uuid4()
         now = datetime.now(UTC)
         state = WalkState()
         root_frame = ExecutionFrame(
-            workflow_id=definition.id,
+            workflow_id=str(definition.id),
             workflow_version=definition.version,
             variables=ctx,
             parent_frame=None,
@@ -168,7 +168,7 @@ class WorkflowExecutionService:
             frame=root_frame,
             qualifier_prefix="",
             state=state,
-            execution_id=execution_id,
+            execution_id=str(execution_id),
             project=project,
             activated_by=activated_by,
         )
@@ -184,7 +184,7 @@ class WorkflowExecutionService:
 
         execution = WorkflowExecution(
             id=execution_id,
-            definition_id=definition.id,
+            definition_id=str(definition.id),
             definition_revision=definition.revision,
             status=status,
             node_executions=tuple(
@@ -200,8 +200,8 @@ class WorkflowExecutionService:
 
         logger.info(
             WORKFLOW_EXEC_ACTIVATED,
-            execution_id=execution_id,
-            definition_id=definition.id,
+            execution_id=str(execution_id),
+            definition_id=str(definition.id),
             task_count=len(state.node_task_ids),
         )
 
@@ -554,7 +554,7 @@ class WorkflowExecutionService:
             child_definition.inputs,
         )
         child_frame = ExecutionFrame(
-            workflow_id=child_definition.id,
+            workflow_id=str(child_definition.id),
             workflow_version=child_definition.version,
             variables=MappingProxyType(resolved_inputs),
             parent_frame=frame,

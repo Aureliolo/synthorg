@@ -238,7 +238,7 @@ Errors follow RFC 9457:
   "type": "synthorg/not-found",
   "title": "Task not found",
   "status": 404,
-  "detail": "Task 'task-X' not found",
+  "detail": "Task '123e4567-e89b-12d3-a456-426614174000' not found",
   "code": "RESOURCE_NOT_FOUND",
   "category": "client_error"
 }

@@ -35,7 +35,7 @@ from synthorg.communication.errors import (
     EscalationDecisionShapeError,
 )
 from synthorg.notifications.dispatcher import NotificationDispatcher
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of, sid
 
 from .conftest import make_conflict
 
@@ -275,15 +275,15 @@ class TestHumanEscalationFullLoop:
 
         past = datetime.now(UTC) - timedelta(seconds=10)
         escalation = Escalation(
-            id="escalation-stale-0001",
+            id=as_uuid("escalation-stale-0001"),
             conflict=conflict,
             created_at=past,
             expires_at=past,
         )
         await store.create(escalation)
         expired = await store.mark_expired(datetime.now(UTC).isoformat())
-        assert expired == ("escalation-stale-0001",)
-        row = await store.get("escalation-stale-0001")
+        assert expired == (sid("escalation-stale-0001"),)
+        row = await store.get(sid("escalation-stale-0001"))
         assert row is not None
         assert row.status == EscalationStatus.EXPIRED
 

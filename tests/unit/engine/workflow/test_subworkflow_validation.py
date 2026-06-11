@@ -27,6 +27,7 @@ from synthorg.engine.workflow.validation import (
     validate_subworkflow_graph,
     validate_subworkflow_io,
 )
+from tests._shared import as_pk, sid
 from tests.unit.engine.workflow.test_subworkflow_registry import (
     FakeSubworkflowRepository,
 )
@@ -45,7 +46,7 @@ def _make_minimal_definition(  # noqa: PLR0913
     outputs: tuple[WorkflowIODeclaration, ...] = (),
 ) -> WorkflowDefinition:
     return WorkflowDefinition(
-        id=definition_id,
+        id=as_pk(definition_id),
         name=definition_id,
         description="",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -125,7 +126,7 @@ def _make_child_subworkflow(
 
 def _make_parent_with_subworkflow(
     *,
-    subworkflow_id: str = "child-sub",
+    subworkflow_id: str = sid("child-sub"),
     version: str = "1.0.0",
     input_bindings: dict[str, object] | None = None,
     output_bindings: dict[str, object] | None = None,
@@ -387,11 +388,11 @@ class TestValidateSubworkflowGraph:
         middle = _make_child_subworkflow(
             subworkflow_id="middle",
             version="1.0.0",
-            nested_refs=(("leaf", "1.0.0"),),
+            nested_refs=((sid("leaf"), "1.0.0"),),
         )
         await registry.register(middle)
         parent = _make_parent_with_subworkflow(
-            subworkflow_id="middle",
+            subworkflow_id=sid("middle"),
             version="1.0.0",
         )
         result = await validate_subworkflow_graph(parent, registry)

@@ -102,7 +102,7 @@ class PostgresWorkflowDefinitionRepository:
             )
             logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                definition_id=definition.id,
+                definition_id=str(definition.id),
                 error=msg,
             )
             raise QueryError(msg)
@@ -140,7 +140,7 @@ class PostgresWorkflowDefinitionRepository:
                         edges,
                         definition.updated_at,
                         definition.revision,
-                        definition.id,
+                        str(definition.id),
                         definition.revision - 1,
                     ),
                 )
@@ -150,7 +150,7 @@ class PostgresWorkflowDefinitionRepository:
                     # surface precise errors (404 vs 409).
                     await cur.execute(
                         "SELECT revision FROM workflow_definitions WHERE id = %s",
-                        (definition.id,),
+                        (str(definition.id),),
                     )
                     probe = await cur.fetchone()
                     if probe is None:
@@ -164,7 +164,7 @@ class PostgresWorkflowDefinitionRepository:
                     await conn.rollback()
                     logger.warning(
                         PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                        definition_id=definition.id,
+                        definition_id=str(definition.id),
                         error=msg,
                     )
                     raise PersistenceVersionConflictError(msg)
@@ -173,7 +173,7 @@ class PostgresWorkflowDefinitionRepository:
             msg = f"Failed to update workflow definition {definition.id!r}"
             logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                definition_id=definition.id,
+                definition_id=str(definition.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -198,7 +198,7 @@ class PostgresWorkflowDefinitionRepository:
                 await cur.execute(
                     _INSERT_SQL,
                     (
-                        definition.id,
+                        str(definition.id),
                         definition.name,
                         definition.description,
                         definition.workflow_type.value,
@@ -220,7 +220,7 @@ class PostgresWorkflowDefinitionRepository:
             msg = f"Failed to create workflow definition {definition.id!r}"
             logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                definition_id=definition.id,
+                definition_id=str(definition.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -265,7 +265,7 @@ class PostgresWorkflowDefinitionRepository:
                             edges,
                             entity.updated_at,
                             entity.revision,
-                            entity.id,
+                            str(entity.id),
                             entity.revision - 1,
                         ),
                     )
@@ -275,7 +275,7 @@ class PostgresWorkflowDefinitionRepository:
                     await cur.execute(
                         _INSERT_SQL,
                         (
-                            entity.id,
+                            str(entity.id),
                             entity.name,
                             entity.description,
                             entity.workflow_type.value,
@@ -306,7 +306,7 @@ class PostgresWorkflowDefinitionRepository:
                         )
                     logger.warning(
                         PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                        definition_id=entity.id,
+                        definition_id=str(entity.id),
                         error=msg,
                     )
                     raise PersistenceVersionConflictError(msg)
@@ -315,7 +315,7 @@ class PostgresWorkflowDefinitionRepository:
             msg = f"Failed to save workflow definition {entity.id!r}"
             logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                definition_id=entity.id,
+                definition_id=str(entity.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

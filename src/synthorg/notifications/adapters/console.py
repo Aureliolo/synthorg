@@ -28,7 +28,7 @@ class ConsoleNotificationSink:
         """
         logger.info(
             NOTIFICATION_CONSOLE_DELIVERED,
-            notification_id=notification.id,
+            notification_id=str(notification.id),
             category=notification.category,
             severity=notification.severity,
             title=notification.title,

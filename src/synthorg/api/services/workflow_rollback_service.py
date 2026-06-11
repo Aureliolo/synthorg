@@ -202,7 +202,7 @@ class WorkflowRollbackService:
         snapshot_service = VersioningService(self._version_repo)
         try:
             await snapshot_service.snapshot_if_changed(
-                entity_id=rolled_back.id,
+                entity_id=str(rolled_back.id),
                 snapshot=rolled_back,
                 saved_by=saved_by,
             )
@@ -213,14 +213,14 @@ class WorkflowRollbackService:
             # causes cannot leak backend internals into the WARN line.
             logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
-                definition_id=rolled_back.id,
+                definition_id=str(rolled_back.id),
                 revision=rolled_back.revision,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
         logger.info(
             WORKFLOW_DEF_ROLLED_BACK,
-            definition_id=rolled_back.id,
+            definition_id=str(rolled_back.id),
             target_version=target_version,
             new_revision=rolled_back.revision,
         )

@@ -11,6 +11,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import ClassVar, Self
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -174,7 +175,7 @@ class WorkflowExecution(BaseModel):
     processing state.
 
     Attributes:
-        id: Unique execution identifier (``"wfexec-{uuid12}"``).
+        id: Unique execution identifier.
         definition_id: Source ``WorkflowDefinition`` ID.
         definition_revision: Snapshot of the definition's optimistic
             concurrency counter at activation time.
@@ -191,7 +192,7 @@ class WorkflowExecution(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(description="Unique execution ID")
+    id: UUID = Field(default_factory=uuid4, description="Unique execution ID")
     definition_id: NotBlankStr = Field(description="Source definition ID")
     definition_revision: int = Field(
         ge=1,

@@ -75,16 +75,16 @@ Claims are not dispatched by hand. The in-process `DistributedDispatcher` is reg
 from synthorg.workers.claim import TaskClaim
 
 await task_queue.publish_claim(
-    TaskClaim(task_id="task-A", new_status="assigned"),
+    TaskClaim(task_id="123e4567-e89b-12d3-a456-426614174000", new_status="assigned"),
 )
 ```
 
 The worker logs:
 
 ```text
-workers.worker.claim_received task_id=task-A
-workers.executor.http_invoked task_id=task-A
-workers.executor.http_terminal task_id=task-A
+workers.worker.claim_received task_id=123e4567-e89b-12d3-a456-426614174000
+workers.executor.http_invoked task_id=123e4567-e89b-12d3-a456-426614174000
+workers.executor.http_terminal task_id=123e4567-e89b-12d3-a456-426614174000
 ```
 
 ## Retry, ack-extension and dead-letter

@@ -44,7 +44,7 @@ def build_escalation_notification(
     )
     body = "\n".join(summary_lines)
     metadata: dict[str, object] = {
-        "escalation_id": escalation.id,
+        "escalation_id": str(escalation.id),
         "conflict_id": conflict.id,
         "conflict_type": conflict.type.value,
         "subject": conflict.subject,

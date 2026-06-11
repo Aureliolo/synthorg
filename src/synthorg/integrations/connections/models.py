@@ -9,7 +9,7 @@ import copy
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Literal, Self
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import (
     AwareDatetime,
@@ -110,9 +110,7 @@ class Connection(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
-    )
+    id: UUID = Field(default_factory=uuid4)
     name: NotBlankStr
     connection_type: ConnectionType
     auth_method: AuthMethod
@@ -317,9 +315,7 @@ class WebhookReceipt(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
-    )
+    id: UUID = Field(default_factory=uuid4)
     connection_name: NotBlankStr
     event_type: str = ""
     status: str = "received"

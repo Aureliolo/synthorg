@@ -8,6 +8,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition, WorkflowNode
 from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_pk, as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -32,7 +33,7 @@ def _subworkflow(
     name: str = "Example subworkflow",
 ) -> WorkflowDefinition:
     return WorkflowDefinition(
-        id=NotBlankStr(subworkflow_id),
+        id=as_pk(subworkflow_id),
         name=NotBlankStr(name),
         description="Reusable building block",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -51,10 +52,10 @@ class TestSubworkflowRepository:
         await backend.subworkflows.save(_subworkflow())
 
         fetched = await backend.subworkflows.get(
-            (NotBlankStr("sub-001"), NotBlankStr("1.0.0")),
+            (sid("sub-001"), NotBlankStr("1.0.0")),
         )
         assert fetched is not None
-        assert fetched.id == "sub-001"
+        assert fetched.id == as_uuid("sub-001")
         assert fetched.version == "1.0.0"
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
@@ -73,7 +74,7 @@ class TestSubworkflowRepository:
         await backend.subworkflows.save(_subworkflow(version="1.10.0"))
         await backend.subworkflows.save(_subworkflow(version="2.0.0"))
 
-        versions = await backend.subworkflows.list_versions(NotBlankStr("sub-001"))
+        versions = await backend.subworkflows.list_versions(sid("sub-001"))
         assert versions == ("2.0.0", "1.10.0", "1.2.0", "1.1.0", "1.0.0")
 
     async def test_list_versions_empty_for_unknown(
@@ -92,7 +93,7 @@ class TestSubworkflowRepository:
 
         summaries = await backend.subworkflows.list_summaries()
         ids = {s.subworkflow_id for s in summaries}
-        assert {"a", "b"} <= ids
+        assert {sid("a"), sid("b")} <= ids
 
     async def test_list_summaries_respects_limit(
         self, backend: PersistenceBackend
@@ -111,9 +112,7 @@ class TestSubworkflowRepository:
         for v in ("1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"):
             await backend.subworkflows.save(_subworkflow(version=v))
 
-        versions = await backend.subworkflows.list_versions(
-            NotBlankStr("sub-001"), limit=3
-        )
+        versions = await backend.subworkflows.list_versions(sid("sub-001"), limit=3)
         assert versions == ("1.4.0", "1.3.0", "1.2.0")
 
     async def test_search_by_name(self, backend: PersistenceBackend) -> None:
@@ -122,18 +121,18 @@ class TestSubworkflowRepository:
         )
 
         hits = await backend.subworkflows.search(NotBlankStr("cleaner"))
-        assert any(s.subworkflow_id == "searchable" for s in hits)
+        assert any(s.subworkflow_id == sid("searchable") for s in hits)
 
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
         await backend.subworkflows.save(_subworkflow())
 
         deleted = await backend.subworkflows.delete(
-            (NotBlankStr("sub-001"), NotBlankStr("1.0.0")),
+            (sid("sub-001"), NotBlankStr("1.0.0")),
         )
         assert deleted is True
         assert (
             await backend.subworkflows.get(
-                (NotBlankStr("sub-001"), NotBlankStr("1.0.0")),
+                (sid("sub-001"), NotBlankStr("1.0.0")),
             )
             is None
         )
@@ -150,7 +149,7 @@ class TestSubworkflowRepository:
         await backend.subworkflows.save(_subworkflow())
 
         ok, parents = await backend.subworkflows.delete_if_unreferenced(
-            NotBlankStr("sub-001"),
+            sid("sub-001"),
             NotBlankStr("1.0.0"),
         )
         assert ok is True
@@ -161,5 +160,5 @@ class TestSubworkflowRepository:
     ) -> None:
         await backend.subworkflows.save(_subworkflow())
 
-        parents = await backend.subworkflows.find_parents(NotBlankStr("sub-001"))
+        parents = await backend.subworkflows.find_parents(sid("sub-001"))
         assert parents == ()

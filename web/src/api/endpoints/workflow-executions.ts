@@ -10,6 +10,7 @@
  * pagination metadata.
  */
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import type { WorkflowNodeExecution } from '../types'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 /** Mirrors ``synthorg.engine.workflow.enums.WorkflowExecutionStatus``. */
@@ -34,6 +35,8 @@ export interface WorkflowExecution {
   definition_id: string
   /** Definition revision the execution was activated against. */
   definition_revision: number
+  /** Optimistic-concurrency version of the execution record. */
+  version: number
   /** Overall execution lifecycle status. */
   status: WorkflowExecutionStatus
   /** Identity of the user / agent that triggered activation. */
@@ -51,6 +54,8 @@ export interface WorkflowExecution {
   completed_at: string | null
   /** Error message when ``status === 'failed'``; ``null`` otherwise. */
   error: string | null
+  /** Per-node execution records for the run. */
+  node_executions: readonly WorkflowNodeExecution[]
 }
 
 /**

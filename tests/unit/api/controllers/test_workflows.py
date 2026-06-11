@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from typing import Any, cast
+from uuid import UUID
 
 import pytest
 import structlog.testing
@@ -14,7 +15,7 @@ from synthorg.engine.workflow.definition import (
 from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
 from synthorg.observability.events.api import WORKFLOW_DEFINITION_CHANGED
 from synthorg.persistence.state import persistence_of
-from tests._shared import JsonDict, LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient, as_pk
 from tests.unit.api.conftest import make_auth_headers
 
 # ── Minimal valid graph data (dicts for HTTP payloads) ───────────
@@ -109,7 +110,7 @@ def _seed(
 ) -> str:
     """Seed a WorkflowDefinition into the fake repo and return its ID."""
     defn = WorkflowDefinition(
-        id=definition_id,
+        id=as_pk(definition_id),
         name=name,
         description="A test workflow",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -122,8 +123,8 @@ def _seed(
     # Direct mutation for synchronous test seeding -- bypasses async save()
     # since Litestar's TestClient runs in a sync context.
     repo = cast(Any, persistence_of(client.app.state.app_state).workflow_definitions)  # type: ignore[explicit-any]  # reach into fake repo internals
-    repo._definitions[defn.id] = defn
-    return defn.id
+    repo._definitions[str(defn.id)] = defn
+    return str(defn.id)
 
 
 # ── HTTP payload helpers ─────────────────────────────────────────
@@ -247,7 +248,7 @@ class TestWorkflowController:
         body = await _create_workflow(async_test_client, name="new-workflow")
         assert body["success"] is True
         data = body["data"]
-        assert data["id"].startswith("wfdef-")
+        assert str(UUID(data["id"])) == data["id"]
         assert data["name"] == "new-workflow"
         assert data["workflow_type"] == "sequential_pipeline"
         assert data["revision"] == 1
@@ -276,7 +277,7 @@ class TestWorkflowController:
         entry = audit_events[0]
         assert entry["action"] == "create"
         assert entry["actor"]
-        assert entry["definition_id"].startswith("wfdef-")
+        assert str(UUID(entry["definition_id"])) == entry["definition_id"]
 
     async def test_create_workflow_minimal_graph(
         self, async_test_client: LoopAsyncClient

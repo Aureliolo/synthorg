@@ -301,7 +301,7 @@ class NotificationDispatcher:
         if not enabled:
             logger.debug(
                 NOTIFICATION_DISPATCHER_PAUSED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 reason="paused_by_setting",
             )
             return
@@ -310,7 +310,7 @@ class NotificationDispatcher:
         if not sinks:
             logger.debug(
                 NOTIFICATION_NO_SINKS,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
             )
             return
 
@@ -353,7 +353,7 @@ class NotificationDispatcher:
         if self._stopping:
             logger.debug(
                 NOTIFICATION_FILTERED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 detail="dispatcher_stopping",
             )
             return True
@@ -364,7 +364,7 @@ class NotificationDispatcher:
         if _SEVERITY_ORDER[notification.severity] < _SEVERITY_ORDER[self._min_severity]:
             logger.debug(
                 NOTIFICATION_FILTERED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 severity=notification.severity,
                 min_severity=self._min_severity,
             )
@@ -381,7 +381,7 @@ class NotificationDispatcher:
         if failed:
             logger.warning(
                 NOTIFICATION_DISPATCH_FAILED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 category=notification.category,
                 total_sinks=len(self._sinks),
                 failed=failed,
@@ -389,7 +389,7 @@ class NotificationDispatcher:
         else:
             logger.debug(
                 NOTIFICATION_DISPATCHED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 category=notification.category,
                 sinks=len(errors),
             )
@@ -405,7 +405,7 @@ class NotificationDispatcher:
         error_types = sorted({type(e).__name__ for e in eg.exceptions})
         logger.warning(
             NOTIFICATION_DISPATCH_FAILED,
-            notification_id=notification.id,
+            notification_id=str(notification.id),
             category=notification.category,
             error_types=error_types,
             partial_sink_errors=partial_errors,
@@ -427,7 +427,7 @@ class NotificationDispatcher:
             errors[index] = description
             logger.warning(
                 NOTIFICATION_DISPATCH_FAILED,
-                notification_id=notification.id,
+                notification_id=str(notification.id),
                 sink_name=sink.sink_name,
                 error_type=type(exc).__name__,
                 error=description,

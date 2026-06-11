@@ -14,10 +14,11 @@ backend repos so this module never imports a driver.
 import json
 from collections.abc import Mapping
 from typing import LiteralString
+from uuid import UUID
 
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError
 from synthorg.engine.workflow.enums import (
     WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
@@ -101,17 +102,21 @@ def row_to_workflow_execution(
 ) -> WorkflowExecution:
     """Reconstruct a ``WorkflowExecution`` from a row mapping.
 
-    Callers pass ``dict(row)``; this normalises the enum, node-execution
-    list, and timestamps (string or native datetime) before validating.
+    Callers pass ``dict(row)``; this normalises the ``id`` (str to
+    ``UUID``), the enum, node-execution list, and timestamps (string or
+    native datetime) before validating.
 
     Returns:
         Validated ``WorkflowExecution`` model instance.
 
     Raises:
-        QueryError: If deserialisation fails.
+        MalformedRowError: If deserialisation fails. The failure is
+            deterministic (a corrupt row reparses identically), so it is
+            non-retryable.
     """
     data = dict(data)
     try:
+        data["id"] = UUID(str(data["id"]))
         data["status"] = WorkflowExecutionStatus(str(data["status"]))
         data["node_executions"] = deserialize_node_executions(
             data.get("node_executions")
@@ -132,10 +137,11 @@ def row_to_workflow_execution(
         logger.warning(
             PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
             execution_id=context_id,
+            stored_id=str(data.get("id", "<missing>")),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 def build_workflow_execution_where(

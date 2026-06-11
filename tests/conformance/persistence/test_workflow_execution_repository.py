@@ -33,6 +33,7 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionFilterSpec,
 )
+from tests._shared import as_pk, as_uuid, sid
 
 
 def _make_workflow_definition(
@@ -41,7 +42,7 @@ def _make_workflow_definition(
 ) -> WorkflowDefinition:
     """Build a valid WorkflowDefinition with START, TASK, and END nodes."""
     return WorkflowDefinition(
-        id=definition_id,
+        id=as_pk(definition_id),
         name=name,
         description="Test workflow",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
@@ -97,8 +98,8 @@ def _make_workflow_execution(
     """Build a valid WorkflowExecution."""
     now = datetime.now(UTC)
     defaults: dict[str, object] = {
-        "id": execution_id,
-        "definition_id": definition_id,
+        "id": as_uuid(execution_id),
+        "definition_id": sid(definition_id),
         "definition_revision": 1,
         "status": WorkflowExecutionStatus.RUNNING,
         "node_executions": (
@@ -140,11 +141,11 @@ class TestWorkflowExecutionRepository:
         )
 
         await exec_repo.save(execution)
-        retrieved = await exec_repo.get("exec-001")
+        retrieved = await exec_repo.get(sid("exec-001"))
 
         assert retrieved is not None
-        assert retrieved.id == "exec-001"
-        assert retrieved.definition_id == "wf-001"
+        assert retrieved.id == as_uuid("exec-001")
+        assert retrieved.definition_id == sid("wf-001")
         assert retrieved.status == WorkflowExecutionStatus.RUNNING
         assert len(retrieved.node_executions) == 1
 
@@ -154,7 +155,7 @@ class TestWorkflowExecutionRepository:
     ) -> None:
         """Get non-existent execution returns None."""
         repo = backend.workflow_executions
-        result = await repo.get("nonexistent")
+        result = await repo.get(sid("nonexistent"))
         assert result is None
 
     async def test_list_by_definition(
@@ -186,12 +187,12 @@ class TestWorkflowExecutionRepository:
         await exec_repo.save(exec2)
 
         executions = await exec_repo.query(
-            WorkflowExecutionFilterSpec(definition_id="wf-001")
+            WorkflowExecutionFilterSpec(definition_id=sid("wf-001"))
         )
         assert len(executions) >= 2
         ids = {e.id for e in executions}
-        assert "exec-def-001" in ids
-        assert "exec-def-002" in ids
+        assert as_uuid("exec-def-001") in ids
+        assert as_uuid("exec-def-002") in ids
 
     async def test_list_by_status(
         self,
@@ -225,7 +226,7 @@ class TestWorkflowExecutionRepository:
             WorkflowExecutionFilterSpec(status=WorkflowExecutionStatus.RUNNING)
         )
         assert len(running_only) >= 1
-        assert any(e.id == "exec-running" for e in running_only)
+        assert any(e.id == as_uuid("exec-running") for e in running_only)
 
     async def test_list_by_definition_respects_limit(
         self,
@@ -245,7 +246,7 @@ class TestWorkflowExecutionRepository:
             )
 
         rows = await exec_repo.query(
-            WorkflowExecutionFilterSpec(definition_id="wf-lim"),
+            WorkflowExecutionFilterSpec(definition_id=sid("wf-lim")),
             limit=3,
         )
         assert len(rows) == 3
@@ -302,7 +303,7 @@ class TestWorkflowExecutionRepository:
         found = await exec_repo.find_by_task_id("task-123")
 
         assert found is not None
-        assert found.id == "exec-task"
+        assert found.id == as_uuid("exec-task")
 
     async def test_find_by_task_id_not_found(
         self,
@@ -383,7 +384,7 @@ class TestWorkflowExecutionRepository:
             definition_id="wf-delete-race",
         )
         await exec_repo.save(execution)
-        deleted = await exec_repo.delete("exec-delete-race")
+        deleted = await exec_repo.delete(sid("exec-delete-race"))
         assert deleted is True
 
         updated = _make_workflow_execution(
@@ -415,8 +416,8 @@ class TestWorkflowExecutionRepository:
         )
         await exec_repo.save(execution)
 
-        deleted = await exec_repo.delete("exec-for-delete")
+        deleted = await exec_repo.delete(sid("exec-for-delete"))
         assert deleted is True
 
-        retrieved = await exec_repo.get("exec-for-delete")
+        retrieved = await exec_repo.get(sid("exec-for-delete"))
         assert retrieved is None

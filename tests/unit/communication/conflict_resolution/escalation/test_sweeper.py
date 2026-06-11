@@ -22,7 +22,7 @@ from synthorg.communication.conflict_resolution.models import (
 )
 from synthorg.communication.enums import ConflictType
 from synthorg.hr.seniority import SeniorityLevel
-from tests._shared import as_uuid
+from tests._shared import as_pk, as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
@@ -58,7 +58,7 @@ def _make_escalation(
         detected_at=datetime.now(UTC),
     )
     return Escalation(
-        id=escalation_id,
+        id=as_pk(escalation_id),
         conflict=conflict,
         created_at=datetime.now(UTC),
         expires_at=expires_at,
@@ -238,8 +238,8 @@ class TestSweeperRunLoop:
         finally:
             await sweeper.stop()
 
-        expired = await store.get("esc-stale")
-        alive = await store.get("esc-live")
+        expired = await store.get(sid("esc-stale"))
+        alive = await store.get(sid("esc-live"))
         assert expired is not None
         assert expired.status == EscalationStatus.EXPIRED
         assert alive is not None
@@ -311,6 +311,6 @@ class TestSweeperRunLoop:
             await asyncio.wait_for(first_sweep_done.wait(), timeout=5.0)
         finally:
             await sweeper.stop()
-        row = await store.get("esc-orphan")
+        row = await store.get(sid("esc-orphan"))
         assert row is not None
         assert row.status == EscalationStatus.EXPIRED

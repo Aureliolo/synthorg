@@ -15,7 +15,7 @@ from synthorg.communication.conflict_resolution.models import (
 from synthorg.communication.enums import ConflictType
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.hr.seniority import SeniorityLevel
-from tests._shared import LoopAsyncClient, as_uuid
+from tests._shared import LoopAsyncClient, as_pk, as_uuid, sid
 from tests.unit.api.conftest import make_auth_headers
 
 pytestmark = pytest.mark.unit
@@ -62,7 +62,7 @@ def _make_escalation(
         detected_at=datetime.now(UTC),
     )
     return Escalation(
-        id=escalation_id,
+        id=as_pk(escalation_id),
         conflict=conflict,
         created_at=datetime.now(UTC),
     )
@@ -87,7 +87,7 @@ class TestEscalationsController:
         resp = await async_test_client.get(_BASE, headers=_READ_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
-        assert body["data"][0]["escalation"]["id"] == "escalation-list-01"
+        assert body["data"][0]["escalation"]["id"] == sid("escalation-list-01")
 
     async def test_get_missing_returns_404(
         self,
@@ -112,7 +112,7 @@ class TestEscalationsController:
 
         escalation = _make_escalation(escalation_id="escalation-winner-01")
         await store.create(escalation)
-        future = await registry.register(escalation.id)
+        future = await registry.register(str(escalation.id))
 
         resp = await async_test_client.post(
             f"{_BASE}/{escalation.id}/decision",
@@ -157,7 +157,7 @@ class TestEscalationsController:
         assert resp.status_code == 422
         body = resp.json()
         assert body["error_detail"]["error_category"] == "validation"
-        row = await store.get(escalation.id)
+        row = await store.get(str(escalation.id))
         assert row is not None
         assert row.status == EscalationStatus.PENDING
 
@@ -172,7 +172,7 @@ class TestEscalationsController:
         assert registry is not None
         escalation = _make_escalation(escalation_id="escalation-double-01")
         await store.create(escalation)
-        await registry.register(escalation.id)
+        await registry.register(str(escalation.id))
 
         body = {
             "decision": {
@@ -207,7 +207,7 @@ class TestEscalationsController:
         assert registry is not None
         escalation = _make_escalation(escalation_id="escalation-cancel-01")
         await store.create(escalation)
-        future = await registry.register(escalation.id)
+        future = await registry.register(str(escalation.id))
 
         resp = await async_test_client.post(
             f"{_BASE}/{escalation.id}/cancel",
@@ -233,12 +233,12 @@ class TestEscalationsController:
         for i in range(31):
             escalation = _make_escalation(escalation_id=f"escalation-rl-{i:02d}")
             await store.create(escalation)
-            await registry.register(escalation.id)
+            await registry.register(str(escalation.id))
 
         saw_429 = False
         for i in range(31):
             resp = await async_test_client.post(
-                f"{_BASE}/escalation-rl-{i:02d}/decision",
+                f"{_BASE}/{sid(f'escalation-rl-{i:02d}')}/decision",
                 json={
                     "decision": {
                         "type": "winner",

@@ -36,18 +36,18 @@ class FakeWorkflowDefinitionRepository:
         self._definitions: dict[str, WorkflowDefinition] = {}
 
     async def save(self, entity: WorkflowDefinition) -> None:
-        self._definitions[entity.id] = copy.deepcopy(entity)
+        self._definitions[str(entity.id)] = copy.deepcopy(entity)
 
     async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
-        if definition.id in self._definitions:
+        if str(definition.id) in self._definitions:
             return False
-        self._definitions[definition.id] = copy.deepcopy(definition)
+        self._definitions[str(definition.id)] = copy.deepcopy(definition)
         return True
 
     async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
-        if definition.id not in self._definitions:
+        if str(definition.id) not in self._definitions:
             return False
-        self._definitions[definition.id] = copy.deepcopy(definition)
+        self._definitions[str(definition.id)] = copy.deepcopy(definition)
         return True
 
     async def get(self, entity_id: str) -> WorkflowDefinition | None:
@@ -72,7 +72,7 @@ class FakeWorkflowDefinitionRepository:
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
     ) -> tuple[WorkflowDefinition, ...]:
-        result = sorted(self._definitions.values(), key=lambda d: d.id)
+        result = sorted(self._definitions.values(), key=lambda d: str(d.id))
         return tuple(copy.deepcopy(d) for d in result[offset : offset + limit])
 
     async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
@@ -92,7 +92,7 @@ class FakeWorkflowExecutionRepository:
         self._executions: dict[str, WorkflowExecution] = {}
 
     async def save(self, execution: WorkflowExecution) -> None:
-        stored = self._executions.get(execution.id)
+        stored = self._executions.get(str(execution.id))
         if stored is None:
             if execution.version != 1:
                 msg = (
@@ -110,7 +110,7 @@ class FakeWorkflowExecutionRepository:
                     f" got {execution.version}"
                 )
                 raise PersistenceVersionConflictError(msg)
-        self._executions[execution.id] = copy.deepcopy(execution)
+        self._executions[str(execution.id)] = copy.deepcopy(execution)
 
     async def get(self, execution_id: str) -> WorkflowExecution | None:
         stored = self._executions.get(execution_id)
@@ -124,7 +124,7 @@ class FakeWorkflowExecutionRepository:
     ) -> tuple[WorkflowExecution, ...]:
         executions = sorted(
             self._executions.values(),
-            key=lambda e: e.id,
+            key=lambda e: str(e.id),
         )
         return tuple(copy.deepcopy(e) for e in executions[offset : offset + limit])
 
@@ -145,7 +145,7 @@ class FakeWorkflowExecutionRepository:
 
         result = sorted(
             result,
-            key=lambda e: (e.updated_at, e.id),
+            key=lambda e: (e.updated_at, str(e.id)),
             reverse=False,
         )
         result.reverse()  # Sort by updated_at DESC then id ASC
@@ -291,9 +291,12 @@ class FakeSubworkflowRepository:
         self._definition_repo = definition_repo
 
     async def save(self, entity: WorkflowDefinition) -> None:
-        key = (entity.id, entity.version)
+        key = (str(entity.id), entity.version)
         if key in self._rows:
-            msg = f"Subworkflow {entity.id!r} version {entity.version!r} already exists"
+            msg = (
+                f"Subworkflow {str(entity.id)!r} version"
+                f" {entity.version!r} already exists"
+            )
             raise DuplicateRecordError(msg)
         self._rows[key] = copy.deepcopy(entity)
 
@@ -335,7 +338,7 @@ class FakeSubworkflowRepository:
     ) -> tuple[SubworkflowSummary, ...]:
         grouped: dict[str, list[WorkflowDefinition]] = {}
         for definition in self._rows.values():
-            grouped.setdefault(definition.id, []).append(definition)
+            grouped.setdefault(str(definition.id), []).append(definition)
         summaries: list[SubworkflowSummary] = []
         for sub_id, items in grouped.items():
             items.sort(key=lambda d: _semver_key(d.version), reverse=True)
@@ -424,7 +427,7 @@ class FakeSubworkflowRepository:
                     continue
                 references.append(
                     ParentReference(
-                        parent_id=definition.id,
+                        parent_id=str(definition.id),
                         parent_name=definition.name,
                         pinned_version=pinned,
                         node_id=node.id,

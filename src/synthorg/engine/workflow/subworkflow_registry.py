@@ -141,7 +141,7 @@ class SubworkflowRegistry:
         await self._repo.save(definition)
         logger.info(
             SUBWORKFLOW_REGISTERED,
-            subworkflow_id=definition.id,
+            subworkflow_id=str(definition.id),
             version=definition.version,
         )
 
