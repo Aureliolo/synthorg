@@ -267,21 +267,27 @@ jobs:
           # genuinely vanished), which is exactly the #1818 signal we want
           # the guard to catch; it only retries transient classes.
           #
-          # Branch on the helper's exit code rather than treating any non-zero
-          # as a deletion: a transient-exhaustion (EX_TEMPFAIL, exit 75) means
-          # we could not CONFIRM survival, not that the tag is gone, so it must
-          # not page. Stdout (the ref JSON) is discarded, but stderr is left
-          # visible so the helper's warning/error context reaches the log.
+          # Branch on the helper's outcome rather than treating any non-zero
+          # as a deletion. The wrapped `gh` only exits 0-4 (never the HTTP
+          # status), so a 404 and a 403 both surface as the same exit code; the
+          # deleted-vs-other distinction must come from the stderr signature,
+          # the same way the helper itself classifies (grep 'HTTP 4xx'). Capture
+          # stderr (stdout, the ref JSON, is discarded) and echo it back so the
+          # helper's diagnostics still reach the log.
           rc=0
-          .github/scripts/gh_with_retry.sh "minted-tag survival check" \
-            gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$DEV_TAG" >/dev/null || rc=$?
-          if [ "$rc" -eq 75 ]; then
+          errout="$(.github/scripts/gh_with_retry.sh "minted-tag survival check" \
+            gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$DEV_TAG" 2>&1 >/dev/null)" || rc=$?
+          printf '%s\n' "$errout" >&2
+          if [ "$rc" -eq 0 ]; then
+            echo "Tag $DEV_TAG present at end-of-run."
+          elif [ "$rc" -eq 75 ]; then
             echo "::warning::Could not confirm tag $DEV_TAG survival -- transient GitHub API failure (EX_TEMPFAIL), not a deletion. Skipping the guard for this run."
-          elif [ "$rc" -ne 0 ]; then
+          elif printf '%s' "$errout" | grep -qiE 'HTTP 404|not found'; then
             echo "::error::Tag $DEV_TAG was deleted during this run -- downstream Docker/CLI workflows are about to 404 on actions/checkout. Investigate dev-release.yml."
             exit 1
           else
-            echo "Tag $DEV_TAG present at end-of-run."
+            echo "::error::Tag $DEV_TAG survival check failed (exit ${rc}) for a reason other than deletion (likely auth/config, e.g. HTTP 403). Investigate dev-release.yml."
+            exit 1
           fi
 
   report-failure:
