@@ -1,20 +1,17 @@
 """Verify ``ClientPool`` raises log the rejection event before bubbling."""
 
-from typing import TYPE_CHECKING
-
 import pytest
 import structlog
 
 from synthorg.client.models import (
     ClientFeedback,
     ClientProfile,
+    GenerationContext,
+    ReviewContext,
     TaskRequirement,
 )
 from synthorg.client.pool import ClientPool
 from synthorg.observability.events.client import CLIENT_NOT_FOUND
-
-if TYPE_CHECKING:
-    from synthorg.client.models import GenerationContext, ReviewContext
 
 
 class _StubClient:

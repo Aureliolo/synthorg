@@ -1,8 +1,8 @@
 """Tests for ``scripts/check_boundary_typed.py``.
 
-Phase 3 of RFC #1711. Verifies that the AST gate accepts a boundary
-function that calls ``parse_typed`` and rejects one that does not, and
-honours the ``# lint-allow: boundary-typed`` per-line marker.
+Verifies that the AST gate accepts a boundary function that calls
+``parse_typed`` and rejects one that does not, and honours the
+``# lint-allow: boundary-typed`` per-line marker.
 """
 
 import importlib.util

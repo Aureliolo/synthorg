@@ -22,7 +22,7 @@ from synthorg.core.task_enums import Complexity
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.checkpoint.callback import CheckpointCallback
-from synthorg.engine.compaction import CompactionCallback
+from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.intervention.inbox import SteeringInbox

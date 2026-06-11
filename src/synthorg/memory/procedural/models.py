@@ -172,7 +172,7 @@ class ProceduralMemoryProposal(BaseModel):
         description="Semantic tags for filtering",
     )
 
-    # ── Cross-agent skill pool fields (Stage 3, #1246) ────────────
+    # ── Cross-agent skill pool fields ─────────────────────────────
     scope: ProceduralMemoryScope = Field(
         default=ProceduralMemoryScope.AGENT,
         description="Distribution scope for this skill",

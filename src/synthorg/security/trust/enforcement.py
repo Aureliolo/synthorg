@@ -8,13 +8,11 @@ This module is the single pure place that math lives so it can be
 unit-tested in isolation and reused by the engine tool-invoker seam.
 """
 
-from typing import TYPE_CHECKING, NamedTuple
+from typing import NamedTuple
 
+from synthorg.core.agent import ToolPermissions
+from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.security.trust.levels import TRUST_LEVEL_RANK
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import ToolPermissions
-    from synthorg.core.tool_constraints import ToolAccessLevel
 
 
 class EffectiveToolPermissions(NamedTuple):

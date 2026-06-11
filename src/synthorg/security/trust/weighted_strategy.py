@@ -4,21 +4,19 @@ Computes a single trust score from weighted performance factors
 and promotes/demotes based on configurable thresholds.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.observability import get_logger
 from synthorg.observability.events.trust import (
     TRUST_EVALUATE_COMPLETE,
     TRUST_EVALUATE_START,
 )
+from synthorg.security.trust.config import TrustConfig, TrustThreshold
 from synthorg.security.trust.levels import TRANSITION_KEYS
 from synthorg.security.trust.models import TrustEvaluationResult, TrustState
-
-if TYPE_CHECKING:
-    from synthorg.hr.performance.models import AgentPerformanceSnapshot
-    from synthorg.security.trust.config import TrustConfig, TrustThreshold
 
 logger = get_logger(__name__)
 

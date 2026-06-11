@@ -6,26 +6,24 @@ re-verification and trust decay on idle/error conditions.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.observability import get_logger
 from synthorg.observability.events.trust import (
     TRUST_DECAY_DETECTED,
     TRUST_EVALUATE_COMPLETE,
     TRUST_EVALUATE_START,
 )
+from synthorg.security.trust.config import MilestoneCriteria, TrustConfig
 from synthorg.security.trust.levels import (
     TRANSITION_KEYS,
     TRUST_LEVEL_ORDER,
     TRUST_LEVEL_RANK,
 )
 from synthorg.security.trust.models import TrustEvaluationResult, TrustState
-
-if TYPE_CHECKING:
-    from synthorg.hr.performance.models import AgentPerformanceSnapshot
-    from synthorg.security.trust.config import MilestoneCriteria, TrustConfig
 
 logger = get_logger(__name__)
 

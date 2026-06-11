@@ -1,24 +1,21 @@
 """Unit tests for ClientPool and pool selection strategies."""
 
-from typing import TYPE_CHECKING
-
 import pytest
 
-from synthorg.client.models import ClientProfile, PoolConstraints
+from synthorg.client.models import (
+    ClientFeedback,
+    ClientProfile,
+    GenerationContext,
+    PoolConstraints,
+    ReviewContext,
+    TaskRequirement,
+)
 from synthorg.client.pool import (
     ClientPool,
     DomainMatchedStrategy,
     RoundRobinStrategy,
     WeightedRandomStrategy,
 )
-
-if TYPE_CHECKING:
-    from synthorg.client.models import (
-        ClientFeedback,
-        GenerationContext,
-        ReviewContext,
-        TaskRequirement,
-    )
 
 
 class _StubClient:
@@ -37,8 +34,6 @@ class _StubClient:
         self,
         context: ReviewContext,
     ) -> ClientFeedback:
-        from synthorg.client.models import ClientFeedback
-
         return ClientFeedback(
             task_id="stub",
             client_id=self.profile.client_id,

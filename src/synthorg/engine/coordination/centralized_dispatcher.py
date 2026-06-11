@@ -1,7 +1,6 @@
 """Centralized dispatcher."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
@@ -17,16 +16,12 @@ from synthorg.engine.coordination.dispatcher_types import DispatchResult
 from synthorg.engine.coordination.group_builder import build_execution_waves
 from synthorg.engine.coordination.models import CoordinationPhaseResult
 from synthorg.engine.decomposition.models import DecompositionResult
+from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.engine.workspace.models import Workspace, WorkspaceGroupResult
+from synthorg.engine.workspace.service import WorkspaceIsolationService
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import COORDINATION_PHASE_FAILED
-
-if TYPE_CHECKING:
-    # Concrete services faked in dispatcher tests; a runtime import would make
-    # typeguard enforce a nominal isinstance the fakes cannot satisfy.
-    from synthorg.engine.parallel import ParallelExecutor
-    from synthorg.engine.workspace.service import WorkspaceIsolationService
 
 logger = get_logger(__name__)
 
@@ -46,7 +41,7 @@ class CentralizedDispatcher:
         *,
         decomposition_result: DecompositionResult,
         routing_result: RoutingResult,
-        parallel_executor: ParallelExecutor,
+        parallel_executor: ParallelExecutorProtocol,
         workspace_service: WorkspaceIsolationService | None,
         config: CoordinationConfig,
         project_id: NotBlankStr | None = None,

@@ -1,6 +1,5 @@
 """Tests for :class:`synthorg.persistence.registry.PersistenceBackendRegistry`."""
 
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,10 +7,8 @@ import pytest
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import default_registry
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.registry import PersistenceBackendRegistry
-
-if TYPE_CHECKING:
-    from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.unit
 

@@ -83,9 +83,7 @@
         "synthorg_approvals_reject"
       ],
       "name": "approval",
-      "protocol_exports": [
-        "ApprovalStoreProtocol"
-      ],
+      "protocol_exports": [],
       "settings_namespace": null,
       "state_slice_fields": [
         "store",
@@ -1210,6 +1208,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-11T10:08:58.631361Z",
+  "generated_at": "2026-06-11T21:03:23.042945Z",
   "schema_version": 1
 }

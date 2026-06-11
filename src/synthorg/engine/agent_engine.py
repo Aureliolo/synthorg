@@ -56,6 +56,7 @@ from synthorg.observability.events.session import (
     SESSION_REPLAY_LOW_COMPLETENESS,
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
+from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 from synthorg.providers.models import ChatMessage
 from synthorg.security.audit import AuditLog
 
@@ -74,7 +75,7 @@ if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.core.task import Task
     from synthorg.engine.approval_gate import ApprovalGate
-    from synthorg.engine.compaction import CompactionCallback
+    from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.coordination.attribution import (
         CoordinationResultWithAttribution,
     )
@@ -114,7 +115,6 @@ if TYPE_CHECKING:
         ParkedContextRepository,
     )
     from synthorg.persistence.project_protocol import ProjectRepository
-    from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry

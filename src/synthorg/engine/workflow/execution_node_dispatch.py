@@ -9,7 +9,7 @@ management.
 
 from collections.abc import Coroutine
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.quality.verification import VerificationVerdict
@@ -34,14 +34,57 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_NODE_COMPLETED,
 )
 
-if TYPE_CHECKING:
-    # Cycle-breaker: execution_service imports this module for its node
-    # dispatch registry, so a module-level import here would cycle.
-    from synthorg.engine.workflow.execution_service import (
-        WorkflowExecutionService,
-    )
-
 logger = get_logger(__name__)
+
+
+@runtime_checkable
+class _WorkflowNodeProcessor(Protocol):
+    """Structural surface the SUBWORKFLOW / TASK handlers call back into.
+
+    ``execution_service`` imports this module for its node-dispatch
+    registry, so this module cannot import the concrete
+    ``WorkflowExecutionService`` at runtime without closing that cycle.
+    The two delegating handlers annotate against this protocol instead;
+    ``WorkflowExecutionService`` satisfies it structurally, so the
+    annotation resolves at runtime (typeguard) without the import.
+    """
+
+    async def _process_task_node_in_frame(  # noqa: PLR0913
+        self,
+        *,
+        nid: str,
+        qualified_id: str,
+        node: WorkflowNode,
+        reverse_adj: dict[str, list[str]],
+        node_map: dict[str, WorkflowNode],
+        frame_node_task_ids: dict[str, str | tuple[str, ...]],
+        qualifier_prefix: str,
+        state: WalkState,
+        skipped_nodes: set[str],
+        pending_assignments: dict[str, str],
+        project: str,
+        activated_by: str,
+        execution_id: str,
+    ) -> WorkflowNodeExecution:
+        """Create a task for a TASK node under its frame-qualified key."""
+        ...
+
+    async def _process_subworkflow_node(  # noqa: PLR0913
+        self,
+        *,
+        nid: str,
+        qualified_id: str,
+        node: WorkflowNode,
+        frame: ExecutionFrame,
+        frame_ctx: dict[str, object],
+        frame_node_task_ids: dict[str, str | tuple[str, ...]],
+        state: WalkState,
+        execution_id: str,
+        project: str,
+        activated_by: str,
+    ) -> WorkflowNodeExecution:
+        """Resolve a SUBWORKFLOW node and walk the child graph in a frame."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +116,7 @@ class _NodeDispatchContext:
 
 
 async def _handle_terminal(
-    service: WorkflowExecutionService,  # noqa: ARG001
+    service: _WorkflowNodeProcessor,  # noqa: ARG001
     ctx: _NodeDispatchContext,
 ) -> WorkflowNodeExecution:
     """START / END / PARALLEL_SPLIT / PARALLEL_JOIN: complete immediately.
@@ -96,7 +139,7 @@ async def _handle_terminal(
 
 
 async def _handle_agent_assignment(
-    service: WorkflowExecutionService,  # noqa: ARG001
+    service: _WorkflowNodeProcessor,  # noqa: ARG001
     ctx: _NodeDispatchContext,
 ) -> WorkflowNodeExecution:
     """AGENT_ASSIGNMENT: record pending assignments on downstream tasks.
@@ -136,7 +179,7 @@ async def _handle_agent_assignment(
 
 
 async def _handle_verification(
-    service: WorkflowExecutionService,  # noqa: ARG001
+    service: _WorkflowNodeProcessor,  # noqa: ARG001
     ctx: _NodeDispatchContext,
 ) -> WorkflowNodeExecution:
     """VERIFICATION: resolve verdict, delegate, requalify node_id.
@@ -167,7 +210,7 @@ async def _handle_verification(
 
 
 async def _handle_conditional(
-    service: WorkflowExecutionService,  # noqa: ARG001
+    service: _WorkflowNodeProcessor,  # noqa: ARG001
     ctx: _NodeDispatchContext,
 ) -> WorkflowNodeExecution:
     """CONDITIONAL: evaluate branch, requalify node_id for stable persistence.
@@ -192,7 +235,7 @@ async def _handle_conditional(
 
 
 async def _handle_subworkflow(
-    service: WorkflowExecutionService,
+    service: _WorkflowNodeProcessor,
     ctx: _NodeDispatchContext,
 ) -> WorkflowNodeExecution:
     """SUBWORKFLOW: push a child frame and walk it.
@@ -220,7 +263,7 @@ async def _handle_subworkflow(
 
 
 async def _handle_task(
-    service: WorkflowExecutionService,
+    service: _WorkflowNodeProcessor,
     ctx: _NodeDispatchContext,
 ) -> WorkflowNodeExecution:
     """TASK: create a task for the node under its qualified key.

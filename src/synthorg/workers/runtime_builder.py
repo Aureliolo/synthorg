@@ -29,18 +29,22 @@ Engine-side construction helpers live in
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import NamedTuple
 
+from synthorg.api.state import AppState
 from synthorg.budget.baseline_store import BaselineStore
 from synthorg.budget.coordination_collector import CoordinationMetricsCollector
 from synthorg.budget.state import BudgetStateSlice, cost_tracker_of
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
+from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.hr.state import agent_registry_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.enums import ToolCategory
@@ -49,6 +53,7 @@ from synthorg.security.redteam.builder import (
     RedTeamRuntime,
     build_red_team_tool_seed,
 )
+from synthorg.security.visionverify.protocol import VisionVerifierGate
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import resolve_init_int
 from synthorg.tools.sandbox.factory import resolve_sandbox_for_category
@@ -71,13 +76,6 @@ from synthorg.workers.execution_service import (
     NoProviderExecutionService,
     WorkerExecutionService,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
-    from synthorg.engine.coordination.service import MultiAgentCoordinator
-    from synthorg.engine.pipeline.protocol import WorkPipeline
-    from synthorg.providers.registry import ProviderRegistry
-    from synthorg.security.visionverify.protocol import VisionVerifierGate
 
 logger = get_logger(__name__)
 

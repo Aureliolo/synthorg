@@ -5,19 +5,19 @@ import :class:`ToolHandler` at runtime (needed by PEP 649 lazy
 annotation evaluation on module-level ``MEMORY_HANDLERS: Mapping[str,
 ToolHandler]`` style declarations) without pulling in the tool registry
 + provider + persistence chain that ``invoker`` drags through
-``synthorg.tools.base``.  Keeping this module dependency-free breaks
-the circular-import risk that otherwise surfaces when every handler
-module tries to import ``ToolHandler`` from the invoker.
+``synthorg.tools.base``.  ``api.state`` is the decomposed, light
+composition root (slice store plus a few primitive registries), so
+naming :class:`AppState` at runtime here keeps this module light and
+clear of the circular-import risk that otherwise surfaces when every
+handler module tries to import ``ToolHandler`` from the invoker.
 """
 
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import (
     AgentIdentity,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 
 class ToolHandler(Protocol):
