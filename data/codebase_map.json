@@ -15864,7 +15864,7 @@
     },
     {
       "kind": "code",
-      "loc": 409,
+      "loc": 407,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/webhook_receipt_repo.py",
       "owning_feature": "persistence"
