@@ -22,7 +22,7 @@ from synthorg.engine.workflow.enums import (
     WorkflowType,
 )
 from synthorg.versioning import VersionSnapshot, compute_content_hash
-from tests._shared import as_uuid, sid
+from tests._shared import as_pk, as_uuid, sid
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -71,17 +71,21 @@ def _ver(
     }
     # Allow overriding definition fields via overrides; separate
     # entity_id for VersionSnapshot wrapper if provided.
-    entity_id = str(overrides.pop("definition_id", "wfdef-test"))
+    definition_id = str(overrides.pop("definition_id", "wfdef-test"))
     saved_by = str(overrides.pop("saved_by", "user"))
     # saved_at is always _NOW for tests -- pop to avoid passing
     # to WorkflowDefinition.
     overrides.pop("saved_at", None)
     def_defaults.update(overrides)
-    # Override id to match entity_id
-    def_defaults["id"] = as_uuid(entity_id)
+    # Canonical PK from a label OR an already-canonical id: as_pk is the
+    # pass-through helper (it never re-hashes a canonical UUID, unlike
+    # as_uuid/sid which always uuid5 their input). The snapshot FK is then
+    # str(pk), so id and entity_id stay consistent for either input shape.
+    pk = as_pk(definition_id)
+    def_defaults["id"] = pk
     definition = WorkflowDefinition.model_validate(def_defaults)
     return VersionSnapshot(
-        entity_id=sid(entity_id),
+        entity_id=str(pk),
         version=version,
         content_hash=compute_content_hash(definition),
         snapshot=definition,

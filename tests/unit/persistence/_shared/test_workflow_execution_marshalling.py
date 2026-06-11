@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError
 from synthorg.engine.workflow.enums import (
     WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
@@ -123,14 +123,14 @@ class TestRowToWorkflowExecution:
         data = _sqlite_data(_execution())
         data["status"] = "not-a-status"
 
-        with pytest.raises(QueryError):
+        with pytest.raises(MalformedRowError):
             row_to_workflow_execution(data, "ctx")
 
     def test_non_list_node_executions_raises(self) -> None:
         data = _sqlite_data(_execution())
         data["node_executions"] = '{"not": "a list"}'
 
-        with pytest.raises(QueryError):
+        with pytest.raises(MalformedRowError):
             row_to_workflow_execution(data, "ctx")
 
     def test_completed_at_sqlite_iso(self) -> None:
