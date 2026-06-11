@@ -69,6 +69,17 @@ fi
 # can drive the classifier with a zero backoff instead of waiting ~1m45s.
 ATTEMPTS="${DOCKER_PUSH_RETRY_ATTEMPTS:-4}"
 BACKOFF="${DOCKER_PUSH_RETRY_BACKOFF:-15}"
+# A zero or non-numeric ATTEMPTS would make the loop body never run and
+# the script exit 0 WITHOUT running the wrapped command (fail-open).
+# Reject it; a zero BACKOFF is legitimate (tests use it).
+if ! [[ "$ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "::error::DOCKER_PUSH_RETRY_ATTEMPTS must be a positive integer; got '${ATTEMPTS}'" >&2
+  exit 2
+fi
+if ! [[ "$BACKOFF" =~ ^[0-9]+$ ]]; then
+  echo "::error::DOCKER_PUSH_RETRY_BACKOFF must be a non-negative integer; got '${BACKOFF}'" >&2
+  exit 2
+fi
 
 for ((i = 1; i <= ATTEMPTS; i++)); do
   out=""

@@ -1,6 +1,8 @@
+# module-kind: tests
 """Tests for scripts/check_image_signatures.py."""
 
 import importlib.util
+import urllib.error
 from pathlib import Path
 from types import ModuleType
 
@@ -283,7 +285,49 @@ class TestSignaturePresent:
         monkeypatch.setattr(gate.time, "sleep", slept.append)
         digest = "sha256:" + "b" * 64
         assert gate.signature_present("aureliolo/synthorg-backend", digest, {}) is True
+        assert slept == [gate.SIG_PROPAGATION_BACKOFF_SECONDS]
+
+    def test_transient_network_error_is_retried_then_succeeds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A network blip on the first attempt must be retried, not fail the
+        # whole check; a subsequent 200 resolves it.
+        results: list[object] = [urllib.error.URLError("blip"), (gate.HTTP_OK, {}, b"")]
+
+        def fake_request(
+            _method: str, _url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            item = results.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item  # type: ignore[return-value]
+
+        slept: list[float] = []
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
+        digest = "sha256:" + "d" * 64
+        assert gate.signature_present("aureliolo/synthorg-backend", digest, {}) is True
         assert len(slept) == 1
+
+    def test_persistent_network_error_reraises_not_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A network error that persists past the budget must re-raise (the
+        # caller reports a network error), not be masked as a False
+        # "unsigned" verdict.
+        def fake_request(
+            _method: str, _url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            msg = "down"
+            raise urllib.error.URLError(msg)
+
+        slept: list[float] = []
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
+        digest = "sha256:" + "e" * 64
+        with pytest.raises(urllib.error.URLError):
+            gate.signature_present("aureliolo/synthorg-backend", digest, {})
+        assert len(slept) == gate.SIG_PROPAGATION_ATTEMPTS - 1
 
     def test_genuine_miss_fails_after_bounded_budget(
         self, monkeypatch: pytest.MonkeyPatch

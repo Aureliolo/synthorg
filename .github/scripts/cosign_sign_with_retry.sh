@@ -43,6 +43,13 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 # `bash "$RETRY" ...`; a bare `"$SCRIPT_DIR/..."` would fail
 # "Permission denied" on the Linux runner.
 TRANSIENT_RE="$(bash "$SCRIPT_DIR/docker_push_with_retry.sh" --print-transient-re)"
+# Surface a drift in the sibling helper loudly: an empty regex disables
+# the transient classifier (every error becomes terminal at line ~98),
+# so without this warning a flurry of "non-transient" cosign failures
+# would give no hint that the classifier itself went dark.
+if [[ -z "$TRANSIENT_RE" ]]; then
+  echo "::warning::cosign_sign_with_retry: TRANSIENT_RE is empty (docker_push_with_retry.sh --print-transient-re returned nothing); every error will be treated as non-transient" >&2
+fi
 
 # 4 attempts, backoff 15s -> 30s -> 60s = ~1m45s of wait in the worst
 # case before the final attempt. Matches docker_push_with_retry.sh so
@@ -52,6 +59,17 @@ TRANSIENT_RE="$(bash "$SCRIPT_DIR/docker_push_with_retry.sh" --print-transient-r
 # the classifier with a zero backoff instead of waiting ~1m45s.
 ATTEMPTS="${COSIGN_SIGN_RETRY_ATTEMPTS:-4}"
 BACKOFF="${COSIGN_SIGN_RETRY_BACKOFF:-15}"
+# A zero or non-numeric ATTEMPTS would make the loop body never run and
+# the script exit 0 WITHOUT signing (fail-open). Reject it; a zero
+# BACKOFF is legitimate (tests use it), so only require non-negative.
+if ! [[ "$ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "::error::COSIGN_SIGN_RETRY_ATTEMPTS must be a positive integer; got '${ATTEMPTS}'" >&2
+  exit 2
+fi
+if ! [[ "$BACKOFF" =~ ^[0-9]+$ ]]; then
+  echo "::error::COSIGN_SIGN_RETRY_BACKOFF must be a non-negative integer; got '${BACKOFF}'" >&2
+  exit 2
+fi
 
 for ((i = 1; i <= ATTEMPTS; i++)); do
   out=""

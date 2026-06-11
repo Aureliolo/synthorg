@@ -5,7 +5,7 @@
 # The bug: the helpers classified a transient registry error with
 #   printf '%s' "$out" | grep -qiE "$TRANSIENT_RE"
 # under `set -o pipefail`. When `$out` is a GHCR 5xx HTML error body that
-# overruns the 64 KB pipe buffer and the match token sits near the START,
+# overruns the 64 KB pipe buffer and the match token sits at the very START,
 # `grep -q` exits on first match and closes the pipe, `printf` takes EPIPE,
 # and `pipefail` makes the pipeline report the writer's non-zero status --
 # so the match is masked, a genuinely-transient error is misclassified as
@@ -44,7 +44,7 @@ if grep -q 'hit transient registry error' <<<"$out" \
   pass "docker_push retries a large 5xx body"
 else
   fail "docker_push misclassified a large 5xx body (broken-pipe regression)"
-  printf '%s\n' "$out" | tail -n 3 >&2
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 
 # --- docker_push_with_retry.sh: a genuine error must NOT be retried -----
@@ -55,7 +55,7 @@ if grep -q 'non-transient error' <<<"$out" && ! grep -q 'hit transient' <<<"$out
   pass "docker_push does not retry a genuine non-transient error"
 else
   fail "docker_push retried a non-transient error (classifier too broad)"
-  printf '%s\n' "$out" | tail -n 3 >&2
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 
 # --- cosign_sign_with_retry.sh: a large transient 5xx must be retried ---
@@ -77,7 +77,50 @@ if grep -q 'hit transient error' <<<"$out" && ! grep -q 'non-transient error' <<
   pass "cosign_sign retries a large 5xx body"
 else
   fail "cosign_sign misclassified a large 5xx body (broken-pipe regression)"
-  printf '%s\n' "$out" | tail -n 3 >&2
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- cosign_sign_with_retry.sh: a genuine error must NOT be retried -----
+# Symmetric to the docker_push negative control: proves the cosign wrapper
+# (which sources TRANSIENT_RE from the sibling helper and guards on it
+# being non-empty) does not retry an auth denial. Catches a future
+# over-broad regex OR a removed empty-regex guard.
+cat >"$STUB_DIR/cosign" <<'STUB'
+#!/usr/bin/env bash
+echo "denied: requested access to the resource is denied"
+exit 1
+STUB
+chmod +x "$STUB_DIR/cosign"
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_SIGN_RETRY_ATTEMPTS=3 COSIGN_SIGN_RETRY_BACKOFF=0 \
+  bash "$COSIGN_HELPER" "ghcr.io/example/image@${fake_digest}" 2>&1)" || true
+if grep -q 'non-transient error' <<<"$out" && ! grep -q 'hit transient error' <<<"$out"; then
+  pass "cosign_sign does not retry a genuine non-transient error"
+else
+  fail "cosign_sign retried a non-transient error (classifier too broad)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- cosign_sign_with_retry.sh: an already-signed digest is success -----
+# A re-sign that loses the Rekor createLogEntry race returns a
+# `createLogEntryConflict`; the helper treats that as success (exit 0,
+# `::notice::`), not a retry or failure, so a re-run of an already-signed
+# image does not false-red the build.
+cat >"$STUB_DIR/cosign" <<'STUB'
+#!/usr/bin/env bash
+echo "error: ... createLogEntryConflict: ... already exists"
+exit 1
+STUB
+chmod +x "$STUB_DIR/cosign"
+rc=0
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_SIGN_RETRY_ATTEMPTS=3 COSIGN_SIGN_RETRY_BACKOFF=0 \
+  bash "$COSIGN_HELPER" "ghcr.io/example/image@${fake_digest}" 2>&1)" || rc=$?
+if [ "$rc" -eq 0 ] && grep -q 'already signed' <<<"$out"; then
+  pass "cosign_sign treats createLogEntryConflict as success"
+else
+  fail "cosign_sign did not treat createLogEntryConflict as idempotent success (rc=${rc})"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 
 if [ "$FAILED" -ne 0 ]; then

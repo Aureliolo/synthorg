@@ -60,11 +60,13 @@ USAGE_EXIT_CODE = 2
 FAILURE_EXIT_CODE = 1
 
 # GHCR surfaces a freshly-published cosign referrer (the `sha256-<hex>`
-# tag) with eventual consistency. This gate runs minutes after the publish
-# jobs, so propagation is normally settled; the short retry only covers the
-# rare case where the gate runs close behind a sign. Kept deliberately
-# short -- the gate's purpose is to FAIL a genuinely-unsigned image, so a
-# persistent 404 must surface quickly rather than be masked by a long wait.
+# tag) with eventual consistency. In the typical workflow topology this
+# gate runs as a separate job minutes after the publish jobs, so
+# propagation is normally settled by the time it runs; the short retry only
+# covers the rare case where the gap between signing and this check is
+# unusually short. Kept deliberately short -- the gate's purpose is to FAIL
+# a genuinely-unsigned image, so a persistent 404 must surface quickly
+# rather than be masked by a long wait.
 SIG_PROPAGATION_ATTEMPTS = 3
 SIG_PROPAGATION_BACKOFF_SECONDS = 3
 
@@ -312,16 +314,23 @@ def signature_present(
 ) -> bool:
     """Return True if a cosign signature referrer artifact exists for this digest.
 
-    Retries a non-200 a few times with a short fixed backoff
-    (``SIG_PROPAGATION_ATTEMPTS`` / ``SIG_PROPAGATION_BACKOFF_SECONDS``) to
-    absorb GHCR's eventual-consistency window on a freshly-published
-    referrer; a genuinely-unsigned digest still returns False once the
-    short budget is spent.
+    Retries a non-200 (and a transient network error) a few times with a
+    short fixed backoff (``SIG_PROPAGATION_ATTEMPTS`` /
+    ``SIG_PROPAGATION_BACKOFF_SECONDS``) to absorb GHCR's
+    eventual-consistency window on a freshly-published referrer; a
+    genuinely-unsigned digest still returns False once the short budget is
+    spent. A network error that persists past the budget is re-raised (the
+    caller turns it into a "network error" message) rather than being
+    reported as a false "unsigned" verdict.
 
     ``repo_path`` is pre-validated; ``digest`` is checked to start with
     the literal ``sha256:`` prefix and the hex tail is character-class
     constrained by definition. The ``urllib.parse.quote`` call closes
     the CodeQL ``py/partial-ssrf`` data-flow.
+
+    Raises:
+        urllib.error.URLError: a network-level failure that persisted
+            across every attempt (also covers ``OSError`` subclasses).
     """
     if not digest.startswith("sha256:"):
         return False
@@ -331,7 +340,17 @@ def signature_present(
     url = f"https://{GHCR_REGISTRY}/v2/{safe_repo}/manifests/{safe_sig_tag}"
     headers = {"Accept": SIG_ACCEPT, **auth_header}
     for attempt in range(1, SIG_PROPAGATION_ATTEMPTS + 1):
-        status, _, _ = _request("HEAD", url, headers)
+        try:
+            status, _, _ = _request("HEAD", url, headers)
+        except urllib.error.URLError, OSError:
+            # A network blip on the referrer check is itself transient:
+            # retry within the same budget. If it persists, re-raise on the
+            # final attempt so the caller reports a network error rather
+            # than a false "unsigned" verdict.
+            if attempt < SIG_PROPAGATION_ATTEMPTS:
+                time.sleep(SIG_PROPAGATION_BACKOFF_SECONDS)
+                continue
+            raise
         if status == HTTP_OK:
             return True
         if attempt < SIG_PROPAGATION_ATTEMPTS:
@@ -454,7 +473,7 @@ def _verify_pair(
                 f"(referrer tag sha256-{sig_hex} returned non-200)"
             )
     except _NetworkExceptions as exc:
-        return None, f"network error ({type(exc).__name__}: {exc})"
+        return None, f"network error ({type(exc).__name__}: {exc!r})"
     return digest, None
 
 
@@ -477,7 +496,7 @@ def _auth_header_for_repo(
     except _NetworkExceptions as exc:
         return (
             None,
-            f"failed to mint pull token ({type(exc).__name__}: {exc})",
+            f"failed to mint pull token ({type(exc).__name__}: {exc!r})",
         )
     header: dict[str, str] = (
         {"Authorization": f"Bearer {reg_token}"} if reg_token else {}

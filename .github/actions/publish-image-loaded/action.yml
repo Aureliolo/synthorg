@@ -185,8 +185,29 @@ runs:
           # iteration produces the same bytes, so the digest is the
           # same. Capture once on the sha-<short> iteration to keep the
           # output stable.
+          #
+          # GHCR is eventually consistent on the write path: the tag we
+          # just `docker manifest push`ed can 404 ("not found") for a
+          # short window before it is readable, so a bare inspect here
+          # fails the whole publish (leaving the image unsigned). Retry
+          # the read-back with bounded backoff so a read-after-write lag
+          # self-heals; the `if [ -z "$DIGEST" ]` guard below still fails
+          # loud once the budget is spent. Mirrors the inspect retry in
+          # publish-image-retag.
           if [ "$t" = "sha-${SHORT_SHA}" ]; then
-            DIGEST="$(docker buildx imagetools inspect "${REPO}:${t}" --format '{{.Manifest.Digest}}')"
+            INSPECT_ATTEMPTS=5
+            INSPECT_BACKOFF=2
+            for ((ia = 1; ia <= INSPECT_ATTEMPTS; ia++)); do
+              if DIGEST="$(docker buildx imagetools inspect "${REPO}:${t}" --format '{{.Manifest.Digest}}' 2>/dev/null)" && [ -n "$DIGEST" ]; then
+                break
+              fi
+              DIGEST=""
+              if [ "$ia" -lt "$INSPECT_ATTEMPTS" ]; then
+                echo "::warning::manifest ${REPO}:${t} not yet readable after push (attempt ${ia}/${INSPECT_ATTEMPTS}); GHCR read-after-write lag, retrying in ${INSPECT_BACKOFF}s"
+                sleep "${INSPECT_BACKOFF}"
+                INSPECT_BACKOFF=$((INSPECT_BACKOFF * 2))
+              fi
+            done
           fi
         done <<< "$META_TAGS"
 
@@ -289,7 +310,10 @@ runs:
         # subsequent `curl` with an empty Bearer header.
         # `-L` follows redirects so registry-side rewrites (rare on
         # GHCR but possible in proxy / mirror setups) don't fail.
-        REG_TOKEN="$(curl -sSL -u "x-access-token:${GHCR_TOKEN}" \
+        # `--connect-timeout`/`--max-time` bound every call: curl has no
+        # default deadline, so a silently black-holed connection would
+        # otherwise stall the step until the runner's job timeout.
+        REG_TOKEN="$(curl -sSL --connect-timeout 5 --max-time 15 -u "x-access-token:${GHCR_TOKEN}" \
           "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO_PATH}:pull" \
           | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
         if [ -z "${REG_TOKEN}" ]; then
@@ -304,7 +328,7 @@ runs:
         FAILED=0
         while IFS= read -r t; do
           [ -z "${t}" ] && continue
-          ACTUAL="$(curl -sSL -I \
+          ACTUAL="$(curl -sSL --connect-timeout 5 --max-time 15 -I \
             -H "Authorization: Bearer ${REG_TOKEN}" \
             -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json" \
             "https://ghcr.io/v2/${REPO_PATH}/manifests/${t}" \
@@ -317,24 +341,27 @@ runs:
           fi
         done <<< "${PUSHED_TAGS}"
 
-        # Confirm the signed digest is reachable as an OCI referrer
-        # index entry on the registry side. cosign v3 publishes
-        # signatures via the OCI referrer mechanism, surfaced on GHCR
-        # as the `sha256-<hex>` referrer tag.
-        # cosign has just published the signature as an OCI referrer; GHCR
-        # surfaces it as the `sha256-<hex>` referrer tag with EVENTUAL
-        # consistency, so a check issued milliseconds after signing can 404
-        # for a short window before the tag becomes queryable (observed: a
-        # 404 ~270ms after a successful sign). Poll with bounded backoff
-        # (5 attempts, 2s -> 4s -> 8s -> 16s, ~30s budget) so a propagation
-        # lag self-heals, while a genuinely-missing signature still fails
-        # after the budget -- the gate must not mask a real unsigned image.
+        # Confirm the signed digest is reachable as an OCI referrer index
+        # entry. cosign v3 publishes signatures via the OCI referrer
+        # mechanism, surfaced on GHCR as the `sha256-<hex>` referrer tag,
+        # with EVENTUAL consistency: a check issued milliseconds after
+        # signing can 404 for a short window before the tag becomes
+        # queryable (observed: a 404 ~270ms after a successful sign). Poll
+        # with bounded backoff (5 attempts, 2s -> 4s -> 8s -> 16s, ~30s
+        # budget) so a propagation lag self-heals, while a genuinely-missing
+        # signature still fails after the budget -- the gate must not mask a
+        # real unsigned image. Validate the digest shape first so a
+        # malformed SIGNED_DIGEST cannot build a bogus referrer URL.
+        if ! [[ "${SIGNED_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          echo "::error::SIGNED_DIGEST is not a valid sha256 digest: '${SIGNED_DIGEST}'"
+          exit 1
+        fi
         SIG_HEX="${SIGNED_DIGEST#sha256:}"
         SIG_ATTEMPTS=5
         SIG_BACKOFF=2
         SIG_STATUS=000
         for ((s = 1; s <= SIG_ATTEMPTS; s++)); do
-          SIG_STATUS="$(curl -sSL -o /dev/null -w '%{http_code}' \
+          SIG_STATUS="$(curl -sSL --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' \
             -H "Authorization: Bearer ${REG_TOKEN}" \
             -H "Accept: application/vnd.oci.image.index.v1+json" \
             "https://ghcr.io/v2/${REPO_PATH}/manifests/sha256-${SIG_HEX}")"
@@ -345,7 +372,10 @@ runs:
             SIG_BACKOFF=$((SIG_BACKOFF * 2))
           fi
         done
-        if [ "${SIG_STATUS}" != "200" ]; then
+        if [ "${SIG_STATUS}" = "000" ]; then
+          echo "::error::cosign signature check could not reach GHCR (curl network error, not a registry response) for ${REPO}:sha256-${SIG_HEX} after ${SIG_ATTEMPTS} attempts"
+          FAILED=1
+        elif [ "${SIG_STATUS}" != "200" ]; then
           echo "::error::cosign signature artifact missing for ${REPO}@${SIGNED_DIGEST} (referrer tag sha256-${SIG_HEX} returned HTTP ${SIG_STATUS} after ${SIG_ATTEMPTS} attempts)"
           FAILED=1
         else
