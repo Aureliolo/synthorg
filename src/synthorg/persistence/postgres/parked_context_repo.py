@@ -325,7 +325,7 @@ ON CONFLICT(id) DO UPDATE SET
             if raw is not None and not isinstance(raw, str):
                 row["context_json"] = json.dumps(raw)
             return ParkedContext.model_validate(row)
-        except (ValidationError, ValueError, TypeError) as exc:
+        except (ValidationError, ValueError, TypeError, KeyError) as exc:
             msg = f"Failed to deserialize parked context {row.get('id')!r}"
             logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,

@@ -95,7 +95,7 @@ def _run_from_row(row: DictRow) -> FineTuneRun:
             completed_at=row["completed_at"],
             stages_completed=tuple(row["stages_completed"] or ()),
         )
-    except (ValidationError, ValueError, TypeError) as exc:
+    except (ValidationError, ValueError, TypeError, KeyError) as exc:
         msg = f"Corrupt fine-tune run row: {safe_error_description(exc)}"
         raise MalformedRowError(msg) from exc
 
@@ -142,7 +142,7 @@ def _checkpoint_from_row(row: DictRow) -> CheckpointRecord:
             is_active=row["is_active"],
             backup_config_json=backup_str,
         )
-    except (ValidationError, ValueError, TypeError) as exc:
+    except (ValidationError, ValueError, TypeError, KeyError) as exc:
         msg = f"Corrupt checkpoint row: {safe_error_description(exc)}"
         raise MalformedRowError(msg) from exc
 

@@ -163,7 +163,7 @@ class TestDecisionRecordsCompositeIndex:
         target_task = _TASKS[0]
         for i in range(200):
             await on_disk_backend.decision_records.append_with_next_version(
-                record_id=NotBlankStr(f"dec-{i:03d}"),
+                record_id=sid(f"dec-{i:03d}"),
                 task_id=NotBlankStr(sid(target_task)),
                 approval_id=None,
                 executing_agent_id=NotBlankStr(_AGENTS[0]),
