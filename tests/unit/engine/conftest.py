@@ -14,6 +14,7 @@ from synthorg.core.agent import (
 )
 from synthorg.core.company import Company, CompanyConfig
 from synthorg.core.company_departments import Department
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.role import Authority, Role, Skill
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import (
@@ -53,7 +54,6 @@ from synthorg.hr.enums import AgentStatus, CreativityLevel, RiskTolerance
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import DepartmentName
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

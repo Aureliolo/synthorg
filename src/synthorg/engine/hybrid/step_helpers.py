@@ -8,6 +8,7 @@ re-planning. Stateless free functions only; no instance state.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_models import HybridLoopConfig
@@ -40,7 +41,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_PLAN_PARSE_ERROR,
     EXECUTION_PLAN_STEP_TRUNCATED,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig, CompletionResponse
 from synthorg.providers.protocol import CompletionProvider
 

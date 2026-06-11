@@ -42,6 +42,7 @@ from synthorg.budget.coordination_metrics import (
 )
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.execution.view import ExecutionResultView
 from synthorg.observability import get_logger, safe_error_description
@@ -56,7 +57,6 @@ from synthorg.observability.events.coordination_metrics import (
     COORD_METRICS_OVERHEAD_COMPUTED,
     COORD_METRICS_REDUNDANCY_COMPUTED,
 )
-from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:
     from synthorg.budget.baseline_store import BaselineStore

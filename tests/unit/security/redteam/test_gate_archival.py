@@ -12,6 +12,7 @@ import structlog.testing
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.observability.events.red_team import (
     RED_TEAM_REPORT_ALREADY_ARCHIVED,
     RED_TEAM_REPORT_ARCHIVE_FAILED,
@@ -25,7 +26,6 @@ from synthorg.security.redteam.models import (
     RedTeamFinding,
     RedTeamReport,
     RedTeamReportRecord,
-    RedTeamReviewInput,
     RedTeamSeverity,
     RedTeamVerdict,
 )

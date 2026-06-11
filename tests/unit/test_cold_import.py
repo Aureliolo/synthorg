@@ -62,10 +62,23 @@ _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
 # (``meta.charter.__init__`` -> ``meta.charter.service`` ->
 # ``communication.conversation.enums`` -> ``communication.__init__``). Neither
 # can import cold on its own, and no cold leaf consumes those enums.
+# The ``core.*`` foundation leaves relocated out of heavier hubs so their
+# consumers can annotate against them at module level without a cold cycle:
+# ``core.completion_enums`` (the ``FinishReason`` vocabulary out of the eager
+# ``providers`` hub, which previously re-entered ``budget.cost_record`` mid-init),
+# ``core.effective_autonomy`` and ``core.redteam_review_input`` (resolved-autonomy
+# and red-team gate-input value objects out of the heavy ``security`` package),
+# and ``core.approval`` (the human-approval value object, already cold-safe but
+# pinned so a future dependency cannot regress it). ``budget.cost_record`` itself
+# is pinned now that ``FinishReason`` no longer drags it into the providers hub.
 COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.providers.enums",
     "synthorg.core.agent",
     "synthorg.core.memory_enums",
+    "synthorg.core.completion_enums",
+    "synthorg.core.effective_autonomy",
+    "synthorg.core.redteam_review_input",
+    "synthorg.core.approval",
     "synthorg.persistence._shared",
     "synthorg.core.tool_constraints",
     "synthorg.config.schema",
@@ -73,6 +86,7 @@ COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.execution.efficiency",
     "synthorg.execution.view",
     "synthorg.budget.coordination_collector",
+    "synthorg.budget.cost_record",
     "synthorg.approval.enums",
     "synthorg.security.autonomy.enums",
     "synthorg.security.timeout.enums",

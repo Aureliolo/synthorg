@@ -21,6 +21,7 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import Connection
@@ -42,7 +43,6 @@ from synthorg.observability.events.external_api import (
 )
 from synthorg.providers.url_utils import redact_url
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
-from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.security.timeout.risk_tier_classifier import (
     DefaultRiskTierClassifier,
 )

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from synthorg.providers.enums import FinishReason
+from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
     AdaptationAxis,
@@ -18,7 +19,6 @@ from synthorg.engine.evolution.protocols import EvolutionContext
 from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
 )
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,

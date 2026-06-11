@@ -2,7 +2,8 @@
 
 import pytest
 
-from synthorg.providers.enums import FinishReason, MessageRole, StreamEventType
+from synthorg.core.completion_enums import FinishReason
+from synthorg.providers.enums import MessageRole, StreamEventType
 
 
 @pytest.mark.unit

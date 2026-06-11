@@ -5,11 +5,11 @@ builders for completion responses and knowledge hits used to drive the
 LLM-backed and knowledge-backed strategies deterministically.
 """
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.models import Citation, KnowledgeHit, WebLocator
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.research_protocol import ResearchRunFilter
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.research.models import ResearchRun
 from synthorg.research.retrieval.providers import AcademicResult, CodeResult

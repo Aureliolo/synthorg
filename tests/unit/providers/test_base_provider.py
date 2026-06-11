@@ -28,7 +28,8 @@ if TYPE_CHECKING:
         ToolDefinition,
     )
 
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.core.completion_enums import FinishReason
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import InvalidRequestError
 from synthorg.providers.models import (
     ChatMessage,

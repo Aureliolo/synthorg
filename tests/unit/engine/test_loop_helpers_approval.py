@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from synthorg.approval.models import EscalationInfo
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.loop_tool_execution import execute_tool_calls
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     ZERO_TOKEN_USAGE,
     CompletionResponse,

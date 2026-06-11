@@ -35,6 +35,7 @@ import pytest
 
 from synthorg.api.state import AppState
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.mcp.invoker import MCPToolInvoker
@@ -49,7 +50,6 @@ from synthorg.meta.toolsmith.models import ToolBlueprint, ToolSandboxBackend
 from synthorg.persistence.tool_blueprint_protocol import ToolBlueprintFilterSpec
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

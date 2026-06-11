@@ -32,6 +32,7 @@ from synthorg.tools.protocol import ToolInvokerProtocol
 if TYPE_CHECKING:
     from synthorg.budget.enforcer import BudgetEnforcer
     from synthorg.core.clock import Clock
+    from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import (
         Execute,
         HandleBudgetError,
@@ -39,7 +40,6 @@ if TYPE_CHECKING:
         MakeToolInvoker,
     )
     from synthorg.providers.protocol import CompletionProvider
-    from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
 

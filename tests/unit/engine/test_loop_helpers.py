@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_control_helpers import (
     check_budget,
@@ -27,7 +28,7 @@ from synthorg.engine.loop_tool_execution import (
     execute_tool_calls,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     CompletionConfig,
     CompletionResponse,

@@ -10,6 +10,7 @@ from synthorg.budget.coordination_config import (
     ErrorCategory,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.classification.heuristic_detectors import (
     HeuristicContextOmissionDetector,
     HeuristicContradictionDetector,
@@ -27,7 +28,7 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, ToolResult
 
 

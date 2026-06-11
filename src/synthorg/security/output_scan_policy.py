@@ -11,11 +11,11 @@ from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
 )
-from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.security.models import OutputScanResult, ScanOutcome, SecurityContext
 
 logger = get_logger(__name__)

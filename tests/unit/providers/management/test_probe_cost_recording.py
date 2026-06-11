@@ -15,9 +15,9 @@ from synthorg.api.state import AppState
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.settings.state import config_resolver_of, settings_service_of

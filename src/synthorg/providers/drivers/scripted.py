@@ -25,6 +25,7 @@ import threading
 from collections.abc import AsyncIterator, Mapping
 from typing import Final, Protocol, override, runtime_checkable
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.domain_errors import DomainError
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
@@ -32,7 +33,7 @@ from synthorg.observability.events.provider import (
 )
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import FinishReason, MessageRole, StreamEventType
+from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

@@ -8,6 +8,7 @@ turn metadata -- no LLM cost.
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.quality.models import StepQuality, StepQualitySignal
 from synthorg.engine.stagnation.models import (
@@ -20,7 +21,6 @@ from synthorg.observability.events.quality import (
     QUALITY_CLASSIFIER_CONFIG_INVALID,
     QUALITY_STEP_CLASSIFIED,
 )
-from synthorg.providers.enums import FinishReason
 
 logger = get_logger(__name__)
 

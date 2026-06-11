@@ -12,6 +12,7 @@ from synthorg.budget.coordination_config import (
     ErrorTaxonomyConfig,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.classification.models import ErrorSeverity
 from synthorg.engine.classification.pipeline import classify_execution_errors
 from synthorg.engine.context import AgentContext
@@ -20,7 +21,7 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, ToolResult
 
 

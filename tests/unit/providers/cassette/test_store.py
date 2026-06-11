@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.cassette.errors import (
     CassetteFormatError,
     CassetteIntegrityError,
@@ -31,7 +32,7 @@ from synthorg.providers.cassette.store import (
     CassetteOutcomeKind,
     CassetteSession,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionResponse,

@@ -5,11 +5,11 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import JsonValue
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.loop_helpers import compute_fingerprints
 from synthorg.engine.stagnation.detector import ToolRepetitionDetector
 from synthorg.engine.stagnation.models import StagnationConfig, StagnationVerdict
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import ToolCall
 
 

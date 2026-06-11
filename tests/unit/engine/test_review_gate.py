@@ -8,6 +8,7 @@ from uuid import UUID
 import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
 from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
@@ -22,7 +23,6 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.redteam.models import (
     RedTeamGateResult,
     RedTeamReport,
-    RedTeamReviewInput,
     RedTeamVerdict,
 )
 from synthorg.security.redteam.protocol import RedTeamGate

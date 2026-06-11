@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.agent_engine import AgentEngine
@@ -16,7 +17,6 @@ from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.execution.turn import TurnRecord
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.protocol import MemoryBackend
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,

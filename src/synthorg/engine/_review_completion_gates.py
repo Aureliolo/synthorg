@@ -42,7 +42,7 @@ from synthorg.security.visionverify.models import VisionReviewInput
 from synthorg.security.visionverify.protocol import VisionVerifierGate
 
 if TYPE_CHECKING:
-    from synthorg.security.redteam.models import RedTeamReviewInput
+    from synthorg.core.redteam_review_input import RedTeamReviewInput
 
 logger = get_logger(__name__)
 

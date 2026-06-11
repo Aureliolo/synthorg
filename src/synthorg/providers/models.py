@@ -11,6 +11,7 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.tool_disclosure import (
     ToolL1Metadata,
     ToolL2Body,
@@ -19,7 +20,6 @@ from synthorg.core.tool_disclosure import (
 from synthorg.core.types import NotBlankStr
 
 from .enums import (
-    FinishReason,
     ImageDetail,
     ImageMediaType,
     MessageRole,

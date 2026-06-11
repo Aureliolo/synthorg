@@ -21,6 +21,7 @@ from typing import Final
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
@@ -34,7 +35,7 @@ from synthorg.memory.procedural.capture.success_capture import (
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.procedural.success_proposer import SuccessMemoryProposer
 from synthorg.providers.drivers.scripted import ScriptedDriver
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

@@ -14,6 +14,7 @@ from typing import override
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.cassette.errors import (
@@ -30,7 +31,6 @@ from synthorg.providers.drivers.scripted import (
     SingleResponseStrategy,
 )
 from synthorg.providers.enums import (
-    FinishReason,
     MessageRole,
     StreamEventType,
 )

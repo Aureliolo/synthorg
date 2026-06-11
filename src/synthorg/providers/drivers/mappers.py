@@ -12,6 +12,7 @@ from collections.abc import Mapping
 
 from pydantic import JsonValue
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
@@ -21,7 +22,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_TOOL_CALL_INCOMPLETE,
     PROVIDER_TOOL_CALL_MISSING_FUNCTION,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, ToolCall, ToolDefinition
 
 logger = get_logger(__name__)

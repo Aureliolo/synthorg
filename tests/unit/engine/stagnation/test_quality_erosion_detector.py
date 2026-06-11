@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.stagnation.models import (
     StagnationReason,
     StagnationVerdict,
@@ -10,7 +11,6 @@ from synthorg.engine.stagnation.quality_erosion_detector import (
     QualityErosionDetector,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason
 
 
 def _make_turn(

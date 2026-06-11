@@ -14,9 +14,9 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.execution.efficiency import EfficiencyRatios
-from synthorg.providers.enums import FinishReason
 
 
 class NodeType(StrEnum):

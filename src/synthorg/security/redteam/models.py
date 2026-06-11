@@ -14,7 +14,6 @@ from typing import Final, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.security.redteam.grounding.models import UngroundedClaim
 
@@ -204,41 +203,6 @@ class RedTeamReport(BaseModel):
             )
             raise ValueError(msg)
         return self
-
-
-class RedTeamReviewInput(BaseModel):
-    """What the gate sees on entry: the deliverable plus its context.
-
-    The gate's evaluation surface. Lives here (not on Task directly) so
-    the red-team subsystem can be exercised without dragging the full
-    Task model and its dependencies into every test.
-
-    Attributes:
-        task_id: The deliverable's owning task.
-        execution_id: The execution that produced the deliverable.
-        deliverable_content: The artifact text the red-team attacks.
-        acceptance_criteria: The brief's acceptance criteria, used by
-            the agent prompt; a dedicated requirements-coverage checker
-            (not yet built) would also consume it.
-        assigned_agent_id: The agent that produced the deliverable
-            (forbidden as red-team reviewer; enforced one layer up by
-            the review-gate's self-review guard).
-        autonomy: Effective autonomy level governing severity-tiered
-            routing in :mod:`synthorg.security.redteam.routing`.
-        project_id: Owning project of the deliverable, when known. The
-            substrate-backed grounding checker scopes its corpus search
-            to it; ``None`` falls back to a global-only search.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    task_id: NotBlankStr
-    execution_id: NotBlankStr
-    deliverable_content: NotBlankStr
-    acceptance_criteria: tuple[NotBlankStr, ...] = Field(min_length=1)
-    assigned_agent_id: NotBlankStr
-    autonomy: AutonomyLevel
-    project_id: NotBlankStr | None = None
 
 
 class RedTeamGateResult(BaseModel):

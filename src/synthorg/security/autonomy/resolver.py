@@ -1,6 +1,7 @@
 """Autonomy resolver -- three-level chain and category expansion."""
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.hr.seniority import SeniorityLevel, compare_seniority
 from synthorg.observability import get_logger
 from synthorg.observability.events.autonomy import (
@@ -9,10 +10,7 @@ from synthorg.observability.events.autonomy import (
     AUTONOMY_SENIORITY_VIOLATION,
 )
 from synthorg.security.action_types import ActionTypeRegistry
-from synthorg.security.autonomy.models import (
-    AutonomyConfig,
-    EffectiveAutonomy,
-)
+from synthorg.security.autonomy.models import AutonomyConfig
 
 logger = get_logger(__name__)
 

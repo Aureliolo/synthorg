@@ -38,6 +38,7 @@ import pytest
 
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import ToolPermissions
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
@@ -91,7 +92,6 @@ from synthorg.providers.drivers.scripted import (
     ScriptedDriver,
     SequencedResponseStrategy,
 )
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage, ToolCall
 from synthorg.tools.code_runner import CodeRunnerTool
 from synthorg.tools.docs.write_living_doc import WriteLivingDocTool

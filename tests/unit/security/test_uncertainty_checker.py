@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.providers.enums import FinishReason
+from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,

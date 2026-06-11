@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
@@ -41,7 +42,7 @@ from synthorg.engine.workspace.project_workspace_service import (
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.project_brain.factory import build_project_brain_service
 from synthorg.project_brain.models import BrainEntryKind
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionResponse, TokenUsage
 from tests._shared import FakeClock, as_uuid
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity

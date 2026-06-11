@@ -13,6 +13,7 @@ from collections import defaultdict
 from typing import Final
 
 from synthorg.budget.coordination_config import ErrorCategory
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.normalization import (
     normalize_ascii_lowercase,
     normalize_ascii_lowercase_or_default,
@@ -27,7 +28,7 @@ from synthorg.observability.events.classification import (
     DETECTOR_COMPLETE,
     DETECTOR_START,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 
 logger = get_logger(__name__)

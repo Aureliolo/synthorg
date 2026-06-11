@@ -4,8 +4,8 @@ import json
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.plan_parsing import parse_plan
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 
 

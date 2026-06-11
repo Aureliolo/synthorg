@@ -2,8 +2,8 @@
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.execution.turn import BehaviorTag, TurnRecord
-from synthorg.providers.enums import FinishReason
 
 
 @pytest.mark.unit

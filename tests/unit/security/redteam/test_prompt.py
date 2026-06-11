@@ -9,11 +9,11 @@ tags must be present.
 import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     TAG_UNTRUSTED_ARTIFACT,
 )
-from synthorg.security.redteam.models import RedTeamReviewInput
 from synthorg.security.redteam.prompt import build_red_team_system_prompt
 
 

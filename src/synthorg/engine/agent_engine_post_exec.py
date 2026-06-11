@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from synthorg.budget.coordination_config import ErrorTaxonomyConfig
     from synthorg.budget.tracker import CostTracker
     from synthorg.core.clock import Clock
+    from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import ApplyRecovery
     from synthorg.engine.checkpoint.models import CheckpointConfig
     from synthorg.engine.task_engine import TaskEngine
@@ -64,7 +65,6 @@ if TYPE_CHECKING:
         CheckpointRepository,
         HeartbeatRepository,
     )
-    from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
 

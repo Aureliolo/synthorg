@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
 from synthorg.engine.plan_helpers import (
     assess_step_success,
@@ -9,7 +10,7 @@ from synthorg.engine.plan_helpers import (
     update_step_status,
 )
 from synthorg.engine.plan_models import ExecutionPlan, PlanStep, StepStatus
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionResponse, TokenUsage
 
 # ---------------------------------------------------------------------------

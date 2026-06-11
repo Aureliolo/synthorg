@@ -470,7 +470,7 @@ class TestCostRecordAnalyticsFields:
         assert self._base().success is None
 
     def test_success_true(self) -> None:
-        from synthorg.providers.enums import FinishReason
+        from synthorg.core.completion_enums import FinishReason
 
         record = CostRecord(
             agent_id="agent-1",
@@ -489,7 +489,7 @@ class TestCostRecordAnalyticsFields:
         assert record.finish_reason == FinishReason.STOP
 
     def test_analytics_fields_json_roundtrip(self) -> None:
-        from synthorg.providers.enums import FinishReason
+        from synthorg.core.completion_enums import FinishReason
 
         record = CostRecord(
             agent_id="agent-1",

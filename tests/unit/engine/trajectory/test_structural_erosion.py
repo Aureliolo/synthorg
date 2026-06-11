@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.trajectory.structural_erosion import (
     compute_cyclomatic_complexity_delta,
     compute_structural_erosion_score,
@@ -9,7 +10,6 @@ from synthorg.engine.trajectory.structural_erosion import (
     detect_duplicated_blocks,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason
 
 
 def _make_turn(

@@ -27,7 +27,7 @@ from .cost_recording import (
     resolve_currency,
 )
 from .drivers import LiteLLMDriver
-from .enums import FinishReason, MessageRole, StreamEventType
+from .enums import MessageRole, StreamEventType
 from .errors import (
     AuthenticationError,
     ContentFilterError,
@@ -118,7 +118,6 @@ __all__ = [
     "DriverFactoryNotFoundError",
     "DriverNotRegisteredError",
     "FastestStrategy",
-    "FinishReason",
     "InvalidRequestError",
     "LiteLLMDriver",
     "ManualStrategy",

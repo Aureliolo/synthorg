@@ -7,6 +7,7 @@ from uuid import UUID
 import pytest
 from pydantic import JsonValue
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import (
     Complexity,
@@ -28,7 +29,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionPlan,
 )
 from synthorg.engine.errors import DecompositionError
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,

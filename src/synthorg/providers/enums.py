@@ -44,16 +44,6 @@ class ImageDetail(StrEnum):
     HIGH = "high"
 
 
-class FinishReason(StrEnum):
-    """Reason the model stopped generating tokens."""
-
-    STOP = "stop"
-    MAX_TOKENS = "max_tokens"
-    TOOL_USE = "tool_use"
-    CONTENT_FILTER = "content_filter"
-    ERROR = "error"
-
-
 class StreamEventType(StrEnum):
     """Discriminator for streaming response chunks."""
 

@@ -4,6 +4,7 @@ from typing import cast
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.semantic_llm_prompt import (
     build_review_message,
@@ -11,7 +12,7 @@ from synthorg.engine.workspace.semantic_llm_prompt import (
     build_system_message,
     parse_tool_call_response,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,

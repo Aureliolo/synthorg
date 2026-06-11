@@ -18,7 +18,7 @@ from synthorg.engine.prompt_safety import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.security.redteam.models import RedTeamReviewInput
+    from synthorg.core.redteam_review_input import RedTeamReviewInput
 
 _BASE_PROMPT: Final[str] = """\
 You are a built-in adversarial red-team skeptic for this organisation.

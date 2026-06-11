@@ -18,6 +18,7 @@ import pytest
 import structlog.testing
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.observability.events.red_team import (
     RED_TEAM_AGENT_FAILED,
     RED_TEAM_AGENT_INVOKED,
@@ -35,7 +36,6 @@ from synthorg.security.redteam.models import (
     RedTeamAttackSurface,
     RedTeamFinding,
     RedTeamReport,
-    RedTeamReviewInput,
     RedTeamSeverity,
     RedTeamVerdict,
 )

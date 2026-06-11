@@ -8,7 +8,8 @@ import pytest
 from pydantic import JsonValue
 
 from synthorg.approval.enums import ApprovalRiskLevel
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.core.completion_enums import FinishReason
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,

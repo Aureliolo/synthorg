@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.context import AgentContext
@@ -16,7 +17,7 @@ from synthorg.engine.loop_protocol import (
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, TokenUsage
 from tests._shared import as_uuid
 

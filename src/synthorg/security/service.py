@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.autonomy import (
     AUTONOMY_ACTION_AUTO_APPROVED,
@@ -33,7 +34,6 @@ from synthorg.observability.events.security import (
     SECURITY_VERDICT_ESCALATE,
 )
 from synthorg.security.audit import AuditLog
-from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.security.config import (
     LlmFallbackErrorPolicy,
     SecurityConfig,

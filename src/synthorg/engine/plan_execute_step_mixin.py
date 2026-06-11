@@ -7,6 +7,7 @@ top-level loop file stays under the project's size limit.
 
 import copy
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.checkpoint.callback import CheckpointCallback
@@ -47,7 +48,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_TURN_COMPLETE,
     EXECUTION_PLAN_STEP_TRUNCATED,
 )
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     CompletionConfig,
     CompletionResponse,

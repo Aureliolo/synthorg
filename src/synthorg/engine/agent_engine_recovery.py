@@ -41,6 +41,7 @@ from synthorg.providers.protocol import CompletionProvider
 if TYPE_CHECKING:
     from synthorg.budget.enforcer import BudgetEnforcer
     from synthorg.budget.tracker import CostTracker
+    from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import (
         MakeLoopWithCallback,
         MakeToolInvoker,
@@ -54,7 +55,6 @@ if TYPE_CHECKING:
         HeartbeatRepository,
     )
     from synthorg.persistence.project_protocol import ProjectRepository
-    from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
 

@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult
@@ -27,7 +28,6 @@ from synthorg.observability.events.chief_of_staff import (
     COS_ACT_PARKED,
     COS_ACT_REQUESTED,
 )
-from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.security.autonomy.resolver import AutonomyResolver
 
 logger = get_logger(__name__)

@@ -20,6 +20,7 @@ from synthorg.core.agent import (
     ModelConfig,
     PersonalityConfig,
 )
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
@@ -29,7 +30,7 @@ from synthorg.observability.events.meeting import (
     MEETING_AGENT_CALLED,
     MEETING_AGENT_RESPONDED,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.registry import ProviderRegistry
 

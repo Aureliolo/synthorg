@@ -6,6 +6,7 @@ from typing import cast
 import pytest
 from pydantic import JsonValue
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.quality.graders._llm_parser import _parse_unit_interval
 from synthorg.engine.quality.graders.llm import LLMRubricGrader
 from synthorg.engine.quality.verification import (
@@ -16,7 +17,6 @@ from synthorg.engine.quality.verification import (
     VerificationVerdict,
 )
 from synthorg.engine.workflow.handoff import HandoffArtifact
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from tests.unit.engine.quality.scripted_provider import (
     ScriptedProvider,
@@ -439,7 +439,7 @@ class TestLLMRubricGraderInvalidGrades:
 
     async def test_multiple_tool_calls_returns_refer(self) -> None:
         """Two matching tool calls in one response must fail closed."""
-        from synthorg.providers.enums import FinishReason
+        from synthorg.core.completion_enums import FinishReason
         from synthorg.providers.models import (
             CompletionResponse,
             TokenUsage,
@@ -478,7 +478,7 @@ class TestLLMRubricGraderInvalidGrades:
 
     async def test_unexpected_tool_call_returns_refer(self) -> None:
         """Unrelated tool call in the response must fail closed."""
-        from synthorg.providers.enums import FinishReason
+        from synthorg.core.completion_enums import FinishReason
         from synthorg.providers.models import (
             CompletionResponse,
             TokenUsage,

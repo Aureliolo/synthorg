@@ -16,6 +16,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig, ToolPermissions
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult, ExecutedToolCall
@@ -27,7 +28,6 @@ from synthorg.meta.chief_of_staff.actor import (
     ConversationalActor,
 )
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
-from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.security.autonomy.resolver import AutonomyResolver
 from tests._shared import mock_of
 

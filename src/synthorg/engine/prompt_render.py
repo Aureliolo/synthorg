@@ -39,7 +39,7 @@ from synthorg.providers.models import ToolDefinition
 
 if TYPE_CHECKING:
     from synthorg.core.company import Company
-    from synthorg.security.autonomy.models import EffectiveAutonomy
+    from synthorg.core.effective_autonomy import EffectiveAutonomy
 
 
 def build_template_context(  # noqa: PLR0913

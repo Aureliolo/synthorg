@@ -44,11 +44,11 @@ from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
+    from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import ApplyRecovery
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
-    from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
 

@@ -308,10 +308,10 @@ class TestAutoWireMeetings:
             ModelConfig,
             PersonalityConfig,
         )
+        from synthorg.core.completion_enums import FinishReason
         from synthorg.core.types import NotBlankStr
         from synthorg.hr.enums import AgentStatus
         from synthorg.hr.seniority import SeniorityLevel
-        from synthorg.providers.enums import FinishReason
         from synthorg.providers.models import CompletionResponse, TokenUsage
 
         identity = AgentIdentity(

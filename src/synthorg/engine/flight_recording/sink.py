@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Final, Protocol, runtime_checkable
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.loop_protocol import (
@@ -27,7 +28,7 @@ from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
     FlightRecorderFrameRepository,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 
 logger = get_logger(__name__)

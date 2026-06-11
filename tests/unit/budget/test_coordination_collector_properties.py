@@ -14,8 +14,8 @@ from synthorg.budget.coordination_collector import (
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_metric_models import CoordinationMetrics
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.loop_protocol import ExecutionResult
-from synthorg.providers.enums import FinishReason
 
 # ---------------------------------------------------------------------------
 # Helpers (duplicated here to avoid test-file dependencies)

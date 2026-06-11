@@ -10,6 +10,7 @@ from synthorg.client.models import (
     RequestStatus,
     TaskRequirement,
 )
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.intake import (
     AgentIntake,
     DirectIntake,
@@ -19,7 +20,7 @@ from synthorg.engine.intake import (
     TaskCreator,
 )
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

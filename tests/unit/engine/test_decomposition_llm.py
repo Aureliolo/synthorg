@@ -6,6 +6,7 @@ from typing import cast
 import pytest
 from pydantic import JsonValue
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import (
     CoordinationTopology,
@@ -23,7 +24,6 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.errors import DecompositionDepthError, DecompositionError
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,

@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
@@ -24,7 +25,7 @@ from synthorg.execution.turn import TurnRecord
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameFilterSpec,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 from tests._shared import mock_of
 from tests.unit.api.fakes import FakeFlightRecorderFrameRepository

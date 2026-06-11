@@ -10,8 +10,8 @@ from synthorg.budget.call_analytics_config import CallAnalyticsConfig, RetryAler
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.category_analytics import OrchestrationRatio
 from synthorg.budget.cost_record import CostRecord
+from synthorg.core.completion_enums import FinishReason
 from synthorg.notifications.dispatcher import NotificationDispatcher
-from synthorg.providers.enums import FinishReason
 
 
 def _record(  # noqa: PLR0913

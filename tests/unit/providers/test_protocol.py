@@ -9,10 +9,11 @@ import pytest
 from typeguard import suppress_type_checks
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.completion_enums import FinishReason
 from synthorg.providers._cost import compute_token_cost
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import FinishReason, MessageRole, StreamEventType
+from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.errors import InvalidRequestError, RateLimitError
 from synthorg.providers.models import (
     ChatMessage,

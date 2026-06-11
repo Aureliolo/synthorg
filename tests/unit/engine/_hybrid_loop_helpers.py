@@ -8,9 +8,10 @@ from typing import override
 
 from pydantic import JsonValue
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
 from synthorg.engine.plan_models import ExecutionPlan, PlanStep
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionResponse,

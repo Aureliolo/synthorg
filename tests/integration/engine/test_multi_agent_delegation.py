@@ -27,6 +27,7 @@ from synthorg.communication.loop_prevention.guard import DelegationGuard
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.company import Company, CompanyConfig
 from synthorg.core.company_departments import Department, Team
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, TaskStatus, TaskStructure, TaskType
@@ -60,7 +61,6 @@ from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

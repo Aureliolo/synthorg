@@ -15,10 +15,10 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
+    from synthorg.core.redteam_review_input import RedTeamReviewInput
     from synthorg.security.redteam.models import (
         RedTeamGateResult,
         RedTeamReport,
-        RedTeamReviewInput,
     )
 
 

@@ -12,7 +12,6 @@ from synthorg.security.autonomy.models import (
     AutonomyConfig,
     AutonomyOverride,
     AutonomyPreset,
-    EffectiveAutonomy,
 )
 from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
 
@@ -22,5 +21,4 @@ __all__ = [
     "AutonomyConfig",
     "AutonomyOverride",
     "AutonomyPreset",
-    "EffectiveAutonomy",
 ]

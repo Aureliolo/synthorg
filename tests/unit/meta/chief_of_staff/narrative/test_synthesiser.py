@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
@@ -16,7 +17,6 @@ from synthorg.meta.chief_of_staff.narrative.models import (
     RunMetric,
 )
 from synthorg.meta.chief_of_staff.narrative.synthesiser import NarrativeSynthesiser
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import mock_of

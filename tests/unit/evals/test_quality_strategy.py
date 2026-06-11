@@ -18,7 +18,7 @@ from evals.runner.deliverables import (
 )
 from evals.runner.profiles import BenchmarkStrategyProfile
 from evals.runner.strategies import QualityVaryingStrategy
-from synthorg.providers.enums import FinishReason
+from synthorg.core.completion_enums import FinishReason
 
 pytestmark = pytest.mark.unit
 

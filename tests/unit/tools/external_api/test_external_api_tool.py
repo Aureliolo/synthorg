@@ -10,6 +10,7 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     AuthMethod,
@@ -20,7 +21,6 @@ from synthorg.integrations.errors import (
     ConnectionRateLimitError,
     SecretRetrievalError,
 )
-from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.tools.external_api.errors import ExternalApiResponseError
 from synthorg.tools.external_api.external_api_tool import ExternalApiTool
 from synthorg.tools.external_api.provider import (

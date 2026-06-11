@@ -8,6 +8,7 @@ from typing import Never, override
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.shutdown import (
@@ -15,7 +16,6 @@ from synthorg.engine.shutdown import (
     ShutdownManager,
 )
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
