@@ -64,8 +64,8 @@ def test_success_forwards_stdout_and_stderr() -> None:
     result = _run("printf 'OUT\\n'; printf 'WARN\\n' >&2; exit 0")
     assert result.returncode == 0, result.stderr
     assert "OUT" in result.stdout
-    # The round-1 fix: a diagnostic the wrapped command wrote on the success
-    # path must reach the caller's stderr, not be swallowed.
+    # A diagnostic the wrapped command wrote on the success path must reach
+    # the caller's stderr, not be swallowed.
     assert "WARN" in result.stderr
 
 
