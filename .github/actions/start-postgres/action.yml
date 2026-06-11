@@ -13,6 +13,15 @@ description: |
   retry pattern already used in codspeed.yml, lighthouse.yml, and
   docker.yml.
 
+  Retries alone cannot outlast a multi-minute Docker Hub outage, so each
+  attempt also falls back to Google's public Docker Hub mirror
+  (``mirror.gcr.io``) -- a no-auth, no-rate-limit pull-through cache that
+  stays reachable when registry-1.docker.io is down. The fallback ref
+  pins the SAME digest, so the resolved image is byte-identical to the
+  Docker Hub one (the digest pin, and thus the supply-chain guarantee, is
+  preserved). Whichever registry serves the pull is re-tagged to a fixed
+  local tag so the run step is decoupled from the registry it came from.
+
   The container exposes 5432 on localhost with the same user / password /
   database and readiness contract the former ``services: postgres`` block
   provided, so the persistence conftest fixtures (which key off the
@@ -43,28 +52,73 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Pull postgres image (retry transient Docker Hub blips)
+    - name: Pull postgres image (Docker Hub, mirror.gcr.io fallback, retries)
       shell: bash
       env:
         PG_IMAGE: ${{ inputs.image }}
+        PG_LOCAL: synthorg-postgres-ci:18-alpine
       run: |
         set -euo pipefail
+        # mirror.gcr.io is a pull-through cache for Docker Hub, so the mirror
+        # ref mirrors the Docker Hub repository path. Derive that path (plus the
+        # digest / tag) from the input rather than assuming a digest-pinned
+        # ``library/postgres`` ref, so a tag-only or non-official override still
+        # yields a valid reference. When the input carries a digest the pin is
+        # preserved (byte-identical image); a tag-only input falls back to the
+        # tag, the best guarantee available without a digest.
+        ref="${PG_IMAGE}"
+        digest=""
+        if [[ "${ref}" == *"@"* ]]; then
+          digest="${ref##*@}"
+          ref="${ref%@*}"
+        fi
+        # Strip an explicit registry host (a first path segment that looks like
+        # a hostname) so the remainder is the Docker Hub repository path.
+        if [[ "${ref}" == *"/"* ]]; then
+          host="${ref%%/*}"
+          case "${host}" in
+            *.* | *:* | localhost) ref="${ref#*/}" ;;
+          esac
+        fi
+        tag=""
+        if [[ "${ref}" == *":"* ]]; then
+          tag="${ref##*:}"
+          ref="${ref%:*}"
+        fi
+        # Official images live under ``library/`` on Docker Hub and its mirror.
+        if [[ "${ref}" != *"/"* ]]; then
+          ref="library/${ref}"
+        fi
+        if [[ -n "${digest}" ]]; then
+          mirror_ref="mirror.gcr.io/${ref}@${digest}"
+        else
+          mirror_ref="mirror.gcr.io/${ref}:${tag:-latest}"
+        fi
+        # Re-tag whichever registry served the pull to a fixed local tag so
+        # the run step never re-resolves a registry-qualified reference.
         for attempt in 1 2 3 4 5; do
           if docker pull "${PG_IMAGE}"; then
+            docker tag "${PG_IMAGE}" "${PG_LOCAL}"
+            exit 0
+          fi
+          echo "::warning::Docker Hub pull failed (attempt ${attempt}/5); trying mirror.gcr.io"
+          if docker pull "${mirror_ref}"; then
+            docker tag "${mirror_ref}" "${PG_LOCAL}"
+            echo "::notice::pulled postgres from mirror.gcr.io fallback"
             exit 0
           fi
           if [ "${attempt}" -eq 5 ]; then
-            echo "::error::docker pull ${PG_IMAGE} failed after 5 attempts"
+            echo "::error::postgres pull failed from Docker Hub and mirror.gcr.io after 5 attempts"
             exit 1
           fi
           backoff=$((10 * (2 ** (attempt - 1))))
-          echo "::warning::docker pull failed (attempt ${attempt}/5); retrying in ${backoff}s"
+          echo "::warning::both registries failed (attempt ${attempt}/5); retrying in ${backoff}s"
           sleep "${backoff}"
         done
     - name: Start postgres container
       shell: bash
       env:
-        PG_IMAGE: ${{ inputs.image }}
+        PG_LOCAL: synthorg-postgres-ci:18-alpine
         PG_USER: ${{ inputs.user }}
         PG_PASSWORD: ${{ inputs.password }}
         PG_DB: ${{ inputs.db }}
@@ -80,7 +134,7 @@ runs:
           --health-interval 5s \
           --health-timeout 5s \
           --health-retries 10 \
-          "${PG_IMAGE}"
+          "${PG_LOCAL}"
     - name: Wait for postgres readiness
       shell: bash
       env:
