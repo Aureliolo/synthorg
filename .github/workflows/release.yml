@@ -146,8 +146,21 @@ jobs:
           PR_NUMBER: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
         run: |
           set -euo pipefail
+          # Highlights generation is best-effort. A transient-exhaustion
+          # (EX_TEMPFAIL, exit 75) on the body read must NOT abort the
+          # release-please workflow -- skip Highlights and let the required
+          # status posting proceed. Any other non-zero is a real failure.
+          rc=0
           BODY=$(.github/scripts/gh_with_retry.sh "release PR body read" \
-            gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
+            gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body') || rc=$?
+          if [ "$rc" -eq 75 ]; then
+            echo "::warning::release PR body read deferred (transient GitHub API failure); skipping best-effort Highlights generation."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::release PR body read failed (exit ${rc})"
+            exit "$rc"
+          fi
 
           # Skip if the PR body opts out.
           if printf '%s' "$BODY" | grep -qiE '^[[:space:]]*no-highlights:'; then

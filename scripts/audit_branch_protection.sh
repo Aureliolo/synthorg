@@ -124,7 +124,20 @@ LIVE_TMP=$(mktemp)
 trap 'rm -f "$LIVE_TMP" "$SPEC_TMP"' EXIT
 SPEC_TMP=$(mktemp)
 
-IDS=$("$GH_RETRY" "rulesets list" gh api "repos/${REPO}/rulesets" --paginate --jq '.[].id')
+# A transient-exhaustion (EX_TEMPFAIL, exit 75) from the read-only retry
+# helper must DEFER this audit, not redden CI -- the live state is simply
+# unreadable this run and self-heals on the next push/dispatch. Real failures
+# (any other non-zero) still abort. ``|| rc=$?`` keeps ``set -e`` from aborting
+# before the 75 branch can run.
+rc=0
+IDS=$("$GH_RETRY" "rulesets list" gh api "repos/${REPO}/rulesets" --paginate --jq '.[].id') || rc=$?
+if [ "$rc" -eq 75 ]; then
+  echo "::warning::branch-protection audit deferred: transient GitHub API failure listing rulesets (EX_TEMPFAIL); will re-audit on the next push or manual dispatch." >&2
+  exit 0
+elif [ "$rc" -ne 0 ]; then
+  echo "error: failed to list rulesets (exit ${rc})" >&2
+  exit "$rc"
+fi
 
 # Fetch each ruleset into its own temp file so a partial failure never
 # produces a half-written JSON that the NORMALISE_FILTER would happily
@@ -139,7 +152,15 @@ trap 'rm -f "$LIVE_TMP" "$SPEC_TMP"; rm -rf "$RULESETS_DIR"' EXIT
 FAILED_IDS=()
 while read -r id; do
   [ -z "$id" ] && continue
-  if ! "$GH_RETRY" "ruleset ${id}" gh api "repos/${REPO}/rulesets/${id}" > "${RULESETS_DIR}/${id}.json" 2>"${RULESETS_DIR}/${id}.err"; then
+  # As with the list call above, an EX_TEMPFAIL (exit 75) on a per-ruleset read
+  # defers the whole audit rather than treating an unreadable snapshot as drift;
+  # any other non-zero is a genuine fetch failure that aborts via FAILED_IDS.
+  rc=0
+  "$GH_RETRY" "ruleset ${id}" gh api "repos/${REPO}/rulesets/${id}" > "${RULESETS_DIR}/${id}.json" 2>"${RULESETS_DIR}/${id}.err" || rc=$?
+  if [ "$rc" -eq 75 ]; then
+    echo "::warning::branch-protection audit deferred: transient GitHub API failure reading ruleset ${id} (EX_TEMPFAIL); will re-audit on the next push or manual dispatch." >&2
+    exit 0
+  elif [ "$rc" -ne 0 ]; then
     FAILED_IDS+=("$id")
   fi
 done <<< "$IDS"

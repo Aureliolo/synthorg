@@ -266,13 +266,23 @@ jobs:
           # deleted" alarm. The helper fail-fasts on a real 404 (the tag
           # genuinely vanished), which is exactly the #1818 signal we want
           # the guard to catch; it only retries transient classes.
-          if ! .github/scripts/gh_with_retry.sh "minted-tag survival check" \
-               gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$DEV_TAG" \
-               >/dev/null 2>&1; then
+          #
+          # Branch on the helper's exit code rather than treating any non-zero
+          # as a deletion: a transient-exhaustion (EX_TEMPFAIL, exit 75) means
+          # we could not CONFIRM survival, not that the tag is gone, so it must
+          # not page. Stdout (the ref JSON) is discarded, but stderr is left
+          # visible so the helper's warning/error context reaches the log.
+          rc=0
+          .github/scripts/gh_with_retry.sh "minted-tag survival check" \
+            gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$DEV_TAG" >/dev/null || rc=$?
+          if [ "$rc" -eq 75 ]; then
+            echo "::warning::Could not confirm tag $DEV_TAG survival -- transient GitHub API failure (EX_TEMPFAIL), not a deletion. Skipping the guard for this run."
+          elif [ "$rc" -ne 0 ]; then
             echo "::error::Tag $DEV_TAG was deleted during this run -- downstream Docker/CLI workflows are about to 404 on actions/checkout. Investigate dev-release.yml."
             exit 1
+          else
+            echo "Tag $DEV_TAG present at end-of-run."
           fi
-          echo "Tag $DEV_TAG present at end-of-run."
 
   report-failure:
     name: Open / update tracking issue on dev-release failure
