@@ -10,6 +10,7 @@ import pytest
 from structlog.testing import capture_logs
 
 from synthorg.config.provider_schema import ProviderConfig
+from synthorg.core.completion_enums import FinishReason
 from synthorg.observability.events.provider import (
     PROVIDER_SCRIPTED_DRIVER_INSTANTIATED,
 )
@@ -21,7 +22,7 @@ from synthorg.providers.drivers.scripted import (
     SequencedResponseStrategy,
     SingleResponseStrategy,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry

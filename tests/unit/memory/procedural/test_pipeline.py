@@ -9,6 +9,7 @@ import pytest
 import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
@@ -41,7 +42,6 @@ from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_STORE_FAILED,
     PROCEDURAL_MEMORY_STORED,
 )
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import TokenUsage
 from tests._shared import coerce_id, sid
 

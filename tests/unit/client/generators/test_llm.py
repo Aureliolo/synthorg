@@ -9,7 +9,7 @@ from typeguard import suppress_type_checks
 from synthorg.client.generators import LLMGenerator
 from synthorg.client.models import GenerationContext
 from synthorg.client.protocols import RequirementGenerator
-from synthorg.providers.enums import FinishReason
+from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

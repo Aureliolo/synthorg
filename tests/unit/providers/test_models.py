@@ -5,7 +5,8 @@ from typing import cast
 import pytest
 from pydantic import ValidationError
 
-from synthorg.providers.enums import FinishReason, MessageRole, StreamEventType
+from synthorg.core.completion_enums import FinishReason
+from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

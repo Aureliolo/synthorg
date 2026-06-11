@@ -7,6 +7,7 @@ import pytest
 
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.agent_engine import AgentEngine
@@ -20,7 +21,7 @@ from synthorg.engine.recovery import (
     RecoveryResult,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 
 if TYPE_CHECKING:

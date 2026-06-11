@@ -18,6 +18,7 @@ from synthorg.budget.coordination_config import (
     ErrorTaxonomyConfig,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.classification.models import ErrorSeverity
@@ -34,7 +35,7 @@ from synthorg.engine.loop_protocol import (
 from synthorg.execution.turn import TurnRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.notifications.models import Notification
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionResponse,

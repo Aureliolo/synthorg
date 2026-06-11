@@ -12,6 +12,7 @@ from synthorg.budget.coordination_config import (
     ErrorCategory,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.classification.budget_tracker import (
     ClassificationBudgetTracker,
 )
@@ -33,7 +34,7 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
 )
 from synthorg.providers.base import BaseCompletionProvider
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionResponse,

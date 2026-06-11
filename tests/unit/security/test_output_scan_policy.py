@@ -3,8 +3,8 @@
 import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.security.autonomy.enums import ToolCategory
-from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.security.models import OutputScanResult, ScanOutcome, SecurityContext
 from synthorg.security.output_scan_policy import (
     _DEFAULT_AUTONOMY_POLICY_MAP,

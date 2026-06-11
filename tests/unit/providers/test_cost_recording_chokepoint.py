@@ -20,6 +20,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
@@ -28,7 +29,7 @@ from synthorg.providers.cost_recording import (
     current_cost_context,
     resolve_currency,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

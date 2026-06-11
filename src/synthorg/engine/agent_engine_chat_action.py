@@ -38,10 +38,10 @@ from synthorg.providers.models import ChatMessage
 
 if TYPE_CHECKING:
     from synthorg.core.clock import Clock
+    from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import MakeToolInvoker
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.providers.protocol import CompletionProvider
-    from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
 

@@ -7,6 +7,7 @@ import pytest
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.cost_recording import (
     record_execution_costs,
     resolve_tracker_currency,
@@ -16,7 +17,6 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:
     from synthorg.budget.cost_record import CostRecord
@@ -237,7 +237,7 @@ class TestAnalyticsFieldPropagation:
         retry_count: int | None = None,
         retry_reason: str | None = None,
     ) -> TurnRecord:
-        from synthorg.providers.enums import FinishReason
+        from synthorg.core.completion_enums import FinishReason
 
         return TurnRecord(
             turn_number=1,
@@ -301,7 +301,7 @@ class TestAnalyticsFieldPropagation:
         assert tracker.records[0].retry_reason == "RateLimitError"
 
     async def test_finish_reason_and_success_propagated(self) -> None:
-        from synthorg.providers.enums import FinishReason
+        from synthorg.core.completion_enums import FinishReason
 
         turn = TurnRecord(
             turn_number=1,

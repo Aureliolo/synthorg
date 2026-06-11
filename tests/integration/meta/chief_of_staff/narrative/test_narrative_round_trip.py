@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project import Project
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.task import Task
@@ -77,7 +78,6 @@ from synthorg.project_brain.models import (
     DecisionPayload,
 )
 from synthorg.project_brain.service import ProjectBrainService
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.workers.execution_service import WorkerExecutionService

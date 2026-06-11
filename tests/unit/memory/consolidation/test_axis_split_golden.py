@@ -17,6 +17,7 @@ from typing import override
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
@@ -39,7 +40,6 @@ from synthorg.memory.models import (
     MemoryQuery,
     MemoryStoreRequest,
 )
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 
 pytestmark = pytest.mark.unit

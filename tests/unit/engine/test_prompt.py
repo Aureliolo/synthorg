@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.prompt import (
     SystemPrompt,
@@ -38,7 +39,6 @@ from synthorg.observability.events.prompt import (
     PROMPT_BUILD_TOKEN_TRIMMED,
 )
 from synthorg.providers.models import ChatMessage
-from synthorg.security.autonomy.models import EffectiveAutonomy
 from tests._shared import as_uuid
 
 if TYPE_CHECKING:

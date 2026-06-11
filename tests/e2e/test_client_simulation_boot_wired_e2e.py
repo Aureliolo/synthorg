@@ -33,10 +33,10 @@ from synthorg.client.protocols import ClientInterface
 from synthorg.client.runner import SimulationRunner
 from synthorg.client.runtime_builder import build_client_simulation_runtime
 from synthorg.config.schema import RootConfig
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.intake.strategies import AgentIntake, DirectIntake
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.providers.drivers.scripted import ScriptedDriver, SingleResponseStrategy
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.registry import ProviderRegistry
 from tests._shared import LoopAsyncClient, make_app_state

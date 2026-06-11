@@ -5,12 +5,12 @@ from typing import cast
 import pytest
 from pydantic import JsonValue
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import AcceptanceCriterion
 from synthorg.engine.quality.decomposers.llm import (
     LLMCriteriaDecomposer,
     LLMDecompositionError,
 )
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from tests.unit.engine.quality.scripted_provider import (
     ScriptedProvider,

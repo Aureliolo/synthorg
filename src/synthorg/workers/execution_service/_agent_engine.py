@@ -47,6 +47,7 @@ from synthorg.workers.environment_runner import SandboxEnvironmentRunner
 from synthorg.workers.execution_resume import ResumeDispatchMixin
 
 if TYPE_CHECKING:
+    from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine.agent_engine import AgentEngine
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.workspace.environment.service import EnvironmentService
@@ -54,7 +55,6 @@ if TYPE_CHECKING:
         ProjectWorkspaceService,
     )
     from synthorg.hr.registry import AgentRegistryService
-    from synthorg.security.autonomy.models import EffectiveAutonomy
     from synthorg.security.autonomy.resolver import AutonomyResolver
 
 logger = get_logger(__name__)

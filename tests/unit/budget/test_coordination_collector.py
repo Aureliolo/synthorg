@@ -21,13 +21,13 @@ from synthorg.budget.coordination_metric_models import CoordinationMetrics
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason
 from tests._shared import FakeClock
 
 # ---------------------------------------------------------------------------

@@ -22,9 +22,10 @@ from unittest.mock import patch
 import pytest
 
 import synthorg.providers.base as _base
+from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderInternalError
 from synthorg.providers.models import (
     ChatMessage,

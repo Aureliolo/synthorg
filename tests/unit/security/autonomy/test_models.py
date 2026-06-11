@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.security.autonomy.enums import DowngradeReason
 from synthorg.security.autonomy.models import (
     BUILTIN_PRESETS,
@@ -14,7 +15,6 @@ from synthorg.security.autonomy.models import (
     AutonomyPreset,
     AutonomyUpdate,
     AutonomyUpdateResult,
-    EffectiveAutonomy,
 )
 
 

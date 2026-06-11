@@ -14,11 +14,11 @@ from typing import TYPE_CHECKING
 import pytest
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_protocol import TerminationReason
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse
 
 from ._hybrid_loop_helpers import (

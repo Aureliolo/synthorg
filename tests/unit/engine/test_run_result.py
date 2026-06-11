@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.context import AgentContext
@@ -20,7 +21,7 @@ from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.execution.turn import TurnRecord
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, TokenUsage, ToolCall
 from tests._shared import as_uuid
 

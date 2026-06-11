@@ -34,11 +34,11 @@ from synthorg.tools.sandbox.active_environment import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine.agent_engine import AgentEngine
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,
     )
-    from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
 

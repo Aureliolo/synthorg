@@ -13,6 +13,7 @@ from synthorg.core.agent import (
     PersonalityConfig,
     SkillSet,
 )
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.role import Authority
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
@@ -23,7 +24,6 @@ from synthorg.engine.trajectory.models import CandidateResult
 from synthorg.engine.trajectory.scorer import TrajectoryScorer
 from synthorg.execution.turn import TurnRecord
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.providers.enums import FinishReason
 
 
 def _make_context() -> AgentContext:

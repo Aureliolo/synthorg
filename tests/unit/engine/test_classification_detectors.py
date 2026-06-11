@@ -3,6 +3,7 @@
 import pytest
 
 from synthorg.budget.coordination_config import ErrorCategory
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.classification.detectors import (
     detect_context_omissions,
     detect_coordination_failures,
@@ -11,7 +12,7 @@ from synthorg.engine.classification.detectors import (
 )
 from synthorg.engine.classification.models import ErrorSeverity
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, ToolResult
 
 

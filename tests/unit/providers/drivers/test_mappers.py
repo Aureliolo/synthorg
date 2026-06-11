@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.drivers.mappers import (
     extract_retry_after,
     extract_tool_calls,
@@ -9,7 +10,7 @@ from synthorg.providers.drivers.mappers import (
     messages_to_dicts,
     tools_to_dicts,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     ToolCall,

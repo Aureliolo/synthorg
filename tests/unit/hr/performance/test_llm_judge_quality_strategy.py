@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.llm_judge_quality_strategy import (
     LlmJudgeQualityStrategy,
 )
 from synthorg.providers.base import BaseCompletionProvider
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 

@@ -41,7 +41,7 @@ from synthorg.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
     from synthorg.config.schema import ProviderConfig
-    from synthorg.security.autonomy.models import EffectiveAutonomy
+    from synthorg.core.effective_autonomy import EffectiveAutonomy
 
 logger = get_logger(__name__)
 

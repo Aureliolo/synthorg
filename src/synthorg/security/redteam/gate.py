@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Final
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_AGENT_FAILED,
@@ -52,7 +53,6 @@ from synthorg.security.redteam.models import (
     RedTeamGateResult,
     RedTeamReport,
     RedTeamReportRecord,
-    RedTeamReviewInput,
     RedTeamSeverity,
     RedTeamVerdict,
 )

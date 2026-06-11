@@ -8,6 +8,7 @@ check for LLM errors -> update context -> handle completion or
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
@@ -18,7 +19,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURN_COMPLETE,
 )
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     CompletionConfig,
     CompletionResponse,

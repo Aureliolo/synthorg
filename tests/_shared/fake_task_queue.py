@@ -136,6 +136,14 @@ class FakeJetStreamTaskQueue:
         """Flip ``is_running`` to ``False`` (dispatcher gating tests)."""
         self._running = False
 
+    async def start(self) -> None:
+        """Mark the queue running; the in-memory double needs no connect."""
+        self._running = True
+
+    async def stop(self) -> None:
+        """Mark the queue stopped, mirroring the real lifecycle surface."""
+        self._running = False
+
     async def publish_claim(self, claim: TaskClaim) -> None:
         """Enqueue a fresh claim for first delivery."""
         self._enqueue(claim)

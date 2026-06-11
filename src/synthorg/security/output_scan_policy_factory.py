@@ -1,11 +1,11 @@
 """Factory for creating output scan policy instances from configuration."""
 
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_CONFIG_LOADED,
     SECURITY_INTERCEPTOR_ERROR,
 )
-from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.security.config import OutputScanPolicyType
 from synthorg.security.output_scan_policy import (
     AutonomyTieredPolicy,

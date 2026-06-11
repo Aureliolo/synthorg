@@ -11,6 +11,7 @@ import structlog.testing
 from synthorg.budget.coordination_config import ErrorTaxonomyConfig
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.agent_engine import AgentEngine
@@ -32,7 +33,6 @@ from synthorg.observability.correlation import (
     clear_correlation_ids,
 )
 from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
-from synthorg.providers.enums import FinishReason
 from tests._shared import JsonDict, as_uuid, mock_of
 
 if TYPE_CHECKING:

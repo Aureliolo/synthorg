@@ -29,6 +29,7 @@ import hashlib
 import json
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
 from synthorg.execution.turn import BehaviorTag, NodeType, TurnRecord
@@ -39,7 +40,7 @@ from synthorg.observability.events.execution import (
 )
 from synthorg.observability.events.tracing import SPAN_ATTRIBUTE_WRITE_FAILED
 from synthorg.observability.tracing import llm_span
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

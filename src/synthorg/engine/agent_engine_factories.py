@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from synthorg.communication.event_stream.interrupt import InterruptStore
     from synthorg.communication.event_stream.stream import EventStreamHub
     from synthorg.config.schema import ProviderConfig
+    from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine.agent_engine import BrainToolFactoryProvider
     from synthorg.engine.compaction import CompactionCallback
     from synthorg.engine.hybrid_models import HybridLoopConfig
@@ -56,7 +57,6 @@ if TYPE_CHECKING:
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.audit import AuditLog
-    from synthorg.security.autonomy.models import EffectiveAutonomy
     from synthorg.security.config import SecurityConfig
     from synthorg.security.trust.service import TrustService
     from synthorg.tools.external_api._runtime import ExternalApiRuntime

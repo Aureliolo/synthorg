@@ -5,10 +5,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 

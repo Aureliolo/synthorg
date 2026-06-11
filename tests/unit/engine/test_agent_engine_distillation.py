@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.agent_engine import AgentEngine
@@ -13,7 +14,6 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.execution.turn import TurnRecord
 from synthorg.memory.protocol import MemoryBackend
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import as_uuid
 

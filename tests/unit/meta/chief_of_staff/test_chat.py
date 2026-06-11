@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import Alert, ChatQuery
@@ -30,7 +31,6 @@ from synthorg.meta.models import (
     RollbackPlan,
     RuleSeverity,
 )
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import mock_of

@@ -20,8 +20,13 @@ ordering in `synthorg.core.task_enums`; project status and the git-backend
 / environment discriminators in `synthorg.core.project_enums`; autonomy
 level and ordering in `synthorg.core.autonomy_enums`; tool access level in
 `synthorg.core.tool_constraints`; agent memory level and category in
-`synthorg.core.memory_enums`; and artifact type in `synthorg.core.artifact`
-(all below). Every other domain enum lives with its owning package: agent
+`synthorg.core.memory_enums`; the model completion-outcome (finish reason) in
+`synthorg.core.completion_enums`; and artifact type in `synthorg.core.artifact`
+(all below). The cross-cutting value objects `EffectiveAutonomy` (resolved
+autonomy) and `RedTeamReviewInput` (red-team gate input) also live core-local,
+in `synthorg.core.effective_autonomy` and `synthorg.core.redteam_review_input`,
+so engine, security, and tools consumers reference them without dragging a heavy
+hub at import time. Every other domain enum lives with its owning package: agent
 status, the personality traits (risk tolerance, creativity, decision style,
 collaboration preference, communication verbosity, conflict approach), cost
 tier, seniority, and strategic output mode under [HR](hr.md); company type
@@ -60,6 +65,10 @@ tool category, autonomy-downgrade reason, and timeout-action type under
 
 ::: synthorg.core.memory_enums
 
+## Completion Enums
+
+::: synthorg.core.completion_enums
+
 ## Agent
 
 ::: synthorg.core.agent
@@ -93,6 +102,14 @@ tool category, autonomy-downgrade reason, and timeout-action type under
 ::: synthorg.approval.enums
 
 ::: synthorg.core.approval
+
+## Effective Autonomy
+
+::: synthorg.core.effective_autonomy
+
+## Red-Team Review Input
+
+::: synthorg.core.redteam_review_input
 
 ## Artifact
 

@@ -11,6 +11,7 @@ import structlog.testing
 from pydantic import ValidationError
 from typeguard import suppress_type_checks
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
@@ -28,7 +29,6 @@ from synthorg.memory.consolidation.distillation import (
 from synthorg.memory.errors import MemoryStoreError
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability.events.consolidation import DISTILLATION_CAPTURE_FAILED
-from synthorg.providers.enums import FinishReason
 
 
 def _make_turn(

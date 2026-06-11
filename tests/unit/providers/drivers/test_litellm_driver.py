@@ -12,9 +12,9 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
 from synthorg.providers.enums import (
-    FinishReason,
     MessageRole,
     StreamEventType,
 )

@@ -2,13 +2,13 @@
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.trajectory.pte import (
     PTEConfig,
     compute_trajectory_pte,
     prefill_token_equivalents,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason
 
 
 def _make_turn(

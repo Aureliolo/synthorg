@@ -21,7 +21,7 @@ from collections.abc import Mapping
 from typing import Final
 
 from evals.runner.profiles import BenchmarkStrategyProfile
-from synthorg.providers.enums import FinishReason
+from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

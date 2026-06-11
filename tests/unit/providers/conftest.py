@@ -6,8 +6,9 @@ from collections.abc import AsyncIterator, Mapping
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import FinishReason, MessageRole, StreamEventType
+from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

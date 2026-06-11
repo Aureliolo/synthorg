@@ -12,7 +12,7 @@ from synthorg.budget.call_analytics_config import CallAnalyticsConfig
 from synthorg.budget.call_category import OrchestrationAlertLevel
 from synthorg.budget.category_analytics import OrchestrationRatio
 from synthorg.budget.cost_record import CostRecord
-from synthorg.providers.enums import FinishReason
+from synthorg.core.completion_enums import FinishReason
 
 
 def _record(

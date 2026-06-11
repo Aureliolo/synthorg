@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from synthorg.approval.enums import ApprovalStatus
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
@@ -25,7 +26,6 @@ from synthorg.engine.task_sync import (
     transition_task_if_needed,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity

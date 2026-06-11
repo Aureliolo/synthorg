@@ -27,6 +27,7 @@ from pydantic import JsonValue
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig, ToolPermissions
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.approval_gate import ApprovalGate
@@ -34,7 +35,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ZERO_TOKEN_USAGE,
     ChatMessage,

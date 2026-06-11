@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskType
 from synthorg.memory.procedural.models import (
     FailureAnalysisPayload,
@@ -22,7 +23,6 @@ from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_PROPOSED,
     PROCEDURAL_MEMORY_SKIPPED,
 )
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.errors import (
     AuthenticationError,
     ProviderTimeoutError,

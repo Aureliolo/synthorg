@@ -2,13 +2,13 @@
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.stagnation.detector import ToolRepetitionDetector
 from synthorg.engine.stagnation.models import (
     StagnationConfig,
     StagnationVerdict,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason
 
 
 def _turn(

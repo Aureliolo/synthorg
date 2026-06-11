@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.consolidation.composite import (
     CompositeConsolidationStrategy,
@@ -17,7 +18,6 @@ from synthorg.memory.consolidation.selectors import HighestRelevanceSelector
 from synthorg.memory.consolidation.strategy import ConsolidationStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.errors import (
     AuthenticationError,
     RateLimitError,

@@ -19,11 +19,12 @@ import pytest
 from evals.loader.anchors import load_anchor_set
 from evals.run import run_benchmark_async
 from evals.scoring.judged import ScriptedJudge
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.providers.drivers.scripted import ScriptedDriver
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

@@ -9,7 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from synthorg.providers.enums import FinishReason, StreamEventType
+from synthorg.core.completion_enums import FinishReason
+from synthorg.providers.enums import StreamEventType
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

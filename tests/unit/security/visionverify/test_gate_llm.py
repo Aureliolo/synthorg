@@ -8,8 +8,8 @@ import pytest
 from PIL import Image
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     ChatMessage,
     CompletionResponse,

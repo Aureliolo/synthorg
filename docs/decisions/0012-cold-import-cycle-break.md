@@ -121,6 +121,14 @@ types -- never reached for by importing up into a heavy hub. Hub `__init__`
 files stay light (config / models / protocols) or empty; implementation is
 imported from its defining submodule.
 
+Applying this rule, the dependency-free leaves pinned in `COLD_IMPORT_LEAVES`
+now include, beyond the three original cuts: `core.completion_enums`
+(`FinishReason`, out of the `providers` hub so `budget.cost_record` no longer
+re-enters it), `core.effective_autonomy` and `core.redteam_review_input`
+(resolved-autonomy and red-team gate-input value objects out of the heavy
+`security` package), and `core.approval`. New dependency-free `core.*` /
+`execution.*` types are added to the same tuple as they appear.
+
 ### Regression guard
 
 The primary guard is a runtime cold-import smoke test,

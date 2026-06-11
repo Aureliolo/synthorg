@@ -17,14 +17,12 @@ from pydantic import (
 )
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
 from synthorg.observability import get_logger
 from synthorg.providers.models import TokenUsage
-from synthorg.security.autonomy.models import (
-    EffectiveAutonomy,
-)
 
 logger = get_logger(__name__)
 

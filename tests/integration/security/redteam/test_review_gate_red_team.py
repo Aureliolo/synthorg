@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
 from synthorg.engine.review import (
@@ -37,7 +38,6 @@ from synthorg.security.redteam.models import (
     RedTeamAttackSurface,
     RedTeamFinding,
     RedTeamReport,
-    RedTeamReviewInput,
     RedTeamSeverity,
 )
 from synthorg.security.redteam.protocol import AgentRunner

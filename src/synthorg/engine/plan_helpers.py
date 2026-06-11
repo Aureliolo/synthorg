@@ -6,6 +6,7 @@ for common plan-step operations.
 
 from typing import Final
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
 from synthorg.engine.plan_models import ExecutionPlan, StepStatus
 from synthorg.observability import get_logger
@@ -14,7 +15,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_PLAN_STEP_STATUS_UPDATED,
     EXECUTION_PLAN_SUMMARY_FALLBACK,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import CompletionResponse
 
 logger = get_logger(__name__)

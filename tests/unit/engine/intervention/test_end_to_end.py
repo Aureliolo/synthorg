@@ -12,6 +12,7 @@ drives the same mechanism under the simulation harness.
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
@@ -24,7 +25,7 @@ from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import SupersedeMode
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.react_loop import ReactLoop
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionResponse, TokenUsage
 from tests._shared.steering import FakeBrainService
 from tests.unit.api.fakes import FakeProjectBrainRepository

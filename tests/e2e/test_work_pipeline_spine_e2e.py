@@ -34,6 +34,7 @@ from synthorg.client.models import ClientRequest
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
@@ -52,7 +53,6 @@ from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.drivers.scripted import ScriptedDriver
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

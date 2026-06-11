@@ -3,6 +3,7 @@
 import pytest
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
@@ -17,7 +18,7 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 from tests.unit.api.fakes import FakeFlightRecorderFrameRepository
 

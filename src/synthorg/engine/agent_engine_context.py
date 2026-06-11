@@ -37,11 +37,11 @@ from synthorg.tools.protocol import ToolInvokerProtocol
 
 if TYPE_CHECKING:
     from synthorg.budget.enforcer import BudgetEnforcer
+    from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine.agent_engine import PersonalityTrimNotifier
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.memory.injection import MemoryInjectionStrategy
     from synthorg.persistence.project_protocol import ProjectRepository
-    from synthorg.security.autonomy.models import EffectiveAutonomy
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)

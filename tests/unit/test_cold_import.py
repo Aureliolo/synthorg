@@ -62,10 +62,23 @@ _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
 # (``meta.charter.__init__`` -> ``meta.charter.service`` ->
 # ``communication.conversation.enums`` -> ``communication.__init__``). Neither
 # can import cold on its own, and no cold leaf consumes those enums.
+# Dependency-free ``core.*`` foundation leaves whose consumers annotate against
+# them at module level: ``core.completion_enums`` (the ``FinishReason``
+# completion-outcome enum), ``core.effective_autonomy`` and
+# ``core.redteam_review_input`` (resolved-autonomy and red-team gate-input value
+# objects), and ``core.approval`` (the human-approval value object). Each imports
+# only ``core.*`` / pydantic / stdlib, so adding a heavier import to any of them
+# regresses this gate. ``budget.cost_record`` is pinned because it sources
+# ``FinishReason`` from the ``core`` leaf, so importing it does not pull the heavy
+# ``providers`` package (whose eager init imports ``budget.cost_record`` back).
 COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.providers.enums",
     "synthorg.core.agent",
     "synthorg.core.memory_enums",
+    "synthorg.core.completion_enums",
+    "synthorg.core.effective_autonomy",
+    "synthorg.core.redteam_review_input",
+    "synthorg.core.approval",
     "synthorg.persistence._shared",
     "synthorg.core.tool_constraints",
     "synthorg.config.schema",
@@ -73,6 +86,7 @@ COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.execution.efficiency",
     "synthorg.execution.view",
     "synthorg.budget.coordination_collector",
+    "synthorg.budget.cost_record",
     "synthorg.approval.enums",
     "synthorg.security.autonomy.enums",
     "synthorg.security.timeout.enums",

@@ -11,8 +11,9 @@ checker tests.
 
 import pytest
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, TAG_UNTRUSTED_ARTIFACT
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import CompletionResponse, TokenUsage, ToolCall
 from synthorg.security.redteam.grounding._llm import (
     EXTRACT_CLAIMS_TOOL_NAME,

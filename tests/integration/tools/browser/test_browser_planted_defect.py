@@ -25,12 +25,12 @@ from synthorg.core.agent import (
     ModelConfig,
     PersonalityConfig,
 )
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,

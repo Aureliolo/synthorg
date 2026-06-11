@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
@@ -12,7 +13,6 @@ from synthorg.engine.metrics import TaskCompletionMetrics
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.execution.turn import TurnRecord
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import TokenUsage
 
 

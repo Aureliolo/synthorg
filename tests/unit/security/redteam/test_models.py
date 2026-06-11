@@ -4,13 +4,13 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.security.redteam.models import (
     MAX_FINDINGS_PER_REPORT,
     RedTeamAttackSurface,
     RedTeamFinding,
     RedTeamGateResult,
     RedTeamReport,
-    RedTeamReviewInput,
     RedTeamSeverity,
     RedTeamVerdict,
     severity_rank,

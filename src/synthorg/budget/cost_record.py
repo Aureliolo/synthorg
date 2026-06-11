@@ -12,9 +12,9 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import CurrencyCode
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.ontology.decorator import ontology_entity
-from synthorg.providers.enums import FinishReason
 
 
 def _new_claim_id() -> NotBlankStr:

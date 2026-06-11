@@ -32,6 +32,7 @@ from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -54,7 +55,6 @@ from synthorg.persistence.charter_protocol import CharterFilterSpec
 from synthorg.persistence.conversation_protocol import ConversationTurnFilterSpec
 from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
 from synthorg.providers.drivers.scripted import ScriptedDriver
-from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
