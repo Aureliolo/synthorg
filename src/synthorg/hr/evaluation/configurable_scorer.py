@@ -7,7 +7,7 @@ with the shared finalize step (redistribute weights -> weighted
 average -> clamp -> confidence -> log -> ``PillarScore``).
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.constants import (
@@ -15,7 +15,13 @@ from synthorg.hr.evaluation.constants import (
     MAX_SCORE,
     NEUTRAL_SCORE,
 )
+from synthorg.hr.evaluation.enums import EvaluationPillar
+from synthorg.hr.evaluation.metric_extractor_protocol import (
+    ExtractedMetrics,
+    MetricExtractor,
+)
 from synthorg.hr.evaluation.models import (
+    EvaluationContext,
     PillarScore,
     redistribute_weights,
 )
@@ -24,16 +30,6 @@ from synthorg.observability.events.evaluation import (
     EVAL_PILLAR_INSUFFICIENT_DATA,
     EVAL_PILLAR_SCORED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.hr.evaluation.enums import EvaluationPillar
-    from synthorg.hr.evaluation.metric_extractor_protocol import (
-        ExtractedMetrics,
-        MetricExtractor,
-    )
-    from synthorg.hr.evaluation.models import EvaluationContext
 
 logger = get_logger(__name__)
 

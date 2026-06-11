@@ -8,8 +8,9 @@ as described in the Cost Controls section of the Operations design page.
 """
 
 import copy
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.budget._enforcer_helpers import (
     _apply_downgrade,
@@ -17,8 +18,10 @@ from synthorg.budget._enforcer_helpers import (
     _compute_thresholds,
 )
 from synthorg.budget.billing import billing_period_start, daily_period_start
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.currency import format_cost
 from synthorg.budget.degradation import (
+    DegradationResult,
     PreFlightResult,
     resolve_degradation,
 )
@@ -31,11 +34,19 @@ from synthorg.budget.errors import (
 from synthorg.budget.quota import (
     DegradationAction,
     DegradationConfig,
+    QuotaCheckResult,
     always_allowed_result,
 )
+from synthorg.budget.quota_tracker import QuotaTracker
+from synthorg.budget.risk_enforcer import BudgetEnforcerRiskMixin
+from synthorg.budget.risk_tracker import RiskTracker
+from synthorg.budget.tracker import CostTracker
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.loop_protocol import BudgetChecker
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import (
     get_logger,
@@ -67,26 +78,11 @@ from synthorg.observability.events.quota import (
 from synthorg.observability.events.risk_budget import (
     RISK_BUDGET_ENFORCEMENT_CHECK,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.budget.degradation import DegradationResult
-    from synthorg.budget.quota import QuotaCheckResult
-    from synthorg.budget.quota_tracker import QuotaTracker
-    from synthorg.budget.risk_tracker import RiskTracker
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.engine.loop_protocol import BudgetChecker
-    from synthorg.persistence.project_cost_aggregate_protocol import (
-        ProjectCostAggregateRepository,
-    )
-    from synthorg.providers.routing.resolver import ModelResolver
-    from synthorg.security.risk_scorer import RiskScorer
-
-from synthorg.budget.risk_enforcer import BudgetEnforcerRiskMixin
+from synthorg.persistence.project_cost_aggregate_protocol import (
+    ProjectCostAggregateRepository,
+)
+from synthorg.providers.routing.resolver import ModelResolver
+from synthorg.security.risk_scorer import RiskScorer
 
 logger = get_logger(__name__)
 _DEFAULT_TIMEOUT_SEC: Final[float] = 5.0

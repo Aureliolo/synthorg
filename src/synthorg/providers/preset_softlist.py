@@ -18,18 +18,14 @@ which fails at first call.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import litellm
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_LITELLM_CATALOG_INVALID
 from synthorg.providers.enums import AuthType
-
-if TYPE_CHECKING:
-    # presets imports preset_softlist (the soft/featured merge), so a runtime
-    # import here forms a cycle (caught by the no-circular-imports gate).
-    from synthorg.providers.presets import CloudPreset, LocalPreset
+from synthorg.providers.preset_models import CloudPreset, LocalPreset
 
 logger = get_logger(__name__)
 
@@ -209,10 +205,6 @@ def _make_soft_preset(namespace: str) -> CloudPreset:
         A soft ``CloudPreset`` (``is_featured=False``, API-key-only) for
         the given LiteLLM namespace.
     """
-    # Local import to break a circular dependency: the presets module
-    # imports this module to build _SOFT_PRESETS at load time.
-    from synthorg.providers.presets import CloudPreset  # noqa: PLC0415
-
     return CloudPreset(
         name=namespace,
         display_name=_humanise_namespace(namespace),

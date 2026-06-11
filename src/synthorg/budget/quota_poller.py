@@ -10,11 +10,13 @@ Individual poll failures are logged and do not propagate.
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING
 
 from synthorg.budget.quota import QuotaSnapshot, QuotaWindow
+from synthorg.budget.quota_poller_config import QuotaPollerConfig
+from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.quota import (
     QUOTA_ALERT_COOLDOWN_ACTIVE,
@@ -25,11 +27,6 @@ from synthorg.observability.events.quota import (
     QUOTA_POLLER_STOPPED,
     QUOTA_THRESHOLD_ALERT,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.quota_poller_config import QuotaPollerConfig
-    from synthorg.budget.quota_tracker import QuotaTracker
-    from synthorg.notifications.dispatcher import NotificationDispatcher
 
 logger = get_logger(__name__)
 

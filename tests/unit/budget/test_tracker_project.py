@@ -1,17 +1,14 @@
 """Unit tests for CostTracker project-level queries."""
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
 
 import pytest
 
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
 from synthorg.budget.tracker import CostTracker
 
 from .conftest import make_cost_record
-
-if TYPE_CHECKING:
-    from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
 
 
 def _make_project_record(  # noqa: PLR0913
@@ -158,10 +155,6 @@ class _PinningRepo:
         self._totals: dict[str, tuple[float, int, int, int]] = {}
 
     async def get(self, project_id: str) -> ProjectCostAggregate | None:
-        from synthorg.budget.project_cost_aggregate import (
-            ProjectCostAggregate,
-        )
-
         if project_id not in self.pinned:
             return None
         cost, in_t, out_t, count = self._totals[project_id]
@@ -186,9 +179,6 @@ class _PinningRepo:
     ) -> ProjectCostAggregate:
         from synthorg.budget.errors import (
             MixedCurrencyAggregationError,
-        )
-        from synthorg.budget.project_cost_aggregate import (
-            ProjectCostAggregate,
         )
 
         pinned = self.pinned.get(project_id)

@@ -4,8 +4,9 @@ Merges override / task-type / role / seniority / cheapest / global-chain
 signals in priority order.
 """
 
-from typing import TYPE_CHECKING, NoReturn
+from typing import NoReturn
 
+from synthorg.config.agent_schema import RoutingConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.routing import (
     ROUTING_FALLBACK_EXHAUSTED,
@@ -23,9 +24,6 @@ from ._strategy_names import STRATEGY_NAME_SMART
 from .errors import NoAvailableModelError
 from .models import RoutingDecision, RoutingRequest
 from .resolver import ModelResolver
-
-if TYPE_CHECKING:
-    from synthorg.config.agent_schema import RoutingConfig
 
 logger = get_logger(__name__)
 

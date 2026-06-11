@@ -14,8 +14,8 @@ the full :class:`TrainingService` graph.
 
 import asyncio
 import copy
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
@@ -25,13 +25,9 @@ from synthorg.hr.training.models import (
     TrainingPlan,
 )
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import HR_TRAINING_STORE_FAILED
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 

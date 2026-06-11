@@ -15,19 +15,16 @@ standalone construction still honours the documented defaults.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
+from synthorg.hr.evaluation.config import EfficiencyConfig
 from synthorg.hr.evaluation.constants import MAX_SCORE
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.extractors._shared import log_disabled_metrics
 from synthorg.hr.evaluation.metric_extractor_protocol import ExtractedMetrics
+from synthorg.hr.evaluation.models import EvaluationContext
+from synthorg.hr.performance.models import WindowMetrics
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
-
-if TYPE_CHECKING:
-    from synthorg.hr.evaluation.config import EfficiencyConfig
-    from synthorg.hr.evaluation.models import EvaluationContext
-    from synthorg.hr.performance.models import WindowMetrics
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 
 class EfficiencyMetricExtractor:
@@ -39,7 +36,7 @@ class EfficiencyMetricExtractor:
 
     __slots__ = ("_config_resolver",)
 
-    def __init__(self, config_resolver: ConfigResolver | None = None) -> None:
+    def __init__(self, config_resolver: ConfigResolverProtocol | None = None) -> None:
         self._config_resolver = config_resolver
 
     @property

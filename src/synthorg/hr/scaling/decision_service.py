@@ -13,20 +13,15 @@ walks the same deque since it is the canonical record for recent
 history.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.scaling.config import ScalingConfig
+from synthorg.hr.scaling.models import ScalingDecision
+from synthorg.hr.scaling.service import ScalingService
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
     HR_SCALING_CONTROLLER_INVALID_REQUEST,
     HR_SCALING_MANUAL_TRIGGER_REQUESTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.scaling.config import ScalingConfig
-    from synthorg.hr.scaling.models import ScalingDecision
-    from synthorg.hr.scaling.service import ScalingService
-
 
 logger = get_logger(__name__)
 

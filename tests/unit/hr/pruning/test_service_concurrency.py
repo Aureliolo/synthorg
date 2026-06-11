@@ -10,6 +10,8 @@ approval.
 
 import asyncio
 from datetime import UTC, datetime
+from typing import override
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -17,18 +19,23 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.models import FiringRequest, OffboardingRecord
+from synthorg.hr.offboarding_service import OffboardingService
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.pruning.service import PruningService
 from synthorg.hr.registry import AgentRegistryService
+from tests._shared import mock_of
 from tests.unit.hr.conftest import make_agent_identity
 
 from .conftest import make_approval_item, make_performance_snapshot
 
 
-class _SlowOffboardingService:
+class _SlowOffboardingService(OffboardingService):
     """Offboarding stub that counts calls per agent and yields control."""
 
     def __init__(self) -> None:
+        # Test fake: the parent initialiser is intentionally skipped --
+        # only ``offboard`` is exercised, so no real dependencies are wired.
         self.calls: list[str] = []
         self._started = asyncio.Event()
         self._release = asyncio.Event()
@@ -39,6 +46,7 @@ class _SlowOffboardingService:
     async def wait_started(self) -> None:
         await self._started.wait()
 
+    @override
     async def offboard(self, request: FiringRequest) -> OffboardingRecord:
         self.calls.append(str(request.agent_id))
         self._started.set()
@@ -57,15 +65,20 @@ class _SlowOffboardingService:
         )
 
 
-class _FakeTracker:
-    async def get_snapshot(
-        self,
+def _tracker() -> PerformanceTracker:
+    """Autospec ``PerformanceTracker`` returning a snapshot per agent id."""
+
+    async def _get(
         agent_id: NotBlankStr,
         *,
         now: datetime | None = None,
     ) -> AgentPerformanceSnapshot:
-        del now
         return make_performance_snapshot(agent_id=str(agent_id))
+
+    tracker: PerformanceTracker = mock_of[PerformanceTracker](
+        get_snapshot=AsyncMock(side_effect=_get)
+    )
+    return tracker
 
 
 @pytest.mark.unit
@@ -98,9 +111,9 @@ class TestProcessDecidedApprovalsConcurrency:
         service = PruningService(
             policies=(),
             registry=registry,
-            tracker=_FakeTracker(),  # type: ignore[arg-type]
+            tracker=_tracker(),
             approval_store=approval_store,
-            offboarding_service=offboarding,  # type: ignore[arg-type]
+            offboarding_service=offboarding,
         )
 
         # Fire two concurrent cycles. First one should start offboarding
@@ -147,10 +160,12 @@ class TestProcessDecidedApprovalsConcurrency:
         )
         await approval_store.add(approval)
 
-        class ExplodingOffboardingService:
+        class ExplodingOffboardingService(OffboardingService):
             def __init__(self) -> None:
+                # Test fake: parent initialiser intentionally skipped.
                 self.calls = 0
 
+            @override
             async def offboard(self, request: FiringRequest) -> OffboardingRecord:
                 self.calls += 1
                 if self.calls == 1:
@@ -173,9 +188,9 @@ class TestProcessDecidedApprovalsConcurrency:
         service = PruningService(
             policies=(),
             registry=registry,
-            tracker=_FakeTracker(),  # type: ignore[arg-type]
+            tracker=_tracker(),
             approval_store=approval_store,
-            offboarding_service=offboarding,  # type: ignore[arg-type]
+            offboarding_service=offboarding,
         )
 
         # First cycle: offboarding fails transiently, claim is released.

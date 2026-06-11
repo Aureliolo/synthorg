@@ -17,6 +17,7 @@ second surface without improving security.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -29,7 +30,11 @@ from synthorg.observability.events.agent_identity_version import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
+    # Cycle breaker: ``persistence.version_protocol`` imports
+    # ``versioning.models``, which runs ``versioning/__init__``'s eager
+    # ``VersioningService`` re-export back through
+    # ``persistence.version_protocol`` before it finishes. Both types are
+    # named for signatures only.
     from synthorg.persistence.version_protocol import VersionRepository
     from synthorg.versioning.models import VersionSnapshot
 

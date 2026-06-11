@@ -11,12 +11,12 @@ import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from urllib.parse import urlparse
 
 import httpx
 
-from synthorg.config.schema import ProviderConfig
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
@@ -40,12 +40,7 @@ from synthorg.providers.discovery_policy import (
 from synthorg.providers.errors import ProviderLifecycleConflictError
 from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracker
 from synthorg.settings.enums import SettingNamespace
-
-if TYPE_CHECKING:
-    # ConfigResolver is a concrete class injected duck-typed via
-    # ``MagicMock(spec=ConfigResolver)`` in tests; a runtime import
-    # would make typeguard enforce a nominal isinstance the mock fails.
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 

@@ -5,18 +5,16 @@ content extraction, source selection, curation, and guards.
 All protocols are ``@runtime_checkable`` for duck-typing support.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from synthorg.hr.seniority import SeniorityLevel
-    from synthorg.hr.training.models import (
-        ContentType,
-        TrainingGuardDecision,
-        TrainingItem,
-        TrainingPlan,
-    )
+from synthorg.hr.seniority import SeniorityLevel
+from synthorg.hr.training.models import (
+    ContentType,
+    TrainingGuardDecision,
+    TrainingItem,
+    TrainingPlan,
+)
 
 
 @runtime_checkable

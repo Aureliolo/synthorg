@@ -6,17 +6,14 @@ crossing.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.scaling.models import ScalingSignal
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
     HR_SCALING_TRIGGER_REQUESTED,
     HR_SCALING_TRIGGER_SKIPPED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.scaling.models import ScalingSignal
 
 logger = get_logger(__name__)
 

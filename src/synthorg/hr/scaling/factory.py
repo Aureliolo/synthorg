@@ -4,15 +4,20 @@ Assembles a fully wired ScalingService from configuration
 and injected dependencies.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
+from pathlib import Path
 
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.pruning.policy import PruningPolicy
+from synthorg.hr.scaling.config import ScalingConfig
 from synthorg.hr.scaling.context import ScalingContextBuilder
 from synthorg.hr.scaling.guards.approval_gate import ApprovalGateGuard
 from synthorg.hr.scaling.guards.composite import CompositeScalingGuard
 from synthorg.hr.scaling.guards.conflict_resolver import ConflictResolver
 from synthorg.hr.scaling.guards.cooldown import CooldownGuard
 from synthorg.hr.scaling.guards.rate_limit import RateLimitGuard
+from synthorg.hr.scaling.protocols import ScalingGuard, ScalingStrategy
 from synthorg.hr.scaling.signals.benchmark import BenchmarkSignalSource
 from synthorg.hr.scaling.signals.budget import BudgetSignalSource
 from synthorg.hr.scaling.signals.performance import PerformanceSignalSource
@@ -29,15 +34,6 @@ from synthorg.hr.scaling.strategies.workload import (
 from synthorg.hr.scaling.triggers.batched import BatchedScalingTrigger
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_FACTORY_ASSEMBLED
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-    from pathlib import Path
-
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.hr.pruning.policy import PruningPolicy
-    from synthorg.hr.scaling.config import ScalingConfig
-    from synthorg.hr.scaling.protocols import ScalingGuard, ScalingStrategy
 
 logger = get_logger(__name__)
 

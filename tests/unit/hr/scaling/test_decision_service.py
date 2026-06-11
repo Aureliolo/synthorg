@@ -1,6 +1,8 @@
 """Unit tests for :class:`ScalingDecisionService`."""
 
 from datetime import UTC, datetime
+from typing import cast
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -11,8 +13,9 @@ from synthorg.hr.scaling.config import ScalingConfig
 from synthorg.hr.scaling.decision_service import ScalingDecisionService
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
 from synthorg.hr.scaling.models import ScalingDecision
+from synthorg.hr.scaling.service import ScalingService
 from synthorg.observability.events.hr import HR_SCALING_CONTROLLER_INVALID_REQUEST
-from tests._shared import as_uuid, sid
+from tests._shared import as_uuid, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -38,39 +41,23 @@ def _decision(
     )
 
 
-class _FakeScalingService:
-    """Minimal stub exposing the surface ``ScalingDecisionService`` uses."""
+def _scaling(
+    *,
+    decisions: list[ScalingDecision] | None = None,
+    config: ScalingConfig | None = None,
+    evaluate_result: tuple[ScalingDecision, ...] = (),
+) -> ScalingService:
+    """Autospec ``ScalingService`` exposing the decision-service surface.
 
-    def __init__(
-        self,
-        decisions: list[ScalingDecision] | None = None,
-        config: ScalingConfig | None = None,
-    ) -> None:
-        self._decisions = list(decisions or [])
-        self._config = config or ScalingConfig()
-        self.evaluate_calls: list[tuple[str, ...]] = []
-        self._evaluate_return: tuple[ScalingDecision, ...] = ()
-
-    def queue_evaluate_result(
-        self,
-        result: tuple[ScalingDecision, ...],
-    ) -> None:
-        self._evaluate_return = result
-
-    def get_recent_decisions(self) -> tuple[ScalingDecision, ...]:
-        return tuple(self._decisions)
-
-    @property
-    def config(self) -> ScalingConfig:
-        return self._config
-
-    async def evaluate(
-        self,
-        *,
-        agent_ids: tuple[NotBlankStr, ...],
-    ) -> tuple[ScalingDecision, ...]:
-        self.evaluate_calls.append(tuple(str(a) for a in agent_ids))
-        return self._evaluate_return
+    ``evaluate`` returns *evaluate_result*; the awaited ``agent_ids`` can
+    be inspected via ``cast(Mock, svc).evaluate.assert_awaited_once_with``.
+    """
+    svc = mock_of[ScalingService](
+        get_recent_decisions=Mock(return_value=tuple(decisions or [])),
+        evaluate=AsyncMock(return_value=evaluate_result),
+    )
+    svc.config = config if config is not None else ScalingConfig()
+    return cast(ScalingService, svc)
 
 
 class TestListDecisions:
@@ -80,8 +67,8 @@ class TestListDecisions:
         # Append in chronological order (oldest first); deque
         # preserves insertion order so the first item is the oldest.
         decisions = [_decision(decision_id=f"d-{i}") for i in range(3)]
-        svc = _FakeScalingService(decisions=decisions)
-        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+        svc = _scaling(decisions=decisions)
+        service = ScalingDecisionService(scaling=svc)
 
         page, total = await service.list_decisions(offset=0, limit=50)
 
@@ -94,8 +81,8 @@ class TestListDecisions:
 
     async def test_paginates(self) -> None:
         decisions = [_decision(decision_id=f"d-{i}") for i in range(5)]
-        svc = _FakeScalingService(decisions=decisions)
-        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+        svc = _scaling(decisions=decisions)
+        service = ScalingDecisionService(scaling=svc)
 
         page, total = await service.list_decisions(offset=2, limit=2)
 
@@ -103,8 +90,8 @@ class TestListDecisions:
         assert [d.id for d in page] == [as_uuid("d-2"), as_uuid("d-1")]
 
     async def test_empty(self) -> None:
-        svc = _FakeScalingService()
-        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+        svc = _scaling()
+        service = ScalingDecisionService(scaling=svc)
 
         page, total = await service.list_decisions(offset=0, limit=50)
 
@@ -112,8 +99,8 @@ class TestListDecisions:
         assert page == ()
 
     async def test_negative_offset_rejects(self) -> None:
-        svc = _FakeScalingService()
-        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+        svc = _scaling()
+        service = ScalingDecisionService(scaling=svc)
 
         with (
             structlog.testing.capture_logs() as events,
@@ -125,8 +112,8 @@ class TestListDecisions:
         ), "invalid-request event must fire before the ValueError is raised"
 
     async def test_non_positive_limit_rejects(self) -> None:
-        svc = _FakeScalingService()
-        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+        svc = _scaling()
+        service = ScalingDecisionService(scaling=svc)
 
         with (
             structlog.testing.capture_logs() as events,
@@ -141,8 +128,8 @@ class TestListDecisions:
 class TestGetDecision:
     async def test_returns_match(self) -> None:
         decisions = [_decision(decision_id="d-1"), _decision(decision_id="d-2")]
-        svc = _FakeScalingService(decisions=decisions)
-        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+        svc = _scaling(decisions=decisions)
+        service = ScalingDecisionService(scaling=svc)
 
         result = await service.get_decision(sid("d-2"))
 
@@ -150,8 +137,8 @@ class TestGetDecision:
         assert result.id == as_uuid("d-2")
 
     async def test_returns_none_for_unknown(self) -> None:
-        svc = _FakeScalingService(decisions=[_decision(decision_id="d-1")])
-        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+        svc = _scaling(decisions=[_decision(decision_id="d-1")])
+        service = ScalingDecisionService(scaling=svc)
 
         result = await service.get_decision(sid("d-missing"))
 
@@ -161,8 +148,8 @@ class TestGetDecision:
 class TestGetConfig:
     async def test_returns_service_config(self) -> None:
         cfg = ScalingConfig(enabled=False)
-        svc = _FakeScalingService(config=cfg)
-        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+        svc = _scaling(config=cfg)
+        service = ScalingDecisionService(scaling=svc)
 
         result = await service.get_config()
 
@@ -171,22 +158,24 @@ class TestGetConfig:
 
 class TestTrigger:
     async def test_empty_evaluate_result_returns_empty(self) -> None:
-        svc = _FakeScalingService()
-        svc.queue_evaluate_result(())
-        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+        svc = _scaling()
+        service = ScalingDecisionService(scaling=svc)
 
         result = await service.trigger((NotBlankStr("a-1"),))
 
         assert result == ()
-        assert svc.evaluate_calls == [("a-1",)]
+        cast(Mock, svc).evaluate.assert_awaited_once_with(
+            agent_ids=(NotBlankStr("a-1"),),
+        )
 
     async def test_delegates_and_returns_decisions(self) -> None:
-        svc = _FakeScalingService()
         expected = (_decision(decision_id="d-1"),)
-        svc.queue_evaluate_result(expected)
-        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+        svc = _scaling(evaluate_result=expected)
+        service = ScalingDecisionService(scaling=svc)
 
         result = await service.trigger((NotBlankStr("a-1"), NotBlankStr("a-2")))
 
         assert result == expected
-        assert svc.evaluate_calls == [("a-1", "a-2")]
+        cast(Mock, svc).evaluate.assert_awaited_once_with(
+            agent_ids=(NotBlankStr("a-1"), NotBlankStr("a-2")),
+        )

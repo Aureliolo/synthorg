@@ -21,8 +21,7 @@ cover the non-bridge ``memory.default_level`` /
 three bridge-backed keys.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
@@ -32,9 +31,6 @@ from synthorg.observability.events.settings import (
 from synthorg.settings.bridge_configs import MemoryBridgeConfig
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import config_resolver_of
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

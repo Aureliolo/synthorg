@@ -1,11 +1,13 @@
 """Tests for BaseCompletionProvider logging."""
 
 import asyncio
-from typing import TYPE_CHECKING, override
+from collections.abc import AsyncIterator
+from typing import override
 
 import pytest
 import structlog
 
+from synthorg.core.completion_enums import FinishReason
 from synthorg.observability.events.provider import (
     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
@@ -15,26 +17,15 @@ from synthorg.observability.events.provider import (
 )
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.errors import ProviderInternalError
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
-    from synthorg.providers.models import (
-        ChatMessage,
-        CompletionConfig,
-        CompletionResponse,
-        StreamChunk,
-        ToolDefinition,
-    )
-
-from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.errors import InvalidRequestError
+from synthorg.providers.errors import InvalidRequestError, ProviderInternalError
 from synthorg.providers.models import (
     ChatMessage,
+    CompletionConfig,
     CompletionResponse,
+    StreamChunk,
     TokenUsage,
+    ToolDefinition,
 )
 
 

@@ -8,8 +8,10 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import BaseModel, ConfigDict
+from typeguard import suppress_type_checks
 
 from synthorg.api.config import RateLimitTimeUnit
+from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.settings._resolver_coercions import _parse_bool
@@ -34,31 +36,6 @@ class _Color(StrEnum):
     RED = "red"
     GREEN = "green"
     BLUE = "blue"
-
-
-class _BudgetAlerts(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
-    warn_at: int = 75
-    critical_at: int = 90
-    hard_stop_at: int = 100
-
-
-class _AutoDowngrade(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
-    enabled: bool = False
-    threshold: int = 85
-    downgrade_map: tuple[tuple[str, str], ...] = ()
-    boundary: str = "task_assignment"
-
-
-class _BudgetConfig(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
-    total_monthly: float = 100.0
-    per_task_limit: float = 5.0
-    per_agent_daily_limit: float = 10.0
-    alerts: _BudgetAlerts = _BudgetAlerts()
-    auto_downgrade: _AutoDowngrade = _AutoDowngrade()
-    reset_day: int = 1
 
 
 class _CoordinationSection(BaseModel):
@@ -110,7 +87,7 @@ class _FakeApiConfig(BaseModel):
 class _FakeRootConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
     api: _FakeApiConfig = _FakeApiConfig()
-    budget: _BudgetConfig = _BudgetConfig()
+    budget: BudgetConfig = BudgetConfig()
     coordination: _CoordinationSection = _CoordinationSection()
     agents: tuple[FakeAgentConfig, ...] = ()
     departments: tuple[FakeDepartment, ...] = ()
@@ -303,7 +280,13 @@ class TestConfigResolverInit:
         self,
         root_config: _FakeRootConfig,
     ) -> None:
-        with pytest.raises(TypeError, match="settings_service must not be None"):
+        # suppress_type_checks so the constructor's own ``None`` guard fires
+        # (the runtime defence for callers without type checking) rather than
+        # typeguard rejecting ``None`` against ``SettingsServiceProtocol`` first.
+        with (
+            suppress_type_checks(),
+            pytest.raises(TypeError, match="settings_service must not be None"),
+        ):
             ConfigResolver(
                 settings_service=None,  # type: ignore[arg-type]
                 config=root_config,  # type: ignore[arg-type]
@@ -416,8 +399,8 @@ class TestGetBudgetConfig:
     ) -> None:
         """Unregistered fields (downgrade_map, boundary) keep YAML values."""
         custom_config = _FakeRootConfig(
-            budget=_BudgetConfig(
-                auto_downgrade=_AutoDowngrade(
+            budget=BudgetConfig(
+                auto_downgrade=AutoDowngradeConfig(
                     downgrade_map=(("large", "small"),),
                     boundary="task_assignment",
                 ),

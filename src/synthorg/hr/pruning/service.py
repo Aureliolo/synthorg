@@ -23,17 +23,21 @@ Note:
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
 from synthorg.hr.errors import PruningUnrestartableError
-from synthorg.hr.models import FiringRequest
+from synthorg.hr.models import FiringRequest, OffboardingRecord
+from synthorg.hr.offboarding_service import OffboardingService
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.pruning.models import (
     PruningEvaluation,
     PruningJobRun,
@@ -41,6 +45,8 @@ from synthorg.hr.pruning.models import (
     PruningRequest,
     PruningServiceConfig,
 )
+from synthorg.hr.pruning.policy import PruningPolicy
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_PRUNING_AGENT_ELIGIBLE,
@@ -56,17 +62,6 @@ from synthorg.observability.events.hr import (
     HR_PRUNING_SCHEDULER_STOPPED,
     PRUNING_REQUEST_STATUS_TRANSITIONED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.hr.models import OffboardingRecord
-    from synthorg.hr.offboarding_service import OffboardingService
-    from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.hr.pruning.policy import PruningPolicy
-    from synthorg.hr.registry import AgentRegistryService
 
 logger = get_logger(__name__)
 

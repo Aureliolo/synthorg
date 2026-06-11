@@ -7,8 +7,9 @@ singletons registered in a module-level mapping.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, NoReturn, Protocol, runtime_checkable
+from typing import NoReturn, Protocol, runtime_checkable
 
+from synthorg.config.agent_schema import RoutingConfig
 from synthorg.core.role_catalog import get_seniority_info
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
@@ -38,9 +39,6 @@ from ._strategy_names import (
 from .errors import ModelResolutionError, NoAvailableModelError
 from .models import RoutingDecision, RoutingRequest
 from .resolver import ModelResolver
-
-if TYPE_CHECKING:
-    from synthorg.config.agent_schema import RoutingConfig
 
 logger = get_logger(__name__)
 

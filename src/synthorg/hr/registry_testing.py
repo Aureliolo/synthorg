@@ -9,13 +9,9 @@ class surface free of an unsafe lock-bypass that an unsuspecting
 caller might use by autocomplete.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_REGISTRY_CLEARED
-
-if TYPE_CHECKING:
-    from synthorg.hr.registry import AgentRegistryService
 
 logger = get_logger(__name__)
 

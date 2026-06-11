@@ -6,9 +6,9 @@ when disabled, authority-reducing demotions from Senior+ require
 human approval.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.agent import AgentIdentity
 from synthorg.hr.enums import PromotionDirection
+from synthorg.hr.promotion.config import PromotionApprovalConfig
 from synthorg.hr.promotion.models import (
     PromotionApprovalDecision,
     PromotionEvaluation,
@@ -16,10 +16,6 @@ from synthorg.hr.promotion.models import (
 from synthorg.hr.seniority import SeniorityLevel, compare_seniority
 from synthorg.observability import get_logger
 from synthorg.observability.events.promotion import PROMOTION_APPROVAL_DECIDED
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.hr.promotion.config import PromotionApprovalConfig
 
 logger = get_logger(__name__)
 

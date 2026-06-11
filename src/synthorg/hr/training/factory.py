@@ -1,28 +1,24 @@
 """Factory for building the training service from config."""
 
-from typing import TYPE_CHECKING
-
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.validation import coerce_positive_int
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.training.config import TrainingConfig
 from synthorg.hr.training.models import ContentType
+from synthorg.hr.training.protocol import (
+    ContentExtractor,
+    CurationStrategy,
+    SourceSelector,
+    TrainingGuard,
+)
+from synthorg.hr.training.service import TrainingService
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import HR_TRAINING_CONFIG_INVALID
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.hr.training.config import TrainingConfig
-    from synthorg.hr.training.protocol import (
-        ContentExtractor,
-        CurationStrategy,
-        SourceSelector,
-        TrainingGuard,
-    )
-    from synthorg.hr.training.service import TrainingService
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.invocation_tracker import ToolInvocationTracker
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 logger = get_logger(__name__)
 

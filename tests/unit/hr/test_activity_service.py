@@ -2,11 +2,14 @@
 
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import override
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.delegation.models import DelegationRecord
+from synthorg.communication.delegation.record_store import DelegationRecordStore
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr import activity_service as activity_service_module
@@ -14,8 +17,11 @@ from synthorg.hr.activity_service import ActivityFeedService
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.persistence_protocol import LifecycleEventRepository
 from synthorg.tools.invocation_record import ToolInvocationRecord
-from tests._shared import as_uuid
+from synthorg.tools.invocation_tracker import ToolInvocationTracker
+from tests._shared import as_uuid, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -145,25 +151,19 @@ def _delegation(
     )
 
 
-class _FakeLifecycleRepo:
-    def __init__(self, events: list[AgentLifecycleEvent]) -> None:
-        self._events = events
-        self.calls: list[dict[str, object]] = []
+def _lifecycle_repo(events: list[AgentLifecycleEvent]) -> LifecycleEventRepository:
+    """Autospec ``LifecycleEventRepository`` filtering *events* by query."""
 
-    async def list_events(
-        self,
+    async def _list(
         *,
         agent_id: str | None = None,
         event_type: LifecycleEventType | None = None,
         since: datetime | None = None,
         limit: int | None = None,
     ) -> tuple[AgentLifecycleEvent, ...]:
-        self.calls.append(
-            {"agent_id": agent_id, "since": since, "limit": limit},
-        )
         out = [
             e
-            for e in self._events
+            for e in events
             if (agent_id is None or str(e.agent_id) == agent_id)
             and (since is None or e.timestamp >= since)
         ]
@@ -171,13 +171,16 @@ class _FakeLifecycleRepo:
             out = out[:limit]
         return tuple(out)
 
+    repo: LifecycleEventRepository = mock_of[LifecycleEventRepository](
+        list_events=AsyncMock(side_effect=_list)
+    )
+    return repo
 
-class _FakePerformanceTracker:
-    def __init__(self, metrics: list[TaskMetricRecord]) -> None:
-        self._metrics = metrics
 
-    def get_task_metrics(
-        self,
+def _perf_tracker(metrics: list[TaskMetricRecord]) -> PerformanceTracker:
+    """Autospec ``PerformanceTracker`` filtering *metrics* by query window."""
+
+    def _get(
         *,
         agent_id: str | None,
         since: datetime,
@@ -185,18 +188,21 @@ class _FakePerformanceTracker:
     ) -> tuple[TaskMetricRecord, ...]:
         return tuple(
             m
-            for m in self._metrics
+            for m in metrics
             if (agent_id is None or str(m.agent_id) == agent_id)
             and since <= m.completed_at <= until
         )
 
+    tracker: PerformanceTracker = mock_of[PerformanceTracker](
+        get_task_metrics=Mock(side_effect=_get)
+    )
+    return tracker
 
-class _FakeCostTracker:
-    def __init__(self, records: list[CostRecord]) -> None:
-        self._records = records
 
-    async def get_records(
-        self,
+def _cost_tracker(records: list[CostRecord]) -> CostTrackerProtocol:
+    """Autospec cost tracker filtering *records* by query window."""
+
+    async def _get(
         *,
         agent_id: str | None,
         start: datetime,
@@ -204,18 +210,21 @@ class _FakeCostTracker:
     ) -> tuple[CostRecord, ...]:
         return tuple(
             r
-            for r in self._records
+            for r in records
             if (agent_id is None or str(r.agent_id) == agent_id)
             and start <= r.timestamp <= end
         )
 
+    tracker: CostTrackerProtocol = mock_of[CostTrackerProtocol](
+        get_records=AsyncMock(side_effect=_get)
+    )
+    return tracker
 
-class _FakeToolTracker:
-    def __init__(self, records: list[ToolInvocationRecord]) -> None:
-        self._records = records
 
-    async def get_records(
-        self,
+def _tool_tracker(records: list[ToolInvocationRecord]) -> ToolInvocationTracker:
+    """Autospec ``ToolInvocationTracker`` filtering *records* by query window."""
+
+    async def _get(
         *,
         agent_id: str | None,
         start: datetime,
@@ -223,40 +232,44 @@ class _FakeToolTracker:
     ) -> tuple[ToolInvocationRecord, ...]:
         return tuple(
             r
-            for r in self._records
+            for r in records
             if (agent_id is None or str(r.agent_id) == agent_id)
             and start <= r.timestamp <= end
         )
 
+    tracker: ToolInvocationTracker = mock_of[ToolInvocationTracker](
+        get_records=AsyncMock(side_effect=_get)
+    )
+    return tracker
 
-class _FakeDelegationStore:
-    def __init__(
-        self,
-        sent: list[DelegationRecord] | None = None,
-        received: list[DelegationRecord] | None = None,
-    ) -> None:
-        self._sent = sent or []
-        self._received = received or []
 
-    async def get_records_as_delegator(
-        self,
+def _delegation_store(
+    *,
+    sent: list[DelegationRecord] | None = None,
+    received: list[DelegationRecord] | None = None,
+) -> DelegationRecordStore:
+    """Autospec ``DelegationRecordStore`` enforcing the per-agent query window.
+
+    Only records for *agent_id* (as delegator / delegatee) within
+    ``[start, end]`` are returned, so the fake catches bugs where
+    ``ActivityFeedService`` forwards the wrong identifier or window.
+    """
+    sent_records = sent or []
+    received_records = received or []
+
+    async def _as_delegator(
         agent_id: str,
         *,
         start: datetime,
         end: datetime,
     ) -> tuple[DelegationRecord, ...]:
-        # Enforce the query contract: only records for *agent_id*
-        # (as the delegator) within ``[start, end]``. This makes
-        # the fake catch bugs where ``ActivityFeedService`` forwards
-        # the wrong identifier or window.
         return tuple(
             r
-            for r in self._sent
+            for r in sent_records
             if str(r.delegator_id) == agent_id and start <= r.timestamp <= end
         )
 
-    async def get_records_as_delegatee(
-        self,
+    async def _as_delegatee(
         agent_id: str,
         *,
         start: datetime,
@@ -264,9 +277,15 @@ class _FakeDelegationStore:
     ) -> tuple[DelegationRecord, ...]:
         return tuple(
             r
-            for r in self._received
+            for r in received_records
             if str(r.delegatee_id) == agent_id and start <= r.timestamp <= end
         )
+
+    store: DelegationRecordStore = mock_of[DelegationRecordStore](
+        get_records_as_delegator=AsyncMock(side_effect=_as_delegator),
+        get_records_as_delegatee=AsyncMock(side_effect=_as_delegatee),
+    )
+    return store
 
 
 class TestGetAgentActivity:
@@ -274,10 +293,10 @@ class TestGetAgentActivity:
 
     async def test_merges_required_sources(self) -> None:
         service = ActivityFeedService(
-            performance_tracker=_FakePerformanceTracker(  # type: ignore[arg-type]
+            performance_tracker=_perf_tracker(
                 [_task_metric(offset_minutes=30)],
             ),
-            lifecycle_repo=_FakeLifecycleRepo(  # type: ignore[arg-type]
+            lifecycle_repo=_lifecycle_repo(
                 [_lifecycle(offset_minutes=60)],
             ),
         )
@@ -297,17 +316,17 @@ class TestGetAgentActivity:
         assert ActivityEventType.TASK_STARTED in event_types
 
     async def test_includes_optional_sources_when_present(self) -> None:
-        cost_fake = _FakeCostTracker([_cost_record(offset_minutes=10)])
-        tool_fake = _FakeToolTracker([_tool_record(offset_minutes=20)])
-        del_fake = _FakeDelegationStore(
+        cost_fake = _cost_tracker([_cost_record(offset_minutes=10)])
+        tool_fake = _tool_tracker([_tool_record(offset_minutes=20)])
+        del_fake = _delegation_store(
             sent=[_delegation(offset_minutes=5, delegator_first=True)],
         )
         service = ActivityFeedService(
-            performance_tracker=_FakePerformanceTracker([]),  # type: ignore[arg-type]
-            lifecycle_repo=_FakeLifecycleRepo([]),  # type: ignore[arg-type]
-            cost_tracker=cost_fake,  # type: ignore[arg-type]
-            tool_invocation_tracker=tool_fake,  # type: ignore[arg-type]
-            delegation_store=del_fake,  # type: ignore[arg-type]
+            performance_tracker=_perf_tracker([]),
+            lifecycle_repo=_lifecycle_repo([]),
+            cost_tracker=cost_fake,
+            tool_invocation_tracker=tool_fake,
+            delegation_store=del_fake,
         )
 
         page, total = await service.get_agent_activity(
@@ -328,8 +347,8 @@ class TestGetAgentActivity:
             for m in (5, 10, 15, 20, 25)
         ]
         service = ActivityFeedService(
-            performance_tracker=_FakePerformanceTracker([]),  # type: ignore[arg-type]
-            lifecycle_repo=_FakeLifecycleRepo(events),  # type: ignore[arg-type]
+            performance_tracker=_perf_tracker([]),
+            lifecycle_repo=_lifecycle_repo(events),
         )
 
         page, total = await service.get_agent_activity(
@@ -355,8 +374,8 @@ class TestGetAgentActivity:
             ),
         ]
         service = ActivityFeedService(
-            performance_tracker=_FakePerformanceTracker([]),  # type: ignore[arg-type]
-            lifecycle_repo=_FakeLifecycleRepo(events),  # type: ignore[arg-type]
+            performance_tracker=_perf_tracker([]),
+            lifecycle_repo=_lifecycle_repo(events),
         )
 
         page, total = await service.get_agent_activity(
@@ -386,8 +405,8 @@ class TestGetAgentActivity:
             ),
         ]
         service = ActivityFeedService(
-            performance_tracker=_FakePerformanceTracker([]),  # type: ignore[arg-type]
-            lifecycle_repo=_FakeLifecycleRepo(events),  # type: ignore[arg-type]
+            performance_tracker=_perf_tracker([]),
+            lifecycle_repo=_lifecycle_repo(events),
         )
 
         _page, total = await service.get_agent_activity(
@@ -403,8 +422,8 @@ class TestGetAgentActivity:
 
     async def test_no_sources_returns_empty(self) -> None:
         service = ActivityFeedService(
-            performance_tracker=_FakePerformanceTracker([]),  # type: ignore[arg-type]
-            lifecycle_repo=_FakeLifecycleRepo([]),  # type: ignore[arg-type]
+            performance_tracker=_perf_tracker([]),
+            lifecycle_repo=_lifecycle_repo([]),
         )
 
         page, total = await service.get_agent_activity(
@@ -429,8 +448,8 @@ class TestRequestValidation:
     @pytest.fixture
     def empty_service(self) -> ActivityFeedService:
         return ActivityFeedService(
-            performance_tracker=_FakePerformanceTracker([]),  # type: ignore[arg-type]
-            lifecycle_repo=_FakeLifecycleRepo([]),  # type: ignore[arg-type]
+            performance_tracker=_perf_tracker([]),
+            lifecycle_repo=_lifecycle_repo([]),
         )
 
     async def test_negative_offset_rejected(

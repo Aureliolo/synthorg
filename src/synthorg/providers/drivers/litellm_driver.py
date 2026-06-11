@@ -12,7 +12,7 @@ from collections.abc import (
     Mapping,  # runtime annotation on driver method
 )
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, override
+from typing import Final, override
 
 import litellm as _litellm
 from litellm.exceptions import (
@@ -47,6 +47,7 @@ from litellm.exceptions import (
 )
 from pydantic import JsonValue
 
+from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.catalog import ConnectionCatalog
@@ -96,11 +97,6 @@ from .mappers import (
     messages_to_dicts,
     tools_to_dicts,
 )
-
-if TYPE_CHECKING:
-    # config.schema imports api.config, which transitively re-imports
-    # providers/__init__ (this driver); a runtime import forms a cycle.
-    from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 
 logger = get_logger(__name__)
 

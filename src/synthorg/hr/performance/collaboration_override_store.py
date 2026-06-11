@@ -5,18 +5,15 @@ by checking ``expires_at`` at query time.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import CollaborationOverride
 from synthorg.observability import get_logger
 from synthorg.observability.events.performance import (
     PERF_OVERRIDE_CLEARED,
     PERF_OVERRIDE_EXPIRED,
     PERF_OVERRIDE_SET,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.performance.models import CollaborationOverride
 
 logger = get_logger(__name__)
 

@@ -5,16 +5,12 @@ the role catalog's ``typical_model_tier`` to resolve the appropriate
 model tier for each seniority level.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.role_catalog import get_seniority_info
+from synthorg.hr.promotion.config import ModelMappingConfig
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.promotion import PROMOTION_MODEL_CHANGED
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.hr.promotion.config import ModelMappingConfig
-    from synthorg.hr.seniority import SeniorityLevel
 
 logger = get_logger(__name__)
 

@@ -4,8 +4,7 @@ Transitions active tasks to INTERRUPTED so they can be re-assigned
 to another agent by the task routing system.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import TaskReassignmentError
@@ -14,9 +13,6 @@ from synthorg.observability.events.hr import (
     HR_FIRING_REASSIGNMENT_FAILED,
     HR_FIRING_TASKS_REASSIGNED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
 
 logger = get_logger(__name__)
 

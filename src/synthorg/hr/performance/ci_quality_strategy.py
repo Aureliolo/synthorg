@@ -5,15 +5,13 @@ task success, and cost efficiency. Pure computation, no I/O.
 """
 
 import math
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import QualityScoreResult, TaskMetricRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.performance import PERF_QUALITY_SCORED
-
-if TYPE_CHECKING:
-    from synthorg.core.task import AcceptanceCriterion
 
 logger = get_logger(__name__)
 _DEFAULT_COST_BUDGET: Final[float] = 100.0

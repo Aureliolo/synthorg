@@ -8,7 +8,7 @@ quota check fails and degradation resolution is needed.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, NoReturn
+from typing import NoReturn
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -17,7 +17,10 @@ from synthorg.budget.quota import (
     DegradationAction,
     DegradationConfig,
     QuotaCheckResult,
+    QuotaSnapshot,
+    QuotaWindow,
 )
+from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -34,10 +37,6 @@ from synthorg.observability.events.degradation import (
     DEGRADATION_QUEUE_WAITING,
     DEGRADATION_QUEUE_WINDOW_ROTATED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.quota import QuotaSnapshot, QuotaWindow
-    from synthorg.budget.quota_tracker import QuotaTracker
 
 logger = get_logger(__name__)
 

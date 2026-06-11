@@ -59,24 +59,29 @@ from synthorg.settings.bridge_configs import (
     WorkersBridgeConfig,
 )
 from synthorg.settings.errors import SettingNotFoundError, SettingsEncryptionError
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 
 if TYPE_CHECKING:
-    # Cycle breakers: the api / budget / config / core-company / engine
-    # config models all reach back into the settings package at runtime
-    # (mirrors, registry seeds, kill switches), so the bridge-read
-    # signatures name them without importing them.
+    # The composed-config read methods (``get_budget_config`` /
+    # ``get_api_config`` / ``get_agents`` / ``get_departments`` /
+    # ``get_provider_configs`` / ``get_coordination_config``) return concrete
+    # config models that are deliberately excluded from
+    # ``ConfigResolverProtocol``: consumers hold the resolver by that
+    # Protocol's scalar + bridge surface, never these getters. Importing
+    # ``api.config`` at module load re-enters ``settings.resolver`` through
+    # the api rate-limits -> settings.definitions -> security -> engine ->
+    # communication -> notifications.dispatcher cold cycle; ``config.schema``
+    # aggregates ``api.config``; and ``engine.coordination.config`` triggers
+    # the engine package init on the same loop. This cohesive composed-read
+    # surface is therefore named for signatures only, and the value-using
+    # getters import their model in the method body.
     from synthorg.api.config import ApiConfig
     from synthorg.budget.config import BudgetConfig
     from synthorg.config.agent_schema import AgentConfig
-    from synthorg.config.schema import ProviderConfig, RootConfig
+    from synthorg.config.provider_schema import ProviderConfig
+    from synthorg.config.schema import RootConfig
     from synthorg.core.company_departments import Department
     from synthorg.engine.coordination.config import CoordinationConfig
-
-    # The service module pulls the communication package (message bus
-    # types) whose import chain reaches back into settings; the resolver
-    # must stay import-light so every runtime consumer of it stays
-    # cycle-free. The service instance arrives via the constructor.
-    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -108,7 +113,7 @@ class ConfigResolver:
     def __init__(
         self,
         *,
-        settings_service: SettingsService,
+        settings_service: SettingsServiceProtocol,
         config: RootConfig,
     ) -> None:
         # runtime defence for callers without type checking
@@ -538,7 +543,7 @@ class ConfigResolver:
                 in the registry.
             SettingsEncryptionError: If decryption fails.
         """
-        from synthorg.config.schema import ProviderConfig  # noqa: PLC0415
+        from synthorg.config.provider_schema import ProviderConfig  # noqa: PLC0415
 
         configs = await self._resolve_dict_setting(
             "providers",

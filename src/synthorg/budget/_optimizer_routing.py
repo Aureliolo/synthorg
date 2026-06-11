@@ -9,7 +9,6 @@ concrete service.
 
 import asyncio
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from synthorg.budget._aggregation import group_by_agent
 from synthorg.budget._optimizer_helpers import (
@@ -18,8 +17,11 @@ from synthorg.budget._optimizer_helpers import (
     _find_most_used_model,
 )
 from synthorg.budget.billing import billing_period_start
+from synthorg.budget.config import BudgetConfig
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import format_cost
 from synthorg.budget.optimizer_models import (
+    CostOptimizerConfig,
     DowngradeAnalysis,
     DowngradeRecommendation,
     EfficiencyAnalysis,
@@ -27,6 +29,7 @@ from synthorg.budget.optimizer_models import (
     RoutingOptimizationAnalysis,
     RoutingSuggestion,
 )
+from synthorg.budget.tracker import CostTracker
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.cfo import (
@@ -37,14 +40,8 @@ from synthorg.observability.events.cfo import (
     CFO_RESOLVER_MISSING,
     CFO_ROUTING_OPTIMIZATION_COMPLETE,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.budget.cost_record import CostRecord
-    from synthorg.budget.optimizer_models import CostOptimizerConfig
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.providers.routing.models import ResolvedModel
-    from synthorg.providers.routing.resolver import ModelResolver
+from synthorg.providers.routing.models import ResolvedModel
+from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
 

@@ -12,7 +12,7 @@ Service layer backing the CFO role (see Operations design page).
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.budget._aggregation import group_by_agent
 from synthorg.budget._optimizer_helpers import (
@@ -23,6 +23,7 @@ from synthorg.budget._optimizer_helpers import (
 )
 from synthorg.budget._optimizer_routing import _CostOptimizerRoutingMixin
 from synthorg.budget.billing import billing_period_start
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.currency import format_cost
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.optimizer_models import (
@@ -32,6 +33,7 @@ from synthorg.budget.optimizer_models import (
     EfficiencyAnalysis,
     SpendingAnomaly,
 )
+from synthorg.budget.tracker import CostTracker
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.cfo import (
@@ -42,11 +44,7 @@ from synthorg.observability.events.cfo import (
     CFO_OPERATION_DENIED,
     CFO_OPTIMIZER_CREATED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.providers.routing.resolver import ModelResolver
+from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
 _DEFAULT_WINDOW_COUNT: Final[int] = 5

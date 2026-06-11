@@ -1,7 +1,7 @@
 """Provider settings subscriber -- rebuilds ModelRouter on strategy change."""
 
-from typing import TYPE_CHECKING
-
+from synthorg.api.state import AppState
+from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
@@ -10,10 +10,6 @@ from synthorg.observability.events.settings import (
 )
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.settings.service import SettingsService
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
-    from synthorg.config.schema import RootConfig
 
 logger = get_logger(__name__)
 

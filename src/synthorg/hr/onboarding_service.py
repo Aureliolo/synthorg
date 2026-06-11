@@ -5,21 +5,18 @@ automatic activation upon checklist completion.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus, OnboardingStep
 from synthorg.hr.errors import OnboardingError
 from synthorg.hr.models import OnboardingChecklist, OnboardingStepRecord
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
     HR_ONBOARDING_COMPLETE,
     HR_ONBOARDING_STARTED,
     HR_ONBOARDING_STEP_COMPLETE,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.registry import AgentRegistryService
 
 logger = get_logger(__name__)
 

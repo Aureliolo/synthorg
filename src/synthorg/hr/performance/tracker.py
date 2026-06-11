@@ -23,11 +23,24 @@ import math
 import re
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination.attribution import AgentContribution
+from synthorg.hr.enums import TrendDirection
+from synthorg.hr.performance.collaboration_override_store import (
+    CollaborationOverrideStore,
+)
+from synthorg.hr.performance.collaboration_protocol import (
+    CollaborationScoringStrategy,
+)
 from synthorg.hr.performance.config import PerformanceConfig
+from synthorg.hr.performance.inflection_protocol import InflectionSink
+from synthorg.hr.performance.llm_calibration_sampler import (
+    LlmCalibrationSampler,
+)
 from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
     CollaborationCalibration,
@@ -38,6 +51,12 @@ from synthorg.hr.performance.models import (
     TrendResult,
     WindowMetrics,
 )
+from synthorg.hr.performance.quality_override_store import (
+    QualityOverrideStore,
+)
+from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
+from synthorg.hr.performance.trend_protocol import TrendDetectionStrategy
+from synthorg.hr.performance.window_protocol import MetricsWindowStrategy
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.inflection import (
     PERF_INFLECTION_DETECTED,
@@ -56,27 +75,6 @@ from synthorg.observability.events.performance import (
     PERF_TRACKER_CLEARED,
     PERF_WINDOW_INSUFFICIENT_DATA,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.task import AcceptanceCriterion
-    from synthorg.engine.coordination.attribution import AgentContribution
-    from synthorg.hr.enums import TrendDirection
-    from synthorg.hr.performance.collaboration_override_store import (
-        CollaborationOverrideStore,
-    )
-    from synthorg.hr.performance.collaboration_protocol import (
-        CollaborationScoringStrategy,
-    )
-    from synthorg.hr.performance.inflection_protocol import InflectionSink
-    from synthorg.hr.performance.llm_calibration_sampler import (
-        LlmCalibrationSampler,
-    )
-    from synthorg.hr.performance.quality_override_store import (
-        QualityOverrideStore,
-    )
-    from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
-    from synthorg.hr.performance.trend_protocol import TrendDetectionStrategy
-    from synthorg.hr.performance.window_protocol import MetricsWindowStrategy
 
 logger = get_logger(__name__)
 

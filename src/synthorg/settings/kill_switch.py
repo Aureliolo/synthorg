@@ -13,25 +13,17 @@ This helper concentrates that shape so per-subsystem gates stay terse
 and consistent across the codebase.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
-
-if TYPE_CHECKING:
-    # Cycle breaker: hot-path callers across the codebase (including the
-    # communication meeting orchestrator, which sits on the resolver's own
-    # import chain) import this module at runtime, so the resolver is
-    # named for signatures only.
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
 
 async def resolve_bool_with_fallback(
     *,
-    resolver: ConfigResolver | None,
+    resolver: ConfigResolverProtocol | None,
     namespace: str,
     key: str,
     fallback: bool,

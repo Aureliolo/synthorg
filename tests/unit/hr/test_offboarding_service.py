@@ -26,6 +26,7 @@ from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.consolidation.archival import ArchivalStore
 from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.memory.protocol import MemoryBackend
+from tests._shared import mock_of
 from tests.unit.hr.conftest import (
     make_agent_identity,
     make_firing_request,
@@ -255,8 +256,8 @@ class TestOffboardingServiceFullPipeline:
             registry=registry,
             reassignment_strategy=FakeReassignmentStrategy(),
             archival_strategy=FakeArchivalStrategy(),
-            memory_backend=object(),  # type: ignore[arg-type]
-            archival_store=object(),  # type: ignore[arg-type]
+            memory_backend=mock_of[MemoryBackend](),
+            archival_store=mock_of[ArchivalStore](),
             message_bus=bus,
             task_repository=task_repo,
         )
@@ -459,8 +460,8 @@ class TestOffboardingServiceFullPipeline:
             registry=registry,
             reassignment_strategy=FakeReassignmentStrategy(),
             archival_strategy=FailingArchivalStrategy(),
-            memory_backend=object(),  # type: ignore[arg-type]
-            archival_store=object(),  # type: ignore[arg-type]
+            memory_backend=mock_of[MemoryBackend](),
+            archival_store=mock_of[ArchivalStore](),
         )
 
         request = make_firing_request(

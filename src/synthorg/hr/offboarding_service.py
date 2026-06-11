@@ -5,11 +5,13 @@ memory archival, team notification, and agent termination.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.enums import MessageType
 from synthorg.communication.errors import CommunicationError
 from synthorg.communication.message import Message, TextPart
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.archival_protocol import ArchivalResult, MemoryArchivalStrategy
@@ -23,6 +25,11 @@ from synthorg.hr.errors import (
 from synthorg.hr.full_snapshot_strategy import FullSnapshotStrategy
 from synthorg.hr.models import FiringRequest, OffboardingRecord
 from synthorg.hr.queue_return_strategy import QueueReturnStrategy
+from synthorg.hr.reassignment_protocol import TaskReassignmentStrategy
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.memory.consolidation.archival import ArchivalStore
+from synthorg.memory.org.protocol import OrgMemoryBackend
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_FIRING_ARCHIVAL_FAILED,
@@ -34,18 +41,7 @@ from synthorg.observability.events.hr import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import paginate
-from synthorg.persistence.task_protocol import TaskFilterSpec
-
-if TYPE_CHECKING:
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.task import Task
-    from synthorg.hr.reassignment_protocol import TaskReassignmentStrategy
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.memory.consolidation.archival import ArchivalStore
-    from synthorg.memory.org.protocol import OrgMemoryBackend
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.persistence.task_protocol import TaskRepository
+from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 
 logger = get_logger(__name__)
 

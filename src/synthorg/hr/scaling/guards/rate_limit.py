@@ -5,15 +5,13 @@ Hard cap on the number of scaling actions per rolling window.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType
+from synthorg.hr.scaling.models import ScalingDecision
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_GUARD_APPLIED
-
-if TYPE_CHECKING:
-    from synthorg.hr.scaling.models import ScalingDecision
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_HIRES_PER_DAY: Final[int] = 3

@@ -11,8 +11,10 @@ The implementation mirrors :class:`CostTracker` for consistency.
 import asyncio
 import math
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.budget.risk_config import RiskBudgetConfig
+from synthorg.budget.risk_record import RiskRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.risk_budget import (
     RISK_BUDGET_AGENT_QUERIED,
@@ -24,10 +26,6 @@ from synthorg.observability.events.risk_budget import (
     RISK_BUDGET_TOTAL_QUERIED,
     RISK_BUDGET_TRACKER_CREATED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.risk_config import RiskBudgetConfig
-    from synthorg.budget.risk_record import RiskRecord
 
 logger = get_logger(__name__)
 

@@ -1,15 +1,12 @@
 """Budget signal source -- reads cost metrics from budget tracker."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
+from synthorg.budget.spending_summary import SpendingSummary
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.models import ScalingSignal
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_SIGNAL_COLLECTION_DEGRADED
-
-if TYPE_CHECKING:
-    from synthorg.budget.spending_summary import SpendingSummary
 
 logger = get_logger(__name__)
 

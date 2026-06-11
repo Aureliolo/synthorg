@@ -1,15 +1,13 @@
 """Workload signal source -- reads agent utilization from assignment."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.assignment.models import AgentWorkload
 from synthorg.hr.scaling.models import ScalingSignal
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_SIGNAL_COLLECTION_DEGRADED
-
-if TYPE_CHECKING:
-    from synthorg.engine.assignment.models import AgentWorkload
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_CONCURRENT_TASKS: Final[int] = 3

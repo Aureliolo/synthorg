@@ -5,25 +5,22 @@ from the new hire's department.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Final
+from collections.abc import Sequence
+from typing import Final
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,
     HR_TRAINING_SELECTION_SKIPPED,
     HR_TRAINING_SELECTOR_CONFIG_INVALID,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.hr.performance.models import AgentPerformanceSnapshot
-    from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.hr.seniority import SeniorityLevel
 
 logger = get_logger(__name__)
 

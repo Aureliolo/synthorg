@@ -13,8 +13,7 @@ We express that as a multiplier on the standard
 finalize step needs no special-casing.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.hr.evaluation.config import ExperienceConfig
 from synthorg.hr.evaluation.constants import (
     FULL_CONFIDENCE_DATA_POINTS,
     MAX_SCORE,
@@ -22,10 +21,7 @@ from synthorg.hr.evaluation.constants import (
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.extractors._shared import log_disabled_metrics
 from synthorg.hr.evaluation.metric_extractor_protocol import ExtractedMetrics
-
-if TYPE_CHECKING:
-    from synthorg.hr.evaluation.config import ExperienceConfig
-    from synthorg.hr.evaluation.models import EvaluationContext, InteractionFeedback
+from synthorg.hr.evaluation.models import EvaluationContext, InteractionFeedback
 
 # Full confidence at min_feedback_count * this multiplier.
 # Preserved verbatim from FeedbackBasedUxStrategy.

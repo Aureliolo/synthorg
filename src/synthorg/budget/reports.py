@@ -10,10 +10,13 @@ Service layer backing CFO reporting (see Operations design page).
 
 import math
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.budget._aggregation import sum_tokens
+from synthorg.budget.config import BudgetConfig
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.report_models import (
     ModelDistribution,
@@ -23,6 +26,7 @@ from synthorg.budget.report_models import (
     TaskSpending,
 )
 from synthorg.budget.spending_summary import SpendingSummary
+from synthorg.budget.tracker import CostTracker
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.cfo import (
@@ -30,13 +34,6 @@ from synthorg.observability.events.cfo import (
     CFO_REPORT_GENERATOR_CREATED,
     CFO_REPORT_VALIDATION_ERROR,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.budget.cost_record import CostRecord
-    from synthorg.budget.tracker import CostTracker
 
 logger = get_logger(__name__)
 

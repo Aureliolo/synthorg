@@ -4,21 +4,19 @@ Mandatory, non-bypassable guard that redacts sensitive content
 from training items using the shared sanitize_message utility.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.hr.training.models import (
     ContentType,
     TrainingGuardDecision,
     TrainingItem,
+    TrainingPlan,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_SANITIZATION_APPLIED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.training.models import TrainingPlan
 
 logger = get_logger(__name__)
 

@@ -22,7 +22,10 @@ reaching into ``_agents`` directly.
 import asyncio
 from typing import TYPE_CHECKING, Final
 
+from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.clock import Clock
 from synthorg.core.normalization import (
     compare_ci,
     find_by_name_ci,
@@ -48,6 +51,17 @@ from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
 from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
+from synthorg.versioning.service import VersioningService
+
+if TYPE_CHECKING:
+    # Cycle breaker: ``security.autonomy.models`` pulls ``security/__init__``'s
+    # eager re-exports (engine -> communication -> meeting.participant), which
+    # import ``hr.registry`` back before it finishes. The autonomy-mutation
+    # methods name these types for signatures only.
+    from synthorg.security.autonomy.models import (
+        AutonomyUpdate,
+        AutonomyUpdateResult,
+    )
 
 # Upper bound on a single ``get_by_names`` batch.  Caller inputs can
 # originate from user-supplied request bodies (e.g. the coordination
@@ -56,16 +70,6 @@ from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
 # well-formed organisation has far fewer active agents than this
 # ceiling; anything larger is assumed to be misuse.
 MAX_BATCH_NAMES_LOOKUP: Final[int] = 1024
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.clock import Clock
-    from synthorg.security.autonomy.models import (
-        AutonomyUpdate,
-        AutonomyUpdateResult,
-    )
-    from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
 
@@ -568,8 +572,6 @@ class AgentRegistryService:
             # type / constraint guarantees the construction path
             # already provides.
             from pydantic import ValidationError  # noqa: PLC0415
-
-            from synthorg.core.agent import AgentIdentity  # noqa: PLC0415
 
             merged = identity.model_copy(update=dict(updates)).model_dump()
             try:

@@ -1,13 +1,8 @@
 """Composite scaling trigger -- combines multiple triggers with OR."""
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.scaling.protocols import ScalingTrigger
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.hr.scaling.protocols import ScalingTrigger
-
 
 logger = get_logger(__name__)
 

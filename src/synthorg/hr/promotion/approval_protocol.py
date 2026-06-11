@@ -4,14 +4,13 @@ Defines the pluggable interface for deciding whether promotions
 require human approval.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.hr.promotion.models import (
-        PromotionApprovalDecision,
-        PromotionEvaluation,
-    )
+from synthorg.core.agent import AgentIdentity
+from synthorg.hr.promotion.models import (
+    PromotionApprovalDecision,
+    PromotionEvaluation,
+)
 
 
 # Pluggable approval seam: SeniorityApprovalStrategy in

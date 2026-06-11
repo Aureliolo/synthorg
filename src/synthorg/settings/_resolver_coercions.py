@@ -16,6 +16,11 @@ from synthorg.observability.events.settings import SETTINGS_VALIDATION_FAILED
 from synthorg.observability.redaction import safe_error_description
 
 if TYPE_CHECKING:
+    # Cycle breaker: ``budget.config`` imports ``settings.enums``, which
+    # runs ``settings/__init__``'s eager ``ConfigResolver`` re-export back
+    # through this module before ``budget.config`` finishes. The
+    # ``_build_budget_alerts`` helper imports ``BudgetAlertConfig`` lazily
+    # at call time, so only the return annotation is named here.
     from synthorg.budget.config import BudgetAlertConfig
 
 logger = get_logger(__name__)

@@ -7,7 +7,6 @@ from collections import OrderedDict
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -20,6 +19,13 @@ from synthorg.hr.training.models import (
     TrainingPlanStatus,
     TrainingResult,
 )
+from synthorg.hr.training.protocol import (
+    ContentExtractor,
+    CurationStrategy,
+    SourceSelector,
+    TrainingGuard,
+)
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_TRAINING_SESSION_INVALID_REQUEST,
@@ -38,20 +44,7 @@ from synthorg.observability.events.training import (
     HR_TRAINING_SKIPPED,
 )
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
-
-if TYPE_CHECKING:
-    # Collaborator protocols stay TYPE_CHECKING: tests pass partial
-    # fakes for these, and hoisting them to runtime makes typeguard's
-    # check_protocol reject the fakes (their methods are fully
-    # resolvable).
-    from synthorg.hr.training.protocol import (
-        ContentExtractor,
-        CurationStrategy,
-        SourceSelector,
-        TrainingGuard,
-    )
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
@@ -107,7 +100,7 @@ class TrainingService:
         memory_backend: MemoryBackend,
         training_namespace: str = "training",
         training_tags: tuple[str, ...] = ("learned_from_seniors",),
-        config_resolver: ConfigResolver | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         self._selector = selector
         # Deep copy + freeze so external mutation of the caller-owned

@@ -15,6 +15,7 @@ from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.resolver import ConfigResolver
+from tests._shared import mock_of
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -50,52 +51,52 @@ def _envelope(msg: Message) -> DeliveryEnvelope:
     )
 
 
-class _FakeConfigResolver:
-    """Minimal resolver stub used to inject deterministic dispatcher tunables.
+def _fake_resolver(
+    *,
+    max_consecutive_errors: int | None = None,
+    stop_drain_timeout_seconds: float | None = None,
+    enabled: bool = True,
+) -> ConfigResolver:
+    """Build a ``ConfigResolver`` autospec double with deterministic tunables.
 
     The dispatcher reads ``settings.dispatcher_max_consecutive_errors``
     and ``settings.dispatcher_stop_drain_timeout_seconds`` via
-    ``ConfigResolver``; tests inject this stub when they need to
-    exercise either knob without standing up the full
-    ``SettingsService`` stack.
+    ``ConfigResolver``; the double answers those scalar reads without
+    standing up the full ``SettingsService`` stack while structurally
+    satisfying :class:`ConfigResolverProtocol`.
     """
+    resolver = mock_of[ConfigResolver]()
 
-    def __init__(
-        self,
-        *,
-        max_consecutive_errors: int | None = None,
-        stop_drain_timeout_seconds: float | None = None,
-        enabled: bool = True,
-    ) -> None:
-        self._max_consecutive_errors = max_consecutive_errors
-        self._stop_drain_timeout_seconds = stop_drain_timeout_seconds
-        self._enabled = enabled
-
-    async def get_int(self, namespace: str, key: str) -> int:
+    def _get_int(namespace: str, key: str) -> int:
         if (
             namespace == "settings"
             and key == "dispatcher_max_consecutive_errors"
-            and self._max_consecutive_errors is not None
+            and max_consecutive_errors is not None
         ):
-            return self._max_consecutive_errors
+            return max_consecutive_errors
         msg = f"unexpected get_int({namespace!r}, {key!r})"
         raise KeyError(msg)
 
-    async def get_float(self, namespace: str, key: str) -> float:
+    def _get_float(namespace: str, key: str) -> float:
         if (
             namespace == "settings"
             and key == "dispatcher_stop_drain_timeout_seconds"
-            and self._stop_drain_timeout_seconds is not None
+            and stop_drain_timeout_seconds is not None
         ):
-            return self._stop_drain_timeout_seconds
+            return stop_drain_timeout_seconds
         msg = f"unexpected get_float({namespace!r}, {key!r})"
         raise KeyError(msg)
 
-    async def get_bool(self, namespace: str, key: str) -> bool:
+    def _get_bool(namespace: str, key: str) -> bool:
         if namespace == "settings" and key == "dispatcher_enabled":
-            return self._enabled
+            return enabled
         msg = f"unexpected get_bool({namespace!r}, {key!r})"
         raise KeyError(msg)
+
+    resolver.get_int.side_effect = _get_int
+    resolver.get_float.side_effect = _get_float
+    resolver.get_bool.side_effect = _get_bool
+    return cast(ConfigResolver, resolver)
 
 
 class _FakeSubscriber:
@@ -652,9 +653,7 @@ class TestConsecutiveErrors:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
-            config_resolver=cast(
-                ConfigResolver, _FakeConfigResolver(max_consecutive_errors=5)
-            ),
+            config_resolver=_fake_resolver(max_consecutive_errors=5),
         )
         await d.start()
         try:
@@ -689,9 +688,7 @@ class TestConsecutiveErrors:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
-            config_resolver=cast(
-                ConfigResolver, _FakeConfigResolver(max_consecutive_errors=5)
-            ),
+            config_resolver=_fake_resolver(max_consecutive_errors=5),
         )
         await d.start()
         assert d._task is not None
@@ -702,8 +699,8 @@ class TestConsecutiveErrors:
         assert d._running is False
 
 
-class _RaisingResolver:
-    """Resolver stub that raises on every read.
+def _raising_resolver() -> ConfigResolver:
+    """Build a ``ConfigResolver`` autospec double that raises on every read.
 
     Exercises the dispatcher's bootstrap-fallback / resolve-failure
     paths: ``_resolve_enabled`` resolves to ``True``,
@@ -711,18 +708,16 @@ class _RaisingResolver:
     ``_resolve_stop_drain_timeout`` to ``10.0``, in each case via
     the broad ``except Exception`` branch in the dispatcher.
     """
+    resolver = mock_of[ConfigResolver]()
 
-    async def get_bool(self, namespace: str, key: str) -> bool:
-        msg = f"resolver-down on get_bool({namespace!r}, {key!r})"
+    def _raise(namespace: str, key: str) -> object:
+        msg = f"resolver-down on read({namespace!r}, {key!r})"
         raise RuntimeError(msg)
 
-    async def get_int(self, namespace: str, key: str) -> int:
-        msg = f"resolver-down on get_int({namespace!r}, {key!r})"
-        raise RuntimeError(msg)
-
-    async def get_float(self, namespace: str, key: str) -> float:
-        msg = f"resolver-down on get_float({namespace!r}, {key!r})"
-        raise RuntimeError(msg)
+    resolver.get_bool.side_effect = _raise
+    resolver.get_int.side_effect = _raise
+    resolver.get_float.side_effect = _raise
+    return cast(ConfigResolver, resolver)
 
 
 @pytest.mark.unit
@@ -739,7 +734,7 @@ class TestResolverHelpers:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(),
-            config_resolver=cast(ConfigResolver, _FakeConfigResolver(enabled=False)),
+            config_resolver=_fake_resolver(enabled=False),
         )
         assert await d._resolve_enabled() is False
 
@@ -748,7 +743,7 @@ class TestResolverHelpers:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(),
-            config_resolver=cast(ConfigResolver, _RaisingResolver()),
+            config_resolver=_raising_resolver(),
         )
         assert await d._resolve_enabled() is True
         assert d._resolve_failed_logged is True
@@ -764,10 +759,7 @@ class TestResolverHelpers:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(),
-            config_resolver=cast(
-                ConfigResolver,
-                _FakeConfigResolver(max_consecutive_errors=7),
-            ),
+            config_resolver=_fake_resolver(max_consecutive_errors=7),
         )
         assert await d._resolve_max_consecutive_errors() == 7
 
@@ -776,7 +768,7 @@ class TestResolverHelpers:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(),
-            config_resolver=cast(ConfigResolver, _RaisingResolver()),
+            config_resolver=_raising_resolver(),
         )
         assert await d._resolve_max_consecutive_errors() == 30
 
@@ -790,10 +782,7 @@ class TestResolverHelpers:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(),
-            config_resolver=cast(
-                ConfigResolver,
-                _FakeConfigResolver(stop_drain_timeout_seconds=2.5),
-            ),
+            config_resolver=_fake_resolver(stop_drain_timeout_seconds=2.5),
         )
         assert await d._resolve_stop_drain_timeout() == 2.5
 
@@ -802,7 +791,7 @@ class TestResolverHelpers:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(),
-            config_resolver=cast(ConfigResolver, _RaisingResolver()),
+            config_resolver=_raising_resolver(),
         )
         assert await d._resolve_stop_drain_timeout() == 10.0
 
@@ -844,7 +833,7 @@ class TestKillSwitch:
         iterations_seen = 0
         third_iteration = asyncio.Event()
         required_iterations = 3
-        resolver = _FakeConfigResolver(enabled=False)
+        resolver = _fake_resolver(enabled=False)
         original_get_bool = resolver.get_bool
 
         async def _counting_get_bool(namespace: str, key: str) -> bool:
@@ -860,7 +849,7 @@ class TestKillSwitch:
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
-            config_resolver=cast(ConfigResolver, resolver),
+            config_resolver=resolver,
         )
         await d.start()
         try:

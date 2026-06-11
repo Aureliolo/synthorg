@@ -7,11 +7,10 @@ management services are wired lazily once persistence is connected.
 All fields are ``None`` until wired; readers guard accordingly.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.management.audit_service import (
     ProviderAuditService,
@@ -24,9 +23,6 @@ from synthorg.providers.management.service import (
 )
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.router import ModelRouter
-
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 
 class ProvidersStateSlice(BaseFeatureStateSlice):

@@ -4,8 +4,6 @@ Applies the configured training guards sequentially per content type;
 the service supplies its guard chain and curated items.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.hr.training.models import (
     ContentType,
     TrainingApprovalHandle,
@@ -13,17 +11,13 @@ from synthorg.hr.training.models import (
     TrainingItem,
     TrainingPlan,
 )
+from synthorg.hr.training.protocol import TrainingGuard
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_GUARD_EVALUATION,
     HR_TRAINING_GUARD_FAILED,
     HR_TRAINING_REVIEW_PENDING,
 )
-
-if TYPE_CHECKING:
-    # Collaborator protocol stays TYPE_CHECKING: tests pass partial
-    # guard fakes; a runtime import would make typeguard reject them.
-    from synthorg.hr.training.protocol import TrainingGuard
 
 logger = get_logger(__name__)
 

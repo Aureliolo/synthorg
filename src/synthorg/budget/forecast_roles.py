@@ -14,15 +14,13 @@ an operator-approved ceiling.
 
 from collections import Counter, defaultdict
 from collections.abc import Awaitable, Callable, Mapping
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.hr.registry import AgentRegistryService
 
 logger = get_logger(__name__)
 

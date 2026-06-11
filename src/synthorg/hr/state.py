@@ -9,11 +9,10 @@ once persistence is connected. All fields are ``None`` until wired;
 readers guard accordingly.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.hr.activity_service import ActivityFeedService
 from synthorg.hr.health.service import AgentHealthService
 from synthorg.hr.identity.version_service import AgentVersionService
@@ -26,9 +25,6 @@ from synthorg.hr.scaling.decision_service import (
 from synthorg.hr.scaling.service import ScalingService
 from synthorg.hr.training.plan_service import TrainingPlanService
 from synthorg.hr.training.service import TrainingService
-
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 
 class HrStateSlice(BaseFeatureStateSlice):

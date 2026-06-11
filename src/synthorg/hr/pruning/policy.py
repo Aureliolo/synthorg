@@ -5,20 +5,18 @@ be pruned based on performance data.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection
+from synthorg.hr.performance.models import (
+    AgentPerformanceSnapshot,
+    WindowMetrics,
+)
 from synthorg.hr.pruning.models import PruningEvaluation
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.hr.performance.models import (
-        AgentPerformanceSnapshot,
-        WindowMetrics,
-    )
 from synthorg.observability.events.hr import (
     HR_PRUNING_EVALUATION_COMPLETE,
 )

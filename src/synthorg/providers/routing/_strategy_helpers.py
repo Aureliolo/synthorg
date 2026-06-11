@@ -4,10 +4,9 @@ Extracted from ``strategies.py`` to keep strategy classes focused on
 selection logic.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import JsonValue
 
+from synthorg.config.agent_schema import RoutingConfig, RoutingRuleConfig
 from synthorg.core.role_catalog import get_seniority_info
 from synthorg.observability import get_logger
 from synthorg.observability.events.routing import (
@@ -20,9 +19,6 @@ from synthorg.observability.events.routing import (
 from .errors import NoAvailableModelError
 from .models import ResolvedModel, RoutingDecision, RoutingRequest
 from .resolver import ModelResolver
-
-if TYPE_CHECKING:
-    from synthorg.config.agent_schema import RoutingConfig, RoutingRuleConfig
 
 logger = get_logger(__name__)
 

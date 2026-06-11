@@ -8,20 +8,16 @@ historical data. Follows the same pure-function pattern as
 
 import math
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from synthorg.budget.cost_record import CostRecord
-    from synthorg.hr.performance.models import TaskMetricRecord
+from synthorg.hr.performance.models import TaskMetricRecord
 
 # ── Enums ──────────────────────────────────────────────────────
 

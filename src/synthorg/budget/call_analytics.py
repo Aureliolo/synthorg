@@ -1,26 +1,23 @@
 """Per-call analytics aggregation and alerting service."""
 
 from collections import Counter
-from typing import TYPE_CHECKING, Final
+from datetime import datetime
+from typing import Final
 
+from synthorg.budget.call_analytics_config import CallAnalyticsConfig
 from synthorg.budget.call_analytics_models import AnalyticsAggregation
+from synthorg.budget.category_analytics import OrchestrationRatio
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (
     ANALYTICS_AGGREGATION_COMPUTED,
     ANALYTICS_RETRY_RATE_ALERT,
     ANALYTICS_SERVICE_CREATED,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.budget.call_analytics_config import CallAnalyticsConfig
-    from synthorg.budget.category_analytics import OrchestrationRatio
-    from synthorg.budget.cost_record import CostRecord
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.notifications.dispatcher import NotificationDispatcher
 
 logger = get_logger(__name__)
 
