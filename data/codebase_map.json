@@ -15521,7 +15521,7 @@
     },
     {
       "kind": "repository",
-      "loc": 504,
+      "loc": 491,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/escalation_repo.py",
       "owning_feature": "persistence"
@@ -16312,7 +16312,7 @@
     },
     {
       "kind": "code",
-      "loc": 459,
+      "loc": 446,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/escalation_repo.py",
       "owning_feature": "persistence"
