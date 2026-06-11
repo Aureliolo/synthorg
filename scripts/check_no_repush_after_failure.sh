@@ -44,7 +44,16 @@ if [[ -z "${PAYLOAD}" ]]; then
     exit 0
 fi
 
-COMMAND=$(printf '%s' "${PAYLOAD}" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
+# Fail-open if the payload is not parseable JSON, but SURFACE it: this is a
+# developer-experience guard, not a security boundary, so a broken envelope
+# must not block the user -- yet a silent pass hides a real parse problem
+# (unlike check_bash_no_write.sh, which fails closed). Distinguish a jq parse
+# failure (warn, then allow) from a successfully-parsed non-command tool call
+# (allow silently).
+if ! COMMAND=$(printf '%s' "${PAYLOAD}" | jq -r '.tool_input.command // ""' 2>/dev/null); then
+    echo "check_no_repush_after_failure: could not parse hook payload as JSON; failing open" >&2
+    exit 0
+fi
 if [[ -z "${COMMAND}" ]]; then
     exit 0
 fi

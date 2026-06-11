@@ -56,6 +56,7 @@ MANIFEST_ACCEPT = (
 SIG_ACCEPT = "application/vnd.oci.image.index.v1+json"
 HTTP_TIMEOUT_SECONDS = 30
 HTTP_OK = 200
+HTTP_NOT_FOUND = 404
 USAGE_EXIT_CODE = 2
 FAILURE_EXIT_CODE = 1
 
@@ -319,9 +320,10 @@ def signature_present(
     ``SIG_PROPAGATION_BACKOFF_SECONDS``) to absorb GHCR's
     eventual-consistency window on a freshly-published referrer; a
     genuinely-unsigned digest still returns False once the short budget is
-    spent. A network error that persists past the budget is re-raised (the
-    caller turns it into a "network error" message) rather than being
-    reported as a false "unsigned" verdict.
+    spent. Only a 404 counts as "absent" -- a network error OR a non-404
+    registry error (502/503/429/...) that persists past the budget is
+    re-raised (the caller turns it into a "network error" message) rather
+    than being reported as a false "unsigned" verdict.
 
     ``repo_path`` is pre-validated; ``digest`` is checked to start with
     the literal ``sha256:`` prefix and the hex tail is character-class
@@ -329,8 +331,9 @@ def signature_present(
     the CodeQL ``py/partial-ssrf`` data-flow.
 
     Raises:
-        urllib.error.URLError: a network-level failure that persisted
-            across every attempt (also covers ``OSError`` subclasses).
+        urllib.error.URLError: a network-level failure (also covers
+            ``OSError`` subclasses), OR a non-404 registry error
+            (502/503/429/...), that persisted across every attempt.
     """
     if not digest.startswith("sha256:"):
         return False
@@ -353,6 +356,15 @@ def signature_present(
             raise
         if status == HTTP_OK:
             return True
+        # A 404 is a real "referrer not (yet) present" answer: retry within
+        # the propagation budget, then return False (genuinely unsigned). Any
+        # OTHER non-200 (502/503/429/...) is a registry error, NOT evidence of
+        # a missing signature; if it persists to the final attempt, raise so
+        # the caller reports a network/registry error rather than a false
+        # "unsigned" verdict.
+        if status != HTTP_NOT_FOUND and attempt == SIG_PROPAGATION_ATTEMPTS:
+            msg = f"registry error: HTTP {status} on referrer check for {url}"
+            raise urllib.error.URLError(msg)
         if attempt < SIG_PROPAGATION_ATTEMPTS:
             time.sleep(SIG_PROPAGATION_BACKOFF_SECONDS)
     return False

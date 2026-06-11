@@ -348,6 +348,49 @@ class TestSignaturePresent:
         assert len(calls) == gate.SIG_PROPAGATION_ATTEMPTS
         assert len(slept) == gate.SIG_PROPAGATION_ATTEMPTS - 1
 
+    def test_persistent_registry_error_reraises_not_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A non-404 registry error (e.g. 502) that persists past the budget
+        # is a registry failure, NOT evidence of a missing signature: it must
+        # re-raise (the caller reports a network error) rather than be masked
+        # as a False "unsigned" verdict. Only a 404 means "genuinely absent".
+        calls: list[str] = []
+
+        def fake_request(
+            _method: str, url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            calls.append(url)
+            return 502, {}, b""
+
+        slept: list[float] = []
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
+        digest = "sha256:" + "d" * 64
+        with pytest.raises(urllib.error.URLError):
+            gate.signature_present("aureliolo/synthorg-backend", digest, {})
+        assert len(calls) == gate.SIG_PROPAGATION_ATTEMPTS
+        assert len(slept) == gate.SIG_PROPAGATION_ATTEMPTS - 1
+
+    def test_transient_registry_error_then_succeeds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A non-404 registry error on an early attempt is retried within the
+        # budget; a subsequent 200 still resolves to True (signature present).
+        statuses = iter([502, gate.HTTP_OK])
+
+        def fake_request(
+            _method: str, _url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            return next(statuses), {}, b""
+
+        slept: list[float] = []
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
+        digest = "sha256:" + "f" * 64
+        assert gate.signature_present("aureliolo/synthorg-backend", digest, {}) is True
+        assert slept == [gate.SIG_PROPAGATION_BACKOFF_SECONDS]
+
 
 @pytest.mark.unit
 class TestRepoPrefixValidator:
