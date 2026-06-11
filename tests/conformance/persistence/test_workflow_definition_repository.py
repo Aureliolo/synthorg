@@ -114,7 +114,7 @@ class TestWorkflowDefinitionRepository:
     ) -> None:
         """Get a non-existent workflow definition returns None."""
         repo = backend.workflow_definitions
-        result = await repo.get("nonexistent-id")
+        result = await repo.get(sid("nonexistent-id"))
         assert result is None
 
     async def test_query_empty(
@@ -258,5 +258,5 @@ class TestWorkflowDefinitionRepository:
     ) -> None:
         """Delete non-existent definition returns False."""
         repo = backend.workflow_definitions
-        deleted = await repo.delete("nonexistent")
+        deleted = await repo.delete(sid("nonexistent"))
         assert deleted is False

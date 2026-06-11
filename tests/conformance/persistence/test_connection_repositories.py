@@ -12,6 +12,7 @@ once per test before exercising the dependent repos.
 """
 
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 
@@ -28,7 +29,7 @@ from synthorg.integrations.connections.models import (
     WebhookReceipt,
 )
 from synthorg.persistence.protocol import PersistenceBackend
-from tests._shared import as_uuid, coerce_id, sid
+from tests._shared import as_pk, as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -575,16 +576,14 @@ def _receipt(
     payload_json: str = '{"event":"push"}',
     status: str = "received",
 ) -> WebhookReceipt:
-    kwargs: dict[str, object] = {
-        "connection_name": NotBlankStr(connection_name),
-        "event_type": "push",
-        "status": status,
-        "received_at": received_at or datetime.now(UTC),
-        "payload_json": payload_json,
-    }
-    if receipt_id is not None:
-        kwargs["id"] = coerce_id(receipt_id)
-    return WebhookReceipt(**kwargs)  # type: ignore[arg-type]
+    return WebhookReceipt(
+        id=as_pk(receipt_id) if receipt_id is not None else uuid4(),
+        connection_name=NotBlankStr(connection_name),
+        event_type="push",
+        status=status,
+        received_at=received_at or datetime.now(UTC),
+        payload_json=payload_json,
+    )
 
 
 class TestWebhookReceiptRepository:

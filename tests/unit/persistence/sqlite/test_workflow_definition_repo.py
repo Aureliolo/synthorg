@@ -28,6 +28,8 @@ from synthorg.persistence.workflow_definition_protocol import (
 from tests._shared import as_pk, as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def repo(
@@ -121,7 +123,6 @@ def _make_definition(  # noqa: PLR0913
     )
 
 
-@pytest.mark.unit
 class TestSQLiteWorkflowDefinitionRepository:
     async def test_save_and_get_roundtrip(
         self,

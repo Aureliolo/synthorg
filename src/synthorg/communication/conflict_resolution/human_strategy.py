@@ -195,7 +195,7 @@ class HumanEscalationResolver:
             # queue row's lifecycle even if no notification is delivered.
             notify_task = asyncio.create_task(
                 self._dispatch_notification(escalation, conflict),
-                name=f"escalation-notify[{escalation.id}]",
+                name=f"escalation-notify[{escalation.id!s}]",
             )
             self._notify_tasks.add(notify_task)
             notify_task.add_done_callback(self._notify_tasks.discard)

@@ -36,7 +36,7 @@ parked = await gate.park_context(
     escalation=escalation,
     context=task_context,
     agent_id="agent-007",
-    task_id="task-12345",
+    task_id="123e4567-e89b-12d3-a456-426614174000",
 )
 print(parked.id, parked.approval_id)
 ```
@@ -44,7 +44,7 @@ print(parked.id, parked.approval_id)
 The dashboard at `/dashboard/approvals` lists pending requests. Reviewer clicks `Approve`; the API persists a verdict:
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/approvals/approval-1/decide \
+curl -X POST http://localhost:8000/api/v1/approvals/7c9e6679-7425-40de-944b-e07fc1f90ae7/decide \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   --data '{"verdict": "approve", "rationale": "Looks good; canary signal is clean."}'

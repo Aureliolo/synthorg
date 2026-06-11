@@ -8,7 +8,7 @@ from packaging.version import InvalidVersion, Version
 from psycopg.rows import DictRow
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -56,7 +56,9 @@ def deserialize_row(row: DictRow, context_id: str) -> WorkflowDefinition:
         Result of type ``WorkflowDefinition``.
 
     Raises:
-        QueryError: If row parsing or validation fails.
+        MalformedRowError: If row parsing or validation fails. The failure
+            is deterministic (a corrupt row reparses identically), so it is
+            non-retryable.
     """
     try:
         nodes = tuple(WorkflowNode.model_validate(n) for n in (row.get("nodes") or []))
@@ -91,7 +93,7 @@ def deserialize_row(row: DictRow, context_id: str) -> WorkflowDefinition:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 def extract_references(  # noqa: PLR0913

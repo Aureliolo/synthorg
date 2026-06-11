@@ -28,6 +28,8 @@ from synthorg.persistence.workflow_execution_protocol import (
 from tests._shared import as_uuid, coerce_id, sid
 from tests._shared.persistence import make_private_write_context
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def repo(
@@ -74,7 +76,6 @@ def _make_execution(
 class TestSaveAndGet:
     """Save and retrieve workflow executions."""
 
-    @pytest.mark.unit
     async def test_save_and_get(
         self,
         repo: SQLiteWorkflowExecutionRepository,
@@ -92,7 +93,6 @@ class TestSaveAndGet:
         assert loaded.project == "test-project"
         assert loaded.version == 1
 
-    @pytest.mark.unit
     async def test_node_executions_roundtrip(
         self,
         repo: SQLiteWorkflowExecutionRepository,
@@ -111,14 +111,12 @@ class TestSaveAndGet:
         assert ne1.node_id == "task-1"
         assert ne1.task_id == "task-xyz"
 
-    @pytest.mark.unit
     async def test_get_not_found(
         self,
         repo: SQLiteWorkflowExecutionRepository,
     ) -> None:
         assert await repo.get(sid("nonexistent")) is None
 
-    @pytest.mark.unit
     async def test_get_rejects_non_uuid_id(
         self,
         repo: SQLiteWorkflowExecutionRepository,
@@ -135,7 +133,6 @@ class TestSaveAndGet:
         with pytest.raises(QueryError, match="Failed to deserialize"):
             await repo.get("not-a-uuid")
 
-    @pytest.mark.unit
     async def test_completed_with_timestamp(
         self,
         repo: SQLiteWorkflowExecutionRepository,
@@ -151,7 +148,6 @@ class TestSaveAndGet:
         assert loaded.completed_at is not None
         assert loaded.status is WorkflowExecutionStatus.COMPLETED
 
-    @pytest.mark.unit
     async def test_failed_with_error(
         self,
         repo: SQLiteWorkflowExecutionRepository,
@@ -170,7 +166,6 @@ class TestSaveAndGet:
 class TestVersionConflict:
     """Optimistic concurrency control."""
 
-    @pytest.mark.unit
     async def test_version_conflict_on_update(
         self,
         repo: SQLiteWorkflowExecutionRepository,
@@ -185,7 +180,6 @@ class TestVersionConflict:
         with pytest.raises(PersistenceVersionConflictError):
             await repo.save(stale)
 
-    @pytest.mark.unit
     async def test_version_increment_succeeds(
         self,
         repo: SQLiteWorkflowExecutionRepository,
@@ -207,7 +201,6 @@ class TestVersionConflict:
         assert loaded.version == 2
         assert loaded.status is WorkflowExecutionStatus.COMPLETED
 
-    @pytest.mark.unit
     async def test_update_after_delete_raises_record_not_found(
         self,
         repo: SQLiteWorkflowExecutionRepository,
@@ -231,7 +224,6 @@ class TestVersionConflict:
 class TestListByDefinition:
     """List executions by definition ID."""
 
-    @pytest.mark.unit
     async def test_list_by_definition(
         self,
         repo: SQLiteWorkflowExecutionRepository,
@@ -261,7 +253,6 @@ class TestListByDefinition:
         assert results[0].id == as_uuid("wfexec-002")
         assert results[1].id == as_uuid("wfexec-001")
 
-    @pytest.mark.unit
     async def test_list_by_definition_empty(
         self,
         repo: SQLiteWorkflowExecutionRepository,
@@ -275,7 +266,6 @@ class TestListByDefinition:
 class TestListByStatus:
     """List executions by status."""
 
-    @pytest.mark.unit
     async def test_list_by_status(
         self,
         repo: SQLiteWorkflowExecutionRepository,
@@ -317,7 +307,6 @@ class TestListByStatus:
 class TestDelete:
     """Delete workflow executions."""
 
-    @pytest.mark.unit
     async def test_delete_existing(
         self,
         repo: SQLiteWorkflowExecutionRepository,
@@ -326,7 +315,6 @@ class TestDelete:
         assert await repo.delete(sid("wfexec-test001")) is True
         assert await repo.get(sid("wfexec-test001")) is None
 
-    @pytest.mark.unit
     async def test_delete_not_found(
         self,
         repo: SQLiteWorkflowExecutionRepository,

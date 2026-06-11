@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
-from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -151,6 +151,23 @@ class TestSaveAndGet:
         duplicate = _make_subworkflow(name="Different Name")
         with pytest.raises(DuplicateRecordError):
             await repo.save(duplicate)
+
+    async def test_get_rejects_non_uuid_id(
+        self,
+        repo: SQLiteSubworkflowRepository,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        # A stored ``subworkflow_id`` that is not a valid UUID must surface
+        # as a domain ``QueryError`` (deserialisation failure) rather than
+        # an uncaught ``ValueError`` from the ``UUID(...)`` coercion.
+        await repo.save(_make_subworkflow())
+        await migrated_db.execute(
+            "UPDATE subworkflows SET subworkflow_id = ? WHERE subworkflow_id = ?",
+            ("not-a-uuid", sid("sub-quarterly-close")),
+        )
+        await migrated_db.commit()
+        with pytest.raises(QueryError, match="Failed to deserialize"):
+            await repo.get(("not-a-uuid", "1.0.0"))
 
 
 @pytest.mark.unit

@@ -30,11 +30,22 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
     EscalationQueueStore,
 )
 from synthorg.communication.conflict_resolution.models import Conflict
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import (
+    ConstraintViolationError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_STATUS_TRANSITIONED,
+)
+from synthorg.observability.events.persistence.escalation import (
+    PERSISTENCE_ESCALATION_CREATE_FAILED,
+    PERSISTENCE_ESCALATION_DESERIALIZE_FAILED,
+    PERSISTENCE_ESCALATION_GET_FAILED,
+    PERSISTENCE_ESCALATION_LIST_FAILED,
+    PERSISTENCE_ESCALATION_MARK_EXPIRED_FAILED,
+    PERSISTENCE_ESCALATION_UPDATE_FAILED,
 )
 from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 from synthorg.persistence.sqlite._shared import WriteContext
@@ -63,7 +74,9 @@ def _row_to_escalation(row: Row) -> Escalation:
         Result of type ``Escalation``.
 
     Raises:
-        QueryError: If the database query fails.
+        MalformedRowError: If row parsing or validation fails. The failure
+            is deterministic (a corrupt row reparses identically), so it is
+            non-retryable.
     """
     try:
         conflict = Conflict.model_validate_json(str(row["conflict_json"]))
@@ -97,13 +110,13 @@ def _row_to_escalation(row: Row) -> Escalation:
         except TypeError, KeyError:
             row_id = "<unknown>"
         logger.warning(
-            API_REQUEST_ERROR,
+            PERSISTENCE_ESCALATION_DESERIALIZE_FAILED,
             row_id=row_id,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         msg = f"Failed to parse escalation row {row_id!r}"
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 class SQLiteEscalationRepository(EscalationQueueStore):
@@ -160,7 +173,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             except sqlite3.IntegrityError as exc:
                 msg = f"Escalation {escalation.id!r} already exists"
                 logger.warning(
-                    API_REQUEST_ERROR,
+                    PERSISTENCE_ESCALATION_CREATE_FAILED,
                     error_type="escalation_create_duplicate",
                     escalation_id=str(escalation.id),
                     conflict_id=str(escalation.conflict.id),
@@ -171,7 +184,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to create escalation {escalation.id!r}: {safe_error_description(exc)}"  # noqa: E501
                 logger.warning(
-                    API_REQUEST_ERROR,
+                    PERSISTENCE_ESCALATION_CREATE_FAILED,
                     error_type="escalation_create_failed",
                     escalation_id=str(escalation.id),
                     conflict_id=str(escalation.conflict.id),
@@ -197,7 +210,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch escalation {escalation_id!r}: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
-                API_REQUEST_ERROR,
+                PERSISTENCE_ESCALATION_GET_FAILED,
                 error_type="escalation_get_failed",
                 escalation_id=escalation_id,
                 error=safe_error_description(exc),
@@ -249,7 +262,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list escalations: {safe_error_description(exc)}"
             logger.warning(
-                API_REQUEST_ERROR,
+                PERSISTENCE_ESCALATION_LIST_FAILED,
                 error_type="escalation_list_failed",
                 error=safe_error_description(exc),
             )
@@ -262,7 +275,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 page_items.append(_row_to_escalation(row))
             except QueryError as exc:
                 logger.warning(
-                    API_REQUEST_ERROR,
+                    PERSISTENCE_ESCALATION_DESERIALIZE_FAILED,
                     error_type="escalation_row_corrupt_skipped",
                     error=safe_error_description(exc),
                 )
@@ -343,7 +356,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = "Failed to mark escalations expired"
                 logger.warning(
-                    API_REQUEST_ERROR,
+                    PERSISTENCE_ESCALATION_MARK_EXPIRED_FAILED,
                     error_type="escalation_mark_expired_failed",
                     error=safe_error_description(exc),
                 )
@@ -448,7 +461,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to update escalation {escalation_id!r}: {safe_error_description(exc)}"  # noqa: E501
                 logger.warning(
-                    API_REQUEST_ERROR,
+                    PERSISTENCE_ESCALATION_UPDATE_FAILED,
                     error_type="escalation_update_failed",
                     escalation_id=escalation_id,
                     target_status=new_status.value,
@@ -469,10 +482,23 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 raise QueryError(msg) from exc
             if existing is None:
                 msg = f"Escalation {escalation_id!r} not found"
+                logger.warning(
+                    PERSISTENCE_ESCALATION_UPDATE_FAILED,
+                    error_type="escalation_not_found",
+                    escalation_id=escalation_id,
+                    target_status=new_status.value,
+                )
                 raise KeyError(msg)
             msg = (
                 f"Escalation {escalation_id!r} is {existing.status.value}, "
                 f"cannot transition to {new_status.value}"
+            )
+            logger.warning(
+                PERSISTENCE_ESCALATION_UPDATE_FAILED,
+                error_type="escalation_wrong_status",
+                escalation_id=escalation_id,
+                current_status=existing.status.value,
+                target_status=new_status.value,
             )
             raise ValueError(msg)
         updated = await self.get(escalation_id)

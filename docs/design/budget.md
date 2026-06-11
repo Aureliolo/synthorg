@@ -46,7 +46,7 @@ Every API call is tracked with full context:
 ```json
 {
   "agent_id": "sarah_chen",
-  "task_id": "task-123",
+  "task_id": "123e4567-e89b-12d3-a456-426614174000",
   "provider": "example-provider",
   "model": "example-medium-001",
   "input_tokens": 4500,

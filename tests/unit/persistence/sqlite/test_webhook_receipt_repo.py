@@ -64,3 +64,23 @@ async def test_get_rejects_non_uuid_id(
 
     with pytest.raises(QueryError, match="Failed to deserialize"):
         await repo.get("not-a-uuid")
+
+
+def test_id_default_factory_mints_unique_ids() -> None:
+    # Guards against ``default=uuid4()`` (one shared id) being used in
+    # place of ``default_factory=uuid4`` (a fresh id per instance).
+    first = WebhookReceipt(
+        connection_name=NotBlankStr("github-bot"),
+        event_type="push",
+        status="received",
+        received_at=datetime(2026, 5, 13, 10, 0, 0, tzinfo=UTC),
+        payload_json="{}",
+    )
+    second = WebhookReceipt(
+        connection_name=NotBlankStr("github-bot"),
+        event_type="push",
+        status="received",
+        received_at=datetime(2026, 5, 13, 10, 0, 0, tzinfo=UTC),
+        payload_json="{}",
+    )
+    assert first.id != second.id

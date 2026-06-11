@@ -17,7 +17,11 @@ import aiosqlite
 from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
 
-from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -92,7 +96,9 @@ def _deserialize_row(
         Result of type ``WorkflowDefinition``.
 
     Raises:
-        QueryError: If the database query fails.
+        MalformedRowError: If row parsing or validation fails. The failure
+            is deterministic (a corrupt row reparses identically), so it is
+            non-retryable.
     """
     try:
         data = dict(row)
@@ -130,7 +136,7 @@ def _deserialize_row(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 def _extract_references(  # noqa: PLR0913

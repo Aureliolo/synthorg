@@ -128,7 +128,7 @@ carries all message content.
     {"type": "data", "data": {"pr_number": 42, "status": "open"}}
   ],
   "metadata": {
-    "task_id": "task-123",
+    "task_id": "123e4567-e89b-12d3-a456-426614174000",
     "project_id": null,
     "tokens_used": 1200,
     "cost": 0.018,

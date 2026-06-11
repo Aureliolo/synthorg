@@ -1,5 +1,8 @@
 """Tests for the subworkflow API controller."""
 
+from typing import Any
+from uuid import UUID
+
 import pytest
 
 from tests._shared import JsonDict, LoopAsyncClient, sid
@@ -101,6 +104,45 @@ class TestSubworkflowCrud:
         # derive display counts from ``data.length`` per the frontend
         # contract in ``web/CLAUDE.md``.
         assert body["pagination"]["has_more"] is False
+
+    async def test_create_without_id_server_mints_uuid(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        # Omitting ``subworkflow_id`` makes the server self-mint one. The
+        # create response is the ``WorkflowDefinition`` (``id`` field). The
+        # result is a canonical UUID string, never a hex-prefixed ``sub-`` id.
+        result = await _create_subworkflow(
+            async_test_client, _sub_payload(subworkflow_id=None)
+        )
+        minted = result["id"]
+        assert str(UUID(minted)) == minted
+        assert not minted.startswith("sub-")
+
+    async def test_create_without_id_mints_distinct_ids(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        first = await _create_subworkflow(
+            async_test_client, _sub_payload(subworkflow_id=None, name="A")
+        )
+        second = await _create_subworkflow(
+            async_test_client, _sub_payload(subworkflow_id=None, name="B")
+        )
+        assert first["id"] != second["id"]
+
+    async def test_create_with_invalid_uuid_rejected(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        # ``subworkflow_id`` is typed ``UUID``; a non-UUID value is
+        # rejected at the request boundary as a 400 validation error.
+        resp = await async_test_client.post(
+            "/api/v1/subworkflows",
+            json=_sub_payload(subworkflow_id="not-a-uuid"),
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400, resp.text
 
     async def test_list_paginates_with_explicit_limit(
         self,

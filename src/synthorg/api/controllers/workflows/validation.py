@@ -1,8 +1,6 @@
 # module-kind: controller
 """Workflow validation and YAML export controller."""
 
-from uuid import uuid4
-
 from litestar import Controller, Response, post
 from litestar.datastructures import State
 from pydantic import ValidationError
@@ -77,7 +75,6 @@ class WorkflowValidationController(Controller):
                 WorkflowIODeclaration.model_validate(o) for o in data.outputs
             )
             definition = WorkflowDefinition(
-                id=uuid4(),
                 name=data.name,
                 description=data.description,
                 workflow_type=data.workflow_type,
