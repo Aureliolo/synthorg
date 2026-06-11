@@ -22,11 +22,7 @@ jobs:
     permissions:
       contents: read
     outputs:
-      python: ${{ steps.filter.outputs.python }}
       dashboard: ${{ steps.filter.outputs.dashboard }}
-      docker: ${{ steps.filter.outputs.docker }}
-      doc_claims: ${{ steps.filter.outputs.doc_claims }}
-      runtime_stats: ${{ steps.filter.outputs.runtime_stats }}
       # release-please PRs only touch CHANGELOG.md, version.txt, and
       # the manifest. There is no source code to test, so every heavy
       # job below short-circuits on this flag and ci-pass posts success
@@ -57,19 +53,11 @@ jobs:
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
         with:
+          # Only the `dashboard` filter survives: every correctness job is
+          # de-conditioned (cardinal rule), so the python / docker / doc_claims
+          # / runtime_stats filters had no consumer left. `dashboard` still
+          # path-scopes the pure dashboard build/artifact jobs.
           filters: |
-            python:
-              - 'src/**'
-              - 'tests/**'
-              - 'scripts/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-              - '.github/actions/**'
-              - '.github/workflows/ci.yml'
-              # WS_PROTOCOL_VERSION parity gate runs in Lint; it must
-              # also fire on TS-only bumps so an out-of-sync constant
-              # cannot land without the gate noticing.
-              - 'web/src/utils/constants.ts'
             dashboard:
               - 'web/**'
               - 'src/synthorg/api/**'
@@ -85,28 +73,6 @@ jobs:
               - 'web/src/api/types/openapi.gen.ts'
               - 'web/src/api/types/dtos.gen.ts'
               - 'web/src/api/types/enum-values.gen.ts'
-            docker:
-              - 'docker/**'
-              - '.dockerignore'
-              - '.github/workflows/ci.yml'
-            # Files whose claims are guarded by the doc-drift gate. Docs-only
-            # PRs that touch one of these (and nothing in `python:`) still need
-            # the gate to run, otherwise a stale "100+" claim could ship.
-            doc_claims:
-              - 'docs/design/observability.md'
-              - 'docs/design/agent-execution.md'
-              - 'docs/research/control-plane-audit.md'
-              - 'docs/research/acg-formalism-evaluation.md'
-              - 'src/synthorg/observability/events/**'
-              - 'scripts/check_doc_drift_counts.py'
-            # Trigger the runtime_stats freshness gate when the YAML or
-            # the gate / generator change. YAML-only edits would not
-            # match the `python:` filter, so without this a manual seed
-            # could land without the freshness check running.
-            runtime_stats:
-              - 'data/runtime_stats.yaml'
-              - 'scripts/check_runtime_stats_freshness.py'
-              - 'scripts/generate_runtime_stats.py'
 
   # ── Python: Lint ──
   lint:
@@ -162,10 +128,11 @@ jobs:
       - name: All pre-push-stage gates over the whole tree
         run: uv run pre-commit run --all-files --hook-stage pre-push --show-diff-on-failure --color always
 
-      # Local <-> CI parity self-check: assert every local hook maps to a CI
-      # counterpart and no correctness job is changed-file conditioned.
-      - name: Local <-> CI parity gate
-        run: uv run python scripts/check_local_ci_parity.py
+      # The local <-> CI parity self-check (every local hook maps to a CI
+      # counterpart; no correctness job is changed-file conditioned) is NOT a
+      # dedicated step: it is `stages: [pre-commit, pre-push]`, so the two
+      # all-files invocations above already run it. A separate step would just
+      # run it a third time.
 
       # vale and caddy-validate are language: system hooks needing binaries
       # pre-commit does not manage, so they are SKIPped above and run here.

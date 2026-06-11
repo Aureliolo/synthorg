@@ -5,9 +5,8 @@
 directives. Listing ``RUF100`` *alongside another code* in a single
 ``noqa`` directive makes that directive suppress RUF100's complaint
 about its own sibling code, so a dead directive can hide in plain sight
-even on a fully linted path. The artifact-protocol regression (#2322
-Finding 1) was exactly this: a dead type-checking suppression cloaked by
-a trailing RUF100 token survived every lint pass.
+even on a fully linted path: a dead type-checking suppression cloaked by
+a trailing RUF100 token survives every lint pass.
 
 The fix is structural: RUF100 must never share a ``noqa`` list with
 another code. A genuinely-needed suppression carries only the codes it

@@ -26,9 +26,10 @@ Web: see `web/CLAUDE.md`. CLI: see `cli/CLAUDE.md` (use `go -C cli`, never `cd c
 uv sync                                             # all deps
 uv sync --group docs                                # docs toolchain (zensical + D2)
 bash scripts/install_cli_tools.sh                   # one-time per-machine: golangci-lint + lychee + vale (CI installs separately; install d2 via docs/getting_started.md)
-uv run ruff check src/ tests/ --fix                 # lint + auto-fix
-uv run ruff format src/ tests/                      # format
-uv run mypy --num-workers=4 src/ tests/             # strict type-check
+uv run ruff check . --fix                           # lint + auto-fix (whole tree)
+uv run ruff format .                                 # format (whole tree)
+uv run mypy --num-workers=4 src/ tests/ evals/ docker/ d2_fence.py             # strict type-check
+MYPYPATH=. uv run mypy --num-workers=4 --explicit-package-bases scripts/       # scripts/ (flat-dir name clash)
 uv run python -m pytest tests/ -m unit                                              # -n 8 --dist=loadfile via pyproject addopts
 uv run python -m pytest tests/ -m integration
 uv run python -m pytest tests/ -m e2e

@@ -110,6 +110,8 @@ def _load_data() -> _ComparisonData:
 
     Raises:
         FileNotFoundError: If the data file does not exist.
+        TypeError: If a competitor entry is not a mapping or a required
+            field value is not a string.
         ValueError: If the YAML is empty, malformed, or missing required
             keys at the top level or on individual competitor entries.
     """
@@ -224,6 +226,17 @@ def _validate_competitors(competitors: list[object]) -> None:
         if missing:
             msg = f"Competitor '{name}' is missing required keys: {missing}"
             raise ValueError(msg)
+        # Prove the ``Required[str]`` invariant the downstream
+        # ``cast("_ComparisonData", ...)`` relies on: a YAML ``name: 123``
+        # passes the key-presence check above but would break string ops later.
+        for key in sorted(required_keys):
+            value = comp[key]
+            if not isinstance(value, str):
+                msg = (
+                    f"Competitor '{name}' field '{key}' must be a string, "
+                    f"got {type(value).__name__}"
+                )
+                raise TypeError(msg)
         pricing = comp.get("pricing")
         if pricing is not None and pricing not in valid_pricing:
             msg = f"Competitor '{name}' has invalid pricing: '{pricing}'"

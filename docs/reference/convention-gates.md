@@ -108,7 +108,7 @@ The same gate also asserts the **cardinal rule**: no CI *correctness* job (in `c
 
 ### Whole-tree lint / type
 
-`ruff check` and `ruff format` scope to the whole tree (`.`), and `mypy` extends across `src/`, `tests/`, `evals/`, and `scripts/` (the `scripts/` flat-dir dual-name clash is resolved with `MYPYPATH=. --explicit-package-bases`). The only `[tool.ruff.lint.per-file-ignores]` DOC / `INP` exemptions are `tests/`, `scripts/`, and `evals/`, mirrored consistently. These run as the shared `ruff` / `mypy` hooks (table above) and in CI.
+`ruff check` and `ruff format` scope to the whole tree (`.`), and `mypy` extends across `src/`, `tests/`, `evals/`, `docker/`, `d2_fence.py`, and `scripts/` (the `scripts/` flat-dir dual-name clash is resolved with a second invocation under `MYPYPATH=. --explicit-package-bases`). The `[tool.ruff.lint.per-file-ignores]` DOC / `INP` exemptions are `tests/`, `scripts/`, `evals/`, and `docker/`, mirrored consistently. These run as the shared `ruff` / `mypy` hooks (table above) and in CI.
 
 ### Scope notes
 

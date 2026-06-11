@@ -83,7 +83,7 @@ repos:
         stages: [pre-commit]
         types: []
       - id: orphan-fixtures
-        name: orphan pytest fixtures (opt-in via SYNTHORG_CHECK_ORPHAN_FIXTURES=1)
+        name: orphan pytest fixtures (always-on, pre-push)
         entry: uv run python scripts/check_orphan_fixtures.py
         language: system
         files: ^tests/.*\.py$

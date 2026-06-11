@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local <-> CI parity gate (#2322 keystone).
+"""Local <-> CI parity gate.
 
 The enforcement stack has three layers: PreToolUse hooks (agent-time),
 local git hooks (pre-commit / pre-push), and CI. CI is the authoritative
@@ -119,7 +119,7 @@ _PATH_SCOPED_BUILD_PERF: Final[dict[str, str]] = {
 }
 
 # cli.yml jobs allowed to keep ``cli-changes`` conditioning -- the Go lint /
-# test / vuln CORRECTNESS jobs were de-conditioned (#2322), leaving only these
+# test / vuln CORRECTNESS jobs are de-conditioned, leaving only these
 # build / perf jobs scoped. Each skip cannot hide a correctness defect.
 _CLI_PATH_SCOPED_BUILD_PERF: Final[dict[str, str]] = {
     "cli-build": "build: 6-platform cross-compile + smoke",
