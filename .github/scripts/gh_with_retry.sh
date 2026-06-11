@@ -65,6 +65,13 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # the if-statement completes.
   out="$("$@" 2>"$errfile")" || rc=$?
   if [ "$rc" -eq 0 ]; then
+    # Forward any stderr the wrapped command wrote on the success path (e.g.
+    # `gh` deprecation / informational warnings); routing it to $errfile kept
+    # the caller's command-substituted stdout clean, but the diagnostics still
+    # belong on the caller's stderr rather than being swallowed.
+    if [ -s "$errfile" ]; then
+      cat "$errfile" >&2
+    fi
     if [ "$i" -gt 1 ]; then
       echo "::notice::${LABEL} succeeded on attempt ${i}" >&2
     fi
