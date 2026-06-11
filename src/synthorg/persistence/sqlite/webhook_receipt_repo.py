@@ -76,7 +76,7 @@ def _row_to_receipt(row: aiosqlite.Row) -> WebhookReceipt:
     except (ValueError, TypeError, KeyError) as exc:
         try:
             row_id = str(row["id"])
-        except KeyError, IndexError:
+        except KeyError, IndexError, TypeError:
             row_id = "<unknown>"
         msg = f"Failed to deserialize webhook receipt {row_id!r}"
         logger.warning(

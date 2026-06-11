@@ -74,7 +74,7 @@ def _snapshot(
     version: int,
 ) -> VersionSnapshot[WorkflowDefinition]:
     return VersionSnapshot(
-        entity_id=str(definition.id),
+        entity_id=sid(str(definition.id)),
         version=version,
         content_hash=NotBlankStr(compute_content_hash(definition)),
         snapshot=definition,
@@ -124,7 +124,7 @@ class TestWorkflowServiceCascade:
         self, backend: PersistenceBackend
     ) -> None:
         service = _service(backend)
-        result = await service.delete_definition(NotBlankStr("ghost"))
+        result = await service.delete_definition(sid("ghost"))
         assert result is False
 
     async def test_delete_when_no_versions_present(

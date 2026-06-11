@@ -276,7 +276,7 @@ class WorkflowController(Controller):
         # below confirms actual success.
         logger.info(
             WORKFLOW_DEFINITION_CHANGE_REQUESTED,
-            definition_id=updated.id,
+            definition_id=str(updated.id),
             action="update",
             actor=updater,
             version_before=existing.version,
@@ -291,7 +291,7 @@ class WorkflowController(Controller):
         # actually lands.
         logger.info(
             WORKFLOW_DEFINITION_CHANGED,
-            definition_id=updated.id,
+            definition_id=str(updated.id),
             action="update",
             actor=updater,
             version_before=existing.version,

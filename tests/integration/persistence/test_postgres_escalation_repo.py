@@ -173,7 +173,7 @@ async def test_apply_decision_missing_raises_keyerror(
 ) -> None:
     with pytest.raises(KeyError):
         await repo.apply_decision(
-            "escalation-pg-missing",
+            sid("escalation-pg-missing"),
             decision=WinnerDecision(winning_agent_id="agent-a", reasoning="x"),
             decided_by="human:op-x",
         )

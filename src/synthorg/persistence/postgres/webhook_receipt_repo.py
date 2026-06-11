@@ -177,6 +177,7 @@ class PostgresWebhookReceiptRepository:
             The matching entity, or ``None`` when no row matches.
 
         Raises:
+            MalformedRowError: If the stored row cannot be deserialized.
             QueryError: If the database query fails.
         """
         try:
@@ -311,6 +312,7 @@ class PostgresWebhookReceiptRepository:
             The matching entities.
 
         Raises:
+            MalformedRowError: If any stored row cannot be deserialized.
             QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
@@ -383,6 +385,7 @@ class PostgresWebhookReceiptRepository:
             Tuple of matching rows; empty when no rows match.
 
         Raises:
+            MalformedRowError: If any stored row cannot be deserialized.
             QueryError: If the database query fails.
         """
         if limit <= 0:

@@ -85,7 +85,7 @@ class TestEscalationQueueRepository:
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         repo = backend.build_escalations()
-        assert await repo.get(NotBlankStr("ghost")) is None
+        assert await repo.get(sid("ghost")) is None
 
     async def test_list_items_filters_by_status(
         self, backend: PersistenceBackend

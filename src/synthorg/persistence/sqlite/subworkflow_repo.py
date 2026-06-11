@@ -128,7 +128,13 @@ def _deserialize_row(
             updated_at=updated_at,
             revision=1,
         )
-    except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
+    except (
+        ValueError,
+        TypeError,
+        ValidationError,
+        json.JSONDecodeError,
+        KeyError,
+    ) as exc:
         msg = f"Failed to deserialize subworkflow {context_id!r}"
         logger.warning(
             PERSISTENCE_SUBWORKFLOW_DESERIALIZE_FAILED,
