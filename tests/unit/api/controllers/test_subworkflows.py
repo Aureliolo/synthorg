@@ -1,6 +1,5 @@
 """Tests for the subworkflow API controller."""
 
-from typing import Any
 from uuid import UUID
 
 import pytest
