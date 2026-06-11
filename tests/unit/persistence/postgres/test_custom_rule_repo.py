@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Hermetic unit tests for PostgresCustomRuleRepository.
 
 Mocks psycopg_pool.AsyncConnectionPool so no real Postgres (or
@@ -7,8 +6,8 @@ Docker) is required. Integration tests against a real
 ``tests/integration/persistence/``.
 """
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta, timezone
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
@@ -65,7 +64,7 @@ def _make_rule(  # noqa: PLR0913 -- test builder accepts full spec
     )
 
 
-def _row_for(rule: CustomRuleDefinition) -> dict[str, Any]:
+def _row_for(rule: CustomRuleDefinition) -> dict[str, object]:
     """Build a ``dict_row`` equivalent of what psycopg would return."""
     return {
         "id": str(rule.id),
@@ -94,8 +93,8 @@ class _FakePool:
         self.executed: list[tuple[str, tuple[object, ...]]] = []
         # What the next cursor's fetchone / fetchall returns, and
         # whether execute should raise -- tuned per-test.
-        self.fetchone_result: dict[str, Any] | None = None
-        self.fetchall_result: list[dict[str, Any]] = []
+        self.fetchone_result: dict[str, object] | None = None
+        self.fetchall_result: list[dict[str, object]] = []
         self.rowcount: int = 0
         self.execute_side_effect: BaseException | None = None
 
@@ -196,7 +195,7 @@ class TestRowToDefinition:
     )
     def test_bad_row_raises_query_error(
         self,
-        apply_mutation: Any,
+        apply_mutation: Callable[[dict[str, object]], object],
     ) -> None:
         """Any row that cannot be deserialised becomes a ``QueryError``.
 
@@ -456,7 +455,7 @@ class TestReadPathsWrapDbError:
         self,
         repo: tuple[PostgresCustomRuleRepository, _FakePool],
         method_name: str,
-        call_arg: Any,
+        call_arg: Callable[[], str],
     ) -> None:
         instance, pool = repo
         pool.execute_side_effect = psycopg.errors.DatabaseError("boom")

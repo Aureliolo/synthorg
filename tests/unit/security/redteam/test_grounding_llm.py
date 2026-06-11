@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the substrate checker's LLM plumbing.
 
 These parsers are the frontline defence against malformed LLM tool
@@ -9,8 +8,6 @@ output, and the length / count caps bound prompt and finding size. They
 are exercised here directly rather than only through the happy-path
 checker tests.
 """
-
-from typing import Any
 
 import pytest
 
@@ -28,13 +25,14 @@ from synthorg.security.redteam.grounding._llm import (
     parse_extracted_claims,
     parse_grounding_verdict,
 )
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
 _MODEL = "example-medium-001"
 
 
-def _response(tool_name: str | None, arguments: dict[str, Any]) -> CompletionResponse:
+def _response(tool_name: str | None, arguments: JsonDict) -> CompletionResponse:
     calls = (
         (ToolCall(id="x", name=tool_name, arguments=arguments),)
         if tool_name is not None

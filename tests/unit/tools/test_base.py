@@ -1,7 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for BaseTool ABC and ToolExecutionResult."""
 
-from typing import Any, cast, override
+from typing import cast, override
 
 import pytest
 from pydantic import ValidationError
@@ -9,6 +8,7 @@ from pydantic import ValidationError
 from synthorg.providers.models import ToolDefinition
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
+from tests._shared import JsonDict
 
 # ── ToolExecutionResult ──────────────────────────────────────────
 
@@ -50,7 +50,7 @@ class _ConcreteTool(BaseTool):
         *,
         name: str = "test_tool",
         description: str = "A test tool",
-        parameters_schema: dict[str, Any] | None = None,
+        parameters_schema: JsonDict | None = None,
         category: ToolCategory = ToolCategory.CODE_EXECUTION,
     ) -> None:
         super().__init__(
@@ -64,7 +64,7 @@ class _ConcreteTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         return ToolExecutionResult(content="executed")
 
@@ -101,22 +101,22 @@ class TestBaseTool:
         assert tool.parameters_schema is None
 
     def test_schema_isolated_on_construction(self) -> None:
-        props: dict[str, Any] = {"x": {"type": "string"}}
-        schema: dict[str, Any] = {"type": "object", "properties": props}
+        props: JsonDict = {"x": {"type": "string"}}
+        schema: JsonDict = {"type": "object", "properties": props}
         tool = _ConcreteTool(name="t", parameters_schema=schema)
         schema["injected"] = True
         assert tool.parameters_schema is not None
         assert "injected" not in tool.parameters_schema
 
     def test_schema_nested_isolated_on_construction(self) -> None:
-        schema: dict[str, Any] = {
+        schema: JsonDict = {
             "type": "object",
             "properties": {"x": {"type": "string"}},
         }
         tool = _ConcreteTool(name="t", parameters_schema=schema)
         schema["properties"]["x"]["type"] = "integer"
         assert tool.parameters_schema is not None
-        stored = cast("dict[str, Any]", tool.parameters_schema)
+        stored = cast("JsonDict", tool.parameters_schema)
         assert stored["properties"]["x"]["type"] == "string"
 
     def test_schema_internal_is_read_only(self) -> None:
@@ -126,7 +126,7 @@ class TestBaseTool:
             tool._parameters_schema["injected"] = True  # type: ignore[index]
 
     def test_schema_property_returns_copy(self) -> None:
-        schema: dict[str, Any] = {
+        schema: JsonDict = {
             "type": "object",
             "properties": {"x": {"type": "string"}},
         }
@@ -138,17 +138,17 @@ class TestBaseTool:
         assert "injected" not in tool.parameters_schema
 
     def test_schema_property_nested_mutation_isolated(self) -> None:
-        schema: dict[str, Any] = {
+        schema: JsonDict = {
             "type": "object",
             "properties": {"x": {"type": "string"}},
         }
         tool = _ConcreteTool(name="t", parameters_schema=schema)
         returned = tool.parameters_schema
         assert returned is not None
-        cast("dict[str, Any]", returned)["properties"]["x"]["type"] = "integer"
+        cast("JsonDict", returned)["properties"]["x"]["type"] = "integer"
         fresh = tool.parameters_schema
         assert fresh is not None
-        assert cast("dict[str, Any]", fresh)["properties"]["x"]["type"] == "string"
+        assert cast("JsonDict", fresh)["properties"]["x"]["type"] == "string"
 
     def test_to_definition(self) -> None:
         schema = {"type": "object", "properties": {"x": {"type": "string"}}}

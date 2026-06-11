@@ -1,14 +1,14 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for QuotaPoller lifecycle, polling, alerting, and cooldown."""
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 
 from synthorg.budget.quota import QuotaSnapshot, QuotaWindow
+from synthorg.budget.quota_poller import QuotaPoller
 from synthorg.budget.quota_poller_config import QuotaAlertThresholds, QuotaPollerConfig
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from tests._shared.fake_clock import FakeClock
 
 
@@ -36,11 +36,9 @@ def _make_poller(
     snapshots: dict[str, tuple[QuotaSnapshot, ...]] | None = None,
     *,
     config: QuotaPollerConfig | None = None,
-    notification_dispatcher: Any = None,
+    notification_dispatcher: NotificationDispatcher | None = None,
     clock: FakeClock | None = None,
-) -> Any:
-    from synthorg.budget.quota_poller import QuotaPoller
-
+) -> tuple[QuotaPoller, AsyncMock]:
     tracker = AsyncMock()
     tracker.get_all_snapshots = AsyncMock(return_value=snapshots or {})
 

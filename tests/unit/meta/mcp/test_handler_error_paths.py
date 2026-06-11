@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Error-path coverage for every MCP handler in every domain.
 
 The per-domain handler test files mostly exercise happy paths; this
@@ -12,7 +11,7 @@ covered without per-handler boilerplate.
 """
 
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any, cast
 
 import pytest
@@ -27,6 +26,7 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
+from tests._shared import JsonDict
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -66,11 +66,11 @@ class _UniversalFailingService:
     regardless of the call style.
     """
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> Callable[..., object]:  # type: ignore[explicit-any]  # Callable ellipsis form
         if name.startswith("__"):
             raise AttributeError(name)
 
-        def raising(*args: Any, **kwargs: Any) -> Any:
+        def raising(*args: object, **kwargs: object) -> object:
             msg = f"forced failure on {name} (args={len(args)}, kwargs={len(kwargs)})"
             raise RuntimeError(msg)
 
@@ -92,14 +92,14 @@ class _UniversalFailingAppState:
     blows up there, hitting the ``except Exception`` branch.
     """
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> object:
         if name.startswith("__"):
             raise AttributeError(name)
         if name.startswith("has_"):
             return True
         return _UniversalFailingService()
 
-    def slice(self, slice_type: Any) -> Any:
+    def slice(self, slice_type: Any) -> Any:  # type: ignore[explicit-any]  # mirrors AppStateSliceMixin.slice over arbitrary slice models
         """Return a slice whose every service field is a failing stub.
 
         Mirrors ``AppStateSliceMixin.slice`` so a handler's presence
@@ -120,7 +120,7 @@ class _UniversalFailingAppState:
 # Both paths exercise centralized ``log_handler_*`` branches and the
 # ``err(...)`` envelope. The destructive-op tools are exercised in
 # both their guardrail-pass and guardrail-fail variants below.
-_BASE_ARGS: dict[str, Any] = {
+_BASE_ARGS: JsonDict = {
     # Identifier-shape strings
     "agent_id": "agent-1",
     "agent_name": "alpha",
@@ -232,7 +232,7 @@ class TestEveryHandlerHandlesFailureCleanly:
         assert isinstance(result, str), (
             f"{tool_name}: handler returned non-string {type(result).__name__}"
         )
-        body: dict[str, Any] = json.loads(result)
+        body: JsonDict = json.loads(result)
         # ``ok`` is acceptable for the rare handler that completes
         # without touching the service (e.g. unwired tools that hit
         # the ``not_supported`` envelope path or pure capability
@@ -313,7 +313,7 @@ class TestEveryHandlerEmitsCentralizedLogEvent:
                 arguments=dict(_BASE_ARGS),
                 actor=actor,
             )
-        body: dict[str, Any] = json.loads(result)
+        body: JsonDict = json.loads(result)
         # If the handler returned an error envelope, exactly one of
         # the three centralized events must have been emitted.
         if body["status"] == "error":
@@ -382,7 +382,7 @@ class TestDestructiveHandlersExerciseGuardrailBranch:
                 arguments=args,
                 actor=actor,
             )
-        body: dict[str, Any] = json.loads(result)
+        body: JsonDict = json.loads(result)
         assert body["status"] == "error"
         assert body.get("domain_code") == "guardrail_violated"
         guardrail_events = [

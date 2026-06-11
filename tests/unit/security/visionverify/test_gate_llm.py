@@ -1,8 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the vision gate and the llm_vision verifier."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Never
 from unittest.mock import AsyncMock
 
 import pytest
@@ -25,6 +24,7 @@ from synthorg.security.visionverify.models import (
     VisionVerdict,
 )
 from synthorg.security.visionverify.verifiers.llm_vision import LLMVisionVerifier
+from tests._shared import JsonDict
 from tests._shared.mock_of import mock_of
 
 pytestmark = pytest.mark.unit
@@ -65,7 +65,7 @@ def _capabilities(*, supports_vision: bool) -> ModelCapabilities:
     )
 
 
-def _response(arguments: dict[str, Any]) -> CompletionResponse:
+def _response(arguments: JsonDict) -> CompletionResponse:
     return CompletionResponse(
         tool_calls=(
             ToolCall(id="c1", name="record_vision_verdict", arguments=arguments),
@@ -76,7 +76,7 @@ def _response(arguments: dict[str, Any]) -> CompletionResponse:
     )
 
 
-def _provider(response: CompletionResponse, *, supports_vision: bool = True) -> Any:
+def _provider(response: CompletionResponse, *, supports_vision: bool = True) -> Any:  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock introspection
     return mock_of[CompletionProvider](
         complete=AsyncMock(spec=CompletionProvider.complete, return_value=response),
         get_model_capabilities=AsyncMock(
@@ -162,7 +162,7 @@ class _RaisingVerifier:
     def kind(self) -> str:
         return "heuristic"
 
-    async def verify(self, review_input: VisionReviewInput) -> Any:
+    async def verify(self, review_input: VisionReviewInput) -> Never:
         msg = "boom"
         raise RuntimeError(msg)
 

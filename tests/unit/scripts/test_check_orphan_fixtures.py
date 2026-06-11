@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for scripts/check_orphan_fixtures.py.
 
 Exercises the orphan-fixture detector across every declaration pattern
@@ -25,7 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "check_orphan_fixtures.py"
 
 
-def _load_script_module() -> Any:
+def _load_script_module() -> Any:  # type: ignore[explicit-any]  # returns dynamically loaded gate module
     """Import the script as a module so its helpers are callable."""
     spec = importlib.util.spec_from_file_location(
         "_check_orphan_fixtures",
@@ -38,7 +37,7 @@ def _load_script_module() -> Any:
     return module
 
 
-_MODULE: Any = _load_script_module()
+_MODULE = _load_script_module()
 
 
 def _build_tree(
@@ -55,7 +54,7 @@ def _build_tree(
     return tests_dir
 
 
-def _names(orphans: list[Any]) -> set[str]:
+def _names(orphans: list[Any]) -> set[str]:  # type: ignore[explicit-any]  # gate's orphan objects, accessed by attribute
     return {o.name for o in orphans}
 
 

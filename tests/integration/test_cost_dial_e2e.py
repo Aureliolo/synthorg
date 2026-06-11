@@ -218,7 +218,6 @@ def _checker_ctx(*, accumulated_cost: float) -> Any:  # type: ignore[explicit-an
 # ── Test ──────────────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
 async def test_cost_dial_full_lifecycle() -> None:
     """End-to-end: forecast gate -> approve -> dispatch -> ceiling -> resume."""
     budget = _budget_config()

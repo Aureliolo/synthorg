@@ -1,7 +1,4 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for meta-loop proposal appliers (apply + dry_run)."""
-
-from typing import Any
 
 import pytest
 
@@ -26,6 +23,7 @@ from synthorg.meta.models import (
     RollbackOperation,
     RollbackPlan,
 )
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -451,7 +449,7 @@ def _arch(
     operation: str,
     target_name: str,
     *,
-    payload: dict[str, Any] | None = None,
+    payload: JsonDict | None = None,
 ) -> ArchitectureChange:
     return ArchitectureChange(
         operation=operation,
@@ -757,7 +755,7 @@ class TestArchitectureApplier:
     )
     async def test_dry_run_authority_level_rejects(
         self,
-        value: Any,
+        value: object,
         expected: str,
     ) -> None:
         """Non-string, blank, and oversized authority_level are rejected."""
@@ -797,7 +795,7 @@ class TestArchitectureApplier:
     )
     async def test_dry_run_tool_access_rejects(
         self,
-        value: Any,
+        value: object,
         expected: str,
     ) -> None:
         """tool_access must be a list of non-blank bounded strings."""
@@ -847,7 +845,7 @@ class TestArchitectureApplier:
     )
     async def test_dry_run_policies_rejects(
         self,
-        value: Any,
+        value: object,
         expected: str,
     ) -> None:
         """policies must be a list of non-blank bounded strings."""
@@ -873,7 +871,7 @@ class TestArchitectureApplier:
     )
     async def test_dry_run_dept_head_rejects(
         self,
-        value: Any,
+        value: object,
         expected: str,
     ) -> None:
         """head must be a non-blank bounded string if provided."""
@@ -991,7 +989,7 @@ class TestArchitectureApplier:
     )
     async def test_dry_run_create_role_rejects_missing_description(
         self,
-        value: Any,
+        value: object,
     ) -> None:
         """create_role must reject None / blank description payloads."""
         applier = ArchitectureApplier(context=_FakeArchContext())

@@ -1,9 +1,8 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for BudgetEnforcer degradation integration."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, patch
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock, patch
 
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
@@ -71,8 +70,8 @@ async def _exhaust_provider(
 
 
 def _patch_periods() -> tuple[
-    AbstractContextManager[Any],
-    AbstractContextManager[Any],
+    AbstractContextManager[MagicMock],
+    AbstractContextManager[MagicMock],
 ]:
     return (
         patch(

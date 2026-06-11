@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for ``scripts/generate_dto_types_ts.py``.
 
 The generator's two render functions (``render_dtos`` and
@@ -17,9 +16,10 @@ import os
 import subprocess
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 
 import pytest
+
+from tests._shared import JsonDict
 
 
 def _import_script() -> ModuleType:
@@ -46,7 +46,7 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
-def fresh_schema() -> dict[str, Any]:
+def fresh_schema() -> JsonDict:
     """Return a fresh deepcopy of the fixture schema.
 
     Wrapping the deepcopy in a fixture (rather than a module helper)
@@ -167,7 +167,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_response_only_schema_default_property_promoted(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         gen._promote_response_defaults_to_required(fresh_schema)
         defn = fresh_schema["components"]["schemas"]["FixtureResponseWithDefault"]
@@ -175,7 +175,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_request_only_schema_default_property_left_optional(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         gen._promote_response_defaults_to_required(fresh_schema)
         defn = fresh_schema["components"]["schemas"]["FixtureRequestWithDefault"]
@@ -183,7 +183,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_both_sided_schema_promoted(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """A schema referenced by BOTH a requestBody and a response is
         treated as response-side: response serialisation always emits
@@ -194,7 +194,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_non_2xx_response_schema_promoted(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """A schema reached only via a non-2xx (``404``) response is
         still response-side. The promoter harvests refs under every
@@ -206,7 +206,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_orphan_schema_promoted(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """A schema referenced by no path operation at all is not
         request-only (it appears in no ``requestBody`` ref), so the
@@ -217,7 +217,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_no_default_property_still_promoted_on_response_side(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """Every property on a response-side schema is promoted, not
         just defaulted ones. Pydantic's serialiser emits every field,
@@ -230,7 +230,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_request_only_no_default_property_left_optional(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """The promoter must never tighten request-only schemas; both
         defaulted and non-defaulted properties stay optional."""
@@ -242,7 +242,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_existing_required_entries_preserved(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """Pre-existing ``required[]`` members are kept across the
         promotion (set semantics)."""
@@ -250,7 +250,7 @@ class TestPromoteResponseDefaultsToRequired:
         defn = fresh_schema["components"]["schemas"]["FixtureResponseWithDefault"]
         assert "required_field" in defn["required"]
 
-    def test_idempotent(self, fresh_schema: dict[str, Any]) -> None:
+    def test_idempotent(self, fresh_schema: JsonDict) -> None:
         gen._promote_response_defaults_to_required(fresh_schema)
         first = sorted(
             fresh_schema["components"]["schemas"]["FixtureResponseWithDefault"][
@@ -267,7 +267,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_string_enum_schema_untouched(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """String enums have no ``properties``; nothing to promote."""
         before = dict(fresh_schema["components"]["schemas"]["FixtureEnum"])
@@ -277,7 +277,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_envelope_schema_with_default_data_promoted(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """``ApiResponse_FixtureResponse_`` has ``data`` and ``error``
         defaulted to ``None``; the wire emits both. Promote them."""
@@ -287,7 +287,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_required_list_is_sorted(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """The promoter writes ``required`` back sorted so re-runs are
         byte-stable for the drift gate."""
@@ -297,7 +297,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_returns_mutated_schema(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """Mirror ``_normalise_enum_descriptions``: the function returns
         the schema dict for chaining."""
@@ -306,7 +306,7 @@ class TestPromoteResponseDefaultsToRequired:
 
     def test_nested_request_body_ref_not_promoted(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """A component reached only transitively through a request-body
         wrapper's property ``$ref`` is still request-only.
@@ -331,7 +331,7 @@ class TestRenderDtos:
 
     def test_emits_named_alias_for_clean_schema(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         output = gen.render_dtos(fresh_schema)
         assert (
@@ -345,7 +345,7 @@ class TestRenderDtos:
 
     def test_emits_envelope_alias_for_monomorphised_api_response(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         output = gen.render_dtos(fresh_schema)
         assert (
@@ -355,7 +355,7 @@ class TestRenderDtos:
 
     def test_emits_page_alias_for_monomorphised_paginated_response(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         output = gen.render_dtos(fresh_schema)
         assert (
@@ -365,7 +365,7 @@ class TestRenderDtos:
 
     def test_emits_void_envelope_for_none_type(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         output = gen.render_dtos(fresh_schema)
         assert (
@@ -375,7 +375,7 @@ class TestRenderDtos:
 
     def test_skips_non_pascal_inline_schema(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         output = gen.render_dtos(fresh_schema)
         # The fixture includes a deliberately lower-cased inline name.
@@ -383,7 +383,7 @@ class TestRenderDtos:
 
     def test_skips_string_enum_schemas(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """Enums are owned by ``enum-values.gen.ts``; no duplicate alias here."""
         output = gen.render_dtos(fresh_schema)
@@ -391,19 +391,19 @@ class TestRenderDtos:
 
     def test_imports_components_from_openapi_gen(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         output = gen.render_dtos(fresh_schema)
         assert "import type { components } from './openapi.gen'" in output
 
-    def test_header_present(self, fresh_schema: dict[str, Any]) -> None:
+    def test_header_present(self, fresh_schema: JsonDict) -> None:
         output = gen.render_dtos(fresh_schema)
         assert "AUTO-GENERATED: do not edit by hand." in output
         assert "scripts/generate_dto_types_ts.py" in output
 
     def test_output_is_sorted_deterministically(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """Two runs must produce identical bytes."""
         first = gen.render_dtos(fresh_schema)
@@ -411,7 +411,7 @@ class TestRenderDtos:
         assert first == second
 
     def test_empty_components_yields_header_only(self) -> None:
-        empty: dict[str, Any] = {"components": {"schemas": {}}}
+        empty: JsonDict = {"components": {"schemas": {}}}
         output = gen.render_dtos(empty)
         assert output.startswith("// AUTO-GENERATED")
         assert "import type { components }" in output
@@ -424,7 +424,7 @@ class TestRenderEnumValues:
 
     def test_emits_screaming_snake_tuple(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         output = gen.render_enum_values(fresh_schema)
         assert (
@@ -437,7 +437,7 @@ class TestRenderEnumValues:
 
     def test_emits_derived_string_union_type(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         output = gen.render_enum_values(fresh_schema)
         assert (
@@ -446,7 +446,7 @@ class TestRenderEnumValues:
 
     def test_skips_inline_lowercase_enum(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """An inline schema lacking a PascalCase name is ignored."""
         output = gen.render_enum_values(fresh_schema)
@@ -455,7 +455,7 @@ class TestRenderEnumValues:
 
     def test_skips_non_enum_object_schemas(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """Object types must not produce ``*_VALUES`` blocks."""
         output = gen.render_enum_values(fresh_schema)
@@ -464,19 +464,19 @@ class TestRenderEnumValues:
 
     def test_output_is_deterministic(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         first = gen.render_enum_values(fresh_schema)
         second = gen.render_enum_values(fresh_schema)
         assert first == second
 
-    def test_header_present(self, fresh_schema: dict[str, Any]) -> None:
+    def test_header_present(self, fresh_schema: JsonDict) -> None:
         output = gen.render_enum_values(fresh_schema)
         assert "AUTO-GENERATED: do not edit by hand." in output
 
     def test_escapes_special_characters_in_enum_member(
         self,
-        fresh_schema: dict[str, Any],
+        fresh_schema: JsonDict,
     ) -> None:
         """Members with quote / backslash / newline escape into valid TS.
 

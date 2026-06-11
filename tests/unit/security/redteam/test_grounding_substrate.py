@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the substrate-backed grounding checker.
 
 The checker's contract is precision: a claim grounded in the corpus is
@@ -30,6 +29,7 @@ from synthorg.security.redteam.grounding.resolver import GroundingSubstrateConte
 from synthorg.security.redteam.grounding.substrate import (
     KnowledgeSubstrateGroundingChecker,
 )
+from tests._shared import JsonDict
 from tests._shared.mock_of import mock_of
 
 pytestmark = pytest.mark.unit
@@ -60,7 +60,7 @@ def _hit(text: str = "Quarterly revenue rose by 47 percent.") -> KnowledgeHit:
 
 
 def _extract_response(claims: list[str]) -> CompletionResponse:
-    arguments: dict[str, Any] = {"claims": claims}
+    arguments: JsonDict = {"claims": claims}
     return CompletionResponse(
         tool_calls=(ToolCall(id="x", name="extract_claims", arguments=arguments),),
         finish_reason=FinishReason.TOOL_USE,
@@ -70,7 +70,7 @@ def _extract_response(claims: list[str]) -> CompletionResponse:
 
 
 def _verdict_response(verdict: str, confidence: float) -> CompletionResponse:
-    arguments: dict[str, Any] = {
+    arguments: JsonDict = {
         "verdict": verdict,
         "confidence": confidence,
         "reason": "rationale",
@@ -93,19 +93,19 @@ def _no_tool_response() -> CompletionResponse:
     )
 
 
-def _provider(responses: list[CompletionResponse]) -> Any:
+def _provider(responses: list[CompletionResponse]) -> Any:  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock introspection
     return mock_of[CompletionProvider](
         complete=AsyncMock(spec=CompletionProvider.complete, side_effect=responses),
     )
 
 
-def _knowledge(hits: tuple[KnowledgeHit, ...]) -> Any:
+def _knowledge(hits: tuple[KnowledgeHit, ...]) -> Any:  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock introspection
     return mock_of[KnowledgeService](
         search=AsyncMock(spec=KnowledgeService.search, return_value=hits),
     )
 
 
-def _context(
+def _context(  # type: ignore[explicit-any]  # mock_of doubles; Any enables MagicMock introspection
     *,
     provider: Any,
     knowledge_service: Any,
@@ -278,7 +278,7 @@ class TestEscalation:
         assert kwargs["project_id"] == _PROJECT
 
     async def test_per_claim_search_failure_skips_only_that_claim(self) -> None:
-        def _search(**kwargs: Any) -> tuple[KnowledgeHit, ...]:
+        def _search(**kwargs: object) -> tuple[KnowledgeHit, ...]:
             # Per-claim search runs under a concurrent fan-out, so call
             # order is non-deterministic; dispatch on the claim text so the
             # first claim always fails regardless of which task runs first.
@@ -375,7 +375,7 @@ class TestDegradation:
 
 class TestPerClaimResilience:
     async def test_entailment_failure_skips_only_that_claim(self) -> None:
-        def _complete(*args: Any, **kwargs: Any) -> CompletionResponse:
+        def _complete(*args: Any, **kwargs: Any) -> CompletionResponse:  # type: ignore[explicit-any]  # mimics provider.complete call args, indexed dynamically
             tools = kwargs["tools"]
             if tools[0].name == EXTRACT_CLAIMS_TOOL_NAME:
                 return _extract_response(["First claim 10%.", "Second claim 47%."])

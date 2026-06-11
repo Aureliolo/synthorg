@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for coordination-domain MCP handlers.
 
 Covers the nine handlers exposed by
@@ -17,7 +16,6 @@ the broader integration sweep.
 
 import json
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -34,7 +32,7 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_INVOKE_FAILED,
 )
-from tests._shared import make_app_state
+from tests._shared import JsonDict, make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -59,8 +57,8 @@ def unwired_state() -> AppState:
     return make_app_state()
 
 
-def _parse(raw: str) -> dict[str, Any]:
-    body: dict[str, Any] = json.loads(raw)
+def _parse(raw: str) -> JsonDict:
+    body: JsonDict = json.loads(raw)
     assert body["status"] in {"ok", "error"}, (
         f"legacy envelope leaked: status={body['status']!r}"
     )
@@ -86,7 +84,7 @@ class TestAllHandlersReturnValidEnvelope:
         handler = COORDINATION_HANDLERS[tool_name]
         # Common argument surface -- individual handlers ignore
         # fields they don't consume.
-        args: dict[str, Any] = {
+        args: JsonDict = {
             "task_id": "task-1",
             "decision_id": "decision-1",
             "agent_ids": ["agent-1"],
@@ -401,7 +399,7 @@ class TestScalingTrigger:
     async def test_invalid_arguments_mapped(
         self,
         actor: AgentIdentity,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
         expected_match: str,
     ) -> None:
         state = make_app_state(
@@ -508,7 +506,7 @@ class TestCeremonyPolicyGetResolved:
     async def test_rejects_null_or_blank_department(
         self,
         actor: AgentIdentity,
-        bad_value: Any,
+        bad_value: object,
     ) -> None:
         service = AsyncMock()
         state = make_app_state(

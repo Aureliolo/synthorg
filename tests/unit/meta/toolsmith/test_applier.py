@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the tool-creation applier."""
 
 from datetime import UTC, datetime, timedelta
@@ -21,7 +20,7 @@ from synthorg.meta.toolsmith.models import (
     ToolBlueprintState,
     ToolValidationResult,
 )
-from tests._shared import FakeClock
+from tests._shared import FakeClock, JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -88,7 +87,7 @@ class _InMemoryRepo:
         entity_id: str,
         from_state: ToolBlueprintState,
         to_state: ToolBlueprintState,
-        **updates: Any,
+        **updates: object,
     ) -> bool:
         row = self.rows.get(entity_id)
         if row is None or row.state is not from_state:
@@ -149,10 +148,12 @@ def _fail_result() -> ToolValidationResult:
 
 
 def _registry() -> DynamicToolRegistry:
-    def factory(blueprint: ToolBlueprint) -> Any:
+    def factory(blueprint: ToolBlueprint) -> Any:  # type: ignore[explicit-any]  # builds a handler matching the registry's expected callable
         del blueprint
 
-        async def _handler(*, app_state: Any, arguments: Any, actor: Any = None) -> str:
+        async def _handler(
+            *, app_state: object, arguments: JsonDict, actor: object = None
+        ) -> str:
             del app_state, arguments, actor
             return "{}"
 
@@ -161,7 +162,9 @@ def _registry() -> DynamicToolRegistry:
     return DynamicToolRegistry(handler_factory=factory)
 
 
-def _applier(repo: _InMemoryRepo, registry: DynamicToolRegistry, gate: _Gate) -> Any:
+def _applier(
+    repo: _InMemoryRepo, registry: DynamicToolRegistry, gate: _Gate
+) -> ToolCreationApplier:
     return ToolCreationApplier(
         repo=repo,
         registry=registry,

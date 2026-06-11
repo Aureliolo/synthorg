@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for scripts/inject_runtime_stats.py.
 
 The injector reads ``data/runtime_stats.yaml`` and rewrites the inner
@@ -12,11 +11,12 @@ import importlib.util
 from collections.abc import Generator
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 from unittest.mock import patch
 
 import pytest
 import yaml
+
+from tests._shared import JsonDict
 
 
 def _import_script() -> ModuleType:
@@ -33,7 +33,7 @@ def _import_script() -> ModuleType:
 inj = _import_script()
 
 
-_STATS_FIXTURE: dict[str, Any] = {
+_STATS_FIXTURE: JsonDict = {
     "schema_version": 1,
     "last_generated_utc": "2026-05-06T00:00:00Z",
     "generator_revision": "test",

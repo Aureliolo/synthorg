@@ -28,15 +28,9 @@ can register the checker before installing the import hook, without pulling any
 ``synthorg`` module into the interpreter ahead of instrumentation.
 """
 
-# Every ``Any`` in this module mirrors typeguard's ``TypeCheckerCallable``
-# signature (``value``/``origin_type`` are genuinely arbitrary at a checker
-# boundary); there is no narrower honest type, so the explicit-any rule is
-# disabled file-wide rather than scattered per signature.
-# mypy: disable-error-code="explicit-any"
-
 import warnings
 from types import UnionType
-from typing import Any, Union
+from typing import Union
 from unittest.mock import Mock
 
 import typeguard
@@ -60,13 +54,13 @@ def _wrap(inner: TypeCheckerCallable) -> TypeCheckerCallable:
     """
 
     def _checked(
-        value: Any,
-        origin_type: Any,
-        args: tuple[Any, ...],
+        value: object,
+        origin_type: object,
+        args: tuple[object, ...],
         memo: TypeCheckMemo,
-    ) -> Any:
+    ) -> None:
         try:
-            return inner(value, origin_type, args, memo)
+            inner(value, origin_type, args, memo)
         except NameError as exc:
             policy = memo.config.forward_ref_policy
             if policy is ForwardRefPolicy.ERROR:
@@ -80,15 +74,15 @@ def _wrap(inner: TypeCheckerCallable) -> TypeCheckerCallable:
                     TypeHintWarning,
                     stacklevel=2,
                 )
-            return None
+            return
 
     return _checked
 
 
 def _policy_honoring_lookup(
-    origin_type: Any,
-    args: tuple[Any, ...],
-    extras: tuple[Any, ...],
+    origin_type: object,
+    args: tuple[object, ...],
+    extras: tuple[object, ...],
 ) -> TypeCheckerCallable | None:
     """Wrap the builtin checker (if any) so check-time ``NameError`` is policed.
 
@@ -102,9 +96,9 @@ def _policy_honoring_lookup(
 
 
 def _pydantic_generic_lookup(
-    origin_type: Any,
-    args: tuple[Any, ...],
-    extras: tuple[Any, ...],
+    origin_type: object,
+    args: tuple[object, ...],
+    extras: tuple[object, ...],
 ) -> TypeCheckerCallable | None:
     """Relax a pydantic generic alias (``Model[X]``) to its origin base class.
 
@@ -126,9 +120,9 @@ def _pydantic_generic_lookup(
         return None
 
     def _check(
-        value: Any,
-        _origin_type: Any,
-        _args: tuple[Any, ...],
+        value: object,
+        _origin_type: object,
+        _args: tuple[object, ...],
         _memo: TypeCheckMemo,
     ) -> None:
         if not isinstance(value, base):
@@ -142,9 +136,9 @@ _UNION_ORIGINS = frozenset({Union, UnionType})
 
 
 def _pydantic_discriminated_union_lookup(
-    origin_type: Any,
-    args: tuple[Any, ...],
-    extras: tuple[Any, ...],
+    origin_type: object,
+    args: tuple[object, ...],
+    extras: tuple[object, ...],
 ) -> TypeCheckerCallable | None:
     """Skip checks for a pydantic discriminated union (e.g. ``JsonValue``).
 
@@ -163,9 +157,9 @@ def _pydantic_discriminated_union_lookup(
     ):
 
         def _skip(
-            value: Any,
-            _origin_type: Any,
-            _args: tuple[Any, ...],
+            value: object,
+            _origin_type: object,
+            _args: tuple[object, ...],
             _memo: TypeCheckMemo,
         ) -> None:
             warnings.warn(
@@ -181,9 +175,9 @@ def _pydantic_discriminated_union_lookup(
 
 
 def _mocked_annotation_lookup(
-    origin_type: Any,
-    args: tuple[Any, ...],
-    extras: tuple[Any, ...],
+    origin_type: object,
+    args: tuple[object, ...],
+    extras: tuple[object, ...],
 ) -> TypeCheckerCallable | None:
     """Skip the check when the annotation type itself is a ``Mock``.
 
@@ -202,9 +196,9 @@ def _mocked_annotation_lookup(
     if isinstance(origin_type, Mock):
 
         def _skip(
-            value: Any,
-            _origin_type: Any,
-            _args: tuple[Any, ...],
+            value: object,
+            _origin_type: object,
+            _args: tuple[object, ...],
             _memo: TypeCheckMemo,
         ) -> None:
             warnings.warn(

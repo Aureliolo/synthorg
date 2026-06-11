@@ -1,10 +1,9 @@
-# mypy: disable-error-code="explicit-any"
 """Unit test fixtures for the tool system."""
 
 import asyncio
 import sys
 from collections.abc import Callable, Mapping
-from typing import Any, override
+from typing import override
 
 import pytest
 
@@ -15,6 +14,7 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import JsonDict
 
 # Shadows ``tests/unit/conftest.py::pytest_asyncio_loop_factories``:
 # the unit-tier root pins Windows tests to ``SelectorEventLoop`` to
@@ -66,7 +66,7 @@ class _EchoTestTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         return ToolExecutionResult(content=arguments.get("message", ""))
 
@@ -89,7 +89,7 @@ class _FailingTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         msg = "tool execution failed"
         raise RuntimeError(msg)
@@ -109,7 +109,7 @@ class _NoSchemaTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         return ToolExecutionResult(content="ok")
 
@@ -137,7 +137,7 @@ class _StrictSchemaTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         return ToolExecutionResult(
             content=f"query={arguments['query']} limit={arguments['limit']}",
@@ -162,7 +162,7 @@ class _SoftErrorTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         return ToolExecutionResult(content="soft fail", is_error=True)
 
@@ -185,7 +185,7 @@ class _RecursionTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         msg = "maximum recursion depth"
         raise RecursionError(msg)
@@ -206,7 +206,7 @@ class _InvalidSchemaTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         return ToolExecutionResult(content="ok")
 
@@ -229,7 +229,7 @@ class _EmptyErrorTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         msg = ""
         raise ValueError(msg)
@@ -255,7 +255,7 @@ class _MutatingTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         arguments["injected"] = True
         if "nested" in arguments:
@@ -283,7 +283,7 @@ class _RemoteRefTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         return ToolExecutionResult(content="ok")
 
@@ -391,7 +391,7 @@ class _DelayTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         await asyncio.sleep(arguments["delay"])
         return ToolExecutionResult(content=arguments["value"])
@@ -427,7 +427,7 @@ class _ConcurrencyTrackingTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         async with self._lock:
             self._current += 1
@@ -481,7 +481,7 @@ class _CategorizedTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
     ) -> ToolExecutionResult:
         return ToolExecutionResult(content="ok")
 

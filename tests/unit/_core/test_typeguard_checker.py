@@ -1,7 +1,3 @@
-# mypy: disable-error-code="explicit-any"
-# ``Any`` is the subject under test here: the checker's tolerance of
-# unresolvable / dynamic annotations is exactly what these tests pin, so the
-# scaffolding deliberately writes ``Any``-typed signatures.
 """Tests for the policy-honouring typeguard checker.
 
 Verifies that a check-time ``NameError`` (raised when a structural checker
@@ -13,7 +9,7 @@ test error, while genuine resolved-type mismatches still raise
 
 import warnings
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, NamedTuple, Protocol, cast, runtime_checkable
 from unittest.mock import Mock
 
 if TYPE_CHECKING:
@@ -55,11 +51,11 @@ def _memo(policy: ForwardRefPolicy) -> TypeCheckMemo:
 
 
 def _raise_name_error(
-    value: Any,
-    origin_type: Any,
-    args: tuple[Any, ...],
+    value: object,
+    origin_type: object,
+    args: tuple[object, ...],
     memo: TypeCheckMemo,
-) -> Any:
+) -> None:
     """Stand-in inner checker that fails exactly as the eager-eval path does."""
     raise NameError(name="UnresolvableName")
 
@@ -91,11 +87,11 @@ class TestWrap:
 
     def test_non_nameerror_propagates(self) -> None:
         def _raise_type_check(
-            value: Any,
-            origin_type: Any,
-            args: tuple[Any, ...],
+            value: object,
+            origin_type: object,
+            args: tuple[object, ...],
             memo: TypeCheckMemo,
-        ) -> Any:
+        ) -> None:
             msg = "is not compatible"
             raise TypeCheckError(msg)
 
@@ -183,7 +179,9 @@ class TestUnboundPydanticGeneric:
         # Parameterize by the class's own free TypeVar, as a generic repository
         # annotates ``Model[T]`` with its unbound parameter. Built via
         # ``__class_getitem__`` so the free TypeVar is not analysed as a type.
-        unbound = _Snapshot.__class_getitem__(cast("Any", _Snapshot.__type_params__[0]))
+        unbound = _Snapshot.__class_getitem__(
+            cast("type", _Snapshot.__type_params__[0])
+        )
         bare = _Snapshot(payload=_Payload())  # constructed as the base, not Snapshot[T]
         # Without the relaxation typeguard raises (bare is not an instance of the
         # pydantic-built Snapshot[U] subclass); with it the base check passes.

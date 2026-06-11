@@ -1,7 +1,4 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for client simulation protocol definitions."""
-
-from typing import Any
 
 import pytest
 
@@ -56,31 +53,31 @@ class TestProtocolStructuralConformance:
 
     def test_client_interface_conformance(self) -> None:
         class MockClient:
-            async def submit_requirement(self, context: Any) -> Any:
+            async def submit_requirement(self, context: object) -> object:
                 return None
 
-            async def review_deliverable(self, context: Any) -> Any:
+            async def review_deliverable(self, context: object) -> object:
                 return None
 
         assert isinstance(MockClient(), ClientInterface)
 
     def test_requirement_generator_conformance(self) -> None:
         class MockGenerator:
-            async def generate(self, context: Any) -> Any:
+            async def generate(self, context: object) -> object:
                 return ()
 
         assert isinstance(MockGenerator(), RequirementGenerator)
 
     def test_feedback_strategy_conformance(self) -> None:
         class MockFeedback:
-            async def evaluate(self, context: Any) -> Any:
+            async def evaluate(self, context: object) -> object:
                 return None
 
         assert isinstance(MockFeedback(), FeedbackStrategy)
 
     def test_report_strategy_conformance(self) -> None:
         class MockReport:
-            async def generate_report(self, metrics: Any) -> Any:
+            async def generate_report(self, metrics: object) -> object:
                 return {}
 
         assert isinstance(MockReport(), ReportStrategy)
@@ -89,16 +86,16 @@ class TestProtocolStructuralConformance:
         class MockPoolStrategy:
             async def select_clients(
                 self,
-                pool: Any,
-                constraints: Any,
-            ) -> Any:
+                pool: object,
+                constraints: object,
+            ) -> object:
                 return ()
 
         assert isinstance(MockPoolStrategy(), ClientPoolStrategy)
 
     def test_entry_point_strategy_conformance(self) -> None:
         class MockEntryPoint:
-            async def route(self, request: Any) -> Any:
+            async def route(self, request: object) -> object:
                 return request
 
         assert isinstance(MockEntryPoint(), EntryPointStrategy)

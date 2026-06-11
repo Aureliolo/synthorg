@@ -1,19 +1,18 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for persistence protocol compliance.
 
-The ``filter_spec: Any`` annotations on the fake repositories below
-match the variance pattern used in the repository protocols themselves:
-each repo's ``query`` / ``count`` accepts a domain-specific
-``FilterSpec`` BaseModel, and the fakes here are duck-typed conformance
-stubs that need to satisfy every such protocol without importing every
-``FilterSpec`` class. Importing each concrete spec would bloat this
-file beyond the module-size budget; the module-level mypy directive
-absorbs the volume cleanly.
+The fake repositories below are duck-typed conformance stubs checked
+against the ``@runtime_checkable`` repository protocols via
+``isinstance`` (method-name presence, not static signatures). Their
+discarded protocol parameters are typed ``object`` rather than each
+repo's concrete ``FilterSpec`` / entity type: the stubs never use the
+values, ``object`` accepts the protocol's narrower types
+contravariantly, and importing every concrete spec would bloat this
+file beyond the module-size budget.
 """
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 import pytest
 
@@ -123,7 +122,15 @@ if TYPE_CHECKING:
         CollaborationMetricRecord,
         TaskMetricRecord,
     )
+    from synthorg.knowledge.models import ChunkProvenanceRow, KnowledgeSource
+    from synthorg.persistence.flight_recorder_protocol import (
+        FlightRecorderFrame,
+        FlightRecorderFrameAggregate,
+    )
+    from synthorg.persistence.principle_override_protocol import PrincipleOverride
     from synthorg.security.models import AuditEntry
+    from synthorg.security.redteam.models import RedTeamReportRecord
+    from synthorg.security.ssrf_violation import SsrfViolation
     from synthorg.security.timeout.parked_context import ParkedContext
 
 
@@ -145,7 +152,7 @@ class _FakeTaskRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
@@ -153,7 +160,7 @@ class _FakeTaskRepository:
         del filter_spec, limit, offset
         return ()
 
-    async def count(self, filter_spec: Any) -> int:
+    async def count(self, filter_spec: object) -> int:
         del filter_spec
         return 0
 
@@ -168,7 +175,7 @@ class _FakeCostRecordRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
@@ -204,14 +211,14 @@ class _FakeMessageRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
     ) -> tuple[Message, ...]:
         return ()
 
-    async def purge_before(self, threshold: Any) -> int:
+    async def purge_before(self, threshold: object) -> int:
         return 0
 
     async def get_by_id(
@@ -302,7 +309,7 @@ class _FakeAuditRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
@@ -348,7 +355,7 @@ class _FakePresetOverrideRepo:
 
 
 class _FakeDecisionRepository:
-    async def append(self, event: Any) -> None:
+    async def append(self, event: object) -> None:
         pass
 
     async def append_with_next_version(
@@ -362,7 +369,7 @@ class _FakeDecisionRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,
         offset: int = 0,
@@ -381,7 +388,7 @@ class _FakeDecisionRepository:
     ) -> tuple[DecisionRecord, ...]:
         return ()
 
-    async def purge_before(self, threshold: Any) -> int:
+    async def purge_before(self, threshold: object) -> int:
         return 0
 
 
@@ -465,46 +472,46 @@ class _FakeApiKeyRepository:
 
 
 class _FakeFlightRecorderRepository:
-    async def append(self, frame: Any) -> None:
+    async def append(self, frame: object) -> None:
         pass
 
-    async def append_many(self, frames: Any) -> None:
+    async def append_many(self, frames: object) -> None:
         pass
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[FlightRecorderFrame, ...]:
         return ()
 
-    async def get_aggregate(self, filter_spec: Any) -> Any:
+    async def get_aggregate(self, filter_spec: object) -> FlightRecorderFrameAggregate:
         from synthorg.persistence.flight_recorder_protocol import (
             FlightRecorderFrameAggregate,
         )
 
         return FlightRecorderFrameAggregate()
 
-    async def purge_before(self, threshold: Any) -> int:
+    async def purge_before(self, threshold: object) -> int:
         return 0
 
 
 class _FakeRedTeamReportArchiveRepository:
-    async def append(self, record: Any) -> None:
+    async def append(self, record: object) -> None:
         pass
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[RedTeamReportRecord, ...]:
         return ()
 
-    async def purge_before(self, threshold: Any) -> int:
+    async def purge_before(self, threshold: object) -> int:
         return 0
 
 
@@ -514,14 +521,14 @@ class _FakeCheckpointRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
     ) -> tuple[Checkpoint, ...]:
         return ()
 
-    async def purge_before(self, threshold: Any) -> int:
+    async def purge_before(self, threshold: object) -> int:
         return 0
 
     async def get_latest(
@@ -577,10 +584,10 @@ class _FakeAgentStateRepository:
 
 
 class _FakeSettingsRepository:
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: object) -> None:
         del entity
 
-    async def get(self, entity_id: tuple[NotBlankStr, NotBlankStr]) -> Any | None:
+    async def get(self, entity_id: tuple[NotBlankStr, NotBlankStr]) -> object | None:
         del entity_id
         return None
 
@@ -593,17 +600,17 @@ class _FakeSettingsRepository:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[object, ...]:
         del limit, offset
         return ()
 
-    async def get_namespace(self, namespace: NotBlankStr) -> tuple[Any, ...]:
+    async def get_namespace(self, namespace: NotBlankStr) -> tuple[object, ...]:
         del namespace
         return ()
 
     async def set_if_unchanged(
         self,
-        entity: Any,
+        entity: object,
         *,
         expected_updated_at: str | None = None,
     ) -> bool:
@@ -612,7 +619,7 @@ class _FakeSettingsRepository:
 
     async def set_many(
         self,
-        items: Sequence[Any],
+        items: Sequence[object],
         *,
         expected_updated_at_map: (
             Mapping[tuple[NotBlankStr, NotBlankStr], str] | None
@@ -736,7 +743,7 @@ class _FakeProjectRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
@@ -744,7 +751,7 @@ class _FakeProjectRepository:
         del filter_spec, limit, offset
         return ()
 
-    async def count(self, filter_spec: Any) -> int:
+    async def count(self, filter_spec: object) -> int:
         del filter_spec
         return 0
 
@@ -754,10 +761,10 @@ class _FakeProjectRepository:
 
 
 class _FakeSsrfViolationRepository:
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: object) -> None:
         pass
 
-    async def get(self, entity_id: NotBlankStr) -> Any | None:
+    async def get(self, entity_id: NotBlankStr) -> SsrfViolation | None:
         del entity_id
         return None
 
@@ -766,16 +773,16 @@ class _FakeSsrfViolationRepository:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[SsrfViolation, ...]:
         del limit, offset
         return ()
 
     async def list_violations(
         self,
         *,
-        status: Any | None = None,
+        status: object | None = None,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
-    ) -> tuple[Any, ...]:
+    ) -> tuple[SsrfViolation, ...]:
         del status, limit
         return ()
 
@@ -787,7 +794,7 @@ class _FakeSsrfViolationRepository:
         self,
         violation_id: NotBlankStr,
         *,
-        status: Any,
+        status: object,
         resolved_by: NotBlankStr,
         resolved_at: AwareDatetime,
     ) -> bool:
@@ -796,10 +803,10 @@ class _FakeSsrfViolationRepository:
 
 
 class _FakePersonalityPresetRepository:
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: object) -> None:
         del entity
 
-    async def get(self, entity_id: NotBlankStr) -> Any | None:
+    async def get(self, entity_id: NotBlankStr) -> object | None:
         del entity_id
         return None
 
@@ -808,21 +815,21 @@ class _FakePersonalityPresetRepository:
         *,
         limit: int = 100,
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[object, ...]:
         del limit, offset
         return ()
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[object, ...]:
         del filter_spec, limit, offset
         return ()
 
-    async def count(self, filter_spec: Any) -> int:
+    async def count(self, filter_spec: object) -> int:
         del filter_spec
         return 0
 
@@ -832,10 +839,10 @@ class _FakePersonalityPresetRepository:
 
 
 class _FakeKnowledgeSourceRepository:
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: object) -> None:
         del entity
 
-    async def get(self, entity_id: NotBlankStr) -> Any | None:
+    async def get(self, entity_id: NotBlankStr) -> KnowledgeSource | None:
         del entity_id
         return None
 
@@ -844,21 +851,21 @@ class _FakeKnowledgeSourceRepository:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[KnowledgeSource, ...]:
         del limit, offset
         return ()
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[KnowledgeSource, ...]:
         del filter_spec, limit, offset
         return ()
 
-    async def count(self, filter_spec: Any) -> int:
+    async def count(self, filter_spec: object) -> int:
         del filter_spec
         return 0
 
@@ -868,10 +875,10 @@ class _FakeKnowledgeSourceRepository:
 
 
 class _FakeChunkProvenanceRepository:
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: object) -> None:
         del entity
 
-    async def get(self, entity_id: NotBlankStr) -> Any | None:
+    async def get(self, entity_id: NotBlankStr) -> ChunkProvenanceRow | None:
         del entity_id
         return None
 
@@ -880,21 +887,21 @@ class _FakeChunkProvenanceRepository:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[ChunkProvenanceRow, ...]:
         del limit, offset
         return ()
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[ChunkProvenanceRow, ...]:
         del filter_spec, limit, offset
         return ()
 
-    async def count(self, filter_spec: Any) -> int:
+    async def count(self, filter_spec: object) -> int:
         del filter_spec
         return 0
 
@@ -902,7 +909,9 @@ class _FakeChunkProvenanceRepository:
         del entity_id
         return False
 
-    async def get_many(self, chunk_ids: tuple[NotBlankStr, ...]) -> tuple[Any, ...]:
+    async def get_many(
+        self, chunk_ids: tuple[NotBlankStr, ...]
+    ) -> tuple[ChunkProvenanceRow, ...]:
         del chunk_ids
         return ()
 
@@ -970,7 +979,7 @@ class _FakeWorkflowExecutionRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,
         offset: int = 0,
@@ -978,7 +987,7 @@ class _FakeWorkflowExecutionRepository:
         del filter_spec, limit, offset
         return ()
 
-    async def count(self, filter_spec: Any) -> int:
+    async def count(self, filter_spec: object) -> int:
         del filter_spec
         return 0
 
@@ -1010,13 +1019,13 @@ class _FakeSeenClaimsRepository:
         *,
         idempotency_key: NotBlankStr,
         claim_id: NotBlankStr,
-        now: Any,
+        now: object,
         ttl_seconds: float,
     ) -> bool:
         del idempotency_key, claim_id, now, ttl_seconds
         return True
 
-    async def prune_expired(self, now: Any) -> int:
+    async def prune_expired(self, now: object) -> int:
         del now
         return 0
 
@@ -1030,7 +1039,7 @@ class _FakeIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
         ttl_seconds: int,
-        now: Any,
+        now: object,
     ) -> IdempotencyClaim:
         del scope, key, ttl_seconds, now
         return IdempotencyClaim(
@@ -1069,7 +1078,7 @@ class _FakeIdempotencyRepository:
         del scope, key
         return None
 
-    async def cleanup_expired(self, now: Any) -> int:
+    async def cleanup_expired(self, now: object) -> int:
         del now
         return 0
 
@@ -1077,10 +1086,10 @@ class _FakeIdempotencyRepository:
 class _FakePrincipleOverrideRepository:
     """Minimal PrincipleOverrideRepository conforming to the protocol shape."""
 
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: object) -> None:
         del entity
 
-    async def get(self, entity_id: NotBlankStr) -> Any:
+    async def get(self, entity_id: NotBlankStr) -> PrincipleOverride | None:
         del entity_id
         return None
 
@@ -1093,7 +1102,7 @@ class _FakePrincipleOverrideRepository:
         *,
         limit: int = 100,
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[PrincipleOverride, ...]:
         del limit, offset
         return ()
 
@@ -1307,7 +1316,7 @@ class _FakeBackend:
         return object()
 
     @property
-    def risk_overrides(self) -> Any:
+    def risk_overrides(self) -> object:
         return object()
 
     @property
@@ -1321,75 +1330,75 @@ class _FakeBackend:
         return _FakeSsrfViolationRepository()
 
     @property
-    def identity_versions(self) -> Any:
+    def identity_versions(self) -> object:
         return object()
 
     @property
-    def evaluation_config_versions(self) -> Any:
+    def evaluation_config_versions(self) -> object:
         return object()
 
     @property
-    def budget_config_versions(self) -> Any:
+    def budget_config_versions(self) -> object:
         return object()
 
     @property
-    def company_versions(self) -> Any:
+    def company_versions(self) -> object:
         return object()
 
     @property
-    def role_versions(self) -> Any:
+    def role_versions(self) -> object:
         return object()
 
     @property
-    def circuit_breaker_state(self) -> Any:
+    def circuit_breaker_state(self) -> object:
         return object()
 
     @property
-    def ceremony_scheduler_state(self) -> Any:
+    def ceremony_scheduler_state(self) -> object:
         return object()
 
     @property
-    def meeting_cooldown(self) -> Any:
+    def meeting_cooldown(self) -> object:
         return object()
 
     @property
-    def tracked_containers(self) -> Any:
+    def tracked_containers(self) -> object:
         return object()
 
     @property
-    def connections(self) -> Any:
+    def connections(self) -> object:
         return object()
 
     @property
-    def connection_secrets(self) -> Any:
+    def connection_secrets(self) -> object:
         return object()
 
     @property
-    def oauth_states(self) -> Any:
+    def oauth_states(self) -> object:
         return object()
 
     @property
-    def webhook_receipts(self) -> Any:
+    def webhook_receipts(self) -> object:
         return object()
 
     @property
-    def training_plans(self) -> Any:
+    def training_plans(self) -> object:
         return _FakeTrainingPlanRepository()
 
     @property
-    def training_results(self) -> Any:
+    def training_results(self) -> object:
         return _FakeTrainingResultRepository()
 
     @property
-    def custom_rules(self) -> Any:
+    def custom_rules(self) -> object:
         return None
 
     @property
-    def sessions(self) -> Any:
+    def sessions(self) -> object:
         return None
 
     @property
-    def refresh_tokens(self) -> Any:
+    def refresh_tokens(self) -> object:
         return None
 
     @property
@@ -1408,23 +1417,23 @@ class _FakeBackend:
         return _FakePrincipleOverrideRepository()
 
     @property
-    def mcp_installations(self) -> Any:
+    def mcp_installations(self) -> object:
         return None
 
     @property
-    def org_facts(self) -> Any:
+    def org_facts(self) -> object:
         return None
 
     @property
-    def ontology_entities(self) -> Any:
+    def ontology_entities(self) -> object:
         return None
 
     @property
-    def ontology_drift(self) -> Any:
+    def ontology_drift(self) -> object:
         return None
 
     @property
-    def project_cost_aggregates(self) -> Any:
+    def project_cost_aggregates(self) -> object:
         # Same contract as the real backends: raise rather than silently
         # returning ``None`` so misuse of this fake fails at the
         # protocol boundary instead of deep inside a service.
@@ -1432,7 +1441,7 @@ class _FakeBackend:
         raise NotImplementedError(msg)
 
     @property
-    def fine_tune_checkpoints(self) -> Any:
+    def fine_tune_checkpoints(self) -> object:
         # Match the contract of the real backends: if the backend does
         # not implement fine-tune persistence it must raise, not silently
         # hand back ``None`` that would fail later with a NoneType error
@@ -1441,17 +1450,17 @@ class _FakeBackend:
         raise NotImplementedError(msg)
 
     @property
-    def fine_tune_runs(self) -> Any:
+    def fine_tune_runs(self) -> object:
         msg = "fine_tune_runs not supported by the protocol-compliance fake"
         raise NotImplementedError(msg)
 
-    def build_lockouts(self, auth_config: Any) -> Any:
+    def build_lockouts(self, auth_config: object) -> object:
         return None
 
-    def build_escalations(self, *, notify_channel: str | None = None) -> Any:
+    def build_escalations(self, *, notify_channel: str | None = None) -> object:
         return None
 
-    def build_ontology_versioning(self) -> Any:
+    def build_ontology_versioning(self) -> object:
         return None
 
     async def get_setting(self, key: str) -> str | None:
@@ -1694,10 +1703,10 @@ class TestProtocolCompliance:
 
 
 class _FakeTrainingPlanRepository:
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: object) -> None:
         del entity
 
-    async def get(self, entity_id: NotBlankStr) -> Any | None:
+    async def get(self, entity_id: NotBlankStr) -> object | None:
         del entity_id
         return None
 
@@ -1710,29 +1719,29 @@ class _FakeTrainingPlanRepository:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[object, ...]:
         del limit, offset
         return ()
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: object,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[object, ...]:
         del filter_spec, limit, offset
         return ()
 
-    async def count(self, filter_spec: Any) -> int:
+    async def count(self, filter_spec: object) -> int:
         del filter_spec
         return 0
 
-    async def latest_pending(self, agent_id: NotBlankStr) -> Any | None:
+    async def latest_pending(self, agent_id: NotBlankStr) -> object | None:
         del agent_id
         return None
 
-    async def latest_by_agent(self, agent_id: NotBlankStr) -> Any | None:
+    async def latest_by_agent(self, agent_id: NotBlankStr) -> object | None:
         del agent_id
         return None
 
@@ -1741,16 +1750,16 @@ class _FakeTrainingPlanRepository:
         agent_id: NotBlankStr,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
-    ) -> tuple[Any, ...]:
+    ) -> tuple[object, ...]:
         del agent_id, limit
         return ()
 
 
 class _FakeTrainingResultRepository:
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: object) -> None:
         del entity
 
-    async def get(self, entity_id: NotBlankStr) -> Any | None:
+    async def get(self, entity_id: NotBlankStr) -> object | None:
         del entity_id
         return None
 
@@ -1763,14 +1772,14 @@ class _FakeTrainingResultRepository:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[object, ...]:
         del limit, offset
         return ()
 
-    async def get_by_plan(self, plan_id: NotBlankStr) -> Any | None:
+    async def get_by_plan(self, plan_id: NotBlankStr) -> object | None:
         del plan_id
         return None
 
-    async def get_latest(self, agent_id: NotBlankStr) -> Any | None:
+    async def get_latest(self, agent_id: NotBlankStr) -> object | None:
         del agent_id
         return None

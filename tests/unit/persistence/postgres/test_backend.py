@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Hermetic unit tests for PostgresPersistenceBackend lifecycle.
 
 These tests mock ``psycopg_pool.AsyncConnectionPool`` so no real
@@ -7,7 +6,8 @@ Postgres (or Docker) is required.  Integration tests against a real
 ``tests/integration/persistence/test_postgres_backend.py``.
 """
 
-from typing import Any, cast
+from collections.abc import Iterator
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import psycopg
@@ -41,9 +41,9 @@ class _FakePoolFactory:
     def __init__(self) -> None:
         self.pools: list[AsyncMock] = []
         self.last_conninfo: str | None = None
-        self.last_kwargs: dict[str, Any] = {}
+        self.last_kwargs: dict[str, object] = {}
 
-    def __call__(self, conninfo: str, **kwargs: Any) -> AsyncMock:
+    def __call__(self, conninfo: str, **kwargs: object) -> AsyncMock:
         self.last_conninfo = conninfo
         self.last_kwargs = kwargs
         pool = AsyncMock()
@@ -75,7 +75,7 @@ def fake_pool_factory() -> _FakePoolFactory:
 @pytest.fixture
 def patched_pool(
     fake_pool_factory: _FakePoolFactory,
-) -> Any:
+) -> Iterator[MagicMock]:
     """Patch ``AsyncConnectionPool`` inside the postgres backend module."""
     with patch(
         "synthorg.persistence.postgres.backend_connection.AsyncConnectionPool",
@@ -88,7 +88,7 @@ def patched_pool(
 class TestConstructor:
     def test_accepts_config_without_connecting(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
         fake_pool_factory: _FakePoolFactory,
     ) -> None:
         cfg = _cfg()
@@ -98,7 +98,7 @@ class TestConstructor:
         # Construction must not open a pool.
         assert fake_pool_factory.pools == []
 
-    def test_stores_config(self, patched_pool: Any) -> None:
+    def test_stores_config(self, patched_pool: MagicMock) -> None:
         cfg = _cfg(host="db.example.com", port=6543)
         backend = PostgresPersistenceBackend(cfg)
         assert backend._config.host == "db.example.com"
@@ -109,7 +109,7 @@ class TestConstructor:
 class TestConnect:
     async def test_opens_pool_and_marks_connected(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
         fake_pool_factory: _FakePoolFactory,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
@@ -120,7 +120,7 @@ class TestConnect:
 
     async def test_builds_conninfo_from_config(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
         fake_pool_factory: _FakePoolFactory,
     ) -> None:
         backend = PostgresPersistenceBackend(
@@ -147,7 +147,7 @@ class TestConnect:
 
     async def test_passes_pool_sizing_to_pool(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
         fake_pool_factory: _FakePoolFactory,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg(pool_min_size=3, pool_max_size=15))
@@ -157,7 +157,7 @@ class TestConnect:
 
     async def test_is_idempotent(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
         fake_pool_factory: _FakePoolFactory,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
@@ -168,13 +168,13 @@ class TestConnect:
 
     async def test_raises_on_pool_open_failure(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
         fake_pool_factory: _FakePoolFactory,
     ) -> None:
         # Make the next pool.open() raise to simulate a connection failure.
         original_call = fake_pool_factory.__call__
 
-        def failing_factory(conninfo: str, **kwargs: Any) -> AsyncMock:
+        def failing_factory(conninfo: str, **kwargs: object) -> AsyncMock:
             pool = original_call(conninfo, **kwargs)
             pool.open = AsyncMock(side_effect=OSError("connection refused"))
             return pool
@@ -193,7 +193,7 @@ class TestConnect:
 class TestDisconnect:
     async def test_closes_pool_and_clears_state(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
         fake_pool_factory: _FakePoolFactory,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
@@ -207,7 +207,7 @@ class TestDisconnect:
 
     async def test_safe_when_never_connected(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
         # Should not raise.
@@ -216,7 +216,7 @@ class TestDisconnect:
 
     async def test_idempotent(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
         fake_pool_factory: _FakePoolFactory,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
@@ -231,14 +231,14 @@ class TestDisconnect:
 class TestHealthCheck:
     async def test_returns_false_when_disconnected(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
         assert await backend.health_check() is False
 
     async def test_returns_true_when_select_one_succeeds(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
         await backend.connect()
@@ -246,7 +246,7 @@ class TestHealthCheck:
 
     async def test_returns_false_when_query_raises(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
         fake_pool_factory: _FakePoolFactory,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
@@ -263,7 +263,7 @@ class TestHealthCheck:
 
     async def test_returns_false_when_pool_checkout_times_out(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
         fake_pool_factory: _FakePoolFactory,
     ) -> None:
         """pool.connection() hang is bounded by pool_timeout_seconds.
@@ -288,7 +288,7 @@ class TestHealthCheck:
 class TestGetDb:
     async def test_returns_pool_when_connected(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
         fake_pool_factory: _FakePoolFactory,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
@@ -297,7 +297,7 @@ class TestGetDb:
 
     def test_raises_when_disconnected(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
         with pytest.raises(PersistenceConnectionError):
@@ -318,7 +318,7 @@ class TestRepositoryPropertiesUnimplementedBranch:
 
     async def test_raises_with_not_yet_implemented_message(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
         await backend.connect()
@@ -368,7 +368,7 @@ class TestRepositoryPropertiesRaiseWhenDisconnected:
     )
     def test_property_raises(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
         name: str,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
@@ -380,7 +380,7 @@ class TestRepositoryPropertiesRaiseWhenDisconnected:
 class TestMigrate:
     async def test_raises_when_disconnected(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
         with pytest.raises(PersistenceConnectionError):
@@ -388,7 +388,7 @@ class TestMigrate:
 
     async def test_migrate_invokes_yoyo_with_postgres_backend(
         self,
-        patched_pool: Any,
+        patched_pool: MagicMock,
     ) -> None:
         backend = PostgresPersistenceBackend(_cfg())
         await backend.connect()
@@ -414,6 +414,6 @@ class TestMigrate:
 
 @pytest.mark.unit
 class TestBackendName:
-    def test_is_postgres(self, patched_pool: Any) -> None:
+    def test_is_postgres(self, patched_pool: MagicMock) -> None:
         backend = PostgresPersistenceBackend(_cfg())
         assert backend.backend_name == "postgres"

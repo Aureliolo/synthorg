@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for the ParkedContext model."""
 
 from datetime import UTC, datetime
@@ -12,9 +11,9 @@ from synthorg.security.timeout.parked_context import ParkedContext
 from tests._shared import as_uuid
 
 
-def _make_parked_context(**overrides: Any) -> ParkedContext:
+def _make_parked_context(**overrides: Any) -> ParkedContext:  # type: ignore[explicit-any]  # arbitrary ParkedContext field kwargs spread into the constructor
     """Create a valid ParkedContext with sensible defaults."""
-    defaults: dict[str, Any] = {
+    defaults: dict[str, Any] = {  # type: ignore[explicit-any]  # heterogeneous model field values
         "execution_id": "exec-1",
         "agent_id": "agent-1",
         "task_id": "task-1",

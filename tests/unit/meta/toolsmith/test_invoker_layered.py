@@ -1,9 +1,8 @@
-# mypy: disable-error-code="explicit-any"
 """The real MCPToolInvoker dispatches authored tools via the layered surfaces."""
 
 import json
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -17,6 +16,7 @@ from synthorg.meta.toolsmith.dynamic_registry import (
     LayeredToolRegistry,
 )
 from synthorg.meta.toolsmith.models import ToolBlueprint
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -44,7 +44,7 @@ def _echo_factory(blueprint: ToolBlueprint) -> ToolHandler:
     del blueprint
 
     async def _handler(
-        *, app_state: Any, arguments: dict[str, Any], actor: Any = None
+        *, app_state: object, arguments: JsonDict, actor: object = None
     ) -> str:
         del app_state, actor
         return json.dumps({"status": "ok", "data": arguments})

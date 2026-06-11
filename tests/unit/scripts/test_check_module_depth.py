@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_module_depth.py``."""
 
 import importlib.util
@@ -23,7 +22,7 @@ def _load_gate() -> ModuleType:
     return module
 
 
-_GATE: Any = cast("Any", _load_gate())
+_GATE: Any = cast("Any", _load_gate())  # type: ignore[explicit-any]  # dynamically loaded gate module; attrs resolved by name
 
 
 # ── compute_depth ───────────────────────────────────────────────

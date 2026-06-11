@@ -484,10 +484,13 @@ warn_return_any = true
 warn_unused_configs = true
 warn_unreachable = true
 show_error_codes = true
-# Strict++ knobs. Per-package [[tool.mypy.overrides]] blocks below
-# relax flags for packages still carrying explicit ``Any`` and missing
-# ``@override``; the overrides ratchet off as each package's surface
-# code is typed more precisely.
+# Strict++ knobs. ``disallow_any_explicit`` now holds globally across both
+# ``src/`` and ``tests/``: the only [[tool.mypy.overrides]] blocks below are
+# third-party ``ignore_missing_imports`` shims (no package relaxes a strict++
+# flag). Irreducible explicit-``Any`` sites carry a reasoned per-line
+# ``# type: ignore[explicit-any]``; the pyproject and inline-comment vectors
+# are locked by scripts/check_no_synthorg_any_override.py and
+# scripts/check_no_explicit_any_inline_disable.py.
 disallow_any_explicit = true
 disallow_any_generics = true
 disallow_subclassing_any = true

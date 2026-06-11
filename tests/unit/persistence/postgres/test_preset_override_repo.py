@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Hermetic unit tests for ``PostgresPresetOverrideRepo.get`` fail-closed.
 
 A corrupt persisted row must surface as the domain ``QueryError``
@@ -6,8 +5,8 @@ A corrupt persisted row must surface as the domain ``QueryError``
 exception escape the persistence boundary as a 500.
 """
 
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
-from typing import Any
 
 import pytest
 from psycopg_pool import AsyncConnectionPool
@@ -24,13 +23,13 @@ pytestmark = pytest.mark.unit
 
 
 class _FakeCursor:
-    def __init__(self, row: dict[str, Any] | None) -> None:
+    def __init__(self, row: Mapping[str, object] | None) -> None:
         self._row = row
 
-    async def execute(self, sql: str, params: tuple[Any, ...] = ()) -> None:
+    async def execute(self, sql: str, params: tuple[object, ...] = ()) -> None:
         return None
 
-    async def fetchone(self) -> dict[str, Any] | None:
+    async def fetchone(self) -> Mapping[str, object] | None:
         return self._row
 
     async def __aenter__(self) -> _FakeCursor:
@@ -41,19 +40,19 @@ class _FakeCursor:
 
 
 class _FakeConnection:
-    def __init__(self, row: dict[str, Any] | None) -> None:
+    def __init__(self, row: Mapping[str, object] | None) -> None:
         self._row = row
 
-    def cursor(self, row_factory: Any = None) -> _FakeCursor:
+    def cursor(self, row_factory: object = None) -> _FakeCursor:
         return _FakeCursor(self._row)
 
 
 class _FakePool:
-    def __init__(self, row: dict[str, Any] | None) -> None:
+    def __init__(self, row: Mapping[str, object] | None) -> None:
         self._row = row
 
     @asynccontextmanager
-    async def connection(self) -> Any:
+    async def connection(self) -> AsyncIterator[_FakeConnection]:
         yield _FakeConnection(self._row)
 
 

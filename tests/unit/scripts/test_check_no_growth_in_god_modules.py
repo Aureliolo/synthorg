@@ -37,7 +37,7 @@ def _load_gate() -> ModuleType:
     return module
 
 
-_GATE: Any = cast("Any", _load_gate())  # type: ignore[explicit-any]
+_GATE: Any = cast("Any", _load_gate())  # type: ignore[explicit-any]  # dynamically loaded gate module; attrs resolved by name
 
 
 @pytest.fixture

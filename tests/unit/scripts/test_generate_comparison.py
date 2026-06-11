@@ -1,17 +1,18 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for scripts/generate_comparison.py."""
 
 import datetime as dt
 import importlib.util
 import subprocess
 from collections.abc import Generator
+from contextlib import AbstractContextManager
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+
+from tests._shared import JsonDict
 
 
 def _import_script() -> ModuleType:
@@ -52,7 +53,7 @@ CATS: list[dict[str, str]] = [
     {"key": "framework", "label": "Multi-Agent Framework"},
 ]
 
-COMP: dict[str, Any] = {
+COMP: JsonDict = {
     "name": "TestFramework",
     "slug": "test-framework",
     "url": "https://example.com",
@@ -66,7 +67,7 @@ COMP: dict[str, Any] = {
     },
 }
 
-MINIMAL_YAML: dict[str, Any] = {
+MINIMAL_YAML: JsonDict = {
     "meta": {"last_updated": "2026-04-02"},
     "dimensions": DIMS,
     "categories": CATS,
@@ -85,7 +86,7 @@ def minimal_yaml_file(tmp_path: Path) -> Generator[Path]:
 
 def _write_yaml(
     tmp_path: Path,
-    data: Any,
+    data: object,
     name: str = "test.yaml",
 ) -> Path:
     f = tmp_path / name
@@ -182,7 +183,7 @@ class TestLoadData:
 _FROZEN_DATE = "2026-04-26"
 
 
-def _patch_today(date_str: str = _FROZEN_DATE) -> Any:
+def _patch_today(date_str: str = _FROZEN_DATE) -> AbstractContextManager[MagicMock]:
     """Patch dt.datetime.now to a fixed UTC date so the fallback is deterministic.
 
     Eliminates a race condition where a test that calls `dt.datetime.now`
