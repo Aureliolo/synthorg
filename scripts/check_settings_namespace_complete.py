@@ -27,6 +27,15 @@ import sys
 from pathlib import Path
 from typing import Final
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_source import (  # type: ignore[import-not-found]
+        GateSourceError,
+        parse_source,
+    )
+else:
+    from scripts._gate_source import GateSourceError, parse_source
+
 _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 _BASELINE_REL = Path("scripts") / "_settings_namespace_baseline.txt"
 _ENUMS_REL: Final[str] = "src/synthorg/settings/enums.py"
@@ -55,14 +64,16 @@ class Finding:
 
 
 def extract_namespaces(project_root: Path) -> set[str]:
-    """Return the set of namespace values from SettingNamespace, or empty."""
+    """Return the set of namespace values from SettingNamespace, or empty.
+
+    Raises:
+        GateSourceError: If ``settings/enums.py`` exists but cannot be read
+            or parsed (fail-closed).
+    """
     enums_path = project_root / _ENUMS_REL
     if not enums_path.is_file():
         return set()
-    try:
-        tree = ast.parse(enums_path.read_text(encoding="utf-8"))
-    except SyntaxError, OSError:
-        return set()
+    tree = parse_source(enums_path)
     values: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef) or node.name != _ENUM_CLASS_NAME:
@@ -147,7 +158,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.baseline is not None
         else project_root / _BASELINE_REL
     )
-    findings = check(project_root=project_root, baseline_path=baseline_path)
+    try:
+        findings = check(project_root=project_root, baseline_path=baseline_path)
+    except GateSourceError as exc:
+        print(
+            f"FAIL (settings-namespace scan could not read a file): {exc}",
+            file=sys.stderr,
+        )
+        return 2
     if not findings:
         return 0
     print(

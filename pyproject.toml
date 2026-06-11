@@ -400,6 +400,23 @@ max-complexity = 8
     "INP001",  # scripts/ is intentionally a flat directory, not a package
     "SIM108",  # ternary-vs-if-else: explicit form is sometimes clearer
 ]
+"evals/**/*.py" = [
+    # evals/ is the out-of-package golden-company benchmark harness,
+    # analogous to tests/ and scripts/: its Pydantic model validators
+    # raise-and-return idiomatically (an exception raised then collapsed
+    # within the same validator), so the docstring section-completeness
+    # rules produce noise rather than signal. The full rule set otherwise
+    # applies -- evals/ is linted whole-tree as of #2322.
+    "DOC201",  # missing return docstring
+    "DOC202",  # extraneous return docstring
+    "DOC501",  # missing raises docstring
+]
+"docker/**/*.py" = [
+    # docker/ holds standalone scripts copied into container images
+    # (e.g. sandbox/healthz.py), not an importable package, so the
+    # implicit-namespace-package rule does not apply.
+    "INP001",
+]
 # The src/synthorg/** tree carries function-level complexity that the
 # tightened thresholds catch but cannot resolve without a real
 # decomposition. The function-complexity items (C901, PLR0915, PLR0911,
@@ -565,6 +582,12 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "tree_sitter_language_pack.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# d2 (mkdocs-d2-plugin) ships no py.typed marker; used only by the
+# root d2_fence.py docs-build hook.
+module = "d2.*"
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]

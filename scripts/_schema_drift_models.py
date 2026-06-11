@@ -14,7 +14,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final
+from typing import Final, override
 
 from sqlglot.expressions import DataType
 
@@ -35,6 +35,7 @@ class SqlglotFallbackFilter(logging.Filter):
 
     _FALLBACK_PHRASE: Final[str] = "Falling back to parsing as a 'Command'"
 
+    @override
     def filter(self, record: logging.LogRecord) -> bool:
         """Return False to drop the record, True to keep it."""
         return self._FALLBACK_PHRASE not in record.getMessage()
@@ -84,7 +85,7 @@ BASELINE_MIGRATION_NAME: Final[str] = "00000000000000_baseline.sql"
 # Cross-backend native fallbacks (TEXT<->TIMESTAMPTZ/JSONB/UUID,
 # INTEGER<->BOOLEAN) are NOT families -- they are directional and handled
 # by NATIVE_BACKEND_FALLBACKS below.
-TYPE_FAMILIES: Final[tuple[frozenset[Any], ...]] = (
+TYPE_FAMILIES: Final[tuple[frozenset[object], ...]] = (
     frozenset(
         {
             DataType.Type.TEXT,
@@ -123,7 +124,7 @@ TYPE_FAMILIES: Final[tuple[frozenset[Any], ...]] = (
 
 # Integer-like types that may collapse to BOOLEAN when paired with a
 # CHECK(col IN (0, 1)) constraint (column-level or table-level).
-INTEGER_TYPES_FOR_BOOLEAN_CHECK: Final[frozenset[Any]] = frozenset(
+INTEGER_TYPES_FOR_BOOLEAN_CHECK: Final[frozenset[object]] = frozenset(
     {DataType.Type.INT, DataType.Type.BIGINT, DataType.Type.SMALLINT}
 )
 
@@ -140,7 +141,7 @@ INTEGER_TYPES_FOR_BOOLEAN_CHECK: Final[frozenset[Any]] = frozenset(
 # auto-accepted. Any other mismatch (e.g. SQLite TEXT vs Postgres
 # INTEGER, or a column present in one backend but absent in the other)
 # is still a genuine drift finding and still fails the gate.
-NATIVE_BACKEND_FALLBACKS: Final[frozenset[frozenset[Any]]] = frozenset(
+NATIVE_BACKEND_FALLBACKS: Final[frozenset[frozenset[object]]] = frozenset(
     {
         frozenset({DataType.Type.TEXT, DataType.Type.TIMESTAMPTZ}),
         frozenset({DataType.Type.TEXT, DataType.Type.JSONB}),
@@ -193,7 +194,7 @@ class NormalizedColumn:
     """Canonical column representation suitable for cross-dialect comparison."""
 
     name: str
-    canonical_type: Any  # sqlglot's DataType.Type enum (see import note)
+    canonical_type: object  # sqlglot's DataType.Type enum (untyped; membership-tested)
     raw_type: str  # original SQL token for finding display
     nullable: bool  # True iff the column does not carry NOT NULL
 

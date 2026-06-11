@@ -18,7 +18,7 @@ from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 
 # Shell metacharacters refused at the leading argv token in a hidden
 # check command. The grader runs commands with ``shell=False`` so a

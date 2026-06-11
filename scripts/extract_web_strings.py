@@ -152,9 +152,11 @@ def main() -> int:
         entries.extend(_scan(path))
 
     # Sort for deterministic output.
-    entries.sort(
-        key=lambda e: (str(e.get("file", "")), int(e.get("line", 0) or 0)),
-    )
+    def _sort_key(entry: dict[str, object]) -> tuple[str, int]:
+        line = entry.get("line", 0)
+        return (str(entry.get("file", "")), line if isinstance(line, int) else 0)
+
+    entries.sort(key=_sort_key)
 
     _OUT.parent.mkdir(parents=True, exist_ok=True)
     payload = {

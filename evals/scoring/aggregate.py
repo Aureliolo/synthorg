@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
     from evals.scoring.penalties import PenaltyTable

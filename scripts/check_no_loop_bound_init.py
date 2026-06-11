@@ -47,6 +47,15 @@ import ast
 import sys
 from pathlib import Path
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_source import (  # type: ignore[import-not-found]
+        GateSourceError,
+        read_and_parse,
+    )
+else:
+    from scripts._gate_source import GateSourceError, read_and_parse
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _BASELINE_PATH = _REPO_ROOT / "scripts" / "loop_bound_init_baseline.txt"
 _DEFAULT_SOURCE_ROOTS = (_REPO_ROOT / "src" / "synthorg",)
@@ -250,12 +259,12 @@ def _line_is_opt_out(source_lines: list[str], lineno: int) -> bool:
 
 
 def _scan_file(path: Path) -> list[str]:
-    """Return ``"<rel_path>:<lineno>:<class>:<attr>:<primitive>"`` per finding."""
-    text = path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(text, filename=str(path))
-    except SyntaxError:
-        return []
+    """Return ``"<rel_path>:<lineno>:<class>:<attr>:<primitive>"`` per finding.
+
+    Raises:
+        GateSourceError: If *path* cannot be read or parsed (fail-closed).
+    """
+    text, tree = read_and_parse(path)
     source_lines = text.splitlines()
     try:
         rel = path.relative_to(_REPO_ROOT).as_posix()
@@ -359,7 +368,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    findings = _scan_roots(_DEFAULT_SOURCE_ROOTS)
+    try:
+        findings = _scan_roots(_DEFAULT_SOURCE_ROOTS)
+    except GateSourceError as exc:
+        print(
+            f"FAIL (loop-bound-init scan could not read a file): {exc}", file=sys.stderr
+        )
+        return 2
 
     if args.update_baseline:
         _write_baseline(_BASELINE_PATH, findings)

@@ -480,9 +480,9 @@ def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
                 check=False,
                 timeout=5.0,
             )
-        return
-    with contextlib.suppress(ProcessLookupError, OSError):
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    else:
+        with contextlib.suppress(ProcessLookupError, OSError):
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
 
 
 def _stream_pytest(
@@ -519,14 +519,14 @@ def _stream_pytest(
     else:
         popen_extra["start_new_session"] = True
 
-    with subprocess.Popen(
+    with subprocess.Popen(  # type: ignore[call-overload]  # **dict unpack can't match Popen overloads
         cmd,
         cwd=_REPO_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
-        **popen_extra,  # type: ignore[arg-type]
+        **popen_extra,
     ) as proc:
 
         def _on_timeout() -> None:

@@ -155,8 +155,9 @@ repos:
         args: [--config, .markdownlint.json]
         # Top-level + docs/ + cli/ + web/ Markdown is in scope.
         files: ^(README|CLAUDE|cli/CLAUDE|web/CLAUDE)\.md$|^docs/.*\.md$
-        # ``stages: [pre-commit]`` (the default) so editors get fast
-        # feedback on the docs they're touching.
+        # No explicit ``stages:`` -> runs at every installed hook type
+        # (pre-commit + commit-msg + pre-push) and in CI via the all-files
+        # gate job, so docs are linted at commit time AND on every push.
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
@@ -228,6 +229,19 @@ repos:
         language: system
         files: ^tests/.*\.py$
 
+      - id: no-ruff100-self-cloak
+        name: no RUF100 self-cloak (RUF100 paired with another noqa code)
+        entry: uv
+        args: [run, python, scripts/check_no_ruff100_self_cloak.py]
+        language: system
+        # Whole-tree scan (git ls-files) so a self-cloak in any tracked
+        # .py is caught regardless of which file the commit touches;
+        # trigger on any .py change, the gate script, or this config so a
+        # weakening edit cannot bypass it.
+        files: ^(.*\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
       - id: timeout-interval-default-drift
         name: timeout-check interval boot fallback matches registered default
         entry: uv
@@ -243,14 +257,16 @@ repos:
         language: system
         files: ^(pyproject\.toml|scripts/check_no_synthorg_any_override\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
-        stages: [pre-push]
+        # Cheap (parses pyproject.toml only); run at commit for fast feedback.
+        stages: [pre-commit, pre-push]
 
       - id: no-explicit-any-inline-disable
         name: no inline # mypy: comment may lift explicit-any/unused-ignore (#2121)
         entry: uv run python scripts/check_no_explicit_any_inline_disable.py
         language: system
         files: ^(src/synthorg/.*|tests/.*)\.py$
-        stages: [pre-push]
+        # Cheap (scans only the staged files); run at commit for fast feedback.
+        stages: [pre-commit, pre-push]
 
       - id: no-bare-time-in-business-logic
         name: clock-seam (no bare time.monotonic/time.time/datetime.utcnow)
@@ -818,6 +834,18 @@ repos:
         files: ^(CLAUDE\.md|web/CLAUDE\.md|cli/CLAUDE\.md|docs/reference/.*\.md|docs/design/.*\.md|scripts/check_convention_gate_inventory\.py|scripts/convention_gate_map\.yaml|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
+
+      - id: local-ci-parity
+        name: local <-> CI parity (every hook has a CI counterpart; cardinal rule)
+        entry: uv run python scripts/check_local_ci_parity.py
+        language: system
+        # Trigger on this config (hooks added/removed/restaged), the CI
+        # workflow (all-files SKIP list / job conditions), or the gate
+        # script itself so a change that breaks parity or re-introduces a
+        # changed-file-conditioned correctness job cannot bypass the check.
+        files: ^(\.pre-commit-config\.yaml|\.github/workflows/ci\.yml|scripts/check_local_ci_parity\.py)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
 
       - id: no-review-origin-in-code
         name: no reviewer citations / issue back-refs / naked SEC-N in code

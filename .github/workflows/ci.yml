@@ -110,13 +110,28 @@ jobs:
 
   # ── Python: Lint ──
   lint:
-    name: Lint
+    name: Gates (pre-commit all-files + parity)
     needs: changes
-    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    # CARDINAL RULE: a correctness gate must never be conditioned on which
+    # files changed -- a shallow-checkout race in dorny/paths-filter can
+    # falsely report "unchanged" and silently drop the gate. This job runs
+    # the entire gate suite on every push (release-please bot PRs excepted,
+    # which only bump versions). Enforced by check_local_ci_parity.py.
+    if: needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     permissions:
       contents: read
+    env:
+      # Hooks NOT run by the all-files steps below: each is covered by a
+      # dedicated CI job (Go in cli.yml, dashboard lint, secrets, etc.) or is a
+      # developer-clone git-state hook with no CI meaning (the three migration /
+      # rebase checks need origin/main + a base ref this shallow checkout lacks;
+      # they fail closed in CI rather than gating content). check_local_ci_parity.py
+      # enforces that this SKIP list equals _COVERED_ELSEWHERE u _LOCAL_ONLY
+      # exactly. The two all-files steps share this one job-level SKIP so a hook
+      # can never be skipped at one stage but silently run at another.
+      SKIP: go-vet,go-test,golangci-lint,eslint-web,web-knip,web-circular,lychee,hadolint-docker,gitleaks,zizmor,mypy,pytest-unit,vale,caddy-validate,check-single-migration-per-pr,check-no-modify-migration,check-push-rebased
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
@@ -124,61 +139,46 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
-      - name: Ruff check
-        run: uv run ruff check src/ tests/
+      # Local <-> CI parity: every pre-commit / pre-push hook must have a CI
+      # counterpart so `git push --no-verify` cannot bypass it. These two steps
+      # run the hybrid set (ruff + every Python script gate + the
+      # pre-commit-hooks builtins + markdownlint/actionlint via
+      # pre-commit-managed envs) over the WHOLE tree -- no hand-list to drift.
+      #
+      # TWO invocations are required because `pre-commit run --all-files` runs
+      # ONLY the pre-commit stage, but nearly every heavy content gate
+      # (forbidden-literals, persistence-boundary, architecture-drift,
+      # lint-imports, deptry, vulture, interrogate, sqlfluff,
+      # docstring-completeness, the AST gates, ...) is `stages: [pre-push]`. A
+      # single pre-commit-stage run would silently skip the bulk of the suite.
+      # check_local_ci_parity.py asserts both parity stages are covered.
+      - name: Cache pre-commit hook environments
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+      - name: All pre-commit-stage gates over the whole tree
+        run: uv run pre-commit run --all-files --hook-stage pre-commit --show-diff-on-failure --color always
+      - name: All pre-push-stage gates over the whole tree
+        run: uv run pre-commit run --all-files --hook-stage pre-push --show-diff-on-failure --color always
 
-      - name: Ruff format check
-        run: uv run ruff format --check src/ tests/
+      # Local <-> CI parity self-check: assert every local hook maps to a CI
+      # counterpart and no correctness job is changed-file conditioned.
+      - name: Local <-> CI parity gate
+        run: uv run python scripts/check_local_ci_parity.py
 
-      - name: Forbidden literals gate (src/synthorg)
-        run: uv run python scripts/check_forbidden_literals.py
-
-      - name: Persistence boundary gate (src/ + tests/)
+      # vale and caddy-validate are language: system hooks needing binaries
+      # pre-commit does not manage, so they are SKIPped above and run here.
+      - name: Prose lint (vale)
+        run: |
+          bash scripts/install_cli_tools.sh vale
+          export PATH="$HOME/.local/bin:$PATH"
+          vale README.md CLAUDE.md cli/CLAUDE.md web/CLAUDE.md docs/
+      - name: Caddyfile validate
         run: >-
-          uv run python scripts/check_persistence_boundary.py
-          --repo-root "${{ github.workspace }}"
-
-      - name: Settings → startup wiring trace (ghost-wired settings gate)
-        run: >-
-          uv run python scripts/check_setting_to_startup_trace.py
-          --repo-root "${{ github.workspace }}"
-
-      - name: Dual-backend test parity gate (conformance + protocols)
-        run: >-
-          uv run python scripts/check_dual_backend_test_parity.py
-          --repo-root "${{ github.workspace }}"
-
-      - name: Cost-recording chokepoint gate
-        run: uv run python scripts/check_provider_complete_chokepoint.py
-
-      - name: Typed-boundary contract gate (RFC #1711)
-        run: uv run python scripts/check_boundary_typed.py
-
-      - name: WS_PROTOCOL_VERSION parity gate (Python <-> TypeScript)
-        run: uv run python scripts/check_ws_protocol_version_in_sync.py
-
-      - name: Dead API endpoints gate (frontend ↔ backend route parity)
-        run: >-
-          uv run python scripts/check_dead_api_endpoints.py
-          --repo-root "${{ github.workspace }}"
-
-      - name: Schema-drift gate (SQLite vs Postgres parity)
-        run: uv run python scripts/check_schema_drift.py
-
-      - name: Review-origin / issue-backref gate (src/ + tests/)
-        run: uv run python scripts/check_no_review_origin_in_code.py
-
-      - name: Migration-framing / phase-N gate (src/ + tests/)
-        run: uv run python scripts/check_no_migration_framing.py
-
-      - name: Long-running-loop kill-switch gate (src/synthorg)
-        run: uv run python scripts/check_long_running_loops_have_kill_switch.py
-
-      - name: Import-layering contracts (import-linter)
-        run: uv run lint-imports --config .importlinter
-
-      - name: Architecture-drift gate (fan-in / LCOM / budget pressure)
-        run: uv run python scripts/check_architecture_drift.py
+          docker run --rm -v "$PWD:/work" -w /work
+          caddy:2.10.2-alpine
+          caddy validate --config web/Caddyfile --adapter caddyfile
 
   # ── Runtime Stats Freshness ──
   # Fails the build when data/runtime_stats.yaml has drifted (any
@@ -189,7 +189,7 @@ jobs:
   runtime-stats-freshness:
     name: Runtime Stats Freshness Gate
     needs: changes
-    if: (needs.changes.outputs.python == 'true' || needs.changes.outputs.runtime_stats == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -215,7 +215,7 @@ jobs:
   doc-drift:
     name: Doc Drift Gate
     needs: changes
-    if: (needs.changes.outputs.python == 'true' || needs.changes.outputs.doc_claims == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -234,7 +234,7 @@ jobs:
   schema-validate:
     name: Schema Validation
     needs: changes
-    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -255,6 +255,11 @@ jobs:
       - uses: ./.github/actions/setup-python-uv
 
       - name: Enforce at most one new revision per PR
+        # --diff-filter=A (added-only) is correct, NOT a Finding-4 added-files
+        # gap: the policy counts NEW revisions, and revisions are append-only
+        # (editing a committed revision is a separate violation blocked by
+        # check_no_modify_migration / check_no_edit_migration). PR-event
+        # scoping is inherent: the count is relative to the PR base ref.
         if: github.event_name == 'pull_request'
         env:
           GH_BASE_REF: ${{ github.base_ref }}
@@ -293,7 +298,7 @@ jobs:
   type-check:
     name: Type Check
     needs: changes
-    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -306,13 +311,15 @@ jobs:
       - uses: ./.github/actions/setup-python-uv
 
       - name: mypy
-        run: uv run mypy --num-workers=4 src/ tests/
+        # Whole-tree scope (mirrors run_affected_mypy.py's full-run fallback).
+        # scripts/ is excluded pending its own typing pass (#2322 follow-up).
+        run: uv run mypy --num-workers=4 src/ tests/ evals/ docker/ d2_fence.py
 
   # ── Python: OpenAPI Liveness ──
   openapi-liveness:
     name: OpenAPI Liveness
     needs: changes
-    if: (needs.changes.outputs.python == 'true' || needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -339,7 +346,7 @@ jobs:
   test-unit:
     name: Test Unit (shard ${{ matrix.shard }})
     needs: changes
-    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     # Healthy wall-clock per shard is ~2-3 min (114-120s observed on the
     # un-stuck shards). The previous 15-min slack existed only because
@@ -520,7 +527,7 @@ jobs:
   test-integration:
     name: Test Integration (shard ${{ matrix.shard }})
     needs: changes
-    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -678,7 +685,7 @@ jobs:
   test-e2e:
     name: Test E2E
     needs: changes
-    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -806,7 +813,7 @@ jobs:
   test-conformance-sqlite:
     name: Test Conformance (SQLite)
     needs: changes
-    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -912,7 +919,7 @@ jobs:
   test-coverage-aggregate:
     name: Test Coverage Aggregate
     needs: [changes, test-unit, test-integration, test-e2e, test-conformance-sqlite]
-    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1068,7 +1075,7 @@ jobs:
   python-audit:
     name: Python Security Audit
     needs: changes
-    if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1105,7 +1112,7 @@ jobs:
   dockerfile-lint:
     name: Dockerfile Lint
     needs: changes
-    if: (needs.changes.outputs.docker == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1136,7 +1143,10 @@ jobs:
   export-openapi:
     name: Export OpenAPI Schema
     needs: changes
-    if: (needs.changes.outputs.python == 'true' || needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    # Always-run: the de-conditioned dashboard type-check / test jobs depend
+    # on this artefact, and a skipped dependency would skip them too. Cheap
+    # (one export_openapi.py invocation).
+    if: needs.changes.outputs.is_release_please != 'true' # always-run (feeds always-run dashboard gates)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1162,7 +1172,7 @@ jobs:
   dashboard-lint:
     name: Dashboard Lint
     needs: changes
-    if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1184,12 +1194,15 @@ jobs:
         working-directory: web
       - run: npm run lint:circular
         working-directory: web
+      # CI counterpart for the local `web-knip` pre-push hook (parity).
+      - run: npm run lint:knip
+        working-directory: web
 
   # ── Dashboard: Type Check ──
   dashboard-type-check:
     name: Dashboard Type Check
     needs: [changes, export-openapi]
-    if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1219,7 +1232,7 @@ jobs:
   dashboard-test:
     name: Dashboard Test
     needs: [changes, export-openapi]
-    if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     # Re-baselined 2026-05-28 from 15 -> 30 minutes after EPIC #2066 D2a
     # decomposition (PR #2154) grew the affected vitest universe past the
@@ -1275,6 +1288,9 @@ jobs:
   dashboard-build:
     name: Dashboard Build
     needs: [changes, export-openapi]
+    # BUILD/PERF job (cardinal-rule exemption): production bundle + size
+    # budget; skipping it on non-dashboard PRs cannot hide a correctness
+    # defect. Allowlisted in check_local_ci_parity.py.
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1320,7 +1336,7 @@ jobs:
   dashboard-audit:
     name: Dashboard Security Audit
     needs: changes
-    if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1346,6 +1362,9 @@ jobs:
   dashboard-storybook-build:
     name: Dashboard Storybook Build
     needs: changes
+    # BUILD job (cardinal-rule exemption): Storybook static build; skipping
+    # it on non-dashboard PRs cannot hide a correctness defect. Allowlisted
+    # in check_local_ci_parity.py.
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15

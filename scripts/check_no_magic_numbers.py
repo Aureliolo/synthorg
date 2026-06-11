@@ -97,7 +97,7 @@ import subprocess
 import sys
 import tokenize
 from pathlib import Path
-from typing import Final, TypeGuard, cast
+from typing import Final, TypeGuard, cast, override
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _BASELINE_PATH: Final[Path] = _REPO_ROOT / "scripts" / "no_magic_numbers_baseline.txt"
@@ -379,6 +379,7 @@ class _ParentTracker(ast.NodeTransformer):
         super().__init__()
         self._parent: ast.AST | None = None
 
+    @override
     def visit(self, node: ast.AST) -> ast.AST:
         node.parent = self._parent  # type: ignore[attr-defined]
         prev = self._parent

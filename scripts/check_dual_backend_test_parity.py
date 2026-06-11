@@ -74,7 +74,7 @@ if __package__ in {None, ""}:  # standalone invocation
         _write_baseline,
     )
 else:
-    from scripts._dual_backend_parity_lib import (  # type: ignore[import-not-found]
+    from scripts._dual_backend_parity_lib import (
         _apply_baseline,
         _build_coverage_violations,
         _collect_backend_accessor_usage,

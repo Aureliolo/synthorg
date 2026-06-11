@@ -19,14 +19,13 @@ number so editors jump to the right place.
 
 ## Usage
 
-Opt-in pre-push gate -- the script is a no-op unless
-``SYNTHORG_CHECK_ORPHAN_FIXTURES=1`` is set in the environment::
+Pre-push gate -- runs on every push::
 
-    SYNTHORG_CHECK_ORPHAN_FIXTURES=1 \\
-      uv run python scripts/check_orphan_fixtures.py
+    uv run python scripts/check_orphan_fixtures.py
 
-Without the env var the script exits 0 immediately so the default
-pre-push path stays fast.
+Fails closed: a new orphan fixture (exit 1) or a conftest/test file that
+cannot be parsed (exit 2, since an unscanned file could hide a reference
+that would otherwise clear an orphan).
 
 ## Per-line opt-out
 
@@ -38,14 +37,12 @@ trailing comment on the decorator line to silence a single report
 import argparse
 import ast
 import io
-import os
 import sys
 import tokenize
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Final, override
 
-_ENV_VAR: Final[str] = "SYNTHORG_CHECK_ORPHAN_FIXTURES"
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: orphan-fixture"
 
 # Fixtures consumed by the pytest framework itself (or by a plugin)
@@ -212,12 +209,14 @@ class _ReferenceVisitor(ast.NodeVisitor):
         self.imported_names: set[str] = set()
 
     # Every function / test parameter is a potential fixture reference.
+    @override
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         for arg in node.args.args:
             if arg.arg not in {"self", "cls", "request"}:
                 self.argument_names.add(arg.arg)
         self.generic_visit(node)
 
+    @override
     def visit_AsyncFunctionDef(
         self,
         node: ast.AsyncFunctionDef,
@@ -229,6 +228,7 @@ class _ReferenceVisitor(ast.NodeVisitor):
 
     # ``request.getfixturevalue("foo")`` and
     # ``pytest.mark.usefixtures("foo", ...)``.
+    @override
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
         if isinstance(func, ast.Attribute) and (
@@ -245,6 +245,7 @@ class _ReferenceVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     # Module-level ``pytest_plugins = [...]`` or ``pytest_plugins = ("...",)``.
+    @override
     def visit_Assign(self, node: ast.Assign) -> None:
         for target in node.targets:
             if isinstance(target, ast.Name) and target.id == "pytest_plugins":
@@ -255,6 +256,7 @@ class _ReferenceVisitor(ast.NodeVisitor):
     # from a sibling conftest relies on the imported name being visible
     # at module scope.  Treat the imported name (and its alias) as a
     # live fixture reference.
+    @override
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         for alias in node.names:
             if alias.name != "*":
@@ -454,9 +456,6 @@ def _report_results(
                 display = str(path)
             print(f"  {display}: {reason}", file=sys.stderr)
 
-    if not orphans:
-        return 0
-
     for orphan in orphans:
         # Emit as ``file:line name`` with project-relative path when
         # possible so editors jump to the right place.
@@ -466,14 +465,20 @@ def _report_results(
         except ValueError:
             file_display = orphan.file
         print(f"{file_display}:{orphan.line} {orphan.name}")
-    print(
-        f"\n{len(orphans)} orphan fixture(s) detected.  "
-        "Delete each one, or add "
-        "'# lint-allow: orphan-fixture -- <reason>' to its decorator "
-        "line if the exception is genuinely sanctioned.",
-        file=sys.stderr,
-    )
-    return 1
+    if orphans:
+        print(
+            f"\n{len(orphans)} orphan fixture(s) detected.  "
+            "Delete each one, or add "
+            "'# lint-allow: orphan-fixture -- <reason>' to its decorator "
+            "line if the exception is genuinely sanctioned.",
+            file=sys.stderr,
+        )
+
+    # Fail closed: an unparseable conftest/test could hide a reference that
+    # would otherwise clear an orphan, so an incomplete scan is a hard error.
+    if skipped:
+        return 2
+    return 1 if orphans else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -485,20 +490,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Root of the test tree (defaults to <project_root>/tests).",
     )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help=(
-            "Run the scan even when the SYNTHORG_CHECK_ORPHAN_FIXTURES "
-            "env var is unset.  Useful for ad-hoc local invocation."
-        ),
-    )
     args = parser.parse_args(argv)
-
-    if os.environ.get(_ENV_VAR) != "1" and not args.force:
-        # Opt-in only.  Exit silently so the default pre-push path
-        # stays fast.
-        return 0
 
     project_root = _resolve_project_root()
     test_root = args.test_root or _detect_test_root(project_root)

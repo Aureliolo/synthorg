@@ -22,13 +22,19 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from _module_size_lib import (
-    TIER_LIMITS,
-    count_loc_text,
-    resolve_tier_text,
-)
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _module_size_lib import (  # type: ignore[import-not-found]
+        TIER_LIMITS,
+        count_loc_text,
+        resolve_tier_text,
+    )
+else:
+    from scripts._module_size_lib import (
+        TIER_LIMITS,
+        count_loc_text,
+        resolve_tier_text,
+    )
 
 from synthorg._core.features import (
     discover_features,

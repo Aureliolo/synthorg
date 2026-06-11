@@ -8,7 +8,7 @@ contract; humans read the Markdown rendering produced by
 """
 
 import math
-from datetime import datetime  # noqa: TC003 -- Pydantic field type
+from datetime import datetime
 from typing import Final, Self
 
 from pydantic import (
@@ -25,7 +25,7 @@ from evals.scoring.aggregate import (
     GRADE_FLOOR,
     PenaltyEntry,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 
 # Bumping this is a deliberate, breaking change for downstream readers.
 # Consumers MUST refuse to parse unknown versions; the schema is not

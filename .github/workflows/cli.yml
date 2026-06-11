@@ -3,17 +3,18 @@ name: CLI
 on:
   push:
     branches: [main]
-    paths:
-      - "cli/**"
-      - ".github/workflows/cli.yml"
     tags:
       - "v*"
   pull_request:
     branches: [main]
-    paths:
-      - "cli/**"
-      - ".github/workflows/cli.yml"
   workflow_dispatch:
+
+# CARDINAL RULE (#2322): correctness gates must never be conditioned on which
+# files changed. This workflow deliberately carries NO top-level ``paths:``
+# filter -- the Go lint / test / vuln correctness jobs run on every PR and
+# push. Only the build / perf jobs (cli-build, cli-bench, cli-fuzz) remain
+# path-scoped via the ``cli-changes`` gate, each justified inline.
+# check_local_ci_parity.py enforces this across ci.yml AND cli.yml.
 
 permissions: {}
 
@@ -48,10 +49,10 @@ jobs:
               - 'cli/**'
 
   # ── Lint ──
+  # CORRECTNESS gate: de-conditioned (cardinal rule). Runs on every PR / push,
+  # not just CLI changes -- a changed-file filter could silently drop it.
   cli-lint:
     name: CLI Lint
-    needs: cli-changes
-    if: needs.cli-changes.outputs.changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -81,10 +82,9 @@ jobs:
           working-directory: cli
 
   # ── Test (multi-platform) ──
+  # CORRECTNESS gate: de-conditioned (cardinal rule). Runs on every PR / push.
   cli-test:
     name: CLI Test (${{ matrix.os }})
-    needs: cli-changes
-    if: needs.cli-changes.outputs.changed == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     permissions:
@@ -119,6 +119,9 @@ jobs:
           path: cli/coverage.out
 
   # ── Build (compile check for all targets) ──
+  # BUILD job (cardinal-rule exemption): 6-platform cross-compile + smoke.
+  # Skipping it on non-CLI PRs cannot hide a correctness defect (cli-lint /
+  # cli-test above run unconditionally). Allowlisted in check_local_ci_parity.py.
   cli-build:
     name: CLI Build
     needs: cli-changes
@@ -197,6 +200,9 @@ jobs:
           binary-path: ${{ steps.build.outputs.binary }}
 
   # ── Bench regression (in-CI A/B compare) ──
+  # PERF job (cardinal-rule exemption): HEAD-vs-merge-base benchmark A/B;
+  # skipping it on non-CLI PRs cannot hide a correctness defect. Allowlisted
+  # in check_local_ci_parity.py.
   cli-bench:
     name: CLI Bench Regression
     needs: cli-changes
@@ -230,10 +236,9 @@ jobs:
         run: bash scripts/check_cli_bench_regression.sh
 
   # ── Vulnerability check ──
+  # CORRECTNESS gate: de-conditioned (cardinal rule). Runs on every PR / push.
   cli-vuln:
     name: CLI Vulnerability Check
-    needs: cli-changes
-    if: needs.cli-changes.outputs.changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -292,6 +297,8 @@ jobs:
         run: govulncheck ./...
 
   # ── Fuzz (main only -- too slow for PRs) ──
+  # PERF/SLOW job (cardinal-rule exemption): 45-min fuzzing, main-push only
+  # (never a PR gate). Allowlisted in check_local_ci_parity.py.
   cli-fuzz:
     name: CLI Fuzz
     needs: cli-changes

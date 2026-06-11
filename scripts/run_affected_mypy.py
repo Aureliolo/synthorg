@@ -11,15 +11,23 @@ because they define types imported across the entire codebase. The ``.mypy_cache
 directory keeps subsequent full runs fast with warm cache.
 
 Exit codes match mypy: 0 (no errors/nothing to check), 1 (type errors found), etc.
-Git command failures fall back to running full mypy on ``src/`` and ``tests/``.
+Git command failures fall back to running full mypy on the whole-tree scope
+(``src/``, ``tests/``, ``evals/``, ``docker/``, ``d2_fence.py``).
 """
 
 import re
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
+from typing import Final
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Full-tree mypy scope, mirroring the CI type-check job so a full local
+# run catches the same surface CI does. evals/, docker/, and the root
+# d2_fence.py are type-clean and included; scripts/ is excluded pending
+# its own typing pass.
+_FULL_SCOPE: Final[list[str]] = ["src/", "tests/", "evals/", "docker/", "d2_fence.py"]
 
 # Modules imported by nearly everything -- changes here mean "full mypy".
 _BLAST_RADIUS_MODULES = frozenset({"core", "config", "observability"})
@@ -175,13 +183,13 @@ def main() -> int:
         base = _merge_base()
     except _GitError as exc:
         print(f"ERROR: {exc} -- running full mypy", file=sys.stderr)
-        return _run_mypy(["src/", "tests/"])
+        return _run_mypy(list(_FULL_SCOPE))
 
     try:
         changed = _changed_files(base)
     except _GitError as exc:
         print(f"ERROR: {exc} -- running full mypy", file=sys.stderr)
-        return _run_mypy(["src/", "tests/"])
+        return _run_mypy(list(_FULL_SCOPE))
 
     # Filter to Python files only.
     py_changed = [f for f in changed if f.endswith(".py")]
@@ -193,7 +201,7 @@ def main() -> int:
 
     if run_all:
         print("Foundational module or conftest changed -- running full mypy.")
-        return _run_mypy(["src/", "tests/"])
+        return _run_mypy(list(_FULL_SCOPE))
 
     if not paths:
         print("Changed files don't map to any mypy targets -- skipping.")

@@ -37,6 +37,15 @@ import sys
 from pathlib import Path
 from typing import Final
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_source import (  # type: ignore[import-not-found]
+        GateSourceError,
+        read_and_parse,
+    )
+else:
+    from scripts._gate_source import GateSourceError, read_and_parse
+
 _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 _BASELINE_REL = Path("scripts") / "_strategy_protocol_injection_baseline.txt"
 _SCAN_REL: Final[str] = "src/synthorg"
@@ -102,13 +111,16 @@ def _resolve_call_funcname(call: ast.Call) -> str | None:
 
 
 def harvest_registered_classes(project_root: Path) -> list[RegisteredClass]:
-    """Return every ``RegisteredClass`` reachable from factory-style calls."""
+    """Return every ``RegisteredClass`` reachable from factory-style calls.
+
+    Raises:
+        GateSourceError: If a source file cannot be read or parsed
+            (fail-closed: a skipped factory file would hide its registered
+            classes and silently exempt their callsites).
+    """
     out: list[RegisteredClass] = []
     for path in _iter_source_files(project_root):
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except SyntaxError, OSError:
-            continue
+        _, tree = read_and_parse(path)
         rel = path.relative_to(project_root).as_posix()
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -169,15 +181,11 @@ def _scan_callsites(
     and the function return annotation. A concrete class buried inside
     Union / Optional / generic containers is still reported because
     :func:`_annotation_names` walks the annotation subtree.
+
+    Raises:
+        GateSourceError: If *path* cannot be read or parsed (fail-closed).
     """
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
-        return []
+    text, tree = read_and_parse(path)
     rel = path.relative_to(project_root).as_posix()
     lines = text.splitlines()
     findings: list[Finding] = []
@@ -307,7 +315,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.baseline is not None
         else project_root / _BASELINE_REL
     )
-    findings = check(project_root=project_root, baseline_path=baseline_path)
+    try:
+        findings = check(project_root=project_root, baseline_path=baseline_path)
+    except GateSourceError as exc:
+        print(
+            f"FAIL (strategy-injection scan could not read a file): {exc}",
+            file=sys.stderr,
+        )
+        return 2
     if not findings:
         return 0
     print(

@@ -35,6 +35,15 @@ import sys
 from pathlib import Path
 from typing import Final
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_source import (  # type: ignore[import-not-found]
+        GateSourceError,
+        read_and_parse,
+    )
+else:
+    from scripts._gate_source import GateSourceError, read_and_parse
+
 _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 _BASELINE_REL = Path("scripts") / "_protocol_doc_baseline.txt"
 _SCAN_REL: Final[str] = "src/synthorg"
@@ -143,15 +152,11 @@ def find_protocols(path: Path) -> list[ProtocolFinding]:
     decorated forms even when ``Protocol`` is not in the base list
     explicitly (matches the conventional case of `runtime_checkable`
     being only valid on a Protocol).
+
+    Raises:
+        GateSourceError: If *path* cannot be read or parsed (fail-closed).
     """
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
-        return []
+    text, tree = read_and_parse(path)
     lines = text.splitlines()
     findings: list[ProtocolFinding] = []
     for node in ast.walk(tree):
@@ -257,7 +262,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.baseline is not None
         else project_root / _BASELINE_REL
     )
-    findings = check(project_root=project_root, baseline_path=baseline_path)
+    try:
+        findings = check(project_root=project_root, baseline_path=baseline_path)
+    except GateSourceError as exc:
+        print(f"FAIL (protocol-doc scan could not read a file): {exc}", file=sys.stderr)
+        return 2
     if not findings:
         return 0
     print(

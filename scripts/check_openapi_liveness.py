@@ -79,7 +79,8 @@ def main() -> int:
         )
         return 1
 
-    paths = schema.get("paths") or {}
+    paths_value = schema.get("paths")
+    paths = paths_value if isinstance(paths_value, dict) else {}
     path_count = len(paths)
 
     errors: list[str] = []
