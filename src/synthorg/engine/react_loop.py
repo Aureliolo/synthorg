@@ -22,8 +22,12 @@ from synthorg.observability.events.execution import (
 from synthorg.providers.models import (
     CompletionConfig,
     CompletionResponse,
+    ToolDefinition,
 )
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.tools.protocol import ToolInvokerProtocol
 
+from .context import AgentContext
 from .intervention.loop_hook import check_steering
 from .loop_cancellation import check_task_cancelled
 from .loop_control_helpers import (
@@ -57,12 +61,8 @@ if TYPE_CHECKING:
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.checkpoint.callback import CheckpointCallback
     from synthorg.engine.compaction.protocol import CompactionCallback
-    from synthorg.engine.context import AgentContext
     from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.stagnation.protocol import StagnationDetector
-    from synthorg.providers.models import ToolDefinition
-    from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 

@@ -8,10 +8,11 @@ according to the requirement's priority axis.
 
 from collections.abc import Callable, Mapping, Sequence
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
+from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
@@ -23,12 +24,6 @@ from synthorg.observability.events.template import (
 )
 from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.templates.model_requirements import ModelRequirement, ModelTier
-
-if TYPE_CHECKING:
-    # Cycle breaker: ``config.schema`` sits on the eager-init config
-    # chain that reaches back into this package, so the provider-model
-    # type is named for signatures only.
-    from synthorg.config.schema import ProviderModelConfig
 
 logger = get_logger(__name__)
 

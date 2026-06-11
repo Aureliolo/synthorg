@@ -6,17 +6,13 @@ the caller can skip constructing a :class:`TrustService` entirely
 (conditional instantiation in degenerate configs).
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.registry.strategy import StrategyRegistry
+from synthorg.security.trust.config import TrustConfig
 from synthorg.security.trust.enums import TrustStrategyType
 from synthorg.security.trust.milestone_strategy import MilestoneTrustStrategy
 from synthorg.security.trust.per_category_strategy import PerCategoryTrustStrategy
+from synthorg.security.trust.protocol import TrustStrategy
 from synthorg.security.trust.weighted_strategy import WeightedTrustStrategy
-
-if TYPE_CHECKING:
-    from synthorg.security.trust.config import TrustConfig
-    from synthorg.security.trust.protocol import TrustStrategy
 
 _REGISTRY: StrategyRegistry[TrustStrategy] = StrategyRegistry(
     {

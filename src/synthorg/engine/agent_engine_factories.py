@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from synthorg.config.schema import ProviderConfig
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine.agent_engine import BrainToolFactoryProvider
-    from synthorg.engine.compaction import CompactionCallback
+    from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.hybrid_models import HybridLoopConfig
     from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.loop_selector import AutoLoopConfig

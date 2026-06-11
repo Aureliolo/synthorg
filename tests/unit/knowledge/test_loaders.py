@@ -5,10 +5,10 @@ injected fakes (no pdfplumber/network needed); TicketLoader rejects; the
 factory dispatches by source type.
 """
 
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -28,10 +28,6 @@ from synthorg.knowledge.loaders.ticket import (
 )
 from synthorg.knowledge.loaders.web import WebLoader
 from synthorg.knowledge.models import CodeLocator, KnowledgeSource, PdfLocator
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
-    from contextlib import AbstractContextManager
 
 pytestmark = pytest.mark.unit
 

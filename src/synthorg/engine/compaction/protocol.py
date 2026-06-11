@@ -6,17 +6,12 @@ responsibility with no configuration methods.
 """
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    # ``context`` imports ``compaction.models``, whose package init pulls
-    # this module; a runtime ``context`` import here cycles back into the
-    # half-initialised context module.
-    from synthorg.engine.context import AgentContext
+from synthorg.engine.context import AgentContext
 
 CompactionCallback = Callable[
-    ["AgentContext"],
-    Awaitable["AgentContext | None"],
+    [AgentContext],
+    Awaitable[AgentContext | None],
 ]
 """Async callback invoked at turn boundaries to compress conversation.
 

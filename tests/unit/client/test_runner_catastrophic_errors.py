@@ -32,21 +32,57 @@ def _make_feedback() -> ClientFeedback:
 
 
 class _StubClient:
-    """Bare-minimum ``ClientInterface`` shape for the review path."""
+    """Full ``ClientInterface`` shape for the review path.
+
+    Implements every ``ClientInterface`` method so the runtime-checkable
+    protocol check at ``SimulationRunner._review_one`` passes; only
+    ``review_deliverable`` is exercised, the others are unreachable stubs.
+    """
 
     @property
     def client_id(self) -> str:
         return "client-1"
 
+    async def submit_requirement(
+        self,
+        context: object,
+    ) -> TaskRequirement | None:
+        raise NotImplementedError
+
     async def review_deliverable(self, context: object) -> ClientFeedback:
         del context
         return _make_feedback()
 
-    async def generate_requirements(
-        self, context: object
+    async def generate(
+        self,
+        context: object,
     ) -> tuple[TaskRequirement, ...]:
-        del context
-        return ()
+        raise NotImplementedError
+
+    async def evaluate(
+        self,
+        context: object,
+    ) -> ClientFeedback:
+        raise NotImplementedError
+
+    async def generate_report(
+        self,
+        metrics: object,
+    ) -> dict[str, object]:
+        raise NotImplementedError
+
+    async def select_clients(
+        self,
+        pool: object,
+        constraints: object,
+    ) -> tuple[object, ...]:
+        raise NotImplementedError
+
+    async def route(
+        self,
+        request: object,
+    ) -> object:
+        raise NotImplementedError
 
 
 def _runner_config() -> SimulationRunnerConfig:
@@ -103,7 +139,7 @@ class TestReviewOneCatastrophicErrors:
         with pytest.raises(exc_cls):
             await runner._review_one(
                 semaphore=asyncio.Semaphore(1),
-                client=_StubClient(),  # type: ignore[arg-type]
+                client=_StubClient(),
                 requirement=_requirement(),
                 result=_accepted_intake(),
             )
@@ -127,7 +163,7 @@ class TestReviewOneCatastrophicErrors:
 
         accepted = await runner._review_one(
             semaphore=asyncio.Semaphore(1),
-            client=_StubClient(),  # type: ignore[arg-type]
+            client=_StubClient(),
             requirement=_requirement(),
             result=_accepted_intake(),
         )

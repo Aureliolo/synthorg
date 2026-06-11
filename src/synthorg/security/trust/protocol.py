@@ -4,13 +4,11 @@ Defines the pluggable interface for progressive trust strategies.
 All trust strategies must implement this protocol.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from synthorg.hr.performance.models import AgentPerformanceSnapshot
-    from synthorg.security.trust.models import TrustEvaluationResult, TrustState
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
+from synthorg.security.trust.models import TrustEvaluationResult, TrustState
 
 
 # Pluggable trust subsystem: 3 impls (Weighted / Milestone / PerCategory).

@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,6 +20,7 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
+from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
@@ -211,8 +213,11 @@ class TestProviderPresentSwitch:
         assert isinstance(worker, AgentEngineExecutionService)
         assert coordinator is not None
         # The coordinator's parallel executor must run sub-agents on the
-        # exact same boot AgentEngine as the worker execute seam.
-        assert coordinator._parallel_executor._engine is worker._engine
+        # exact same boot AgentEngine as the worker execute seam. The
+        # coordinator holds it by the ``ParallelExecutorProtocol`` surface;
+        # the boot build always wires the concrete ``ParallelExecutor``.
+        parallel_executor = cast("ParallelExecutor", coordinator._parallel_executor)
+        assert parallel_executor._engine is worker._engine
 
     async def test_scorer_config_resolve_failure_is_fail_open(
         self,

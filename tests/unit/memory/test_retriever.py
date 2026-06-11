@@ -1,7 +1,6 @@
 """Tests for ContextInjectionStrategy (retriever pipeline)."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,13 +20,11 @@ from synthorg.memory.injection import (
 )
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 from synthorg.memory.protocol import MemoryBackend
+from synthorg.memory.ranking import ScoredMemory
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.providers.enums import MessageRole
-
-if TYPE_CHECKING:
-    from synthorg.memory.ranking import ScoredMemory
 
 
 def _make_entry(
