@@ -55,6 +55,17 @@ export UV_FROZEN=1
 LOG_DIR="$(git rev-parse --git-path synthorg-hooks)"
 mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/${hook_type}-last.log"
+PREV="$LOG_DIR/${hook_type}-prev.log"
+FAILED_MARKER="$LOG_DIR/${hook_type}-FAILED"
+
+# Rotate the previous run's log to ``-prev.log`` BEFORE this run overwrites
+# ``-last.log``. Without rotation a re-run (e.g. re-pushing after a failure)
+# overwrites the failing log in place, destroying the only diagnostic of
+# what went wrong -- so the prior run's full output is always recoverable
+# for at least one more cycle.
+if [ -f "$LOG" ]; then
+  cp -f "$LOG" "$PREV"
+fi
 
 set +e
 uv run --frozen --project "$ROOT" python -m pre_commit hook-impl \
@@ -69,10 +80,22 @@ if [ "$status" -ne 0 ]; then
     echo "=================================================================="
     echo "git ${hook_type} hook FAILED (exit ${status})."
     echo "Full untruncated output: ${LOG}"
+    echo "Previous run's log preserved at: ${PREV}"
     echo "--- failing tail (last 60 lines; read the full log above if needed) ---"
     tail -n 60 "$LOG"
     echo "=================================================================="
   } >&2
+  # Drop a failure marker so the Claude PreToolUse guard
+  # (check_no_repush_after_failure.sh) blocks a reflexive re-run until the
+  # log has been read and the marker cleared. Best-effort; never fail the
+  # hook on a marker-write error.
+  {
+    printf 'hook=%s\nstatus=%s\nlog=%s\nprev=%s\n' \
+      "$hook_type" "$status" "$LOG" "$PREV"
+  } > "$FAILED_MARKER" 2>/dev/null || true
+else
+  # Clean run: clear any stale failure marker so the guard stops blocking.
+  rm -f "$FAILED_MARKER" 2>/dev/null || true
 fi
 
 exit "$status"

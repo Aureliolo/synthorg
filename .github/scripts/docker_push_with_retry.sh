@@ -64,9 +64,22 @@ fi
 
 # 4 attempts, backoff 15s -> 30s -> 60s = ~1m45s of wait in the worst case
 # before the final attempt. Long enough to ride through GHCR's typical 30-90s
-# unicorn windows; short enough to fail loudly on a real outage.
-ATTEMPTS=4
-BACKOFF=15
+# unicorn windows; short enough to fail loudly on a real outage. Overridable
+# via env (mirrors gh_with_retry.sh's GH_RETRY_*) so the regression self-test
+# can drive the classifier with a zero backoff instead of waiting ~1m45s.
+ATTEMPTS="${DOCKER_PUSH_RETRY_ATTEMPTS:-4}"
+BACKOFF="${DOCKER_PUSH_RETRY_BACKOFF:-15}"
+# A zero or non-numeric ATTEMPTS would make the loop body never run and
+# the script exit 0 WITHOUT running the wrapped command (fail-open).
+# Reject it; a zero BACKOFF is legitimate (tests use it).
+if ! [[ "$ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "::error::DOCKER_PUSH_RETRY_ATTEMPTS must be a positive integer; got '${ATTEMPTS}'" >&2
+  exit 2
+fi
+if ! [[ "$BACKOFF" =~ ^[0-9]+$ ]]; then
+  echo "::error::DOCKER_PUSH_RETRY_BACKOFF must be a non-negative integer; got '${BACKOFF}'" >&2
+  exit 2
+fi
 
 for ((i = 1; i <= ATTEMPTS; i++)); do
   out=""
@@ -92,7 +105,15 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # Mid-loop: only retry if the error looks transient. Echo the captured
   # output to stderr so the build log shows what happened on each attempt
   # without contaminating the caller's captured stdout.
-  if printf '%s' "$out" | grep -qiE "$TRANSIENT_RE"; then
+  #
+  # Grep a here-string, never `printf "$out" | grep -qi`: under `set -o
+  # pipefail` a large `$out` (a GHCR 5xx HTML error body easily exceeds
+  # the 64 KB pipe buffer) makes the early-exiting `grep -q` close the
+  # pipe while printf is still writing, so printf takes EPIPE and the
+  # pipeline inherits its non-zero status -- the match is masked and a
+  # transient push error is misclassified as terminal. A here-string is
+  # not a pipeline, so the status is purely grep's.
+  if grep -qiE "$TRANSIENT_RE" <<<"$out"; then
     printf '%s\n' "$out" >&2
     echo "::warning::${LABEL} hit transient registry error (attempt ${i}/${ATTEMPTS}, rc=${rc}); sleeping ${BACKOFF}s before retry" >&2
     sleep "$BACKOFF"

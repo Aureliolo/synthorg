@@ -192,6 +192,67 @@ def test_resolve_tier_default_code(tmp_path: Path) -> None:
     assert _LIB.resolve_tier(src, project_root=project) == "code"
 
 
+# ── Pure (text-based) variants used by the hot codebase-map build ──
+
+
+def test_count_loc_text_matches_count_loc(tmp_path: Path) -> None:
+    source = "import os\n\n# comment\ndef foo() -> int:\n    return 1  # inline\n"
+    path = tmp_path / "m.py"
+    path.write_text(source, encoding="utf-8")
+    assert _LIB.count_loc_text(source) == _LIB.count_loc(path)
+
+
+def test_count_loc_text_empty_is_zero() -> None:
+    assert _LIB.count_loc_text("") == 0
+
+
+def test_module_kind_from_text_matches_read_header(tmp_path: Path) -> None:
+    source = "#!/usr/bin/env python3\n# module-kind: service\nimport x\n"
+    path = tmp_path / "m.py"
+    path.write_text(source, encoding="utf-8")
+    assert _LIB.module_kind_from_text(source, path) == _LIB.read_module_kind_header(
+        path
+    )
+
+
+def test_resolve_tier_text_generated_by_name() -> None:
+    assert (
+        _LIB.resolve_tier_text(
+            Path("src/synthorg/api/types.gen.ts.py"), "", rel_posix="src/.../x.py"
+        )
+        == "generated"
+    )
+
+
+def test_resolve_tier_text_tests_by_rel_posix() -> None:
+    assert (
+        _LIB.resolve_tier_text(
+            Path("tests/unit/test_foo.py"), "", rel_posix="tests/unit/test_foo.py"
+        )
+        == "tests"
+    )
+
+
+def test_resolve_tier_text_header_wins() -> None:
+    assert (
+        _LIB.resolve_tier_text(
+            Path("src/synthorg/foo.py"),
+            "# module-kind: service\n",
+            rel_posix="src/synthorg/foo.py",
+        )
+        == "service"
+    )
+
+
+def test_resolve_tier_text_default_code() -> None:
+    assert (
+        _LIB.resolve_tier_text(
+            Path("src/synthorg/foo.py"), "import os\n", rel_posix="src/synthorg/foo.py"
+        )
+        == "code"
+    )
+
+
 # ── TIER_LIMITS table ───────────────────────────────────────────
 
 

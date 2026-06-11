@@ -122,10 +122,32 @@ runs:
         # fail with "manifest already exists" before the idempotent push below.
         docker manifest create --amend "${REPO}:${TAG}" "${MANIFEST_ARGS[@]}"
         bash "$RETRY" "docker manifest push ${REPO}:${TAG}" docker manifest push "${REPO}:${TAG}"
-        # Read the canonical manifest list digest back from the
-        # registry. Stable across re-runs because the create above pins
-        # source members by digest.
-        DIGEST="$(docker buildx imagetools inspect "${REPO}:${TAG}" --format '{{.Manifest.Digest}}')"
+        # Read the canonical manifest list digest back from the registry.
+        # Stable across re-runs because the create above pins source
+        # members by digest. GHCR is eventually consistent on the write
+        # path: the tag we just pushed can 404 ("not found") for a short
+        # window before it is readable, so retry the read-back with bounded
+        # backoff rather than failing the whole publish (which would leave
+        # the image unsigned). Mirrors the inspect retry in
+        # publish-image-retag and publish-image-loaded.
+        INSPECT_ATTEMPTS=5
+        INSPECT_BACKOFF=2
+        DIGEST=""
+        for ((ia = 1; ia <= INSPECT_ATTEMPTS; ia++)); do
+          if DIGEST="$(docker buildx imagetools inspect "${REPO}:${TAG}" --format '{{.Manifest.Digest}}' 2>/dev/null)" && [ -n "$DIGEST" ]; then
+            break
+          fi
+          DIGEST=""
+          if [ "$ia" -lt "$INSPECT_ATTEMPTS" ]; then
+            echo "::warning::manifest ${REPO}:${TAG} not yet readable after push (attempt ${ia}/${INSPECT_ATTEMPTS}); GHCR read-after-write lag, retrying in ${INSPECT_BACKOFF}s"
+            sleep "${INSPECT_BACKOFF}"
+            INSPECT_BACKOFF=$((INSPECT_BACKOFF * 2))
+          fi
+        done
+        if [ -z "$DIGEST" ]; then
+          echo "::error::manifest ${REPO}:${TAG} not readable after ${INSPECT_ATTEMPTS} attempts -- cannot compute signing digest"
+          exit 1
+        fi
         echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
     # GitHub releases occasionally 5xx; cosign-installer's internal retry (3
@@ -190,7 +212,10 @@ runs:
         set -euo pipefail
         REPO_PATH="aureliolo/synthorg-${IMAGE_NAME}-base"
         # `-L` follows redirects defensively; matches publish-image-loaded.
-        REG_TOKEN="$(curl -sSL -u "x-access-token:${GHCR_TOKEN}" \
+        # `--connect-timeout`/`--max-time` bound every curl (no default
+        # deadline) so a black-holed connection can't stall to the job
+        # timeout.
+        REG_TOKEN="$(curl -sSL --connect-timeout 5 --max-time 15 -u "x-access-token:${GHCR_TOKEN}" \
           "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO_PATH}:pull" \
           | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
         if [ -z "${REG_TOKEN}" ]; then
@@ -198,7 +223,7 @@ runs:
           exit 1
         fi
 
-        ACTUAL="$(curl -sSL -I \
+        ACTUAL="$(curl -sSL --connect-timeout 5 --max-time 15 -I \
           -H "Authorization: Bearer ${REG_TOKEN}" \
           -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json" \
           "https://ghcr.io/v2/${REPO_PATH}/manifests/${TAG}" \
@@ -208,13 +233,47 @@ runs:
           exit 1
         fi
 
+        # cosign has just published the signature as an OCI referrer; GHCR
+        # surfaces it as the `sha256-<hex>` referrer tag with EVENTUAL
+        # consistency, so a check issued milliseconds after signing can 404
+        # for a short window. Poll with bounded backoff (5 attempts,
+        # 2s -> 4s -> 8s -> 16s, ~30s budget) so a propagation lag
+        # self-heals while a genuinely-missing signature still fails after
+        # the budget. Mirrors publish-image-loaded's post-sign check.
+        # Validate the digest shape first so a malformed SIGNED_DIGEST
+        # cannot build a bogus referrer URL.
+        if ! [[ "${SIGNED_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          echo "::error::SIGNED_DIGEST is not a valid sha256 digest: '${SIGNED_DIGEST}'"
+          exit 1
+        fi
         SIG_HEX="${SIGNED_DIGEST#sha256:}"
-        SIG_STATUS="$(curl -sSL -o /dev/null -w '%{http_code}' \
-          -H "Authorization: Bearer ${REG_TOKEN}" \
-          -H "Accept: application/vnd.oci.image.index.v1+json" \
-          "https://ghcr.io/v2/${REPO_PATH}/manifests/sha256-${SIG_HEX}")"
-        if [ "${SIG_STATUS}" != "200" ]; then
-          echo "::error::cosign signature artifact missing (referrer tag sha256-${SIG_HEX} returned HTTP ${SIG_STATUS})"
+        SIG_ATTEMPTS=5
+        SIG_BACKOFF=2
+        SIG_STATUS=000
+        for ((s = 1; s <= SIG_ATTEMPTS; s++)); do
+          # `|| SIG_STATUS=000` on the ASSIGNMENT (not inside the command
+          # substitution) so a curl network failure under `set -e` neither
+          # aborts the step nor double-prints the sentinel: curl already
+          # emits "000" to stdout on a connection failure, so an in-`$()`
+          # `|| echo 000` would capture "000000" and miss the dedicated
+          # network-error branch below. The `||` on the assignment suspends
+          # `set -e` for the left side and overwrites with a clean "000".
+          SIG_STATUS="$(curl -sSL --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${REG_TOKEN}" \
+            -H "Accept: application/vnd.oci.image.index.v1+json" \
+            "https://ghcr.io/v2/${REPO_PATH}/manifests/sha256-${SIG_HEX}")" || SIG_STATUS=000
+          [ "${SIG_STATUS}" = "200" ] && break
+          if [ "$s" -lt "$SIG_ATTEMPTS" ]; then
+            echo "::warning::signature referrer sha256-${SIG_HEX} not yet visible (HTTP ${SIG_STATUS}, attempt ${s}/${SIG_ATTEMPTS}); GHCR propagation lag, retrying in ${SIG_BACKOFF}s"
+            sleep "${SIG_BACKOFF}"
+            SIG_BACKOFF=$((SIG_BACKOFF * 2))
+          fi
+        done
+        if [ "${SIG_STATUS}" = "000" ]; then
+          echo "::error::cosign signature check could not reach GHCR (curl network error, not a registry response) for sha256-${SIG_HEX} after ${SIG_ATTEMPTS} attempts"
+          exit 1
+        elif [ "${SIG_STATUS}" != "200" ]; then
+          echo "::error::cosign signature artifact missing (referrer tag sha256-${SIG_HEX} returned HTTP ${SIG_STATUS} after ${SIG_ATTEMPTS} attempts)"
           exit 1
         fi
         echo "✓ ghcr.io/${REPO_PATH}:${TAG} -> ${ACTUAL} (signed)"

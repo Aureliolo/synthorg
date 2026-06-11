@@ -80,6 +80,28 @@ class UnknownTierError(ValueError):
     """Raised when a ``# module-kind:`` header carries an unknown tier."""
 
 
+def count_loc_text(text: str) -> int:
+    """Count physical lines minus blank and comment-only lines, from text.
+
+    Pure variant of :func:`count_loc` for callers that already hold the
+    file's contents (avoids re-reading the file). One ``str.strip`` per
+    line covers both the blank-line and comment-line tests: ``stripped``
+    has no leading whitespace, so ``stripped[0] == "#"`` is equivalent to
+    ``line.lstrip().startswith("#")``.
+
+    Args:
+        text: Full source text.
+
+    Returns:
+        Non-negative LOC count. Empty text returns 0.
+    """
+    return sum(
+        1
+        for line in text.splitlines()
+        if (stripped := line.strip()) and stripped[0] != "#"
+    )
+
+
 def count_loc(path: Path) -> int:
     """Count physical lines minus blank lines and comment-only lines.
 
@@ -92,12 +114,7 @@ def count_loc(path: Path) -> int:
     Raises:
         OSError: If the file cannot be read.
     """
-    text = path.read_text(encoding="utf-8")
-    return sum(
-        1
-        for line in text.splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    )
+    return count_loc_text(path.read_text(encoding="utf-8"))
 
 
 def is_generated(filename: str) -> bool:
@@ -133,7 +150,20 @@ def read_module_kind_header(path: Path) -> str | None:
             :data:`KNOWN_TIERS`.
         OSError: If the file cannot be read.
     """
-    text = path.read_text(encoding="utf-8")
+    return module_kind_from_text(path.read_text(encoding="utf-8"), path)
+
+
+def module_kind_from_text(text: str, path: Path) -> str | None:
+    """Return the ``# module-kind:`` tier from *text*, or ``None``.
+
+    Pure variant of :func:`read_module_kind_header` for callers that
+    already hold the file's contents. *path* is used only for the
+    error message on an unknown tier.
+
+    Raises:
+        UnknownTierError: If the header's tier value is not in
+            :data:`KNOWN_TIERS`.
+    """
     for index, line in enumerate(text.splitlines()):
         if index == 0 and _SHEBANG_RE.match(line):
             continue
@@ -181,4 +211,25 @@ def resolve_tier(path: Path, *, project_root: Path) -> str:
     if rel.startswith("tests/") or rel == "tests":
         return _TESTS_TIER
     header = read_module_kind_header(path)
+    return header if header is not None else _DEFAULT_TIER
+
+
+def resolve_tier_text(path: Path, text: str, *, rel_posix: str) -> str:
+    """Resolve the tier from already-read *text* and a precomputed rel path.
+
+    Pure variant of :func:`resolve_tier` for hot loops (e.g. the
+    codebase-map build) that already hold the file's text and its
+    repo-relative POSIX path, avoiding a second ``read_text`` and the
+    cost of ``Path.relative_to``. ``rel_posix`` must be the file's path
+    relative to the same root :func:`resolve_tier` uses as
+    ``project_root`` (so the ``tests/`` prefix check is identical).
+
+    Raises:
+        UnknownTierError: If the file declares an unknown tier.
+    """
+    if is_generated(path.name):
+        return _GENERATED_TIER
+    if rel_posix.startswith("tests/") or rel_posix == "tests":
+        return _TESTS_TIER
+    header = module_kind_from_text(text, path)
     return header if header is not None else _DEFAULT_TIER

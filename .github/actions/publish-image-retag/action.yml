@@ -136,7 +136,15 @@ runs:
           fi
           ERR="$(cat "$ERR_FILE")"
           IS_TRANSIENT=false
-          if printf '%s' "$ERR" | grep -qiE "$TRANSIENT_RE"; then
+          # Grep a here-string, never `printf "$ERR" | grep -qi`: under
+          # `set -o pipefail` a large `$ERR` (a GHCR 5xx HTML error body
+          # overruns the 64 KB pipe buffer) makes the early-exiting
+          # `grep -q` close the pipe while printf is still writing, so
+          # printf takes EPIPE and the pipeline inherits its non-zero
+          # status -- the match is masked and a transient inspect error
+          # is misclassified as terminal. A here-string is not a
+          # pipeline, so the status is purely grep's.
+          if grep -qiE "$TRANSIENT_RE" <<<"$ERR"; then
             IS_TRANSIENT=true
           fi
 
