@@ -208,13 +208,31 @@ runs:
           exit 1
         fi
 
+        # cosign has just published the signature as an OCI referrer; GHCR
+        # surfaces it as the `sha256-<hex>` referrer tag with EVENTUAL
+        # consistency, so a check issued milliseconds after signing can 404
+        # for a short window. Poll with bounded backoff (5 attempts,
+        # 2s -> 4s -> 8s -> 16s, ~30s budget) so a propagation lag
+        # self-heals while a genuinely-missing signature still fails after
+        # the budget. Mirrors publish-image-loaded's post-sign check.
         SIG_HEX="${SIGNED_DIGEST#sha256:}"
-        SIG_STATUS="$(curl -sSL -o /dev/null -w '%{http_code}' \
-          -H "Authorization: Bearer ${REG_TOKEN}" \
-          -H "Accept: application/vnd.oci.image.index.v1+json" \
-          "https://ghcr.io/v2/${REPO_PATH}/manifests/sha256-${SIG_HEX}")"
+        SIG_ATTEMPTS=5
+        SIG_BACKOFF=2
+        SIG_STATUS=000
+        for ((s = 1; s <= SIG_ATTEMPTS; s++)); do
+          SIG_STATUS="$(curl -sSL -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${REG_TOKEN}" \
+            -H "Accept: application/vnd.oci.image.index.v1+json" \
+            "https://ghcr.io/v2/${REPO_PATH}/manifests/sha256-${SIG_HEX}")"
+          [ "${SIG_STATUS}" = "200" ] && break
+          if [ "$s" -lt "$SIG_ATTEMPTS" ]; then
+            echo "::warning::signature referrer sha256-${SIG_HEX} not yet visible (HTTP ${SIG_STATUS}, attempt ${s}/${SIG_ATTEMPTS}); GHCR propagation lag, retrying in ${SIG_BACKOFF}s"
+            sleep "${SIG_BACKOFF}"
+            SIG_BACKOFF=$((SIG_BACKOFF * 2))
+          fi
+        done
         if [ "${SIG_STATUS}" != "200" ]; then
-          echo "::error::cosign signature artifact missing (referrer tag sha256-${SIG_HEX} returned HTTP ${SIG_STATUS})"
+          echo "::error::cosign signature artifact missing (referrer tag sha256-${SIG_HEX} returned HTTP ${SIG_STATUS} after ${SIG_ATTEMPTS} attempts)"
           exit 1
         fi
         echo "✓ ghcr.io/${REPO_PATH}:${TAG} -> ${ACTUAL} (signed)"

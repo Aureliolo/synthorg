@@ -372,6 +372,18 @@ repos:
         # actually scanned, letting a weakened gate land unchecked.
         pass_filenames: false
 
+      - id: retry-helper-selftest
+        name: cosign/push retry helpers classify large 5xx output as transient (broken-pipe regression)
+        entry: bash .github/scripts/tests/test_retry_classifiers.sh
+        language: system
+        # Re-run the full self-test whenever a helper or the test itself
+        # changes. pass_filenames: false so an edit to either helper drives
+        # the same assertions (the test feeds a >64 KB early-match 5xx body
+        # through the real scripts; on Linux the old `printf | grep -q` form
+        # reproduces the EPIPE and fails, the here-string form passes).
+        files: ^\.github/scripts/(cosign_sign_with_retry|docker_push_with_retry|tests/test_retry_classifiers)\.sh$
+        pass_filenames: false
+
       - id: doc-drift-counts
         name: doc count floors (event modules)
         entry: uv

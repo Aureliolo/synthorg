@@ -47,9 +47,11 @@ TRANSIENT_RE="$(bash "$SCRIPT_DIR/docker_push_with_retry.sh" --print-transient-r
 # 4 attempts, backoff 15s -> 30s -> 60s = ~1m45s of wait in the worst
 # case before the final attempt. Matches docker_push_with_retry.sh so
 # cosign rides through GHCR's typical 30-90s unicorn windows under the
-# same budget the push step already does.
-ATTEMPTS=4
-BACKOFF=15
+# same budget the push step already does. Overridable via env (mirrors
+# gh_with_retry.sh's GH_RETRY_*) so the regression self-test can drive
+# the classifier with a zero backoff instead of waiting ~1m45s.
+ATTEMPTS="${COSIGN_SIGN_RETRY_ATTEMPTS:-4}"
+BACKOFF="${COSIGN_SIGN_RETRY_BACKOFF:-15}"
 
 for ((i = 1; i <= ATTEMPTS; i++)); do
   out=""

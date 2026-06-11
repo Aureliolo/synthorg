@@ -40,6 +40,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -57,6 +58,15 @@ HTTP_TIMEOUT_SECONDS = 30
 HTTP_OK = 200
 USAGE_EXIT_CODE = 2
 FAILURE_EXIT_CODE = 1
+
+# GHCR surfaces a freshly-published cosign referrer (the `sha256-<hex>`
+# tag) with eventual consistency. This gate runs minutes after the publish
+# jobs, so propagation is normally settled; the short retry only covers the
+# rare case where the gate runs close behind a sign. Kept deliberately
+# short -- the gate's purpose is to FAIL a genuinely-unsigned image, so a
+# persistent 404 must surface quickly rather than be masked by a long wait.
+SIG_PROPAGATION_ATTEMPTS = 3
+SIG_PROPAGATION_BACKOFF_SECONDS = 3
 
 # Anchored allowlist patterns, applied to every value that flows into
 # the registry URL path. Closes the partial-SSRF window CodeQL flags
@@ -302,6 +312,12 @@ def signature_present(
 ) -> bool:
     """Return True if a cosign signature referrer artifact exists for this digest.
 
+    Retries a non-200 a few times with a short fixed backoff
+    (``SIG_PROPAGATION_ATTEMPTS`` / ``SIG_PROPAGATION_BACKOFF_SECONDS``) to
+    absorb GHCR's eventual-consistency window on a freshly-published
+    referrer; a genuinely-unsigned digest still returns False once the
+    short budget is spent.
+
     ``repo_path`` is pre-validated; ``digest`` is checked to start with
     the literal ``sha256:`` prefix and the hex tail is character-class
     constrained by definition. The ``urllib.parse.quote`` call closes
@@ -314,8 +330,13 @@ def signature_present(
     safe_sig_tag = urllib.parse.quote(sig_tag, safe="")
     url = f"https://{GHCR_REGISTRY}/v2/{safe_repo}/manifests/{safe_sig_tag}"
     headers = {"Accept": SIG_ACCEPT, **auth_header}
-    status, _, _ = _request("HEAD", url, headers)
-    return status == HTTP_OK
+    for attempt in range(1, SIG_PROPAGATION_ATTEMPTS + 1):
+        status, _, _ = _request("HEAD", url, headers)
+        if status == HTTP_OK:
+            return True
+        if attempt < SIG_PROPAGATION_ATTEMPTS:
+            time.sleep(SIG_PROPAGATION_BACKOFF_SECONDS)
+    return False
 
 
 def _resolve_token() -> tuple[str | None, str]:

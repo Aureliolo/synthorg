@@ -64,9 +64,11 @@ fi
 
 # 4 attempts, backoff 15s -> 30s -> 60s = ~1m45s of wait in the worst case
 # before the final attempt. Long enough to ride through GHCR's typical 30-90s
-# unicorn windows; short enough to fail loudly on a real outage.
-ATTEMPTS=4
-BACKOFF=15
+# unicorn windows; short enough to fail loudly on a real outage. Overridable
+# via env (mirrors gh_with_retry.sh's GH_RETRY_*) so the regression self-test
+# can drive the classifier with a zero backoff instead of waiting ~1m45s.
+ATTEMPTS="${DOCKER_PUSH_RETRY_ATTEMPTS:-4}"
+BACKOFF="${DOCKER_PUSH_RETRY_BACKOFF:-15}"
 
 for ((i = 1; i <= ATTEMPTS; i++)); do
   out=""

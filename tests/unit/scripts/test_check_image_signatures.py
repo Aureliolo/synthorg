@@ -238,7 +238,7 @@ class TestBasicAuth:
 
 @pytest.mark.unit
 class TestSignaturePresent:
-    """signature_present rejects malformed digests up front."""
+    """signature_present validates digests and tolerates propagation lag."""
 
     def test_rejects_non_sha256_digest(self) -> None:
         # No HTTP call should be made; non-sha256 digest fails immediately.
@@ -248,6 +248,61 @@ class TestSignaturePresent:
     def test_rejects_empty_digest(self) -> None:
         repo = "aureliolo/synthorg-backend"
         assert gate.signature_present(repo, "", {}) is False
+
+    def test_present_on_first_check_does_not_sleep(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[str] = []
+
+        def fake_request(
+            _method: str, url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            calls.append(url)
+            return gate.HTTP_OK, {}, b""
+
+        slept: list[float] = []
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
+        digest = "sha256:" + "a" * 64
+        assert gate.signature_present("aureliolo/synthorg-backend", digest, {}) is True
+        assert len(calls) == 1
+        assert slept == []
+
+    def test_retries_propagation_lag_then_succeeds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        statuses = iter([404, gate.HTTP_OK])
+
+        def fake_request(
+            _method: str, _url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            return next(statuses), {}, b""
+
+        slept: list[float] = []
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
+        digest = "sha256:" + "b" * 64
+        assert gate.signature_present("aureliolo/synthorg-backend", digest, {}) is True
+        assert len(slept) == 1
+
+    def test_genuine_miss_fails_after_bounded_budget(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[str] = []
+
+        def fake_request(
+            _method: str, url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            calls.append(url)
+            return 404, {}, b""
+
+        slept: list[float] = []
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
+        digest = "sha256:" + "c" * 64
+        assert gate.signature_present("aureliolo/synthorg-backend", digest, {}) is False
+        assert len(calls) == gate.SIG_PROPAGATION_ATTEMPTS
+        assert len(slept) == gate.SIG_PROPAGATION_ATTEMPTS - 1
 
 
 @pytest.mark.unit
