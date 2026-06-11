@@ -41,7 +41,7 @@ class TestCoerceId:
 
     def test_non_uuid_non_str_raises(self) -> None:
         with pytest.raises(TypeError):
-            coerce_id(123)  # type: ignore[arg-type]
+            coerce_id(123)
 
 
 class TestAsPk:
