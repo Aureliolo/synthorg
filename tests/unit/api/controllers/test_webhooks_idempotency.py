@@ -13,11 +13,12 @@ shape.
 """
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import structlog.testing
+from litestar import Request
 from litestar.datastructures import State
 from litestar.testing import RequestFactory
 
@@ -26,13 +27,9 @@ from synthorg.api.controllers import _webhooks_wiring
 from synthorg.api.controllers.webhooks import _shared as webhooks_shared
 from synthorg.api.controllers.webhooks import ingest as webhooks_ingest
 from synthorg.api.services.idempotency_service import IdempotencyService
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.observability.events.integrations import WEBHOOK_ACCEPTED
 from tests._shared import JsonDict, make_app_state
-
-if TYPE_CHECKING:
-    from litestar import Request
-
-    from synthorg.communication.bus_protocol import MessageBus
 
 
 class _FakeBus:
