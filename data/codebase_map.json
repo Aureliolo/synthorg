@@ -2886,7 +2886,7 @@
     },
     {
       "kind": "code",
-      "loc": 86,
+      "loc": 89,
       "loc_cap": 500,
       "module": "src/synthorg/budget/tracker_protocol.py",
       "owning_feature": "budget"
@@ -8514,7 +8514,7 @@
     },
     {
       "kind": "code",
-      "loc": 125,
+      "loc": 109,
       "loc_cap": 500,
       "module": "src/synthorg/hr/registry_protocol.py",
       "owning_feature": "hr"
