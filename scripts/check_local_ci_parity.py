@@ -87,6 +87,11 @@ _COVERED_ELSEWHERE: Final[dict[str, str]] = {
         "that job fetches the base ref, which the all-files job's shallow "
         "checkout does not)"
     ),
+    "check-no-modify-migration": (
+        "ci.yml :: schema-validate (Block modification of committed migrations; "
+        "that fetch-depth:0 job has origin/main, which the all-files job's "
+        "shallow checkout does not)"
+    ),
 }
 
 # Hooks with NO CI counterpart by design: developer-clone git-state checks
@@ -97,12 +102,8 @@ _COVERED_ELSEWHERE: Final[dict[str, str]] = {
 _LOCAL_ONLY: Final[dict[str, str]] = {
     "check-push-rebased": (
         "developer-clone branch-freshness check; CI checks out a fixed merge "
-        "SHA where 'behind main' is meaningless"
-    ),
-    "check-no-modify-migration": (
-        "developer-clone migration-immutability guard; needs origin/main and "
-        "fails closed without it. Mirrored in CI by the PreToolUse "
-        "check_no_edit_migration.sh block and the schema-drift-revisions gate"
+        "SHA where 'behind main' is meaningless. GitHub branch protection's "
+        "'require branches up to date' is the server-side equivalent"
     ),
 }
 

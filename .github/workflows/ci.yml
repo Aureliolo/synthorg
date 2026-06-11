@@ -291,6 +291,19 @@ jobs:
           fi
           echo "OK: PR adds sqlite=$sqlite_count, postgres=$postgres_count new revision(s) (limit 1 each)."
 
+      - name: Block modification of committed migrations
+        # CI mirror of the check-no-modify-migration pre-commit hook. Editing a
+        # revision already merged to main breaks yoyo's content-hash for everyone
+        # who applied it. The schema-drift gate only catches edits that shift the
+        # resulting schema, so this closes the --no-verify hole for content-only
+        # edits (comments, reformatting, semantically-equal SQL). Runs here (not
+        # in the all-files Gates job) because it needs origin/main, which only
+        # this fetch-depth:0 job has.
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin main
+          bash scripts/check_no_modify_migration.sh
+
       - name: SQLite drift detection
         run: uv run python scripts/check_schema_drift_revisions.py --backend sqlite
 
