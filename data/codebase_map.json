@@ -394,7 +394,7 @@
     },
     {
       "kind": "code",
-      "loc": 423,
+      "loc": 422,
       "loc_cap": 500,
       "module": "src/synthorg/api/auth/service.py",
       "owning_feature": "api_core"
@@ -1388,7 +1388,7 @@
     },
     {
       "kind": "code",
-      "loc": 396,
+      "loc": 398,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/setup_agents.py",
       "owning_feature": "api_core"
@@ -1871,7 +1871,7 @@
     },
     {
       "kind": "code",
-      "loc": 381,
+      "loc": 380,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/startup_steps.py",
       "owning_feature": "api_core"
@@ -1885,7 +1885,7 @@
     },
     {
       "kind": "code",
-      "loc": 288,
+      "loc": 289,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/toolsmith_wiring.py",
       "owning_feature": "api_core"
@@ -20652,7 +20652,7 @@
     },
     {
       "kind": "code",
-      "loc": 58,
+      "loc": 62,
       "loc_cap": 500,
       "module": "src/synthorg/workers/distributed_protocols.py",
       "owning_feature": "runtime"
