@@ -2,6 +2,7 @@
 
 import json
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -16,14 +17,14 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
 )
-from tests._shared import JsonDict, make_app_state
+from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
 
 
-def _parse(result: str) -> JsonDict:
-    body: JsonDict = json.loads(result)
+def _parse(result: str) -> dict[str, Any]:  # type: ignore[explicit-any]
+    body: dict[str, Any] = json.loads(result)  # type: ignore[explicit-any]
     assert body["status"] in {"ok", "error"}, (
         f"legacy envelope leaked: status={body['status']!r}"
     )
@@ -68,7 +69,7 @@ class TestTasksSmoke:
         actor: AgentIdentity,
     ) -> None:
         handler = TASK_HANDLERS[tool_name]
-        args: JsonDict = {
+        args: dict[str, Any] = {  # type: ignore[explicit-any]
             "task_id": "task-1",
             "title": "x",
             "description": "y",
@@ -224,7 +225,7 @@ class TestWorkflowsSmoke:
         actor: AgentIdentity,
     ) -> None:
         handler = WORKFLOW_HANDLERS[tool_name]
-        args: JsonDict = {
+        args: dict[str, Any] = {  # type: ignore[explicit-any]
             "workflow_id": "wf-1",
             "subworkflow_id": "sw-1",
             "execution_id": "ex-1",

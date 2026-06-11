@@ -5,7 +5,7 @@ handler logic (503 when unwired, the raise-ceiling guard, the happy
 path) is covered without standing up a full TestClient.
 """
 
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from litestar.datastructures import State
@@ -46,14 +46,14 @@ class _FakeForecastRepo:
             self.rows[str(forecast.forecast_id)] = forecast
         self.saved: list[Forecast] = []
 
-    async def get(self, entity_id: UUID, /) -> Forecast | None:
+    async def get(self, entity_id: object) -> Forecast | None:
         return self.rows.get(str(entity_id))
 
     async def save(self, entity: Forecast) -> None:
         self.saved.append(entity)
         self.rows[str(entity.forecast_id)] = entity
 
-    async def delete(self, entity_id: UUID, /) -> bool:
+    async def delete(self, entity_id: object) -> bool:
         return self.rows.pop(str(entity_id), None) is not None
 
     async def list_items(
@@ -67,8 +67,7 @@ class _FakeForecastRepo:
 
     async def transition_if(
         self,
-        /,
-        entity_id: UUID,
+        entity_id: object,
         from_state: ForecastDecision,
         to_state: ForecastDecision,
         **updates: object,
