@@ -174,7 +174,7 @@ Based on changed files, launch applicable review agents **in parallel** using th
 | **security-reviewer** | Files in sensitive paths OR any `web_src` changed OR diff contains dangerous patterns | `security-reviewer` |
 | **frontend-reviewer** | Any `web_src` or `web_test` | `frontend-reviewer` |
 | **design-token-audit** | Any `web_src` | `design-token-audit` |
-| **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR `src/synthorg/core/enums.py` | `api-contract-drift` |
+| **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR any `src/synthorg/**/enums.py` | `api-contract-drift` |
 | **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `infra-reviewer` |
 | **persistence-reviewer** | Any file in `src/synthorg/persistence/` | `persistence-reviewer` |
 | **test-quality-reviewer** | Any `test_py` or `web_test` | `test-quality-reviewer` |
@@ -399,7 +399,7 @@ Read the relevant backend and frontend files, then cross-reference:
 4. Field name mismatches between backend Pydantic response models and frontend TypeScript types (MAJOR)
 5. Field type mismatches (e.g., backend returns `int`, frontend expects `string`) (MAJOR)
 6. Optional/required mismatches: backend field is optional but frontend assumes it's always present, or vice versa (MAJOR)
-7. Enum value drift: backend `core/enums.py` values don't match frontend constants/types (MAJOR)
+7. Enum value drift: backend `**/enums.py` values don't match frontend constants/types (MAJOR)
 
 **Request/response shape (MAJOR):**
 8. Frontend sending request body fields that the backend doesn't accept (silently ignored) (MAJOR)
