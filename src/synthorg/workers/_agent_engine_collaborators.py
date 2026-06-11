@@ -6,8 +6,8 @@ crashing. They are threaded into ``_construct_agent_engine``.
 """
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 
+from synthorg.api.state import AppState
 from synthorg.engine.flight_recording import (
     FlightRecorderSink,
     build_flight_recorder_sink,
@@ -15,12 +15,9 @@ from synthorg.engine.flight_recording import (
 from synthorg.engine.intervention import SteeringInbox, build_steering_inbox
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.project_brain.state import ProjectBrainStateSlice
+from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import config_resolver_of
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
-    from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 
 _COCKPIT_NS: str = SettingNamespace.COCKPIT.value
 _FR_ENABLED_KEY: str = "flight_recorder_enabled"

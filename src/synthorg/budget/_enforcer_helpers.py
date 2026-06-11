@@ -5,14 +5,17 @@ module under the 800-line limit.  All functions here are module-level
 pure helpers (or closure builders) consumed only by ``BudgetEnforcer``.
 """
 
+from collections.abc import Callable
 from types import MappingProxyType
-from typing import TYPE_CHECKING, NamedTuple, get_args
+from typing import NamedTuple, Protocol, get_args, runtime_checkable
 from uuid import UUID
 
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.errors import RunHardCeilingExceededError
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import ModelTier
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
@@ -26,18 +29,45 @@ from synthorg.observability.events.budget import (
     BUDGET_TASK_LIMIT_HIT,
     BUDGET_TIER_PRESERVED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.core.agent import AgentIdentity, ModelConfig
-    from synthorg.engine.context import AgentContext
-    from synthorg.engine.loop_protocol import BudgetChecker
-    from synthorg.providers.routing.models import ResolvedModel
-    from synthorg.providers.routing.resolver import ModelResolver
+from synthorg.providers.routing.models import ResolvedModel
+from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
 
 _VALID_TIERS: frozenset[str] = frozenset(get_args(ModelTier))
+
+
+@runtime_checkable
+class _RunningCost(Protocol):
+    """Cost leaf of ``_BudgetCheckContext``.
+
+    Split out so ``accumulated_cost`` can be typed structurally without
+    importing ``providers.TokenUsage``; satisfied by ``TokenUsage.cost``.
+    """
+
+    @property
+    def cost(self) -> float:
+        """Accumulated cost so far for the run."""
+        ...
+
+
+@runtime_checkable
+class _BudgetCheckContext(Protocol):
+    """Structural view of the run context the budget checker reads.
+
+    The checker reads only ``accumulated_cost.cost``. Annotating against
+    this leaf protocol (rather than ``engine.context.AgentContext``) keeps
+    ``budget`` off the ``engine`` import: ``engine`` imports ``budget``, so a
+    runtime ``engine.context`` import here would close an ``engine`` ->
+    ``budget`` -> ``engine`` cold cycle. ``AgentContext`` satisfies this
+    structurally, so the checker signature still resolves at runtime under
+    typeguard.
+    """
+
+    @property
+    def accumulated_cost(self) -> _RunningCost:
+        """Running token usage and cost totals."""
+        ...
 
 
 # ── Downgrade helpers ────────────────────────────────────────────
@@ -283,7 +313,7 @@ def _build_checker_closure(  # noqa: PLR0913
     hard_ceiling_currency: str | None = None,
     task_id: str | None = None,
     forecast_id: UUID | None = None,
-) -> BudgetChecker:
+) -> Callable[[_BudgetCheckContext], bool]:
     """Build the sync budget checker closure.
 
     Args:
@@ -318,7 +348,7 @@ def _build_checker_closure(  # noqa: PLR0913
     """
     last_alert: list[BudgetAlertLevel] = [BudgetAlertLevel.NORMAL]
 
-    def _check(ctx: AgentContext) -> bool:
+    def _check(ctx: _BudgetCheckContext) -> bool:
         """Return True when a budget limit is reached.
 
         Returns:

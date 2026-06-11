@@ -1,7 +1,7 @@
 """Convention guard: keep raw ``.strip().lower()`` count under control.
 
-After A3-P4, every functional ``.strip().lower()`` site was migrated to a
-named helper in :mod:`synthorg.core.normalization`. The remaining hits in
+Every functional ``.strip().lower()`` site in application code goes through
+a named helper in :mod:`synthorg.core.normalization`. The remaining hits in
 ``src/synthorg/`` live inside the helper bodies themselves and their
 docstrings; that count is allowed to grow modestly without regression
 risk. New consumer-side ``.strip().lower()`` should go through a helper.

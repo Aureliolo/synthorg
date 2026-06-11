@@ -72,7 +72,7 @@ class TestConfigureLogging:
         assert len(root.handlers) == 1
 
     def test_root_logger_defaults_to_info(self) -> None:
-        # Root logger default flipped DEBUG -> INFO (2026-04-23, #1538):
+        # Root logger defaults to INFO:
         # DEBUG on root leaked verbose payloads through HTTP sinks and
         # wasted bandwidth.  Operators set ``observability.root_level=debug``
         # explicitly when they need the full event stream.

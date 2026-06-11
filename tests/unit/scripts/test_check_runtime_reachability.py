@@ -8,7 +8,8 @@ These tests encode that contract, the nested-argument call case (so
 ``spawn(self.complete_review(...))`` counts), and the fail-closed
 behaviour on a missing module, missing function, unparsable source, or
 malformed manifest. The final test drives the LIVE repo manifest + src so
-the production red-team-gate chain (#1986 / #1979) stays pinned.
+the production red-team-gate chain (``complete_review`` ->
+``dispatch_completion``) stays pinned.
 """
 
 import importlib.util

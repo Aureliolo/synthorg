@@ -31,5 +31,5 @@ ASYNC_TASK_TOOL_CANCEL_FAILED: Final[str] = "async_task.tool.cancel_failed"
 DELEGATION_ROUND_SOFT_LIMIT: Final[str] = "delegation.round.soft_limit"
 DELEGATION_ROUND_HARD_LIMIT: Final[str] = "delegation.round.hard_limit"
 
-# Background task registry (fire-and-forget tracked tasks per #1404)
+# Background task registry (fire-and-forget tracked tasks)
 BACKGROUND_TASKS_DRAIN_TIMEOUT: Final[str] = "background_tasks.drain.timeout"

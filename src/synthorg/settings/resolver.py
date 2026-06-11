@@ -773,7 +773,7 @@ class ConfigResolver:
             base_branch=t_branch.result(),
         )
 
-    # ── Config-bridge composed reads (issues #1398, #1400) ──────────
+    # ── Config-bridge composed reads (delegation + event-stream) ────
 
     async def _resolve_bridge_fields(  # type: ignore[explicit-any]  # values feed Model(**values)
         self,

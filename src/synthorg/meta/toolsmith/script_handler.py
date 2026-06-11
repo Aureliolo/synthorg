@@ -24,7 +24,11 @@ from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.handlers.common import err, ok
 from synthorg.meta.toolsmith.errors import ToolsmithError
 from synthorg.meta.toolsmith.models import ToolBlueprint
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    safe_error_description,
+    scrub_secret_tokens,
+)
 from synthorg.observability.events.toolsmith import (
     TOOLSMITH_TOOL_INVOKE_FAILED,
     TOOLSMITH_TOOL_INVOKED,
@@ -35,6 +39,7 @@ logger = get_logger(__name__)
 
 _ARGS_ENV_VAR: Final[str] = "SYNTHORG_TOOL_ARGS"
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 30.0
+_STDERR_EXCERPT_CHARS: Final[int] = 500
 
 
 class DynamicToolScriptError(ToolsmithError):
@@ -69,7 +74,15 @@ async def _execute_script(
         msg = f"Authored tool {blueprint.name!r} timed out"
         raise DynamicToolScriptError(msg)
     if result.returncode != 0:
-        msg = f"Authored tool {blueprint.name!r} exited {result.returncode}"
+        # Surface a bounded, credential-scrubbed stderr tail so a failing
+        # authored tool is diagnosable. The script runs in a sandbox with the
+        # caller's JSON args, so stderr can echo secrets; scrub before it
+        # reaches the error envelope or the WARNING log.
+        stderr_tail = scrub_secret_tokens(result.stderr or "")[-_STDERR_EXCERPT_CHARS:]
+        msg = (
+            f"Authored tool {blueprint.name!r} exited {result.returncode}"
+            f"{f'; stderr: {stderr_tail}' if stderr_tail else ''}"
+        )
         raise DynamicToolScriptError(msg)
     try:
         return json.loads(result.stdout)

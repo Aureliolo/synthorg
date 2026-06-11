@@ -87,11 +87,13 @@ def _window_closed_result(
         observation_hours_elapsed=elapsed,
     )
     # Preserve the final verdict so INSUFFICIENT_DATA / other non-regression
-    # non-clean outcomes are not collapsed into SUCCESS.
+    # non-clean outcomes are not collapsed into SUCCESS. A window that closed
+    # without any observation tick (no data) is INSUFFICIENT_DATA, not a clean
+    # NO_REGRESSION pass, so it maps to INCONCLUSIVE rather than a false SUCCESS.
     final_verdict = (
         last_result.verdict
         if last_result is not None
-        else RegressionVerdict.NO_REGRESSION
+        else RegressionVerdict.INSUFFICIENT_DATA
     )
     final_breached = last_result.breached_metric if last_result is not None else None
     if final_verdict == RegressionVerdict.NO_REGRESSION:

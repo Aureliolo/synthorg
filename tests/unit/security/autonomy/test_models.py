@@ -197,8 +197,8 @@ class TestAutonomyConfig:
 
     @pytest.mark.unit
     def test_default_config(self) -> None:
-        # Default flipped SEMI -> SUPERVISED (2026-04-23, #1538): fresh
-        # installs now queue approvals for state-mutating actions.
+        # Default is SUPERVISED: fresh installs queue approvals for
+        # state-mutating actions.
         config = AutonomyConfig()
         assert config.level == AutonomyLevel.SUPERVISED
         assert len(config.presets) == len(AutonomyLevel)

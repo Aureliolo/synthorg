@@ -3,7 +3,6 @@
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
@@ -26,10 +25,8 @@ from synthorg.engine.evolution.models import (
     AdaptationProposal,
     AdaptationSource,
 )
+from synthorg.versioning.models import VersionSnapshot
 from tests._shared import as_uuid
-
-if TYPE_CHECKING:
-    from synthorg.versioning.models import VersionSnapshot
 
 
 def _make_identity(agent_id: str = "agent-001") -> AgentIdentity:

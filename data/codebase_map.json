@@ -2263,7 +2263,7 @@
     },
     {
       "kind": "code",
-      "loc": 64,
+      "loc": 21,
       "loc_cap": 500,
       "module": "src/synthorg/approval/__init__.py",
       "owning_feature": "approval"
@@ -2396,7 +2396,7 @@
     },
     {
       "kind": "code",
-      "loc": 82,
+      "loc": 80,
       "loc_cap": 500,
       "module": "src/synthorg/backup/registry.py",
       "owning_feature": "backup"
@@ -2466,7 +2466,7 @@
     },
     {
       "kind": "code",
-      "loc": 461,
+      "loc": 484,
       "loc_cap": 500,
       "module": "src/synthorg/budget/_enforcer_helpers.py",
       "owning_feature": "budget"
@@ -3096,7 +3096,7 @@
     },
     {
       "kind": "code",
-      "loc": 137,
+      "loc": 136,
       "loc_cap": 500,
       "module": "src/synthorg/client/protocols.py",
       "owning_feature": "client"
@@ -5210,7 +5210,7 @@
     },
     {
       "kind": "code",
-      "loc": 15,
+      "loc": 21,
       "loc_cap": 500,
       "module": "src/synthorg/engine/compaction/__init__.py",
       "owning_feature": "engine"
@@ -5231,7 +5231,7 @@
     },
     {
       "kind": "code",
-      "loc": 18,
+      "loc": 16,
       "loc_cap": 500,
       "module": "src/synthorg/engine/compaction/protocol.py",
       "owning_feature": "engine"
@@ -5273,7 +5273,7 @@
     },
     {
       "kind": "code",
-      "loc": 367,
+      "loc": 365,
       "loc_cap": 500,
       "module": "src/synthorg/engine/coordination/_dispatch_helpers.py",
       "owning_feature": "engine"
@@ -5287,7 +5287,7 @@
     },
     {
       "kind": "code",
-      "loc": 103,
+      "loc": 101,
       "loc_cap": 500,
       "module": "src/synthorg/engine/coordination/centralized_dispatcher.py",
       "owning_feature": "engine"
@@ -5301,14 +5301,14 @@
     },
     {
       "kind": "code",
-      "loc": 340,
+      "loc": 338,
       "loc_cap": 500,
       "module": "src/synthorg/engine/coordination/context_dependent_dispatcher.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 118,
+      "loc": 116,
       "loc_cap": 500,
       "module": "src/synthorg/engine/coordination/decentralized_dispatcher.py",
       "owning_feature": "engine"
@@ -5322,7 +5322,7 @@
     },
     {
       "kind": "code",
-      "loc": 78,
+      "loc": 77,
       "loc_cap": 500,
       "module": "src/synthorg/engine/coordination/dispatcher_types.py",
       "owning_feature": "engine"
@@ -5357,7 +5357,7 @@
     },
     {
       "kind": "code",
-      "loc": 54,
+      "loc": 52,
       "loc_cap": 500,
       "module": "src/synthorg/engine/coordination/sas_dispatcher.py",
       "owning_feature": "engine"
@@ -7226,7 +7226,7 @@
     },
     {
       "kind": "code",
-      "loc": 229,
+      "loc": 270,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workflow/execution_node_dispatch.py",
       "owning_feature": "engine"
@@ -11727,7 +11727,7 @@
     },
     {
       "kind": "code",
-      "loc": 58,
+      "loc": 60,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handler_protocol.py",
       "owning_feature": "meta"
@@ -18657,7 +18657,7 @@
     },
     {
       "kind": "code",
-      "loc": 330,
+      "loc": 329,
       "loc_cap": 500,
       "module": "src/synthorg/settings/definitions/communication.py",
       "owning_feature": "settings"
@@ -19203,7 +19203,7 @@
     },
     {
       "kind": "code",
-      "loc": 447,
+      "loc": 446,
       "loc_cap": 500,
       "module": "src/synthorg/templates/model_matcher.py",
       "owning_feature": null
@@ -20582,7 +20582,7 @@
     },
     {
       "kind": "code",
-      "loc": 74,
+      "loc": 72,
       "loc_cap": 500,
       "module": "src/synthorg/workers/_agent_engine_collaborators.py",
       "owning_feature": "runtime"
@@ -20736,7 +20736,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 310,
+      "loc": 309,
       "loc_cap": 600,
       "module": "src/synthorg/workers/runtime_builder.py",
       "owning_feature": "runtime"

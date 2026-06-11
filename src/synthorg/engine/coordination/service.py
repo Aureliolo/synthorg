@@ -39,6 +39,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
 )
 from synthorg.engine.errors import CoordinationPhaseError
+from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
@@ -53,8 +54,12 @@ from synthorg.observability.events.coordination import (
 )
 
 if TYPE_CHECKING:
-    # Concrete services faked in tests; a runtime import would make typeguard
-    # enforce a nominal isinstance the fakes cannot satisfy.
+    # Cold-import cycle-breakers: importing these collaborators at module
+    # level pulls the routing / decomposition / workspace chain (which reaches
+    # ``communication.config``) back through this module during a cold import,
+    # so they are named for signatures only. Tests inject duck-typed fakes
+    # against the same surface. ``ParallelExecutorProtocol`` (a light leaf) is
+    # the hoistable structural view of the parallel executor.
     from synthorg.budget.coordination_collector import (
         CoordinationMetricsCollector,
     )
@@ -62,7 +67,6 @@ if TYPE_CHECKING:
     from synthorg.engine.middleware.coordination_protocol import (
         CoordinationMiddlewareChain,
     )
-    from synthorg.engine.parallel import ParallelExecutor
     from synthorg.engine.routing.service import TaskRoutingService
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.workspace.project_workspace_service import (
@@ -157,7 +161,7 @@ class MultiAgentCoordinator:
         *,
         decomposition_service: DecompositionService,
         routing_service: TaskRoutingService,
-        parallel_executor: ParallelExecutor,
+        parallel_executor: ParallelExecutorProtocol,
         workspace_service: WorkspaceIsolationService | None = None,
         project_workspace_service: ProjectWorkspaceService | None = None,
         task_engine: TaskEngine | None = None,

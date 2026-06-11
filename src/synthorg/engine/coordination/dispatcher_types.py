@@ -6,7 +6,7 @@ checkable Protocol all dispatchers implement.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,17 +17,13 @@ from synthorg.engine.coordination.models import (
     CoordinationWave,
 )
 from synthorg.engine.decomposition.models import DecompositionResult
+from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
 )
-
-if TYPE_CHECKING:
-    # Concrete services faked in dispatcher tests; a runtime import would make
-    # typeguard enforce a nominal isinstance the fakes cannot satisfy.
-    from synthorg.engine.parallel import ParallelExecutor
-    from synthorg.engine.workspace.service import WorkspaceIsolationService
+from synthorg.engine.workspace.service import WorkspaceIsolationService
 
 
 class DispatchResult(BaseModel):
@@ -69,7 +65,7 @@ class TopologyDispatcher(Protocol):
         *,
         decomposition_result: DecompositionResult,
         routing_result: RoutingResult,
-        parallel_executor: ParallelExecutor,
+        parallel_executor: ParallelExecutorProtocol,
         workspace_service: WorkspaceIsolationService | None,
         config: CoordinationConfig,
         project_id: NotBlankStr | None = None,

@@ -215,9 +215,9 @@ _r.register(
             " FIFO eviction. NOTE: DelegationRecordStore is constructed by the"
             " caller of create_app (not inside create_app itself), so this"
             " setting is surfaced for completeness but is not yet threaded into"
-            " the default construction path. Wiring is tracked as follow-up on"
-            " #1398/#1400; until then a change requires rebuilding the store"
-            " with the desired max_records and restarting the process."
+            " the default construction path. Until that wiring lands a change"
+            " requires rebuilding the store with the desired max_records and"
+            " restarting the process."
         ),
         group="Delegation",
         level=SettingLevel.ADVANCED,
@@ -239,9 +239,8 @@ _r.register(
             " before the ConfigResolver is available, and asyncio.Queue is"
             " created at subscribe time with a fixed maxsize -- changing the"
             " value on an existing hub would only affect new subscribers."
-            " Runtime wiring is tracked as follow-up on #1398/#1400; until then"
-            " a change requires a process restart with the default overridden"
-            " at EventStreamHub construction."
+            " Until runtime wiring lands a change requires a process restart"
+            " with the default overridden at EventStreamHub construction."
         ),
         group="Event Stream",
         level=SettingLevel.ADVANCED,

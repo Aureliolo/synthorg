@@ -6,7 +6,6 @@ concrete dispatchers.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.core.clock import Clock
@@ -20,6 +19,7 @@ from synthorg.engine.coordination.models import (
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.errors import CoordinationError
 from synthorg.engine.parallel_models import ParallelExecutionGroup
+from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.engine.workspace.models import (
     MergeResult,
@@ -27,6 +27,7 @@ from synthorg.engine.workspace.models import (
     WorkspaceGroupResult,
     WorkspaceRequest,
 )
+from synthorg.engine.workspace.service import WorkspaceIsolationService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
     COORDINATION_CLEANUP_COMPLETED,
@@ -38,12 +39,6 @@ from synthorg.observability.events.coordination import (
     COORDINATION_WAVE_COMPLETED,
     COORDINATION_WAVE_STARTED,
 )
-
-if TYPE_CHECKING:
-    # Concrete services faked in dispatcher tests; a runtime import would make
-    # typeguard enforce a nominal isinstance the fakes cannot satisfy.
-    from synthorg.engine.parallel import ParallelExecutor
-    from synthorg.engine.workspace.service import WorkspaceIsolationService
 
 logger = get_logger(__name__)
 
@@ -295,7 +290,7 @@ async def teardown_workspaces(
 
 async def execute_waves(
     groups: tuple[ParallelExecutionGroup, ...],
-    parallel_executor: ParallelExecutor,
+    parallel_executor: ParallelExecutorProtocol,
     *,
     clock: Clock,
     fail_fast: bool,

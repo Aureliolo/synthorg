@@ -46,7 +46,7 @@ def _make_identity(
 @pytest.mark.unit
 class TestGetAutonomy:
     async def test_get_autonomy(self, async_test_client: LoopAsyncClient) -> None:
-        # Default autonomy flipped SEMI -> SUPERVISED (2026-04-23, #1538).
+        # Default autonomy is SUPERVISED (fresh installs queue approvals).
         resp = await async_test_client.get(_url("agent-42"), headers=_READ_HEADERS)
         assert resp.status_code == 200
         body = resp.json()

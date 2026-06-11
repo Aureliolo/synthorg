@@ -1,6 +1,7 @@
 """Unit tests for the bridge-config wiring layer.
 
-Covers the consumer-side plumbing added for #1398 / #1400:
+Covers the consumer-side plumbing for delegation-record and event-stream
+timeout configuration:
 
 - Positive/negative validation of the new timeout kwargs on the
   notification adapters and OAuth flows (rejects ``<= 0``).
