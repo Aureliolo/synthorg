@@ -482,23 +482,10 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 raise QueryError(msg) from exc
             if existing is None:
                 msg = f"Escalation {escalation_id!r} not found"
-                logger.warning(
-                    PERSISTENCE_ESCALATION_UPDATE_FAILED,
-                    error_type="escalation_not_found",
-                    escalation_id=escalation_id,
-                    target_status=new_status.value,
-                )
                 raise KeyError(msg)
             msg = (
                 f"Escalation {escalation_id!r} is {existing.status.value}, "
                 f"cannot transition to {new_status.value}"
-            )
-            logger.warning(
-                PERSISTENCE_ESCALATION_UPDATE_FAILED,
-                error_type="escalation_wrong_status",
-                escalation_id=escalation_id,
-                current_status=existing.status.value,
-                target_status=new_status.value,
             )
             raise ValueError(msg)
         updated = await self.get(escalation_id)
