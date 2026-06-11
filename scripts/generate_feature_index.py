@@ -26,8 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _module_size_lib import (
     TIER_LIMITS,
-    count_loc,
-    resolve_tier,
+    count_loc_text,
+    resolve_tier_text,
 )
 
 from synthorg._core.features import (
@@ -80,19 +80,29 @@ def _owning_feature(module_rel: str, directories: dict[str, str]) -> str | None:
 
 
 def build_codebase_map() -> list[dict[str, object]]:
-    """Build the per-module codebase map (kind, tier cap, LOC, owning feature)."""
+    """Build the per-module codebase map (kind, tier cap, LOC, owning feature).
+
+    Reads each module ONCE and string-slices the repo-/src-relative paths
+    rather than calling ``Path.relative_to`` (3x per file) and re-opening
+    each file for the tier header and the LOC count: both dominated the
+    profile of this whole-src-tree scan.
+    """
     directories = feature_directories()
+    repo_prefix = f"{_REPO_ROOT.as_posix()}/"
+    src_parent_prefix = f"{_SRC_ROOT.parent.as_posix()}/"
     entries: list[dict[str, object]] = []
     for path in sorted(_SRC_ROOT.rglob("*.py")):
-        rel = path.relative_to(_SRC_ROOT.parent.parent).as_posix()
-        module_rel = path.relative_to(_SRC_ROOT.parent).as_posix()
-        tier = resolve_tier(path, project_root=_REPO_ROOT)
+        posix = path.as_posix()
+        rel = posix.removeprefix(repo_prefix)
+        module_rel = posix.removeprefix(src_parent_prefix)
+        text = path.read_text(encoding="utf-8")
+        tier = resolve_tier_text(path, text, rel_posix=rel)
         entries.append(
             {
                 "module": rel,
                 "kind": tier,
                 "loc_cap": TIER_LIMITS.get(tier),
-                "loc": count_loc(path),
+                "loc": count_loc_text(text),
                 "owning_feature": _owning_feature(module_rel, directories),
             }
         )
