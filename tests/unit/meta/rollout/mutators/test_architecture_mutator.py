@@ -1,7 +1,5 @@
-# mypy: disable-error-code="explicit-any"
 """RoutedArchitectureMutator dispatches by target-type prefix."""
 
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -74,7 +72,7 @@ class TestRoutedArchitectureMutator:
             )
 
     async def test_adapter_failure_wrapped_as_denied(self) -> None:
-        async def failing(_target: str, _value: Any) -> None:
+        async def failing(_target: str, _value: object) -> None:
             msg = "schema mismatch"
             raise RuntimeError(msg)
 

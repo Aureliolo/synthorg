@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Smoke tests for agent domain MCP handlers.
 
 The handler universe is big and half of it shims onto services that
@@ -18,7 +17,6 @@ feed, etc.).  The unit suite here covers:
 
 import json
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -37,7 +35,7 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
 )
-from tests._shared import make_app_state
+from tests._shared import JsonDict, make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -102,8 +100,8 @@ def actor() -> AgentIdentity:
     return make_test_actor(name="ops")
 
 
-def _parse(result: str) -> dict[str, Any]:
-    body: dict[str, Any] = json.loads(result)
+def _parse(result: str) -> JsonDict:
+    body: JsonDict = json.loads(result)
     assert body["status"] in {"ok", "error"}, (
         f"legacy envelope leaked: status={body['status']!r}"
     )
@@ -126,7 +124,7 @@ class TestAllAgentHandlersReturnValidEnvelope:
         handler = AGENT_HANDLERS[tool_name]
         # Minimal arg set likely accepted by each handler; destructive
         # ops fail guardrails but still return a valid envelope.
-        args: dict[str, Any] = {
+        args: JsonDict = {
             "agent_name": "alpha",
             "agent_id": "agent-1",
             "name": "alpha",

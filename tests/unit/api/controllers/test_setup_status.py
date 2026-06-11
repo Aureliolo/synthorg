@@ -2,7 +2,7 @@
 
 import json
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -12,6 +12,7 @@ from synthorg.persistence.state import persistence_of
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import ProvidersStateSlice
 from tests._shared import LoopAsyncClient
+from tests.unit.api.fakes import FakePersistenceBackend
 
 _DEFAULT_MIN_PW = AuthConfig.model_fields["min_password_length"].default
 
@@ -75,7 +76,7 @@ class TestSetupStatus:
     ) -> None:
         """needs_admin is True when only non-CEO users exist."""
         app_state = async_test_client.app.state.app_state
-        users_repo = cast(Any, persistence_of(app_state))._users
+        users_repo = cast(FakePersistenceBackend, persistence_of(app_state))._users
 
         # Remove all CEO users, keep only observers
         removed = {
@@ -120,7 +121,9 @@ class TestSetupStatus:
     ) -> None:
         """Status returns non-default min_password_length from settings."""
         app_state = async_test_client.app.state.app_state
-        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
+        settings_repo = cast(
+            FakePersistenceBackend, persistence_of(app_state)
+        )._settings_repo
         now = datetime.now(UTC).isoformat()
 
         settings_repo._store[("api", "min_password_length")] = ("16", now)
@@ -138,7 +141,9 @@ class TestSetupStatus:
     ) -> None:
         """has_agents is False when agents setting contains non-list JSON."""
         app_state = async_test_client.app.state.app_state
-        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
+        settings_repo = cast(
+            FakePersistenceBackend, persistence_of(app_state)
+        )._settings_repo
         now = datetime.now(UTC).isoformat()
 
         agents_key = ("company", "agents")
@@ -161,7 +166,9 @@ class TestSetupStatus:
     ) -> None:
         """has_agents is False when agents setting contains invalid JSON."""
         app_state = async_test_client.app.state.app_state
-        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
+        settings_repo = cast(
+            FakePersistenceBackend, persistence_of(app_state)
+        )._settings_repo
         now = datetime.now(UTC).isoformat()
 
         agents_key = ("company", "agents")
@@ -184,7 +191,9 @@ class TestSetupStatus:
     ) -> None:
         """Non-integer min_password_length falls back to the default (12)."""
         app_state = async_test_client.app.state.app_state
-        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
+        settings_repo = cast(
+            FakePersistenceBackend, persistence_of(app_state)
+        )._settings_repo
         now = datetime.now(UTC).isoformat()
 
         pw_key = ("api", "min_password_length")
@@ -207,7 +216,9 @@ class TestSetupStatus:
     ) -> None:
         """min_password_length below default (12) is clamped to default."""
         app_state = async_test_client.app.state.app_state
-        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
+        settings_repo = cast(
+            FakePersistenceBackend, persistence_of(app_state)
+        )._settings_repo
         now = datetime.now(UTC).isoformat()
 
         pw_key = ("api", "min_password_length")
@@ -237,7 +248,8 @@ class TestSetupStatus:
         report has_company=False.
         """
         repo = cast(
-            Any, persistence_of(async_test_client.app.state.app_state)
+            FakePersistenceBackend,
+            persistence_of(async_test_client.app.state.app_state),
         )._settings_repo
         key = ("company", "company_name")
         original = repo._store.get(key)
@@ -257,7 +269,8 @@ class TestSetupStatus:
     ) -> None:
         """has_company is True when company_name is DB-persisted."""
         repo = cast(
-            Any, persistence_of(async_test_client.app.state.app_state)
+            FakePersistenceBackend,
+            persistence_of(async_test_client.app.state.app_state),
         )._settings_repo
         now = datetime.now(UTC).isoformat()
         key = ("company", "company_name")
@@ -284,7 +297,8 @@ class TestSetupStatus:
         settings service falls through to YAML/code defaults.
         """
         repo = cast(
-            Any, persistence_of(async_test_client.app.state.app_state)
+            FakePersistenceBackend,
+            persistence_of(async_test_client.app.state.app_state),
         )._settings_repo
         agents_key = ("company", "agents")
         original = repo._store.get(agents_key)
@@ -304,7 +318,8 @@ class TestSetupStatus:
     ) -> None:
         """has_agents is True when agents list is DB-persisted."""
         repo = cast(
-            Any, persistence_of(async_test_client.app.state.app_state)
+            FakePersistenceBackend,
+            persistence_of(async_test_client.app.state.app_state),
         )._settings_repo
         now = datetime.now(UTC).isoformat()
         agents_key = ("company", "agents")

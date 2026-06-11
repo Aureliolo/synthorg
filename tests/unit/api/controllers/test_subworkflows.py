@@ -1,10 +1,8 @@
 """Tests for the subworkflow API controller."""
 
-from typing import Any
-
 import pytest
 
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 _SUB_ID = "sub-finance-close"
@@ -15,7 +13,7 @@ def _sub_payload(
     subworkflow_id: str | None = _SUB_ID,
     version: str = "1.0.0",
     name: str = "Finance Close",
-) -> dict[str, Any]:
+) -> JsonDict:
     return {
         "subworkflow_id": subworkflow_id,
         "version": version,
@@ -67,8 +65,8 @@ def _sub_payload(
 
 async def _create_subworkflow(
     async_test_client: LoopAsyncClient,
-    payload: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    payload: JsonDict | None = None,
+) -> JsonDict:
     body = payload or _sub_payload()
     resp = await async_test_client.post(
         "/api/v1/subworkflows",
@@ -76,7 +74,7 @@ async def _create_subworkflow(
         headers=make_auth_headers("ceo"),
     )
     assert resp.status_code == 201, resp.text
-    result: dict[str, Any] = resp.json()["data"]
+    result: JsonDict = resp.json()["data"]
     return result
 
 

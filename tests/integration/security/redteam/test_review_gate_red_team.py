@@ -68,7 +68,7 @@ def _task() -> Task:
     )
 
 
-def _mock_task_engine(task: Task) -> Any:
+def _mock_task_engine(task: Task) -> Any:  # type: ignore[explicit-any]  # mock_of returns Any by design
     return mock_of[TaskEngine](
         submit=AsyncMock(
             return_value=TaskMutationResult(
@@ -144,17 +144,17 @@ def _planted_review_input() -> RedTeamReviewInput:
     )
 
 
-def _stub_builder(review_input: RedTeamReviewInput | None) -> Any:
+def _stub_builder(review_input: RedTeamReviewInput | None) -> Any:  # type: ignore[explicit-any]  # mock_of returns Any by design
     """Builder double whose ``build`` returns a fixed review input."""
     return mock_of[DeliverableReviewInputBuilder](
         build=AsyncMock(return_value=review_input),
     )
 
 
-def _build_review_gate(
+def _build_review_gate(  # type: ignore[explicit-any]  # task-engine mock element
     *,
     runner: AgentRunner,
-    builder: Any,
+    builder: DeliverableReviewInputBuilder,
     on_missing_deliverable: str = "block",
     background_tasks: BackgroundTaskRegistry | None = None,
 ) -> tuple[ReviewGateService, Any]:

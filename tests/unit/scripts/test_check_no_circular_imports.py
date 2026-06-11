@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_no_circular_imports.py``."""
 
 import importlib.util
@@ -26,7 +25,7 @@ def _load_gate() -> ModuleType:
     return module
 
 
-_GATE: Any = cast("Any", _load_gate())
+_GATE: Any = cast("Any", _load_gate())  # type: ignore[explicit-any]  # dynamically loaded gate module; attrs resolved by name
 
 
 # ── Cycle detection on synthetic graphs ─────────────────────────

@@ -286,7 +286,7 @@ class TestOtlpHandlerInternalErrorPaths:
         try:
             failing_queue = MagicMock()
             failing_queue.put_nowait.side_effect = RuntimeError("queue boom")
-            handler._queue = failing_queue  # type: ignore[assignment]
+            handler._queue = failing_queue
             handled: list[logging.LogRecord] = []
             handler.handleError = handled.append  # type: ignore[method-assign,assignment]
 

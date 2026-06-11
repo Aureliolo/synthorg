@@ -1,11 +1,11 @@
 """Self-tests for the ``no-synthorg-any-override`` regression gate.
 
 Pins the gate contract: no ``[[tool.mypy.overrides]]`` block targeting a
-``synthorg`` module may lift ``disallow_any_explicit`` -- whether via
-``disallow_any_explicit = false``, ``explicit-any`` in ``disable_error_code``,
+``synthorg`` or ``tests`` module may lift ``disallow_any_explicit`` -- whether
+via ``disallow_any_explicit = false``, ``explicit-any`` in ``disable_error_code``,
 or ``ignore_errors = true``, and whether the module is named exactly, via a
 dotted trailing wildcard, or via a leading-``*`` glob (``*.api``) that mypy
-compiles to a dot-spanning match. Only the ``tests.*`` override may lift the flag.
+compiles to a dot-spanning match. No override may lift the flag for either surface.
 """
 
 import importlib.util
@@ -54,8 +54,8 @@ def _run_main(tmp_path: Path, toml_text: str) -> int:
 _FIND_VIOLATIONS_CASES = [
     pytest.param(
         '[[tool.mypy.overrides]]\nmodule = "tests.*"\ndisallow_any_explicit = false\n',
-        [],
-        id="tests_override_allowed",
+        ["tests.*"],
+        id="tests_override_now_blocked",
     ),
     pytest.param(
         '[[tool.mypy.overrides]]\nmodule = "synthorg.engine.*"\n'
@@ -111,8 +111,8 @@ _FIND_VIOLATIONS_CASES = [
     pytest.param(
         '[[tool.mypy.overrides]]\nmodule = ["synthorg.engine.*", "tests.*"]\n'
         "disallow_any_explicit = false\n",
-        ["synthorg.engine.*"],
-        id="mixed_synthorg_and_tests_flags_only_synthorg",
+        ["synthorg.engine.*", "tests.*"],
+        id="mixed_synthorg_and_tests_both_flagged",
     ),
     pytest.param(
         '[[tool.mypy.overrides]]\nmodule = "synthorg.api.*"\n'
@@ -200,9 +200,9 @@ def test_find_violations(toml_text: str, expected: list[str]) -> None:
 
 
 def test_main_returns_zero_on_clean_pyproject(tmp_path: Path) -> None:
-    """``main`` exits 0 when only the ``tests.*`` override lifts the flag."""
+    """``main`` exits 0 when only third-party import-ignore overrides are present."""
     clean = (
-        '[[tool.mypy.overrides]]\nmodule = "tests.*"\ndisallow_any_explicit = false\n'
+        '[[tool.mypy.overrides]]\nmodule = "litellm.*"\nignore_missing_imports = true\n'
     )
     assert _run_main(tmp_path, clean) == 0
 
@@ -263,10 +263,10 @@ def test_gate_model_matches_mypy_semantics() -> None:
     ``[[tool.mypy.overrides]]`` ``module`` pattern.
 
     The gate flags a leading-``*`` glob (which mypy compiles to a dot-spanning
-    ``.*``) and a literal ``synthorg`` prefix, but not a ``*`` glued to other
-    characters (which mypy treats as a literal asterisk). A failure here means
-    mypy's per-module glob semantics changed and the gate rule in
-    ``_targets_synthorg`` must be re-derived -- it does NOT mean the gate logic
+    ``.*``) and a literal ``synthorg`` / ``tests`` prefix, but not a ``*`` glued
+    to other characters (which mypy treats as a literal asterisk). A failure here
+    means mypy's per-module glob semantics changed and the gate rule in
+    ``_targets_enforced`` must be re-derived -- it does NOT mean the gate logic
     regressed.
     """
     from mypy.options import Options
@@ -280,10 +280,13 @@ def test_gate_model_matches_mypy_semantics() -> None:
 
     # Leading-``*`` glob spans the synthorg prefix -> mypy applies, gate flags.
     assert mypy_applies("*.api", "synthorg.api")
-    assert _GATE._targets_synthorg("*.api")  # type: ignore[attr-defined]
+    assert _GATE._targets_enforced("*.api")  # type: ignore[attr-defined]
     # Literal dotted prefix -> mypy applies, gate flags.
     assert mypy_applies("synthorg.*", "synthorg.api")
-    assert _GATE._targets_synthorg("synthorg.*")  # type: ignore[attr-defined]
+    assert _GATE._targets_enforced("synthorg.*")  # type: ignore[attr-defined]
+    # The tests.* surface is enforced too -> mypy applies, gate flags.
+    assert mypy_applies("tests.*", "tests.unit.api.test_app")
+    assert _GATE._targets_enforced("tests.*")  # type: ignore[attr-defined]
     # Glued ``*`` is a literal asterisk -> mypy does NOT apply, gate does NOT flag.
     assert not mypy_applies("synthorg*", "synthorg.api")
-    assert not _GATE._targets_synthorg("synthorg*")  # type: ignore[attr-defined]
+    assert not _GATE._targets_enforced("synthorg*")  # type: ignore[attr-defined]

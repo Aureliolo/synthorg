@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for scripts/check_doc_drift_counts.py."""
 
 import importlib.util
@@ -44,7 +43,7 @@ def fake_events_dir(tmp_path: Path) -> Generator[Path]:
         yield events
 
 
-def _claim_with_text(
+def _claim_with_text(  # type: ignore[explicit-any]  # returns the gate module's Claim type
     tmp_path: Path,
     text: str,
     pattern: str = r"(\d+)\+ event constant modules",

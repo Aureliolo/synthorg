@@ -1,7 +1,7 @@
 """Tests for ToolInvoker escalation tracking."""
 
 from datetime import UTC, datetime
-from typing import Any, override
+from typing import override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -48,7 +48,7 @@ class _StubTool(BaseTool):
         )
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         return ToolExecutionResult(content="ok")
 
 
@@ -65,7 +65,7 @@ class _ParkingTool(BaseTool):
         self._approval_id = approval_id
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         return ToolExecutionResult(
             content="Parking required",
             metadata={

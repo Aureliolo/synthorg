@@ -1,11 +1,10 @@
 """Tests for user management controller (CEO-only CRUD)."""
 
 import uuid
-from typing import Any
 
 import pytest
 
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 # Must match the ID pattern in conftest._seed_test_users
@@ -16,9 +15,9 @@ _CEO_HEADERS = make_auth_headers("ceo")
 
 
 def _create_payload(
-    **overrides: Any,
-) -> dict[str, Any]:
-    defaults: dict[str, Any] = {
+    **overrides: object,
+) -> JsonDict:
+    defaults: JsonDict = {
         "username": "new-user",
         "password": "secure-password-12chars",
         "role": "manager",

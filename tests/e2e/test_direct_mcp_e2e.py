@@ -173,7 +173,7 @@ async def _build_bundle(
         provider=provider,
         tool_registry=ToolRegistry(list(wiring.extra_tools)),
         approval_store=store,
-        parked_context_repo=repo,  # type: ignore[arg-type]
+        parked_context_repo=repo,
         mcp_self_consumer=self_consumer,
     )
     service = AgentEngineExecutionService(

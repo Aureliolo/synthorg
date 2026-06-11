@@ -7,10 +7,10 @@ by integration tests against a real Postgres container; those live
 outside the unit test suite.
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from typing import Any, override
+from typing import override
 from unittest.mock import AsyncMock
 
 import psycopg
@@ -54,22 +54,24 @@ def _make_session(session_id: str = "sess-1", revoked: bool = False) -> Session:
 class _FakeCursor:
     """Minimal async cursor mock supporting execute/fetchone/fetchall."""
 
-    def __init__(self, fetch_rows: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self, fetch_rows: Sequence[Mapping[str, object]] | None = None
+    ) -> None:
         self.rowcount = 0
-        self._rows = fetch_rows or []
-        self.executed: list[tuple[str, tuple[Any, ...]]] = []
+        self._rows: list[Mapping[str, object]] = list(fetch_rows) if fetch_rows else []
+        self.executed: list[tuple[str, tuple[object, ...]]] = []
 
-    async def execute(self, sql: str, params: tuple[Any, ...] = ()) -> None:
+    async def execute(self, sql: str, params: tuple[object, ...] = ()) -> None:
         self.executed.append((sql, params))
         # Heuristic: UPDATE/DELETE set rowcount to row count if not
         # explicitly overridden by the test; tests that care override it.
         if self.rowcount == 0 and ("UPDATE" in sql or "DELETE" in sql):
             self.rowcount = len(self._rows) if self._rows else 0
 
-    async def fetchone(self) -> dict[str, Any] | None:
+    async def fetchone(self) -> Mapping[str, object] | None:
         return self._rows[0] if self._rows else None
 
-    async def fetchall(self) -> list[dict[str, Any]]:
+    async def fetchall(self) -> Sequence[Mapping[str, object]]:
         return self._rows
 
     async def __aenter__(self) -> _FakeCursor:
@@ -85,7 +87,7 @@ class _FakeConnection:
     def __init__(self, cursors: list[_FakeCursor]) -> None:
         self._cursors = list(cursors)
 
-    def cursor(self, row_factory: Any = None) -> _FakeCursor:
+    def cursor(self, row_factory: object = None) -> _FakeCursor:
         return self._cursors.pop(0)
 
 
@@ -96,7 +98,7 @@ class _FakePool:
         self._conn = conn
 
     @asynccontextmanager
-    async def connection(self) -> Any:
+    async def connection(self) -> AsyncIterator[_FakeConnection]:
         yield self._conn
 
 
@@ -308,7 +310,7 @@ class _RaisingCursor(_FakeCursor):
     """Cursor whose ``execute`` raises a psycopg driver error."""
 
     @override
-    async def execute(self, sql: str, params: tuple[Any, ...] = ()) -> None:
+    async def execute(self, sql: str, params: tuple[object, ...] = ()) -> None:
         msg = "connection lost"
         raise psycopg.OperationalError(msg)
 

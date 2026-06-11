@@ -1,6 +1,6 @@
 """Tests for the data aggregator tool."""
 
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -10,6 +10,7 @@ from synthorg.tools.analytics.data_aggregator import (
     AnalyticsProvider,
     DataAggregatorTool,
 )
+from tests._shared import JsonDict
 
 from .conftest import MockAnalyticsProvider
 
@@ -223,6 +224,6 @@ class TestDataAggregatorTool:
         tool = DataAggregatorTool(provider=mock_provider)
         schema = tool.parameters_schema
         assert schema is not None
-        required = cast("dict[str, Any]", schema)["required"]
+        required = cast(JsonDict, schema)["required"]
         assert "metrics" in required
         assert "period" in required

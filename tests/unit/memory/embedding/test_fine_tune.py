@@ -7,6 +7,7 @@ from typing import Protocol, TypedDict, cast
 from unittest.mock import patch
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 from synthorg.memory.embedding import fine_tune as fine_tune_module
@@ -58,7 +59,7 @@ class _RecordingEncoder:
         self.name = name
         self._calls = calls
 
-    def encode(self, texts: list[str], **kwargs: object) -> np.ndarray:
+    def encode(self, texts: list[str], **kwargs: object) -> npt.NDArray[np.float32]:
         self._calls.append(
             {"model": self.name, "texts": list(texts), "kwargs": kwargs},
         )
@@ -68,14 +69,18 @@ class _RecordingEncoder:
             : len(texts)
         ]
 
-    def encode_query(self, *_args: object, **_kwargs: object) -> np.ndarray:
+    def encode_query(
+        self, *_args: object, **_kwargs: object
+    ) -> npt.NDArray[np.float32]:
         msg = (
             "Production code must call encode() with processing_kwargs, "
             "not encode_query()."
         )
         raise AssertionError(msg)
 
-    def encode_document(self, *_args: object, **_kwargs: object) -> np.ndarray:
+    def encode_document(
+        self, *_args: object, **_kwargs: object
+    ) -> npt.NDArray[np.float32]:
         msg = (
             "Production code must call encode() with processing_kwargs, "
             "not encode_document()."

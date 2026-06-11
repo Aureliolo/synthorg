@@ -84,7 +84,7 @@ def test_eviction_logs_exactly_once_under_thread_concurrency() -> None:
     # capture buffer entirely.
     from contextlib import suppress
 
-    proxy.info = _spy  # type: ignore[method-assign]
+    proxy.info = _spy
     try:
         # ``start_evt`` blocks every worker until all futures are
         # queued, then a single ``set()`` releases them simultaneously.

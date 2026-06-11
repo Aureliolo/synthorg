@@ -7,13 +7,14 @@ import pytest
 
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
 
-def _container_config(sandbox: DockerSandbox, **kwargs: Any) -> dict[str, Any]:
+def _container_config(sandbox: DockerSandbox, **kwargs: Any) -> JsonDict:  # type: ignore[explicit-any]  # kwargs forwarded to _build_container_config
     """Return the built container config as a freely-indexable mapping."""
-    return cast("dict[str, Any]", sandbox._build_container_config(**kwargs))
+    return cast(JsonDict, sandbox._build_container_config(**kwargs))
 
 
 def _build_config(  # noqa: PLR0913
@@ -24,7 +25,7 @@ def _build_config(  # noqa: PLR0913
     dns_allowed: bool = True,
     loopback_allowed: bool = True,
     network_allow_all: bool = False,
-) -> dict[str, Any]:
+) -> JsonDict:
     """Build container config for the given sandbox settings."""
     config = DockerSandboxConfig(
         network=network,

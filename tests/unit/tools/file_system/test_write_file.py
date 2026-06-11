@@ -1,10 +1,12 @@
 """Tests for WriteFileTool."""
 
 import os
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
 import pytest
+
+from tests._shared import JsonDict
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -84,7 +86,7 @@ class TestWriteFileExecution:
             arguments={"path": "sized.txt", "content": "hello"}
         )
         assert not result.is_error
-        assert cast("dict[str, Any]", result.metadata)["bytes_written"] > 0
+        assert cast(JsonDict, result.metadata)["bytes_written"] > 0
 
     async def test_write_to_directory_errors(self, write_tool: WriteFileTool) -> None:
         """Writing to a path that is a directory returns an error."""

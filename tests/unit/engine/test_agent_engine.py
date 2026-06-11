@@ -33,7 +33,7 @@ from synthorg.observability.correlation import (
 )
 from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from synthorg.providers.enums import FinishReason
-from tests._shared import as_uuid, mock_of
+from tests._shared import JsonDict, as_uuid, mock_of
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
@@ -345,7 +345,7 @@ class TestAgentEngineWithTools:
             async def execute(
                 self,
                 *,
-                arguments: dict[str, Any],
+                arguments: dict[str, object],
             ) -> ToolExecutionResult:
                 return ToolExecutionResult(content=str(arguments))
 
@@ -396,7 +396,7 @@ class TestAgentEngineMemoryToolWiring:
             async def execute(
                 self,
                 *,
-                arguments: dict[str, Any],
+                arguments: dict[str, object],
             ) -> ToolExecutionResult:
                 return ToolExecutionResult(content="stub")
 
@@ -441,7 +441,7 @@ class TestAgentEngineMemoryToolWiring:
             async def execute(
                 self,
                 *,
-                arguments: dict[str, Any],
+                arguments: dict[str, object],
             ) -> ToolExecutionResult:
                 return ToolExecutionResult(content="stub")
 
@@ -1582,10 +1582,10 @@ class TestAgentEngineCorrelationBinding:
         # Pre-bind a request_id to verify parent context is preserved
         bind_correlation_id(request_id="test-request-123")
 
-        captured_ctx: dict[str, Any] = {}
+        captured_ctx: JsonDict = {}
         original_complete = provider.complete
 
-        async def capturing_complete(*args: Any, **kwargs: Any) -> Any:
+        async def capturing_complete(*args: Any, **kwargs: Any) -> Any:  # type: ignore[explicit-any]  # forwards verbatim to provider.complete
             captured_ctx.update(structlog.contextvars.get_contextvars())
             return await original_complete(*args, **kwargs)
 

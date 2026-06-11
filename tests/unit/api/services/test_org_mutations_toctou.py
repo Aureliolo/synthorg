@@ -8,8 +8,7 @@ CAS on BOTH departments AND agents, so any concurrent agents
 mutation rolls back the delete.
 """
 
-from collections.abc import AsyncGenerator
-from typing import Any
+from collections.abc import AsyncGenerator, Mapping, Sequence
 
 import pytest
 
@@ -18,6 +17,7 @@ from synthorg.api.dto_org import CreateDepartmentRequest
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import VersionConflictError
+from synthorg.persistence.settings_protocol import SettingRow
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests.unit.api.fakes import FakePersistenceBackend
@@ -106,9 +106,9 @@ class TestDeleteDepartmentTOCTOU:
         attempts: list[int] = []
 
         async def always_agents_conflict(
-            items: Any,
+            items: Sequence[SettingRow],
             *,
-            expected_updated_at_map: Any = None,
+            expected_updated_at_map: Mapping[tuple[str, str], str] | None = None,
         ) -> bool:
             if expected_updated_at_map is not None and any(
                 ns == "company" and k == "agents" for ns, k in expected_updated_at_map
@@ -143,9 +143,9 @@ class TestDeleteDepartmentTOCTOU:
         original_set_many = persistence.settings.set_many
 
         async def capturing_set_many(
-            items: Any,
+            items: Sequence[SettingRow],
             *,
-            expected_updated_at_map: Any = None,
+            expected_updated_at_map: Mapping[tuple[str, str], str] | None = None,
         ) -> bool:
             if expected_updated_at_map is not None:
                 captured.append(dict(expected_updated_at_map))

@@ -6,7 +6,7 @@ bootstrapping a full Litestar app, we call the raw function via
 ``handler.fn(self, ...)``.
 """
 
-from typing import Any
+from collections.abc import AsyncIterator, Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -88,7 +88,7 @@ def _make_state_and_service() -> tuple[State, AsyncMock]:
         *,
         scope: object,
         key: object,
-        callback: Any,
+        callback: Callable[[], Awaitable[object]],
     ) -> IdempotencyResult:
         del scope, key
         result = await callback()
@@ -405,7 +405,7 @@ class TestBackupGuards:
         self,
         async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
-    ) -> Any:
+    ) -> AsyncIterator[None]:
         """Override the API-wide backup disable.
 
         Guard tests need a backup service instance in ``app_state``

@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for trust configuration models."""
 
 from typing import Any
@@ -276,7 +275,7 @@ class TestStrategyParametrize:
         ],
         ids=["disabled", "weighted", "per_category", "milestone"],
     )
-    def test_strategy_config_creation(
+    def test_strategy_config_creation(  # type: ignore[explicit-any]  # arbitrary TrustConfig field kwargs spread into the constructor
         self,
         strategy: TrustStrategyType,
         extra_kwargs: dict[str, Any],

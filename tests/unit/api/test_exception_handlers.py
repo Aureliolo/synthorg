@@ -1,7 +1,8 @@
 """Tests for exception handlers with RFC 9457 structured error responses."""
 
 import re
-from typing import Annotated, Any
+from collections.abc import Callable
+from typing import Annotated
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -53,7 +54,7 @@ from synthorg.core.persistence_errors import (
     PersistenceError,
     RecordNotFoundError,
 )
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_exception_handler_app
 
 pytestmark = pytest.mark.unit
@@ -64,7 +65,7 @@ _UUID_RE = re.compile(
 
 
 def _assert_error_detail(
-    body: dict[str, Any],
+    body: JsonDict,
     *,
     error_code: int,
     error_category: str,
@@ -1491,7 +1492,7 @@ class TestDomainErrorMapping:
     )
     async def test_domain_error_base_maps_to_rfc_9457(
         self,
-        exc_factory: Any,
+        exc_factory: Callable[[], Exception],
         expected_status: int,
         expected_code: int,
         expected_category: str,

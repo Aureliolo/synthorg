@@ -15,11 +15,10 @@ Pydantic boundary rejects non-object payloads.
 
 import ast
 import inspect
-from typing import Any
 
 import pytest
 from litestar.datastructures import State
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.api.controllers._webhooks_wiring import (
     WebhookEventPayload,
@@ -81,7 +80,7 @@ class TestWebhookEventPayload:
             "null",
         ],
     )
-    def test_rejects_non_object_payloads(self, payload: Any) -> None:
+    def test_rejects_non_object_payloads(self, payload: JsonValue) -> None:
         """Non-dict JSON values are rejected at the Pydantic boundary."""
         with pytest.raises(ValidationError):
             WebhookEventPayload.model_validate(payload)

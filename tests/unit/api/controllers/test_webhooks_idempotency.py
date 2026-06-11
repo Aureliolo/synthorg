@@ -12,6 +12,7 @@ both the nonce and nonce-less branches with the appropriate key
 shape.
 """
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -26,9 +27,11 @@ from synthorg.api.controllers.webhooks import _shared as webhooks_shared
 from synthorg.api.controllers.webhooks import ingest as webhooks_ingest
 from synthorg.api.services.idempotency_service import IdempotencyService
 from synthorg.observability.events.integrations import WEBHOOK_ACCEPTED
-from tests._shared import make_app_state
+from tests._shared import JsonDict, make_app_state
 
 if TYPE_CHECKING:
+    from litestar import Request
+
     from synthorg.communication.bus_protocol import MessageBus
 
 
@@ -45,14 +48,14 @@ class TestPublishWebhookEventAndLog:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The success log includes the dedup_source provenance string."""
-        published: list[dict[str, Any]] = []
+        published: list[JsonDict] = []
 
         async def fake_publish(
             *,
-            bus: Any,
+            bus: MessageBus,
             connection_name: str,
             event_type: str,
-            payload: dict[str, Any],
+            payload: JsonDict,
         ) -> None:
             published.append(
                 {
@@ -104,14 +107,14 @@ class TestPublishWithDurableIdempotency:
 
         # Capture what the inner callback was given by intercepting
         # ``_publish_webhook_event_and_log`` at the module boundary.
-        captured: dict[str, Any] = {}
+        captured: dict[str, object] = {}
 
         async def spy(
             *,
-            bus: Any,
+            bus: MessageBus,
             connection_name: str,
             event_type: str,
-            payload: Any,
+            payload: JsonDict,
             dedup_source: str,
         ) -> dict[str, object]:
             captured["dedup_source"] = dedup_source
@@ -132,7 +135,7 @@ class TestPublishWithDurableIdempotency:
             *,
             scope: str,
             key: str,
-            callback: Any,
+            callback: Callable[[], Awaitable[object]],
         ) -> IdempotencyResult:
             return IdempotencyResult(
                 result=await callback(),
@@ -273,7 +276,7 @@ class TestReceiveWebhookEndToEnd:
         monkeypatch: pytest.MonkeyPatch,
         *,
         body_bytes: bytes,
-        captured: dict[str, Any],
+        captured: dict[str, object],
     ) -> None:
         """Stub every collaborator ``receive_webhook`` calls.
 
@@ -285,16 +288,16 @@ class TestReceiveWebhookEndToEnd:
         """
 
         async def fake_get_connection_or_404(
-            state: Any,
+            state: object,
             connection_name: str,
-        ) -> Any:
+        ) -> object:
             class _Conn:
                 connection_type = "github"
 
             return _Conn()
 
         async def fake_enforce_max_payload(
-            request: Any,
+            request: object,
             *,
             connection_name: str,
             max_payload: int,
@@ -303,7 +306,7 @@ class TestReceiveWebhookEndToEnd:
 
         async def fake_verify_signature(
             *,
-            catalog: Any,
+            catalog: object,
             connection_name: str,
             connection_type: str,
             body: bytes,
@@ -315,20 +318,20 @@ class TestReceiveWebhookEndToEnd:
             headers: dict[str, str],
             *,
             connection_name: str,
-        ) -> Any:
+        ) -> None:
             return None
 
         async def fake_check_replay_or_freshness(
             *,
-            state: Any,
+            state: object,
             connection_name: str,
             nonce: str | None,
-            timestamp: Any,
+            timestamp: object,
         ) -> None:
             return None
 
         async def spy_publish_with_durable_idempotency(
-            **kwargs: Any,
+            **kwargs: object,
         ) -> dict[str, object]:
             captured.update(kwargs)
             return {"status": "accepted", "event_type": kwargs["event_type"]}
@@ -344,7 +347,9 @@ class TestReceiveWebhookEndToEnd:
             monkeypatch.setattr(webhooks_ingest, name, fn)
 
     @staticmethod
-    def _build_state(request_headers: dict[str, str]) -> tuple[Any, Any]:
+    def _build_state(  # type: ignore[explicit-any]  # litestar RequestFactory yields Request[Any, Any, Any]
+        request_headers: dict[str, str],
+    ) -> tuple[State, Request[Any, Any, Any]]:
         """Build minimal Litestar State + Request stubs.
 
         Returns ``(state, request)``. The controller only touches
@@ -377,7 +382,7 @@ class TestReceiveWebhookEndToEnd:
         *,
         body_bytes: bytes,
         request_headers: dict[str, str],
-    ) -> dict[str, Any]:
+    ) -> JsonDict:
         """Run ``receive_webhook`` once and return the captured kwargs.
 
         Stubs every collaborator the controller calls (catalog,
@@ -388,7 +393,7 @@ class TestReceiveWebhookEndToEnd:
         """
         from synthorg.api.controllers.webhooks.ingest import WebhooksIngestController
 
-        captured: dict[str, Any] = {}
+        captured: dict[str, object] = {}
         self._install_webhook_fakes(
             monkeypatch,
             body_bytes=body_bytes,

@@ -2,7 +2,6 @@
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -34,7 +33,7 @@ class _RaisingStream:
     async def __aenter__(self) -> None:
         raise self._exc
 
-    async def __aexit__(self, *_args: Any) -> None:
+    async def __aexit__(self, *_args: object) -> None:
         pass  # pragma: no cover
 
 

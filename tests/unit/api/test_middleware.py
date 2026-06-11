@@ -1,7 +1,9 @@
 """Tests for request middleware and security headers hook."""
 
+from collections.abc import Iterator
 from typing import Any
 
+import httpx
 import pytest
 import structlog
 from litestar import Litestar, get, post
@@ -21,13 +23,13 @@ from synthorg.api.middleware import (
     security_headers_hook,
     set_docs_csp_origins,
 )
-from tests._shared import LoopAsyncClient
+from tests._shared import AsgiDict, LoopAsyncClient
 
 pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)
-def _reset_docs_csp_module() -> Any:
+def _reset_docs_csp_module() -> Iterator[None]:
     """Reset the docs CSP global at setup AND teardown of every test.
 
     Module-scope autouse instead of class-scope so test classes earlier
@@ -41,7 +43,7 @@ def _reset_docs_csp_module() -> Any:
     set_docs_csp_origins(_DOCS_CSP_DEFAULT_ORIGINS)
 
 
-def _make_app(*handlers: Any) -> Litestar:
+def _make_app(*handlers: Any) -> Litestar:  # type: ignore[explicit-any]  # litestar route-handler union
     """Build a minimal Litestar app with the security hook wired in."""
     return Litestar(
         route_handlers=list(handlers),
@@ -51,7 +53,7 @@ def _make_app(*handlers: Any) -> Litestar:
 
 
 def _assert_all_security_headers(
-    resp: Any,
+    resp: httpx.Response,
     *,
     status: int,
 ) -> None:
@@ -141,14 +143,14 @@ class TestSecurityHeadersHook:
 
     async def test_non_http_scope_is_skipped(self) -> None:
         """Non-HTTP scopes (WebSocket, lifespan) are not modified."""
-        message: Any = {
+        message: AsgiDict = {
             "type": "websocket.accept",
             "subprotocol": None,
             "headers": [],
         }
-        scope: Any = {"type": ScopeType.WEBSOCKET}
+        scope: AsgiDict = {"type": ScopeType.WEBSOCKET}
 
-        await security_headers_hook(message, scope)
+        await security_headers_hook(message, scope)  # type: ignore[arg-type]  # hand-rolled ASGI message/scope stubs
 
         # Headers list should remain empty -- hook returned early.
         assert message.get("headers") == []

@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Acceptance sweep: every MCP handler is wired and returns a valid envelope.
 
 This is the final acceptance test for META-MCP-1.  It asserts:
@@ -20,7 +19,6 @@ This is the final acceptance test for META-MCP-1.  It asserts:
 
 import json
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -36,7 +34,7 @@ from synthorg.hr.performance.models import (
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.security.autonomy.models import AutonomyUpdateResult
-from tests._shared import make_app_state
+from tests._shared import JsonDict, make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -73,7 +71,7 @@ DESTRUCTIVE_TOOLS: tuple[str, ...] = (
 )
 
 
-def _sync_dumped(data: dict[str, Any]) -> MagicMock:
+def _sync_dumped(data: JsonDict) -> MagicMock:
     """Mock Pydantic-model-ish that returns a sync ``model_dump``."""
     mock = MagicMock()
     mock.model_dump = MagicMock(return_value=data)
@@ -234,7 +232,7 @@ class TestNoPlaceholderInProduction:
         # Blast argument set: common names handlers might read.  Every
         # handler is defensive about missing args, so passing too many
         # is harmless.
-        args: dict[str, Any] = {
+        args: JsonDict = {
             "agent_name": "alpha",
             "agent_id": "agent-1",
             "approval_id": "approval-1",
@@ -274,11 +272,11 @@ class TestNoPlaceholderInProduction:
         )
 
 
-def _baseline_args(tool_name: str) -> dict[str, Any]:
+def _baseline_args(tool_name: str) -> JsonDict:
     """Build the minimal argument set that passes the id/path checks for
     a destructive tool, leaving guardrail fields unset so each test can
     probe the branch it targets."""
-    args: dict[str, Any] = {}
+    args: JsonDict = {}
     target_key_guess = _guess_id_key(tool_name)
     if target_key_guess:
         args[target_key_guess] = "placeholder-id"

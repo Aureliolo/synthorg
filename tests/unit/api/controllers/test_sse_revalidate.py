@@ -11,7 +11,7 @@ stream open.
 
 import json
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -142,10 +142,10 @@ async def test_sse_event_stream_emits_revoked_when_role_demoted(
     app_state = _make_app_state(persisted_user=demoted)
 
     class _FakeQueue:
-        async def get(self) -> Any:
+        async def get(self) -> object:
             import asyncio
 
-            await asyncio.Event().wait()
+            return await asyncio.Event().wait()
 
     class _FakeHub:
         async def subscribe(self, _session_id: str) -> _FakeQueue:

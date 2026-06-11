@@ -25,7 +25,7 @@ app's ``*.complete`` acknowledgement, exactly as an ASGI server would.
 import asyncio
 import contextlib
 from types import TracebackType
-from typing import Any, Self, override
+from typing import Self, override
 
 import httpx
 from litestar import Litestar
@@ -109,7 +109,7 @@ class LoopAsyncClient(httpx.AsyncClient):
         get_message: asyncio.Task[LifeSpanSendMessage] = asyncio.ensure_future(
             self._from_app.get(),
         )
-        waiters: set[asyncio.Future[Any]] = {get_message, task}
+        waiters = {get_message, task}
         try:
             done, _ = await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
             if get_message in done:

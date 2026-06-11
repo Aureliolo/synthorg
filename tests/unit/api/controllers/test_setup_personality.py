@@ -4,7 +4,7 @@ Covers agent personality updates and personality preset listing.
 """
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -12,6 +12,7 @@ from synthorg.persistence.state import persistence_of
 from synthorg.providers.state import ProvidersStateSlice
 from tests._shared import LoopAsyncClient
 from tests.unit.api.controllers.conftest import setup_mock_providers
+from tests.unit.api.fakes import FakePersistenceBackend
 
 
 @pytest.mark.unit
@@ -99,7 +100,7 @@ class TestUpdateAgentPersonality:
     ) -> None:
         """Updating personality after setup is complete returns 409."""
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("api", "setup_complete")] = ("true", now)
         try:

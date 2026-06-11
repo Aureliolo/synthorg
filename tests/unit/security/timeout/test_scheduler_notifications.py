@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Regression tests: scheduler tracks fire-and-forget escalation notifications.
 
 The approval-escalation notification must be tracked via
@@ -8,7 +7,6 @@ The approval-escalation notification must be tracked via
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -34,7 +32,7 @@ pytestmark = pytest.mark.unit
 _NOTIFY_ERROR_MSG = "notification service down"
 
 
-async def _raising_notify(*_args: Any, **_kwargs: Any) -> None:
+async def _raising_notify(*_args: object, **_kwargs: object) -> None:
     raise RuntimeError(_NOTIFY_ERROR_MSG)
 
 
@@ -80,7 +78,7 @@ async def test_escalation_notification_failure_logs_error(
 
     failures = [e for e in captured if e["event"] == NOTIFICATION_SEND_FAILED]
     assert len(failures) == 1
-    entry: Any = failures[0]
+    entry = failures[0]
     assert entry["log_level"] == "error"
     assert entry["owner"] == "security.timeout.scheduler"
     assert entry["intent_event"] == NOTIFICATION_ESCALATION_SEND

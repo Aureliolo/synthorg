@@ -60,7 +60,7 @@ class _FailingStoreBackend(InMemoryBackend):
         raise RuntimeError(msg)
 
 
-async def _build_runtime(
+async def _build_runtime(  # type: ignore[explicit-any]  # heterogeneous runtime + git-backend doubles
     tmp_path: Path,
     *,
     memory_backend: InMemoryBackend | None = None,
@@ -91,7 +91,7 @@ async def _build_runtime(
     return runtime, workspace_service, backend, docs_repo, git_backend
 
 
-def _sample_body() -> tuple[Any, ...]:
+def _sample_body() -> tuple[Any, ...]:  # type: ignore[explicit-any]  # heterogeneous doc-block tuple
     return (
         HeadingBlock(level=2, text="Summary"),
         ProseBlock(text="Checkout funnel improved by 5% over April."),
@@ -333,7 +333,7 @@ class TestServiceRoundTrip:
         runtime, _, backend, docs_repo, _ = await _build_runtime(tmp_path)
         try:
 
-            async def write() -> Any:
+            async def write() -> Any:  # type: ignore[explicit-any]  # docs_service.write_doc dynamic result
                 return await runtime.docs_service.write_doc(
                     project_id=NotBlankStr("proj-1"),
                     title=NotBlankStr("Q2 Status"),

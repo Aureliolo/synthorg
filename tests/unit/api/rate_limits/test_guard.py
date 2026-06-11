@@ -19,7 +19,7 @@ from tests._shared import LoopAsyncClient
 pytestmark = pytest.mark.unit
 
 
-def _make_test_app(
+def _make_test_app(  # type: ignore[explicit-any]  # litestar route-handler union
     handler: Any,
     *,
     config: PerOpRateLimitConfig | None = None,

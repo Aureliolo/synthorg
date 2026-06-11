@@ -484,10 +484,13 @@ warn_return_any = true
 warn_unused_configs = true
 warn_unreachable = true
 show_error_codes = true
-# Strict++ knobs. Per-package [[tool.mypy.overrides]] blocks below
-# relax flags for packages still carrying explicit ``Any`` and missing
-# ``@override``; the overrides ratchet off as each package's surface
-# code is typed more precisely.
+# Strict++ knobs. ``disallow_any_explicit`` now holds globally across both
+# ``src/`` and ``tests/``: the only [[tool.mypy.overrides]] blocks below are
+# third-party ``ignore_missing_imports`` shims (no package relaxes a strict++
+# flag). Irreducible explicit-``Any`` sites carry a reasoned per-line
+# ``# type: ignore[explicit-any]``; the pyproject and inline-comment vectors
+# are locked by scripts/check_no_synthorg_any_override.py and
+# scripts/check_no_explicit_any_inline_disable.py.
 disallow_any_explicit = true
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -563,72 +566,6 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "tree_sitter_language_pack.*"
 ignore_missing_imports = true
-
-# ──────────────────────────────────────────────────────────────────────
-# Per-package mypy overrides for strict++ rollout. Each block absorbs
-# the explicit-Any volume and missing-@override sites that already
-# existed in a given package; the override lifts when the package's
-# surface code is decomposed and typed more precisely. The exemption
-# ledger in docs/decisions/0006-tiered-module-size-policy.md is the
-# authoritative catalogue of which override unlocks what.
-#
-# Order: keep alphabetised for grep-discoverability. Each block lists
-# only the flags / error codes actually firing.
-# ──────────────────────────────────────────────────────────────────────
-
-# Every synthorg.* package now hits the full strict++ bar; the
-# remaining irreducible explicit-Any sites carry per-line
-# ``# type: ignore[explicit-any]`` suppressions with rationale.
-# Test code carries the residual strict++ exemptions still lifted on the
-# tests.* surface. ``disallow_any_generics`` is already enforced across
-# tests/, with the bulk of test files explicitly typed under the full
-# strict++ bar; the remaining lifted flags below are the open tail.
-#
-# Each remaining lifted flag is tracked by a filed follow-up. Drop the
-# entry from ``disable_error_code`` (or remove ``disallow_any_explicit
-# = false``) when its tracked work completes. Full breakdown lives in
-# docs/decisions/0006-tiered-module-size-policy.md Section F.1.
-#
-# * ``disallow_any_explicit`` (~1,800 sites): tracked as a separate
-#   cleanup effort; remove the line below when it completes.
-# * ``unused-ignore`` is a holding pen for pre-existing per-line
-#   ``# type: ignore[code]`` comments that target a code lifted above;
-#   each ratchet-off PR cleans up its own stale ignores.
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_any_explicit = false
-disable_error_code = [
-    "unused-ignore",         # holding pen; closes alongside the above
-]
-
-# Test subtrees already drained of explicit ``Any`` ahead of the wider
-# tests.* cleanup re-enable the strict bar locally (a more-specific
-# override wins over tests.* above).
-[[tool.mypy.overrides]]
-module = [
-    "tests.unit.communication.*",
-    "tests.unit.providers.*",
-    "tests.unit.integrations.*",
-    "tests.unit._core.*",
-    "tests.unit.a2a.*",
-    "tests.unit.backup.*",
-    "tests.unit.config.*",
-    "tests.unit.coordination.*",
-    "tests.unit.core.*",
-    "tests.unit.deliverable_receipts.*",
-    "tests.unit.docs_engine.*",
-    "tests.unit.experiments.*",
-    "tests.unit.infrastructure.*",
-    "tests.unit.notifications.*",
-    "tests.unit.organization.*",
-    "tests.unit.project_brain.*",
-    "tests.unit.settings.*",
-    "tests.unit.telemetry.*",
-    "tests.unit.templates.*",
-    "tests.unit.versioning.*",
-    "tests.unit.workers.*",
-]
-disallow_any_explicit = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

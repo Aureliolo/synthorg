@@ -1,7 +1,7 @@
 """Tests for the WS periodic revalidation task."""
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,7 +21,7 @@ from tests._shared import make_app_state, mock_of
 pytestmark = pytest.mark.unit
 
 
-async def _run_revalidate(socket: Any, user: AuthenticatedUser) -> None:
+async def _run_revalidate(socket: _FakeSocket, user: AuthenticatedUser) -> None:
     """Drive ``_periodic_revalidate`` with a behavioural ``_FakeSocket``.
 
     ``socket`` is a close-capturing stand-in for a concrete ``WebSocket``;
@@ -30,7 +30,7 @@ async def _run_revalidate(socket: Any, user: AuthenticatedUser) -> None:
     verify close behaviour, not socket type conformance.
     """
     with suppress_type_checks():
-        await _periodic_revalidate(socket, user, interval_seconds=0)
+        await _periodic_revalidate(socket, user, interval_seconds=0)  # type: ignore[arg-type]  # behavioural socket stub, not a real WebSocket
 
 
 def _make_user(role: HumanRole = HumanRole.CEO) -> User:
@@ -205,4 +205,4 @@ class _FakeApp:
         # regression test can saturate the window in a few iterations.
         app_state.ws_auth_limits.set_auth_revalidate_window_seconds(60)
         app_state.ws_auth_limits.set_auth_revalidate_max_failures(3)
-        self.state: dict[str, Any] = {"app_state": app_state}
+        self.state: dict[str, AppState] = {"app_state": app_state}

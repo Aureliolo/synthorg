@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the centralized MCP handler argument helpers.
 
 Covers every public helper in
@@ -18,7 +17,7 @@ that stayed in ``common.py`` (``ok``, ``err``, ``paginate_sequence``,
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import cast
 from unittest.mock import patch
 from uuid import UUID
 
@@ -37,6 +36,7 @@ from synthorg.meta.mcp.handlers.common_args import (
     require_dict,
     require_non_blank,
 )
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -49,7 +49,7 @@ class _Actor:
     the helpers care about.
     """
 
-    def __init__(self, *, id: Any = None, name: Any = None) -> None:  # noqa: A002
+    def __init__(self, *, id: object = None, name: object = None) -> None:  # noqa: A002
         self.id = id
         self.name = name
 
@@ -149,7 +149,7 @@ class TestGetOptionalStr:
     )
     def test_returns_none_for_absent_or_empty(
         self,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
         label: str,
     ) -> None:
         assert get_optional_str(arguments, "k") is None
@@ -215,7 +215,7 @@ class TestRequireDict:
             require_dict({"k": {"a": None}}, "k", value_type=str)
 
     def test_deep_copy_default_decouples_from_input(self) -> None:
-        original: dict[str, Any] = {"k": {"nested": [1, 2]}}
+        original: JsonDict = {"k": {"nested": [1, 2]}}
         result = require_dict(original, "k")
         # Mutating the returned dict's nested mutables must not affect
         # the original input.
@@ -230,7 +230,7 @@ class TestRequireDict:
         # behavior rather than ``is`` identity, so a future refactor
         # that swaps ``dict(raw)`` for ``dict.copy()`` or similar still
         # passes if the contract holds.
-        original: dict[str, Any] = {"k": {"nested": [1, 2]}}
+        original: JsonDict = {"k": {"nested": [1, 2]}}
         result = require_dict(original, "k", deep_copy=False)
         # Mutating outer-level keys: must not leak into the original.
         result["new_key"] = "x"
@@ -357,7 +357,7 @@ class TestParseStrSequence:
     )
     def test_returns_none_for_absent_or_empty(
         self,
-        arguments: dict[str, Any],
+        arguments: JsonDict,
         label: str,
     ) -> None:
         assert parse_str_sequence(arguments, "k") is None

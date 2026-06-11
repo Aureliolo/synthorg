@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Invariant: Grafana panel descriptions stay in lockstep with VALID_*.
 
 The Grafana dashboard at ``monitoring/grafana/synthorg-overview.json``
@@ -14,7 +13,6 @@ This test pins each outcome-labelled panel to the matching
 import json
 import re
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -23,6 +21,7 @@ from synthorg.observability.prometheus_labels import (
     VALID_BLUEPRINT_OUTCOMES,
     VALID_ESCALATION_OUTCOMES,
 )
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -41,11 +40,11 @@ _METRIC_TO_ALLOWLIST: dict[str, frozenset[str]] = {
 }
 
 
-def _iter_panels(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
+def _iter_panels(dashboard: JsonDict) -> list[JsonDict]:
     """Recursively yield every panel (including nested rows)."""
-    panels: list[dict[str, Any]] = []
+    panels: list[JsonDict] = []
 
-    def _walk(node: dict[str, Any]) -> None:
+    def _walk(node: JsonDict) -> None:
         for panel in node.get("panels", []) or []:
             panels.append(panel)
             if "panels" in panel:
@@ -55,7 +54,7 @@ def _iter_panels(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
     return panels
 
 
-def _panel_metric(panel: dict[str, Any]) -> str | None:
+def _panel_metric(panel: JsonDict) -> str | None:
     """Return the first ``synthorg_*`` metric name referenced by a target expr."""
     for target in panel.get("targets", []) or []:
         expr = target.get("expr") or ""

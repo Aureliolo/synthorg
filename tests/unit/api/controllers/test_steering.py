@@ -1,7 +1,5 @@
 """Tests for the mission-control steering controller (project-scoped)."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.core.task_enums import TaskStatus
@@ -34,7 +32,7 @@ class _RecordingTaskEngine:
 
     async def list_tasks(
         self, *, status: TaskStatus, project: str, limit: int
-    ) -> tuple[tuple[Any, ...], int]:
+    ) -> tuple[tuple[object, ...], int]:
         return ((), 0)
 
 

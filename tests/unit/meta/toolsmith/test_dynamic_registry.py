@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the dynamic registry, args-model materialisation, and layering."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -16,6 +14,7 @@ from synthorg.meta.toolsmith.dynamic_registry import (
     build_args_model,
 )
 from synthorg.meta.toolsmith.models import ToolBlueprint
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -26,22 +25,26 @@ def _blueprint(
     *,
     name: str = "synthorg_textkit_slugify",
     capability: str = "textkit:slugify",
-    schema: dict[str, Any] | None = None,
+    schema: JsonDict | None = None,
 ) -> ToolBlueprint:
-    return ToolBlueprint(
-        id=f"bp-{name}",
-        name=name,
-        description="Slugify text deterministically.",
-        capability=capability,
-        parameters_schema=schema
-        or {
+    resolved_schema: JsonDict = (
+        schema
+        if schema is not None
+        else {
             "type": "object",
             "properties": {
                 "text": {"type": "string"},
                 "max_len": {"type": "integer"},
             },
             "required": ["text"],
-        },
+        }
+    )
+    return ToolBlueprint(
+        id=f"bp-{name}",
+        name=name,
+        description="Slugify text deterministically.",
+        capability=capability,
+        parameters_schema=resolved_schema,
         script_body="print('{}')",
         action_type="code:read",
         created_at=_NOW,
@@ -49,7 +52,7 @@ def _blueprint(
 
 
 async def _fake_handler(
-    *, app_state: Any, arguments: dict[str, Any], actor: Any = None
+    *, app_state: object, arguments: JsonDict, actor: object = None
 ) -> str:
     del app_state, actor
     return f"handled:{sorted(arguments)}"
@@ -209,7 +212,7 @@ class TestLayeredToolRegistry:
 class TestLayeredHandlerMap:
     async def test_static_wins_then_dynamic(self) -> None:
         async def static_handler(
-            *, app_state: Any, arguments: dict[str, Any], actor: Any = None
+            *, app_state: object, arguments: JsonDict, actor: object = None
         ) -> str:
             del app_state, arguments, actor
             return "static"
@@ -261,7 +264,7 @@ class TestLayeredCollisionPrecedence:
 
     async def test_layered_handler_map_static_wins_on_key_collision(self) -> None:
         async def static_handler(
-            *, app_state: Any, arguments: dict[str, Any], actor: Any = None
+            *, app_state: object, arguments: JsonDict, actor: object = None
         ) -> str:
             del app_state, arguments, actor
             return "static"

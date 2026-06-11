@@ -115,7 +115,7 @@ async def _build_brain_service(
         memory_backend=backend,
         clock=FakeClock(start=datetime(2026, 5, 31, tzinfo=UTC)),
     )
-    return runtime.brain_service  # type: ignore[attr-defined]
+    return runtime.brain_service
 
 
 def _ctx_for_run() -> AgentContext:

@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for scripts/check_runtime_stats_freshness.py.
 
 Pins the gate's contract:
@@ -17,11 +16,12 @@ import importlib.util
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 from unittest.mock import patch
 
 import pytest
 import yaml
+
+from tests._shared import JsonDict
 
 
 def _import_script(name: str) -> ModuleType:
@@ -39,7 +39,7 @@ check = _import_script("check_runtime_stats_freshness")
 gen = _import_script("generate_runtime_stats")
 
 
-def _good_yaml_payload(timestamp_iso: str) -> dict[str, Any]:
+def _good_yaml_payload(timestamp_iso: str) -> JsonDict:
     """A YAML mapping whose stats match :func:`_deterministic_fetchers`."""
     return {
         "schema_version": gen._SCHEMA_VERSION,
@@ -56,7 +56,7 @@ def _good_yaml_payload(timestamp_iso: str) -> dict[str, Any]:
     }
 
 
-def _deterministic_fetchers() -> dict[str, Callable[[], dict[str, Any]]]:
+def _deterministic_fetchers() -> dict[str, Callable[[], JsonDict]]:
     """Fetchers that return the values from :func:`_good_yaml_payload`."""
     return {
         "tests": lambda: {"raw": 17995, "rounded": 17000, "display": "17,000+"},
@@ -207,7 +207,7 @@ class TestOfflineToleranceForFailingFetcher:
 
         stat_name = "providers_via_litellm"
 
-        def _raise() -> dict[str, Any]:
+        def _raise() -> JsonDict:
             raise gen._StatFetchError(stat_name, "import litellm", "not importable")
 
         fetchers["providers_via_litellm"] = _raise
@@ -260,8 +260,8 @@ class TestSkipNetworkFlag:
         fetchers = _deterministic_fetchers()
         skip_reason = "should not have run"
 
-        def _make_trap(name: str, source: str) -> Callable[[], dict[str, Any]]:
-            def _trap() -> dict[str, Any]:
+        def _make_trap(name: str, source: str) -> Callable[[], JsonDict]:
+            def _trap() -> JsonDict:
                 called.append(name)
                 raise gen._StatFetchError(name, source, skip_reason)
 
@@ -383,7 +383,7 @@ class TestFetcherUnexpectedException:
         _seed_fresh_yaml(yaml_path)
         fetchers = _deterministic_fetchers()
 
-        def _raise_runtime() -> dict[str, Any]:
+        def _raise_runtime() -> JsonDict:
             msg = "unexpected boom"
             raise RuntimeError(msg)
 

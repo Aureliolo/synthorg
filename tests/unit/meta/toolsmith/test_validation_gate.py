@@ -1,9 +1,8 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the benchmark tool-validation gate."""
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -49,10 +48,10 @@ class _FakeSandbox:
         command: str,
         args: tuple[str, ...],
         cwd: Path | None = None,
-        env_overrides: Any = None,
+        env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
-        owner_id: Any = None,
-        project_id: Any = None,
+        owner_id: str | None = None,
+        project_id: str | None = None,
     ) -> SandboxResult:
         del command, args, cwd, env_overrides, timeout, owner_id, project_id
         return self._result
@@ -65,9 +64,9 @@ class _FakeSandbox:
 
     async def release_owner(
         self,
-        owner_id: Any,
+        owner_id: str,
         *,
-        project_id: Any = None,
+        project_id: str | None = None,
         image_override: str | None = None,
     ) -> None:
         del owner_id, project_id, image_override
@@ -113,14 +112,14 @@ class TestSandboxBriefRunner:
         sandbox = _FakeSandbox(
             SandboxResult(stdout='{"slug": "x"}', stderr="", returncode=0)
         )
-        runner = SandboxBriefRunner(lambda _bp: sandbox)  # type: ignore[arg-type,return-value]
+        runner = SandboxBriefRunner(lambda _bp: sandbox)
         passed, score = await runner.run(_blueprint())
         assert passed is True
         assert score == 100
 
     async def test_failure_envelope_fails(self) -> None:
         sandbox = _FakeSandbox(SandboxResult(stdout="", stderr="boom", returncode=1))
-        runner = SandboxBriefRunner(lambda _bp: sandbox)  # type: ignore[arg-type,return-value]
+        runner = SandboxBriefRunner(lambda _bp: sandbox)
         passed, score = await runner.run(_blueprint())
         assert passed is False
         assert score == 0

@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Catastrophic-error carve-out for :class:`SimulationRunner._review_one`.
 
 The review path absorbs broad ``Exception`` from the feedback sink so
@@ -9,7 +8,6 @@ escape that net so the surrounding orchestrator can fail fast.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -40,11 +38,13 @@ class _StubClient:
     def client_id(self) -> str:
         return "client-1"
 
-    async def review_deliverable(self, context: Any) -> ClientFeedback:
+    async def review_deliverable(self, context: object) -> ClientFeedback:
         del context
         return _make_feedback()
 
-    async def generate_requirements(self, context: Any) -> tuple[TaskRequirement, ...]:
+    async def generate_requirements(
+        self, context: object
+    ) -> tuple[TaskRequirement, ...]:
         del context
         return ()
 
@@ -139,6 +139,6 @@ class TestReviewOneCatastrophicErrors:
 class _NoopStrategy:
     """Minimal :class:`IntakeStrategy` shape; the review path never calls it."""
 
-    async def process(self, request: Any) -> IntakeResult:
+    async def process(self, request: object) -> IntakeResult:
         del request
         return IntakeResult.rejected_result(request_id="x", reason="noop")

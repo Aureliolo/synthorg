@@ -18,11 +18,13 @@ on the real HTTP path.
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any, override
+from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from litestar.datastructures import State
+from litestar.enums import ScopeType
+from litestar.types import ASGIApp, Receive, Scope, Send
 
 from synthorg.api.cursor import CursorSecret
 from synthorg.core.domain_errors import (
@@ -1002,12 +1004,12 @@ class TestOAuthController:
             @override
             async def handle(
                 self,
-                scope: Any,
-                receive: Any,
-                send: Any,
-                next_app: Any,
+                scope: Scope,
+                receive: Receive,
+                send: Send,
+                next_app: ASGIApp,
             ) -> None:
-                if scope["type"] == "http":
+                if scope["type"] == ScopeType.HTTP:
                     scope["user"] = _TestUser()
                 await next_app(scope, receive, send)
 
@@ -1136,12 +1138,12 @@ class TestControllerHttpLayer:
             @override
             async def handle(
                 self,
-                scope: Any,
-                receive: Any,
-                send: Any,
-                next_app: Any,
+                scope: Scope,
+                receive: Receive,
+                send: Send,
+                next_app: ASGIApp,
             ) -> None:
-                if scope["type"] == "http":
+                if scope["type"] == ScopeType.HTTP:
                     scope["user"] = _TestUser()
                 await next_app(scope, receive, send)
 

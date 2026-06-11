@@ -13,11 +13,11 @@ does not depend on real provider or task engine integration.
 """
 
 from collections.abc import AsyncGenerator
-from typing import Any
 
 import pytest
 
 from synthorg.budget.tracker import CostTracker
+from synthorg.client.models import ClientRequest
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
 from synthorg.engine.intake.engine import IntakeEngine
@@ -50,7 +50,7 @@ def _required_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
 class _AcceptingStrategy:
     """Intake strategy that always accepts with a stub task id."""
 
-    async def process(self, request: Any) -> IntakeResult:
+    async def process(self, request: ClientRequest) -> IntakeResult:
         return IntakeResult.accepted_result(
             request_id=request.request_id,
             task_id=f"task-{request.request_id[:6]}",

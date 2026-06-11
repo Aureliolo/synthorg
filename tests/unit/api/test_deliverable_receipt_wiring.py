@@ -10,7 +10,6 @@ enabled.
 """
 
 from collections.abc import Callable
-from typing import Any
 
 import pytest
 
@@ -37,7 +36,9 @@ _FACTORY_TARGET = (
 )
 
 
-def _capture_factory(captured: dict[str, Any]) -> Callable[..., Any]:
+def _capture_factory(  # type: ignore[explicit-any]  # Callable ellipsis mirrors build_deliverable_receipt_service
+    captured: dict[str, object],
+) -> Callable[..., DeliverableReceiptService]:
     """Build a stand-in receipt factory that records its kwargs.
 
     Returns:
@@ -45,9 +46,10 @@ def _capture_factory(captured: dict[str, Any]) -> Callable[..., Any]:
         captures the keyword arguments and returns a spec'd service.
     """
 
-    def _factory(**kwargs: Any) -> Any:
+    def _factory(**kwargs: object) -> DeliverableReceiptService:
         captured.update(kwargs)
-        return mock_of[DeliverableReceiptService]()
+        service: DeliverableReceiptService = mock_of[DeliverableReceiptService]()
+        return service
 
     return _factory
 
@@ -72,7 +74,7 @@ async def test_wiring_threads_red_team_repo_into_factory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A red-team store on the security slice reaches the receipt factory."""
-    captured: dict[str, Any] = {}
+    captured: dict[str, object] = {}
     monkeypatch.setattr(_FACTORY_TARGET, _capture_factory(captured))
     repo = InMemoryRedTeamReportRepository()
     app_state = _app_state(red_team_reports=repo)
@@ -87,7 +89,7 @@ async def test_wiring_passes_none_when_no_red_team_store(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """With no red-team store wired, the factory receives ``None`` (not omitted)."""
-    captured: dict[str, Any] = {}
+    captured: dict[str, object] = {}
     monkeypatch.setattr(_FACTORY_TARGET, _capture_factory(captured))
     app_state = _app_state(red_team_reports=None)
 

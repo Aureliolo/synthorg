@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Planted-claim acceptance + precision tests for the substrate checker.
 
 Acceptance contract:
@@ -16,7 +15,6 @@ service and provider are scripted fakes: the planted case scripts an
 "unsupported" entailment verdict; the precision case scripts "supported".
 """
 
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -43,7 +41,7 @@ from synthorg.security.redteam.grounding.substrate import (
     KnowledgeSubstrateGroundingChecker,
 )
 from synthorg.security.redteam.protocol import AgentRunner
-from tests._shared import FakeClock
+from tests._shared import FakeClock, JsonDict
 from tests._shared.mock_of import mock_of
 
 pytestmark = pytest.mark.integration
@@ -98,7 +96,7 @@ def _hit() -> KnowledgeHit:
 
 
 def _extract_response(claim: str) -> CompletionResponse:
-    arguments: dict[str, Any] = {"claims": [claim]}
+    arguments: JsonDict = {"claims": [claim]}
     return CompletionResponse(
         tool_calls=(ToolCall(id="x", name="extract_claims", arguments=arguments),),
         finish_reason=FinishReason.TOOL_USE,
@@ -108,7 +106,7 @@ def _extract_response(claim: str) -> CompletionResponse:
 
 
 def _verdict_response(verdict: str, confidence: float) -> CompletionResponse:
-    arguments: dict[str, Any] = {
+    arguments: JsonDict = {
         "verdict": verdict,
         "confidence": confidence,
         "reason": "rationale",

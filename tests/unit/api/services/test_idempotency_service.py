@@ -7,7 +7,8 @@ fail-marker on callback exception.
 """
 
 from datetime import UTC, datetime
-from typing import Any, override
+from types import ModuleType
+from typing import override
 
 import pytest
 
@@ -116,7 +117,7 @@ async def test_run_idempotent_executes_callback_on_fresh_claim() -> None:
 
     calls = 0
 
-    async def cb() -> dict[str, Any]:
+    async def cb() -> dict[str, object]:
         nonlocal calls
         calls += 1
         return {"status": "ok", "n": 42}
@@ -144,7 +145,7 @@ async def test_run_idempotent_returns_cached_on_completed_claim() -> None:
 
     calls = 0
 
-    async def cb() -> dict[str, Any]:
+    async def cb() -> dict[str, object]:
         nonlocal calls
         calls += 1
         return {"status": "ok"}
@@ -163,7 +164,7 @@ async def test_run_idempotent_marks_failed_when_callback_raises() -> None:
     class _BoomError(Exception):
         pass
 
-    async def cb() -> dict[str, Any]:
+    async def cb() -> dict[str, object]:
         raise _BoomError
 
     with pytest.raises(_BoomError):
@@ -187,7 +188,7 @@ class _DeterministicClock:
     def __init__(self) -> None:
         self.now_seconds = 0.0
 
-    def now(self) -> Any:
+    def now(self) -> datetime:
         from datetime import UTC
         from datetime import datetime as _dt
 
@@ -203,7 +204,7 @@ class _DeterministicClock:
 
 def _install_deterministic_clock(
     monkeypatch: pytest.MonkeyPatch,
-    svc_mod: Any,
+    svc_mod: ModuleType,
 ) -> _DeterministicClock:
     """Stub asyncio.sleep so the service's polling loop progresses
     against the injected ``_DeterministicClock`` without real waits.
@@ -258,7 +259,7 @@ async def test_run_idempotent_in_flight_returns_none_after_poll_timeout(
     repo = _StuckRepo(initial_outcome=IdempotencyOutcome.IN_FLIGHT)
     svc = svc_mod.IdempotencyService(repo, clock=clock)
 
-    async def cb() -> dict[str, Any]:
+    async def cb() -> dict[str, object]:
         msg = "callback must not run when claim is in-flight"
         raise AssertionError(msg)
 
@@ -317,7 +318,7 @@ async def test_run_idempotent_in_flight_resolves_to_completed_via_poll(
     repo = _ResolvingRepo(initial_outcome=IdempotencyOutcome.IN_FLIGHT)
     svc = svc_mod.IdempotencyService(repo, clock=clock)
 
-    async def cb() -> dict[str, Any]:
+    async def cb() -> dict[str, object]:
         msg = "callback must not run when claim is in-flight"
         raise AssertionError(msg)
 

@@ -1,19 +1,17 @@
 """Tests for PersonalityPresetController."""
 
-from typing import Any
-
 import pytest
 
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 
 def _make_valid_preset_body(
     name: str = "my_custom_preset",
-    **overrides: Any,
-) -> dict[str, Any]:
+    **overrides: object,
+) -> JsonDict:
     """Build a valid create-preset request body."""
-    body: dict[str, Any] = {
+    body: JsonDict = {
         "name": name,
         "traits": ["friendly", "curious"],
         "communication_style": "warm",

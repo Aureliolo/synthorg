@@ -10,7 +10,7 @@ structured warning is emitted, so a settings-backend hiccup never
 perturbs the retry budget.
 """
 
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -72,13 +72,13 @@ class TestApplyWorkersBridgeConfigSnapshot:
             config_resolver=_resolver_raising(RuntimeError("resolver outage")),
         )
 
-        warnings: list[tuple[str, dict[str, Any]]] = []
+        warnings: list[tuple[str, dict[str, object]]] = []
 
         from synthorg.api.lifecycle_helpers import config_apply as mod
 
         original = mod.logger.warning
 
-        def _capture(event: str, **kwargs: Any) -> None:
+        def _capture(event: str, **kwargs: object) -> None:
             warnings.append((event, kwargs))
             original(event, **kwargs)
 

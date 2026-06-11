@@ -8,30 +8,31 @@ holds its construction-time service: a reorder that silently wires ``None``
 fails here, where the build-only smoke tests would pass.
 """
 
-from typing import Any
-
 import pytest
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.budget.tracker import CostTracker
 from synthorg.communication.state import CommunicationStateSlice
+from synthorg.config.schema import RootConfig
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.security.state import SecurityStateSlice
 from tests._shared import build_test_app
+from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
 def built_app_state(
-    fake_persistence: Any,
-    fake_message_bus: Any,
-    cost_tracker: Any,
-    root_config: Any,
+    fake_persistence: FakePersistenceBackend,
+    fake_message_bus: FakeMessageBus,
+    cost_tracker: CostTracker,
+    root_config: RootConfig,
 ) -> AppState:
     """Build a full app with fakes injected and return its ``AppState``."""
     app = build_test_app(
@@ -68,7 +69,7 @@ class TestConstructionWiringPopulatesSlices:
     def test_communication_slice_wired(
         self,
         built_app_state: AppState,
-        fake_message_bus: Any,
+        fake_message_bus: FakeMessageBus,
     ) -> None:
         comms = built_app_state.slice(CommunicationStateSlice)
         assert comms.message_bus is fake_message_bus
@@ -78,13 +79,13 @@ class TestConstructionWiringPopulatesSlices:
     def test_budget_slice_wired(
         self,
         built_app_state: AppState,
-        cost_tracker: Any,
+        cost_tracker: CostTracker,
     ) -> None:
         assert built_app_state.slice(BudgetStateSlice).cost_tracker is cost_tracker
 
     def test_persistence_slice_wired(
         self,
         built_app_state: AppState,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         assert built_app_state.slice(PersistenceStateSlice).backend is fake_persistence

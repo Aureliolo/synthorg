@@ -152,7 +152,7 @@ def _patch_forge(
     monkeypatch: pytest.MonkeyPatch,
     forge: ForgeApiClient,
 ) -> None:
-    factory: Callable[..., ForgeApiClient] = lambda **_kw: forge  # noqa: E731
+    factory: Callable[..., ForgeApiClient] = lambda **_kw: forge  # type: ignore[explicit-any]  # Callable ellipsis for a test factory  # noqa: E731
     monkeypatch.setattr(_FORGE_API, factory)
 
 

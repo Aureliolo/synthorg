@@ -1,7 +1,5 @@
 """Tests for DTO models and response envelopes."""
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
@@ -23,16 +21,17 @@ from synthorg.core.error_taxonomy import (
     category_title,
     category_type_uri,
 )
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
 
 def _make_error_detail(
     cat: ErrorCategory = ErrorCategory.INTERNAL,
-    **kwargs: Any,
+    **kwargs: object,
 ) -> ErrorDetail:
     """Build an ``ErrorDetail`` with title/type derived from category."""
-    defaults: dict[str, Any] = {
+    defaults: JsonDict = {
         "detail": "err",
         "error_code": ErrorCode.INTERNAL_ERROR,
         "error_category": cat,

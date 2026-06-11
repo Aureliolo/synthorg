@@ -1,7 +1,6 @@
 """Tests for agent identity version API endpoints."""
 
 from datetime import date
-from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -10,7 +9,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes_backend import FakePersistenceBackend
 
@@ -365,7 +364,7 @@ class TestRollback:
 
         msg = "immutable field mismatch"
 
-        async def _raise_value_error(*_args: Any, **_kwargs: Any) -> None:
+        async def _raise_value_error(*_args: object, **_kwargs: object) -> None:
             raise ValueError(msg)
 
         monkeypatch.setattr(agent_registry, "evolve_identity", _raise_value_error)
@@ -443,7 +442,7 @@ class TestReadEndpointsOwnership:
         agent_registry: AgentRegistryService,
         method: str,
         path_suffix: str,
-        json_body: dict[str, Any] | None,
+        json_body: JsonDict | None,
         params: dict[str, int] | None,
     ) -> None:
         fake_persistence.identity_versions.clear()
@@ -538,7 +537,7 @@ class TestAuthGuards:
         async_test_client: LoopAsyncClient,
         method: str,
         path_suffix: str,
-        body: dict[str, Any] | None,
+        body: JsonDict | None,
     ) -> None:
         url = f"/api/v1/agents/{uuid4()}{path_suffix}"
         headers = {"Authorization": "Bearer invalid-token"}

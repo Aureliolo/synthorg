@@ -7,9 +7,9 @@ registry.
 """
 
 from collections.abc import AsyncGenerator
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 from litestar import Litestar
 
@@ -119,7 +119,7 @@ async def integration_client(
         yield client
 
 
-def _extract_auth_cookies(resp: Any) -> tuple[str, str]:
+def _extract_auth_cookies(resp: httpx.Response) -> tuple[str, str]:
     """Extract session token and CSRF token from Set-Cookie headers."""
     session = ""
     csrf = ""

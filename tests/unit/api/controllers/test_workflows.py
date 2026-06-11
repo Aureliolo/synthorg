@@ -14,7 +14,7 @@ from synthorg.engine.workflow.definition import (
 from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
 from synthorg.observability.events.api import WORKFLOW_DEFINITION_CHANGED
 from synthorg.persistence.state import persistence_of
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 # ── Minimal valid graph data (dicts for HTTP payloads) ───────────
@@ -121,7 +121,7 @@ def _seed(
     )
     # Direct mutation for synchronous test seeding -- bypasses async save()
     # since Litestar's TestClient runs in a sync context.
-    repo = cast(Any, persistence_of(client.app.state.app_state).workflow_definitions)
+    repo = cast(Any, persistence_of(client.app.state.app_state).workflow_definitions)  # type: ignore[explicit-any]  # reach into fake repo internals
     repo._definitions[defn.id] = defn
     return defn.id
 
@@ -150,7 +150,7 @@ def _make_create_payload(
 async def _create_workflow(
     client: LoopAsyncClient,
     **overrides: object,
-) -> dict[str, Any]:
+) -> JsonDict:
     """Create a workflow via POST and return the response JSON."""
     payload = _make_create_payload(**overrides)  # type: ignore[arg-type]
     resp = await client.post(
@@ -159,7 +159,7 @@ async def _create_workflow(
         headers=make_auth_headers("ceo"),
     )
     assert resp.status_code == 201
-    result: dict[str, Any] = resp.json()
+    result: JsonDict = resp.json()
     return result
 
 

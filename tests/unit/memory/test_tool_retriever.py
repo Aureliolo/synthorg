@@ -1,7 +1,7 @@
 """Tests for ToolBasedInjectionStrategy."""
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -14,6 +14,7 @@ from synthorg.memory.reformulation import QueryReformulator, SufficiencyChecker
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from synthorg.memory.tool_retriever_helpers import merge_results
+from tests._shared import JsonDict
 
 
 def _make_entry(
@@ -142,7 +143,7 @@ class TestToolDefinitions:
         )
         tools = strategy.get_tool_definitions()
         search = next(t for t in tools if t.name == "search_memory")
-        props = cast("dict[str, Any]", search.parameters_schema.get("properties", {}))
+        props = cast(JsonDict, search.parameters_schema.get("properties", {}))
         assert "query" in props
         assert "limit" in props
 
@@ -153,7 +154,7 @@ class TestToolDefinitions:
         )
         tools = strategy.get_tool_definitions()
         recall = next(t for t in tools if t.name == "recall_memory")
-        props = cast("dict[str, Any]", recall.parameters_schema.get("properties", {}))
+        props = cast(JsonDict, recall.parameters_schema.get("properties", {}))
         assert "memory_id" in props
 
 

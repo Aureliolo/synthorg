@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-BriefYamlWriter = Callable[..., Path]
+BriefYamlWriter = Callable[..., Path]  # type: ignore[explicit-any]  # arbitrary-arg brief-writer test factory
 
 
 def _brief_yaml(kind: str, **overrides: object) -> str:

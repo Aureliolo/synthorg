@@ -5,7 +5,7 @@ real ReactLoop, and a mock provider that returns tool calls.
 """
 
 from datetime import date
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, override
 from uuid import uuid4
 
 import pytest
@@ -49,9 +49,9 @@ class UppercaseTool(BaseTool):
     """Test tool that uppercases input text."""
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         """Uppercase the 'text' argument."""
-        text = arguments.get("text", "")
+        text = str(arguments.get("text", ""))
         return ToolExecutionResult(content=text.upper())
 
 

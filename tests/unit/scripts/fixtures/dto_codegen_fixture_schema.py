@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """A hermetic OpenAPI schema dict for generator unit tests.
 
 A real Litestar fixture app would bring the whole app boot path
@@ -27,9 +26,11 @@ representative document that exercises every type-mapping branch:
   status-code-agnostic and orphan branches of the promoter.
 """
 
-from typing import Any, Final
+from typing import Final
 
-FIXTURE_SCHEMA: Final[dict[str, Any]] = {
+from tests._shared import JsonDict
+
+FIXTURE_SCHEMA: Final[JsonDict] = {
     "openapi": "3.1.0",
     "info": {"title": "Fixture", "version": "0.0.1"},
     "paths": {

@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the MCP charter domain handlers.
 
 The handlers wrap ``CharterInterviewService`` + ``CharterDispatcher``
@@ -27,6 +26,7 @@ from synthorg.meta.charter.service import CharterInterviewService
 from synthorg.meta.errors import CharterNotFoundError
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers.charter import CHARTER_HANDLERS
+from tests._shared import JsonDict
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -42,33 +42,33 @@ class _StubService(CharterInterviewService):
     """Captures handler arguments so untrusted-message wrapping can be asserted."""
 
     def __init__(self) -> None:
-        self.run_turn_args: list[Any] = []
-        self.cancel_calls: list[dict[str, Any]] = []
-        self.list_calls: list[dict[str, Any]] = []
+        self.run_turn_args: list[Any] = []  # type: ignore[explicit-any]  # captured interview args, inspected by attribute
+        self.cancel_calls: list[JsonDict] = []
+        self.list_calls: list[JsonDict] = []
         self.get_calls: list[str] = []
-        self.run_turn_result: Any = SimpleNamespace(
+        self.run_turn_result: SimpleNamespace = SimpleNamespace(
             model_dump=lambda mode="json": {"status": "needs_more"}
         )
-        self.list_result: tuple[Any, ...] = ()
-        self.get_result: Any = SimpleNamespace(
+        self.list_result: tuple[SimpleNamespace, ...] = ()
+        self.get_result: SimpleNamespace | None = SimpleNamespace(
             model_dump=lambda mode="json": {"id": "charter-1"}
         )
-        self.cancel_result: Any = SimpleNamespace(
+        self.cancel_result: SimpleNamespace = SimpleNamespace(
             model_dump=lambda mode="json": {"id": "charter-1", "status": "cancelled"}
         )
 
     @override
-    async def run_turn(self, args: Any) -> Any:
+    async def run_turn(self, args: object) -> Any:  # type: ignore[explicit-any]  # loose double; real return type on CharterInterviewService
         self.run_turn_args.append(args)
         return self.run_turn_result
 
     @override
-    async def list_charters(self, **kwargs: Any) -> tuple[Any, ...]:
+    async def list_charters(self, **kwargs: object) -> tuple[Any, ...]:  # type: ignore[explicit-any]  # loose double; real return type on CharterInterviewService
         self.list_calls.append(kwargs)
         return self.list_result
 
     @override
-    async def get(self, charter_id: str, *, requested_by: Any = None) -> Any:
+    async def get(self, charter_id: str, *, requested_by: object = None) -> Any:  # type: ignore[explicit-any]  # loose double; real return type on CharterInterviewService
         del requested_by
         self.get_calls.append(charter_id)
         if self.get_result is None:
@@ -76,11 +76,11 @@ class _StubService(CharterInterviewService):
         return self.get_result
 
     @override
-    async def cancel_charter(
+    async def cancel_charter(  # type: ignore[explicit-any]  # loose double; real return type on CharterInterviewService
         self,
         charter_id: str,
         *,
-        cancelled_by: Any,
+        cancelled_by: object,
         enforce_ownership: bool = True,
     ) -> Any:
         self.cancel_calls.append(
@@ -95,18 +95,18 @@ class _StubService(CharterInterviewService):
 
 class _StubDispatcher(CharterDispatcher):
     def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-        self.result: Any = SimpleNamespace(
+        self.calls: list[JsonDict] = []
+        self.result: SimpleNamespace = SimpleNamespace(
             model_dump=lambda mode="json": {"task_id": "task-1", "is_success": True}
         )
 
     @override
-    async def approve(self, charter_id: str, *, approved_by: Any) -> Any:
+    async def approve(self, charter_id: str, *, approved_by: object) -> Any:  # type: ignore[explicit-any]  # loose double; real return type on CharterDispatcher
         self.calls.append({"charter_id": charter_id, "approved_by": approved_by})
         return self.result
 
 
-def _state(
+def _state(  # type: ignore[explicit-any]  # loose AppState-shaped double
     *,
     service: _StubService | None = None,
     dispatcher: _StubDispatcher | None = None,

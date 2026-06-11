@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Regression: ``AuditLog.record`` updates the fill-ratio gauge each append.
 
 The gauge value is exposed as
@@ -8,7 +7,6 @@ in-memory deque evicts the oldest entry.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -98,4 +96,4 @@ class TestAuditFillRatioGauge:
 
 # Force pytest-asyncio to register the module (not strictly required here
 # since these are sync tests but mirrors the project layout).
-__all__: tuple[Any, ...] = ()
+__all__: tuple[str, ...] = ()

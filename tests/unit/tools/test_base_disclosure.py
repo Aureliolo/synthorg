@@ -1,8 +1,9 @@
 """Tests for BaseTool progressive disclosure integration."""
 
-from typing import Any, override
+from typing import override
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.tool_disclosure import ToolL1Metadata, ToolL2Body, ToolL3Resource
 from synthorg.security.autonomy.enums import ToolCategory
@@ -17,7 +18,7 @@ class _DisclosureTool(BaseTool):
         *,
         name: str = "test_tool",
         description: str = "A test tool for testing",
-        parameters_schema: dict[str, Any] | None = None,
+        parameters_schema: dict[str, JsonValue] | None = None,
         category: ToolCategory = ToolCategory.FILE_SYSTEM,
     ) -> None:
         super().__init__(
@@ -31,7 +32,7 @@ class _DisclosureTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         return ToolExecutionResult(content="executed")
 
@@ -81,7 +82,7 @@ class _CustomDisclosureTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         return ToolExecutionResult(content="custom executed")
 
@@ -126,7 +127,10 @@ class TestDefaultL2Body:
     """Tests for default to_l2_body() derivation."""
 
     def test_derives_from_existing_fields(self) -> None:
-        schema = {"type": "object", "properties": {"x": {"type": "string"}}}
+        schema: dict[str, JsonValue] = {
+            "type": "object",
+            "properties": {"x": {"type": "string"}},
+        }
         tool = _DisclosureTool(
             description="Full description here",
             parameters_schema=schema,
@@ -198,7 +202,7 @@ class TestToDefinitionDisclosure:
         assert defn.l1_metadata.short_description == "My tool desc"
 
     def test_populates_l2_body(self) -> None:
-        schema = {"type": "object"}
+        schema: dict[str, JsonValue] = {"type": "object"}
         tool = _DisclosureTool(parameters_schema=schema)
         defn = tool.to_definition()
         assert defn.l2_body is not None

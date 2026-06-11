@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the no-raw-playwright-imports convention gate."""
 
 import importlib.util
@@ -10,7 +9,7 @@ import pytest
 pytestmark = pytest.mark.unit
 
 
-def _load_module() -> Any:
+def _load_module() -> Any:  # type: ignore[explicit-any]  # returns dynamically loaded gate module
     src = (
         Path(__file__).resolve().parents[3]
         / "scripts"
@@ -24,7 +23,7 @@ def _load_module() -> Any:
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return cast("Any", module)
+    return cast("Any", module)  # type: ignore[explicit-any]  # dynamic gate module
 
 
 def _write_pkg(root: Path, rel: str, body: str) -> None:

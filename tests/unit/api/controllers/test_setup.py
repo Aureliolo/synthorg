@@ -14,14 +14,16 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from synthorg.api.controllers.setup_agents import normalize_description
+from synthorg.api.state import AppState
 from synthorg.hr.state import agent_registry_of
 from synthorg.persistence.state import persistence_of
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import settings_service_of
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
+from tests.unit.api.fakes import FakePersistenceBackend
 
 
 @pytest.mark.unit
@@ -112,7 +114,9 @@ class TestSetupCompany:
 
         # Verify description persisted as "" (absent convention).
         app_state = async_test_client.app.state.app_state
-        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
+        settings_repo = cast(
+            FakePersistenceBackend, persistence_of(app_state)
+        )._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
         assert stored[0] == ""
@@ -152,7 +156,9 @@ class TestSetupCompany:
 
         # Verify persistence.
         app_state = async_test_client.app.state.app_state
-        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
+        settings_repo = cast(
+            FakePersistenceBackend, persistence_of(app_state)
+        )._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
         assert stored[0] == expected_stored
@@ -210,7 +216,9 @@ class TestSetupCompany:
 
         # Verify persistence.
         app_state = async_test_client.app.state.app_state
-        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
+        settings_repo = cast(
+            FakePersistenceBackend, persistence_of(app_state)
+        )._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
         assert stored[0] == "x" * 1000
@@ -241,7 +249,9 @@ class TestSetupCompany:
 
         # Verify persistence cleared.
         app_state = async_test_client.app.state.app_state
-        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
+        settings_repo = cast(
+            FakePersistenceBackend, persistence_of(app_state)
+        )._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
         assert stored[0] == ""
@@ -308,7 +318,9 @@ class TestSetupComplete:
     ) -> None:
         """Completion rejects when no company name is set."""
         app_state = async_test_client.app.state.app_state
-        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
+        settings_repo = cast(
+            FakePersistenceBackend, persistence_of(app_state)
+        )._settings_repo
 
         # Remove company_name from the settings store so the YAML
         # fallback chain also yields nothing.  The fixture's root_config
@@ -329,7 +341,8 @@ class TestSetupComplete:
     ) -> None:
         """Completion rejects when company_name is only in YAML defaults."""
         repo = cast(
-            Any, persistence_of(async_test_client.app.state.app_state)
+            FakePersistenceBackend,
+            persistence_of(async_test_client.app.state.app_state),
         )._settings_repo
         key = ("company", "company_name")
         original = repo._store.get(key)
@@ -348,7 +361,7 @@ class TestSetupComplete:
     ) -> None:
         """Completion succeeds without agents (Quick Setup mode)."""
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         # Ensure at least one provider is registered.
@@ -376,7 +389,7 @@ class TestSetupComplete:
     ) -> None:
         """Completion rejects when company and agents exist but no providers."""
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps([{"name": "agent-001", "role": "CEO"}])
@@ -398,7 +411,7 @@ class TestSetupComplete:
     ) -> None:
         """Completion succeeds when company, agents, and providers exist."""
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps([{"name": "agent-001", "role": "CEO"}])
@@ -427,7 +440,7 @@ class TestSetupComplete:
     ) -> None:
         """Setup completion registers agents in the runtime registry."""
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps(
@@ -477,7 +490,7 @@ class TestSetupComplete:
         labelled "complete".
         """
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps([{"name": "agent-001", "role": "CEO"}])
@@ -513,7 +526,7 @@ class TestSetupComplete:
     ) -> None:
         """Setup completion reloads the provider registry from config."""
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps(
@@ -581,7 +594,7 @@ class TestSetupComplete:
         runtime is half-configured.
         """
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps(
@@ -654,7 +667,7 @@ class TestExtractTemplateDepartments:
 
 def _setup_mock_providers(
     async_test_client: LoopAsyncClient,
-) -> tuple[Any, Any]:
+) -> tuple[AppState, object]:
     """Wire up mock providers on the app state. Returns (app_state, original)."""
     mock_model = MagicMock()
     mock_model.id = "test-small-001"
@@ -813,7 +826,7 @@ class TestSetupAgentsList:
             # ``DEFAULT_LIMIT``-sized page; the previous single-GET
             # version compared two truncated views once the agent
             # count exceeded the default page size.
-            full: list[dict[str, Any]] = []
+            full: list[JsonDict] = []
             full_cursor: str | None = None
             while True:
                 qs = (
@@ -1090,7 +1103,7 @@ class TestGetNameLocales:
     ) -> None:
         """Returns stored locales when the setting is in the DB."""
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "fr_FR"]),
@@ -1115,7 +1128,7 @@ class TestGetNameLocales:
         concrete locale codes.
         """
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["__all__"]),
@@ -1201,7 +1214,7 @@ class TestSaveNameLocales:
     ) -> None:
         """Saving locales after setup is complete returns 409."""
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("api", "setup_complete")] = ("true", now)
         try:
@@ -1230,7 +1243,7 @@ class TestCheckHasNameLocales:
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         # Ensure the key is absent from DB so code default kicks in.
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         repo._store.pop(("company", "name_locales"), None)
 
         result = await _check_has_name_locales(settings_svc)
@@ -1246,7 +1259,7 @@ class TestCheckHasNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US"]),
@@ -1271,7 +1284,7 @@ class TestCheckHasNameLocales:
         settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
-        cast(Any, settings_svc).get_entry = AsyncMock(
+        cast(Any, settings_svc).get_entry = AsyncMock(  # type: ignore[explicit-any]  # patch instance method for the test
             spec=original,
             side_effect=RuntimeError("db connection lost"),
         )
@@ -1279,7 +1292,7 @@ class TestCheckHasNameLocales:
             result = await _check_has_name_locales(settings_svc)
             assert result is False
         finally:
-            cast(Any, settings_svc).get_entry = original
+            cast(Any, settings_svc).get_entry = original  # type: ignore[explicit-any]  # restore patched instance method
 
     async def test_returns_false_on_setting_not_found_error(
         self,
@@ -1295,7 +1308,7 @@ class TestCheckHasNameLocales:
         settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
-        cast(Any, settings_svc).get_entry = AsyncMock(
+        cast(Any, settings_svc).get_entry = AsyncMock(  # type: ignore[explicit-any]  # patch instance method for the test
             spec=original,
             side_effect=SettingNotFoundError("company/name_locales"),
         )
@@ -1303,7 +1316,7 @@ class TestCheckHasNameLocales:
             result = await _check_has_name_locales(settings_svc)
             assert result is False
         finally:
-            cast(Any, settings_svc).get_entry = original
+            cast(Any, settings_svc).get_entry = original  # type: ignore[explicit-any]  # restore patched instance method
 
 
 @pytest.mark.unit
@@ -1322,7 +1335,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         repo._store.pop(("company", "name_locales"), None)
 
         result = await _read_name_locales(settings_svc)
@@ -1343,7 +1356,7 @@ class TestReadNameLocales:
         settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
-        cast(Any, settings_svc).get_entry = AsyncMock(
+        cast(Any, settings_svc).get_entry = AsyncMock(  # type: ignore[explicit-any]  # patch instance method for the test
             spec=original,
             side_effect=SettingNotFoundError("company/name_locales"),
         )
@@ -1351,7 +1364,7 @@ class TestReadNameLocales:
             result = await _read_name_locales(settings_svc)
             assert result is None
         finally:
-            cast(Any, settings_svc).get_entry = original
+            cast(Any, settings_svc).get_entry = original  # type: ignore[explicit-any]  # restore patched instance method
 
     async def test_returns_resolved_locales_when_valid(
         self,
@@ -1363,7 +1376,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "fr_FR"]),
@@ -1385,7 +1398,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             "not-valid-json{{{",
@@ -1407,7 +1420,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps({"not": "a list"}),
@@ -1429,7 +1442,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "invalid_XX", "fr_FR"]),
@@ -1452,7 +1465,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["__all__"]),
@@ -1478,7 +1491,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "invalid_XX"]),
@@ -1574,7 +1587,7 @@ class TestUpdateAgentPersonality:
     ) -> None:
         """Updating personality after setup is complete returns 409."""
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("api", "setup_complete")] = ("true", now)
         try:
@@ -1629,7 +1642,7 @@ class TestListPersonalityPresets:
         # broke silently the moment the preset registry grew past the
         # default page size, because the round-trip check was then
         # comparing two truncated views.
-        full: list[dict[str, Any]] = []
+        full: list[JsonDict] = []
         cursor: str | None = None
         while True:
             qs = "?limit=200" if cursor is None else f"?limit=200&cursor={cursor}"

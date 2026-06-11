@@ -705,7 +705,7 @@ class TestDegradedSources:
         # Break the config resolver
         app_state = async_test_client.app.state.app_state
         original = config_resolver_of(app_state).get_budget_config
-        cast(Any, config_resolver_of(app_state)).get_budget_config = AsyncMock(
+        cast(Any, config_resolver_of(app_state)).get_budget_config = AsyncMock(  # type: ignore[explicit-any]  # reach into config-resolver internals
             side_effect=RuntimeError("simulated failure"),
         )
         try:
@@ -713,7 +713,7 @@ class TestDegradedSources:
             assert resp.status_code == 200
             assert "budget_config" in resp.json()["degraded_sources"]
         finally:
-            cast(Any, config_resolver_of(app_state)).get_budget_config = original
+            cast(Any, config_resolver_of(app_state)).get_budget_config = original  # type: ignore[explicit-any]  # reach into config-resolver internals
 
 
 class TestActivityFeedLifecycleCap:
@@ -731,10 +731,10 @@ class TestActivityFeedLifecycleCap:
         fake_persistence: FakePersistenceBackend,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        captured: dict[str, Any] = {}
+        captured: dict[str, object] = {}
         original = fake_persistence.lifecycle_events.list_events
 
-        async def _spy(**kwargs: Any) -> Any:
+        async def _spy(**kwargs: Any) -> object:  # type: ignore[explicit-any]  # forwarding stub mirrors list_events
             captured.update(kwargs)
             return await original(**kwargs)
 
@@ -761,10 +761,10 @@ class TestActivityFeedLifecycleCap:
         app_state.bridge_config.swap_api(
             previous.model_copy(update={"max_lifecycle_events_per_query": 137}),
         )
-        captured: dict[str, Any] = {}
+        captured: dict[str, object] = {}
         original = fake_persistence.lifecycle_events.list_events
 
-        async def _spy(**kwargs: Any) -> Any:
+        async def _spy(**kwargs: Any) -> object:  # type: ignore[explicit-any]  # forwarding stub mirrors list_events
             captured.update(kwargs)
             return await original(**kwargs)
 

@@ -41,7 +41,7 @@ async def _fetchone(
     pool = backend._pool
     assert pool is not None
     async with pool.connection() as conn, conn.cursor() as cur:
-        await cur.execute(cast(Any, sql), params)
+        await cur.execute(cast(Any, sql), params)  # type: ignore[explicit-any]  # psycopg SQL composable type
         return await cur.fetchone()
 
 

@@ -1,12 +1,13 @@
 """Tests for CompactContextTool."""
 
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
 from synthorg.providers.models import ToolDefinition
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.context.compact_context import CompactContextTool
+from tests._shared import JsonDict
 
 
 @pytest.mark.unit
@@ -35,7 +36,7 @@ class TestCompactContextTool:
         tool = CompactContextTool()
         schema = tool.parameters_schema
         assert schema is not None
-        schema_d = cast("dict[str, Any]", schema)
+        schema_d = cast(JsonDict, schema)
         assert "properties" in schema
         assert "strategy" in schema_d["properties"]
         assert "reason" in schema_d["properties"]
@@ -48,7 +49,7 @@ class TestCompactContextTool:
         tool = CompactContextTool()
         schema = tool.parameters_schema
         assert schema is not None
-        schema_d = cast("dict[str, Any]", schema)
+        schema_d = cast(JsonDict, schema)
         assert "preserve_markers" in schema_d["properties"]
         # Should NOT be in required list since it has a default
         assert "preserve_markers" not in schema_d["required"]
@@ -162,7 +163,7 @@ class TestCompactContextTool:
         tool = CompactContextTool()
         definition = tool.to_definition()
 
-        schema = cast("dict[str, Any]", definition.parameters_schema)
+        schema = cast(JsonDict, definition.parameters_schema)
         assert "properties" in schema
         assert "strategy" in schema["properties"]
         assert "reason" in schema["properties"]

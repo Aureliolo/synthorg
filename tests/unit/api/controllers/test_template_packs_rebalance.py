@@ -2,9 +2,9 @@
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from synthorg.templates.schema import TemplateDepartmentConfig
@@ -14,7 +14,7 @@ from tests.unit.api.conftest import make_auth_headers
 
 async def _seed_departments(
     async_test_client: LoopAsyncClient,
-    depts: list[dict[str, Any]],
+    depts: list[dict[str, str | float]],
 ) -> None:
     """Seed departments into settings."""
     resp = await async_test_client.put(
@@ -25,7 +25,7 @@ async def _seed_departments(
     assert resp.status_code == 200, f"Failed to seed departments: {resp.text}"
 
 
-def _dept(name: str, budget: float) -> dict[str, Any]:
+def _dept(name: str, budget: float) -> dict[str, str | float]:
     return {"name": name, "budget_percent": budget}
 
 
@@ -38,7 +38,7 @@ class _FakeTemplate:
     """Minimal stand-in for CompanyTemplate with departments + agents."""
 
     departments: tuple[TemplateDepartmentConfig, ...] = ()
-    agents: tuple[Any, ...] = ()
+    agents: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -73,9 +73,9 @@ class TestPackApplyRebalance:
         pack_name: str = _FAKE_PACK_NAME,
         rebalance_mode: str | None = None,
         dept_budget: float = _FAKE_PACK_DEPT_BUDGET,
-    ) -> Any:
+    ) -> httpx.Response:
         """Apply a template pack with optional rebalance_mode."""
-        body: dict[str, Any] = {"pack_name": pack_name}
+        body: dict[str, str] = {"pack_name": pack_name}
         if rebalance_mode is not None:
             body["rebalance_mode"] = rebalance_mode
         fake = _make_fake_loaded(dept_budget)

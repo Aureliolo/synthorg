@@ -1,6 +1,5 @@
 """Shared fixtures for MCP bridge unit tests."""
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,6 +8,7 @@ from synthorg.tools.mcp.cache import MCPResultCache
 from synthorg.tools.mcp.client import MCPClient
 from synthorg.tools.mcp.config import MCPServerConfig
 from synthorg.tools.mcp.models import MCPToolInfo
+from tests._shared import JsonDict
 
 # ── Sample configs ───────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ def sample_tool_info() -> MCPToolInfo:
 def _make_mock_mcp_tool(
     name: str = "mock-tool",
     description: str = "A mock tool",
-    input_schema: dict[str, Any] | None = None,
+    input_schema: JsonDict | None = None,
 ) -> MagicMock:
     """Create a mock MCP Tool object."""
     tool = MagicMock()
@@ -70,9 +70,9 @@ def _make_mock_list_tools_result(
 
 
 def _make_mock_call_tool_result(
-    content: list[Any] | None = None,
+    content: list[object] | None = None,
     is_error: bool = False,
-    structured_content: dict[str, Any] | None = None,
+    structured_content: JsonDict | None = None,
 ) -> MagicMock:
     """Create a mock CallToolResult."""
     from mcp.types import TextContent

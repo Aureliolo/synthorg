@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for OrgInflectionMonitor."""
 
 from datetime import UTC, datetime
@@ -67,7 +66,7 @@ class TestOrgInflectionMonitor:
     """OrgInflectionMonitor lifecycle tests."""
 
     async def test_start_idempotent(self) -> None:
-        builder = cast(
+        builder = cast(  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock assertion access
             Any,
             mock_of[SnapshotBuilder](
                 build=AsyncMock(return_value=_snap()),
@@ -86,7 +85,7 @@ class TestOrgInflectionMonitor:
         await monitor.stop()
 
     async def test_stop_cleans_up_task(self) -> None:
-        builder = cast(
+        builder = cast(  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock assertion access
             Any,
             mock_of[SnapshotBuilder](
                 build=AsyncMock(return_value=_snap()),
@@ -112,13 +111,13 @@ class TestOrgInflectionMonitor:
         await monitor.stop()
 
     async def test_first_tick_initializes_snapshot(self) -> None:
-        builder = cast(
+        builder = cast(  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock assertion access
             Any,
             mock_of[SnapshotBuilder](
                 build=AsyncMock(return_value=_snap()),
             ),
         )
-        detector = cast(Any, mock_of[OrgInflectionDetector]())
+        detector = cast(Any, mock_of[OrgInflectionDetector]())  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock assertion access
         monitor = OrgInflectionMonitor(
             detector=detector,
             snapshot_builder=builder,
@@ -131,13 +130,13 @@ class TestOrgInflectionMonitor:
     async def test_second_tick_calls_detector(self) -> None:
         snap1 = _snap(quality=7.5)
         snap2 = _snap(quality=7.5)
-        builder = cast(
+        builder = cast(  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock assertion access
             Any,
             mock_of[SnapshotBuilder](
                 build=AsyncMock(side_effect=[snap1, snap2]),
             ),
         )
-        detector = cast(
+        detector = cast(  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock assertion access
             Any,
             mock_of[OrgInflectionDetector](
                 detect=AsyncMock(return_value=()),
@@ -158,7 +157,7 @@ class TestOrgInflectionMonitor:
     async def test_inflection_emitted_to_sinks(self) -> None:
         snap1 = _snap(quality=7.5)
         snap2 = _snap(quality=4.0)
-        builder = cast(
+        builder = cast(  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock assertion access
             Any,
             mock_of[SnapshotBuilder](
                 build=AsyncMock(side_effect=[snap1, snap2]),
@@ -173,7 +172,7 @@ class TestOrgInflectionMonitor:
             description="Quality dropped",
             detected_at=_NOW,
         )
-        detector = cast(
+        detector = cast(  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock assertion access
             Any,
             mock_of[OrgInflectionDetector](
                 detect=AsyncMock(return_value=(inflection,)),
@@ -193,7 +192,7 @@ class TestOrgInflectionMonitor:
     async def test_sink_error_does_not_crash(self) -> None:
         snap1 = _snap()
         snap2 = _snap(quality=4.0)
-        builder = cast(
+        builder = cast(  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock assertion access
             Any,
             mock_of[SnapshotBuilder](
                 build=AsyncMock(side_effect=[snap1, snap2]),
@@ -208,7 +207,7 @@ class TestOrgInflectionMonitor:
             description="Quality dropped",
             detected_at=_NOW,
         )
-        detector = cast(
+        detector = cast(  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock assertion access
             Any,
             mock_of[OrgInflectionDetector](
                 detect=AsyncMock(return_value=(inflection,)),

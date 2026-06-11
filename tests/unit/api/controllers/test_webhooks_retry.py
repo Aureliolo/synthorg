@@ -8,6 +8,7 @@ log emission, a publish failure marks the receipt ``failed`` and
 re-raises, and an unknown receipt id raises ``NotFoundError``.
 """
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import ANY, AsyncMock, MagicMock
@@ -39,7 +40,7 @@ async def _passthrough_run_idempotent(
     *,
     scope: str,
     key: str,
-    callback: Any,
+    callback: Callable[[], Awaitable[object]],
 ) -> IdempotencyResult:
     """Invoke the callback directly and return its result as fresh.
 
@@ -134,7 +135,7 @@ def _build_state(
     return state, get_mock, cas_mock, plain_mock
 
 
-def _self_stub() -> Any:
+def _self_stub() -> Any:  # type: ignore[explicit-any]  # MagicMock self stub for the unwrapped route handler
     """Return a stand-in for the controller's bound ``self``.
 
     The function under test never touches ``self`` (the route handler
@@ -157,7 +158,7 @@ class TestRetryReceiptHappyPath:
         receipt = _make_receipt()
         state, _, cas_mock, plain_mock = _build_state(receipt=receipt)
 
-        async def fake_publish(**_kwargs: Any) -> dict[str, object]:
+        async def fake_publish(**_kwargs: object) -> dict[str, object]:
             return {"status": "accepted", "event_type": "issues.opened"}
 
         monkeypatch.setattr(
@@ -219,9 +220,9 @@ class TestRetryReceiptHappyPath:
         """Garbled payload_json is wrapped as ``{"raw": ...}`` for publish."""
         receipt = _make_receipt(payload_json="not-json-{")
         state, _, _, _ = _build_state(receipt=receipt)
-        captured: dict[str, Any] = {}
+        captured: dict[str, object] = {}
 
-        async def fake_publish(**kwargs: Any) -> dict[str, object]:
+        async def fake_publish(**kwargs: object) -> dict[str, object]:
             captured.update(kwargs)
             return {"status": "accepted", "event_type": "issues.opened"}
 
@@ -245,9 +246,9 @@ class TestRetryReceiptHappyPath:
         """A non-mapping JSON payload normalises into ``{"data": ...}``."""
         receipt = _make_receipt(payload_json="[1, 2, 3]")
         state, _, _, _ = _build_state(receipt=receipt)
-        captured: dict[str, Any] = {}
+        captured: dict[str, object] = {}
 
-        async def fake_publish(**kwargs: Any) -> dict[str, object]:
+        async def fake_publish(**kwargs: object) -> dict[str, object]:
             captured.update(kwargs)
             return {"status": "accepted", "event_type": "issues.opened"}
 
@@ -279,9 +280,9 @@ class TestRetryReceiptHappyPath:
         """
         receipt = _make_receipt(payload_json="")
         state, _, _, _ = _build_state(receipt=receipt)
-        captured: dict[str, Any] = {}
+        captured: dict[str, object] = {}
 
-        async def fake_publish(**kwargs: Any) -> dict[str, object]:
+        async def fake_publish(**kwargs: object) -> dict[str, object]:
             captured.update(kwargs)
             return {"status": "accepted", "event_type": "issues.opened"}
 
@@ -333,7 +334,9 @@ class TestRetryReceiptErrorPaths:
             cas_result=False,
         )
 
-        async def fake_publish(**_kwargs: Any) -> dict[str, object]:  # pragma: no cover
+        async def fake_publish(
+            **_kwargs: object,
+        ) -> dict[str, object]:  # pragma: no cover
             msg = "publish must not run after update_status returns False"
             raise AssertionError(msg)
 
@@ -374,7 +377,7 @@ class TestRetryReceiptErrorPaths:
         )
         publish_error = RuntimeError("bus is wedged")
 
-        async def fake_publish(**_kwargs: Any) -> dict[str, object]:
+        async def fake_publish(**_kwargs: object) -> dict[str, object]:
             raise publish_error
 
         monkeypatch.setattr(
@@ -444,7 +447,9 @@ class TestRetryReceiptErrorPaths:
             cas_result=False,
         )
 
-        async def fake_publish(**_kwargs: Any) -> dict[str, object]:  # pragma: no cover
+        async def fake_publish(
+            **_kwargs: object,
+        ) -> dict[str, object]:  # pragma: no cover
             msg = "publish must not run after a lost CAS"
             raise AssertionError(msg)
 
@@ -485,7 +490,9 @@ class TestRetryReceiptErrorPaths:
         receipt = _make_receipt(status=non_failed_status)
         state, _, cas_mock, plain_mock = _build_state(receipt=receipt)
 
-        async def fake_publish(**_kwargs: Any) -> dict[str, object]:  # pragma: no cover
+        async def fake_publish(
+            **_kwargs: object,
+        ) -> dict[str, object]:  # pragma: no cover
             msg = "publish must not run when the receipt is not failed"
             raise AssertionError(msg)
 

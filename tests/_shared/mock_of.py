@@ -39,7 +39,7 @@ class _MockOfFactory[T]:
     def __init__(self, spec: type[T]) -> None:
         self._spec = spec
 
-    def __call__(self, **overrides: Any) -> Any:
+    def __call__(self, **overrides: object) -> Any:  # type: ignore[explicit-any]  # Any return for mock-API ergonomics; see docstring
         """Return an autospec'd instance of ``T`` with overrides applied.
 
         Each override key must name an attribute that exists on the
@@ -97,7 +97,7 @@ class _MockOfMeta(type):
     callable-like object, so the looser annotation is faithful.
     """
 
-    def __getitem__(cls, spec: Any) -> _MockOfFactory[Any]:
+    def __getitem__(cls, spec: Any) -> _MockOfFactory[Any]:  # type: ignore[explicit-any]  # Any spec for Protocol-subscript support; see docstring
         return _MockOfFactory(spec)
 
 

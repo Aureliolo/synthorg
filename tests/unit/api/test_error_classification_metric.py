@@ -19,7 +19,7 @@ from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 pytestmark = pytest.mark.unit
 
 
-def _fake_request() -> Request[Any, Any, Any]:
+def _fake_request() -> Request[Any, Any, Any]:  # type: ignore[explicit-any]  # litestar RequestFactory yields Request[Any, Any, Any]
     """Build a real ``Request`` that accepts ``application/json``.
 
     ``_build_response`` calls ``_wants_problem_json(request)``, which

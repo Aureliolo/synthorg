@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for scripts/generate_runtime_stats.py.
 
 Covers the generator's offline-tolerance contract:
@@ -18,11 +17,12 @@ import subprocess
 from collections.abc import Callable, Generator
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+
+from tests._shared import JsonDict
 
 
 def _import_script() -> ModuleType:
@@ -50,14 +50,14 @@ def out_file(tmp_path: Path) -> Generator[Path]:
 
 
 def _fake_fetchers(
-    overrides: dict[str, Callable[[], dict[str, Any]]] | None = None,
-) -> dict[str, Callable[[], dict[str, Any]]]:
+    overrides: dict[str, Callable[[], JsonDict]] | None = None,
+) -> dict[str, Callable[[], JsonDict]]:
     """Build a fetcher dict matching the production contract.
 
     Defaults return small known values for every stat. Pass *overrides*
     to swap in failing fetchers per stat name.
     """
-    base: dict[str, Callable[[], dict[str, Any]]] = {
+    base: dict[str, Callable[[], JsonDict]] = {
         "tests": lambda: {
             "raw": 17995,
             "rounded": 17000,
@@ -160,7 +160,7 @@ class TestMainSingleFetcherFails:
         source = "synthorg.providers.presets.list_featured_presets"
         reason = "simulated parse failure"
 
-        def _raise() -> dict[str, Any]:
+        def _raise() -> JsonDict:
             raise gen._StatFetchError(stat_name, source, reason)
 
         fetchers = _fake_fetchers({"providers_curated": _raise})
@@ -201,8 +201,8 @@ class TestMainAllFetchersFail:
         }
         out_file.write_text(yaml.safe_dump(seed), encoding="utf-8")
 
-        def _make_raiser(stat_name: str) -> Callable[[], dict[str, Any]]:
-            def _raise() -> dict[str, Any]:
+        def _make_raiser(stat_name: str) -> Callable[[], JsonDict]:
+            def _raise() -> JsonDict:
                 raise gen._StatFetchError(stat_name, "any source", "offline")
 
             return _raise
@@ -414,7 +414,7 @@ class TestValidateStatEntry:
         # out_file fixture patches _OUT_FILE so main() doesn't touch the
         # real data/runtime_stats.yaml when it crashes mid-loop.
         assert not out_file.exists()
-        bad: dict[str, Any] = {"raw": 1}  # no display key
+        bad: JsonDict = {"raw": 1}  # no display key
 
         fetchers = _fake_fetchers({"tests": lambda: bad})
         with patch.object(gen, "_FETCHERS", fetchers):

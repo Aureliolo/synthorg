@@ -1,6 +1,6 @@
 """Tests for RFC 9457 content negotiation (application/problem+json)."""
 
-from typing import Any
+from collections.abc import Callable
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,7 +16,7 @@ from synthorg.core.error_taxonomy import (
     category_type_uri,
 )
 from synthorg.core.persistence_errors import DuplicateRecordError, RecordNotFoundError
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_exception_handler_app
 
 pytestmark = pytest.mark.unit
@@ -29,7 +29,7 @@ class TestContentNegotiation:
 
     def _assert_problem_detail(  # noqa: PLR0913
         self,
-        body: dict[str, Any],
+        body: JsonDict,
         *,
         status: int,
         error_code: int,
@@ -115,7 +115,7 @@ class TestContentNegotiation:
     )
     async def test_problem_json_error_mapping(
         self,
-        exc_factory: Any,
+        exc_factory: Callable[[], Exception],
         status: int,
         error_code: ErrorCode,
         error_category: ErrorCategory,

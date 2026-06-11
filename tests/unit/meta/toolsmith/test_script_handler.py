@@ -1,10 +1,10 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the authored-tool sandbox script handler."""
 
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -12,6 +12,7 @@ from synthorg.api.state import AppState
 from synthorg.meta.toolsmith.models import ToolBlueprint
 from synthorg.meta.toolsmith.script_handler import make_dynamic_tool_handler
 from synthorg.tools.sandbox.result import SandboxResult
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -40,7 +41,7 @@ class _FakeSandbox:
 
     def __init__(self, result: SandboxResult) -> None:
         self._result = result
-        self.last_call: dict[str, Any] | None = None
+        self.last_call: JsonDict | None = None
 
     async def execute(  # noqa: PLR0913
         self,
@@ -48,10 +49,10 @@ class _FakeSandbox:
         command: str,
         args: tuple[str, ...],
         cwd: Path | None = None,
-        env_overrides: Any = None,
+        env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
-        owner_id: Any = None,
-        project_id: Any = None,
+        owner_id: str | None = None,
+        project_id: str | None = None,
     ) -> SandboxResult:
         del cwd, owner_id, project_id
         self.last_call = {
@@ -70,9 +71,9 @@ class _FakeSandbox:
 
     async def release_owner(
         self,
-        owner_id: Any,
+        owner_id: str,
         *,
-        project_id: Any = None,
+        project_id: str | None = None,
         image_override: str | None = None,
     ) -> None:
         del owner_id, project_id, image_override
@@ -86,7 +87,7 @@ class TestDynamicToolHandler:
         sandbox = _FakeSandbox(
             SandboxResult(stdout='{"slug": "hello-world"}', stderr="", returncode=0)
         )
-        handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
+        handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         raw = await handler(
             app_state=cast("AppState", None), arguments={"text": "Hello World"}
@@ -99,7 +100,7 @@ class TestDynamicToolHandler:
         sandbox = _FakeSandbox(
             SandboxResult(stdout='{"ok": true}', stderr="", returncode=0)
         )
-        handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
+        handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         await handler(app_state=cast("AppState", None), arguments={"text": "hi"})
         assert sandbox.last_call is not None
@@ -109,7 +110,7 @@ class TestDynamicToolHandler:
 
     async def test_nonzero_exit_returns_error_envelope(self) -> None:
         sandbox = _FakeSandbox(SandboxResult(stdout="", stderr="boom", returncode=1))
-        handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
+        handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         envelope = json.loads(
             await handler(app_state=cast("AppState", None), arguments={"text": "x"})
@@ -121,7 +122,7 @@ class TestDynamicToolHandler:
         sandbox = _FakeSandbox(
             SandboxResult(stdout="", stderr="", returncode=0, timed_out=True)
         )
-        handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
+        handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         envelope = json.loads(
             await handler(app_state=cast("AppState", None), arguments={"text": "x"})
@@ -132,7 +133,7 @@ class TestDynamicToolHandler:
         sandbox = _FakeSandbox(
             SandboxResult(stdout="not json", stderr="", returncode=0)
         )
-        handler = make_dynamic_tool_handler(_blueprint(), sandbox)  # type: ignore[arg-type]
+        handler = make_dynamic_tool_handler(_blueprint(), sandbox)
 
         envelope = json.loads(
             await handler(app_state=cast("AppState", None), arguments={"text": "x"})

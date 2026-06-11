@@ -1,7 +1,7 @@
 """Shared fixtures for terminal tool tests."""
 
 from collections.abc import Mapping
-from typing import Any
+from pathlib import Path
 
 import pytest
 
@@ -35,7 +35,7 @@ class MockSandbox:
         *,
         command: str,
         args: tuple[str, ...] = (),
-        cwd: Any = None,
+        cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
         owner_id: str | None = None,

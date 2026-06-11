@@ -46,6 +46,7 @@ from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from tests._shared import JsonDict
 from tests._shared.postgres_proxy import PostgresContainerProxy
 from tests._shared.postgres_proxy import from_env as _proxy_from_env
 
@@ -81,7 +82,7 @@ def _docker_available() -> bool:
         import docker
     except ImportError:
         return False
-    docker_any: Any = docker
+    docker_any: Any = docker  # type: ignore[explicit-any]  # docker-py ships no type stubs
     try:
         client = docker_any.from_env()
         client.ping()
@@ -108,7 +109,7 @@ def _stop_container_by_id(container_id: str) -> None:
         import docker
     except ImportError:  # pragma: no cover - docker-py ships with testcontainers
         return
-    docker_any: Any = docker
+    docker_any: Any = docker  # type: ignore[explicit-any]  # docker-py ships no type stubs
     try:
         client = docker_any.from_env()
         container = client.containers.get(container_id)
@@ -125,7 +126,7 @@ def _stop_container_by_id(container_id: str) -> None:
         )
 
 
-def _acquire_shared_postgres(state_file: Path) -> dict[str, Any]:
+def _acquire_shared_postgres(state_file: Path) -> JsonDict:
     """Read the shared state file or start the container as the first worker.
 
     Caller holds the ``FileLock`` so this body is serialised across
@@ -139,7 +140,7 @@ def _acquire_shared_postgres(state_file: Path) -> dict[str, Any]:
 
     if state_file.exists():
         try:
-            data: dict[str, Any] = json.loads(state_file.read_text())
+            data: JsonDict = json.loads(state_file.read_text())
         except json.JSONDecodeError:
             state_file.unlink(missing_ok=True)
         else:
@@ -243,7 +244,7 @@ def _release_shared_postgres(state_file: Path) -> None:
 # not happen) or "env-var bypass active" depending on which key is
 # set. See the ``postgres_container`` fixture and the
 # ``pytest_sessionstart`` hook below for the contract.
-_POSTGRES_CONTAINER_STATE: dict[str, Any] = {}
+_POSTGRES_CONTAINER_STATE: JsonDict = {}
 
 
 def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:

@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the architecture feedback loop.
 
 Covers ``scripts/_architecture_lib.py`` (the metric primitives) and
@@ -16,6 +15,8 @@ from typing import Any, cast
 
 import pytest
 
+from tests._shared import JsonDict
+
 pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -32,8 +33,8 @@ def _load(name: str, path: Path) -> ModuleType:
     return module
 
 
-_LIB: Any = cast("Any", _load("_architecture_lib", _LIB_PATH))
-_GATE: Any = cast("Any", _load("_check_architecture_drift", _GATE_PATH))
+_LIB: Any = cast("Any", _load("_architecture_lib", _LIB_PATH))  # type: ignore[explicit-any]  # dynamically loaded gate module; attrs resolved by name
+_GATE: Any = cast("Any", _load("_check_architecture_drift", _GATE_PATH))  # type: ignore[explicit-any]  # dynamically loaded gate module; attrs resolved by name
 
 
 def _parse_class(source: str) -> ast.ClassDef:
@@ -113,15 +114,15 @@ def test_budget_pressure_skips_declarative(tmp_path: Path) -> None:
 
 # ── drift gate ──────────────────────────────────────────────────
 
-_EMPTY_BASELINE: dict[str, Any] = {"fan_in": {}, "budget_pressure": {}, "lcom": {}}
+_EMPTY_BASELINE: JsonDict = {"fan_in": {}, "budget_pressure": {}, "lcom": {}}
 
 
 def _patch_metrics(
     monkeypatch: pytest.MonkeyPatch,
     *,
     fan_in: dict[str, int] | None = None,
-    budget: dict[str, Any] | None = None,
-    lcom: dict[str, Any] | None = None,
+    budget: JsonDict | None = None,
+    lcom: JsonDict | None = None,
 ) -> None:
     monkeypatch.setattr(_GATE._LIB, "compute_fan_in", lambda **_: fan_in or {})
     monkeypatch.setattr(_GATE._LIB, "compute_budget_pressure", lambda _: budget or {})

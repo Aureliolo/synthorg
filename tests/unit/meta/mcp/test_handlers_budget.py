@@ -1,9 +1,7 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for budget domain MCP handlers."""
 
 import json
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,7 +9,7 @@ import pytest
 from synthorg.api.state import AppState
 from synthorg.meta.mcp.handlers.budget import BUDGET_HANDLERS
 from synthorg.persistence.protocol import PersistenceBackend
-from tests._shared import make_app_state, mock_of
+from tests._shared import JsonDict, make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -47,8 +45,8 @@ def fake_app_state(config: SimpleNamespace) -> AppState:
     )
 
 
-def _parse(result: str) -> dict[str, Any]:
-    body: dict[str, Any] = json.loads(result)
+def _parse(result: str) -> JsonDict:
+    body: JsonDict = json.loads(result)
     assert body["status"] in {"ok", "error"}
     return body
 

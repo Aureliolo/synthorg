@@ -9,7 +9,6 @@ here.
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -32,7 +31,7 @@ _NOW = datetime(2026, 5, 20, tzinfo=UTC)
 class _FakeDocsService:
     """Returns canned models; raises ``DocNotFoundError`` for ``ghost``."""
 
-    async def list_docs(self, **_: Any) -> tuple[DocSummary, ...]:
+    async def list_docs(self, **_: object) -> tuple[DocSummary, ...]:
         return (
             DocSummary(
                 project_id=NotBlankStr("proj-1"),
@@ -44,7 +43,7 @@ class _FakeDocsService:
         )
 
     async def read_doc(
-        self, *, project_id: NotBlankStr, slug: NotBlankStr, **_: Any
+        self, *, project_id: NotBlankStr, slug: NotBlankStr, **_: object
     ) -> LivingDocument:
         if slug == "ghost":
             msg = f"living doc {project_id!r}/{slug!r} not found"
@@ -59,7 +58,7 @@ class _FakeDocsService:
             updated_at=_NOW,
         )
 
-    async def search(self, **_: Any) -> tuple[DocSearchHit, ...]:
+    async def search(self, **_: object) -> tuple[DocSearchHit, ...]:
         return (
             DocSearchHit(
                 project_id=NotBlankStr("proj-1"),
@@ -70,7 +69,7 @@ class _FakeDocsService:
             ),
         )
 
-    async def history(self, **_: Any) -> tuple[DocVersion, ...]:
+    async def history(self, **_: object) -> tuple[DocVersion, ...]:
         return (
             DocVersion(
                 commit_sha=NotBlankStr("b" * 40),
@@ -92,16 +91,18 @@ class _PaginatingDocsService:
         self._items = items
 
     async def list_docs(
-        self, *, limit: int, offset: int = 0, **_: Any
+        self, *, limit: int, offset: int = 0, **_: object
     ) -> tuple[DocSummary, ...]:
         return self._items[offset : offset + limit]
 
 
 @contextmanager
-def _with_docs_service(async_test_client: LoopAsyncClient, svc: Any) -> Iterator[None]:
+def _with_docs_service(
+    async_test_client: LoopAsyncClient, svc: object
+) -> Iterator[None]:
     app_state = async_test_client.app.state.app_state
     original_slice = app_state.slice(DocsStateSlice)
-    app_state.swap_slice(DocsStateSlice.model_construct(service=svc))
+    app_state.swap_slice(DocsStateSlice.model_construct(service=svc))  # type: ignore[arg-type]  # fake duck-types the service for read-path tests
     try:
         yield
     finally:

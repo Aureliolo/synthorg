@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for envelope/helper utilities in ``handlers.common``.
 
 These cover ``ok``, ``err``, ``require_arg``, ``require_admin_guardrails``,
@@ -10,7 +9,8 @@ seam they care about, but the helper itself is one file.
 """
 
 import json
-from typing import Any, cast
+from collections.abc import Iterator
+from typing import cast
 
 import pytest
 from pydantic import BaseModel
@@ -271,7 +271,7 @@ class TestDumpMany:
         assert dump_many([]) == []
 
     def test_accepts_generator(self) -> None:
-        def _gen() -> Any:
+        def _gen() -> Iterator[_Thing]:
             yield _Thing(id="a", n=1)
 
         assert dump_many(_gen()) == [{"id": "a", "n": 1}]

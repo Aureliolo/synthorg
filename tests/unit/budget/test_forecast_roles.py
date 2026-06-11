@@ -6,7 +6,6 @@ an empty company degrading to the single-role default.
 """
 
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -42,11 +41,11 @@ def test_skeleton_accepts_assignment_subset_of_roles() -> None:
     assert skeleton.model_assignments == {"designer": "example-small-001"}
 
 
-def _agent(role: str, model_id: str) -> Any:
+def _agent(role: str, model_id: str) -> SimpleNamespace:
     return SimpleNamespace(role=role, model=SimpleNamespace(model_id=model_id))
 
 
-def _provider(*agents: Any) -> CompanyRoleSkeletonProvider:
+def _provider(*agents: SimpleNamespace) -> CompanyRoleSkeletonProvider:
     registry = mock_of[AgentRegistryService](
         list_active=AsyncMock(return_value=tuple(agents)),
     )

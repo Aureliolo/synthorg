@@ -1,9 +1,8 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for BudgetEnforcer quota integration."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, patch
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock, patch
 
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
@@ -57,8 +56,8 @@ def _make_quota_tracker(
 
 
 def _patch_periods() -> tuple[
-    AbstractContextManager[Any],
-    AbstractContextManager[Any],
+    AbstractContextManager[MagicMock],
+    AbstractContextManager[MagicMock],
 ]:
     """Patch billing and daily period starts."""
     return (

@@ -6,12 +6,13 @@ endpoints using the in-memory fake persistence + message bus.
 
 import asyncio
 from collections.abc import AsyncGenerator
-from typing import Any, override
+from typing import override
 
 import pytest
 
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.adapters import DirectAdapter
+from synthorg.client.models import ClientRequest
 from synthorg.client.pool import RoundRobinStrategy
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
@@ -93,7 +94,7 @@ class _StubEntryAdapter:
     def source(self) -> WorkSource:
         return WorkSource.INTAKE
 
-    async def submit(self, request: Any) -> WorkPipelineResult:
+    async def submit(self, request: ClientRequest) -> WorkPipelineResult:
         item = WorkItem(
             origin_adapter_id="intake-entry-adapter",
             source=WorkSource.INTAKE,
@@ -132,7 +133,7 @@ class _SlowStubEntryAdapter(_StubEntryAdapter):
     """
 
     @override
-    async def submit(self, request: Any) -> WorkPipelineResult:
+    async def submit(self, request: ClientRequest) -> WorkPipelineResult:
         await asyncio.sleep(0.5)
         return await super().submit(request)
 

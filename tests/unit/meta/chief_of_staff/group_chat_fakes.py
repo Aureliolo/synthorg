@@ -234,12 +234,12 @@ def build_group_chat_service(
     turn_repo = FakeTurnRepo()
     participant_repo = FakeParticipantRepo()
     service = GroupChatService(
-        agent_caller=agent_caller,  # type: ignore[arg-type]
+        agent_caller=agent_caller,
         agent_registry=registry,
         config=config or ChiefOfStaffConfig(group_chat_enabled=True),
-        conversation_repo=conv_repo,  # type: ignore[arg-type]
-        turn_repo=turn_repo,  # type: ignore[arg-type]
-        participant_repo=participant_repo,  # type: ignore[arg-type]
+        conversation_repo=conv_repo,
+        turn_repo=turn_repo,
+        participant_repo=participant_repo,
         clock=FakeClock(start=clock_start),
     )
     return service, conv_repo, turn_repo, participant_repo
@@ -281,20 +281,20 @@ def build_group_chat_with_invites(
     invite_repo = FakeInviteRepo()
     approval_store = ApprovalStore()
     coordinator = GroupInviteCoordinator(
-        invite_repo=invite_repo,  # type: ignore[arg-type]
+        invite_repo=invite_repo,
         approval_store=approval_store,
         agent_registry=registry,
-        participant_repo=participant_repo,  # type: ignore[arg-type]
+        participant_repo=participant_repo,
         config=cfg,
         clock=clock,
     )
     service = GroupChatService(
-        agent_caller=agent_caller,  # type: ignore[arg-type]
+        agent_caller=agent_caller,
         agent_registry=registry,
         config=cfg,
-        conversation_repo=conv_repo,  # type: ignore[arg-type]
-        turn_repo=turn_repo,  # type: ignore[arg-type]
-        participant_repo=participant_repo,  # type: ignore[arg-type]
+        conversation_repo=conv_repo,
+        turn_repo=turn_repo,
+        participant_repo=participant_repo,
         clock=clock,
         invite_coordinator=coordinator,
     )

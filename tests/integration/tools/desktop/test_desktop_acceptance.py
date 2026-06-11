@@ -20,14 +20,16 @@ the desktop image is built and Docker is reachable (build via
 
 import asyncio
 from pathlib import Path
-from typing import Any, Final, cast
+from typing import Final, cast
 
 import pytest
 
+from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.desktop import DesktopTool
 from synthorg.tools.desktop._constants import DESKTOP_IMAGE_PIN_DEFAULT
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
+from tests._shared import JsonDict
 
 pytestmark = [
     pytest.mark.integration,
@@ -90,10 +92,12 @@ def _host_screenshot_path(workspace: Path, name: str) -> Path:
     return workspace.joinpath(*_SCREENSHOT_SUBDIR, f"{name}.png")
 
 
-def _assert_real_capture(workspace: Path, result: Any, name: str) -> None:
+def _assert_real_capture(
+    workspace: Path, result: ToolExecutionResult, name: str
+) -> None:
     """Assert a screenshot result describes a real, non-empty PNG on disk."""
     assert result.is_error is False, f"screenshot failed: {result.content!r}"
-    meta = cast("dict[str, Any]", result.metadata)
+    meta = cast(JsonDict, result.metadata)
     assert str(meta["saved_path"]).endswith(f"{name}.png")
     assert int(meta["width"]) > 0
     assert int(meta["height"]) > 0
@@ -128,7 +132,7 @@ async def test_desktop_launches_app_and_captures_real_screenshots(
             },
         )
         assert launch.is_error is False, f"launch failed: {launch.content!r}"
-        launch_meta = cast("dict[str, Any]", launch.metadata)
+        launch_meta = cast(JsonDict, launch.metadata)
         assert int(launch_meta["pid"]) > 0
         assert launch_meta["display"]
 

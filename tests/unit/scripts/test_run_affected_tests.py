@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for the regression guard in ``scripts/run_affected_tests.py``.
 
 Covers ``_check_timing_regression`` and its helpers
@@ -44,7 +43,7 @@ def _load_script_module() -> object:
 # private helpers have no static type; ``cast(Any, ...)`` types the
 # handle once here instead of an ``# type: ignore[attr-defined]`` on
 # every access site.
-_MODULE = cast(Any, _load_script_module())
+_MODULE = cast(Any, _load_script_module())  # type: ignore[explicit-any]  # dynamically loaded gate module; attrs resolved by name
 
 
 def _write_baseline(

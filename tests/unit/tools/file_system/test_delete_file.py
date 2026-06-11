@@ -1,8 +1,10 @@
 """Tests for DeleteFileTool."""
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
+
+from tests._shared import JsonDict
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -30,7 +32,7 @@ class TestDeleteFileExecution:
         assert not result.is_error
         assert "Deleted" in result.content
         assert not (workspace / "hello.txt").exists()
-        meta = cast("dict[str, Any]", result.metadata)
+        meta = cast(JsonDict, result.metadata)
         assert meta["path"] == "hello.txt"
         assert meta["size_bytes"] > 0
 

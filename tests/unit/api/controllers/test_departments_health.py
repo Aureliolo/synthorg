@@ -123,7 +123,7 @@ def _build_dept_client(
     )
     app = create_app(
         config=config,
-        persistence=fake_persistence,  # type: ignore[arg-type]
+        persistence=fake_persistence,
         message_bus=fake_message_bus,
         cost_tracker=cost_tracker or CostTracker(),
         auth_service=auth_service,

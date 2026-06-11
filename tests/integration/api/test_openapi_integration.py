@@ -4,11 +4,10 @@ Exercises :func:`inject_rfc9457_responses` against the real
 Litestar-generated schema end-to-end.
 """
 
-from typing import Any
-
 import pytest
 
 from synthorg.api.openapi import inject_rfc9457_responses
+from tests._shared import JsonDict
 
 # Mirrors ``scripts/check_openapi_liveness.py``.  Duplicated (not imported)
 # so the test is self-contained and the canary set can evolve
@@ -46,8 +45,8 @@ def test_full_app_schema_enhancement() -> None:
     from synthorg.api.app import create_app
 
     app = create_app()
-    schema: dict[str, Any] = app.openapi_schema.to_schema()
-    result: dict[str, Any] = inject_rfc9457_responses(schema)
+    schema: JsonDict = app.openapi_schema.to_schema()
+    result: JsonDict = inject_rfc9457_responses(schema)
 
     # ProblemDetail schema present.
     assert "ProblemDetail" in result["components"]["schemas"]
@@ -83,7 +82,7 @@ def test_full_app_schema_enhancement() -> None:
 
 
 def _find_oneof_with_null(
-    obj: Any,
+    obj: object,
     path: str = "$",
 ) -> list[str]:
     """Find all ``oneOf`` arrays containing a null type."""
@@ -112,8 +111,8 @@ def test_no_oneof_with_null_after_processing() -> None:
     from synthorg.api.app import create_app
 
     app = create_app()
-    schema: dict[str, Any] = app.openapi_schema.to_schema()
-    result: dict[str, Any] = inject_rfc9457_responses(schema)
+    schema: JsonDict = app.openapi_schema.to_schema()
+    result: JsonDict = inject_rfc9457_responses(schema)
 
     violations = _find_oneof_with_null(result)
     assert violations == [], (
@@ -140,7 +139,7 @@ def test_openapi_export_is_live_and_complete(
     from synthorg.api.app import create_app
 
     app = create_app()
-    schema: dict[str, Any] = inject_rfc9457_responses(app.openapi_schema.to_schema())
+    schema: JsonDict = inject_rfc9457_responses(app.openapi_schema.to_schema())
     paths = schema.get("paths") or {}
 
     assert len(paths) >= _MIN_PATH_COUNT, (

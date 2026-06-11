@@ -14,6 +14,7 @@ import pytest
 from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import settings_service_of
 from tests._shared import LoopAsyncClient
+from tests.unit.api.fakes import FakePersistenceBackend
 
 
 @pytest.mark.unit
@@ -65,7 +66,7 @@ class TestGetNameLocales:
     ) -> None:
         """Returns stored locales when the setting is in the DB."""
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "fr_FR"]),
@@ -90,7 +91,7 @@ class TestGetNameLocales:
         concrete locale codes.
         """
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["__all__"]),
@@ -176,7 +177,7 @@ class TestSaveNameLocales:
     ) -> None:
         """Saving locales after setup is complete returns 409."""
         app_state = async_test_client.app.state.app_state
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("api", "setup_complete")] = ("true", now)
         try:
@@ -205,7 +206,7 @@ class TestCheckHasNameLocales:
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         # Ensure the key is absent from DB so code default kicks in.
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         repo._store.pop(("company", "name_locales"), None)
 
         result = await _check_has_name_locales(settings_svc)
@@ -221,7 +222,7 @@ class TestCheckHasNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US"]),
@@ -246,7 +247,7 @@ class TestCheckHasNameLocales:
         settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
-        cast(Any, settings_svc).get_entry = AsyncMock(
+        cast(Any, settings_svc).get_entry = AsyncMock(  # type: ignore[explicit-any]  # patch instance method for the test
             spec=original,
             side_effect=RuntimeError("db connection lost"),
         )
@@ -254,7 +255,7 @@ class TestCheckHasNameLocales:
             result = await _check_has_name_locales(settings_svc)
             assert result is False
         finally:
-            cast(Any, settings_svc).get_entry = original
+            cast(Any, settings_svc).get_entry = original  # type: ignore[explicit-any]  # restore patched instance method
 
     async def test_returns_false_on_setting_not_found_error(
         self,
@@ -270,7 +271,7 @@ class TestCheckHasNameLocales:
         settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
-        cast(Any, settings_svc).get_entry = AsyncMock(
+        cast(Any, settings_svc).get_entry = AsyncMock(  # type: ignore[explicit-any]  # patch instance method for the test
             spec=original,
             side_effect=SettingNotFoundError("company/name_locales"),
         )
@@ -278,7 +279,7 @@ class TestCheckHasNameLocales:
             result = await _check_has_name_locales(settings_svc)
             assert result is False
         finally:
-            cast(Any, settings_svc).get_entry = original
+            cast(Any, settings_svc).get_entry = original  # type: ignore[explicit-any]  # restore patched instance method
 
 
 @pytest.mark.unit
@@ -297,7 +298,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         repo._store.pop(("company", "name_locales"), None)
 
         result = await _read_name_locales(settings_svc)
@@ -318,7 +319,7 @@ class TestReadNameLocales:
         settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
-        cast(Any, settings_svc).get_entry = AsyncMock(
+        cast(Any, settings_svc).get_entry = AsyncMock(  # type: ignore[explicit-any]  # patch instance method for the test
             spec=original,
             side_effect=SettingNotFoundError("company/name_locales"),
         )
@@ -326,7 +327,7 @@ class TestReadNameLocales:
             result = await _read_name_locales(settings_svc)
             assert result is None
         finally:
-            cast(Any, settings_svc).get_entry = original
+            cast(Any, settings_svc).get_entry = original  # type: ignore[explicit-any]  # restore patched instance method
 
     async def test_returns_resolved_locales_when_valid(
         self,
@@ -338,7 +339,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "fr_FR"]),
@@ -360,7 +361,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             "not-valid-json{{{",
@@ -382,7 +383,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps({"not": "a list"}),
@@ -404,7 +405,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "invalid_XX", "fr_FR"]),
@@ -427,7 +428,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["__all__"]),
@@ -453,7 +454,7 @@ class TestReadNameLocales:
 
         app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
-        repo = cast(Any, persistence_of(app_state))._settings_repo
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "invalid_XX"]),

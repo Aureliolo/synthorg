@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for memory-domain destructive handlers.
 
 Covers the success-path audit trail for ``cancel_fine_tune``,
@@ -15,7 +14,7 @@ invariant for the success path.
 
 import json
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -30,7 +29,7 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-from tests._shared import make_app_state
+from tests._shared import JsonDict, make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -184,7 +183,7 @@ class TestDeleteCheckpointDestructiveAudit:
                 },
                 actor=actor,
             )
-        body: dict[str, Any] = json.loads(raw)
+        body: JsonDict = json.loads(raw)
         assert body["status"] == "ok", (
             f"delete_checkpoint must succeed against a wired memory_service; "
             f"got status={body['status']!r}"
@@ -234,7 +233,7 @@ class TestDeleteMemoryEntryDestructiveAudit:
                 },
                 actor=actor,
             )
-        body: dict[str, Any] = json.loads(raw)
+        body: JsonDict = json.loads(raw)
         assert body["status"] == "ok"
         destructive = [
             e
@@ -282,7 +281,7 @@ class TestDeleteMemoryEntryDestructiveAudit:
                 },
                 actor=actor,
             )
-        body: dict[str, Any] = json.loads(raw)
+        body: JsonDict = json.loads(raw)
         assert body["status"] == "error"
         assert body["domain_code"] == "not_found"
         assert not [
@@ -314,7 +313,7 @@ class TestDeleteMemoryEntryDestructiveAudit:
             },
             actor=actor,
         )
-        body: dict[str, Any] = json.loads(raw)
+        body: JsonDict = json.loads(raw)
         assert body["status"] == "error"
         service = cast("AsyncMock", state.slice(MemoryStateSlice).service)
         service.delete_memory_entry.assert_not_awaited()

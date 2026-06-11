@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for entry-point adapters."""
 
 from typing import Any
@@ -11,7 +10,7 @@ from synthorg.client.models import ClientRequest, TaskRequirement
 _REQ = TaskRequirement(title="Test", description="Test description")
 
 
-def _request(**overrides: Any) -> ClientRequest:
+def _request(**overrides: Any) -> ClientRequest:  # type: ignore[explicit-any]  # arbitrary ClientRequest field kwargs spread into the constructor
     return ClientRequest(
         client_id=overrides.pop("client_id", "c-1"),
         requirement=overrides.pop("requirement", _REQ),

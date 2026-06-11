@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for the TimeoutChecker."""
 
 from datetime import UTC, datetime
@@ -16,9 +15,9 @@ from synthorg.security.timeout.timeout_checker import TimeoutChecker
 from tests._shared import coerce_id, mock_of
 
 
-def _make_approval_item(**overrides: Any) -> ApprovalItem:
+def _make_approval_item(**overrides: Any) -> ApprovalItem:  # type: ignore[explicit-any]  # arbitrary ApprovalItem field kwargs spread into the constructor
     """Create a valid pending ApprovalItem with sensible defaults."""
-    defaults: dict[str, Any] = {
+    defaults: dict[str, Any] = {  # type: ignore[explicit-any]  # heterogeneous model field values
         "id": "approval-1",
         "action_type": "code:write",
         "title": "Test approval",
@@ -149,7 +148,7 @@ class TestTimeoutCheckerCheckAndResolve:
 
     async def test_policy_error_defaults_to_wait(self) -> None:
         """When policy.determine_action raises, checker defaults to WAIT."""
-        mock_policy = cast(
+        mock_policy = cast(  # type: ignore[explicit-any]  # mock_of double; Any enables MagicMock introspection
             Any,
             mock_of[TimeoutPolicy](
                 determine_action=AsyncMock(side_effect=RuntimeError("boom")),

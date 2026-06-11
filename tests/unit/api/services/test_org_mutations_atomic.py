@@ -7,8 +7,7 @@ repository's CAS mechanism serialises concurrent writers.
 """
 
 import asyncio
-from collections.abc import AsyncGenerator
-from typing import Any
+from collections.abc import AsyncGenerator, Mapping, Sequence
 
 import pytest
 
@@ -343,9 +342,9 @@ def _always_conflict_for_key(
         )
 
     async def always_conflict_set_many(
-        items: Any,
+        items: Sequence[SettingRow],
         *,
-        expected_updated_at_map: Any = None,
+        expected_updated_at_map: Mapping[tuple[str, str], str] | None = None,
     ) -> bool:
         if expected_updated_at_map is not None and any(
             ns == "company" and k == target_key for ns, k in expected_updated_at_map

@@ -3,10 +3,16 @@
 Covers the ``ContextVar`` accessors, the ``authenticated_user_scope``
 async context manager, and the ``AuthContextMiddleware`` ASGI middleware
 that binds ``scope["user"]`` into the per-task ContextVar.
+
+The middleware tests drive ``AuthContextMiddleware.handle`` with loose
+ASGI stubs that don't conform to Litestar's strict ``Scope`` / ``Receive``
+/ ``Send`` unions; the runtime behaviour is correct. Silence the
+per-call-site ``arg-type`` error file-wide.
 """
 
+# mypy: disable-error-code=arg-type
+
 from collections.abc import Awaitable, Callable
-from typing import Any, cast
 
 import pytest
 
@@ -20,6 +26,7 @@ from synthorg.api.auth.context import (
 )
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.core.auth.roles import HumanRole
+from tests._shared import AsgiDict
 
 pytestmark = pytest.mark.unit
 
@@ -55,9 +62,9 @@ class TestGetAuthenticatedUser:
         # the exception so a forgotten log() can't slip past.
         from synthorg.api.auth import context as auth_context
 
-        warning_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+        warning_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
-        def _record(*args: Any, **kwargs: Any) -> None:
+        def _record(*args: object, **kwargs: object) -> None:
             warning_calls.append((args, kwargs))
 
         monkeypatch.setattr(auth_context.logger, "warning", _record)
@@ -155,9 +162,9 @@ class _CaptureApp:
 
     async def __call__(
         self,
-        scope: dict[str, Any],
-        receive: Callable[[], Awaitable[dict[str, Any]]],
-        send: Callable[[dict[str, Any]], Awaitable[None]],
+        scope: AsgiDict,
+        receive: Callable[[], Awaitable[AsgiDict]],
+        send: Callable[[AsgiDict], Awaitable[None]],
     ) -> None:
         del scope, receive, send
         self.observed_user = _authenticated_user.get()
@@ -176,9 +183,9 @@ class _BoomApp:
 
     async def __call__(
         self,
-        scope: dict[str, Any],
-        receive: Callable[[], Awaitable[dict[str, Any]]],
-        send: Callable[[dict[str, Any]], Awaitable[None]],
+        scope: AsgiDict,
+        receive: Callable[[], Awaitable[AsgiDict]],
+        send: Callable[[AsgiDict], Awaitable[None]],
     ) -> None:
         del scope, receive, send
         self.observed_user = _authenticated_user.get()
@@ -186,28 +193,23 @@ class _BoomApp:
         raise RuntimeError(msg)
 
 
-async def _noop_receive() -> dict[str, Any]:
+async def _noop_receive() -> AsgiDict:
     return {"type": "http.request", "body": b"", "more_body": False}
 
 
-async def _noop_send(message: dict[str, Any]) -> None:
+async def _noop_send(message: AsgiDict) -> None:
     del message
 
 
 async def _drive(
     middleware: AuthContextMiddleware,
-    scope: dict[str, Any],
+    scope: AsgiDict,
     next_app: _CaptureApp | _BoomApp,
 ) -> None:
     # Litestar's ASGI types are very precise (TypedDict per event kind);
-    # matching them here would add boilerplate without raising the
-    # signal of these tests. Cast to Any at this single seam.
-    await middleware.handle(
-        cast("Any", scope),
-        cast("Any", _noop_receive),
-        cast("Any", _noop_send),
-        cast("Any", next_app),
-    )
+    # matching them here would add boilerplate without raising the signal
+    # of these tests (see the module-level arg-type waiver).
+    await middleware.handle(scope, _noop_receive, _noop_send, next_app)
 
 
 class TestAuthContextMiddleware:
@@ -215,7 +217,7 @@ class TestAuthContextMiddleware:
         next_app = _CaptureApp()
         middleware = AuthContextMiddleware()
         user = _make_user()
-        scope: dict[str, Any] = {
+        scope: AsgiDict = {
             "type": "http",
             "path": "/api/test",
             "user": user,
@@ -227,7 +229,7 @@ class TestAuthContextMiddleware:
     async def test_passthrough_when_scope_user_missing(self) -> None:
         next_app = _CaptureApp()
         middleware = AuthContextMiddleware()
-        scope: dict[str, Any] = {"type": "http", "path": "/api/health"}
+        scope: AsgiDict = {"type": "http", "path": "/api/health"}
         await _drive(middleware, scope, next_app)
         assert next_app.called
         assert next_app.observed_user is None
@@ -235,7 +237,7 @@ class TestAuthContextMiddleware:
     async def test_passthrough_when_scope_user_not_authenticated_user(self) -> None:
         next_app = _CaptureApp()
         middleware = AuthContextMiddleware()
-        scope: dict[str, Any] = {
+        scope: AsgiDict = {
             "type": "http",
             "path": "/api/health",
             "user": {"id": "spoof"},
@@ -251,7 +253,7 @@ class TestAuthContextMiddleware:
         next_app = _CaptureApp()
         middleware = AuthContextMiddleware()
         user = _make_user()
-        scope: dict[str, Any] = {"type": "http", "path": "/api/test", "user": user}
+        scope: AsgiDict = {"type": "http", "path": "/api/test", "user": user}
         await _drive(middleware, scope, next_app)
         assert _authenticated_user.get() is None
 
@@ -259,7 +261,7 @@ class TestAuthContextMiddleware:
         next_app = _BoomApp()
         middleware = AuthContextMiddleware()
         user = _make_user()
-        scope: dict[str, Any] = {"type": "http", "path": "/api/test", "user": user}
+        scope: AsgiDict = {"type": "http", "path": "/api/test", "user": user}
         with pytest.raises(RuntimeError, match="downstream failure"):
             await _drive(middleware, scope, next_app)
         assert next_app.observed_user is user
@@ -278,7 +280,7 @@ class TestAuthContextMiddleware:
         outer = _make_user("outer-id", "outer@example.com")
         async with authenticated_user_scope(outer):
             assert _authenticated_user.get() is outer
-            scope: dict[str, Any] = {"type": "http", "path": "/api/health"}
+            scope: AsgiDict = {"type": "http", "path": "/api/health"}
             await _drive(middleware, scope, next_app)
             assert next_app.observed_user is None
             # Outer binding restored after the middleware's reset.
@@ -291,7 +293,7 @@ class TestAuthContextMiddleware:
         middleware = AuthContextMiddleware()
         outer = _make_user("outer-id", "outer@example.com")
         async with authenticated_user_scope(outer):
-            scope: dict[str, Any] = {
+            scope: AsgiDict = {
                 "type": "http",
                 "path": "/api/health",
                 "user": {"id": "spoof"},
@@ -308,27 +310,22 @@ class TestAuthContextMiddleware:
         # the request as authenticated while accessors raise
         # AuthContextMissingError. Lock the normalisation: scope["user"]
         # MUST become None on this branch.
-        captured_scope: dict[str, Any] = {}
+        captured_scope: AsgiDict = {}
 
         async def _capture_scope(
-            scope: dict[str, Any],
-            receive: Callable[[], Awaitable[dict[str, Any]]],
-            send: Callable[[dict[str, Any]], Awaitable[None]],
+            scope: AsgiDict,
+            receive: Callable[[], Awaitable[AsgiDict]],
+            send: Callable[[AsgiDict], Awaitable[None]],
         ) -> None:
             del receive, send
             captured_scope["user"] = scope.get("user")
 
         middleware = AuthContextMiddleware()
-        scope: dict[str, Any] = {
+        scope: AsgiDict = {
             "type": "http",
             "path": "/api/health",
             "user": {"id": "spoof"},
         }
-        await middleware.handle(
-            cast("Any", scope),
-            cast("Any", _noop_receive),
-            cast("Any", _noop_send),
-            cast("Any", _capture_scope),
-        )
+        await middleware.handle(scope, _noop_receive, _noop_send, _capture_scope)
         assert captured_scope["user"] is None
         assert scope["user"] is None

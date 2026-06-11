@@ -12,6 +12,7 @@ from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import (
+    JsonDict,
     LoopAsyncClient,
     as_uuid,
     coerce_id,
@@ -27,9 +28,9 @@ _READ_HEADERS = make_auth_headers("observer")
 
 
 def _create_payload(
-    **overrides: Any,
-) -> dict[str, Any]:
-    defaults: dict[str, Any] = {
+    **overrides: object,
+) -> JsonDict:
+    defaults: JsonDict = {
         "action_type": "code:merge",
         "title": "Merge PR #42",
         "description": "Merging feature branch",
@@ -39,7 +40,7 @@ def _create_payload(
     return defaults
 
 
-async def _seed_item(
+async def _seed_item(  # type: ignore[explicit-any]  # **kwargs forwarded verbatim to the typed make_approval factory
     store: ApprovalStore,
     *,
     approval_id: str = "approval-001",

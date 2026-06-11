@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Lifecycle tests for ``ContinuousMode``.
 
 ContinuousMode is an in-place runner (``start()`` executes the loop
@@ -14,7 +13,6 @@ not acquire the lock; it sets ``self._stop_event`` so the running
 
 import asyncio
 from collections.abc import Iterator
-from typing import Any
 
 import pytest
 from typeguard import suppress_type_checks
@@ -56,8 +54,8 @@ class _FakeRunner:
         self,
         *,
         sim_config: SimulationConfig,
-        clients: tuple[Any, ...],
-    ) -> tuple[SimulationMetrics, list[Any]]:
+        clients: tuple[object, ...],
+    ) -> tuple[SimulationMetrics, list[object]]:
         del sim_config, clients
         self.calls += 1
         self.ready.set()

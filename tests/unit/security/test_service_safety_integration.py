@@ -1,8 +1,6 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for safety classifier and uncertainty checker integration in SecOpsService."""
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -20,10 +18,11 @@ from synthorg.security.models import (
 from synthorg.security.safety_classifier import (
     PermissionTier,
     SafetyClassification,
+    SafetyClassifier,
     SafetyClassifierResult,
 )
 from synthorg.security.service import SecOpsService
-from synthorg.security.uncertainty import UncertaintyResult
+from synthorg.security.uncertainty import UncertaintyChecker, UncertaintyResult
 from tests._shared import mock_of
 
 # ── Helpers ───────────────────────────────────────────────────────
@@ -56,8 +55,8 @@ def _make_escalation_verdict() -> SecurityVerdict:
 
 def _make_service(
     *,
-    safety_classifier: Any = None,
-    uncertainty_checker: Any = None,
+    safety_classifier: SafetyClassifier | None = None,
+    uncertainty_checker: UncertaintyChecker | None = None,
     denial_tracker: DenialTracker | None = None,
     config: SecurityConfig | None = None,
 ) -> SecOpsService:

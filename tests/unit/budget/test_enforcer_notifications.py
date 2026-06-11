@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Regression tests: budget enforcer tracks fire-and-forget notifications.
 
 Monthly / daily budget notifications must be tracked via
@@ -16,7 +15,6 @@ coroutine to simulate exactly that scenario.
 """
 
 import asyncio
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -26,6 +24,7 @@ from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.errors import BudgetExhaustedError, DailyLimitExceededError
 from synthorg.budget.tracker import CostTracker
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability.events.notification import (
     NOTIFICATION_BUDGET_EXHAUSTED_SEND,
     NOTIFICATION_SEND_FAILED,
@@ -37,7 +36,7 @@ pytestmark = pytest.mark.unit
 def _build_enforcer(
     *,
     cost_tracker: CostTracker,
-    dispatcher: Any,
+    dispatcher: NotificationDispatcher | None,
     monthly_limit: float = 10.0,
     daily_limit: float = 1.0,
 ) -> BudgetEnforcer:
@@ -57,7 +56,7 @@ def _build_enforcer(
 _NOTIFY_ERROR_MSG = "unexpected notification failure"
 
 
-async def _raising_notify(*_args: Any, **_kwargs: Any) -> None:
+async def _raising_notify(*_args: object, **_kwargs: object) -> None:
     raise RuntimeError(_NOTIFY_ERROR_MSG)
 
 
@@ -89,7 +88,7 @@ async def test_monthly_hard_stop_notification_failure_logs_error(
 
     failures = [e for e in captured if e["event"] == NOTIFICATION_SEND_FAILED]
     assert len(failures) == 1
-    entry: Any = failures[0]
+    entry = failures[0]
     assert entry["log_level"] == "error"
     assert entry["owner"] == "budget.enforcer"
     assert entry["intent_event"] == NOTIFICATION_BUDGET_EXHAUSTED_SEND
@@ -127,7 +126,7 @@ async def test_daily_limit_notification_failure_logs_error(
 
     failures = [e for e in captured if e["event"] == NOTIFICATION_SEND_FAILED]
     assert len(failures) == 1
-    entry: Any = failures[0]
+    entry = failures[0]
     assert entry["log_level"] == "error"
     assert entry["owner"] == "budget.enforcer"
     assert entry["severity"] == "warning"

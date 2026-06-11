@@ -1,5 +1,6 @@
 """Tests for workflow execution controller."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -12,7 +13,7 @@ from synthorg.engine.workflow.definition import (
 )
 from synthorg.engine.workflow.enums import WorkflowNodeType
 from synthorg.persistence.state import persistence_of
-from tests._shared import LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient
 
 # ── Seed data ─────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ def _seed_definition(
     """Seed a workflow definition into the fake persistence."""
     defn = definition or _VALID_DEFINITION
     app_state = async_test_client.app.state.app_state
-    repo = cast(Any, persistence_of(app_state).workflow_definitions)
+    repo = cast(Any, persistence_of(app_state).workflow_definitions)  # type: ignore[explicit-any]  # reach into fake repo internals
     repo._definitions[defn.id] = defn
 
 
@@ -320,7 +321,7 @@ class TestWorkflowExecutionControllerErrorEnvelope:
         self,
         async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
-        error_factory: Any,
+        error_factory: Callable[[], Exception],
         expected_code: str,
     ) -> None:
         from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -379,7 +380,7 @@ class TestWorkflowExecutionControllerErrorEnvelope:
         async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
         method: str,
-        request_spec: dict[str, Any],
+        request_spec: JsonDict,
     ) -> None:
         from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
         from synthorg.core.persistence_errors import PersistenceError
@@ -425,7 +426,7 @@ class TestWorkflowExecutionControllerErrorEnvelope:
         self,
         async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
-        error_factory: Any,
+        error_factory: Callable[[], Exception],
         expected_code: str,
     ) -> None:
         """Two cancel-conflict paths share status + category but differ in code.

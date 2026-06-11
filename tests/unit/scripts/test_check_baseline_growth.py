@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_baseline_growth.py``.
 
 Loads the script as a module so its private helpers are callable
@@ -33,7 +32,7 @@ def _load_script_module() -> ModuleType:
     return module
 
 
-_MODULE: Any = cast("Any", _load_script_module())
+_MODULE: Any = cast("Any", _load_script_module())  # type: ignore[explicit-any]  # dynamically loaded gate module; attrs resolved by name
 
 
 # ── path classification ─────────────────────────────────────────

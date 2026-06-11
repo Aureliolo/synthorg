@@ -26,10 +26,10 @@ import json
 import os
 import subprocess
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, cast, override
+from typing import cast, override
 
 import pytest
 
@@ -97,10 +97,10 @@ class _LocalPythonSandbox:
         command: str,
         args: tuple[str, ...],
         cwd: Path | None = None,
-        env_overrides: Any = None,
+        env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
-        owner_id: Any = None,
-        project_id: Any = None,
+        owner_id: str | None = None,
+        project_id: str | None = None,
     ) -> SandboxResult:
         del cwd, owner_id, project_id
         overrides = env_overrides or {}
@@ -128,9 +128,9 @@ class _LocalPythonSandbox:
 
     async def release_owner(
         self,
-        owner_id: Any,
+        owner_id: str,
         *,
-        project_id: Any = None,
+        project_id: str | None = None,
         image_override: str | None = None,
     ) -> None:
         del owner_id, project_id, image_override
@@ -205,7 +205,7 @@ class _InMemoryRepo:
         return self.rows.get(entity_id)
 
     async def transition_if(
-        self, entity_id: str, from_state: Any, to_state: Any, **updates: Any
+        self, entity_id: str, from_state: object, to_state: object, **updates: object
     ) -> bool:
         row = self.rows.get(entity_id)
         if row is None or row.state is not from_state:
@@ -270,9 +270,9 @@ class _InMemoryApprovalStore:
     async def list_items(
         self,
         *,
-        status: Any = None,
-        risk_level: Any = None,
-        action_type: Any = None,
+        status: object = None,
+        risk_level: object = None,
+        action_type: object = None,
     ) -> tuple[ApprovalItem, ...]:
         del status, risk_level, action_type
         return tuple(self.items.values())
@@ -313,10 +313,10 @@ class TestSelfExtensionE2E:
         runtime = build_toolsmith(
             si_config=_config(),
             provider=_FakeProvider(),
-            repo=repo,  # type: ignore[arg-type]
-            sandbox_resolver=lambda _bp: _LocalPythonSandbox(),  # type: ignore[arg-type,return-value]
+            repo=repo,
+            sandbox_resolver=lambda _bp: _LocalPythonSandbox(),
             scorecard_provider=_FakeScorecard(),
-            approval_store=approvals,  # type: ignore[arg-type]
+            approval_store=approvals,
             clock=clock,
         )
         service = runtime.service
@@ -368,10 +368,10 @@ class TestSelfExtensionE2E:
         runtime = build_toolsmith(
             si_config=_config(),
             provider=_FakeProvider(),
-            repo=_InMemoryRepo(),  # type: ignore[arg-type]
-            sandbox_resolver=lambda _bp: _LocalPythonSandbox(),  # type: ignore[arg-type,return-value]
+            repo=_InMemoryRepo(),
+            sandbox_resolver=lambda _bp: _LocalPythonSandbox(),
             scorecard_provider=_FakeScorecard(),
-            approval_store=_InMemoryApprovalStore(),  # type: ignore[arg-type]
+            approval_store=_InMemoryApprovalStore(),
             clock=clock,
         )
         # Only two observations -> below the threshold of 3.
@@ -394,10 +394,10 @@ class TestSelfExtensionE2E:
         runtime = build_toolsmith(
             si_config=_config(),
             provider=_FakeProvider(),
-            repo=repo,  # type: ignore[arg-type]
-            sandbox_resolver=lambda _bp: _LocalPythonSandbox(),  # type: ignore[arg-type,return-value]
+            repo=repo,
+            sandbox_resolver=lambda _bp: _LocalPythonSandbox(),
             scorecard_provider=_RegressingScorecard(),
-            approval_store=_InMemoryApprovalStore(),  # type: ignore[arg-type]
+            approval_store=_InMemoryApprovalStore(),
             clock=clock,
         )
         for i in range(3):

@@ -1,6 +1,6 @@
 """Tests for the template formatter tool."""
 
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -8,6 +8,7 @@ from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.communication.template_formatter import (
     TemplateFormatterTool,
 )
+from tests._shared import JsonDict
 
 
 @pytest.mark.unit
@@ -120,7 +121,7 @@ class TestTemplateFormatterTool:
         ids=["template_not_str", "variables_not_dict", "format_not_str"],
     )
     async def test_execute_rejects_invalid_arg_types(
-        self, args: dict[str, Any], expected_msg: str
+        self, args: dict[str, object], expected_msg: str
     ) -> None:
         tool = TemplateFormatterTool()
         result = await tool.execute(arguments=args)
@@ -207,7 +208,7 @@ class TestTemplateFormatterTool:
         tool = TemplateFormatterTool()
         schema = tool.parameters_schema
         assert schema is not None
-        required = cast("dict[str, Any]", schema)["required"]
+        required = cast(JsonDict, schema)["required"]
         assert "template" in required
         # ``variables`` now has a default_factory so it's not required.
         assert "variables" not in required

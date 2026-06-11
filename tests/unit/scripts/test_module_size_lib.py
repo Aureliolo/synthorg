@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/_module_size_lib.py``.
 
 The shared library is consumed by ``check_module_size_budget.py`` and by
@@ -39,7 +38,7 @@ def _load_module() -> ModuleType:
     return module
 
 
-_LIB: Any = cast("Any", _load_module())
+_LIB: Any = cast("Any", _load_module())  # type: ignore[explicit-any]  # dynamically loaded gate module; attrs resolved by name
 
 
 # ── LOC counting ────────────────────────────────────────────────

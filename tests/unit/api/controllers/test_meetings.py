@@ -2,10 +2,10 @@
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from litestar import Litestar
 
 from synthorg.communication.meeting.enums import (
     MeetingPhase,
@@ -42,7 +42,7 @@ def _create_meeting_test_app(
     *,
     meeting_orchestrator: MagicMock,
     meeting_scheduler: MagicMock | None,
-) -> Any:
+) -> Litestar:
     """Build a Litestar test app with the given meeting services."""
     from synthorg.api.approval_store import ApprovalStore
     from synthorg.api.auth.service import AuthService
@@ -758,7 +758,7 @@ class TestResolveMaxContextKeysFallback:
         assert result == 30
 
 
-def _create_app_without_explicit_meetings() -> Any:
+def _create_app_without_explicit_meetings() -> Litestar:
     """Create app without explicit meeting services (auto-wired)."""
     from synthorg.api.approval_store import ApprovalStore
     from synthorg.api.auth.service import AuthService

@@ -7,7 +7,6 @@ categories, and returns an empty sequence for an unobserved (tier, role) key.
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,7 +20,7 @@ from tests._shared import mock_of
 pytestmark = pytest.mark.unit
 
 
-def _agent(agent_id: str, role: str) -> Any:
+def _agent(agent_id: str, role: str) -> SimpleNamespace:
     return SimpleNamespace(id=agent_id, role=role)
 
 
@@ -31,13 +30,17 @@ def _record(
     model: str,
     cost: float,
     category: LLMCallCategory | None = LLMCallCategory.PRODUCTIVE,
-) -> Any:
+) -> SimpleNamespace:
     return SimpleNamespace(
         agent_id=agent_id, model=model, cost=cost, call_category=category
     )
 
 
-def _lookup(*, agents: tuple[Any, ...], records: tuple[Any, ...]) -> Any:
+def _lookup(
+    *,
+    agents: tuple[SimpleNamespace, ...],
+    records: tuple[SimpleNamespace, ...],
+) -> CostTrackerHistoryLookup:
     registry = mock_of[AgentRegistryService](
         list_active=AsyncMock(return_value=agents),
     )

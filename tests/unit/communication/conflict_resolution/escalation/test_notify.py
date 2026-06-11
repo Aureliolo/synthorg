@@ -141,7 +141,7 @@ class TestPostgresSubscriberLateBoundResolver:
         # plus ``del`` in the finally block lets ``__getattr__`` resume
         # serving fresh bound loggers for the next test, matching the
         # canonical ``_logger_info_spy`` pattern in tests/unit/settings.
-        proxy.debug = _spy  # type: ignore[method-assign,assignment]
+        proxy.debug = _spy
         try:
             task = asyncio.create_task(subscriber._run())
             try:

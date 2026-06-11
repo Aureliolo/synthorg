@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Hermetic unit tests for ``PostgresProjectRepository`` error paths.
 
 Mocks ``psycopg_pool.AsyncConnectionPool`` so no real Postgres is
@@ -7,8 +6,8 @@ QueryError``; a raising fake cursor drives that translation across the
 whole surface, plus the ``validate_pagination_args`` reject branch.
 """
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
 
 import psycopg
 import pytest
@@ -39,14 +38,14 @@ def _project(project_id: str = "proj-001") -> Project:
 
 
 class _RaisingCursor:
-    async def execute(self, sql: str, params: Any = None) -> None:
+    async def execute(self, sql: str, params: object = None) -> None:
         msg = "connection lost"
         raise psycopg.OperationalError(msg)
 
-    async def fetchone(self) -> Any:
+    async def fetchone(self) -> object | None:
         return None
 
-    async def fetchall(self) -> list[Any]:
+    async def fetchall(self) -> list[object]:
         return []
 
     async def __aenter__(self) -> _RaisingCursor:
@@ -57,7 +56,7 @@ class _RaisingCursor:
 
 
 class _RaisingConnection:
-    def cursor(self, row_factory: Any = None) -> _RaisingCursor:
+    def cursor(self, row_factory: object = None) -> _RaisingCursor:
         return _RaisingCursor()
 
     async def commit(self) -> None:
@@ -69,7 +68,7 @@ class _RaisingConnection:
 
 class _RaisingPool:
     @asynccontextmanager
-    async def connection(self) -> Any:
+    async def connection(self) -> AsyncIterator[_RaisingConnection]:
         yield _RaisingConnection()
 
 

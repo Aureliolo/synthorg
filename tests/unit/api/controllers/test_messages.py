@@ -1,11 +1,11 @@
 """Tests for message controller."""
 
-from typing import Any
 from uuid import uuid4
 
 import pytest
 
 from tests._shared import LoopAsyncClient
+from tests.unit.api.fakes import FakePersistenceBackend
 from tests.unit.persistence.conftest import make_message
 
 
@@ -40,7 +40,7 @@ class TestMessageControllerDelete:
     async def test_delete_returns_200_when_message_exists(
         self,
         async_test_client: LoopAsyncClient,
-        fake_persistence: Any,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         msg = make_message(msg_id=uuid4(), channel="ops")
         await fake_persistence.messages.append(msg)

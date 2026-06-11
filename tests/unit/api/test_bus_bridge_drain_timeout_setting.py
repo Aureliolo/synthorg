@@ -9,17 +9,17 @@ fallback log fires once per failure run and clears on recovery so a
 prolonged settings outage cannot flood logs.
 """
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from synthorg.api.bus_bridge import _STOP_DRAIN_TIMEOUT_SECONDS, MessageBusBridge
+from synthorg.settings.resolver import ConfigResolver
 
 pytestmark = pytest.mark.unit
 
 
-def _make_bridge(resolver: Any | None) -> MessageBusBridge:
+def _make_bridge(resolver: ConfigResolver | None) -> MessageBusBridge:
     bus = MagicMock()
     plugin = MagicMock()
     return MessageBusBridge(bus, plugin, config_resolver=resolver)

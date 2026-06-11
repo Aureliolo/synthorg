@@ -124,11 +124,11 @@ class TestDepartmentCeremonyPolicyCas:
         # Drive both mutations concurrently.  One must win CAS first; the
         # loser observes VersionConflictError internally and retries.
         await asyncio.gather(
-            _mutate_dept_policies_with_retry(app_state, "dept-a", policy_a),  # type: ignore[arg-type]
-            _mutate_dept_policies_with_retry(app_state, "dept-b", policy_b),  # type: ignore[arg-type]
+            _mutate_dept_policies_with_retry(app_state, "dept-a", policy_a),
+            _mutate_dept_policies_with_retry(app_state, "dept-b", policy_b),
         )
 
-        final, _ = await _load_dept_policies_versioned(app_state)  # type: ignore[arg-type]
+        final, _ = await _load_dept_policies_versioned(app_state)
         assert final == {"dept-a": policy_a, "dept-b": policy_b}
 
     async def test_retry_recovers_after_transient_version_conflict(
@@ -163,7 +163,7 @@ class TestDepartmentCeremonyPolicyCas:
         original_set = settings_service.set
         call_count = {"n": 0}
 
-        async def flaky_set(*args: Any, **kwargs: Any) -> Any:
+        async def flaky_set(*args: Any, **kwargs: Any) -> object:  # type: ignore[explicit-any]  # forwarding stub mirrors settings.set
             call_count["n"] += 1
             if call_count["n"] == 1:
                 msg = "transient conflict"
@@ -175,12 +175,12 @@ class TestDepartmentCeremonyPolicyCas:
         )
 
         await _mutate_dept_policies_with_retry(
-            app_state,  # type: ignore[arg-type]
+            app_state,
             "dept-a",
             policy,
         )
 
-        final, _ = await _load_dept_policies_versioned(app_state)  # type: ignore[arg-type]
+        final, _ = await _load_dept_policies_versioned(app_state)
         # ``dept-a`` must be persisted after the successful retry; any
         # entries from a prior test on the same fixture can coexist
         # because the focus of this test is retry semantics, not
@@ -225,7 +225,7 @@ class TestDepartmentCeremonyPolicyCas:
 
         with pytest.raises(VersionConflictError):
             await _mutate_dept_policies_with_retry(
-                app_state,  # type: ignore[arg-type]
+                app_state,
                 "dept-a",
                 {"strategy": "task_driven"},
             )
@@ -270,7 +270,7 @@ class TestDepartmentCeremonyPolicyCas:
 
         with pytest.raises(VersionConflictError):
             await _mutate_dept_policies_with_retry(
-                app_state,  # type: ignore[arg-type]
+                app_state,
                 "dept-a",
                 {"strategy": "task_driven"},
             )

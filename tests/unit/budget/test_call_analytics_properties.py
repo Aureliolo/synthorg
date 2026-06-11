@@ -1,14 +1,13 @@
-# mypy: disable-error-code="explicit-any"
 """Property-based tests for CallAnalyticsService aggregation."""
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from synthorg.budget.call_analytics import CallAnalyticsService
 from synthorg.budget.call_analytics_config import CallAnalyticsConfig
 from synthorg.budget.call_category import OrchestrationAlertLevel
 from synthorg.budget.category_analytics import OrchestrationRatio
@@ -42,9 +41,7 @@ def _record(
     )
 
 
-def _make_service(records: tuple[CostRecord, ...]) -> Any:
-    from synthorg.budget.call_analytics import CallAnalyticsService
-
+def _make_service(records: tuple[CostRecord, ...]) -> CallAnalyticsService:
     tracker = AsyncMock()
     tracker.get_records = AsyncMock(return_value=records)
     tracker.get_orchestration_ratio = AsyncMock(

@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_persistence_protocol_return_types.py``.
 
 Cover the three behaviours that matter:
@@ -37,7 +36,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "check_persistence_protocol_return_types.py"
 
 
-def _load_script_module() -> Any:
+def _load_script_module() -> Any:  # type: ignore[explicit-any]  # returns dynamically loaded gate module
     """Import the script as a module so its private helpers are callable."""
     spec = importlib.util.spec_from_file_location(
         "_check_persistence_protocol_return_types",

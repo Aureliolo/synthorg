@@ -1,15 +1,16 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for CallAnalyticsService aggregation and alerting."""
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.budget.call_analytics import CallAnalyticsService
 from synthorg.budget.call_analytics_config import CallAnalyticsConfig, RetryAlertConfig
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.category_analytics import OrchestrationRatio
 from synthorg.budget.cost_record import CostRecord
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.providers.enums import FinishReason
 
 
@@ -54,10 +55,8 @@ def _make_service(
     records: tuple[CostRecord, ...] = (),
     *,
     config: CallAnalyticsConfig | None = None,
-    notification_dispatcher: Any = None,
-) -> Any:
-    from synthorg.budget.call_analytics import CallAnalyticsService
-
+    notification_dispatcher: NotificationDispatcher | None = None,
+) -> CallAnalyticsService:
     tracker = AsyncMock()
     tracker.get_records = AsyncMock(return_value=records)
     tracker.get_orchestration_ratio = AsyncMock(
@@ -71,9 +70,8 @@ def _make_service(
     )
 
 
-def _dummy_orchestration_ratio() -> Any:
+def _dummy_orchestration_ratio() -> OrchestrationRatio:
     from synthorg.budget.call_category import OrchestrationAlertLevel
-    from synthorg.budget.category_analytics import OrchestrationRatio
 
     return OrchestrationRatio(
         ratio=0.0,

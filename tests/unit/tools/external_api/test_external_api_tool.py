@@ -1,7 +1,7 @@
 """Unit tests for the governed ExternalApiTool."""
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock
 from uuid import UUID
 
@@ -227,7 +227,7 @@ class TestExternalApiToolCredentials:
         # identically, so it reuses its approval instead of re-parking.
         store = ApprovalStore()
         tool = _build_tool(conn=_connection(sensitive=True), approval_store=store)
-        park_args: dict[str, Any] = {
+        park_args: dict[str, object] = {
             "connection": "crm-api",
             "path": "/d",
             "headers": {"Host": "a"},
@@ -371,7 +371,7 @@ class TestExternalApiToolApprovalGating:
             provider=provider,
             approval_store=store,
         )
-        args: dict[str, Any] = {"connection": "crm-api", "path": "/data"}
+        args: dict[str, object] = {"connection": "crm-api", "path": "/data"}
         parked = await tool.execute(arguments=args)
         approval_id = cast("str", parked.metadata["approval_id"])
 
@@ -403,7 +403,7 @@ class TestExternalApiToolApprovalGating:
             provider=provider,
             approval_store=store,
         )
-        args: dict[str, Any] = {"connection": "crm-api", "path": "/data"}
+        args: dict[str, object] = {"connection": "crm-api", "path": "/data"}
         parked = await tool.execute(arguments=args)
         approval_id = cast("str", parked.metadata["approval_id"])
         item = await store.get(approval_id)
@@ -441,7 +441,7 @@ class TestExternalApiToolApprovalGating:
         # by a second agent issuing the same call: the scan skips it and the
         # second caller parks its own approval instead of egressing.
         store = ApprovalStore()
-        args: dict[str, Any] = {"connection": "crm-api", "path": "/data"}
+        args: dict[str, object] = {"connection": "crm-api", "path": "/data"}
         owner = _build_tool(
             conn=_connection(sensitive=True),
             approval_store=store,
@@ -474,7 +474,7 @@ class TestExternalApiToolApprovalGating:
         # A leaked approval_id from another principal's grant is rejected,
         # not silently honoured.
         store = ApprovalStore()
-        args: dict[str, Any] = {"connection": "crm-api", "path": "/data"}
+        args: dict[str, object] = {"connection": "crm-api", "path": "/data"}
         owner = _build_tool(
             conn=_connection(sensitive=True),
             approval_store=store,

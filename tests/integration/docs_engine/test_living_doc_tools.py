@@ -11,7 +11,7 @@ suite (`tests/integration/docs_engine/`).
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -29,15 +29,16 @@ from synthorg.engine.workspace.project_workspace_service import (
     ProjectWorkspaceService,
 )
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
+from synthorg.tools.base import BaseTool
 from synthorg.tools.docs import SearchLivingDocsTool, WriteLivingDocTool
-from tests._shared import FakeClock
+from tests._shared import FakeClock, JsonDict
 from tests.integration.docs_engine._workspace import InMemoryWorkspaceRepo
 from tests.unit.api.fakes import FakeDocsRepository
 
 pytestmark = pytest.mark.integration
 
 
-async def _build_tools(tmp_path: Path) -> tuple[tuple[Any, ...], InMemoryBackend]:
+async def _build_tools(tmp_path: Path) -> tuple[tuple[BaseTool, ...], InMemoryBackend]:
     config = GitBackendConfig(kind=GitBackendType.EMBEDDED)
     git_backend = build_git_backend(
         config,
@@ -73,7 +74,7 @@ class TestWriteLivingDocTool:
         try:
             write_tool, _ = tools
             assert isinstance(write_tool, WriteLivingDocTool)
-            arguments: dict[str, Any] = {
+            arguments: dict[str, object] = {
                 "title": "Q2 Status",
                 "doc_type": "status_report",
                 "body": (
@@ -96,7 +97,7 @@ class TestWriteLivingDocTool:
             result = await write_tool.execute(arguments=arguments)
             assert result.is_error is False
             assert result.metadata["doc_type"] == "status_report"
-            assert "q2-status" in cast("dict[str, Any]", result.metadata)["slug"]
+            assert "q2-status" in cast(JsonDict, result.metadata)["slug"]
         finally:
             await backend.disconnect()
 
@@ -140,7 +141,7 @@ class TestSearchLivingDocsTool:
                 arguments={"query": "checkout"},
             )
             assert result.is_error is False
-            assert cast("dict[str, Any]", result.metadata)["hit_count"] >= 1
+            assert cast(JsonDict, result.metadata)["hit_count"] >= 1
             assert "checkout-fix" in result.content
         finally:
             await backend.disconnect()
@@ -172,7 +173,7 @@ class TestSearchLivingDocsTool:
                 },
             )
             assert result.is_error is False
-            hits = result.metadata["hits"]
+            hits = cast(list[JsonDict], result.metadata["hits"])
             assert all(h["doc_type"] == "deliverable" for h in hits)
         finally:
             await backend.disconnect()

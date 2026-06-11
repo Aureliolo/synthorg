@@ -1,6 +1,6 @@
 """Unit tests for ``SubmitRedTeamReportTool``."""
 
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -19,6 +19,7 @@ from synthorg.security.redteam.tools.submit_report import (
     SUBMIT_RED_TEAM_REPORT_TOOL_NAME,
     SubmitRedTeamReportTool,
 )
+from tests._shared import JsonDict
 
 
 def _high_finding() -> RedTeamFinding:
@@ -179,7 +180,7 @@ class TestExecutionIdArguments:
     ) -> None:
         schema = tool.parameters_schema
         assert schema is not None
-        properties = cast("dict[str, Any]", schema).get("properties", {})
+        properties = cast(JsonDict, schema).get("properties", {})
         assert "execution_id" in properties
         assert "task_id" in properties
 

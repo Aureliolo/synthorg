@@ -245,6 +245,13 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: no-explicit-any-inline-disable
+        name: no inline # mypy: comment may lift explicit-any/unused-ignore (#2121)
+        entry: uv run python scripts/check_no_explicit_any_inline_disable.py
+        language: system
+        files: ^(src/synthorg/.*|tests/.*)\.py$
+        stages: [pre-push]
+
       - id: no-bare-time-in-business-logic
         name: clock-seam (no bare time.monotonic/time.time/datetime.utcnow)
         entry: uv

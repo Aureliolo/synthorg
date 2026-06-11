@@ -1,10 +1,9 @@
 """Shared fixtures for design tool tests."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.tools.design.image_generator import ImageResult
+from tests._shared import JsonDict
 
 
 class MockImageProvider:
@@ -23,7 +22,7 @@ class MockImageProvider:
             height=1024,
         )
         self._error = error
-        self.calls: list[dict[str, Any]] = []
+        self.calls: list[JsonDict] = []
 
     async def generate(
         self,

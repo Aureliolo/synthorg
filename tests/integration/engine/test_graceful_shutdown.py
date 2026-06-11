@@ -4,7 +4,7 @@ Creates an engine with a shutdown manager, starts an agent, triggers
 shutdown, and verifies: agent stops, task is INTERRUPTED, cleanup runs.
 """
 
-from typing import Any, override
+from typing import Never, override
 
 import pytest
 
@@ -14,6 +14,7 @@ from synthorg.engine.shutdown import (
     CooperativeTimeoutStrategy,
     ShutdownManager,
 )
+from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     ChatMessage,
@@ -66,13 +67,11 @@ class _ShutdownTriggeringProvider:
         *,
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
-    ) -> Any:
+    ) -> Never:
         msg = "Not implemented"
         raise NotImplementedError(msg)
 
-    async def get_model_capabilities(self, model: str) -> Any:
-        from synthorg.providers.capabilities import ModelCapabilities
-
+    async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         return ModelCapabilities(
             model_id=model,
             provider="test-provider",
@@ -87,7 +86,7 @@ class _ShutdownTriggeringProvider:
     async def batch_get_capabilities(
         self,
         models: tuple[str, ...],
-    ) -> Any:
+    ) -> dict[str, ModelCapabilities]:
         return {m: await self.get_model_capabilities(m) for m in models}
 
 
@@ -233,9 +232,9 @@ class TestGracefulShutdownFlow:
 
             async def complete(
                 self,
-                messages: Any,
-                model: Any,
-                **kw: Any,
+                messages: list[ChatMessage],
+                model: str,
+                **kw: object,
             ) -> CompletionResponse:
                 if self._idx < len(responses):
                     resp = responses[self._idx]
@@ -244,12 +243,10 @@ class TestGracefulShutdownFlow:
                 msg = "No more responses"
                 raise IndexError(msg)
 
-            async def stream(self, *a: Any, **kw: Any) -> Any:
+            async def stream(self, *a: object, **kw: object) -> Never:
                 raise NotImplementedError
 
-            async def get_model_capabilities(self, model: str) -> Any:
-                from synthorg.providers.capabilities import ModelCapabilities
-
+            async def get_model_capabilities(self, model: str) -> ModelCapabilities:
                 return ModelCapabilities(
                     model_id=model,
                     provider="test-provider",
@@ -264,7 +261,7 @@ class TestGracefulShutdownFlow:
             async def batch_get_capabilities(
                 self,
                 models: tuple[str, ...],
-            ) -> Any:
+            ) -> dict[str, ModelCapabilities]:
                 return {m: await self.get_model_capabilities(m) for m in models}
 
         from synthorg.security.autonomy.enums import ToolCategory
@@ -283,7 +280,7 @@ class TestGracefulShutdownFlow:
             async def execute(
                 self,
                 *,
-                arguments: dict[str, Any],
+                arguments: dict[str, object],
             ) -> ToolExecutionResult:
                 return ToolExecutionResult(content="echoed", is_error=False)
 

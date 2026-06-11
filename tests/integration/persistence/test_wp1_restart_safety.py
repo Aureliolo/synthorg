@@ -47,7 +47,7 @@ pytestmark = pytest.mark.integration
 # That is the structural property a restart-cycle test needs: the first
 # call writes state, the test disconnects, and the second call observes
 # the persisted record without any in-memory carryover.
-BackendFactory = Callable[[], Coroutine[Any, Any, PersistenceBackend]]
+BackendFactory = Callable[[], Coroutine[Any, Any, PersistenceBackend]]  # type: ignore[explicit-any]  # standard Coroutine send/yield Any
 
 
 @pytest.fixture(params=["sqlite", "postgres"], ids=["sqlite", "postgres"])

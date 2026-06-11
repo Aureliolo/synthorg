@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Tests for the mock-spec ratchet PreToolUse hook.
 
 The hook reads a PreToolUse JSON envelope from stdin and either
@@ -16,9 +15,11 @@ import json
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Any, Protocol, cast
+from typing import Protocol, cast
 
 import pytest
+
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -51,7 +52,7 @@ def _load_module() -> _RatchetModule:
 _MODULE = _load_module()
 
 
-def _envelope(tool_name: str, tool_input: dict[str, Any]) -> str:
+def _envelope(tool_name: str, tool_input: JsonDict) -> str:
     return json.dumps({"tool_name": tool_name, "tool_input": tool_input})
 
 

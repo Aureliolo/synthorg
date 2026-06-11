@@ -13,7 +13,7 @@ the identical control flow the production HTTP handler runs.
 """
 
 import asyncio
-from typing import Any, Final
+from typing import Final
 
 import pytest
 from pydantic import ValidationError
@@ -23,6 +23,7 @@ from synthorg.api.controllers.objectives import (
     SubmitObjectivePayload,
     submit_objective_impl,
 )
+from synthorg.api.state import AppState
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.pipeline.entry.objective_adapter import (
     ObjectiveEntryAdapter,
@@ -36,15 +37,15 @@ from synthorg.engine.pipeline.models import (
     WorkPipelineResult,
     WorkSource,
 )
-from tests._shared import make_app_state, mock_of
+from tests._shared import JsonDict, make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
 _DONE_CALLBACK_POLL_ITERATIONS: Final[int] = 10
 
 
-def _payload(**overrides: Any) -> SubmitObjectivePayload:
-    base: dict[str, Any] = {
+def _payload(**overrides: object) -> SubmitObjectivePayload:
+    base: JsonDict = {
         "title": "Ship the v0.8 release",
         "description": "Cut a stable v0.8 release with release notes.",
         "requested_by": "human-operator",
@@ -65,7 +66,7 @@ def _result(work_item: WorkItem) -> WorkPipelineResult:
     )
 
 
-def _state_with_recording_adapter() -> tuple[Any, list[ObjectiveSubmission]]:
+def _state_with_recording_adapter() -> tuple[AppState, list[ObjectiveSubmission]]:
     captured: list[ObjectiveSubmission] = []
 
     async def _submit(submission: ObjectiveSubmission) -> WorkPipelineResult:

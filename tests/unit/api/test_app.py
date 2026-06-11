@@ -29,11 +29,12 @@ from tests._shared import (
 from tests._shared import (
     build_test_app as create_app,
 )
+from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 
 def _build_startup_with_failing_settings_autowire(
     monkeypatch: pytest.MonkeyPatch,
-    root_config: Any,
+    root_config: RootConfig,
 ) -> Callable[[], Awaitable[None]]:
     """Build an on_startup hook whose ``auto_wire_settings`` step raises.
 
@@ -56,7 +57,7 @@ def _build_startup_with_failing_settings_autowire(
         message_bus=bus,
     )
 
-    async def failing_auto_wire(*args: Any, **kwargs: Any) -> None:
+    async def failing_auto_wire(*args: object, **kwargs: object) -> None:
         msg = "phase2 boom"
         raise RuntimeError(msg)
 
@@ -90,10 +91,10 @@ def _build_startup_with_failing_settings_autowire(
 class TestCreateApp:
     def test_returns_litestar_instance(
         self,
-        fake_persistence: Any,
-        fake_message_bus: Any,
-        cost_tracker: Any,
-        root_config: Any,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+        cost_tracker: CostTracker,
+        root_config: RootConfig,
     ) -> None:
         app = create_app(
             config=root_config,
@@ -105,10 +106,10 @@ class TestCreateApp:
 
     def test_logging_config_is_disabled(
         self,
-        fake_persistence: Any,
-        fake_message_bus: Any,
-        cost_tracker: Any,
-        root_config: Any,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+        cost_tracker: CostTracker,
+        root_config: RootConfig,
     ) -> None:
         """Litestar must NOT manage logging (structlog owns the pipeline)."""
         app = create_app(
@@ -144,10 +145,10 @@ class TestCreateApp:
     def test_agent_registry_built_before_auto_wire_meetings(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        fake_persistence: Any,
-        fake_message_bus: Any,
-        cost_tracker: Any,
-        root_config: Any,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+        cost_tracker: CostTracker,
+        root_config: RootConfig,
     ) -> None:
         """Regression: the registry must exist when auto_wire_meetings runs.
 
@@ -157,9 +158,9 @@ class TestCreateApp:
         import synthorg.api.construction_phase as construction_module
         from synthorg.api.auto_wire import auto_wire_meetings as _original_auto_wire
 
-        captured: dict[str, Any] = {}
+        captured: dict[str, object] = {}
 
-        def _capturing(**kwargs: Any) -> Any:
+        def _capturing(**kwargs: Any) -> Any:  # type: ignore[explicit-any]  # forwards **kwargs verbatim to the wrapped wiring fn
             captured["agent_registry"] = kwargs.get("agent_registry")
             return _original_auto_wire(**kwargs)
 
@@ -191,7 +192,7 @@ class TestCreateAppEnvAutoWire:
     def test_persistence_from_env(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        root_config: Any,
+        root_config: RootConfig,
         env_value: str | None,
         expect_persistence: bool,
     ) -> None:
@@ -220,7 +221,7 @@ class TestCreateAppCursorSecretGuard:
     def test_ephemeral_cursor_secret_refused(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         monkeypatch.delenv("SYNTHORG_PAGINATION_CURSOR_SECRET", raising=False)
         with pytest.raises(
@@ -305,7 +306,7 @@ class TestResolveArtifactDirEnv:
 class TestAppLifecycle:
     async def test_startup_partial_failure_cleanup(
         self,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         """Persistence ok, bus fails → persistence cleaned up."""
         from synthorg.api.approval_store import ApprovalStore
@@ -364,7 +365,7 @@ class TestAppLifecycle:
 
     async def test_shutdown_event_logged_before_teardown(
         self,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         """``API_APP_SHUTDOWN`` fires as the first action of on_shutdown.
 
@@ -407,7 +408,7 @@ class TestAppLifecycle:
 
     async def test_task_engine_failure_cleans_up(
         self,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         """Task engine start fails → persistence + bus cleaned up."""
         from unittest.mock import MagicMock
@@ -450,7 +451,7 @@ class TestAppLifecycle:
 
     async def test_settings_dispatcher_failure_cleans_up(
         self,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         """Settings dispatcher start fails → persistence + bus cleaned up."""
         from unittest.mock import AsyncMock, MagicMock
@@ -507,7 +508,7 @@ class TestAppLifecycle:
 
     async def test_meeting_scheduler_lifecycle(
         self,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         """Meeting scheduler start/stop are called during lifecycle."""
         from unittest.mock import AsyncMock, MagicMock
@@ -552,7 +553,7 @@ class TestAppLifecycle:
 
     async def test_approval_timeout_scheduler_lifecycle(
         self,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         """Approval timeout scheduler start/stop are called during lifecycle."""
         from unittest.mock import AsyncMock, MagicMock
@@ -740,11 +741,11 @@ class TestAutoWirePhase1:
 
     def test_explicit_services_not_overridden(
         self,
-        fake_persistence: Any,
-        fake_message_bus: Any,
-        cost_tracker: Any,
-        root_config: Any,
-        fake_task_engine: Any,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+        cost_tracker: CostTracker,
+        root_config: RootConfig,
+        fake_task_engine: TaskEngine,
     ) -> None:
         """Explicitly provided services are not replaced by auto-wiring."""
         app = create_app(
@@ -790,9 +791,9 @@ class TestAutoWirePhase2:
 
     async def test_auto_wire_settings_creates_service(
         self,
-        fake_persistence: Any,
-        fake_message_bus: Any,
-        root_config: Any,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+        root_config: RootConfig,
     ) -> None:
         """auto_wire_settings creates SettingsService on AppState."""
         from synthorg.api.approval_store import ApprovalStore
@@ -829,8 +830,8 @@ class TestAutoWirePhase2:
 
     async def test_auto_wire_settings_without_bus(
         self,
-        fake_persistence: Any,
-        root_config: Any,
+        fake_persistence: FakePersistenceBackend,
+        root_config: RootConfig,
     ) -> None:
         """auto_wire_settings works without a message bus."""
         from synthorg.api.approval_store import ApprovalStore
@@ -873,9 +874,9 @@ class TestAutoWirePhase2:
 
     def test_phase2_skipped_when_settings_provided(
         self,
-        fake_persistence: Any,
-        fake_message_bus: Any,
-        root_config: Any,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+        root_config: RootConfig,
     ) -> None:
         """On-startup auto-wire skipped when settings_service is explicitly provided."""
         import synthorg.settings.definitions  # noqa: F401
@@ -904,8 +905,8 @@ class TestComposeSettingsDependentServices:
 
     def test_creates_resolver_and_management(
         self,
-        fake_persistence: Any,
-        root_config: Any,
+        fake_persistence: FakePersistenceBackend,
+        root_config: RootConfig,
     ) -> None:
         """Composing settings deps wires ConfigResolver + ProviderManagement."""
         import synthorg.settings.definitions  # noqa: F401
@@ -968,7 +969,7 @@ class TestAutoWirePhase1Details:
 
     def test_provider_registry_param_not_overridden(
         self,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         """Explicit provider_registry is preserved by auto-wiring."""
         from unittest.mock import MagicMock
@@ -989,7 +990,7 @@ class TestAutoWirePhase2ErrorPaths:
     async def test_phase2_failure_triggers_safe_shutdown(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         """On-startup auto-wire failure calls _safe_shutdown for cleanup."""
         startup_hook = _build_startup_with_failing_settings_autowire(
@@ -1001,9 +1002,9 @@ class TestAutoWirePhase2ErrorPaths:
 
     async def test_auto_wired_dispatcher_stopped_on_shutdown(
         self,
-        root_config: Any,
-        fake_persistence: Any,
-        fake_message_bus: Any,
+        root_config: RootConfig,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
     ) -> None:
         """Auto-wired dispatcher is stopped during on_shutdown."""
         from synthorg.api.approval_store import ApprovalStore
@@ -1034,8 +1035,8 @@ class TestAutoWirePhase2ErrorPaths:
 
     async def test_dispatcher_start_failure_preserves_app_state(
         self,
-        fake_persistence: Any,
-        root_config: Any,
+        fake_persistence: FakePersistenceBackend,
+        root_config: RootConfig,
     ) -> None:
         """Dispatcher start failure does not mutate app_state."""
         from unittest.mock import AsyncMock, MagicMock
@@ -1049,7 +1050,7 @@ class TestAutoWirePhase2ErrorPaths:
             persistence=fake_persistence,
         )
 
-        def failing_builder(*args: Any, **kwargs: Any) -> MagicMock:
+        def failing_builder(*args: object, **kwargs: object) -> MagicMock:
             mock_dispatcher = MagicMock()
             mock_dispatcher.start = AsyncMock(
                 side_effect=RuntimeError("dispatcher start boom"),
@@ -1073,8 +1074,8 @@ class TestAutoWirePhase2ErrorPaths:
     async def test_settings_service_creation_failure(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        fake_persistence: Any,
-        root_config: Any,
+        fake_persistence: FakePersistenceBackend,
+        root_config: RootConfig,
     ) -> None:
         """SettingsService construction failure propagates cleanly."""
         from synthorg.api.approval_store import ApprovalStore
@@ -1111,7 +1112,7 @@ class TestAutoWirePhase1ErrorPaths:
 
     def test_channel_overlap_deduplication(
         self,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         """Channels already in bus config are not duplicated."""
         from synthorg.api.auto_wire import auto_wire_phase1
@@ -1153,12 +1154,12 @@ class TestAutoWirePhase1ErrorPaths:
     def test_cost_tracker_creation_failure(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         """CostTracker construction failure propagates from auto_wire_phase1."""
         from synthorg.api.auto_wire import auto_wire_phase1
 
-        def failing_init(self: Any, **kwargs: Any) -> None:
+        def failing_init(self: object, **kwargs: object) -> None:
             msg = "tracker boom"
             raise RuntimeError(msg)
 
@@ -1178,13 +1179,13 @@ class TestAutoWirePhase1ErrorPaths:
     def test_message_bus_creation_failure(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         """InMemoryMessageBus construction failure propagates."""
         from synthorg.api.auto_wire import auto_wire_phase1
         from synthorg.communication.bus.memory import InMemoryMessageBus
 
-        def failing_init(self: Any, **kwargs: Any) -> None:
+        def failing_init(self: object, **kwargs: object) -> None:
             msg = "bus boom"
             raise RuntimeError(msg)
 
@@ -1343,7 +1344,7 @@ class TestBuildMiddleware:
 
     def test_middleware_stack_has_nine_entries(
         self,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         from synthorg.api.auth.context import AuthContextMiddleware
         from synthorg.api.middleware_factory import _build_middleware
@@ -1363,7 +1364,7 @@ class TestBuildMiddleware:
 
     def test_three_rate_limiters_have_distinct_stores(
         self,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         from litestar.middleware.rate_limit import (
             RateLimitConfig as LsRL,
@@ -1386,7 +1387,7 @@ class TestBuildMiddleware:
 
     def test_middleware_ordering(
         self,
-        root_config: Any,
+        root_config: RootConfig,
     ) -> None:
         """floor → auth → unauth → auth-rl (with csrf + logging between)."""
         from litestar.middleware.rate_limit import (

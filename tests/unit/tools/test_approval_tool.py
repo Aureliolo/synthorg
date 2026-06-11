@@ -1,6 +1,6 @@
 """Tests for RequestHumanApprovalTool."""
 
-from typing import Any, cast
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,6 +9,7 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 from synthorg.tools.approval_tool import RequestHumanApprovalTool
+from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -51,7 +52,7 @@ class TestToolCreation:
     def test_has_parameters_schema(self, tool: RequestHumanApprovalTool) -> None:
         schema = tool.parameters_schema
         assert schema is not None
-        props = cast("dict[str, Any]", schema)["properties"]
+        props = cast("JsonDict", schema)["properties"]
         assert "action_type" in props
         assert "title" in props
         assert "description" in props
@@ -79,7 +80,7 @@ class TestExecute:
 
         # Verify item was created in store
         item = await approval_store.get(
-            cast("dict[str, Any]", result.metadata)["approval_id"]
+            cast("JsonDict", result.metadata)["approval_id"]
         )
         assert item is not None
         assert item.action_type == "deploy:production"
@@ -127,7 +128,7 @@ class TestExecute:
                 "description": "Full deployment",
             },
         )
-        assert cast("dict[str, Any]", result.metadata)["approval_id"] in result.content
+        assert cast("JsonDict", result.metadata)["approval_id"] in result.content
 
     async def test_no_task_id(
         self,
@@ -147,7 +148,7 @@ class TestExecute:
         )
         assert not result.is_error
         item = await approval_store.get(
-            cast("dict[str, Any]", result.metadata)["approval_id"]
+            cast("JsonDict", result.metadata)["approval_id"]
         )
         assert item is not None
         assert item.task_id is None

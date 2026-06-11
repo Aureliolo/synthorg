@@ -1,6 +1,6 @@
 """Tests for the notification sender tool."""
 
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -8,6 +8,7 @@ from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.communication.notification_sender import (
     NotificationSenderTool,
 )
+from tests._shared import JsonDict
 
 from .conftest import MockNotificationDispatcher
 
@@ -95,7 +96,7 @@ class TestNotificationSenderTool:
     async def test_execute_invalid_enum(
         self,
         mock_dispatcher: MockNotificationDispatcher,
-        args: dict[str, Any],
+        args: dict[str, object],
         expected_msg: str,
     ) -> None:
         tool = NotificationSenderTool(dispatcher=mock_dispatcher)
@@ -145,4 +146,4 @@ class TestNotificationSenderTool:
         schema = tool.parameters_schema
         assert schema is not None
         for field in ("category", "severity", "title", "source"):
-            assert field in cast("dict[str, Any]", schema)["required"]
+            assert field in cast(JsonDict, schema)["required"]
