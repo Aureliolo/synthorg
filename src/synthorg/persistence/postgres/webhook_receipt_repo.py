@@ -61,13 +61,13 @@ def _row_to_receipt(row: DictRow) -> WebhookReceipt:
         raw_payload = row.get("payload_json")
         if raw_payload is None:
             payload_str = ""
-        elif isinstance(raw_payload, str):
-            payload_str = raw_payload
         else:
             # Use compact separators so a round-trip through JSONB produces a
             # string that compares equal byte-for-byte with the caller's
             # compact input (the model contract is "string of JSON", not a
-            # canonical pretty-print).
+            # canonical pretty-print). A scalar JSON string decodes to a plain
+            # ``str``; it must still be re-serialised so its quotes survive,
+            # hence no ``isinstance(str)`` verbatim shortcut.
             payload_str = json.dumps(raw_payload, separators=(",", ":"))
         processed_at = row.get("processed_at")
         return WebhookReceipt(

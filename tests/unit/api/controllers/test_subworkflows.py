@@ -16,8 +16,7 @@ def _sub_payload(
     version: str = "1.0.0",
     name: str = "Finance Close",
 ) -> JsonDict:
-    return {
-        "subworkflow_id": subworkflow_id,
+    payload: JsonDict = {
         "version": version,
         "name": name,
         "description": "Finance close subworkflow",
@@ -63,6 +62,11 @@ def _sub_payload(
             },
         ],
     }
+    # Only include the key when supplied so the "server mints an id"
+    # tests exercise true omission, not an explicit ``null``.
+    if subworkflow_id is not None:
+        payload["subworkflow_id"] = subworkflow_id
+    return payload
 
 
 async def _create_subworkflow(
