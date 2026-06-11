@@ -6,6 +6,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash scripts/check_no_repush_after_failure.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
             "command": "bash scripts/check_push_rebased.sh",
             "timeout": 15000
           },
