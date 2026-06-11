@@ -2886,6 +2886,13 @@
     },
     {
       "kind": "code",
+      "loc": 86,
+      "loc_cap": 500,
+      "module": "src/synthorg/budget/tracker_protocol.py",
+      "owning_feature": "budget"
+    },
+    {
+      "kind": "code",
       "loc": 312,
       "loc_cap": 500,
       "module": "src/synthorg/budget/tracker_summary.py",
@@ -4174,6 +4181,13 @@
     },
     {
       "kind": "code",
+      "loc": 16,
+      "loc_cap": 500,
+      "module": "src/synthorg/core/completion_enums.py",
+      "owning_feature": null
+    },
+    {
+      "kind": "code",
       "loc": 3,
       "loc_cap": 500,
       "module": "src/synthorg/core/concurrency/__init__.py",
@@ -4198,6 +4212,13 @@
       "loc": 324,
       "loc_cap": 500,
       "module": "src/synthorg/core/domain_errors.py",
+      "owning_feature": null
+    },
+    {
+      "kind": "code",
+      "loc": 49,
+      "loc_cap": 500,
+      "module": "src/synthorg/core/effective_autonomy.py",
       "owning_feature": null
     },
     {
@@ -4303,6 +4324,13 @@
       "loc": 49,
       "loc_cap": 500,
       "module": "src/synthorg/core/project_workspace.py",
+      "owning_feature": null
+    },
+    {
+      "kind": "code",
+      "loc": 40,
+      "loc_cap": 500,
+      "module": "src/synthorg/core/redteam_review_input.py",
       "owning_feature": null
     },
     {
@@ -5077,7 +5105,7 @@
     },
     {
       "kind": "code",
-      "loc": 418,
+      "loc": 419,
       "loc_cap": 500,
       "module": "src/synthorg/engine/classification/detectors.py",
       "owning_feature": "engine"
@@ -5665,7 +5693,7 @@
     },
     {
       "kind": "code",
-      "loc": 214,
+      "loc": 215,
       "loc_cap": 500,
       "module": "src/synthorg/engine/flight_recording/sink.py",
       "owning_feature": "engine"
@@ -5721,7 +5749,7 @@
     },
     {
       "kind": "code",
-      "loc": 254,
+      "loc": 255,
       "loc_cap": 500,
       "module": "src/synthorg/engine/hybrid/step_helpers.py",
       "owning_feature": "engine"
@@ -5931,7 +5959,7 @@
     },
     {
       "kind": "code",
-      "loc": 354,
+      "loc": 355,
       "loc_cap": 500,
       "module": "src/synthorg/engine/loop_helpers.py",
       "owning_feature": "engine"
@@ -6043,7 +6071,7 @@
     },
     {
       "kind": "code",
-      "loc": 332,
+      "loc": 330,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/models.py",
       "owning_feature": "engine"
@@ -6116,6 +6144,13 @@
       "loc": 30,
       "loc_cap": 500,
       "module": "src/synthorg/engine/parallel_progress.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
+      "loc": 22,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/parallel_protocol.py",
       "owning_feature": "engine"
     },
     {
@@ -6281,7 +6316,7 @@
     },
     {
       "kind": "code",
-      "loc": 97,
+      "loc": 98,
       "loc_cap": 500,
       "module": "src/synthorg/engine/plan_helpers.py",
       "owning_feature": "engine"
@@ -8475,6 +8510,13 @@
       "loc": 692,
       "loc_cap": 1100,
       "module": "src/synthorg/hr/registry.py",
+      "owning_feature": "hr"
+    },
+    {
+      "kind": "code",
+      "loc": 125,
+      "loc_cap": 500,
+      "module": "src/synthorg/hr/registry_protocol.py",
       "owning_feature": "hr"
     },
     {
@@ -16865,7 +16907,7 @@
     },
     {
       "kind": "code",
-      "loc": 158,
+      "loc": 157,
       "loc_cap": 500,
       "module": "src/synthorg/providers/__init__.py",
       "owning_feature": "providers"
@@ -17033,21 +17075,21 @@
     },
     {
       "kind": "code",
-      "loc": 280,
+      "loc": 281,
       "loc_cap": 500,
       "module": "src/synthorg/providers/drivers/mappers.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 264,
+      "loc": 265,
       "loc_cap": 500,
       "module": "src/synthorg/providers/drivers/scripted.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 44,
+      "loc": 37,
       "loc_cap": 500,
       "module": "src/synthorg/providers/enums.py",
       "owning_feature": "providers"
@@ -17670,7 +17712,7 @@
     },
     {
       "kind": "code",
-      "loc": 23,
+      "loc": 21,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/__init__.py",
       "owning_feature": "security"
@@ -17733,7 +17775,7 @@
     },
     {
       "kind": "code",
-      "loc": 355,
+      "loc": 317,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/models.py",
       "owning_feature": "security"
@@ -17754,7 +17796,7 @@
     },
     {
       "kind": "code",
-      "loc": 163,
+      "loc": 161,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/resolver.py",
       "owning_feature": "security"
@@ -17887,7 +17929,7 @@
     },
     {
       "kind": "code",
-      "loc": 108,
+      "loc": 106,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/__init__.py",
       "owning_feature": "security"
@@ -17985,7 +18027,7 @@
     },
     {
       "kind": "code",
-      "loc": 262,
+      "loc": 232,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/models.py",
       "owning_feature": "security"
@@ -18838,10 +18880,24 @@
       "owning_feature": "settings"
     },
     {
+      "kind": "code",
+      "loc": 110,
+      "loc_cap": 500,
+      "module": "src/synthorg/settings/resolver_protocol.py",
+      "owning_feature": "settings"
+    },
+    {
       "kind": "complex_service",
       "loc": 997,
       "loc_cap": 1100,
       "module": "src/synthorg/settings/service.py",
+      "owning_feature": "settings"
+    },
+    {
+      "kind": "code",
+      "loc": 76,
+      "loc_cap": 500,
+      "module": "src/synthorg/settings/service_protocol.py",
       "owning_feature": "settings"
     },
     {
@@ -19322,7 +19378,7 @@
     },
     {
       "kind": "code",
-      "loc": 246,
+      "loc": 244,
       "loc_cap": 500,
       "module": "src/synthorg/tools/approval_tool.py",
       "owning_feature": "tools"
@@ -19840,7 +19896,7 @@
     },
     {
       "kind": "code",
-      "loc": 480,
+      "loc": 478,
       "loc_cap": 500,
       "module": "src/synthorg/tools/external_api/external_api_tool.py",
       "owning_feature": "tools"
@@ -20669,6 +20725,13 @@
       "loc": 190,
       "loc_cap": 500,
       "module": "src/synthorg/workers/heartbeat_subscriber.py",
+      "owning_feature": "runtime"
+    },
+    {
+      "kind": "code",
+      "loc": 58,
+      "loc_cap": 500,
+      "module": "src/synthorg/workers/queue_protocol.py",
       "owning_feature": "runtime"
     },
     {

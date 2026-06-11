@@ -24,9 +24,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RISK_CLASSIFY_FAILED,
 )
 from synthorg.security.autonomy.enums import ToolCategory
-from synthorg.security.timeout.risk_tier_classifier import (
-    DefaultRiskTierClassifier,
-)
+from synthorg.security.timeout.protocol import RiskTierClassifier
 from synthorg.tools._misc_args import RequestHumanApprovalArgs
 
 from .base import BaseTool, ToolExecutionResult
@@ -55,7 +53,7 @@ class RequestHumanApprovalTool(BaseTool):
         self,
         *,
         approval_store: ApprovalStoreProtocol,
-        risk_classifier: DefaultRiskTierClassifier | None = None,
+        risk_classifier: RiskTierClassifier | None = None,
         agent_id: str,
         task_id: str | None = None,
     ) -> None:
