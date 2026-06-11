@@ -583,7 +583,7 @@
     },
     {
       "kind": "code",
-      "loc": 248,
+      "loc": 246,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/_workflow_builders.py",
       "owning_feature": "api_core"
@@ -1570,14 +1570,14 @@
     },
     {
       "kind": "controller",
-      "loc": 289,
+      "loc": 287,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/workflows/crud.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "controller",
-      "loc": 190,
+      "loc": 189,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/workflows/validation.py",
       "owning_feature": "api_core"
@@ -3418,7 +3418,7 @@
     },
     {
       "kind": "code",
-      "loc": 157,
+      "loc": 158,
       "loc_cap": 500,
       "module": "src/synthorg/communication/conflict_resolution/escalation/models.py",
       "owning_feature": "communication"
@@ -3460,7 +3460,7 @@
     },
     {
       "kind": "code",
-      "loc": 446,
+      "loc": 444,
       "loc_cap": 500,
       "module": "src/synthorg/communication/conflict_resolution/human_strategy.py",
       "owning_feature": "communication"
@@ -7142,7 +7142,7 @@
     },
     {
       "kind": "code",
-      "loc": 346,
+      "loc": 350,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workflow/definition.py",
       "owning_feature": "engine"
@@ -7177,7 +7177,7 @@
     },
     {
       "kind": "code",
-      "loc": 249,
+      "loc": 250,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workflow/execution_models.py",
       "owning_feature": "engine"
@@ -9032,7 +9032,7 @@
     },
     {
       "kind": "code",
-      "loc": 312,
+      "loc": 308,
       "loc_cap": 500,
       "module": "src/synthorg/integrations/connections/models.py",
       "owning_feature": "integrations"
@@ -13687,6 +13687,13 @@
     },
     {
       "kind": "declarative",
+      "loc": 22,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/escalation.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
       "loc": 16,
       "loc_cap": null,
       "module": "src/synthorg/observability/events/persistence/flight_recorder.py",
@@ -14842,14 +14849,14 @@
     },
     {
       "kind": "code",
-      "loc": 150,
+      "loc": 155,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_shared/workflow_definition_marshalling.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 145,
+      "loc": 151,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_shared/workflow_execution_marshalling.py",
       "owning_feature": "persistence"
@@ -15220,7 +15227,7 @@
     },
     {
       "kind": "code",
-      "loc": 129,
+      "loc": 132,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/_escalation_notify.py",
       "owning_feature": "persistence"
@@ -15514,7 +15521,7 @@
     },
     {
       "kind": "repository",
-      "loc": 477,
+      "loc": 504,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/escalation_repo.py",
       "owning_feature": "persistence"
@@ -15794,7 +15801,7 @@
     },
     {
       "kind": "code",
-      "loc": 192,
+      "loc": 195,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/subworkflow_repo/_marshalling.py",
       "owning_feature": "persistence"
@@ -15857,7 +15864,7 @@
     },
     {
       "kind": "code",
-      "loc": 418,
+      "loc": 406,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/webhook_receipt_repo.py",
       "owning_feature": "persistence"
@@ -16305,7 +16312,7 @@
     },
     {
       "kind": "code",
-      "loc": 432,
+      "loc": 459,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/escalation_repo.py",
       "owning_feature": "persistence"
@@ -16578,7 +16585,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 762,
+      "loc": 769,
       "loc_cap": 1100,
       "module": "src/synthorg/persistence/sqlite/subworkflow_repo.py",
       "owning_feature": "persistence"
@@ -16634,7 +16641,7 @@
     },
     {
       "kind": "code",
-      "loc": 414,
+      "loc": 405,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/webhook_receipt_repo.py",
       "owning_feature": "persistence"
