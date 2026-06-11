@@ -21,6 +21,15 @@ It is provider-agnostic (<!--RS:providers_via_litellm-->90+<!--/RS--> LLM provid
 
 > **Project status (read this).** SynthOrg is **pre-alpha**. The framework, infrastructure, and runtime are built and tested (<!--RS:tests-->35,000+<!--/RS--> tests, 80%+ coverage): API, dashboard, CLI, dual-backend persistence, the provider layer, the agent runtime, the multi-agent coordinator, the work pipeline spine, the intake engine, sandbox lifecycle dispatch, and the distributed-path consumers are all wired and exercised by deterministic e2e harnesses with a scripted provider (no real LLM spend). Operator-facing onboarding (real provider, real workloads, dashboard polish) has not been exercised end to end by a human. Expect bugs, rough edges, and missing polish; use it for research and contribution, not for production workloads. Progress is tracked openly on the [roadmap](https://synthorg.io/docs/roadmap/) and the [issue tracker](https://github.com/Aureliolo/synthorg/issues).
 
+## Table of Contents
+1. [What is available now](#what-is-available-now)
+2. [In active development](#in-active-development)
+3. [Quick Start](#quick-start)
+4. [Target architecture](#target-architecture)
+5. [Compare](#compare)
+6. [Documentation](#documentation)
+7. [License](#license)
+
 ## What is available now
 
 A tested platform you can run, inspect, and build on:
@@ -55,11 +64,13 @@ The design for each lives in the [Design Specification](https://synthorg.io/docs
 ### Install
 
 ```bash
+
 # Linux / macOS
 curl -sSfL https://synthorg.io/get/install.sh | bash
 ```
 
 ```powershell
+
 # Windows (PowerShell)
 irm https://synthorg.io/get/install.ps1 | iex
 ```
