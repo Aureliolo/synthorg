@@ -67,6 +67,5 @@ def build_deliverable_receipt_service(  # noqa: PLR0913 -- cohesive boot wiring
         validator=validator,
         renderer=renderer,
         docs=persistence.project_docs,
-        docs_service=docs_service,
         flight_recorder=persistence.flight_recorder_frames,
     )

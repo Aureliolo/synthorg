@@ -211,9 +211,9 @@ class OffboardingService:
                 agent_id=NotBlankStr(agent_id),
                 active_tasks=active_tasks,
             )
-            # Persist interrupted tasks.
-            for task in interrupted:
-                await self._task_repository.save(task)
+            # Persist every interrupted task in one atomic batch instead of
+            # a save() per task (N round trips -> 1).
+            await self._task_repository.save_many(tuple(interrupted))
             return tuple(str(t.id) for t in interrupted)
         except (TaskReassignmentError, OSError, ValueError) as exc:
             # logger.exception attaches the traceback whose

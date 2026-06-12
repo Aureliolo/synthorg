@@ -20,8 +20,7 @@ from synthorg.deliverable_receipts.renderer import ReceiptRenderer
 from synthorg.deliverable_receipts.service import DeliverableReceiptService
 from synthorg.deliverable_receipts.validator import ReceiptValidator
 from synthorg.docs_engine.enums import DocType
-from synthorg.docs_engine.models import DocMetadata, LivingDocument
-from synthorg.docs_engine.service import DocsService
+from synthorg.docs_engine.models import DocMetadata
 from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.models import KnowledgeSource
 from synthorg.persistence.code_execution_protocol import (
@@ -94,23 +93,6 @@ def _deliverable_meta(slug: str = _SLUG) -> DocMetadata:
     )
 
 
-def _deliverable_doc(
-    *,
-    slug: str = _SLUG,
-    related_task_ids: tuple[str, ...] = (_TASK_ID,),
-) -> LivingDocument:
-    return LivingDocument(
-        slug=slug,
-        title="Quarterly Report",
-        doc_type=DocType.DELIVERABLE,
-        related_task_ids=related_task_ids,
-        author_agent_id="bob",
-        body=(),
-        created_at=_NOW,
-        updated_at=_NOW,
-    )
-
-
 def _usage(source_id: str, *, execution_id: str = _EXEC) -> KnowledgeUsageRecord:
     return KnowledgeUsageRecord(
         task_id=_TASK_ID,
@@ -145,7 +127,7 @@ def _service(
     code: InMemoryCodeExecutionRecordRepository,
     receipts: InMemoryDeliverableReceiptRepository,
     latest_execution_id: str | None = _EXEC,
-    doc: LivingDocument | None = None,
+    resolves: bool = True,
 ) -> DeliverableReceiptService:
     sources = mock_of[KnowledgeSourceRepository]()
     sources.get = AsyncMock(
@@ -170,14 +152,11 @@ def _service(
         ),
     )
     docs = mock_of[DocsRepository]()
+    # The deliverable is resolved by a single filtered query on the task link;
+    # an empty result models "no deliverable doc references this task".
     docs.query = AsyncMock(
         spec=DocsRepository.query,
-        return_value=(_deliverable_meta(),),
-    )
-    docs_service = mock_of[DocsService]()
-    docs_service.read_doc = AsyncMock(
-        spec=DocsService.read_doc,
-        return_value=doc if doc is not None else _deliverable_doc(),
+        return_value=(_deliverable_meta(),) if resolves else (),
     )
     renderer = mock_of[ReceiptRenderer]()
     renderer.render_into_doc = AsyncMock(spec=ReceiptRenderer.render_into_doc)
@@ -187,7 +166,6 @@ def _service(
         validator=mock_of[ReceiptValidator](),
         renderer=renderer,
         docs=docs,
-        docs_service=docs_service,
         flight_recorder=flight_recorder,
     )
 
@@ -251,7 +229,7 @@ async def test_no_matching_deliverable_returns_none() -> None:
         usage=InMemoryKnowledgeUsageRecordRepository(),
         code=InMemoryCodeExecutionRecordRepository(),
         receipts=receipts,
-        doc=_deliverable_doc(related_task_ids=("some-other-task",)),
+        resolves=False,
     )
 
     receipt = await service.build_and_store(task=_task())

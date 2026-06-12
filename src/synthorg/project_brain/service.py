@@ -447,6 +447,38 @@ class ProjectBrainService:
         rows = await self._repo.list_current(spec, limit=limit, offset=offset)
         return tuple(entry_to_summary(row) for row in rows)
 
+    async def list_current_entries(  # noqa: PLR0913 -- filter dimensions explicit
+        self,
+        *,
+        project_id: NotBlankStr,
+        entry_kind: BrainEntryKind | None = None,
+        status: BrainEntryStatus | None = None,
+        tag: NotBlankStr | None = None,
+        author: NotBlankStr | None = None,
+        related_task_id: NotBlankStr | None = None,
+        limit: int = BRAIN_LIST_DEFAULT_LIMIT,
+        offset: int = 0,
+    ) -> tuple[BrainEntry, ...]:
+        """Return the current-state projection as full entries (with bodies).
+
+        The same single ``list_current`` query as :meth:`list_current`, but
+        keeps the full :class:`BrainEntry` rows instead of downgrading them to
+        summaries. Callers that need the body (e.g. receipt assembly) use this
+        to avoid a per-entry ``get_entry`` round trip (N+1 -> 1).
+
+        Returns:
+            Current-state entries matching the filter, newest-first.
+        """
+        spec = build_filter_spec(
+            project_id=project_id,
+            entry_kind=entry_kind,
+            status=status,
+            tag=tag,
+            author=author,
+            related_task_id=related_task_id,
+        )
+        return await self._repo.list_current(spec, limit=limit, offset=offset)
+
     async def count_current(  # noqa: PLR0913 -- filter dimensions are explicit
         self,
         *,

@@ -67,6 +67,22 @@ class TestKnowledgeSourceRepository:
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         assert await backend.knowledge_sources.get(NotBlankStr("ghost")) is None
 
+    async def test_get_many_returns_existing_only(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.projects.save(_project())
+        await backend.knowledge_sources.save(_source(source_id="src-1"))
+        await backend.knowledge_sources.save(_source(source_id="src-2"))
+        rows = await backend.knowledge_sources.get_many(
+            (NotBlankStr("src-1"), NotBlankStr("ghost"), NotBlankStr("src-2")),
+        )
+        assert {r.source_id for r in rows} == {"src-1", "src-2"}
+
+    async def test_get_many_empty_input_returns_empty(
+        self, backend: PersistenceBackend
+    ) -> None:
+        assert await backend.knowledge_sources.get_many(()) == ()
+
     async def test_global_source_round_trip(self, backend: PersistenceBackend) -> None:
         await backend.knowledge_sources.save(_source(source_id="glob", project_id=None))
         fetched = await backend.knowledge_sources.get(NotBlankStr("glob"))

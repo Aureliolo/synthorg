@@ -568,6 +568,7 @@ CREATE TABLE project_docs (
     ),
     title TEXT NOT NULL,
     tags TEXT NOT NULL DEFAULT '[]',
+    related_task_ids TEXT NOT NULL DEFAULT '[]',
     head_commit_sha TEXT NOT NULL,
     last_indexed_commit_sha TEXT,
     created_at TEXT NOT NULL,
@@ -1255,6 +1256,10 @@ CREATE TABLE webhook_receipts (
 
 CREATE INDEX idx_webhook_receipts_conn_received
 ON webhook_receipts (connection_name, received_at DESC);
+-- Serves the unfiltered list_items path, which sorts by received_at with no
+-- leading connection_name predicate so the composite index above cannot apply.
+CREATE INDEX idx_webhook_receipts_received_id
+ON webhook_receipts (received_at DESC, id DESC);
 
 -- ── MCP catalog installations ────────────────────────────────
 -- Recorded when the dashboard installs an MCP catalog entry. The
@@ -1445,6 +1450,9 @@ CREATE TABLE conversations (
         kind IN ('direct', 'routed', 'group')
     )
 );
+-- Serves the unfiltered list_items seek-page (ORDER BY created_at DESC, id DESC).
+CREATE INDEX idx_conversations_created_id
+ON conversations (created_at DESC, id DESC);
 
 CREATE TABLE conversation_turns (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
@@ -1485,6 +1493,10 @@ CREATE TABLE conversational_proposals (
 );
 CREATE UNIQUE INDEX idx_cp_approval_id
 ON conversational_proposals (approval_id);
+-- Serves the "list proposals for a conversation" query (filter conversation_id,
+-- ORDER BY created_at DESC); composite avoids the post-filter sort.
+CREATE INDEX idx_cp_conversation_id
+ON conversational_proposals (conversation_id, created_at DESC);
 
 CREATE TABLE conversation_participants (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
@@ -1534,6 +1546,10 @@ ON conversation_invites (conversation_id);
 CREATE UNIQUE INDEX idx_cinv_one_pending_per_target
 ON conversation_invites (conversation_id, target_agent_id)
 WHERE status = 'pending';
+-- Serves "all invites for agent X across conversations" (filter target_agent_id
+-- alone, any status), which the partial pending-only index cannot serve.
+CREATE INDEX idx_cinv_target_agent_id
+ON conversation_invites (target_agent_id);
 
 -- Pre-flight cost forecasts.
 -- One row per pre-flight estimate. ``decision`` gates dispatch:

@@ -76,6 +76,10 @@ async def _seed_cost_records(backend: SQLitePersistenceBackend, n: int) -> None:
 _ALLOWED_ANALYZE_STMTS: dict[str, str] = {
     "cost_records": "ANALYZE cost_records",
     "decision_records": "ANALYZE decision_records",
+    "conversations": "ANALYZE conversations",
+    "conversational_proposals": "ANALYZE conversational_proposals",
+    "conversation_invites": "ANALYZE conversation_invites",
+    "webhook_receipts": "ANALYZE webhook_receipts",
 }
 
 _ALLOWED_EXPLAIN_STMTS: dict[str, str] = {
@@ -91,6 +95,23 @@ _ALLOWED_EXPLAIN_STMTS: dict[str, str] = {
     "ORDER BY recorded_at ASC, id ASC LIMIT 50": (
         "EXPLAIN QUERY PLAN SELECT * FROM decision_records "
         "WHERE task_id = ? ORDER BY recorded_at ASC, id ASC LIMIT 50"
+    ),
+    "SELECT * FROM conversations ORDER BY created_at DESC, id DESC LIMIT 50": (
+        "EXPLAIN QUERY PLAN SELECT * FROM conversations "
+        "ORDER BY created_at DESC, id DESC LIMIT 50"
+    ),
+    "SELECT * FROM conversational_proposals WHERE conversation_id = ? "
+    "ORDER BY created_at DESC, id DESC LIMIT 50": (
+        "EXPLAIN QUERY PLAN SELECT * FROM conversational_proposals "
+        "WHERE conversation_id = ? ORDER BY created_at DESC, id DESC LIMIT 50"
+    ),
+    "SELECT * FROM conversation_invites WHERE target_agent_id = ? LIMIT 50": (
+        "EXPLAIN QUERY PLAN SELECT * FROM conversation_invites "
+        "WHERE target_agent_id = ? LIMIT 50"
+    ),
+    "SELECT * FROM webhook_receipts ORDER BY received_at DESC, id DESC LIMIT 50": (
+        "EXPLAIN QUERY PLAN SELECT * FROM webhook_receipts "
+        "ORDER BY received_at DESC, id DESC LIMIT 50"
     ),
 }
 
@@ -182,4 +203,124 @@ class TestDecisionRecordsCompositeIndex:
         )
         assert "idx_dr_task_recorded_id" in plan, (
             f"Composite (task_id, recorded_at, id) index not used:\n{plan}"
+        )
+
+
+def _iso(offset_seconds: int) -> str:
+    return (_BASE + timedelta(seconds=offset_seconds)).isoformat()
+
+
+async def _seed_conversation_family(backend: SQLitePersistenceBackend) -> None:
+    """Seed conversations + child rows so the perf indices have data to plan over.
+
+    Inserts go through bound parameters (values only), so the raw SQL here carries
+    no call-site data into the statement text.
+    """
+    db = backend._db
+    assert db is not None, "fixture must connect the backend before seeding"
+    for i in range(10):
+        await db.execute(
+            "INSERT INTO conversations (id, created_by, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?)",
+            (sid(f"conv-{i:03d}"), "system", _iso(i), _iso(i)),
+        )
+    conv = sid("conv-000")
+    for i in range(10):
+        await db.execute(
+            "INSERT INTO conversational_proposals "
+            "(id, conversation_id, approval_id, work_item_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (sid(f"prop-{i:03d}"), conv, sid(f"appr-{i:03d}"), "{}", _iso(i)),
+        )
+    for i in range(10):
+        await db.execute(
+            "INSERT INTO conversation_invites "
+            "(id, conversation_id, approval_id, requested_by_agent_id, "
+            "target_agent_id, reason, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                sid(f"inv-{i:03d}"),
+                conv,
+                sid(f"iappr-{i:03d}"),
+                _AGENTS[0],
+                _AGENTS[i % len(_AGENTS)],
+                "perf-index fixture",
+                _iso(i),
+            ),
+        )
+    await db.commit()
+
+
+async def _seed_webhook_receipts(backend: SQLitePersistenceBackend) -> None:
+    db = backend._db
+    assert db is not None, "fixture must connect the backend before seeding"
+    await db.execute(
+        "INSERT INTO connections (name, connection_type, auth_method, "
+        "created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        ("conn-perf", "generic_http", "api_key", _iso(0), _iso(0)),
+    )
+    for i in range(10):
+        await db.execute(
+            "INSERT INTO webhook_receipts (id, connection_name, received_at) "
+            "VALUES (?, ?, ?)",
+            (sid(f"wh-{i:03d}"), "conn-perf", _iso(i)),
+        )
+    await db.commit()
+
+
+class TestConversationFamilyPerfIndices:
+    async def test_conversations_list_index_used(
+        self,
+        on_disk_backend: SQLitePersistenceBackend,
+    ) -> None:
+        await _seed_conversation_family(on_disk_backend)
+        plan = await _explain_plan(
+            on_disk_backend,
+            "SELECT * FROM conversations ORDER BY created_at DESC, id DESC LIMIT 50",
+        )
+        assert "idx_conversations_created_id" in plan, (
+            f"(created_at DESC, id DESC) index not used for list_items:\n{plan}"
+        )
+
+    async def test_proposals_by_conversation_index_used(
+        self,
+        on_disk_backend: SQLitePersistenceBackend,
+    ) -> None:
+        await _seed_conversation_family(on_disk_backend)
+        plan = await _explain_plan(
+            on_disk_backend,
+            "SELECT * FROM conversational_proposals WHERE conversation_id = ? "
+            "ORDER BY created_at DESC, id DESC LIMIT 50",
+            sid("conv-000"),
+        )
+        assert "idx_cp_conversation_id" in plan, (
+            f"(conversation_id, created_at DESC) index not used:\n{plan}"
+        )
+
+    async def test_invites_by_target_agent_index_used(
+        self,
+        on_disk_backend: SQLitePersistenceBackend,
+    ) -> None:
+        await _seed_conversation_family(on_disk_backend)
+        plan = await _explain_plan(
+            on_disk_backend,
+            "SELECT * FROM conversation_invites WHERE target_agent_id = ? LIMIT 50",
+            _AGENTS[0],
+        )
+        assert "idx_cinv_target_agent_id" in plan, (
+            f"target_agent_id index not used for the status-agnostic query:\n{plan}"
+        )
+
+    async def test_webhook_receipts_list_index_used(
+        self,
+        on_disk_backend: SQLitePersistenceBackend,
+    ) -> None:
+        await _seed_webhook_receipts(on_disk_backend)
+        plan = await _explain_plan(
+            on_disk_backend,
+            "SELECT * FROM webhook_receipts "
+            "ORDER BY received_at DESC, id DESC LIMIT 50",
+        )
+        assert "idx_webhook_receipts_received_id" in plan, (
+            f"(received_at DESC, id DESC) index not used for list_items:\n{plan}"
         )

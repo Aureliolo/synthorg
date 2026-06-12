@@ -37,6 +37,27 @@ class TestTaskRepository:
         assert fetched is not None
         assert fetched.title == "Updated"
 
+    async def test_save_many_inserts_and_upserts(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.tasks.save(make_task(task_id="t1", title="Original"))
+        await backend.tasks.save_many(
+            (
+                make_task(task_id="t1", title="Replaced"),
+                make_task(task_id="t2", title="Fresh"),
+            ),
+        )
+        first = await backend.tasks.get(sid("t1"))
+        second = await backend.tasks.get(sid("t2"))
+        assert first is not None
+        assert first.title == "Replaced"
+        assert second is not None
+        assert second.title == "Fresh"
+
+    async def test_save_many_empty_is_noop(self, backend: PersistenceBackend) -> None:
+        await backend.tasks.save_many(())
+        assert await backend.tasks.list_items() == ()
+
     async def test_list_all(self, backend: PersistenceBackend) -> None:
 
         await backend.tasks.save(make_task(task_id="t1"))

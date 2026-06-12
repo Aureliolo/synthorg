@@ -87,17 +87,7 @@ class PostgresTaskRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def save(self, task: Task) -> None:
-        """Persist a task (upsert semantics).
-
-        Raises:
-            QueryError: If the database query fails.
-        """
-        params = _task_params(task)
-        try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(
-                    """
+    _UPSERT_SQL = """
                     INSERT INTO tasks (
                         id, title, description, type, priority, project, created_by,
                         assigned_to, status, estimated_complexity, budget_limit,
@@ -134,15 +124,48 @@ class PostgresTaskRepository:
                         artifacts_expected=EXCLUDED.artifacts_expected,
                         acceptance_criteria=EXCLUDED.acceptance_criteria,
                         delegation_chain=EXCLUDED.delegation_chain
-                    """,
-                    params,
-                )
+                    """
+
+    async def save(self, task: Task) -> None:
+        """Persist a task (upsert semantics).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(self._UPSERT_SQL, _task_params(task))
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save task {task.id!r}"
             logger.warning(
                 PERSISTENCE_TASK_SAVE_FAILED,
                 task_id=str(task.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
+    async def save_many(self, tasks: tuple[Task, ...]) -> None:
+        """Upsert many tasks in one transaction (ADR-0001 D7).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        if not tasks:
+            return
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.executemany(
+                    self._UPSERT_SQL,
+                    [_task_params(task) for task in tasks],
+                )
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to save {len(tasks)} tasks"
+            logger.warning(
+                PERSISTENCE_TASK_SAVE_FAILED,
+                task_count=len(tasks),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

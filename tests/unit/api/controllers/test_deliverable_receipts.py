@@ -16,7 +16,6 @@ from synthorg.deliverable_receipts.renderer import ReceiptRenderer
 from synthorg.deliverable_receipts.service import DeliverableReceiptService
 from synthorg.deliverable_receipts.state_slice import DeliverableReceiptStateSlice
 from synthorg.deliverable_receipts.validator import ReceiptValidator
-from synthorg.docs_engine.service import DocsService
 from synthorg.persistence.docs_protocol import DocsRepository
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameRepository,
@@ -72,7 +71,6 @@ def _wire_service(
         validator=validator,
         renderer=mock_of[ReceiptRenderer](),
         docs=mock_of[DocsRepository](),
-        docs_service=mock_of[DocsService](),
         flight_recorder=mock_of[FlightRecorderFrameRepository](),
     )
     app_state = client.app.state.app_state

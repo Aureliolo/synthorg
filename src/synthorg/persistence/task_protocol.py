@@ -42,7 +42,8 @@ class TaskRepository(
     """CRUD + query interface for Task persistence.
 
     Composes :class:`IdKeyedRepository` + :class:`FilteredQueryRepository`
-    (ADR-0001).
+    (ADR-0001). One bespoke method, :meth:`save_many`, is justified under
+    ADR-0001 D7 as a real performance optimisation (atomic batch upsert).
     """
 
     @override
@@ -51,6 +52,21 @@ class TaskRepository(
 
         Args:
             entity: The task to persist.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def save_many(self, entities: tuple[Task, ...], /) -> None:
+        """Persist many tasks in one transaction (ADR-0001 D7).
+
+        Upserts every task by id inside a single transaction, so a bulk
+        reassignment commits atomically and in one round trip instead of
+        N sequential ``save`` calls. An empty input is a no-op.
+
+        Args:
+            entities: The tasks to persist.
 
         Raises:
             PersistenceError: If the operation fails.

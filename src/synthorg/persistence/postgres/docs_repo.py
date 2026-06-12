@@ -46,6 +46,10 @@ def _row_to_metadata(row: DictRow) -> DocMetadata:
     if isinstance(raw_tags, str):
         raw_tags = json.loads(raw_tags)
     data["tags"] = tuple(raw_tags)
+    raw_task_ids = data["related_task_ids"]
+    if isinstance(raw_task_ids, str):
+        raw_task_ids = json.loads(raw_task_ids)
+    data["related_task_ids"] = tuple(raw_task_ids)
     data["created_at"] = coerce_row_timestamp(data["created_at"])
     data["updated_at"] = coerce_row_timestamp(data["updated_at"])
     return DocMetadata.model_validate(data)
@@ -70,6 +74,7 @@ class PostgresDocsRepository:
             entity.doc_type.value,
             entity.title,
             json.dumps(list(entity.tags), sort_keys=True),
+            json.dumps(list(entity.related_task_ids), sort_keys=True),
             entity.head_commit_sha,
             entity.last_indexed_commit_sha,
             entity.created_at,
@@ -102,14 +107,15 @@ class PostgresDocsRepository:
                     """
                     INSERT INTO project_docs (
                         project_id, slug, doc_type, title, tags,
-                        head_commit_sha, last_indexed_commit_sha,
-                        created_at, updated_at
+                        related_task_ids, head_commit_sha,
+                        last_indexed_commit_sha, created_at, updated_at
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT(project_id, slug) DO UPDATE SET
                         doc_type=EXCLUDED.doc_type,
                         title=EXCLUDED.title,
                         tags=EXCLUDED.tags,
+                        related_task_ids=EXCLUDED.related_task_ids,
                         head_commit_sha=EXCLUDED.head_commit_sha,
                         last_indexed_commit_sha=EXCLUDED.last_indexed_commit_sha,
                         created_at=EXCLUDED.created_at,
@@ -399,6 +405,11 @@ def _build_query_sql(filter_spec: DocsFilterSpec) -> tuple[str, tuple[object, ..
     if filter_spec.tag is not None:
         sql += " AND tags LIKE %s ESCAPE '\\'"
         params.append(f'%"{_escape_like(filter_spec.tag)}"%')
+    if filter_spec.related_task_id is not None:
+        # Membership against the JSON-array column; quoted needle prevents a
+        # partial-id false match (mirrors the ``tag`` technique above).
+        sql += " AND related_task_ids LIKE %s ESCAPE '\\'"
+        params.append(f'%"{_escape_like(filter_spec.related_task_id)}"%')
     if filter_spec.updated_since is not None:
         sql += " AND updated_at >= %s"
         params.append(filter_spec.updated_since)
