@@ -8465,7 +8465,7 @@
     },
     {
       "kind": "service",
-      "loc": 541,
+      "loc": 539,
       "loc_cap": 600,
       "module": "src/synthorg/hr/promotion/service.py",
       "owning_feature": "hr"
