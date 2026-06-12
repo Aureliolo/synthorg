@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useArtifactsStore } from '@/stores/artifacts'
 import { downloadArtifactFile } from '@/utils/download'
-import { formatFileSize, formatDateTime, formatLabel } from '@/utils/format'
+import { formatFileSize, formatDateTime, formatLabel, formatRelativeTime } from '@/utils/format'
 import { ROUTES } from '@/router/routes'
 import type { Artifact } from '@/api/types/artifacts'
 
@@ -34,7 +34,16 @@ export function ArtifactMetadata({ artifact }: ArtifactMetadataProps) {
     { label: 'Task', value: artifact.task_id, valueClassName: 'font-mono text-xs' },
     { label: 'Project', value: artifact.project_id ?? '--', valueClassName: 'font-mono text-xs' },
     { label: 'Created By', value: artifact.created_by },
-    { label: 'Created', value: formatDateTime(artifact.created_at) },
+    {
+      label: 'Created',
+      // Absolute timestamp with the relative form on hover so the list view's
+      // "3 hours ago" and this detail view reconcile without leaving the page.
+      value: (
+        <time dateTime={artifact.created_at ?? undefined} title={formatRelativeTime(artifact.created_at)}>
+          {formatDateTime(artifact.created_at)}
+        </time>
+      ),
+    },
   ]
 
   function handleDownload() {

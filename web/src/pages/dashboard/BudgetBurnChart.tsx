@@ -270,7 +270,7 @@ function BudgetBurnChartInner({ trendData, forecast, budgetTotal, budgetRemainin
         <EmptyState
           icon={DollarSign}
           title="No spend data available"
-          description="Cost records will appear as agents consume tokens"
+          description="Cost records will appear as agents consume tokens."
         />
       ) : (
         <BurnChartBody

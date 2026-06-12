@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import type { CheckpointRecord } from '@/api/endpoints/fine-tuning'
@@ -16,7 +16,10 @@ interface CheckpointRowProps {
   onDelete: (id: string) => void
 }
 
-function CheckpointRow({ checkpoint: cp, onDeploy, onRollback, onDelete }: CheckpointRowProps) {
+// Memoised so a single checkpoint's WS-driven update (deploy/rollback in
+// flight) does not re-render every other row. The parent passes stable store
+// actions as callbacks so the memo comparison holds.
+const CheckpointRow = memo(function CheckpointRow({ checkpoint: cp, onDeploy, onRollback, onDelete }: CheckpointRowProps) {
   return (
     <tr>
       <td className="py-2 pr-4 font-mono text-xs">
@@ -90,7 +93,7 @@ function CheckpointRow({ checkpoint: cp, onDeploy, onRollback, onDelete }: Check
       </td>
     </tr>
   )
-}
+})
 
 export function CheckpointTable() {
   const { checkpoints, deployCheckpointAction, rollbackCheckpointAction, deleteCheckpointAction } =
@@ -131,8 +134,8 @@ export function CheckpointTable() {
             <CheckpointRow
               key={cp.id}
               checkpoint={cp}
-              onDeploy={(id) => void deployCheckpointAction(id)}
-              onRollback={(id) => void rollbackCheckpointAction(id)}
+              onDeploy={deployCheckpointAction}
+              onRollback={rollbackCheckpointAction}
               onDelete={setDeletingId}
             />
           ))}

@@ -169,7 +169,7 @@ export function BenchmarkScoreChart({ curve }: BenchmarkScoreChartProps) {
         <EmptyState
           icon={LineChartIcon}
           title="No benchmark runs recorded"
-          description="The curve appears once the golden-company benchmark records scored runs"
+          description="The curve appears once the golden-company benchmark records scored runs."
         />
       ) : (
         <ChartBody chartData={chartData} ceiling={ceiling} />

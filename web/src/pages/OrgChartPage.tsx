@@ -43,7 +43,7 @@ function OrgChartInner() {
       <EmptyState
         icon={GitBranch}
         title="No organization configured"
-        description="Set up your company and agents to see the org chart"
+        description="Set up your company and agents to see the org chart."
         action={{ label: 'Edit Organization', onClick: ctrl.goToOrgEdit }}
       />
     )

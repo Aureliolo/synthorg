@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useArtifactsStore } from '@/stores/artifacts'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import type { Artifact } from '@/api/types/artifacts'
 import type { WsChannel } from '@/api/types/websocket'
 
@@ -35,10 +36,11 @@ export function useArtifactsData(): UseArtifactsDataReturn {
     void useArtifactsStore.getState().fetchArtifacts()
   }, [])
 
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useArtifactsStore.getState().fetchArtifacts()
   }, [])
-  const polling = usePolling(pollFn, ARTIFACTS_POLL_INTERVAL)
+  const polling = usePolling(pollFn, ARTIFACTS_POLL_INTERVAL, { skipIfFresh })
 
   const { start, stop } = polling
   useEffect(() => {
@@ -56,13 +58,14 @@ export function useArtifactsData(): UseArtifactsDataReturn {
       ARTIFACT_CHANNELS.map((channel) => ({
         channel,
         handler: () => {
+          markFresh()
           if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
           wsDebounceRef.current = setTimeout(() => {
             void useArtifactsStore.getState().fetchArtifacts()
           }, WS_DEBOUNCE_MS)
         },
       })),
-    [],
+    [markFresh],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })

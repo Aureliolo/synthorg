@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useProjectsStore } from '@/stores/projects'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import type { Project } from '@/api/types/projects'
 import type { WsChannel } from '@/api/types/websocket'
 
@@ -32,10 +33,11 @@ export function useProjectsData(): UseProjectsDataReturn {
     void useProjectsStore.getState().fetchProjects()
   }, [])
 
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useProjectsStore.getState().fetchProjects()
   }, [])
-  const polling = usePolling(pollFn, PROJECTS_POLL_INTERVAL)
+  const polling = usePolling(pollFn, PROJECTS_POLL_INTERVAL, { skipIfFresh })
 
   const { start, stop } = polling
   useEffect(() => {
@@ -53,13 +55,14 @@ export function useProjectsData(): UseProjectsDataReturn {
       PROJECT_CHANNELS.map((channel) => ({
         channel,
         handler: () => {
+          markFresh()
           if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
           wsDebounceRef.current = setTimeout(() => {
             void useProjectsStore.getState().fetchProjects()
           }, WS_DEBOUNCE_MS)
         },
       })),
-    [],
+    [markFresh],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })

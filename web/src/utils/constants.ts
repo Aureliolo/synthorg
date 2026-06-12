@@ -51,6 +51,15 @@ export const WS_PONG_TIMEOUT_MS = 10_000
 export const WS_PROTOCOL_VERSION = 1
 
 /**
+ * Window after a WebSocket-driven update during which a scheduled REST poll
+ * skips its fetch. Shorter than the 30s poll interval so a sluggish or dropped
+ * WS still results in eventual freshness via REST; long enough that a burst of
+ * WS events does not also trigger a redundant poll. Shared by every
+ * `usePolling` consumer that also subscribes to a WS channel.
+ */
+export const FRESHNESS_WINDOW_MS = 15_000
+
+/**
  * Max characters kept when sanitizing untrusted strings (server error
  * reasons, WS disconnect codes, etc.) for logging. Tighter than display
  * caps because log lines get truncated by aggregators and the control

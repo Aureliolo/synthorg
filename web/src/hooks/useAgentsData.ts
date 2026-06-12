@@ -3,6 +3,7 @@ import { useAgentsStore } from '@/stores/agents'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import { filterAgents, sortAgents } from '@/utils/agents'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import type { AgentConfig } from '@/api/types/agents'
 import type { WsChannel } from '@/api/types/websocket'
 
@@ -38,11 +39,12 @@ export function useAgentsData(): UseAgentsDataReturn {
     void useAgentsStore.getState().fetchAgents()
   }, [])
 
-  // Polling
+  // Polling, gated so a WS-active session does not also REST-poll on cadence.
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useAgentsStore.getState().fetchAgents()
   }, [])
-  const polling = usePolling(pollFn, AGENTS_POLL_INTERVAL)
+  const polling = usePolling(pollFn, AGENTS_POLL_INTERVAL, { skipIfFresh })
 
   const { start, stop } = polling
   useEffect(() => {
@@ -61,13 +63,14 @@ export function useAgentsData(): UseAgentsDataReturn {
       AGENT_CHANNELS.map((channel) => ({
         channel,
         handler: () => {
+          markFresh()
           if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
           wsDebounceRef.current = setTimeout(() => {
             void useAgentsStore.getState().fetchAgents()
           }, WS_DEBOUNCE_MS)
         },
       })),
-    [],
+    [markFresh],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })

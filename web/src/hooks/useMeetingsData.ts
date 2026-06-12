@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useMeetingsStore, type MeetingsState } from '@/stores/meetings'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import type { MeetingResponse } from '@/api/types/meetings'
 import type { WsChannel } from '@/api/types/websocket'
 
@@ -32,11 +33,12 @@ export function useMeetingsData(): UseMeetingsDataReturn {
     void useMeetingsStore.getState().fetchMeetings()
   }, [])
 
-  // Lightweight polling for refresh
+  // Lightweight polling for refresh, gated against fresh WS state.
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useMeetingsStore.getState().fetchMeetings()
   }, [])
-  const polling = usePolling(pollFn, MEETINGS_POLL_INTERVAL)
+  const polling = usePolling(pollFn, MEETINGS_POLL_INTERVAL, { skipIfFresh })
 
   const { start, stop } = polling
   useEffect(() => {
@@ -50,10 +52,11 @@ export function useMeetingsData(): UseMeetingsDataReturn {
       MEETINGS_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
+          markFresh()
           useMeetingsStore.getState().handleWsEvent(event)
         },
       })),
-    [],
+    [markFresh],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({

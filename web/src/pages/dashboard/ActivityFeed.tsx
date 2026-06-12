@@ -34,7 +34,7 @@ function ActivityFeedInner({ activities }: ActivityFeedProps) {
         <EmptyState
           icon={Activity}
           title="No activity yet"
-          description="Agent actions will appear here in real time"
+          description="Agent actions will appear here in real time."
         />
       ) : (
         <div ref={feedRef} role="log" aria-live="polite" className="max-h-80 overflow-y-auto">

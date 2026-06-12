@@ -95,7 +95,7 @@ function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
       <EmptyState
         icon={Inbox}
         title="No tasks found"
-        description="Try adjusting your filters or create a new task"
+        description="Try adjusting your filters or create a new task."
       />
     )
   }

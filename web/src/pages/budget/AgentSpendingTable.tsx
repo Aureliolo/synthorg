@@ -170,7 +170,7 @@ function AgentSpendingTableInner({ rows, currency }: AgentSpendingTableProps) {
         <EmptyState
           icon={Users}
           title="No agent spending data"
-          description="Cost records will appear as agents consume tokens"
+          description="Cost records will appear as agents consume tokens."
         />
       ) : (
         <div className="space-y-grid-gap">

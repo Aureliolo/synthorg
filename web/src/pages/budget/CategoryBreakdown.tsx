@@ -59,7 +59,7 @@ export function CategoryBreakdown({ ratio, currency }: CategoryBreakdownProps) {
         <EmptyState
           icon={Layers}
           title="No cost data"
-          description="Category breakdown will appear as agents consume tokens"
+          description="Category breakdown will appear as agents consume tokens."
         />
       ) : (
         <div className="space-y-section-gap">

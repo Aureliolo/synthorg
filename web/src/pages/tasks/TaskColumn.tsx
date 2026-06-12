@@ -77,9 +77,11 @@ export function TaskColumn({ column, tasks, onSelectTask, highlighted }: TaskCol
 
   const taskIds = useMemo(() => tasks.map((t) => t.id), [tasks])
 
-  const estimatedHours = tasks.reduce(
-    (sum, t) => sum + (COMPLEXITY_HOURS[t.estimated_complexity] ?? 0),
-    0,
+  // Memoised so the reduce doesn't re-run on every drag-over `isOver` flip,
+  // which is unrelated to the task list.
+  const estimatedHours = useMemo(
+    () => tasks.reduce((sum, t) => sum + (COMPLEXITY_HOURS[t.estimated_complexity] ?? 0), 0),
+    [tasks],
   )
 
   return (
