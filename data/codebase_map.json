@@ -212,7 +212,7 @@
     },
     {
       "kind": "code",
-      "loc": 201,
+      "loc": 202,
       "loc_cap": 500,
       "module": "src/synthorg/api/_approval_expiration.py",
       "owning_feature": "api_core"

@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, log_exception_redacted
@@ -28,7 +27,14 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_STATUS_TRANSITIONED,
 )
 from synthorg.observability.metrics_hub import record_approval_decision
-from synthorg.persistence.approval_protocol import ApprovalRepository
+
+if TYPE_CHECKING:
+    # Referenced only by the host-attribute annotations in the class-body
+    # ``TYPE_CHECKING`` block below; the mixin never evaluates these names in a
+    # runtime signature, so a module-level import would add eager coupling
+    # without any typeguard benefit.
+    from synthorg.core.clock import Clock
+    from synthorg.persistence.approval_protocol import ApprovalRepository
 
 logger = get_logger(__name__)
 
