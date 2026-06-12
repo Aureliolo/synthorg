@@ -8,13 +8,15 @@
  * denied for agent Y" without reaching for the database.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Shield } from 'lucide-react'
+import { Shield } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { InputField } from '@/components/ui/input-field'
 import { ListHeader } from '@/components/ui/list-header'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SectionCard } from '@/components/ui/section-card'
+import { SkeletonTable } from '@/components/ui/skeleton'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
 import { listAuditEntries } from '@/api/endpoints/audit'
@@ -226,7 +228,7 @@ function AuditLogTable({
   return (
     <SectionCard title="Recent evaluations" icon={Shield}>
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full table-fixed text-xs">
+        <table className="w-full min-w-[48rem] text-xs">
           <thead className="bg-surface text-left text-text-secondary">
             <tr>
               <th className="w-44 px-3 py-2 font-medium">Time</th>
@@ -291,9 +293,7 @@ export default function AdminAuditLogPage() {
       <AuditLogFilters filters={filters} />
 
       {loading && state.entries.length === 0 ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="size-6 animate-spin text-text-muted" />
-        </div>
+        <SkeletonTable rows={5} columns={6} />
       ) : state.entries.length === 0 && error === null ? (
         <EmptyState
           icon={Shield}
@@ -301,12 +301,14 @@ export default function AdminAuditLogPage() {
           description="Loosen the filters above, or wait for the next tool evaluation to record."
         />
       ) : (
-        <AuditLogTable
-          entries={state.entries}
-          hasMore={state.hasMore}
-          loadingMore={loadingMore}
-          onLoadMore={() => void handleLoadMore()}
-        />
+        <ErrorBoundary level="section">
+          <AuditLogTable
+            entries={state.entries}
+            hasMore={state.hasMore}
+            loadingMore={loadingMore}
+            onLoadMore={() => void handleLoadMore()}
+          />
+        </ErrorBoundary>
       )}
     </div>
   )

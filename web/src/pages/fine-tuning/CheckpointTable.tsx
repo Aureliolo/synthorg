@@ -113,7 +113,7 @@ export function CheckpointTable() {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full min-w-[40rem] text-sm">
         <thead>
           <tr className="border-b border-border text-left text-muted-foreground">
             <th className="pb-2 pr-4">Date</th>

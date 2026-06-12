@@ -7,10 +7,29 @@ import {
   updateAgentPersonality as apiUpdateAgentPersonality,
 } from '@/api/endpoints/setup'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import type { AgentsSlice, SliceCreator } from './types'
 
 const log = createLogger('setup-wizard:agents')
+
+type WizSet = Parameters<SliceCreator<AgentsSlice>>[0]
+
+/**
+ * Report a failed in-wizard agent mutation. Agent cards sit mid-list inside a
+ * scrollable step, so the top-of-page agentsError banner alone can scroll out
+ * of view; the toast gives point-of-interaction feedback regardless of scroll.
+ */
+function reportAgentUpdateError(set: WizSet, action: string, err: unknown): void {
+  const msg = getErrorMessage(err)
+  log.error(`${action} failed:`, msg)
+  set({ agentsError: msg })
+  useToastStore.getState().add({
+    variant: 'error',
+    title: 'Could not update agent',
+    description: msg,
+  })
+}
 
 export const createAgentsSlice: SliceCreator<AgentsSlice> = (set) => ({
   agents: [],
@@ -40,8 +59,7 @@ export const createAgentsSlice: SliceCreator<AgentsSlice> = (set) => ({
       })
       set((s) => ({ agents: s.agents.map((a, i) => (i === index ? updated : a)) }))
     } catch (err) {
-      log.error('updateAgentModel failed:', getErrorMessage(err))
-      set({ agentsError: getErrorMessage(err) })
+      reportAgentUpdateError(set, 'updateAgentModel', err)
     }
   },
 
@@ -51,8 +69,7 @@ export const createAgentsSlice: SliceCreator<AgentsSlice> = (set) => ({
       const updated = await apiUpdateAgentName(index, { name })
       set((s) => ({ agents: s.agents.map((a, i) => (i === index ? updated : a)) }))
     } catch (err) {
-      log.error('updateAgentName failed:', getErrorMessage(err))
-      set({ agentsError: getErrorMessage(err) })
+      reportAgentUpdateError(set, 'updateAgentName', err)
     }
   },
 
@@ -62,8 +79,7 @@ export const createAgentsSlice: SliceCreator<AgentsSlice> = (set) => ({
       const updated = await apiRandomizeAgentName(index)
       set((s) => ({ agents: s.agents.map((a, i) => (i === index ? updated : a)) }))
     } catch (err) {
-      log.error('randomizeAgentName failed:', getErrorMessage(err))
-      set({ agentsError: getErrorMessage(err) })
+      reportAgentUpdateError(set, 'randomizeAgentName', err)
     }
   },
 
@@ -73,8 +89,7 @@ export const createAgentsSlice: SliceCreator<AgentsSlice> = (set) => ({
       const updated = await apiUpdateAgentPersonality(index, { personality_preset: preset })
       set((s) => ({ agents: s.agents.map((a, i) => (i === index ? updated : a)) }))
     } catch (err) {
-      log.error('updateAgentPersonality failed:', getErrorMessage(err))
-      set({ agentsError: getErrorMessage(err) })
+      reportAgentUpdateError(set, 'updateAgentPersonality', err)
     }
   },
 

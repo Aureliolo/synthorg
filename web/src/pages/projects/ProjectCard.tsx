@@ -42,7 +42,7 @@ function ProjectCardFooter({
   return (
     <div className="flex items-center justify-between text-xs text-text-muted">
       <span className="flex items-center gap-1">
-        <Users className="size-3" />
+        <Users className="size-3" aria-hidden="true" />
         {teamSize} member{teamSize === 1 ? '' : 's'}
       </span>
       {deadline && <span>Due {formatRelativeTime(deadline)}</span>}

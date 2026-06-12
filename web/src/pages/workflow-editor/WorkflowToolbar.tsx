@@ -62,7 +62,7 @@ export function WorkflowToolbar(props: WorkflowToolbarProps) {
   const handleFitView = useCallback(() => fitView({ padding: 0.2 }), [fitView])
 
   return (
-    <div className="flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1">
+    <div className="flex flex-wrap items-center gap-x-1 gap-y-1 rounded-lg border border-border bg-surface px-2 py-1">
       {props.onSwitchWorkflow && (
         <div className="border-r border-border pr-2">
           <WorkflowSelector

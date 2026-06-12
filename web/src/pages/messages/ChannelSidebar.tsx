@@ -238,6 +238,7 @@ function EmptyChannelsSection({
       <button
         type="button"
         aria-expanded={expanded}
+        aria-controls="empty-channels-panel"
         onClick={onToggle}
         className="flex w-full items-center gap-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
       >
@@ -249,7 +250,7 @@ function EmptyChannelsSection({
         <span>Empty ({emptyCount})</span>
       </button>
       {expanded && (
-        <div className="mt-2 flex flex-col gap-3">
+        <div id="empty-channels-panel" className="mt-2 flex flex-col gap-3">
           {TYPE_ORDER.map((type) => {
             const items = emptyByType.get(type)
             if (!items || items.length === 0) return null
@@ -287,7 +288,7 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
       {/* Mobile (< lg): a hamburger button opens a Drawer with the same
           channel list. The Drawer closes on selection so the operator drops
           back into the message stream immediately. */}
-      <div className="lg:hidden">
+      <div className="shrink-0 max-w-48 lg:hidden">
         <Button
           type="button"
           variant="outline"

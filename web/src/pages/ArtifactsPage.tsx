@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react'
 import { useArtifactsData } from '@/hooks/useArtifactsData'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
@@ -76,14 +77,16 @@ export default function ArtifactsPage() {
       {/* Wrap the existing filter component in SearchFilterSort so the
           layout matches the rest of the dashboard's list pages. */}
       <SearchFilterSort filters={<ArtifactFilters />} />
-      <ArtifactGridView artifacts={pagedArtifacts} />
-      <Pagination
-        page={page}
-        pageSize={pageSize}
-        total={totalItems}
-        onPageChange={setPage}
-        onPageSizeChange={setPageSize}
-      />
+      <ErrorBoundary level="section">
+        <ArtifactGridView artifacts={pagedArtifacts} />
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={totalItems}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      </ErrorBoundary>
 
       <ArtifactCreateDialog
         open={createOpen}

@@ -6,6 +6,7 @@ import { KeyboardShortcutHint } from '@/components/ui/keyboard-shortcut-hint'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { formatNumber } from '@/utils/format'
@@ -61,7 +62,9 @@ export default function WorkflowsPage() {
       )}
 
       <WorkflowFilters searchInputRef={ctrl.searchInputRef} />
-      <WorkflowsListBody ctrl={ctrl} />
+      <ErrorBoundary level="section">
+        <WorkflowsListBody ctrl={ctrl} />
+      </ErrorBoundary>
       <WorkflowsBulkActions ctrl={ctrl} />
       <ConfirmDialog
         open={ctrl.bulkDeleteOpen}

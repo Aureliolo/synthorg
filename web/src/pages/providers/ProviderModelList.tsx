@@ -127,7 +127,7 @@ export function ProviderModelList({
         />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[44rem] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-text-muted">
                 <th className="pb-2 pr-4 font-medium">Model ID</th>

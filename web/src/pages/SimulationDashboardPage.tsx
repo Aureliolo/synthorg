@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Activity } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
 
 import {
   cancelSimulation,
@@ -278,13 +279,17 @@ export default function SimulationDashboardPage() {
         <ErrorBanner severity="error" title="Simulation error" description={s.error} />
       )}
 
-      <SimulationMetrics runs={s.runs} />
+      <ErrorBoundary level="section">
+        <SimulationMetrics runs={s.runs} />
+      </ErrorBoundary>
 
-      <SimulationRunsList
-        runs={s.runs}
-        onShowReport={(id) => void s.handleShowReport(id)}
-        onCancel={(id) => void s.handleCancel(id)}
-      />
+      <ErrorBoundary level="section">
+        <SimulationRunsList
+          runs={s.runs}
+          onShowReport={(id) => void s.handleShowReport(id)}
+          onCancel={(id) => void s.handleCancel(id)}
+        />
+      </ErrorBoundary>
 
       {s.report && (
         <SectionCard title={`Report: ${s.report.simulation_id}`} icon={Activity}>

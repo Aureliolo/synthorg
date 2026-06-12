@@ -6,12 +6,14 @@
  * The underlying ``getSignals`` / ``listProposals`` endpoints already exist;
  * this page wraps them in a single cohesive read-only surface.
  */
-import { Loader2, Sparkles } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
+import { SkeletonCard } from '@/components/ui/skeleton'
 import type { ProposalSummary, SignalsResponse } from '@/api/endpoints/meta'
 import { formatNumber } from '@/utils/format'
 
@@ -56,16 +58,21 @@ export default function MetaAnalyticsPage() {
         signalsError={data.signalsError}
         proposalsError={data.proposalsError}
       />
-      {display.showLoading ? <LoadingSpinner /> : <MetaAnalyticsBody data={data} display={display} />}
+      {display.showLoading ? (
+        <MetaAnalyticsSkeleton />
+      ) : (
+        <MetaAnalyticsBody data={data} display={display} />
+      )}
     </div>
   )
 }
 
-function LoadingSpinner() {
+function MetaAnalyticsSkeleton() {
   return (
-    <div className="flex items-center justify-center py-12">
-      <Loader2 className="size-6 animate-spin text-text-muted" />
-    </div>
+    <>
+      <SkeletonCard header lines={4} />
+      <SkeletonCard header lines={4} />
+    </>
   )
 }
 
@@ -78,13 +85,17 @@ function MetaAnalyticsBody({ data, display }: MetaAnalyticsBodyProps) {
   return (
     <>
       {data.signals && (
-        <SignalOverviewSection
-          signals={data.signals}
-          proposalCount={data.proposals.length}
-        />
+        <ErrorBoundary level="section">
+          <SignalOverviewSection
+            signals={data.signals}
+            proposalCount={data.proposals.length}
+          />
+        </ErrorBoundary>
       )}
       {display.showSignalsByDomain && data.signals && (
-        <SignalsByDomainSection signals={data.signals} />
+        <ErrorBoundary level="section">
+          <SignalsByDomainSection signals={data.signals} />
+        </ErrorBoundary>
       )}
       {display.showEmptySignals && (
         <EmptyState
@@ -92,7 +103,11 @@ function MetaAnalyticsBody({ data, display }: MetaAnalyticsBodyProps) {
           description="Signals appear here once the meta-analysis loop has run at least once."
         />
       )}
-      {display.showActiveProposals && <ActiveProposalsSection proposals={data.proposals} />}
+      {display.showActiveProposals && (
+        <ErrorBoundary level="section">
+          <ActiveProposalsSection proposals={data.proposals} />
+        </ErrorBoundary>
+      )}
     </>
   )
 }

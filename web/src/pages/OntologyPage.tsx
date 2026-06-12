@@ -5,6 +5,7 @@ import { Shapes } from 'lucide-react'
 import { useOntologyData } from '@/hooks/useOntologyData'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { EntityCatalog } from './ontology/EntityCatalog'
 import { DriftMonitor } from './ontology/DriftMonitor'
@@ -61,14 +62,18 @@ export default function OntologyPage() {
       )}
 
       {/* Entity Catalog */}
-      <EntityCatalog entities={filteredEntities} />
+      <ErrorBoundary level="section">
+        <EntityCatalog entities={filteredEntities} />
+      </ErrorBoundary>
 
       {/* Drift Monitor */}
-      <DriftMonitor
-        reports={driftReports}
-        loading={driftLoading}
-        error={driftError}
-      />
+      <ErrorBoundary level="section">
+        <DriftMonitor
+          reports={driftReports}
+          loading={driftLoading}
+          error={driftError}
+        />
+      </ErrorBoundary>
     </div>
   )
 }

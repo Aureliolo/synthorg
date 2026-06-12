@@ -90,17 +90,20 @@ describe('AgentSpendingTable', () => {
   it('defaults sort to totalCost descending', () => {
     const totalCostHeader = () => screen.getByText('Total Cost').closest('button')
     render(<AgentSpendingTable rows={makeRows(3)} />)
-    expect(totalCostHeader()).toHaveAttribute('aria-sort', 'descending')
+    expect(totalCostHeader()).toHaveAttribute(
+      'aria-label',
+      expect.stringContaining('sorted descending'),
+    )
   })
 
   it('toggles sort direction on same column click', async () => {
     const user = userEvent.setup()
     render(<AgentSpendingTable rows={makeRows(3)} />)
     const totalCostBtn = screen.getByText('Total Cost').closest('button')!
-    expect(totalCostBtn).toHaveAttribute('aria-sort', 'descending')
+    expect(totalCostBtn).toHaveAttribute('aria-label', expect.stringContaining('sorted descending'))
 
     await user.click(totalCostBtn)
-    expect(totalCostBtn).toHaveAttribute('aria-sort', 'ascending')
+    expect(totalCostBtn).toHaveAttribute('aria-label', expect.stringContaining('sorted ascending'))
 
     // Verify DOM order is ascending (cheapest first)
     const agentCells = screen.getAllByText(/^Agent [A-Z]$/)
@@ -114,10 +117,10 @@ describe('AgentSpendingTable', () => {
 
     const agentBtn = screen.getByText('Agent').closest('button')!
     await user.click(agentBtn)
-    expect(agentBtn).toHaveAttribute('aria-sort', 'ascending')
-    // Previous column loses aria-sort
+    expect(agentBtn).toHaveAttribute('aria-label', expect.stringContaining('sorted ascending'))
+    // Previous column drops the sorted state from its accessible name
     const totalCostBtn = screen.getByText('Total Cost').closest('button')!
-    expect(totalCostBtn).not.toHaveAttribute('aria-sort')
+    expect(totalCostBtn).toHaveAttribute('aria-label', expect.stringContaining('not sorted'))
 
     // Verify DOM order is alphabetical ascending
     const agentCells = screen.getAllByText(/^Agent [A-Z]$/)
@@ -132,11 +135,11 @@ describe('AgentSpendingTable', () => {
     // Switch from totalCost (default) to Agent (text, asc) then to Tasks (numeric, desc)
     const agentBtn = screen.getByText('Agent').closest('button')!
     await user.click(agentBtn)
-    expect(agentBtn).toHaveAttribute('aria-sort', 'ascending')
+    expect(agentBtn).toHaveAttribute('aria-label', expect.stringContaining('sorted ascending'))
 
     const tasksBtn = screen.getByText('Tasks').closest('button')!
     await user.click(tasksBtn)
-    expect(tasksBtn).toHaveAttribute('aria-sort', 'descending')
+    expect(tasksBtn).toHaveAttribute('aria-label', expect.stringContaining('sorted descending'))
   })
 
   it('uses EUR currency by default', () => {
