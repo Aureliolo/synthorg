@@ -24,6 +24,13 @@
 set -euo pipefail
 
 HOOK_TYPE="${1:-pre-push}"
+# Restrict to safe marker-name characters so a stray or hostile argument
+# cannot escape the hooks dir (e.g. ``../../.git/config``) and delete an
+# arbitrary file via the ``rm`` below.
+if [[ ! "${HOOK_TYPE}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  echo "clear_prepush_marker: invalid hook type '${HOOK_TYPE}'" >&2
+  exit 1
+fi
 
 LOG_DIR="$(git rev-parse --git-path synthorg-hooks 2>/dev/null || true)"
 if [ -z "${LOG_DIR}" ]; then
@@ -47,7 +54,10 @@ echo
 if [ -f "${LOG}" ]; then
   echo "--- failing gate(s) in ${HOOK_TYPE}-last.log ---"
   # pre-commit prints '<gate>....................Failed' for each red gate.
-  if ! grep -nE 'Failed$' "${LOG}"; then
+  # Allow trailing whitespace / CRLF so Windows-checked-out logs (lines
+  # ending ``Failed\r\n``) still match -- ``$`` anchors before the ``\n``,
+  # leaving the ``\r`` unmatched without the ``[[:space:]]*``.
+  if ! grep -nE 'Failed[[:space:]]*$' "${LOG}"; then
     echo "(no '...Failed' gate line found -- the failure may be a crash or"
     echo " timeout; read the full log end-to-start.)"
   fi
