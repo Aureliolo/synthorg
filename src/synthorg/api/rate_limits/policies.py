@@ -80,8 +80,11 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "approvals.reject": (100, 60),
     # artifacts
     "artifacts.create": (60, 60),
+    "artifacts.download": (60, 60),
     "artifacts.upload": (10, 60),
     # auth
+    "auth.sessions_list": (30, 60),
+    "auth.sessions_revoke": (60, 60),
     "auth.ws_ticket": (20, 60),
     # brownfield
     "brownfield.import": (10, 60),
@@ -163,6 +166,9 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "personalities.create": (20, 60),
     "personalities.delete": (10, 60),
     "personalities.update": (30, 60),
+    # projects
+    "projects.create": (10, 60),
+    "projects.delete": (5, 60),
     # providers
     "providers.add_model": (20, 60),
     "providers.allowlist_add": (50, 60),
@@ -221,6 +227,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # training
     "training.create_plan": (30, 3600),
     "training.execute": (20, 3600),
+    "training.preview": (30, 3600),
     "training.update_overrides": (60, 3600),
     # users
     "users.create": (5, 60),

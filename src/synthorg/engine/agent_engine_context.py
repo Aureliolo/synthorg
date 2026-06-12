@@ -139,7 +139,11 @@ class AgentEngineContextMixin:
                 trimming_enabled = resolved_enabled
                 if resolved_override > 0:
                     tokens_override = resolved_override
-        system_prompt = build_system_prompt(
+        # build_system_prompt is pure CPU + blocking strategy-pack file reads
+        # (principles.py) and runs on every agent turn; offload it so the
+        # per-turn prompt build never stalls the event loop.
+        system_prompt = await asyncio.to_thread(
+            build_system_prompt,
             agent=identity,
             task=task,
             l1_summaries=l1_summaries,

@@ -508,7 +508,10 @@ class ArtifactController(Controller):
 
     @get(
         "/{artifact_id:str}/content",
-        guards=[require_read_access],
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("artifacts.download", key="user"),
+        ],
         media_type="application/octet-stream",
     )
     async def download_content(

@@ -6,6 +6,7 @@ single tool call. Gated on ``ModelCapabilities.supports_vision`` so a
 text-only model never silently drops the images.
 """
 
+import asyncio
 from pathlib import Path
 from typing import Final
 
@@ -169,7 +170,9 @@ class LLMVisionVerifier:
             the model response is malformed).
         """
         await self._require_vision_support(review_input)
-        image_parts = self._encode_screenshots(review_input)
+        # Each screenshot is a blocking read_bytes + base64 encode; offload the
+        # whole pass so multiple reads do not stall the event loop.
+        image_parts = await asyncio.to_thread(self._encode_screenshots, review_input)
         messages = [
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt()),
             ChatMessage(

@@ -22,6 +22,7 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.project_service import ProjectService
 from synthorg.api.ws_models import WsEventType
@@ -159,7 +160,10 @@ class ProjectController(Controller):
 
     @delete(
         "/{project_id:str}",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("projects.delete", key="user"),
+        ],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_project(
@@ -208,7 +212,12 @@ class ProjectController(Controller):
             {"project_id": project_id, "name": project.name},
         )
 
-    @post(guards=[require_write_access])
+    @post(
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("projects.create", key="user"),
+        ],
+    )
     async def create_project(
         self,
         request: Request[object, object, State],

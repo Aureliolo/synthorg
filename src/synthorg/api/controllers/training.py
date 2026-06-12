@@ -436,7 +436,10 @@ class TrainingController(Controller):
 
     @post(
         "/preview",
-        guards=[require_read_access],
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("training.preview", key="user"),
+        ],
         status_code=HTTP_200_OK,
     )
     async def preview_plan(
