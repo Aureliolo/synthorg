@@ -13,9 +13,11 @@ from typing import TYPE_CHECKING
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.factory import build_guards
+from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.toolsmith.applier import ToolCreationApplier
 from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
 from synthorg.meta.toolsmith.gap_store import RingBufferCapabilityGapStore
+from synthorg.meta.toolsmith.models import ToolBlueprint
 from synthorg.meta.toolsmith.script_handler import make_dynamic_tool_handler
 from synthorg.meta.toolsmith.service import ToolsmithService
 from synthorg.meta.toolsmith.strategy import LLMToolBlueprintGenerator
@@ -31,9 +33,7 @@ if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.tracker import CostTracker
     from synthorg.meta.config import SelfImprovementConfig
-    from synthorg.meta.mcp.handler_protocol import ToolHandler
     from synthorg.meta.signal_models import OrgSignalSnapshot
-    from synthorg.meta.toolsmith.models import ToolBlueprint
     from synthorg.meta.toolsmith.protocol import (
         GoldenScorecardProvider,
         ToolCreationOverflowHandler,

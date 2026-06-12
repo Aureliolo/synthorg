@@ -3,8 +3,8 @@
 Engine.run() with failing provider -> task FAILED -> can_reassign checks.
 """
 
+from collections.abc import AsyncIterator, Mapping
 from datetime import date
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
@@ -20,19 +20,15 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.task_execution import TaskExecution
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    StreamChunk,
+    ToolDefinition,
+)
 from tests._shared import as_uuid
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Mapping
-
-    from synthorg.providers.capabilities import ModelCapabilities
-    from synthorg.providers.models import (
-        ChatMessage,
-        CompletionConfig,
-        CompletionResponse,
-        StreamChunk,
-        ToolDefinition,
-    )
 
 pytestmark = pytest.mark.integration
 
@@ -65,8 +61,6 @@ class _FailingProvider:
         raise NotImplementedError(msg)
 
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
-        from synthorg.providers.capabilities import ModelCapabilities
-
         return ModelCapabilities(
             model_id=model,
             provider="test-provider",
