@@ -18,7 +18,7 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.pruning.models import PruningEvaluation, PruningServiceConfig
 from synthorg.hr.pruning.service import PruningService
 from synthorg.hr.registry import AgentRegistryService
-from tests._shared import mock_of
+from tests._shared import FakeClock, mock_of
 from tests.unit.hr.conftest import make_agent_identity
 
 from .conftest import (
@@ -138,7 +138,7 @@ def registry() -> AgentRegistryService:
 
 @pytest.fixture
 def approval_store() -> ApprovalStore:
-    return ApprovalStore()
+    return ApprovalStore(clock=FakeClock(start=NOW))
 
 
 @pytest.fixture
@@ -327,28 +327,21 @@ class TestPruningCycle:
             approval_store=approval_store,
         )
 
-        # Pin wall-clock to NOW so the lazy-expiration check inside
-        # ApprovalStore._check_expiration_locked sees the same time as
-        # the pruning cycle.  Without this, real wall-clock may exceed
-        # expires_at and silently expire the first approval.  The
-        # store reads time through its injected Clock seam, so swap
-        # ``approval_store._clock.now`` for a fixed-NOW callable for
-        # the duration of the test.
-        original_now = approval_store._clock.now
-        approval_store._clock.now = lambda: NOW  # type: ignore[method-assign]
-        try:
-            # First cycle creates approval.
-            job1 = await service.run_pruning_cycle(now=NOW)
-            assert job1.approval_requests_created == 1
+        # The ``approval_store`` fixture injects ``FakeClock(NOW)`` so the
+        # lazy-expiration check inside ``ApprovalStore`` sees the same time
+        # as the pruning cycle; without a pinned clock real wall-clock may
+        # exceed ``expires_at`` and silently expire the first approval.
 
-            # Second cycle should skip (pending approval already exists).
-            job2 = await service.run_pruning_cycle(now=NOW)
-            assert job2.approval_requests_created == 0
+        # First cycle creates approval.
+        job1 = await service.run_pruning_cycle(now=NOW)
+        assert job1.approval_requests_created == 1
 
-            items = await approval_store.list_items(action_type="hr:prune")
-            assert len(items) == 1
-        finally:
-            approval_store._clock.now = original_now  # type: ignore[method-assign]
+        # Second cycle should skip (pending approval already exists).
+        job2 = await service.run_pruning_cycle(now=NOW)
+        assert job2.approval_requests_created == 0
+
+        items = await approval_store.list_items(action_type="hr:prune")
+        assert len(items) == 1
 
     async def test_cycle_aggregates_errors_without_stopping(
         self,

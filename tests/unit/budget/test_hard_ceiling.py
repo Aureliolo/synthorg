@@ -92,7 +92,6 @@ def _context(*, accumulated_cost: float) -> AgentContext:
     )
 
 
-@pytest.mark.asyncio
 async def test_per_task_hard_ceiling_triggers_raise_at_threshold() -> None:
     """Task.hard_ceiling=1.50 with accumulated 1.50 raises immediately."""
     tracker = CostTracker()
@@ -112,7 +111,6 @@ async def test_per_task_hard_ceiling_triggers_raise_at_threshold() -> None:
     assert info.value.task_id == sid("task-1")
 
 
-@pytest.mark.asyncio
 async def test_closure_propagates_task_forecast_id() -> None:
     """The raised error carries ``task.forecast_id`` for halt stamping.
 
@@ -133,7 +131,6 @@ async def test_closure_propagates_task_forecast_id() -> None:
     assert info.value.forecast_id == forecast_id
 
 
-@pytest.mark.asyncio
 async def test_global_run_hard_ceiling_used_when_task_field_absent() -> None:
     """Task.hard_ceiling=None falls back to budget.run_hard_ceiling."""
     tracker = CostTracker()
@@ -150,7 +147,6 @@ async def test_global_run_hard_ceiling_used_when_task_field_absent() -> None:
     assert info.value.ceiling_amount == pytest.approx(2.00)
 
 
-@pytest.mark.asyncio
 async def test_below_ceiling_does_not_raise() -> None:
     """Below the ceiling the closure returns the normal bool result."""
     tracker = CostTracker()
@@ -166,7 +162,6 @@ async def test_below_ceiling_does_not_raise() -> None:
     assert checker(_context(accumulated_cost=1.0)) is False
 
 
-@pytest.mark.asyncio
 async def test_zero_ceiling_means_disabled_no_raise() -> None:
     """Both Task.hard_ceiling=None and run_hard_ceiling=0 disable enforcement."""
     tracker = CostTracker()
@@ -185,7 +180,6 @@ async def test_zero_ceiling_means_disabled_no_raise() -> None:
     assert checker(_context(accumulated_cost=1.0)) is False
 
 
-@pytest.mark.asyncio
 async def test_run_hard_ceiling_error_is_budget_exhausted_subclass() -> None:
     """RunHardCeilingExceededError inherits BudgetExhaustedError.
 
