@@ -1,31 +1,30 @@
-"""Policy-honouring typeguard checker for TYPE_CHECKING-only signature types.
+"""Typeguard checker extensions for boundaries unverifiable at runtime.
 
 typeguard 4.5.2's structural checkers (``check_protocol``, ``check_callable``,
 ``check_tuple``, ``check_typed_dict``) eagerly evaluate member / signature
 annotations via ``inspect.signature`` / ``typing.get_type_hints`` /
-``__annotations__``. Under PEP 649 (Python 3.14) deferred annotations, a
-NamedTuple field, TypedDict member, Protocol method signature, or passed
-callable whose type is only importable under ``if TYPE_CHECKING:`` raises a raw
-``NameError`` at check time. ``typeguard._checkers.check_type_internal`` calls
-the resolved checker without guarding that call, so the ``NameError`` propagates
-out as a test error, and ``--typeguard-forward-ref-policy`` never sees it (that
-policy governs only ``ForwardRef`` resolution inside ``check_type_internal``,
-not raw ``NameError``\\s from the structural checkers).
+``__annotations__``. Under the ERROR forward-ref policy every instrumented
+signature or member type must resolve at runtime, so an unresolved name fails
+the test. A handful of boundaries cannot be checked at runtime by construction,
+and ``register_typeguard_checker_extensions`` installs a lookup at the front of
+``typeguard.checker_lookup_functions`` for each:
 
-``register_policy_honoring_checker`` inserts a lookup at the front of
-``typeguard.checker_lookup_functions`` that delegates to the builtin lookup and
-wraps whatever checker it returns so a ``NameError`` raised during the check is
-routed through ``memo.config.forward_ref_policy``:
+- ``_litestar_scope_lookup``: litestar's ASGI ``Scope`` TypedDicts declare
+  ``app: Litestar`` under litestar's own ``if TYPE_CHECKING:`` guard, which no
+  ``synthorg``-side hoist can resolve; skip the structural check.
+- ``_mocked_annotation_lookup``: a patched annotation type that resolves to a
+  ``Mock`` has nothing meaningful to check against; skip it.
+- ``_pydantic_discriminated_union_lookup``: typeguard cannot evaluate a pydantic
+  discriminated union (e.g. ``JsonValue``); skip it (pydantic validates at the
+  model boundary).
+- ``_pydantic_generic_lookup``: relax a bare ``Model[X]`` instance to its origin
+  base class, which is the honest runtime check once the type argument is erased.
 
-- ``WARN``: emit a ``TypeHintWarning`` and skip the check (treat as pass).
-- ``IGNORE``: skip silently.
-- ``ERROR``: re-raise (the ERROR-hardening posture; not used at WARN).
-
-This makes the eager-eval ``NameError`` class consistent with the forward-ref
-policy without migrating every ``TYPE_CHECKING``-guarded signature to a runtime
-import. The module imports only ``typeguard`` (no ``synthorg``) so the conftest
-can register the checker before installing the import hook, without pulling any
-``synthorg`` module into the interpreter ahead of instrumentation.
+The first three emit a ``TypeHintWarning`` so the unchecked surface stays
+countable in the pytest warnings summary. The module imports only ``typeguard``
+(no ``synthorg``) so the conftest can register these extensions before installing
+the import hook, without pulling any ``synthorg`` module into the interpreter
+ahead of instrumentation.
 """
 
 import warnings
@@ -36,63 +35,11 @@ from unittest.mock import Mock
 import typeguard
 from pydantic import Discriminator
 from typeguard import (
-    ForwardRefPolicy,
     TypeCheckerCallable,
     TypeCheckError,
     TypeCheckMemo,
     TypeHintWarning,
 )
-from typeguard._checkers import builtin_checker_lookup
-
-
-def _wrap(inner: TypeCheckerCallable) -> TypeCheckerCallable:
-    """Return ``inner`` guarded so a check-time ``NameError`` honours the policy.
-
-    A ``TypeCheckError`` (a genuine resolved-type mismatch) still propagates;
-    only ``NameError`` (an unresolved ``TYPE_CHECKING``-only signature member) is
-    routed through ``memo.config.forward_ref_policy``.
-    """
-
-    def _checked(
-        value: object,
-        origin_type: object,
-        args: tuple[object, ...],
-        memo: TypeCheckMemo,
-    ) -> None:
-        try:
-            inner(value, origin_type, args, memo)
-        except NameError as exc:
-            policy = memo.config.forward_ref_policy
-            if policy is ForwardRefPolicy.ERROR:
-                raise
-            if policy is ForwardRefPolicy.WARN:
-                unresolved = getattr(exc, "name", None)
-                warnings.warn(
-                    "Skipping type check: a signature or member references the "
-                    f"unresolved name {unresolved!r} (TYPE_CHECKING-only); "
-                    "resolve it at runtime to enforce this boundary.",
-                    TypeHintWarning,
-                    stacklevel=2,
-                )
-            return
-
-    return _checked
-
-
-def _policy_honoring_lookup(
-    origin_type: object,
-    args: tuple[object, ...],
-    extras: tuple[object, ...],
-) -> TypeCheckerCallable | None:
-    """Wrap the builtin checker (if any) so check-time ``NameError`` is policed.
-
-    Returns ``None`` for origins the builtin does not handle, so typeguard's
-    own fallback ``isinstance`` logic runs unchanged.
-    """
-    inner = builtin_checker_lookup(origin_type, args, extras)
-    if inner is None:
-        return None
-    return _wrap(inner)
 
 
 def _pydantic_generic_lookup(
@@ -264,12 +211,11 @@ def _litestar_scope_lookup(
 _registered = False
 
 
-def register_policy_honoring_checker() -> None:
-    """Install the WARN-activation checker extensions at the front of the chain.
+def register_typeguard_checker_extensions() -> None:
+    """Install the checker extensions at the front of the lookup chain.
 
-    Registers five lookups: the Litestar Scope TypedDict skip (third-party
-    ``TYPE_CHECKING``-guarded members), the NameError-tolerant wrapper (eager-eval
-    ``TYPE_CHECKING``-only signatures), the unbound-pydantic-generic relaxation,
+    Registers four lookups: the litestar Scope TypedDict skip (third-party
+    ``TYPE_CHECKING``-guarded members), the unbound-pydantic-generic relaxation,
     the mocked-annotation skip (a patched annotation type that resolves to a
     ``Mock``), and the pydantic discriminated-union skip (e.g. ``JsonValue``).
     Idempotent: a repeat call is a no-op, so re-importing this module (e.g. each
@@ -279,18 +225,15 @@ def register_policy_honoring_checker() -> None:
     if _registered:
         return
     # Each ``insert(0, ...)`` prepends, so the checker inserted LAST runs FIRST.
-    # ``_mocked_annotation_lookup`` must run before the pydantic/policy lookups:
-    # a Mock's ``_is_protocol`` is truthy, so the builtin (delegated to by
-    # ``_policy_honoring_lookup``) would route a mocked annotation type to
-    # ``check_protocol`` and raise a ``TypeError`` the NameError wrapper does not
-    # catch.
+    # ``_mocked_annotation_lookup`` must run before typeguard's builtin lookup:
+    # a Mock's ``_is_protocol`` is truthy, so the builtin would route a mocked
+    # annotation type to ``check_protocol`` and raise a ``TypeError``.
     typeguard.checker_lookup_functions.insert(0, _pydantic_generic_lookup)
-    typeguard.checker_lookup_functions.insert(0, _policy_honoring_lookup)
     typeguard.checker_lookup_functions.insert(0, _pydantic_discriminated_union_lookup)
     typeguard.checker_lookup_functions.insert(0, _mocked_annotation_lookup)
     # Inserted last, so it runs FIRST of all the lookups: litestar's ASGI
-    # ``Scope`` TypedDicts must be skipped before ``_policy_honoring_lookup``
-    # delegates them to the builtin ``check_typed_dict``, whose eager member
-    # eval raises ``NameError: Litestar`` from the third-party guard.
+    # ``Scope`` TypedDicts must be skipped before the builtin ``check_typed_dict``
+    # eagerly evals their members and raises ``NameError: Litestar`` from the
+    # third-party guard.
     typeguard.checker_lookup_functions.insert(0, _litestar_scope_lookup)
     _registered = True

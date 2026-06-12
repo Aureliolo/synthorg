@@ -77,21 +77,22 @@ Cross-worker coordination rule (read before adding a new fixture):
 # in), and the plugin's later install is the redundant attempt whose
 # InstrumentationWarning is suppressed.
 #
-# ``register_policy_honoring_checker`` makes the eager-eval NameError class (a
-# NamedTuple / TypedDict / Protocol / callable whose signature member is only
-# importable under ``if TYPE_CHECKING:``) honour the forward-ref policy instead
-# of escaping as a raw NameError. It imports only ``typeguard`` (no
-# ``synthorg``), so registering it here pulls no synthorg module into the
-# interpreter ahead of instrumentation.
+# ``register_typeguard_checker_extensions`` installs typeguard's skip / relaxation
+# lookups for the boundaries that cannot be type-checked at runtime by
+# construction (litestar's ``TYPE_CHECKING``-guarded ASGI Scope members, a patched
+# annotation type that resolves to a ``Mock``, an unbound pydantic generic, a
+# pydantic discriminated union). It imports only ``typeguard`` (no ``synthorg``),
+# so registering it here pulls no synthorg module into the interpreter ahead of
+# instrumentation.
 import os as _os
 import warnings as _warnings
 
 import typeguard
 
-from tests._typeguard_checker import register_policy_honoring_checker
+from tests._typeguard_checker import register_typeguard_checker_extensions
 
 _warnings.filterwarnings("ignore", category=typeguard.InstrumentationWarning)
-register_policy_honoring_checker()
+register_typeguard_checker_extensions()
 # The CodSpeed benchmark job (.github/workflows/codspeed.yml) sets
 # SYNTHORG_BENCH_NO_TYPEGUARD and overrides ``--typeguard-packages=`` so the
 # perf suite measures the real production code path. typeguard is a test-only
