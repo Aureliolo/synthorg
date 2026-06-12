@@ -51,6 +51,23 @@ export const WS_PONG_TIMEOUT_MS = 10_000
 export const WS_PROTOCOL_VERSION = 1
 
 /**
+ * Consecutive SSE-fallback transport errors tolerated before the client gives
+ * up and surfaces an exhausted state. The browser's `EventSource` retries
+ * indefinitely on its own, so without this budget a prolonged SSE outage floods
+ * the backend with reconnect traffic; the WS path enforces the analogous
+ * `WS_MAX_RECONNECT_ATTEMPTS`.
+ */
+export const SSE_MAX_RECONNECT_ATTEMPTS = 10
+
+/**
+ * Consecutive WS wire-version mismatches tolerated before the client flags a
+ * persistent protocol mismatch (a server roll-out bumped the protocol and this
+ * client can no longer decode events). A single mismatch where the received
+ * version is newer than supported also trips it immediately.
+ */
+export const WS_PROTOCOL_MISMATCH_THRESHOLD = 5
+
+/**
  * Window after a WebSocket-driven update during which a scheduled REST poll
  * skips its fetch. Shorter than the 30s poll interval so a sluggish or dropped
  * WS still results in eventual freshness via REST; long enough that a burst of

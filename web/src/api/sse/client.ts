@@ -22,6 +22,7 @@
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { sanitizeWsString } from '@/utils/ws-sanitize'
+import { SSE_MAX_RECONNECT_ATTEMPTS } from '@/utils/constants'
 import type { WsChannel, WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('sse-client')
@@ -70,6 +71,12 @@ interface SseClientCallbacks {
   onEvent: (event: WsEvent) => void
   onError: (error: Error) => void
   onOpen?: () => void
+  /**
+   * Invoked once the SSE transport has failed `SSE_MAX_RECONNECT_ATTEMPTS`
+   * times. The client closes the `EventSource` first so the caller only needs
+   * to surface the exhausted state; it does not retry on its own afterwards.
+   */
+  onExhausted?: () => void
 }
 
 interface SseClient {
@@ -98,13 +105,35 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
   // in ``onopen`` so a genuine fresh failure (after a successful
   // re-open) still surfaces.
   let reportedDisconnect = false
+  // Counts transport errors so a prolonged outage (EventSource retries
+  // indefinitely on its own) gives up at SSE_MAX_RECONNECT_ATTEMPTS instead
+  // of flooding the backend with reconnect traffic. Reset on a clean re-open.
+  let errorCount = 0
+  // Last server-sent event id. The browser auto-sends it as `Last-Event-ID`
+  // on reconnect once the server emits `id:` lines, so missed events can be
+  // replayed; we also surface it for debugging.
+  let lastEventId = ''
+
+  // Null handlers before closing so closure captures release promptly; some
+  // engines do not free EventSource handlers on .close() alone.
+  function teardown(): void {
+    source.onopen = null
+    source.onmessage = null
+    source.onerror = null
+    source.close()
+  }
 
   source.onopen = () => {
     reportedDisconnect = false
+    errorCount = 0
+    if (lastEventId) {
+      log.debug('SSE fallback (re)connected', sanitizeForLog({ lastEventId }))
+    }
     callbacks.onOpen?.()
   }
 
   source.onmessage = (event: MessageEvent) => {
+    if (event.lastEventId) lastEventId = event.lastEventId
     if (typeof event.data !== 'string') return
     let parsed: unknown
     try {
@@ -124,25 +153,19 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
   }
 
   source.onerror = () => {
+    errorCount += 1
+    if (errorCount >= SSE_MAX_RECONNECT_ATTEMPTS) {
+      log.error('SSE fallback exhausted its reconnect budget; closing')
+      teardown()
+      callbacks.onExhausted?.()
+      return
+    }
     if (reportedDisconnect) return
     reportedDisconnect = true
     callbacks.onError(new Error('SSE transport error'))
   }
 
-  return {
-    close() {
-      // Null the handler references before closing so any closure
-      // captures (parsed payloads, internal state) can be garbage-
-      // collected promptly. Browsers don't guarantee the EventSource
-      // releases handlers on .close() under all engines, and repeated
-      // open/close cycles during proxy-detection retries can accumulate
-      // closure retention.
-      source.onopen = null
-      source.onmessage = null
-      source.onerror = null
-      source.close()
-    },
-  }
+  return { close: teardown }
 }
 
 function asSseRaw(value: unknown): SseRawEvent | null {

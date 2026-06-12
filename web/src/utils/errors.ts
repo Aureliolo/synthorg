@@ -176,7 +176,9 @@ function readRetryAfterHeaderMs(error: AxiosError): number | null {
  * in its constructor; matching on the name plus the public
  * `errorDetail` field is sufficient for the read-only access path.
  */
-function isApiRequestError(error: unknown): error is { errorDetail: ErrorDetail | null } {
+function isApiRequestError(
+  error: unknown,
+): error is Error & { errorDetail: ErrorDetail | null } {
   return (
     error instanceof Error
     && error.name === 'ApiRequestError'
@@ -372,11 +374,39 @@ function _formatStandardErrorMessage(error: Error): string {
 }
 
 /**
+ * Surface the structured `retry_after` carried on an `ApiRequestError`
+ * (thrown by `unwrap`, NOT an AxiosError, so the header-reading
+ * `_handleRateLimited` path never runs for it). Without this the
+ * seconds value the backend parsed into `error_detail.retry_after` is
+ * discarded and a rate-limited mutation toast shows only the bare
+ * message with no wait guidance. Mirrors the "Try again in X" copy the
+ * AxiosError path produces from the `Retry-After` header.
+ */
+function _formatApiRequestErrorMessage(
+  error: Error & { errorDetail: ErrorDetail | null },
+): string {
+  const base = _formatStandardErrorMessage(error)
+  const detail = error.errorDetail
+  if (detail === null) return base
+  const seconds = detail.retry_after
+  if (
+    detail.error_category === ErrorCategory.RATE_LIMIT
+    && seconds !== null
+    && seconds > 0
+  ) {
+    const trimmed = base.replace(/[.\s]+$/, '')
+    return `${trimmed}. Try again in ${formatRetryAfter(seconds * 1000)}.`
+  }
+  return base
+}
+
+/**
  * Extract a user-friendly error message from any error.
  * Filters raw 5xx backend error strings to prevent leaking internal details.
  */
 export function getErrorMessage(error: unknown): string {
   if (isAxiosError(error)) return _formatAxiosErrorMessage(error)
+  if (isApiRequestError(error)) return _formatApiRequestErrorMessage(error)
   if (error instanceof Error) return _formatStandardErrorMessage(error)
   return GENERIC_FALLBACK_MESSAGE
 }

@@ -8,6 +8,12 @@ import type {
 export interface WebSocketState {
   connected: boolean
   reconnectExhausted: boolean
+  /** True while the read-only SSE fallback transport is actively delivering events. */
+  sseFallbackActive: boolean
+  /** True when the SSE fallback exhausted its reconnect budget and gave up. */
+  sseFallbackExhausted: boolean
+  /** True when inbound events repeatedly fail the wire-version check (server/client protocol drift). */
+  protocolVersionMismatch: boolean
   subscribedChannels: readonly WsChannel[]
 
   connect: () => Promise<void>

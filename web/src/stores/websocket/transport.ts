@@ -8,6 +8,7 @@ import {
   WS_MAX_MESSAGE_SIZE,
   WS_MAX_RECONNECT_ATTEMPTS,
   WS_PONG_TIMEOUT_MS,
+  WS_PROTOCOL_MISMATCH_THRESHOLD,
   WS_PROTOCOL_VERSION,
   WS_RECONNECT_BASE_DELAY,
   WS_RECONNECT_JITTER_MAX,
@@ -41,6 +42,7 @@ import type { WsGet, WsSet } from './types'
 const log = createLogger('ws')
 
 let reconnectAttempts = 0
+let protocolMismatchCount = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let heartbeatTimer: ReturnType<typeof setTimeout> | null = null
 let pongTimer: ReturnType<typeof setTimeout> | null = null
@@ -127,22 +129,15 @@ function computeReconnectDelay(): number {
     WS_RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts),
     WS_RECONNECT_MAX_DELAY,
   )
-  // Apply +/-20% randomised jitter so a server-restart-driven
-  // reconnect storm de-correlates across clients instead of all
-  // clients hammering the gateway in lockstep on every backoff
-  // tick. Range comes from the ``WS_RECONNECT_JITTER_*`` ratios
-  // declared in ``utils/constants`` so the value is greppable and
-  // testable from a single source.
+  // +/-20% jitter (the ``WS_RECONNECT_JITTER_*`` ratios) de-correlates a
+  // server-restart-driven reconnect storm across clients.
   const jitterMultiplier =
     WS_RECONNECT_JITTER_MIN
     + Math.random() * (WS_RECONNECT_JITTER_MAX - WS_RECONNECT_JITTER_MIN)
-  // Clamp the post-rounding result to ``[1ms, WS_RECONNECT_MAX_DELAY]``.
-  // The 1ms floor stops a future tuning of the base / jitter
-  // constants that produces a sub-millisecond delay from collapsing
-  // the backoff to an immediate reconnect; the max ceiling stops the
-  // upper-bound jitter multiplier (1.2 today) from pushing the
-  // delay past the configured max once ``baseDelay`` is already
-  // saturated at ``WS_RECONNECT_MAX_DELAY``.
+  // Clamp to ``[1ms, WS_RECONNECT_MAX_DELAY]``: the floor stops a sub-ms
+  // delay collapsing the backoff to an immediate reconnect; the ceiling
+  // stops the upper jitter multiplier exceeding the max once ``baseDelay``
+  // is already saturated.
   return Math.max(
     1,
     Math.min(
@@ -186,7 +181,7 @@ function handleAck(msg: Record<string, unknown>, set: WsSet): void {
   }
 }
 
-function handleEventOrLog(msg: Record<string, unknown>): void {
+function handleEventOrLog(msg: Record<string, unknown>, set: WsSet): void {
   if (!isWsEvent(msg)) {
     log.warn('Message failed WsEvent validation, discarding:', {
       hasEventType: typeof msg['event_type'],
@@ -207,8 +202,16 @@ function handleEventOrLog(msg: Record<string, unknown>): void {
       event_type: sanitizeForLog(msg.event_type),
       channel: sanitizeForLog(msg.channel),
     })
+    // A silent drop leaves the socket "connected" while all real-time
+    // updates stop. Surface a persistent flag after a run of mismatches, or
+    // immediately when the server is ahead of us, so the UI can prompt a reload.
+    protocolMismatchCount += 1
+    if (version > WS_PROTOCOL_VERSION || protocolMismatchCount >= WS_PROTOCOL_MISMATCH_THRESHOLD) {
+      set({ protocolVersionMismatch: true })
+    }
     return
   }
+  protocolMismatchCount = 0
   dispatchEvent(msg)
 }
 
@@ -231,7 +234,7 @@ function routeIncomingMessage(msg: Record<string, unknown>, set: WsSet): void {
     )
     return
   }
-  handleEventOrLog(msg)
+  handleEventOrLog(msg, set)
 }
 
 function shouldFallbackToSse(event: CloseEvent, wasConnected: boolean): boolean {
@@ -251,13 +254,13 @@ function shouldFallbackToSse(event: CloseEvent, wasConnected: boolean): boolean 
   return recordAbnormalCloseDuringHandshake() && !isSseFallbackActive()
 }
 
-function activateFallbackAndStopReconnect(): void {
+function activateFallbackAndStopReconnect(set: WsSet): void {
   shouldBeConnected = false
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
-  activateSseFallback()
+  activateSseFallback(set)
 }
 
 function handleClose(
@@ -281,7 +284,7 @@ function handleClose(
     return
   }
   if (shouldFallbackToSse(event, wasConnected)) {
-    activateFallbackAndStopReconnect()
+    activateFallbackAndStopReconnect(set)
     return
   }
   if (!intentionalClose && shouldBeConnected) {
@@ -382,7 +385,8 @@ async function doConnect(
   set: WsSet,
   get: WsGet,
 ): Promise<void> {
-  set({ reconnectExhausted: false })
+  set({ reconnectExhausted: false, protocolVersionMismatch: false })
+  protocolMismatchCount = 0
   shouldBeConnected = true
   intentionalClose = false
 
@@ -392,7 +396,7 @@ async function doConnect(
   // event twice -- once from the WS frame, once from the SSE stream.
   // Tearing it down here keeps the "only one transport at a time"
   // invariant the dispatch chain assumes.
-  closeSseFallback()
+  closeSseFallback(set)
 
   const ticket = await fetchTicketOrReconnect(set, get)
   if (ticket === null) return
@@ -421,25 +425,38 @@ async function connectImpl(set: WsSet, get: WsGet): Promise<void> {
   return connectPromise
 }
 
-function disconnectImpl(set: WsSet): void {
+/**
+ * Reset the module-level reconnect bookkeeping shared by every
+ * intentional teardown (``disconnect`` and ``teardownTransport``):
+ * stop reconnecting, bump the generation so any in-flight ``doConnect``
+ * bails, and clear the failure / mismatch / proxy-block counters and
+ * timers. Socket close and store updates are left to the caller since
+ * they differ between the two paths.
+ */
+function _resetReconnectState(): void {
   intentionalClose = true
   shouldBeConnected = false
   connectGeneration++
   connectPromise = null
   reconnectAttempts = 0
+  protocolMismatchCount = 0
+  resetProxyBlockSuspicion()
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
   stopHeartbeat()
+}
+
+function disconnectImpl(set: WsSet): void {
+  _resetReconnectState()
   const socket = getCurrentSocket()
   if (socket) {
     socket.close()
     setCurrentSocket(null)
   }
-  closeSseFallback()
-  resetProxyBlockSuspicion()
-  set({ connected: false, subscribedChannels: [] })
+  closeSseFallback(set)
+  set({ connected: false, subscribedChannels: [], protocolVersionMismatch: false })
   teardownSubscriptions()
 }
 
@@ -449,33 +466,23 @@ async function retryImpl(set: WsSet, get: WsGet): Promise<void> {
   // store to attempt a fresh connect; the regular reconnect /
   // auth_ok / heartbeat path takes over from there.
   reconnectAttempts = 0
+  protocolMismatchCount = 0
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
-  set({ reconnectExhausted: false })
+  set({ reconnectExhausted: false, protocolVersionMismatch: false })
   await connectImpl(set, get)
 }
 
 export function teardownTransport(): void {
-  intentionalClose = true
-  shouldBeConnected = false
-  connectGeneration++
-  connectPromise = null
-  reconnectAttempts = 0
+  _resetReconnectState()
   closeSseFallback()
-  resetProxyBlockSuspicion()
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-  stopHeartbeat()
   const socket = getCurrentSocket()
   if (socket) {
-    socket.onopen = null
-    socket.onclose = null
-    socket.onerror = null
-    socket.onmessage = null
+    // Detach all handlers before close so a mock / half-closed socket
+    // cannot fire callbacks after teardown.
+    socket.onopen = socket.onclose = socket.onerror = socket.onmessage = null
     try {
       socket.close()
     } catch {

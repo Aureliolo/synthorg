@@ -65,7 +65,13 @@ export function HealthPopover({ children }: HealthPopoverProps) {
   const { loadState, nowMs, setNowMs, fetchHealth } = useFetchHealth()
   const wsConnected = useWebSocketStore((s) => s.connected)
   const wsReconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
-  const states = deriveHealthSubsystemStates(loadState, wsConnected, wsReconnectExhausted)
+  const sseFallbackActive = useWebSocketStore((s) => s.sseFallbackActive)
+  const states = deriveHealthSubsystemStates(
+    loadState,
+    wsConnected,
+    wsReconnectExhausted,
+    sseFallbackActive,
+  )
 
   // Live-updating "X seconds ago" ticker. Starts when the dialog opens,
   // stops when it closes, so we never hold a background timer for a

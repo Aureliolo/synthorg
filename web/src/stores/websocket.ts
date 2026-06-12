@@ -14,6 +14,9 @@ export type { WebSocketState } from './websocket/types'
 export const useWebSocketStore = create<WebSocketState>()((set, get) => ({
   connected: false,
   reconnectExhausted: false,
+  sseFallbackActive: false,
+  sseFallbackExhausted: false,
+  protocolVersionMismatch: false,
   subscribedChannels: [],
 
   ...createTransportSlice(set, get),
@@ -25,6 +28,9 @@ export const useWebSocketStore = create<WebSocketState>()((set, get) => ({
     set({
       connected: false,
       reconnectExhausted: false,
+      sseFallbackActive: false,
+      sseFallbackExhausted: false,
+      protocolVersionMismatch: false,
       subscribedChannels: [],
     })
   },

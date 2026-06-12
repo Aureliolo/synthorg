@@ -2,6 +2,7 @@ import { openSseFallback } from '@/api/sse/client'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { dispatchEvent } from './subscriptions'
+import type { WsSet } from './types'
 
 const log = createLogger('ws')
 
@@ -23,11 +24,12 @@ export function isSseFallbackActive(): boolean {
   return sseClient !== null
 }
 
-export function closeSseFallback(): void {
+export function closeSseFallback(set?: WsSet): void {
   if (sseClient) {
     sseClient.close()
     sseClient = null
   }
+  set?.({ sseFallbackActive: false, sseFallbackExhausted: false })
 }
 
 export function resetProxyBlockSuspicion(): void {
@@ -66,12 +68,15 @@ async function notifyConnectionLimited(): Promise<void> {
   }
 }
 
-export function activateSseFallback(): void {
+export function activateSseFallback(set: WsSet): void {
   if (sseClient !== null) return
   log.warn('WS handshake repeatedly failed with 1006; activating SSE fallback')
   sseClient = openSseFallback({
     onOpen: () => {
       log.debug('SSE fallback connected')
+      // A clean (re)open means the fallback is live again; clear any prior
+      // exhausted flag so the banner returns to the "degraded" state.
+      set({ sseFallbackExhausted: false })
     },
     onEvent: (wsEvent) => {
       dispatchEvent(wsEvent)
@@ -79,6 +84,11 @@ export function activateSseFallback(): void {
     onError: (err) => {
       log.warn('SSE fallback transport error', sanitizeForLog(err.message))
     },
+    onExhausted: () => {
+      log.error('SSE fallback exhausted; no live transport remains')
+      set({ sseFallbackExhausted: true })
+    },
   })
+  set({ sseFallbackActive: true, sseFallbackExhausted: false })
   void notifyConnectionLimited()
 }
