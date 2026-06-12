@@ -333,7 +333,7 @@ class AuthService:
 
     async def persist_refresh_token(
         self,
-        store: object,
+        store: RefreshTokenRepository,
         *,
         token_hash: str,
         session_id: str,
@@ -351,8 +351,7 @@ class AuthService:
 
         Args:
             store: The :class:`RefreshTokenRepository` instance to
-                write through.  Typed as ``object`` to keep this
-                module free of persistence-layer imports.
+                write through.
             token_hash: HMAC-SHA256 hex digest of the raw refresh token.
             session_id: Session identifier.
             user_id: User identifier.
@@ -361,7 +360,7 @@ class AuthService:
         Raises:
             QueryError: If the underlying repo write fails.
         """
-        await store.create(  # type: ignore[attr-defined]
+        await store.create(
             token_hash=token_hash,
             session_id=session_id,
             user_id=user_id,

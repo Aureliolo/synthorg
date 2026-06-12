@@ -267,7 +267,8 @@ _registered = False
 def register_policy_honoring_checker() -> None:
     """Install the WARN-activation checker extensions at the front of the chain.
 
-    Registers four lookups: the NameError-tolerant wrapper (eager-eval
+    Registers five lookups: the Litestar Scope TypedDict skip (third-party
+    ``TYPE_CHECKING``-guarded members), the NameError-tolerant wrapper (eager-eval
     ``TYPE_CHECKING``-only signatures), the unbound-pydantic-generic relaxation,
     the mocked-annotation skip (a patched annotation type that resolves to a
     ``Mock``), and the pydantic discriminated-union skip (e.g. ``JsonValue``).

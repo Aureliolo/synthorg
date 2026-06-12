@@ -26,10 +26,6 @@ def audit_actor_from_context() -> ProviderAuditActor:
     Returns:
         ``ProviderAuditActor`` instance.
     """
-    from synthorg.api.dto_provider_capabilities import (  # noqa: PLC0415
-        ProviderAuditActor,
-    )
-
     user = get_authenticated_user()
     return ProviderAuditActor(id=user.user_id, label=user.username)
 
@@ -40,10 +36,6 @@ def _build_background_actor() -> ProviderAuditActor:
     Returns:
         ``ProviderAuditActor`` instance.
     """
-    from synthorg.api.dto_provider_capabilities import (  # noqa: PLC0415
-        ProviderAuditActor,
-    )
-
     return ProviderAuditActor(id="api", label="api")
 
 
