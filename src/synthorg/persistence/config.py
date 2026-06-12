@@ -236,6 +236,32 @@ class PostgresConfig(BaseModel):
             raise ValueError(msg)
         return value
 
+    @field_validator("host", "username", "database")
+    @classmethod
+    def _reject_unsafe_connection_chars(cls, value: NotBlankStr) -> NotBlankStr:
+        """Reject whitespace / control chars that could reach the pg-tool argv.
+
+        ``host`` / ``username`` / ``database`` are interpolated into the
+        ``pg_dump`` / ``pg_restore`` argv. None has a legitimate reason to
+        carry whitespace or control characters; rejecting them at
+        construction is a defence-in-depth guard against a newline-injected
+        config (DB-precedence settings path) smuggling an extra option past
+        the ``--flag=value`` framing.
+
+        Returns:
+            The validated value, unchanged.
+
+        Raises:
+            ValueError: If the value carries whitespace or a control char.
+        """
+        if any(char.isspace() or char < " " for char in value):
+            msg = (
+                "host, username, and database must not contain whitespace "
+                f"or control characters: {value!r}"
+            )
+            raise ValueError(msg)
+        return value
+
     @model_validator(mode="after")
     def _validate_pool_sizes(self) -> Self:
         """Ensure ``pool_max_size`` is not smaller than ``pool_min_size``.

@@ -302,21 +302,52 @@ def _check_returncode(
     return True
 
 
+def _is_safe_ci_path(project_root: Path, rel: str) -> bool:
+    """Reject a path that could inject a flag or escape the project root.
+
+    ``changed_files`` originates from LLM-authored ``ImprovementProposal``
+    output and is forwarded verbatim into the ruff / mypy / pytest argv. A
+    value beginning with ``-`` would be parsed as an option (e.g.
+    ``--plugin=evil`` loading an arbitrary pytest plugin from the host), and a
+    path resolving outside ``project_root`` would reach arbitrary host files.
+
+    Args:
+        project_root: Absolute project root the path must stay within.
+        rel: Candidate relative path.
+
+    Returns:
+        ``True`` only for a ``.py`` path with no leading dash or control
+        characters that resolves inside ``project_root``.
+    """
+    if not rel.endswith(".py") or rel.startswith("-"):
+        return False
+    if any(char < " " for char in rel):  # control characters (codepoint < space)
+        return False
+    try:
+        resolved = (project_root / rel).resolve()
+    except OSError, ValueError:
+        return False
+    return resolved.is_relative_to(project_root.resolve())
+
+
 def _existing_py_files(
     project_root: Path,
     changed_files: tuple[str, ...],
 ) -> list[str]:
-    """Filter changed files to existing Python files.
+    """Filter changed files to existing, injection-safe Python files.
 
     Args:
         project_root: Absolute path to the project root.
         changed_files: Relative paths of changed files.
 
     Returns:
-        List of changed .py files that exist on disk.
+        List of changed .py files that exist on disk and pass
+        :func:`_is_safe_ci_path`.
     """
     return [
-        f for f in changed_files if f.endswith(".py") and (project_root / f).exists()
+        f
+        for f in changed_files
+        if _is_safe_ci_path(project_root, f) and (project_root / f).exists()
     ]
 
 
@@ -358,7 +389,7 @@ def _discover_test_files(
                 str(Path("tests/unit/meta") / sub / test_name),
             )
         for candidate in candidates:
-            if candidate not in seen:
+            if candidate not in seen and _is_safe_ci_path(project_root, candidate):
                 full = project_root / candidate
                 if full.exists():
                     test_files.append(candidate)

@@ -8,9 +8,34 @@ import pytest
 from synthorg.meta.validation.ci_validator import (
     LocalCIValidator,
     _discover_test_files,
+    _existing_py_files,
+    _is_safe_ci_path,
 )
 
 pytestmark = pytest.mark.unit
+
+
+class TestCiPathSafety:
+    def test_accepts_plain_relative_py_path(self, tmp_path: Path) -> None:
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "mod.py").write_text("", encoding="utf-8")
+        assert _is_safe_ci_path(tmp_path, "src/mod.py") is True
+
+    def test_rejects_leading_dash_flag_injection(self, tmp_path: Path) -> None:
+        assert _is_safe_ci_path(tmp_path, "--plugin=evil.py") is False
+
+    def test_rejects_path_escaping_project_root(self, tmp_path: Path) -> None:
+        assert _is_safe_ci_path(tmp_path, "../outside.py") is False
+
+    def test_rejects_non_python_and_control_chars(self, tmp_path: Path) -> None:
+        assert _is_safe_ci_path(tmp_path, "src/mod.txt") is False
+        assert _is_safe_ci_path(tmp_path, "src/mo\nd.py") is False
+
+    def test_existing_py_files_drops_flag_injection(self, tmp_path: Path) -> None:
+        (tmp_path / "real.py").write_text("", encoding="utf-8")
+        result = _existing_py_files(tmp_path, ("real.py", "--plugin=evil.py"))
+        assert result == ["real.py"]
+
 
 _FAKE_FILES = ("src/synthorg/meta/strategies/new.py",)
 _FAKE_TESTS = ["tests/unit/meta/test_new.py"]

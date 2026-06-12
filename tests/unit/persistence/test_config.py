@@ -89,6 +89,12 @@ class TestPostgresConfig:
         assert cfg.statement_timeout_ms == 30_000
         assert cfg.connect_timeout_seconds == 10.0
 
+    @pytest.mark.parametrize("field", ["host", "username", "database"])
+    @pytest.mark.parametrize("bad", ["db\nhost", "user name", "na\tme", "x\x00y"])
+    def test_whitespace_or_control_chars_rejected(self, field: str, bad: str) -> None:
+        with pytest.raises(ValidationError, match="whitespace or control characters"):
+            _minimal_postgres_config(**{field: bad})
+
     def test_custom_values(self) -> None:
         cfg = _minimal_postgres_config(
             host="db.internal",
