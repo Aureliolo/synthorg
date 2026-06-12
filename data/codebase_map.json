@@ -394,7 +394,7 @@
     },
     {
       "kind": "code",
-      "loc": 422,
+      "loc": 421,
       "loc_cap": 500,
       "module": "src/synthorg/api/auth/service.py",
       "owning_feature": "api_core"
@@ -590,7 +590,7 @@
     },
     {
       "kind": "code",
-      "loc": 36,
+      "loc": 30,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/_workflow_helpers.py",
       "owning_feature": "api_core"
@@ -3096,7 +3096,7 @@
     },
     {
       "kind": "code",
-      "loc": 137,
+      "loc": 136,
       "loc_cap": 500,
       "module": "src/synthorg/client/protocols.py",
       "owning_feature": "client"
