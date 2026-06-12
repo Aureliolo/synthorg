@@ -12,6 +12,8 @@ source onto an occupied project is refused.
 
 import asyncio
 import re
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Final
 
@@ -89,19 +91,40 @@ class BrownfieldImportService:
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._locks: dict[str, asyncio.Lock] = {}
         self._locks_guard = asyncio.Lock()
+        self._locks_refcounts: dict[str, int] = {}
 
-    async def _lock_for(self, project_id: str) -> asyncio.Lock:
-        """Return the per-project import lock, creating it on first use.
+    @asynccontextmanager
+    async def _lock_for(self, project_id: str) -> AsyncIterator[None]:
+        """Serialise imports per project, evicting the lock when idle.
+
+        Refcounted so a process importing many distinct projects over its
+        lifetime does not retain one ``asyncio.Lock`` per project forever.
 
         Args:
             project_id: Project whose imports must be serialised.
 
-        Returns:
-            The :class:`asyncio.Lock` guarding imports for ``project_id``;
-            the same instance is returned on every subsequent call.
+        Yields:
+            Control while the per-project import lock is held.
         """
         async with self._locks_guard:
-            return self._locks.setdefault(project_id, asyncio.Lock())
+            lock = self._locks.get(project_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._locks[project_id] = lock
+            self._locks_refcounts[project_id] = (
+                self._locks_refcounts.get(project_id, 0) + 1
+            )
+        try:
+            async with lock:
+                yield
+        finally:
+            async with self._locks_guard:
+                remaining = self._locks_refcounts[project_id] - 1
+                if remaining == 0:
+                    del self._locks_refcounts[project_id]
+                    del self._locks[project_id]
+                else:
+                    self._locks_refcounts[project_id] = remaining
 
     async def import_codebase(
         self, submission: CodebaseImportSubmission
@@ -121,8 +144,7 @@ class BrownfieldImportService:
             GitBackendSeedError: The seed (clone/copy) failed.
         """
         project_id = submission.project_id
-        lock = await self._lock_for(project_id)
-        async with lock:
+        async with self._lock_for(project_id):
             logger.info(
                 BROWNFIELD_IMPORT_STARTED,
                 project_id=project_id,

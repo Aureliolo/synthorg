@@ -15,7 +15,8 @@ exists for audit and in-loop ceiling enforcement.
 
 import asyncio
 import uuid
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 from synthorg.api.services.project_service import ProjectService
@@ -150,12 +151,17 @@ class CharterDispatcher:
         self._clock: Clock = clock or SystemClock()
         self._locks: dict[str, asyncio.Lock] = {}
         self._locks_guard: asyncio.Lock | None = None
+        self._locks_refcounts: dict[str, int] = {}
 
-    async def _lock_for(self, charter_id: str) -> asyncio.Lock:
-        """Return the per-charter lock, creating it once.
+    @asynccontextmanager
+    async def _lock_for(self, charter_id: str) -> AsyncIterator[None]:
+        """Serialise per-charter dispatch, evicting the lock when idle.
 
-        Returns:
-            ``asyncio.Lock`` instance.
+        Refcounted so a process dispatching many distinct charters does not
+        retain one ``asyncio.Lock`` per charter id forever.
+
+        Yields:
+            Control while the per-charter lock is held.
         """
         if self._locks_guard is None:
             self._locks_guard = asyncio.Lock()
@@ -164,7 +170,20 @@ class CharterDispatcher:
             if lock is None:
                 lock = asyncio.Lock()
                 self._locks[charter_id] = lock
-            return lock
+            self._locks_refcounts[charter_id] = (
+                self._locks_refcounts.get(charter_id, 0) + 1
+            )
+        try:
+            async with lock:
+                yield
+        finally:
+            async with self._locks_guard:
+                remaining = self._locks_refcounts[charter_id] - 1
+                if remaining == 0:
+                    del self._locks_refcounts[charter_id]
+                    del self._locks[charter_id]
+                else:
+                    self._locks_refcounts[charter_id] = remaining
 
     async def approve(
         self,
@@ -185,7 +204,7 @@ class CharterDispatcher:
         Returns:
             ``CharterApprovalResult`` instance.
         """
-        async with await self._lock_for(charter_id):
+        async with self._lock_for(charter_id):
             return await self._approve(charter_id, approved_by=approved_by)
 
     async def _approve(

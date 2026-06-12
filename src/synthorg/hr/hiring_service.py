@@ -386,7 +386,24 @@ class HiringService:
             agent_id=str(identity.id),
             agent_name=str(identity.name),
         )
+        # INSTANTIATED is terminal: no further operation targets this request,
+        # so drop its in-memory model and lock instead of retaining both (the
+        # model can carry large candidate payloads) for the process lifetime.
+        self._evict_request(str(request.id))
         return identity
+
+    def _evict_request(self, request_id: str) -> None:
+        """Drop a terminal request and its per-request lock.
+
+        Keeps ``_requests`` and ``_requests_locks`` bounded under continuous
+        hiring activity; completed requests are read back through the
+        persistence layer, not this in-memory cache.
+
+        Args:
+            request_id: The terminal request to forget.
+        """
+        self._requests.pop(request_id, None)
+        self._requests_locks.pop(request_id, None)
 
     def _apply_instantiated_status(self, request: HiringRequest) -> None:
         """Persist the APPROVED -> INSTANTIATED status flip and log it.

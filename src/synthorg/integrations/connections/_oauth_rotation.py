@@ -6,7 +6,7 @@ secret-bearing slice of the catalog. It lives in its own mixin so the main
 catalog module stays focused on CRUD + lookup + credential resolution.
 
 The mixin reaches back into the host catalog for shared collaborators
-(``_repo``, ``_secret_backend``) and helpers (``_lock_for``,
+(``_repo``, ``_secret_backend``) and helpers (``_name_lock``,
 ``get_or_raise``, ``_resolve_credentials_for``, ``_store_secret``,
 ``_invalidate_cache``); the ``TYPE_CHECKING`` block below declares that
 surface so ``mypy`` type-checks the mixin in isolation.
@@ -28,7 +28,7 @@ from synthorg.observability.events.integrations import (
 )
 
 if TYPE_CHECKING:
-    import asyncio
+    from contextlib import AbstractAsyncContextManager
 
     from synthorg.persistence.connection_protocol import ConnectionRepository
     from synthorg.persistence.secret_backends.protocol import SecretBackend
@@ -43,8 +43,8 @@ class OAuthRotationMixin:
         _repo: ConnectionRepository
         _secret_backend: SecretBackend
 
-        async def _lock_for(self, name: str) -> asyncio.Lock:
-            """Return the per-connection lock (provided by the host class)."""
+        def _name_lock(self, name: str) -> AbstractAsyncContextManager[None]:
+            """Return the per-connection lock CM (provided by the host class)."""
             ...
 
         async def get_or_raise(self, name: str) -> Connection:
@@ -97,8 +97,7 @@ class OAuthRotationMixin:
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
         """
-        lock = await self._lock_for(name)
-        async with lock:
+        async with self._name_lock(name):
             # Load the connection once and share it across the
             # credential merge + persist paths.
             conn = await self.get_or_raise(name)

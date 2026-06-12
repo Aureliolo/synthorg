@@ -101,6 +101,7 @@ class ConnectionCatalog(
         # would otherwise leave orphaned secrets or repo rows.
         self._name_locks: dict[str, asyncio.Lock] = {}
         self._name_locks_lock = asyncio.Lock()
+        self._name_locks_refcounts: dict[str, int] = {}
 
     async def create(  # noqa: PLR0913
         self,
@@ -143,8 +144,7 @@ class ConnectionCatalog(
             DuplicateConnectionError: If name already exists.
             InvalidConnectionAuthError: If credentials are invalid.
         """
-        lock = await self._lock_for(name)
-        async with lock:
+        async with self._name_lock(name):
             await self._ensure_cache()
             if name in self._cache:
                 logger.warning(CONNECTION_DUPLICATE, connection_name=name)
@@ -355,8 +355,7 @@ class ConnectionCatalog(
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
         """
-        lock = await self._lock_for(name)
-        async with lock:
+        async with self._name_lock(name):
             existing = await self.get_or_raise(name)
             # Build candidate updates without seeding ``updated_at`` --
             # an unchanged PATCH should be a no-op so we can skip
@@ -441,8 +440,7 @@ class ConnectionCatalog(
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
         """
-        lock = await self._lock_for(name)
-        async with lock:
+        async with self._name_lock(name):
             existing = await self.get_or_raise(name)
             updated = existing.model_copy(
                 update={
@@ -476,8 +474,7 @@ class ConnectionCatalog(
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
         """
-        lock = await self._lock_for(name)
-        async with lock:
+        async with self._name_lock(name):
             existing = await self.get_or_raise(name)
             await self._repo.delete(name)
             for ref in existing.secret_refs:

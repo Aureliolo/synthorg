@@ -86,6 +86,25 @@ def _make_catalog(initial_label: str) -> tuple[ConnectionCatalog, _StubRepo]:
     return catalog, initial
 
 
+class TestNameLockEviction:
+    async def test_lock_evicted_when_idle(self) -> None:
+        catalog, _initial = _make_catalog("stub")
+        async with catalog._name_lock("conn-a"):
+            assert "conn-a" in catalog._name_locks
+        # Last (only) holder exited: the lock and its refcount are gone.
+        assert catalog._name_locks == {}
+        assert catalog._name_locks_refcounts == {}
+
+    async def test_lock_retained_while_a_holder_remains(self) -> None:
+        catalog, _initial = _make_catalog("stub")
+        async with catalog._name_lock("conn-a"):
+            # Simulate a second concurrent holder by bumping the refcount;
+            # the lock must survive the first holder's exit.
+            catalog._name_locks_refcounts["conn-a"] += 1
+        assert "conn-a" in catalog._name_locks
+        assert catalog._name_locks_refcounts == {"conn-a": 1}
+
+
 class TestRebindRepository:
     async def test_swaps_repo_reference(self) -> None:
         catalog, _initial = _make_catalog("stub")
