@@ -36,7 +36,7 @@ describe('CategoryBreakdown', () => {
   it('shows empty state when all costs are zero', () => {
     render(<CategoryBreakdown ratio={EMPTY_RATIO} />)
     expect(screen.getByText('No cost data')).toBeInTheDocument()
-    expect(screen.getByText('Category breakdown will appear as agents consume tokens')).toBeInTheDocument()
+    expect(screen.getByText('Category breakdown will appear as agents consume tokens.')).toBeInTheDocument()
   })
 
   it('renders stacked bar segments', () => {

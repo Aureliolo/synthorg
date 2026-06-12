@@ -1,15 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Inbox } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 
-import {
-  approveRequest,
-  listRequests,
-  rejectRequest,
-  scopeRequest,
-  type ClientRequest,
-  type RequestStatus,
-} from '@/api/endpoints/clients'
+import type { ClientRequest, RequestStatus } from '@/api/endpoints/clients'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'
 import { RequestCard } from '@/components/ui/request-card'
@@ -18,10 +12,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { SectionCard } from '@/components/ui/section-card'
 import { SelectField } from '@/components/ui/select-field'
 import { SkeletonCard } from '@/components/ui/skeleton'
-import { useCapabilities } from '@/hooks/useCapabilities'
-import { createLogger } from '@/lib/logger'
-
-const log = createLogger('RequestQueuePage')
+import { useRequestQueue, type RequestQueueState } from './request-queue/useRequestQueue'
 
 const STATUS_ORDER: readonly RequestStatus[] = [
   'submitted',
@@ -39,163 +30,6 @@ const STATUS_LABELS: Record<RequestStatus, string> = {
   approved: 'Approved',
   task_created: 'Task created',
   cancelled: 'Cancelled',
-}
-
-// ``typeof null === 'object'`` in JS, so the null guard must come first
-// or the ``'description' in requirement`` check throws at runtime.
-function requirementMatchesQuery(requirement: unknown, query: string): boolean {
-  return (
-    requirement !== null
-    && typeof requirement === 'object'
-    && 'description' in requirement
-    && typeof requirement.description === 'string'
-    && requirement.description.toLowerCase().includes(query)
-  )
-}
-
-function matchesRequest(
-  r: ClientRequest,
-  statusFilter: RequestStatus | 'all',
-  query: string,
-): boolean {
-  if (statusFilter !== 'all' && r.status !== statusFilter) return false
-  if (query === '') return true
-  return (
-    r.request_id.toLowerCase().includes(query)
-    || r.client_id.toLowerCase().includes(query)
-    || requirementMatchesQuery(r.requirement, query)
-  )
-}
-
-interface RequestActions {
-  pending: Record<string, boolean>
-  handleScope: (id: string) => void
-  handleApprove: (id: string) => void
-  handleReject: (id: string) => void
-}
-
-function useRequestActions(
-  refresh: () => Promise<void>,
-  setError: (error: string | null) => void,
-): RequestActions {
-  const [pending, setPending] = useState<Record<string, boolean>>({})
-  // Synchronous in-flight guard. ``setPending`` only commits on the next
-  // render, so a rapid second click would re-enter `run` before the
-  // `pending` state reflects the first; mutating this ref atomically at
-  // the start (and clearing it in `finally`) closes that re-entrancy
-  // race. Keeping the guard in a ref rather than `pending` state also
-  // means `run` does not depend on `pending`, so it and the three action
-  // handlers stay stable and do not invalidate the RequestCard memo on
-  // every transition.
-  const inFlightRef = useRef<Record<string, boolean>>({})
-
-  const run = useCallback(
-    async (
-      requestId: string,
-      action: () => Promise<unknown>,
-      errorMsg: string,
-      logEvent: string,
-    ) => {
-      if (inFlightRef.current[requestId]) return
-      inFlightRef.current[requestId] = true
-      setPending((prev) => ({ ...prev, [requestId]: true }))
-      try {
-        await action()
-        await refresh()
-      } catch (err) {
-        log.error(logEvent, err)
-        setError(errorMsg)
-      } finally {
-        inFlightRef.current[requestId] = false
-        setPending((prev) => ({ ...prev, [requestId]: false }))
-      }
-    },
-    [refresh, setError],
-  )
-
-  const handleScope = useCallback(
-    (id: string) => {
-      void run(id, () => scopeRequest(id, { notes: 'Scoped from dashboard' }), 'Failed to scope request.', 'scope_request_failed')
-    },
-    [run],
-  )
-  const handleApprove = useCallback(
-    (id: string) => {
-      void run(id, () => approveRequest(id), 'Failed to approve request.', 'approve_request_failed')
-    },
-    [run],
-  )
-  const handleReject = useCallback(
-    (id: string) => {
-      void run(id, () => rejectRequest(id, 'Rejected from dashboard'), 'Failed to reject request.', 'reject_request_failed')
-    },
-    [run],
-  )
-
-  return { pending, handleScope, handleApprove, handleReject }
-}
-
-interface RequestQueueState {
-  capabilities: ReturnType<typeof useCapabilities>['capabilities']
-  capLoading: boolean
-  capError: string | null
-  requests: readonly ClientRequest[]
-  loading: boolean
-  error: string | null
-  searchQuery: string
-  setSearchQuery: (value: string) => void
-  statusFilter: RequestStatus | 'all'
-  setStatusFilter: (value: RequestStatus | 'all') => void
-  filteredRequests: readonly ClientRequest[]
-  pending: Record<string, boolean>
-  handleScope: (id: string) => void
-  handleApprove: (id: string) => void
-  handleReject: (id: string) => void
-}
-
-function useRequestQueue(): RequestQueueState {
-  const { capabilities, loading: capLoading, error: capError } = useCapabilities()
-  const [requests, setRequests] = useState<readonly ClientRequest[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<RequestStatus | 'all'>('all')
-
-  const refresh = useCallback(async () => {
-    try {
-      const result = await listRequests({ limit: 200 })
-      setRequests(result.data)
-      setError(null)
-    } catch (err) {
-      log.error('list_requests_failed', err)
-      setError('Failed to load request queue.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const actions = useRequestActions(refresh, setError)
-
-  // Capability-gated effect: skip the network call entirely when the
-  // requests subsystem is not configured (backend route 404s otherwise).
-  useEffect(() => {
-    if (capLoading) return
-    if (!capabilities.requests) {
-      queueMicrotask(() => setLoading(false))
-      return
-    }
-    void refresh()
-  }, [refresh, capLoading, capabilities.requests])
-
-  const filteredRequests = useMemo(() => {
-    const trimmed = searchQuery.trim().toLowerCase()
-    return requests.filter((r) => matchesRequest(r, statusFilter, trimmed))
-  }, [requests, searchQuery, statusFilter])
-
-  return {
-    capabilities, capLoading, capError, requests, loading, error, searchQuery, setSearchQuery,
-    statusFilter, setStatusFilter, filteredRequests, ...actions,
-  }
 }
 
 type RequestQueueFallback = 'cap-error' | 'not-configured' | 'loading' | null
@@ -341,6 +175,106 @@ function RequestQueueBoard({
   )
 }
 
+type RequestActionKind = 'scope' | 'approve' | 'reject'
+
+interface RequestConfirmTarget {
+  kind: RequestActionKind
+  id: string
+}
+
+const ACTION_VERB: Record<RequestActionKind, string> = {
+  scope: 'Scope',
+  approve: 'Approve',
+  reject: 'Reject',
+}
+
+const ACTION_PROMPT: Record<RequestActionKind, string> = {
+  scope: 'Scoping advances the request through the state machine and is side-effecting.',
+  approve: 'Approving advances the request towards task creation and cannot be undone.',
+  reject: 'Rejecting cancels the request. This cannot be undone.',
+}
+
+interface RequestConfirmCopy {
+  title: string
+  description: string | undefined
+  label: string
+  variant: 'default' | 'destructive'
+}
+
+function buildConfirmCopy(target: RequestConfirmTarget | null): RequestConfirmCopy {
+  if (!target) return { title: '', description: undefined, label: 'Confirm', variant: 'default' }
+  return {
+    title: `${ACTION_VERB[target.kind]} request ${target.id}?`,
+    description: ACTION_PROMPT[target.kind],
+    label: ACTION_VERB[target.kind],
+    variant: target.kind === 'reject' ? 'destructive' : 'default',
+  }
+}
+
+/**
+ * Active request board with a confirmation step in front of every state
+ * transition. Approving and scoping are irreversible state-machine walks, so a
+ * named ConfirmDialog guards against a misclick. The wrapper callbacks are
+ * stable (`useCallback`) so they do not invalidate the `RequestCard` memo.
+ */
+function RequestQueueActiveView({ q }: { q: RequestQueueState }) {
+  const [confirm, setConfirm] = useState<RequestConfirmTarget | null>(null)
+
+  const onScope = useCallback((id: string) => setConfirm({ kind: 'scope', id }), [])
+  const onApprove = useCallback((id: string) => setConfirm({ kind: 'approve', id }), [])
+  const onReject = useCallback((id: string) => setConfirm({ kind: 'reject', id }), [])
+
+  const handleConfirm = useCallback(() => {
+    if (!confirm) return
+    if (confirm.kind === 'scope') q.handleScope(confirm.id)
+    else if (confirm.kind === 'approve') q.handleApprove(confirm.id)
+    else q.handleReject(confirm.id)
+    setConfirm(null)
+  }, [confirm, q])
+
+  const copy = buildConfirmCopy(confirm)
+
+  return (
+    <>
+      {q.requests.length > 0 && (
+        <RequestQueueFilters
+          searchQuery={q.searchQuery}
+          setSearchQuery={q.setSearchQuery}
+          statusFilter={q.statusFilter}
+          setStatusFilter={q.setStatusFilter}
+        />
+      )}
+
+      {q.requests.length === 0 ? (
+        <EmptyState
+          icon={Inbox}
+          title="No requests yet"
+          description="Submit a client request via POST /requests to start exercising the intake pipeline."
+        />
+      ) : (
+        <RequestQueueBoard
+          filteredRequests={q.filteredRequests}
+          pending={q.pending}
+          onScope={onScope}
+          onApprove={onApprove}
+          onReject={onReject}
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => { if (!open) setConfirm(null) }}
+        title={copy.title}
+        description={copy.description}
+        confirmLabel={copy.label}
+        variant={copy.variant}
+        loading={confirm !== null && Boolean(q.pending[confirm.id])}
+        onConfirm={handleConfirm}
+      />
+    </>
+  )
+}
+
 /**
  * Lightweight Kanban-style view of the client request lifecycle.
  *
@@ -376,30 +310,7 @@ export default function RequestQueuePage() {
         <ErrorBanner severity="error" title="Could not load request queue" description={q.error} />
       )}
 
-      {q.requests.length > 0 && (
-        <RequestQueueFilters
-          searchQuery={q.searchQuery}
-          setSearchQuery={q.setSearchQuery}
-          statusFilter={q.statusFilter}
-          setStatusFilter={q.setStatusFilter}
-        />
-      )}
-
-      {q.requests.length === 0 ? (
-        <EmptyState
-          icon={Inbox}
-          title="No requests yet"
-          description="Submit a client request via POST /requests to start exercising the intake pipeline."
-        />
-      ) : (
-        <RequestQueueBoard
-          filteredRequests={q.filteredRequests}
-          pending={q.pending}
-          onScope={q.handleScope}
-          onApprove={q.handleApprove}
-          onReject={q.handleReject}
-        />
-      )}
+      <RequestQueueActiveView q={q} />
     </div>
   )
 }

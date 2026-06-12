@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -135,6 +135,9 @@ describe('RequestQueuePage', () => {
     seedSubmittedRequest()
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Scope' }))
+    // The board action opens a confirmation dialog; confirm it to run.
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /^scope$/i }))
     await waitFor(() => {
       expect(scopeCall).toEqual({ id: 'req-1', body: { notes: 'Scoped from dashboard' } })
     })
@@ -153,6 +156,8 @@ describe('RequestQueuePage', () => {
     seedSubmittedRequest()
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /^approve$/i }))
     await waitFor(() => {
       expect(approvedId).toBe('req-1')
     })
@@ -171,6 +176,8 @@ describe('RequestQueuePage', () => {
     seedSubmittedRequest()
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Reject' }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /^reject$/i }))
     await waitFor(() => {
       expect(rejectCall).toEqual({ id: 'req-1', body: { reason: 'Rejected from dashboard' } })
     })

@@ -2,14 +2,16 @@
  * Entity catalog section: card grid with filter tabs.
  */
 import { ArrowDownAZ, ArrowUpAZ, Shapes } from 'lucide-react'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useOntologyStore } from '@/stores/ontology'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
 import { SearchInput } from '@/components/ui/search-input'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Pagination } from '@/components/ui/pagination'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { EntityCard } from './EntityCard'
 import type { EntityResponse } from '@/api/endpoints/ontology'
 import type { EntitySortKey } from '@/stores/ontology'
@@ -190,6 +192,15 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
     [entities, sortBy, sortDirection],
   )
 
+  const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize, resetPage } =
+    useListPagination({ items: sortedEntities, namespace: 'entities' })
+
+  // Filters and sort narrow the set, so jump back to page 1 rather than
+  // stranding the operator on a now-clamped last page.
+  useEffect(() => {
+    resetPage()
+  }, [searchQuery, tierFilter, sortBy, sortDirection, resetPage])
+
   const handleClearFilters = useCallback(() => {
     setSearchQuery('')
     setTierFilter('all')
@@ -210,11 +221,20 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
       {sortedEntities.length === 0 ? (
         <EntityCatalogEmpty hasActiveFilters={hasActiveFilters} onClearFilters={handleClearFilters} />
       ) : (
-        <EntityCatalogGrid
-          entities={sortedEntities}
-          onSelect={setSelectedEntity}
-          onDelete={deleteEntity}
-        />
+        <>
+          <EntityCatalogGrid
+            entities={paginatedItems}
+            onSelect={setSelectedEntity}
+            onDelete={deleteEntity}
+          />
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={totalItems}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        </>
       )}
     </SectionCard>
   )

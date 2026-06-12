@@ -24,7 +24,7 @@ describe('AgentSpendingTable', () => {
   it('shows empty state when no rows', () => {
     render(<AgentSpendingTable rows={[]} />)
     expect(screen.getByText('No agent spending data')).toBeInTheDocument()
-    expect(screen.getByText('Cost records will appear as agents consume tokens')).toBeInTheDocument()
+    expect(screen.getByText('Cost records will appear as agents consume tokens.')).toBeInTheDocument()
   })
 
   it('renders correct number of data rows', () => {
