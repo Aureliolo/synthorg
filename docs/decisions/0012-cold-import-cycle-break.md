@@ -51,13 +51,13 @@ package does not.
 1. `config.schema <-> communication.config`
 2. `core.agent <-> persistence.protocol`
 3. `budget.coordination_collector <-> engine` (still dormant; the #2183 hoist
-   programme is underway and applies this same relocation strategy where a
-   module-level forward-ref would otherwise close a cycle -- for example
+   programme applies this same relocation strategy where a module-level
+   forward-ref would otherwise close a cycle -- for example
    `workers/distributed_protocols.py`, a cold-safe handle leaf for the separate
    `workers.config -> communication.config` cycle -- but the
-   `budget.coordination_collector` edge itself is not yet hoisted)
+   `budget.coordination_collector` edge itself is not hoisted)
 
-Because #2183 will remove the `TYPE_CHECKING` guards, guarding these edges with
+Because #2183 removes the `TYPE_CHECKING` guards, guarding these edges with
 `if TYPE_CHECKING:` is not a durable fix. The cycles had to be broken
 structurally, by relocation.
 

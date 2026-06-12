@@ -213,9 +213,10 @@ forward-ref. The full fix-volume would blow the 10k LOC / 200 file
 caps that bound this PR. PR 2 (feature-manifest substrate) restructures
 the import graph anyway: feature modules become runtime-importable so
 typeguard has far less to break on. Typeguard was deferred to a
-dedicated multi-PR programme; #2182 (WARN activation) has since landed
-across the full `synthorg` package, with #2183 (ERROR hardening)
-remaining. The realised scope -- ~1,500 resolved-type mismatches plus
+dedicated multi-PR programme; #2182 (WARN activation) and #2183 (ERROR
+hardening, via the EPIC #2303 decomposition) both landed, so typeguard
+runs at the ERROR forward-ref policy across the full `synthorg` package.
+The realised scope -- ~1,500 resolved-type mismatches plus
 ~1,055 `TYPE_CHECKING`-guarded modules -- proved far larger than this
 PR-1 estimate. This was a deliberate scope choice, not a TODO.
 
@@ -271,7 +272,7 @@ British dictionary).
 - Typeguard was wired but NOT activated in PR 1; activation (and the
   ~1,500 resolved-type mismatches plus ~1,055 `TYPE_CHECKING`-guarded
   modules it surfaces) was deferred to a dedicated programme. #2182 (WARN)
-  has since landed; #2183 (ERROR) remains.
+  and #2183 (ERROR, via EPIC #2303) both landed.
 
 ### Neutral
 
@@ -323,7 +324,7 @@ follow-ups below is the contract for "100% enforced".**
 |-----------|-----------|------------|
 | `_state_slice_immutability_baseline.txt` (empty) | PR 2 introduces every state slice; baseline must stay empty | Gate green after every PR 2 slice lands |
 | `_settings_namespace_baseline.txt` | `settings/definitions/settings.py` already satisfies the namespace; the residual `settings` entry was a stale orphan | LIFTED: baseline drained to 0 |
-| Typeguard wiring | PR 2's manifest substrate was expected to eliminate most `TYPE_CHECKING`-only imports; in practice ~1,055 modules still guard signature types | #2182 (WARN) landed; #2183 (ERROR) remains; see Section F |
+| Typeguard wiring | PR 2's manifest substrate was expected to eliminate most `TYPE_CHECKING`-only imports; in practice ~1,055 modules still guard signature types | #2182 (WARN) and #2183 (ERROR, via EPIC #2303) both landed; see Section F |
 
 ### B. Lifted naturally by PR 3 (#2049)
 

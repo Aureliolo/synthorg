@@ -70,7 +70,8 @@ Cross-worker coordination rule (read before adding a new fixture):
 # pytest installs the ini-driven filters, so an ini-level ignore
 # arrives too late.
 #
-# The hook is active at WARN across the full ``synthorg`` package. The package
+# The hook is active at the ERROR forward-ref policy across the full
+# ``synthorg`` package. The package
 # list passed to ``install_import_hook`` MUST stay identical to
 # ``--typeguard-packages`` in pyproject.toml addopts: the hook here does the
 # real bytecode rewrite (before any collection import pulls a synthorg module
@@ -357,13 +358,13 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
 # resolve the C-level frames for threads blocked in sqlite3 /
 # aiosqlite executor / etc. that faulthandler shows by name only.
 #
-# Why this is safe (vs the ``dump_traceback_later(repeat=True)`` we
-# removed in round 14): this dump runs from Python code holding the
-# GIL, not from faulthandler's dedicated C timer thread without the
-# GIL. Holding the GIL means no other thread can be midway through
-# ``PyThreadState_Delete`` while we walk ``interp->threads.head``;
-# the chain-walk race that crashed CPython in round 13 cannot fire
-# from here.
+# Why this is safe (vs a repeating ``dump_traceback_later(repeat=True)``):
+# this dump runs from Python code holding the GIL, not from
+# faulthandler's dedicated C timer thread without the GIL. Holding the
+# GIL means no other thread can be midway through
+# ``PyThreadState_Delete`` while we walk ``interp->threads.head``; the
+# chain-walk race that crashes CPython from the GIL-less timer thread
+# cannot fire from here.
 try:
     import pytest_timeout as _pytest_timeout  # type: ignore[import-untyped]
 

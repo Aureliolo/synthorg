@@ -60,7 +60,7 @@ def _pydantic_generic_lookup(
     static-typing concern (mypy) rather than a runtime one.
     """
     meta = getattr(origin_type, "__pydantic_generic_metadata__", None)
-    if not meta:
+    if meta is None:
         return None
     base = meta.get("origin")
     if base is None:
@@ -97,7 +97,7 @@ def _pydantic_discriminated_union_lookup(
     validates the real value at the model boundary via the field.
 
     The skip emits a ``TypeHintWarning`` so the unchecked surface stays
-    countable, like the forward-ref WARN path.
+    countable in the pytest warnings summary.
     """
     if origin_type in _UNION_ORIGINS and any(
         isinstance(extra, Discriminator) for extra in extras
@@ -138,7 +138,7 @@ def _mocked_annotation_lookup(
 
     The skip emits a ``TypeHintWarning`` (filtered to ``default`` in pyproject)
     so it stays visible in the pytest warnings summary, keeping the unchecked
-    surface countable like the forward-ref WARN path rather than going dark.
+    surface countable rather than going dark.
     """
     if isinstance(origin_type, Mock):
 
@@ -181,8 +181,8 @@ def _litestar_scope_lookup(
 
     Matched by name + module rather than importing litestar, so this module stays
     free of any import that would run before the typeguard import hook installs.
-    The skip emits a ``TypeHintWarning`` so the unchecked surface stays countable,
-    like the forward-ref WARN path.
+    The skip emits a ``TypeHintWarning`` so the unchecked surface stays countable
+    in the pytest warnings summary.
     """
     if (
         getattr(origin_type, "__name__", "") in _LITESTAR_SCOPE_TYPED_DICTS
@@ -214,10 +214,12 @@ _registered = False
 def register_typeguard_checker_extensions() -> None:
     """Install the checker extensions at the front of the lookup chain.
 
-    Registers four lookups: the litestar Scope TypedDict skip (third-party
-    ``TYPE_CHECKING``-guarded members), the unbound-pydantic-generic relaxation,
-    the mocked-annotation skip (a patched annotation type that resolves to a
-    ``Mock``), and the pydantic discriminated-union skip (e.g. ``JsonValue``).
+    Registers four lookups, listed here in runtime-dispatch order (the order
+    they are tried): the litestar Scope TypedDict skip (third-party
+    ``TYPE_CHECKING``-guarded members), the mocked-annotation skip (a patched
+    annotation type that resolves to a ``Mock``), the pydantic
+    discriminated-union skip (e.g. ``JsonValue``), and the
+    unbound-pydantic-generic relaxation.
     Idempotent: a repeat call is a no-op, so re-importing this module (e.g. each
     xdist worker re-running conftest) does not stack duplicate lookups.
     """

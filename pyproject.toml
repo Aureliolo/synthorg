@@ -97,9 +97,9 @@ test = [
     # Runtime type checking during pytest. ``--typeguard-packages=synthorg``
     # in [tool.pytest.ini_options].addopts instruments every function under
     # ``synthorg.*`` so argument and return types are checked against their
-    # annotations at call time. Active at WARN across the full ``synthorg``
-    # package; ERROR-policy hardening (the residual TYPE_CHECKING-only
-    # signature-import migration) is the remaining follow-up.
+    # annotations at call time, at the ERROR forward-ref policy across the full
+    # ``synthorg`` package: an unresolved ``TYPE_CHECKING``-only signature type
+    # fails the test rather than passing silently.
     "typeguard==4.5.2",
     # CI matrix sharding of unit + integration test arms. Partitions tests by
     # recorded durations in `.test_durations.{unit,integration}` so each shard
@@ -406,7 +406,7 @@ max-complexity = 8
     # raise-and-return idiomatically (an exception raised then collapsed
     # within the same validator), so the docstring section-completeness
     # rules produce noise rather than signal. The full rule set otherwise
-    # applies -- evals/ is linted whole-tree as of #2322.
+    # applies -- evals/ is linted whole-tree.
     "DOC201",  # missing return docstring
     "DOC202",  # extraneous return docstring
     "DOC501",  # missing raises docstring
