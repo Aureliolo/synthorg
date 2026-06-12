@@ -4,8 +4,9 @@ Demonstrates the full execution pipeline with a real ToolRegistry,
 real ReactLoop, and a mock provider that returns tool calls.
 """
 
+from collections.abc import AsyncIterator, Mapping
 from datetime import date
-from typing import TYPE_CHECKING, override
+from typing import override
 from uuid import uuid4
 
 import pytest
@@ -23,6 +24,7 @@ from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -36,11 +38,6 @@ from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.registry import ToolRegistry
 from tests._shared import as_uuid
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Mapping
-
-    from synthorg.providers.capabilities import ModelCapabilities
 
 pytestmark = pytest.mark.integration
 
@@ -120,8 +117,6 @@ class _ToolCallingProvider:
 
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         """Return minimal capabilities."""
-        from synthorg.providers.capabilities import ModelCapabilities
-
         return ModelCapabilities(
             model_id=model,
             provider="test-provider",

@@ -8,8 +8,8 @@ Validates the full multi-agent pipeline end-to-end:
 5. Status rollup
 """
 
+from collections.abc import AsyncIterator, Mapping
 from datetime import date
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -61,6 +61,7 @@ from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -70,11 +71,6 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from tests._shared import as_uuid, coerce_id, sid
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Mapping
-
-    from synthorg.providers.capabilities import ModelCapabilities
 
 pytestmark = pytest.mark.integration
 # ── Mock Provider ──────────────────────────────────────────────────
@@ -160,8 +156,6 @@ class _DeterministicProvider:
         model: str,
     ) -> ModelCapabilities:
         """Return minimal capabilities."""
-        from synthorg.providers.capabilities import ModelCapabilities
-
         return ModelCapabilities(
             model_id=model,
             provider="test-provider",

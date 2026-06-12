@@ -70,28 +70,30 @@ Cross-worker coordination rule (read before adding a new fixture):
 # pytest installs the ini-driven filters, so an ini-level ignore
 # arrives too late.
 #
-# The hook is active at WARN across the full ``synthorg`` package. The package
+# The hook is active at the ERROR forward-ref policy across the full
+# ``synthorg`` package. The package
 # list passed to ``install_import_hook`` MUST stay identical to
 # ``--typeguard-packages`` in pyproject.toml addopts: the hook here does the
 # real bytecode rewrite (before any collection import pulls a synthorg module
 # in), and the plugin's later install is the redundant attempt whose
 # InstrumentationWarning is suppressed.
 #
-# ``register_policy_honoring_checker`` makes the eager-eval NameError class (a
-# NamedTuple / TypedDict / Protocol / callable whose signature member is only
-# importable under ``if TYPE_CHECKING:``) honour the forward-ref policy instead
-# of escaping as a raw NameError. It imports only ``typeguard`` (no
-# ``synthorg``), so registering it here pulls no synthorg module into the
-# interpreter ahead of instrumentation.
+# ``register_typeguard_checker_extensions`` installs typeguard's skip / relaxation
+# lookups for the boundaries that cannot be type-checked at runtime by
+# construction (litestar's ``TYPE_CHECKING``-guarded ASGI Scope members, a patched
+# annotation type that resolves to a ``Mock``, an unbound pydantic generic, a
+# pydantic discriminated union). It imports only ``typeguard`` (no ``synthorg``),
+# so registering it here pulls no synthorg module into the interpreter ahead of
+# instrumentation.
 import os as _os
 import warnings as _warnings
 
 import typeguard
 
-from tests._typeguard_checker import register_policy_honoring_checker
+from tests._typeguard_checker import register_typeguard_checker_extensions
 
 _warnings.filterwarnings("ignore", category=typeguard.InstrumentationWarning)
-register_policy_honoring_checker()
+register_typeguard_checker_extensions()
 # The CodSpeed benchmark job (.github/workflows/codspeed.yml) sets
 # SYNTHORG_BENCH_NO_TYPEGUARD and overrides ``--typeguard-packages=`` so the
 # perf suite measures the real production code path. typeguard is a test-only
@@ -356,13 +358,13 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
 # resolve the C-level frames for threads blocked in sqlite3 /
 # aiosqlite executor / etc. that faulthandler shows by name only.
 #
-# Why this is safe (vs the ``dump_traceback_later(repeat=True)`` we
-# removed in round 14): this dump runs from Python code holding the
-# GIL, not from faulthandler's dedicated C timer thread without the
-# GIL. Holding the GIL means no other thread can be midway through
-# ``PyThreadState_Delete`` while we walk ``interp->threads.head``;
-# the chain-walk race that crashed CPython in round 13 cannot fire
-# from here.
+# Why this is safe (vs a repeating ``dump_traceback_later(repeat=True)``):
+# this dump runs from Python code holding the GIL, not from
+# faulthandler's dedicated C timer thread without the GIL. Holding the
+# GIL means no other thread can be midway through
+# ``PyThreadState_Delete`` while we walk ``interp->threads.head``; the
+# chain-walk race that crashes CPython from the GIL-less timer thread
+# cannot fire from here.
 try:
     import pytest_timeout as _pytest_timeout  # type: ignore[import-untyped]
 
