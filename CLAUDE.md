@@ -119,6 +119,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 - Signed commits required on protected refs (GPG/SSH or GitHub App via `synthorg-repo-bot`).
 - Branches: `<type>/<slug>` from main.
 - Pre-commit/pre-push hooks: `.pre-commit-config.yaml`. Tool-call gates: `.claude/settings.json` PreToolUse (`scripts/check_*.sh`/`.py`).
+- A failed pre-push leaves a `<hook>-FAILED` marker under `synthorg-hooks/` that blocks the next push (`check_no_repush_after_failure.sh`). After reading the log and fixing the root cause, clear it with `bash scripts/clear_prepush_marker.sh` (surfaces the failing gate, then removes the marker): the sanctioned, allow-listable path; never a raw `rm` of the marker.
 - Squash merge. PR body becomes squash commit; trailers (`Release-As`, `Closes #N`) must be in PR body.
 - GitHub queries: `gh issue list` via Bash, NOT MCP `list_issues`.
 
