@@ -239,7 +239,41 @@ runs:
     # `update-release` consumes the artifact from THIS workflow run
     # (cross-run artifact downloads are not supported by
     # actions/download-artifact), so we re-emit it here on tag-push.
-    - name: Generate SBOM
+    # SBOM generation pulls the image manifest from GHCR; ride a registry
+    # blip on the same 3-attempt backoff ladder as the publish-* attest
+    # steps. No downstream step output consumed, so a straight ladder; the
+    # final attempt has no continue-on-error and fails the job.
+    - name: Generate SBOM (attempt 1)
+      id: sbom_retag_1
+      continue-on-error: true
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        image: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}@${{ steps.resolve.outputs.digest }}
+        format: cyclonedx-json
+        output-file: sbom-${{ inputs.image-name }}.cdx.json
+
+    - name: Back off before SBOM retry 1
+      if: steps.sbom_retag_1.outcome == 'failure'
+      shell: bash
+      run: sleep 15
+
+    - name: Generate SBOM (attempt 2)
+      if: steps.sbom_retag_1.outcome == 'failure'
+      id: sbom_retag_2
+      continue-on-error: true
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        image: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}@${{ steps.resolve.outputs.digest }}
+        format: cyclonedx-json
+        output-file: sbom-${{ inputs.image-name }}.cdx.json
+
+    - name: Back off before SBOM retry 2
+      if: steps.sbom_retag_2.outcome == 'failure'
+      shell: bash
+      run: sleep 30
+
+    - name: Generate SBOM (final attempt)
+      if: steps.sbom_retag_2.outcome == 'failure'
       uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
       with:
         image: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}@${{ steps.resolve.outputs.digest }}

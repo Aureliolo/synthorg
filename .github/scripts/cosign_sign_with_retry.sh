@@ -1,37 +1,63 @@
 #!/usr/bin/env bash
-# Retry cosign sign on transient registry / Rekor / Fulcio failures.
+# Retry cosign sign / sign-blob on transient registry / Rekor / Fulcio failures.
 #
 # `cosign sign` against a published digest is idempotent: signing the
 # same digest twice either succeeds again or hits a Rekor
 # `createLogEntryConflict` (already-logged) response, which callers
-# treat as success. Transient GHCR/Rekor/Fulcio errors (5xx, 429, TLS
-# handshake stalls, connection resets) almost always settle inside the
-# next attempt window, so a bounded retry turns a noisy infra blip
-# into a green run instead of failing the whole Docker workflow.
+# treat as success. `cosign sign-blob` over a local file (the keyless
+# CLI-checksums path) is likewise safe to re-run: a retry overwrites the
+# `--bundle` output file and mints a fresh keyless signature over the
+# same bytes, which verifies identically. Transient GHCR/Rekor/Fulcio
+# errors (5xx, 429, TLS handshake stalls, connection resets, Rekor tlog
+# fetch timeouts) almost always settle inside the next attempt window, so
+# a bounded retry turns a noisy infra blip into a green run instead of
+# failing the whole workflow.
 #
 # Usage:
 #   cosign_sign_with_retry.sh <ref>
-#     <ref> is the full image reference, e.g.
+#     Image-digest signing. <ref> is the full image reference, e.g.
 #     ghcr.io/aureliolo/synthorg-sandbox-base@sha256:abc...
+#   cosign_sign_with_retry.sh sign-blob <file> [cosign args...]
+#     Keyless blob signing. <file> is the local artifact; remaining args
+#     (e.g. --bundle <path>) are forwarded verbatim to `cosign sign-blob`.
 #
 # Behaviour:
-#   - Captures combined stdout+stderr of `cosign sign --yes <ref>`.
+#   - Captures combined stdout+stderr of the cosign invocation.
 #   - On exit 0: prints captured output, exits 0.
 #   - On exit non-0:
-#     * Output contains `createLogEntryConflict` -> already signed,
-#       emit `::notice::` and exit 0 (preserves the idempotency branch
-#       the inline shell blocks used to carry).
+#     * (image mode only) Output contains `createLogEntryConflict` ->
+#       already signed, emit `::notice::` and exit 0 (preserves the
+#       idempotency branch the inline shell blocks used to carry).
 #     * Output matches the shared transient regex sourced from
 #       docker_push_with_retry.sh (single source of truth for
-#       "is this a registry-side flake?") -> warn + sleep + retry
-#       with exponential backoff.
+#       "is this a registry / Rekor / Fulcio flake?") -> warn + sleep +
+#       retry with exponential backoff.
 #     * Otherwise -> non-transient cosign / Rekor / Fulcio error,
 #       surface output and exit with cosign's exit code.
 #   - Final attempt with no terminal classification: surface all
 #     output and exit with cosign's exit code.
 set -euo pipefail
 
-REF="${1:?usage: cosign_sign_with_retry.sh <ref>}"
+# Mode dispatch: a leading `sign-blob` selects keyless blob signing over a
+# local file; the default mode signs a published image digest. Both hit
+# the same Fulcio/Rekor backends, so both share the transient classifier
+# and backoff ladder below. ACTION/SUBJECT drive the log lines; in blob
+# mode the remaining positionals ("$@") are forwarded to cosign verbatim.
+if [ "${1:-}" = "sign-blob" ]; then
+  MODE="blob"
+  ACTION="cosign sign-blob"
+  shift
+  if [ "$#" -eq 0 ]; then
+    echo "::error::usage: cosign_sign_with_retry.sh sign-blob <file> [cosign args...]" >&2
+    exit 2
+  fi
+  SUBJECT="$1"
+else
+  MODE="image"
+  ACTION="cosign sign"
+  REF="${1:?usage: cosign_sign_with_retry.sh <ref>   (or: sign-blob <file> [args...])}"
+  SUBJECT="$REF"
+fi
 
 # Same regex the docker push helper uses; `--print-transient-re` keeps
 # both scripts in lockstep so a new transient signature added in one
@@ -74,15 +100,22 @@ fi
 for ((i = 1; i <= ATTEMPTS; i++)); do
   out=""
   rc=0
-  out="$(cosign sign --yes "$REF" 2>&1)" || rc=$?
+  if [ "$MODE" = "blob" ]; then
+    out="$(cosign sign-blob --yes "$@" 2>&1)" || rc=$?
+  else
+    out="$(cosign sign --yes "$REF" 2>&1)" || rc=$?
+  fi
   if [ "$rc" -eq 0 ]; then
     printf '%s\n' "$out"
     exit 0
   fi
 
-  # Idempotency branch: a re-sign that lost the createLogEntry race is
-  # success, not a transient error. Check this BEFORE the regex so
-  # attempt 1 -> 5xx -> attempt 2 -> conflict resolves cleanly.
+  # Idempotency branch (image mode only): a re-sign that lost the
+  # createLogEntry race is success, not a transient error. Check this
+  # BEFORE the regex so attempt 1 -> 5xx -> attempt 2 -> conflict resolves
+  # cleanly. sign-blob never produces this response (each call mints a
+  # fresh Rekor entry rather than colliding on a digest), so the branch is
+  # gated to image mode.
   #
   # Grep a here-string, never `printf "$out" | grep -q`: under `set -o
   # pipefail` a large `$out` (a GHCR 5xx HTML error body easily exceeds
@@ -91,15 +124,15 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # pipeline inherits its non-zero status -- the match is masked and a
   # transient error is misclassified as terminal. A here-string is not a
   # pipeline, so the status is purely grep's.
-  if grep -q 'createLogEntryConflict' <<<"$out"; then
+  if [ "$MODE" = "image" ] && grep -q 'createLogEntryConflict' <<<"$out"; then
     printf '%s\n' "$out"
-    echo "::notice::Image ${REF} already signed -- skipping"
+    echo "::notice::Image ${SUBJECT} already signed -- skipping"
     exit 0
   fi
 
   if [ "$i" -eq "$ATTEMPTS" ]; then
     printf '%s\n' "$out"
-    echo "::error::cosign sign ${REF} failed after ${ATTEMPTS} attempts (last exit ${rc})" >&2
+    echo "::error::${ACTION} ${SUBJECT} failed after ${ATTEMPTS} attempts (last exit ${rc})" >&2
     exit "$rc"
   fi
 
@@ -115,7 +148,7 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # left an image unsigned.
   if [[ -n "$TRANSIENT_RE" ]] && grep -qiE "$TRANSIENT_RE" <<<"$out"; then
     printf '%s\n' "$out" >&2
-    echo "::warning::cosign sign ${REF} hit transient error (attempt ${i}/${ATTEMPTS}, rc=${rc}); sleeping ${BACKOFF}s before retry" >&2
+    echo "::warning::${ACTION} ${SUBJECT} hit transient error (attempt ${i}/${ATTEMPTS}, rc=${rc}); sleeping ${BACKOFF}s before retry" >&2
     sleep "$BACKOFF"
     BACKOFF=$((BACKOFF * 2))
     continue
@@ -125,6 +158,6 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # denials, malformed digests, Rekor schema rejections, etc. will
   # never improve on a retry.
   printf '%s\n' "$out"
-  echo "::error::cosign sign ${REF} failed with non-transient error (exit ${rc}); not retrying" >&2
+  echo "::error::${ACTION} ${SUBJECT} failed with non-transient error (exit ${rc}); not retrying" >&2
   exit "$rc"
 done
