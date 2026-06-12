@@ -59,7 +59,14 @@ export function Slot({ children, ref, ...slotProps }: SlotProps) {
   // hides `ref` from `child.props`; we read it explicitly so a forwardRef
   // child does not lose its own ref in favour of the Slot's. If React's
   // ref placement changes in a future major, revisit this composition.
-  const childRef = (childProps.ref ?? undefined) as Ref<HTMLElement> | undefined
+  // `childProps.ref` is `unknown`; a real ref is either a callback or a
+  // ref object. Guard the shape before the cast so a malformed value becomes
+  // `undefined` rather than a bad ref callback firing on the cloned element.
+  const rawRef = childProps['ref']
+  const childRef: Ref<HTMLElement> | undefined =
+    typeof rawRef === 'function' || (typeof rawRef === 'object' && rawRef !== null)
+      ? (rawRef as Ref<HTMLElement>)
+      : undefined
   const mergedRef = composeRefs<HTMLElement>(ref, childRef)
 
   // eslint-disable-next-line @eslint-react/no-clone-element -- required for Slot semantics

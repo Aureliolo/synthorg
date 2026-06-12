@@ -124,13 +124,13 @@ export const agentsHandlers = [
   ),
   http.get('/api/v1/agents/:agentId', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getAgent>(buildAgent({ id: String(params.agentId) })),
+      successFor<typeof getAgent>(buildAgent({ id: String(params['agentId']) })),
     ),
   ),
   http.get('/api/v1/agents/:agentId/autonomy', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getAutonomy>({
-        agent_id: String(params.agentId),
+        agent_id: String(params['agentId']),
         level: 'supervised',
         promotion_pending: false,
       }),
@@ -149,7 +149,7 @@ export const agentsHandlers = [
     }
     return HttpResponse.json(
       successFor<typeof setAutonomy>({
-        agent_id: String(params.agentId),
+        agent_id: String(params['agentId']),
         level: validation.level,
         promotion_pending: false,
       }),
@@ -158,7 +158,7 @@ export const agentsHandlers = [
   http.get('/api/v1/agents/:agentId/performance', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getAgentPerformance>(
-        buildPerformance(`agent-${String(params.agentId)}`),
+        buildPerformance(`agent-${String(params['agentId'])}`),
       ),
     ),
   ),
@@ -170,7 +170,7 @@ export const agentsHandlers = [
   ),
   http.get('/api/v1/agents/:agentId/health', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getAgentHealth>(buildHealth(String(params.agentId))),
+      successFor<typeof getAgentHealth>(buildHealth(String(params['agentId']))),
     ),
   ),
 ]

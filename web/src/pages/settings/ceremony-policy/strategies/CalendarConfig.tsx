@@ -17,9 +17,9 @@ export interface CalendarConfigProps {
 }
 
 export function CalendarConfig({ config, onChange, disabled }: CalendarConfigProps) {
-  const frequency = typeof config.frequency === 'string' ? config.frequency : ''
-  const durationDays = typeof config.duration_days === 'number' && Number.isFinite(config.duration_days)
-    ? config.duration_days
+  const frequency = typeof config['frequency'] === 'string' ? config['frequency'] : ''
+  const durationDays = typeof config['duration_days'] === 'number' && Number.isFinite(config['duration_days'])
+    ? config['duration_days']
     : 14
 
   return (

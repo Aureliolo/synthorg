@@ -38,7 +38,7 @@ export const cockpitHandlers = [
     ),
   ),
   http.get('/api/v1/cockpit/flight-recorder/:executionId/frames', ({ params }) => {
-    const execId = String(params.executionId)
+    const execId = String(params['executionId'])
     const frames = [3, 2, 1].map((turn) => ({
       id: `${execId}-${String(turn)}`,
       execution_id: execId,
@@ -75,8 +75,8 @@ export const cockpitHandlers = [
     ({ params }) =>
       HttpResponse.json(
         successFor<typeof seekFlightRecorder>({
-          execution_id: String(params.executionId),
-          turn_index: Number(params.turnIndex),
+          execution_id: String(params['executionId']),
+          turn_index: Number(params['turnIndex']),
           frames: [],
           current_frame: null,
           cumulative_cost: 0,
@@ -87,7 +87,7 @@ export const cockpitHandlers = [
   http.get(
     '/api/v1/cockpit/flight-recorder/:executionId/red-team',
     ({ params }) => {
-      const execId = String(params.executionId)
+      const execId = String(params['executionId'])
       return HttpResponse.json(
         successFor<typeof getRedTeamReport>({
           execution_id: execId,

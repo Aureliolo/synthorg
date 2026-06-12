@@ -90,9 +90,9 @@ export const settingsHandlers = [
           updated_at: '2026-04-19T00:00:00Z',
           definition: {
             namespace: String(
-              params.namespace,
+              params['namespace'],
             ) as SettingEntry['definition']['namespace'],
-            key: String(params.key),
+            key: String(params['key']),
           },
         }),
       ),

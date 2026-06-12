@@ -44,7 +44,7 @@ export const knowledgeHandlers = [
   http.get('/api/v1/projects/:projectId/knowledge/:sourceId', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getProjectKnowledgeSource>(
-        buildSource({ source_id: String(params.sourceId) }),
+        buildSource({ source_id: String(params['sourceId']) }),
       ),
     ),
   ),

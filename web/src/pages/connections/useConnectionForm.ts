@@ -71,7 +71,7 @@ function parseRetentionDays(raw: string): RetentionResult {
 }
 
 function applyA2APeerErrors(form: ConnectionFormState, next: Record<string, string | null>): void {
-  const scheme = form.credentials.auth_scheme ?? 'api_key'
+  const scheme = form.credentials['auth_scheme'] ?? 'api_key'
   const schemeErrors = validateA2APeerCredentials(scheme, form.credentials)
   for (const [key, msg] of Object.entries(schemeErrors)) {
     const errorKey = key === '_scheme' ? 'auth_scheme' : key
@@ -95,9 +95,9 @@ function validateConnectionForm(
   spec: ConnectionTypeSpec,
   mode: Mode,
 ): Record<string, string | null> {
-  const dialect = form.type === 'database' ? (form.credentials.dialect ?? '') : undefined
+  const dialect = form.type === 'database' ? (form.credentials['dialect'] ?? '') : undefined
   const next: Record<string, string | null> = {}
-  if (mode === 'create') next.name = validateConnectionName(form.name)
+  if (mode === 'create') next['name'] = validateConnectionName(form.name)
   collectFieldErrors(spec.topLevelFields, form.topLevel, dialect, next)
   if (mode === 'create') {
     collectFieldErrors(spec.credentialFields, form.credentials, dialect, next)
@@ -122,7 +122,7 @@ function buildCreateBody(
     connection_type: form.type as ConnectionType,
     auth_method: spec.defaultAuthMethod,
     credentials,
-    base_url: form.topLevel.base_url?.trim() || null,
+    base_url: form.topLevel['base_url']?.trim() || null,
     health_check_enabled: true,
     sensitive: form.sensitive,
     ...(supportsWebhook ? { webhook_receipt_retention_days: retentionValue } : {}),
@@ -135,7 +135,7 @@ function buildUpdateBody(
   retentionValue: number | null,
 ): UpdateConnectionRequest {
   return {
-    base_url: form.topLevel.base_url?.trim() || null,
+    base_url: form.topLevel['base_url']?.trim() || null,
     sensitive: form.sensitive,
     ...(supportsWebhook ? { webhook_receipt_retention_days: retentionValue } : {}),
   }
@@ -253,7 +253,7 @@ function useConnectionFieldSetters(
   const setName = useCallback(
     (value: string) => {
       setForm((p) => ({ ...p, name: value }))
-      setErrors((p) => (p.name ? { ...p, name: null } : p))
+      setErrors((p) => (p['name'] ? { ...p, name: null } : p))
     },
     [setForm, setErrors],
   )
@@ -270,7 +270,7 @@ function useConnectionFieldSetters(
     (value: string) => {
       setForm((p) => ({ ...p, webhookRetention: value }))
       setErrors((p) =>
-        p.webhook_receipt_retention_days ? { ...p, webhook_receipt_retention_days: null } : p,
+        p['webhook_receipt_retention_days'] ? { ...p, webhook_receipt_retention_days: null } : p,
       )
     },
     [setForm, setErrors],

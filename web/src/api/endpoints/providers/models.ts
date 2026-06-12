@@ -136,7 +136,9 @@ async function _consumePullStream(
   response: Response,
   onProgress: (event: PullProgressEvent) => void,
 ): Promise<void> {
-  const reader = response.body!.getReader()
+  const body = response.body
+  if (!body) throw new Error('Expected a streaming response body')
+  const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
   let receivedDone = false

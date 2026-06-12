@@ -97,7 +97,7 @@ export const clientsHandlers = [
   ),
   http.get('/api/v1/clients/:id', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getClient>(buildProfile({ client_id: String(params.id) })),
+      successFor<typeof getClient>(buildProfile({ client_id: String(params['id']) })),
     ),
   ),
   http.post('/api/v1/clients/', async ({ request }) => {
@@ -118,7 +118,7 @@ export const clientsHandlers = [
     const body = (await request.json()) as Partial<ClientProfile>
     return HttpResponse.json(
       successFor<typeof updateClient>(
-        buildProfile({ ...body, client_id: String(params.id) }),
+        buildProfile({ ...body, client_id: String(params['id']) }),
       ),
     )
   }),
@@ -126,7 +126,7 @@ export const clientsHandlers = [
   http.get('/api/v1/clients/:id/satisfaction', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getClientSatisfaction>({
-        client_id: String(params.id),
+        client_id: String(params['id']),
         total_reviews: 0,
         acceptance_rate: 0,
         average_score: 0,
@@ -139,7 +139,7 @@ export const clientsHandlers = [
   ),
   http.get('/api/v1/requests/:id', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getRequest>(buildRequest({ request_id: String(params.id) })),
+      successFor<typeof getRequest>(buildRequest({ request_id: String(params['id']) })),
     ),
   ),
   http.post('/api/v1/requests/', async ({ request }) => {
@@ -152,7 +152,7 @@ export const clientsHandlers = [
   http.post('/api/v1/requests/:id/approve', ({ params }) =>
     HttpResponse.json(
       successFor<typeof approveRequest>(
-        buildRequest({ request_id: String(params.id), status: 'approved' }),
+        buildRequest({ request_id: String(params['id']), status: 'approved' }),
       ),
       // 202 Accepted: approval is acknowledged synchronously; the
       // request runs through the work pipeline in the background and
@@ -169,14 +169,14 @@ export const clientsHandlers = [
     }
     return HttpResponse.json(
       successFor<typeof rejectRequest>(
-        buildRequest({ request_id: String(params.id), status: 'cancelled' }),
+        buildRequest({ request_id: String(params['id']), status: 'cancelled' }),
       ),
     )
   }),
   http.post('/api/v1/requests/:id/scope', ({ params }) =>
     HttpResponse.json(
       successFor<typeof scopeRequest>(
-        buildRequest({ request_id: String(params.id), status: 'scoping' }),
+        buildRequest({ request_id: String(params['id']), status: 'scoping' }),
       ),
     ),
   ),
@@ -186,7 +186,7 @@ export const clientsHandlers = [
   http.get('/api/v1/simulations/:id', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getSimulation>(
-        buildSimulation({ simulation_id: String(params.id) }),
+        buildSimulation({ simulation_id: String(params['id']) }),
       ),
     ),
   ),
@@ -209,7 +209,7 @@ export const clientsHandlers = [
     HttpResponse.json(
       successFor<typeof cancelSimulation>(
         buildSimulation({
-          simulation_id: String(params.id),
+          simulation_id: String(params['id']),
           status: 'cancelled',
         }),
       ),
@@ -219,7 +219,7 @@ export const clientsHandlers = [
     HttpResponse.json(
       successFor<typeof getSimulationReport>({
         format: 'summary',
-        simulation_id: String(params.id),
+        simulation_id: String(params['id']),
         status: 'completed',
         totals: {},
         rates: {},
@@ -229,7 +229,7 @@ export const clientsHandlers = [
   http.get('/api/v1/reviews/:taskId/pipeline', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getReviewPipeline>({
-        task_id: String(params.taskId),
+        task_id: String(params['taskId']),
         final_verdict: 'skip',
         stage_results: [],
         total_duration_ms: 0,
@@ -243,17 +243,17 @@ export const clientsHandlers = [
       const body = (await request.json()) as { verdict?: 'pass' | 'fail' | 'skip' }
       return HttpResponse.json(
         successFor<typeof decideReviewStage>({
-          task_id: String(params.taskId),
-          stage_name: String(params.stageName),
+          task_id: String(params['taskId']),
+          stage_name: String(params['stageName']),
           stage_result: {
-            stage_name: String(params.stageName),
+            stage_name: String(params['stageName']),
             verdict: body.verdict ?? 'pass',
             reason: null,
             duration_ms: 0,
             metadata: {},
           },
           pipeline_result: {
-            task_id: String(params.taskId),
+            task_id: String(params['taskId']),
             final_verdict: body.verdict ?? 'pass',
             stage_results: [],
             total_duration_ms: 0,

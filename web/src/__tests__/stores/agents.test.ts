@@ -132,8 +132,8 @@ function installAgentHandlers(f: Fixture = {}) {
     ),
     http.get('/api/v1/agents/:agentId', ({ params }) =>
       f.agent
-        ? f.agent(String(params.agentId))
-        : HttpResponse.json(apiSuccess(makeAgent({ id: String(params.agentId) }))),
+        ? f.agent(String(params['agentId']))
+        : HttpResponse.json(apiSuccess(makeAgent({ id: String(params['agentId']) }))),
     ),
     http.get('/api/v1/agents/:agentId/performance', () =>
       f.performance

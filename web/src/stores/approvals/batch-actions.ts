@@ -1,4 +1,5 @@
 import * as approvalsApi from '@/api/endpoints/approvals'
+import type { ApprovalResponse } from '@/api/types'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import {
@@ -18,12 +19,30 @@ interface BatchOutcome {
   failedReasons: string[]
 }
 
-type ApprovalApiCall = (id: string) => Promise<unknown>
+type ApprovalApiCall = (id: string) => Promise<ApprovalResponse>
 
 interface BatchRunArgs {
   ids: string[]
   call: ApprovalApiCall
   rollbackFor: (id: string) => () => void
+}
+
+/**
+ * Apply one settled call: upsert on success, roll back + report on failure.
+ * Returns the failure reason, or `null` when the call succeeded.
+ */
+function applySettledResult(
+  get: ApprovalsGet,
+  rollbacks: Map<string, () => void>,
+  result: PromiseSettledResult<ApprovalResponse>,
+  id: string,
+): string | null {
+  if (result.status === 'fulfilled') {
+    get().upsertApproval(result.value)
+    return null
+  }
+  rollbacks.get(id)?.()
+  return getErrorMessage(result.reason)
 }
 
 async function runBatch(
@@ -46,22 +65,20 @@ async function runBatch(
   const results = await Promise.allSettled(ids.map((id) => call(id)))
 
   let succeeded = 0
-  let failed = 0
   const failedReasons: string[] = []
   for (let i = 0; i < results.length; i++) {
-    const result = results[i]!
-    const id = ids[i]!
-    if (result.status === 'fulfilled') {
-      get().upsertApproval(result.value as Awaited<ReturnType<typeof approvalsApi.approveApproval>>)
+    const result = results[i]
+    const id = ids[i]
+    if (result === undefined || id === undefined) continue
+    const reason = applySettledResult(get, rollbacks, result, id)
+    if (reason === null) {
       succeeded++
     } else {
-      const rollback = rollbacks.get(id)
-      if (rollback) rollback()
-      failedReasons.push(getErrorMessage(result.reason))
-      failed++
+      failedReasons.push(reason)
     }
   }
 
+  const failed = failedReasons.length
   if (failed === 0) {
     get().clearSelection()
   }

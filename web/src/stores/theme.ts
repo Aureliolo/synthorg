@@ -110,20 +110,20 @@ function mergeStoredPrefs(
   defaults: ThemePreferences,
 ): ThemePreferences {
   return {
-    colorPalette: isValid(obj.colorPalette, COLOR_PALETTES)
-      ? obj.colorPalette
+    colorPalette: isValid(obj['colorPalette'], COLOR_PALETTES)
+      ? obj['colorPalette']
       : defaults.colorPalette,
-    density: isValid(obj.density, DENSITIES)
-      ? obj.density
+    density: isValid(obj['density'], DENSITIES)
+      ? obj['density']
       : defaults.density,
-    typography: isValid(obj.typography, TYPOGRAPHIES)
-      ? obj.typography
+    typography: isValid(obj['typography'], TYPOGRAPHIES)
+      ? obj['typography']
       : defaults.typography,
-    animation: isValid(obj.animation, ANIMATION_PRESETS)
-      ? obj.animation
+    animation: isValid(obj['animation'], ANIMATION_PRESETS)
+      ? obj['animation']
       : defaults.animation,
-    sidebarMode: isValid(obj.sidebarMode, SIDEBAR_MODES)
-      ? obj.sidebarMode
+    sidebarMode: isValid(obj['sidebarMode'], SIDEBAR_MODES)
+      ? obj['sidebarMode']
       : defaults.sidebarMode,
   }
 }

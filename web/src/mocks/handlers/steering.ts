@@ -50,7 +50,7 @@ export const steeringHandlers = [
       }
       return HttpResponse.json(
         successFor<typeof confirmSupersession>({
-          directive_id: String(params.directiveId),
+          directive_id: String(params['directiveId']),
           cancelled_task_ids: body.task_ids ?? [],
         }),
       )

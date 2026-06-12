@@ -100,7 +100,7 @@ export const connectionsList = [
     HttpResponse.json(successFor<typeof listConnections>(mockConnections)),
   ),
   http.get('/api/v1/connections/:name', ({ params }) => {
-    const conn = mockConnections.find((c) => c.name === params.name)
+    const conn = mockConnections.find((c) => c.name === params['name'])
     if (!conn) return HttpResponse.json(apiError('Connection not found'), { status: 404 })
     return HttpResponse.json(successFor<typeof getConnection>(conn))
   }),
@@ -121,7 +121,7 @@ export const connectionsList = [
     )
   }),
   http.patch('/api/v1/connections/:name', ({ params }) => {
-    const conn = mockConnections.find((c) => c.name === params.name)
+    const conn = mockConnections.find((c) => c.name === params['name'])
     if (!conn) return HttpResponse.json(apiError('Connection not found'), { status: 404 })
     return HttpResponse.json(
       successFor<typeof updateConnection>({ ...conn, updated_at: NOW }),
@@ -129,7 +129,7 @@ export const connectionsList = [
   }),
   http.delete('/api/v1/connections/:name', () => HttpResponse.json(voidSuccess())),
   http.get('/api/v1/connections/:name/health', ({ params }) => {
-    const conn = mockConnections.find((c) => c.name === params.name)
+    const conn = mockConnections.find((c) => c.name === params['name'])
     if (!conn) return HttpResponse.json(apiError('Connection not found'), { status: 404 })
     return HttpResponse.json(
       successFor<typeof checkConnectionHealth>({
@@ -145,7 +145,7 @@ export const connectionsList = [
   http.get('/api/v1/connections/:name/secrets/:field', ({ params }) =>
     HttpResponse.json(
       successFor<typeof revealConnectionSecret>({
-        field: String(params.field),
+        field: String(params['field']),
         value: 'revealed-secret-value',
       }),
     ),
@@ -160,7 +160,7 @@ export const connectionsHandlers = [
   ),
   http.get('/api/v1/connections/:name', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getConnection>(buildConnection({ name: String(params.name) })),
+      successFor<typeof getConnection>(buildConnection({ name: String(params['name']) })),
     ),
   ),
   http.post('/api/v1/connections', async ({ request }) => {
@@ -186,7 +186,7 @@ export const connectionsHandlers = [
     const body = (await request.json()) as Partial<Connection>
     return HttpResponse.json(
       successFor<typeof updateConnection>(
-        buildConnection({ ...body, name: String(params.name), updated_at: NOW }),
+        buildConnection({ ...body, name: String(params['name']), updated_at: NOW }),
       ),
     )
   }),
@@ -194,7 +194,7 @@ export const connectionsHandlers = [
   http.get('/api/v1/connections/:name/health', ({ params }) =>
     HttpResponse.json(
       successFor<typeof checkConnectionHealth>({
-        connection_name: String(params.name),
+        connection_name: String(params['name']),
         status: 'healthy',
         latency_ms: 0,
         error_detail: null,
@@ -206,7 +206,7 @@ export const connectionsHandlers = [
   http.get('/api/v1/connections/:name/secrets/:field', ({ params }) =>
     HttpResponse.json(
       successFor<typeof revealConnectionSecret>({
-        field: String(params.field),
+        field: String(params['field']),
         value: 'mock-secret',
       }),
     ),

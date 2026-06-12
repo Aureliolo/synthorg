@@ -47,12 +47,12 @@ const typeStories = Object.fromEntries(
   ]),
 ) as Record<string, Story>
 
-export const CreateGithub = typeStories.Create_github!
-export const CreateSlack = typeStories.Create_slack!
-export const CreateSmtp = typeStories.Create_smtp!
-export const CreateDatabase = typeStories.Create_database!
-export const CreateGenericHttp = typeStories.Create_generic_http!
-export const CreateOauthApp = typeStories.Create_oauth_app!
+export const CreateGithub = typeStories['Create_github']!
+export const CreateSlack = typeStories['Create_slack']!
+export const CreateSmtp = typeStories['Create_smtp']!
+export const CreateDatabase = typeStories['Create_database']!
+export const CreateGenericHttp = typeStories['Create_generic_http']!
+export const CreateOauthApp = typeStories['Create_oauth_app']!
 
 export const EditMode: Story = {
   args: {

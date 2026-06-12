@@ -191,7 +191,7 @@ describe('fetchMeeting', () => {
     })
     server.use(
       http.get('/api/v1/meetings/:id', async ({ params }) => {
-        if (params.id === 'stale') {
+        if (params['id'] === 'stale') {
           await gate
           return HttpResponse.json(apiSuccess(staleMeeting))
         }

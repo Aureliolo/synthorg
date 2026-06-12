@@ -314,7 +314,7 @@ describe('useProjectsStore', () => {
       })
       server.use(
         http.delete('/api/v1/projects/:id', ({ params }) => {
-          if (params.id === 'proj-001') {
+          if (params['id'] === 'proj-001') {
             return new HttpResponse(null, { status: 204 })
           }
           return HttpResponse.json(apiError('boom'), { status: 500 })

@@ -19,19 +19,19 @@ import { useOrgEditTab } from './org-edit/useOrgEditTab'
 /** Map a parsed YAML document onto a typed company-update request. */
 function buildCompanyUpdate(parsed: Record<string, unknown>): UpdateCompanyRequest {
   return {
-    company_name: typeof parsed.company_name === 'string' ? parsed.company_name : undefined,
+    company_name: typeof parsed['company_name'] === 'string' ? parsed['company_name'] : undefined,
     // Preserve undefined when YAML omits the key so the existing value
     // is not silently cleared; null only when the YAML explicitly sets
     // the key to null (the user-intentional "clear" path).
     autonomy_level:
-      typeof parsed.autonomy_level === 'string'
-        ? (parsed.autonomy_level as Exclude<UpdateCompanyRequest['autonomy_level'], undefined>)
-        : parsed.autonomy_level === null
+      typeof parsed['autonomy_level'] === 'string'
+        ? (parsed['autonomy_level'] as Exclude<UpdateCompanyRequest['autonomy_level'], undefined>)
+        : parsed['autonomy_level'] === null
           ? null
           : undefined,
-    budget_monthly: typeof parsed.budget_monthly === 'number' ? parsed.budget_monthly : undefined,
+    budget_monthly: typeof parsed['budget_monthly'] === 'number' ? parsed['budget_monthly'] : undefined,
     communication_pattern:
-      typeof parsed.communication_pattern === 'string' ? parsed.communication_pattern : undefined,
+      typeof parsed['communication_pattern'] === 'string' ? parsed['communication_pattern'] : undefined,
   }
 }
 

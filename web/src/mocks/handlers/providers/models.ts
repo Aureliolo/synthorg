@@ -49,7 +49,7 @@ export const modelsHandlers = [
     const body = (await request.json()) as UpdateModelConfigRequest
     return HttpResponse.json(
       successFor<typeof updateModelConfig>({
-        id: decodeURIComponent(String(params.modelId)),
+        id: decodeURIComponent(String(params['modelId'])),
         alias: null,
         cost_per_1k_input: 0,
         cost_per_1k_output: 0,
@@ -80,7 +80,7 @@ export const modelsHandlers = [
     return HttpResponse.json(
       successFor<typeof addProviderModel>(
         buildProvider({
-          name: decodeURIComponent(String(params.name)),
+          name: decodeURIComponent(String(params['name'])),
           models: [newModel],
         }),
       ),

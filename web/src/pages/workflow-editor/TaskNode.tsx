@@ -23,9 +23,9 @@ interface TaskNodeFields {
 }
 
 function extractTaskNodeFields(data: TaskNodeData): TaskNodeFields {
-  const title = nonEmptyString(data.config.title) ?? data.label
-  const priority = resolvePriority(data.config.priority)
-  const taskType = nonEmptyString(data.config.task_type)
+  const title = nonEmptyString(data.config['title']) ?? data.label
+  const priority = resolvePriority(data.config['priority'])
+  const taskType = nonEmptyString(data.config['task_type'])
   return { title, priority, taskType }
 }
 

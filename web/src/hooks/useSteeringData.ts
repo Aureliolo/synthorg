@@ -46,7 +46,7 @@ export function useSteeringData(projectId: string): UseSteeringDataReturn {
       const pid = projectIdRef.current
       if (!REFRESH_EVENTS.has(event.event_type)) return
       if (pid.trim() === '') return
-      const eventProject = sanitizeWsString(event.payload.project_id)
+      const eventProject = sanitizeWsString(event.payload['project_id'])
       if (eventProject !== pid) return
       void fetchDirectives(pid)
     },

@@ -152,7 +152,7 @@ function WebhookRetentionField({ f }: { f: ConnectionForm }) {
       value={f.form.webhookRetention}
       placeholder="Use system default"
       hint="Leave blank to use the system default. Set to 0 to never delete this connection's webhook receipts."
-      error={f.submitted ? f.errors.webhook_receipt_retention_days : null}
+      error={f.submitted ? f.errors['webhook_receipt_retention_days'] : null}
       onValueChange={f.setWebhookRetention}
     />
   )
@@ -173,7 +173,7 @@ function ConnectionFormFields({ f, mode, onClose }: { f: ConnectionForm; mode: M
           placeholder="e.g. primary-github"
           value={f.form.name}
           onValueChange={f.setName}
-          error={f.submitted ? f.errors.name : null}
+          error={f.submitted ? f.errors['name'] : null}
           required
         />
       )}

@@ -58,7 +58,7 @@ type SinkPayload = { sink_overrides: string; custom_sinks: string }
 function buildOverridePayload(v: SinkFormValues): SinkPayload {
   const override: Record<string, unknown> = { level: v.level, json_format: v.jsonFormat, enabled: v.enabled }
   if (!v.isConsole && v.rotationStrategy !== 'none') {
-    override.rotation = {
+    override['rotation'] = {
       strategy: v.rotationStrategy,
       max_bytes: Number(v.maxBytes),
       backup_count: Number(v.backupCount),
@@ -77,13 +77,13 @@ function buildCustomPayload(v: SinkFormValues): SinkPayload | null {
     enabled: v.enabled,
   }
   if (!v.isConsole && v.rotationStrategy !== 'none') {
-    customSink.rotation = {
+    customSink['rotation'] = {
       strategy: v.rotationStrategy,
       max_bytes: Number(v.maxBytes) || DEFAULT_MAX_BYTES,
       backup_count: Number(v.backupCount) || DEFAULT_BACKUP_COUNT,
     }
   }
-  if (v.routingPrefixes.length > 0) customSink.routing_prefixes = v.routingPrefixes
+  if (v.routingPrefixes.length > 0) customSink['routing_prefixes'] = v.routingPrefixes
   return { sink_overrides: '{}', custom_sinks: JSON.stringify([customSink]) }
 }
 

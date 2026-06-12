@@ -86,7 +86,7 @@ function CompanyDetailsForm({
           { value: 'balanced', label: 'Balanced' },
           { value: 'premium', label: 'Premium' },
         ]}
-        value={String(templateVariables.model_tier_profile ?? 'balanced')}
+        value={String(templateVariables['model_tier_profile'] ?? 'balanced')}
         onChange={(v) => setTemplateVariable('model_tier_profile', v)}
         hint="Influences which model tiers are assigned to agents."
       />

@@ -65,7 +65,7 @@ export const personalitiesHandlers = [
   ),
   http.get('/api/v1/personalities/presets/:name', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getAdminPreset>(detail({ name: String(params.name) })),
+      successFor<typeof getAdminPreset>(detail({ name: String(params['name']) })),
     ),
   ),
   http.post('/api/v1/personalities/presets', async ({ request }) => {
@@ -80,7 +80,7 @@ export const personalitiesHandlers = [
   http.put('/api/v1/personalities/presets/:name', ({ params }) =>
     HttpResponse.json(
       successFor<typeof updateAdminPreset>(
-        detail({ name: String(params.name), source: 'custom' }),
+        detail({ name: String(params['name']), source: 'custom' }),
       ),
     ),
   ),

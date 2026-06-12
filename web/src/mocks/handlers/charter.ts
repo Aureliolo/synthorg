@@ -65,7 +65,7 @@ export const charterHandlers = [
   }),
   http.get('/api/v1/meta/charters/:id', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getCharter>(buildCharter({ id: String(params.id) })),
+      successFor<typeof getCharter>(buildCharter({ id: String(params['id']) })),
     ),
   ),
   http.post('/api/v1/meta/charters/interview', () => {
@@ -81,13 +81,13 @@ export const charterHandlers = [
   http.patch('/api/v1/meta/charters/:id', ({ params }) =>
     HttpResponse.json(
       successFor<typeof editCharter>(
-        buildCharter({ id: String(params.id), version: 2 }),
+        buildCharter({ id: String(params['id']), version: 2 }),
       ),
     ),
   ),
   http.post('/api/v1/meta/charters/:id/approve', ({ params }) => {
     const charter = buildCharter({
-      id: String(params.id),
+      id: String(params['id']),
       status: 'approved',
       approved_at: '2026-05-22T00:00:00Z',
       approved_by: 'operator',
@@ -97,7 +97,7 @@ export const charterHandlers = [
     })
     const result: CharterApprovalResult = {
       charter,
-      project_id: `charter-${String(params.id)}`,
+      project_id: `charter-${String(params['id'])}`,
       task_id: 'task-1',
       is_success: true,
     }
@@ -106,7 +106,7 @@ export const charterHandlers = [
   http.post('/api/v1/meta/charters/:id/cancel', ({ params }) =>
     HttpResponse.json(
       successFor<typeof cancelCharter>(
-        buildCharter({ id: String(params.id), status: 'cancelled' }),
+        buildCharter({ id: String(params['id']), status: 'cancelled' }),
       ),
     ),
   ),

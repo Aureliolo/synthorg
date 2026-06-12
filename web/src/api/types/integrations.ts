@@ -1,16 +1,32 @@
 /** External integrations: connections, OAuth apps, MCP catalog, tunnel. */
 
 export type {
+  CatalogEntry,
   Connection,
   CreateConnectionRequest,
   HealthReport,
+  InstallEntryRequest,
+  InstallEntryResponse,
   UpdateConnectionRequest,
 } from './dtos.gen'
 
-export type { ConnectionType } from './enum-values.gen'
+export type { ConnectionStatus, ConnectionType } from './enum-values.gen'
 export { CONNECTION_TYPE_VALUES } from './enum-values.gen'
 
-import type { ConnectionType } from './enum-values.gen'
+import type { CatalogEntry, InstallEntryRequest, InstallEntryResponse } from './dtos.gen'
+import type { ConnectionStatus, ConnectionType } from './enum-values.gen'
+
+/**
+ * Aliases onto the generated DTOs / enum values. These previously duplicated
+ * the backend Pydantic shapes by hand; they now derive from the generator so a
+ * backend change flows through without a second edit. The original names are
+ * kept as aliases to avoid churning every call site.
+ */
+export type McpCatalogEntry = CatalogEntry
+export type McpTransport = CatalogEntry['transport']
+export type McpInstallRequest = InstallEntryRequest
+export type McpInstallResponse = InstallEntryResponse
+export type ConnectionHealthStatus = ConnectionStatus
 
 /**
  * Connection types that emit webhook receipts the retention sweep cleans up.
@@ -34,16 +50,6 @@ export function connectionTypeUsesWebhookReceipts(
   return (WEBHOOK_RECEIPT_CONNECTION_TYPES as readonly ConnectionType[]).includes(type)
 }
 
-/** Inline string unions on Connection / Connection responses. The
- *  values are not surfaced as named enum schemas by Pydantic, so the
- *  unions stay hand-maintained until the backend promotes them. */
-
-export type ConnectionHealthStatus =
-  | 'healthy'
-  | 'degraded'
-  | 'unhealthy'
-  | 'unknown'
-
 /** Endpoint-only shapes that the controller layer uses but Pydantic
  *  models surface inline (no top-level ``components.schemas`` entry). */
 export interface RevealSecretResponse {
@@ -65,31 +71,6 @@ export interface OauthTokenStatus {
   readonly connection_name: string
   readonly has_token: boolean | null
   readonly token_expires_at: string | null
-}
-
-export type McpTransport = 'stdio' | 'streamable_http'
-
-export interface McpCatalogEntry {
-  readonly id: string
-  readonly name: string
-  readonly description: string
-  readonly npm_package: string | null
-  readonly required_connection_type: ConnectionType | null
-  readonly transport: McpTransport
-  readonly capabilities: readonly string[]
-  readonly tags: readonly string[]
-}
-
-export interface McpInstallRequest {
-  readonly catalog_entry_id: string
-  readonly connection_name?: string | null
-}
-
-export interface McpInstallResponse {
-  readonly status: 'installed'
-  readonly server_name: string
-  readonly catalog_entry_id: string
-  readonly tool_count: number
 }
 
 export interface TunnelStatus {

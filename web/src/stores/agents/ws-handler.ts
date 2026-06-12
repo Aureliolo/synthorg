@@ -26,7 +26,7 @@ function extractAgentStatusFields(
   // Run the wire agent_id through the canonical WS sanitizer so it
   // can't carry control/bidi chars into ``runtimeStatuses`` as a key
   // (a malformed frame would otherwise create an unusable map entry).
-  const rawAgentId = payload.agent_id
+  const rawAgentId = payload['agent_id']
   const sanitizedAgentId = typeof rawAgentId === 'string'
     ? sanitizeWsString(rawAgentId)
     : undefined
@@ -44,7 +44,7 @@ function extractAgentStatusFields(
     return null
   }
   const status = sanitizeWsEnum<AgentRuntimeStatus>(
-    payload.status,
+    payload['status'],
     AGENT_RUNTIME_STATUS_VALUES,
     'offline',
     { field: 'agent.status_changed.status' },

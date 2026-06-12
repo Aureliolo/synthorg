@@ -51,7 +51,7 @@ export const fineTuningHandlers = [
     HttpResponse.json(
       successFor<typeof resumeFineTune>({
         ...idleStatus,
-        run_id: String(params.id),
+        run_id: String(params['id']),
         stage: 'training',
       }),
     ),
@@ -79,7 +79,7 @@ export const fineTuningHandlers = [
     ({ params }) =>
       HttpResponse.json(
         successFor<typeof deployCheckpoint>(
-          buildCheckpoint({ id: String(params.id), is_active: true }),
+          buildCheckpoint({ id: String(params['id']), is_active: true }),
         ),
       ),
   ),
@@ -88,7 +88,7 @@ export const fineTuningHandlers = [
     ({ params }) =>
       HttpResponse.json(
         successFor<typeof rollbackCheckpoint>(
-          buildCheckpoint({ id: String(params.id) }),
+          buildCheckpoint({ id: String(params['id']) }),
         ),
       ),
   ),

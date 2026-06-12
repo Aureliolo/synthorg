@@ -72,11 +72,11 @@ export const integrationHealthList = [
     ),
   ),
   http.get('/api/v1/integrations/health/:name', ({ params }) => {
-    const report = mockHealthReports.find((r) => r.connection_name === params.name)
+    const report = mockHealthReports.find((r) => r.connection_name === params['name'])
     return HttpResponse.json(
       successFor<typeof getSingleIntegrationHealth>(
         report ?? {
-          connection_name: String(params.name),
+          connection_name: String(params['name']),
           status: 'unknown',
           latency_ms: null,
           error_detail: null,
@@ -98,7 +98,7 @@ export const integrationHealthHandlers = [
   http.get('/api/v1/integrations/health/:name', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getSingleIntegrationHealth>({
-        connection_name: String(params.name),
+        connection_name: String(params['name']),
         status: 'unknown',
         latency_ms: null,
         error_detail: null,

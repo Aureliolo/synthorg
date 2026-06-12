@@ -171,14 +171,14 @@ function _searchPredicate(search: string): TaskPredicate {
 }
 
 function _dateFromPredicate(from: string): TaskPredicate {
-  return (t) => Boolean(t.deadline) && t.deadline! >= from
+  return (t) => t.deadline != null && t.deadline >= from
 }
 
 function _dateToPredicate(rawTo: string): TaskPredicate {
   // A date-only string ("2026-05-24") clamps to end-of-day so a task
   // whose deadline lives anywhere inside that calendar day is included.
   const to = rawTo.includes('T') ? rawTo : `${rawTo}T23:59:59.999Z`
-  return (t) => Boolean(t.deadline) && t.deadline! <= to
+  return (t) => t.deadline != null && t.deadline <= to
 }
 
 /**

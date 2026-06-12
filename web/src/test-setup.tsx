@@ -98,7 +98,7 @@ afterEach(() => {
   for (const name of Object.keys(cookieJar)) {
     Reflect.deleteProperty(cookieJar, name)
   }
-  cookieJar.csrf_token = CSRF_SEED_VALUE
+  cookieJar['csrf_token'] = CSRF_SEED_VALUE
 })
 
 afterAll(() => {

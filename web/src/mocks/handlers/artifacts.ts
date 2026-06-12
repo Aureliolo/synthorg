@@ -36,7 +36,7 @@ export const artifactsHandlers = [
   ),
   http.get('/api/v1/artifacts/:id', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getArtifact>(buildArtifact({ id: String(params.id) })),
+      successFor<typeof getArtifact>(buildArtifact({ id: String(params['id']) })),
     ),
   ),
   http.post('/api/v1/artifacts', async ({ request }) => {

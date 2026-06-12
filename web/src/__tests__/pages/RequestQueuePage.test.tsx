@@ -126,7 +126,7 @@ describe('RequestQueuePage', () => {
     let scopeCall: { id: string; body: unknown } | undefined
     server.use(
       http.post('/api/v1/requests/:id/scope', async ({ params, request }) => {
-        scopeCall = { id: String(params.id), body: (await request.json()) as Record<string, unknown> }
+        scopeCall = { id: String(params['id']), body: (await request.json()) as Record<string, unknown> }
         return HttpResponse.json(
           successFor<typeof scopeRequest>(makeRequest({ status: 'scoping' })),
         )
@@ -144,7 +144,7 @@ describe('RequestQueuePage', () => {
     let approvedId: string | undefined
     server.use(
       http.post('/api/v1/requests/:id/approve', ({ params }) => {
-        approvedId = String(params.id)
+        approvedId = String(params['id'])
         return HttpResponse.json(
           successFor<typeof approveRequest>(makeRequest({ status: 'approved' })),
         )
@@ -162,7 +162,7 @@ describe('RequestQueuePage', () => {
     let rejectCall: { id: string; body: unknown } | undefined
     server.use(
       http.post('/api/v1/requests/:id/reject', async ({ params, request }) => {
-        rejectCall = { id: String(params.id), body: (await request.json()) as Record<string, unknown> }
+        rejectCall = { id: String(params['id']), body: (await request.json()) as Record<string, unknown> }
         return HttpResponse.json(
           successFor<typeof rejectRequest>(makeRequest({ status: 'cancelled' })),
         )

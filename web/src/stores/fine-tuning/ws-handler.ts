@@ -24,15 +24,15 @@ function parseStageAndProgress(
   currentStatus: FineTuneStatus | null,
 ): ParsedStageProgress {
   const stage = sanitizeWsEnum<FineTuneStatus['stage']>(
-    data.stage,
+    data['stage'],
     VALID_STAGE_VALUES,
     currentStatus?.stage ?? 'idle',
     { field: 'memory.fine_tune.stage' },
   )
-  const sanitizedRunId = sanitizeWsString(data.run_id, 128)
+  const sanitizedRunId = sanitizeWsString(data['run_id'], 128)
   return {
     stage,
-    progress: clampProgress(data.progress),
+    progress: clampProgress(data['progress']),
     runId: sanitizedRunId ?? currentStatus?.run_id ?? null,
   }
 }

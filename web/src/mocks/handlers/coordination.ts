@@ -7,7 +7,7 @@ export const coordinationHandlers = [
   http.post('/api/v1/tasks/:id/coordinate', ({ params }) =>
     HttpResponse.json(
       successFor<typeof coordinateTask>({
-        parent_task_id: String(params.id),
+        parent_task_id: String(params['id']),
         topology: 'auto',
         total_duration_seconds: 0,
         total_cost: 0,

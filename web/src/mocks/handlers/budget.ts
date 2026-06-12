@@ -118,7 +118,7 @@ export const budgetHandlers = [
   http.get('/api/v1/budget/agents/:agentId', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getAgentSpending>({
-        agent_id: String(params.agentId),
+        agent_id: String(params['agentId']),
         total_cost: 0,
         currency: DEFAULT_CURRENCY,
       } satisfies AgentSpending),
@@ -135,7 +135,7 @@ export const budgetHandlers = [
   http.get('/api/v1/budget/forecasts/:forecastId', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getForecast>(
-        buildForecast({ forecast_id: String(params.forecastId) }),
+        buildForecast({ forecast_id: String(params['forecastId']) }),
       ),
     ),
   ),
@@ -143,7 +143,7 @@ export const budgetHandlers = [
     HttpResponse.json(
       successFor<typeof approveForecast>(
         buildForecast({
-          forecast_id: String(params.forecastId),
+          forecast_id: String(params['forecastId']),
           decision: 'approved',
           decided_at: '2026-05-20T12:30:00Z',
           decided_by: 'operator',
@@ -155,7 +155,7 @@ export const budgetHandlers = [
     HttpResponse.json(
       successFor<typeof rejectForecast>(
         buildForecast({
-          forecast_id: String(params.forecastId),
+          forecast_id: String(params['forecastId']),
           decision: 'rejected',
           decided_at: '2026-05-20T12:30:00Z',
           decided_by: 'operator',
@@ -167,7 +167,7 @@ export const budgetHandlers = [
     HttpResponse.json(
       successFor<typeof raiseCeiling>(
         buildForecast({
-          forecast_id: String(params.forecastId),
+          forecast_id: String(params['forecastId']),
           decision: 'approved',
           ceiling_amount: 2.5,
         }),

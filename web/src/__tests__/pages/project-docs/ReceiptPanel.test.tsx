@@ -34,7 +34,7 @@ describe('ReceiptPanel', () => {
         HttpResponse.json(
           apiSuccess(
             buildDeliverableReceipt({
-              deliverable_doc_slug: String(params.slug),
+              deliverable_doc_slug: String(params['slug']),
               total_cost: 1.25,
               sources: [
                 {

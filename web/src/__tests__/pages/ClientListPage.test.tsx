@@ -112,7 +112,7 @@ describe('ClientListPage', () => {
     let deletedId: string | undefined
     server.use(
       http.delete('/api/v1/clients/:id', ({ params }) => {
-        deletedId = String(params.id)
+        deletedId = String(params['id'])
         return HttpResponse.json(voidSuccess())
       }),
     )

@@ -75,46 +75,46 @@ describe('motion presets', () => {
     ]
 
     it.each(entranceVariants)('$name has initial state with opacity 0', ({ value }) => {
-      const initial = value.initial as { opacity: number }
+      const initial = value['initial'] as { opacity: number }
       expect(initial.opacity).toBe(0)
     })
 
     it.each(entranceVariants)('$name has animate state with opacity 1', ({ value }) => {
-      const animate = value.animate as { opacity: number }
+      const animate = value['animate'] as { opacity: number }
       expect(animate.opacity).toBe(1)
     })
 
     it.each(entranceVariants)('$name has exit state', ({ value }) => {
-      expect(value.exit).toBeDefined()
+      expect(value['exit']).toBeDefined()
     })
   })
 
   describe('cardEntrance (hidden/visible pattern)', () => {
     it('has hidden state with opacity 0', () => {
-      const hidden = cardEntrance.hidden as { opacity: number }
+      const hidden = cardEntrance['hidden'] as { opacity: number }
       expect(hidden.opacity).toBe(0)
     })
 
     it('has visible state with opacity 1', () => {
-      const visible = cardEntrance.visible as { opacity: number }
+      const visible = cardEntrance['visible'] as { opacity: number }
       expect(visible.opacity).toBe(1)
     })
   })
 
   describe('page transitions', () => {
     it('pageEnter has initial and animate states', () => {
-      expect(pageEnter.initial).toBeDefined()
-      expect(pageEnter.animate).toBeDefined()
+      expect(pageEnter['initial']).toBeDefined()
+      expect(pageEnter['animate']).toBeDefined()
     })
 
     it('pageExit has initial and exit states', () => {
-      expect(pageExit.initial).toBeDefined()
-      expect(pageExit.exit).toBeDefined()
+      expect(pageExit['initial']).toBeDefined()
+      expect(pageExit['exit']).toBeDefined()
     })
 
     it('reducedPageVariants has opacity-only transitions', () => {
-      const initial = reducedPageVariants.initial as { opacity: number }
-      const animate = reducedPageVariants.animate as { opacity: number }
+      const initial = reducedPageVariants['initial'] as { opacity: number }
+      const animate = reducedPageVariants['animate'] as { opacity: number }
       expect(initial.opacity).toBe(0)
       expect(animate.opacity).toBe(1)
       // Should not have x/y transforms
@@ -125,15 +125,15 @@ describe('motion presets', () => {
 
   describe('staggerChildren', () => {
     it('has hidden and visible states', () => {
-      expect(staggerChildren.hidden).toBeDefined()
-      expect(staggerChildren.visible).toBeDefined()
+      expect(staggerChildren['hidden']).toBeDefined()
+      expect(staggerChildren['visible']).toBeDefined()
     })
   })
 
   describe('badgeBounce', () => {
     it('has initial and bounce states', () => {
-      expect(badgeBounce.initial).toBeDefined()
-      expect(badgeBounce.bounce).toBeDefined()
+      expect(badgeBounce['initial']).toBeDefined()
+      expect(badgeBounce['bounce']).toBeDefined()
     })
   })
 

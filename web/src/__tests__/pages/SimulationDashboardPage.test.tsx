@@ -113,7 +113,7 @@ describe('SimulationDashboardPage', () => {
         cancelled = true
         return HttpResponse.json(
           successFor<typeof cancelSimulation>(
-            buildSimulation({ simulation_id: String(params.id), status: 'cancelled' }),
+            buildSimulation({ simulation_id: String(params['id']), status: 'cancelled' }),
           ),
         )
       }),

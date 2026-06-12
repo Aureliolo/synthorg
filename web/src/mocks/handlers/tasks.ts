@@ -51,7 +51,7 @@ export const tasksHandlers = [
   ),
   http.get('/api/v1/tasks/:id', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getTask>(buildTask({ id: String(params.id) })),
+      successFor<typeof getTask>(buildTask({ id: String(params['id']) })),
     ),
   ),
   http.post('/api/v1/tasks', async ({ request }) => {
@@ -82,7 +82,7 @@ export const tasksHandlers = [
     const body = (await request.json()) as Partial<Task>
     return HttpResponse.json(
       successFor<typeof updateTask>(
-        buildTask({ ...body, id: String(params.id) }),
+        buildTask({ ...body, id: String(params['id']) }),
       ),
     )
   }),
@@ -93,7 +93,7 @@ export const tasksHandlers = [
     return HttpResponse.json(
       successFor<typeof transitionTask>(
         buildTask({
-          id: String(params.id),
+          id: String(params['id']),
           status: body.target_status ?? 'in_progress',
         }),
       ),
@@ -108,7 +108,7 @@ export const tasksHandlers = [
     }
     return HttpResponse.json(
       successFor<typeof cancelTask>(
-        buildTask({ id: String(params.id), status: 'cancelled' }),
+        buildTask({ id: String(params['id']), status: 'cancelled' }),
       ),
     )
   }),

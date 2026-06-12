@@ -13,8 +13,8 @@ export interface AgentAssignmentNodeData extends Record<string, unknown> {
 export type AgentAssignmentNodeType = Node<AgentAssignmentNodeData, 'agent_assignment'>
 
 function AgentAssignmentNodeComponent({ data, selected }: NodeProps<AgentAssignmentNodeType>) {
-  const strategy = (data.config.routing_strategy as string) || 'auto'
-  const role = data.config.role_filter as string | undefined
+  const strategy = (data.config['routing_strategy'] as string) || 'auto'
+  const role = data.config['role_filter'] as string | undefined
 
   return (
     <div

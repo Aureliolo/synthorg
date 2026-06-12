@@ -31,10 +31,10 @@ function isRecommendedActionShape(value: unknown): boolean {
   }
   const v = value as Record<string, unknown>
   return (
-    typeof v.action_type === 'string'
-    && typeof v.label === 'string'
-    && typeof v.description === 'string'
-    && typeof v.confirmation_required === 'boolean'
+    typeof v['action_type'] === 'string'
+    && typeof v['label'] === 'string'
+    && typeof v['description'] === 'string'
+    && typeof v['confirmation_required'] === 'boolean'
   )
 }
 
@@ -50,14 +50,14 @@ function isSignatureShape(value: unknown): boolean {
   }
   const v = value as Record<string, unknown>
   return (
-    typeof v.approver_id === 'string'
-    && typeof v.algorithm === 'string'
-    && typeof v.signature_bytes === 'string'
-    && typeof v.signed_at === 'string'
+    typeof v['approver_id'] === 'string'
+    && typeof v['algorithm'] === 'string'
+    && typeof v['signature_bytes'] === 'string'
+    && typeof v['signed_at'] === 'string'
     // ``chain_position`` must be a finite, non-negative integer;
     // reject NaN / Infinity / fractional / negative values that
     // ``typeof === 'number'`` would otherwise accept.
-    && isNonNegInt(v.chain_position)
+    && isNonNegInt(v['chain_position'])
   )
 }
 
@@ -75,19 +75,19 @@ function isEvidencePackageBaseFields(v: Record<string, unknown>): boolean {
     if (typeof v[field] !== 'string') return false
   }
   return (
-    typeof v.is_fully_signed === 'boolean'
-    && (v.task_id === null || typeof v.task_id === 'string')
+    typeof v['is_fully_signed'] === 'boolean'
+    && (v['task_id'] === null || typeof v['task_id'] === 'string')
   )
 }
 
 function isEvidencePackageCollections(v: Record<string, unknown>): boolean {
   return (
-    Array.isArray(v.reasoning_trace)
-    && v.reasoning_trace.every((line) => typeof line === 'string')
-    && Array.isArray(v.recommended_actions)
-    && v.recommended_actions.every(isRecommendedActionShape)
-    && Array.isArray(v.signatures)
-    && v.signatures.every(isSignatureShape)
+    Array.isArray(v['reasoning_trace'])
+    && v['reasoning_trace'].every((line) => typeof line === 'string')
+    && Array.isArray(v['recommended_actions'])
+    && v['recommended_actions'].every(isRecommendedActionShape)
+    && Array.isArray(v['signatures'])
+    && v['signatures'].every(isSignatureShape)
   )
 }
 
@@ -106,8 +106,8 @@ function isEvidencePackageShape(value: unknown): boolean {
   return (
     isEvidencePackageBaseFields(v)
     && isEvidencePackageCollections(v)
-    && isStringStringRecord(v.metadata)
-    && isNonNegInt(v.signature_threshold)
+    && isStringStringRecord(v['metadata'])
+    && isNonNegInt(v['signature_threshold'])
   )
 }
 
@@ -147,13 +147,13 @@ function isApprovalCoreFields(c: Record<string, unknown>): boolean {
 
 function isApprovalNullableFields(c: Record<string, unknown>): boolean {
   return (
-    isNullableString(c.task_id)
-    && isNullableString(c.decided_by)
-    && isNullableString(c.decision_reason)
-    && isNullableString(c.decided_at)
-    && isNullableString(c.expires_at)
-    && isNullableString(c.consumed_at)
-    && isNullableFiniteNumber(c.seconds_remaining)
+    isNullableString(c['task_id'])
+    && isNullableString(c['decided_by'])
+    && isNullableString(c['decision_reason'])
+    && isNullableString(c['decided_at'])
+    && isNullableString(c['expires_at'])
+    && isNullableString(c['consumed_at'])
+    && isNullableFiniteNumber(c['seconds_remaining'])
   )
 }
 
@@ -176,9 +176,9 @@ export function isApprovalShape(
   // the typed sanitizer's forward-compat contract.
   return (
     isApprovalCoreFields(c)
-    && isStringStringRecord(c.metadata)
+    && isStringStringRecord(c['metadata'])
     && isApprovalNullableFields(c)
-    && isEvidencePackageShape(c.evidence_package)
+    && isEvidencePackageShape(c['evidence_package'])
   )
 }
 

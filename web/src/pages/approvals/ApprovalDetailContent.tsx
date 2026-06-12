@@ -6,8 +6,8 @@ import { formatDateTime } from '@/utils/format'
 import type { ApprovalResponse } from '@/api/types/approvals'
 
 function DescriptionSection({ approval }: { approval: ApprovalResponse }) {
-  const isStripped = !!approval.metadata.stripped_description
-  const displayText = approval.metadata.stripped_description || approval.description
+  const isStripped = !!approval.metadata['stripped_description']
+  const displayText = approval.metadata['stripped_description'] || approval.description
   return (
     <div>
       <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -34,7 +34,7 @@ function MetaField({ icon: Icon, label, value }: { icon: LucideIcon; label: stri
 }
 
 function ApprovalSafetyBanners({ approval }: { approval: ApprovalResponse }) {
-  const classification = approval.metadata.safety_classification
+  const classification = approval.metadata['safety_classification']
   return (
     <>
       {classification === 'blocked' && (
@@ -78,8 +78,8 @@ function ApprovalMetaGrid({
         <MetaField icon={Calendar} label="Decided At" value={formatDateTime(approval.decided_at)} />
       )}
       {confidenceLabel && <MetaField icon={Shield} label="Confidence" value={confidenceLabel} />}
-      {approval.metadata.safety_classification && (
-        <MetaField icon={Shield} label="Safety" value={approval.metadata.safety_classification} />
+      {approval.metadata['safety_classification'] && (
+        <MetaField icon={Shield} label="Safety" value={approval.metadata['safety_classification']} />
       )}
     </div>
   )
@@ -143,7 +143,7 @@ export function ApprovalDetailContent({
     <div className="flex-1 overflow-y-auto px-6 py-4 space-y-section-gap">
       <h2 className="text-lg font-semibold text-foreground">{approval.title}</h2>
       <ApprovalSafetyBanners approval={approval} />
-      {Boolean(approval.description || approval.metadata.stripped_description) && (
+      {Boolean(approval.description || approval.metadata['stripped_description']) && (
         <DescriptionSection approval={approval} />
       )}
       <div>

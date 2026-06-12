@@ -74,7 +74,7 @@ function loadViewport(): { x: number; y: number; zoom: number } | undefined {
 function isValidViewport(value: unknown): value is { x: number; y: number; zoom: number } {
   if (typeof value !== 'object' || value === null) return false
   const rec = value as Record<string, unknown>
-  return isFiniteNumber(rec.x) && isFiniteNumber(rec.y) && isFiniteNumber(rec.zoom) && rec.zoom > 0
+  return isFiniteNumber(rec['x']) && isFiniteNumber(rec['y']) && isFiniteNumber(rec['zoom']) && rec['zoom'] > 0
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -105,11 +105,16 @@ function getSelectedNodeDetails(
   }
 }
 
+// Membership test that narrows a raw string to WorkflowNodeType. The Set is
+// widened to ReadonlySet<string> once so `has()` accepts the untyped input
+// without a per-call value cast.
+function isWorkflowNodeType(value: string): value is WorkflowNodeType {
+  return (SUPPORTED_NODE_TYPES as ReadonlySet<string>).has(value)
+}
+
 function resolveSupportedNodeType(nodeType: string | undefined): WorkflowNodeType | null {
   if (typeof nodeType !== 'string') return null
-  return SUPPORTED_NODE_TYPES.has(nodeType as WorkflowNodeType)
-    ? (nodeType as WorkflowNodeType)
-    : null
+  return isWorkflowNodeType(nodeType) ? nodeType : null
 }
 
 function extractConfigObject(config: unknown): Record<string, unknown> {

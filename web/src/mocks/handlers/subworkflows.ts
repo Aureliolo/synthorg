@@ -45,8 +45,8 @@ export const subworkflowsHandlers = [
     HttpResponse.json(
       successFor<typeof getVersion>(
         buildSubworkflow({
-          id: String(params.id),
-          version: String(params.version),
+          id: String(params['id']),
+          version: String(params['version']),
         }),
       ),
     ),

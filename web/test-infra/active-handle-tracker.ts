@@ -67,7 +67,7 @@ const liveHandles = new Map<number, HandleRecord>()
 let snapshotIds: Set<number> | null = null
 
 const mode: LeakMode =
-  process.env.ACTIVE_HANDLE_MODE === 'log' ? 'log' : 'fail'
+  process.env['ACTIVE_HANDLE_MODE'] === 'log' ? 'log' : 'fail'
 
 /**
  * Frame substrings we never attribute a leak to. These are the test
@@ -158,7 +158,7 @@ hook.enable()
 // the parent's main-process reporter does not slurp the child's leak
 // records. Validation enforces that the redirect stays inside the
 // project tree.
-const LEAK_LOG_DIR = resolveLeakLogDir(process.env.ACTIVE_HANDLE_LOG_DIR)
+const LEAK_LOG_DIR = resolveLeakLogDir(process.env['ACTIVE_HANDLE_LOG_DIR'])
 const LEAK_LOG_FILE = join(
   LEAK_LOG_DIR,
   `handle-leaks-${String(process.pid)}.ndjson`,

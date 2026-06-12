@@ -21,13 +21,13 @@ export function createWsHandler(get: ApprovalsGet) {
       // ``isObject`` narrows in one step instead of the inline hand-rolled
       // ``typeof === 'object' && !== null && !Array.isArray`` chain
       // followed by a downstream ``as`` cast.
-      if (!isObject(payload.approval)) return
-      const candidate: Record<string, unknown> = payload.approval
+      if (!isObject(payload['approval'])) return
+      const candidate: Record<string, unknown> = payload['approval']
       if (!isApprovalShape(candidate)) {
         log.error('Received malformed approval payload, skipping upsert', {
-          id: sanitizeForLog(candidate.id),
-          hasTitle: typeof candidate.title === 'string',
-          hasStatus: typeof candidate.status === 'string',
+          id: sanitizeForLog(candidate['id']),
+          hasTitle: typeof candidate['title'] === 'string',
+          hasStatus: typeof candidate['status'] === 'string',
         })
         return
       }

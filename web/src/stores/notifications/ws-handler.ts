@@ -24,9 +24,9 @@ function approvalSubmitted(p: WsPayload): EnqueueParams {
   return {
     category: 'approvals.pending',
     title: 'Approval requested',
-    description: sanitizeWsString(p.title),
-    href: typeof p.approval_id === 'string' ? `/approvals` : undefined,
-    entityId: sanitizeWsString(p.approval_id),
+    description: sanitizeWsString(p['title']),
+    href: typeof p['approval_id'] === 'string' ? `/approvals` : undefined,
+    entityId: sanitizeWsString(p['approval_id']),
   }
 }
 
@@ -38,13 +38,13 @@ function approvalEntity(
   return {
     category,
     title,
-    entityId: sanitizeWsString(p.approval_id),
+    entityId: sanitizeWsString(p['approval_id']),
   }
 }
 
 function budgetAlert(p: WsPayload): EnqueueParams {
   const level = sanitizeWsEnum<BudgetAlertLevel>(
-    p.level,
+    p['level'],
     BUDGET_ALERT_LEVELS,
     'threshold',
     { maxLen: 32, field: 'budget.alert.level' },
@@ -53,7 +53,7 @@ function budgetAlert(p: WsPayload): EnqueueParams {
   return {
     category: isExhausted ? 'budget.exhausted' : 'budget.threshold',
     title: isExhausted ? 'Budget exhausted' : 'Budget threshold crossed',
-    description: sanitizeWsString(p.message),
+    description: sanitizeWsString(p['message']),
     severity: isExhausted ? 'critical' : 'warning',
   }
 }
@@ -62,7 +62,7 @@ function systemError(p: WsPayload): EnqueueParams {
   return {
     category: 'system.error',
     title: 'System error',
-    description: sanitizeWsString(p.message),
+    description: sanitizeWsString(p['message']),
   }
 }
 
@@ -71,14 +71,14 @@ function systemShutdown(): EnqueueParams {
 }
 
 function personalityTrimmed(p: WsPayload): EnqueueParams {
-  const agentName = sanitizeWsString(p.agent_name, 64)
+  const agentName = sanitizeWsString(p['agent_name'], 64)
   return {
     category: 'agents.personality_trimmed',
     title: 'Personality trimmed',
     description: agentName
       ? `${agentName} personality was trimmed`
       : undefined,
-    entityId: sanitizeWsString(p.agent_id),
+    entityId: sanitizeWsString(p['agent_id']),
   }
 }
 
@@ -90,21 +90,21 @@ function agentEvent(
   return {
     category,
     title,
-    description: sanitizeWsString(p.agent_name, 64),
-    entityId: sanitizeWsString(p.agent_id),
+    description: sanitizeWsString(p['agent_name'], 64),
+    entityId: sanitizeWsString(p['agent_id']),
   }
 }
 
 function taskStatusChanged(p: WsPayload): EnqueueParams | null {
   const status = sanitizeWsEnum<TaskStatusValue>(
-    p.status,
+    p['status'],
     TASK_STATUS_VALUES,
     'unknown',
     { maxLen: 32, field: 'task.status_changed.status' },
   )
   if (status === 'unknown') return null
-  const taskId = sanitizeWsString(p.task_id)
-  const title = sanitizeWsString(p.title)
+  const taskId = sanitizeWsString(p['task_id'])
+  const title = sanitizeWsString(p['title'])
   switch (status) {
     case 'failed':
       return {

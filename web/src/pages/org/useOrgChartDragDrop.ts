@@ -10,6 +10,17 @@ import type { ViewMode } from './OrgChartToolbar'
 const AGENT_NODE_WIDTH = 160
 const AGENT_NODE_HEIGHT = 80
 
+// Discriminate on node.type to narrow node.data, which @xyflow/react types as
+// an untyped record. The runtime guarantee is that 'agent'/'department' nodes
+// carry the matching data shape, so these predicates replace inline `as` casts.
+function isAgentNode(n: Node): n is Node & { data: AgentNodeData } {
+  return n.type === 'agent'
+}
+
+function isDepartmentNode(n: Node): n is Node & { data: DepartmentGroupData } {
+  return n.type === 'department'
+}
+
 type AddToast = ReturnType<typeof useToastStore.getState>['add']
 
 export interface OrgChartDragDropResult {
@@ -90,9 +101,9 @@ function onReassignSettled(
 /** Drop-target hit boxes derived from the rendered department group nodes. */
 function computeDeptBounds(displayNodes: Node[]): DepartmentBounds[] {
   return displayNodes
-    .filter((n) => n.type === 'department')
+    .filter(isDepartmentNode)
     .map((n) => ({
-      departmentName: (n.data as DepartmentGroupData).departmentName,
+      departmentName: n.data.departmentName,
       nodeId: n.id,
       x: n.position.x,
       y: n.position.y,
@@ -116,10 +127,10 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
 
   const handleNodeDragStart = useCallback(
     (_event: MouseEvent | TouchEvent, node: Node) => {
-      if (node.type !== 'agent') return
+      if (!isAgentNode(node)) return
       if (viewMode !== 'hierarchy') return
-      dragOriginalDeptRef.current = (node.data as AgentNodeData).department
-      announce(`Started dragging ${(node.data as AgentNodeData).name}`)
+      dragOriginalDeptRef.current = node.data.department
+      announce(`Started dragging ${node.data.name}`)
     },
     [viewMode, announce],
   )
@@ -147,11 +158,11 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
       setDragOverDeptId(null)
 
       if (!originalDept) return
-      if (node.type !== 'agent') return
+      if (!isAgentNode(node)) return
 
       const target = findDropTarget(nodeCenter(node), deptBounds)
-      const agentId = (node.data as AgentNodeData).agentId
-      const agentName = (node.data as AgentNodeData).name
+      const agentId = node.data.agentId
+      const agentName = node.data.name
       const newDept = target?.departmentName
 
       if (!newDept || newDept === originalDept) {

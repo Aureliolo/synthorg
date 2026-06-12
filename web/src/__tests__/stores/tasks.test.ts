@@ -515,7 +515,7 @@ describe('useTasksStore', () => {
 
     it('accepts frame that omits assigned_to (undefined → null is normalisation, not mutation)', () => {
       const without: Record<string, unknown> = { ...mockTask }
-      delete without.assigned_to
+      delete without['assigned_to']
       const event: WsEvent = {
         event_type: 'task.created',
         channel: 'tasks',
@@ -529,7 +529,7 @@ describe('useTasksStore', () => {
 
     it('accepts frame that omits parent_task_id (undefined → null is normalisation, not mutation)', () => {
       const without: Record<string, unknown> = { ...mockTask }
-      delete without.parent_task_id
+      delete without['parent_task_id']
       const event: WsEvent = {
         event_type: 'task.created',
         channel: 'tasks',
@@ -606,13 +606,13 @@ describe('useTasksStore', () => {
         string,
         unknown
       >
-      expect((({}) as Record<string, unknown>).polluted).toBeUndefined()
+      expect((({}) as Record<string, unknown>)['polluted']).toBeUndefined()
       expect(Object.getPrototypeOf(stored)).toBeNull()
       expect(Object.prototype.hasOwnProperty.call(stored, '__proto__')).toBe(true)
       expect(Object.getOwnPropertyDescriptor(stored, '__proto__')?.value).toEqual({
         polluted: true,
       })
-      expect(stored.safe).toBe('x')
+      expect(stored['safe']).toBe('x')
     })
 
     it('rejects frame where metadata is not a plain object', () => {
@@ -695,7 +695,7 @@ describe('useTasksStore', () => {
 
     it('accepts frame that omits middleware_override (undefined → null, not dropped)', () => {
       const without: Record<string, unknown> = { ...mockTask }
-      delete without.middleware_override
+      delete without['middleware_override']
       const event: WsEvent = {
         event_type: 'task.created',
         channel: 'tasks',

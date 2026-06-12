@@ -7,10 +7,10 @@ export interface EventDrivenConfigProps {
 }
 
 export function EventDrivenConfig({ config, onChange, disabled }: EventDrivenConfigProps) {
-  const debounceDefault = typeof config.debounce_default === 'number' && Number.isFinite(config.debounce_default)
-    ? config.debounce_default
+  const debounceDefault = typeof config['debounce_default'] === 'number' && Number.isFinite(config['debounce_default'])
+    ? config['debounce_default']
     : 5
-  const transitionEvent = typeof config.transition_event === 'string' ? config.transition_event : ''
+  const transitionEvent = typeof config['transition_event'] === 'string' ? config['transition_event'] : ''
 
   return (
     <div className="space-y-3">

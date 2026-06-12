@@ -39,7 +39,7 @@ export const ontologyHandlers = [
   ),
   http.get('/api/v1/ontology/entities/:name', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getEntity>(buildEntity({ name: String(params.name) })),
+      successFor<typeof getEntity>(buildEntity({ name: String(params['name']) })),
     ),
   ),
   http.post('/api/v1/ontology/entities', async ({ request }) => {
@@ -53,7 +53,7 @@ export const ontologyHandlers = [
     const body = (await request.json()) as Partial<EntityResponse>
     return HttpResponse.json(
       successFor<typeof updateEntity>(
-        buildEntity({ ...body, name: String(params.name) }),
+        buildEntity({ ...body, name: String(params['name']) }),
       ),
     )
   }),

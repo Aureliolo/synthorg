@@ -1,5 +1,4 @@
 import type { DashboardAgentConfig } from '@/api/types/agents'
-import type { DepartmentName } from '@/api/types/enums'
 import type { DashboardDepartment } from '@/api/types/org'
 import { resolveRuntimeStatus } from './status-mapping'
 import {
@@ -114,7 +113,7 @@ function emitDeptAgents(ctx: BuildContext, state: DeptEmitState): void {
       agentId,
       name: agent.name,
       role: agent.role,
-      department: agent.department as DepartmentName,
+      department: agent.department,
       level: agent.level,
       runtimeStatus,
       isDeptLead: headId != null && agentId === headId,

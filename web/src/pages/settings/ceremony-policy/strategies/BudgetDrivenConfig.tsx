@@ -7,11 +7,11 @@ export interface BudgetDrivenConfigProps {
 }
 
 export function BudgetDrivenConfig({ config, onChange, disabled }: BudgetDrivenConfigProps) {
-  const thresholds = Array.isArray(config.budget_thresholds)
-    ? (config.budget_thresholds as unknown[]).map(Number).filter((n) => Number.isFinite(n))
+  const thresholds = Array.isArray(config['budget_thresholds'])
+    ? (config['budget_thresholds'] as unknown[]).map(Number).filter((n) => Number.isFinite(n))
     : [25, 50, 75, 100]
-  const rawPct = typeof config.transition_threshold === 'number' && Number.isFinite(config.transition_threshold)
-    ? config.transition_threshold
+  const rawPct = typeof config['transition_threshold'] === 'number' && Number.isFinite(config['transition_threshold'])
+    ? config['transition_threshold']
     : 100
   const transitionPct = Math.min(100, Math.max(1, rawPct))
 

@@ -33,7 +33,7 @@ export const rolesHandlers = [
   http.get('/api/v1/roles/:role/versions/:version', ({ params }) =>
     HttpResponse.json(
       successFor<RoleVersionsClient['get']>(
-        buildRoleSnapshot(String(params.role), Number(params.version)),
+        buildRoleSnapshot(String(params['role']), Number(params['version'])),
       ),
     ),
   ),

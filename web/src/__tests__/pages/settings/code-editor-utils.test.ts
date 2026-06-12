@@ -44,8 +44,8 @@ describe('entriesToObject', () => {
     ]
     const result = entriesToObject(entries)
     expect(Object.keys(result)).toEqual(['api', 'budget'])
-    expect(result.api).toEqual({ max_retries: '10', timeout: '30' })
-    expect(result.budget).toEqual({ workers: '4' })
+    expect(result['api']).toEqual({ max_retries: '10', timeout: '30' })
+    expect(result['budget']).toEqual({ workers: '4' })
   })
 
   it('parses JSON-type values into objects', () => {
@@ -53,7 +53,7 @@ describe('entriesToObject', () => {
       makeEntry({ namespace: 'api', key: 'urls', type: 'json', value: '["http://a.com"]' }),
     ]
     const result = entriesToObject(entries)
-    expect(result.api!.urls).toEqual(['http://a.com'])
+    expect(result['api']!['urls']).toEqual(['http://a.com'])
   })
 
   it('falls back to raw string on invalid JSON-type values', () => {
@@ -61,7 +61,7 @@ describe('entriesToObject', () => {
       makeEntry({ namespace: 'api', key: 'bad', type: 'json', value: 'not-json' }),
     ]
     const result = entriesToObject(entries)
-    expect(result.api!.bad).toBe('not-json')
+    expect(result['api']!['bad']).toBe('not-json')
   })
 })
 

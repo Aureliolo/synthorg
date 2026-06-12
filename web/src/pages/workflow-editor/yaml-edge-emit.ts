@@ -123,12 +123,12 @@ function parseObjectDependsOnEntry(
   rawDep: Record<string, unknown>,
   acc: ParseAccumulator,
 ): ParsedDep | null {
-  const depId = scalarToString(rawDep.id).trim()
+  const depId = scalarToString(rawDep['id']).trim()
   if (!depId) {
     acc.errors.push(`Step '${stepId}' has empty dependency`)
     return null
   }
-  const branch = rawDep.branch !== undefined ? scalarToString(rawDep.branch) : undefined
+  const branch = rawDep['branch'] !== undefined ? scalarToString(rawDep['branch']) : undefined
   if (branch === 'true' || branch === 'false') {
     return { depId, explicitBranch: branch }
   }

@@ -13,7 +13,7 @@ export interface ParallelJoinNodeData extends Record<string, unknown> {
 export type ParallelJoinNodeType = Node<ParallelJoinNodeData, 'parallel_join'>
 
 function ParallelJoinNodeComponent({ data, selected }: NodeProps<ParallelJoinNodeType>) {
-  const strategy = (data.config.join_strategy as string) || 'all'
+  const strategy = (data.config['join_strategy'] as string) || 'all'
 
   return (
     <div

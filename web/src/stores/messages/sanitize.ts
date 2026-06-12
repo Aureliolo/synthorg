@@ -13,26 +13,26 @@ const log = createLogger('messages')
 type WireMessagePart = Message['parts'][number]
 
 function isTextPart(p: Record<string, unknown>): boolean {
-  return typeof p.text === 'string'
+  return typeof p['text'] === 'string'
 }
 
 function isDataPart(p: Record<string, unknown>): boolean {
   return (
-    typeof p.data === 'object'
-    && p.data !== null
-    && !Array.isArray(p.data)
+    typeof p['data'] === 'object'
+    && p['data'] !== null
+    && !Array.isArray(p['data'])
   )
 }
 
 function isFilePart(p: Record<string, unknown>): boolean {
   return (
-    typeof p.uri === 'string'
-    && (p.mime_type === null || typeof p.mime_type === 'string')
+    typeof p['uri'] === 'string'
+    && (p['mime_type'] === null || typeof p['mime_type'] === 'string')
   )
 }
 
 function isUriPart(p: Record<string, unknown>): boolean {
-  return typeof p.uri === 'string'
+  return typeof p['uri'] === 'string'
 }
 
 const PART_TYPE_VALIDATORS: Record<
@@ -52,14 +52,14 @@ const PART_TYPE_VALIDATORS: Record<
  * a missing ``text`` / ``uri`` / ``data`` and throw. Unknown
  * discriminators are rejected outright (no safe fallback part type).
  */
-function isPartsShape(value: unknown): boolean {
+function isPartsShape(value: unknown): value is readonly Record<string, unknown>[] {
   if (!Array.isArray(value)) return false
   return value.every((part) => {
     if (typeof part !== 'object' || part === null || Array.isArray(part)) {
       return false
     }
     const p = part as Record<string, unknown>
-    const type = typeof p.type === 'string' ? p.type : ''
+    const type = typeof p['type'] === 'string' ? p['type'] : ''
     const validator = PART_TYPE_VALIDATORS[type]
     return validator ? validator(p) : false
   })
@@ -68,24 +68,24 @@ function isPartsShape(value: unknown): boolean {
 function sanitizeTextPart(part: Record<string, unknown>): WireMessagePart {
   return {
     type: 'text',
-    text: sanitizeWsString(part.text, 4096) ?? '',
+    text: sanitizeWsString(part['text'], 4096) ?? '',
   }
 }
 
 function sanitizeFilePart(part: Record<string, unknown>): WireMessagePart {
   return {
     type: 'file',
-    uri: sanitizeWsString(part.uri, 2048) ?? '',
-    mime_type: part.mime_type === null
+    uri: sanitizeWsString(part['uri'], 2048) ?? '',
+    mime_type: part['mime_type'] === null
       ? null
-      : sanitizeWsString(part.mime_type, 128) ?? '',
+      : sanitizeWsString(part['mime_type'], 128) ?? '',
   }
 }
 
 function sanitizeUriPart(part: Record<string, unknown>): WireMessagePart {
   return {
     type: 'uri',
-    uri: sanitizeWsString(part.uri, 2048) ?? '',
+    uri: sanitizeWsString(part['uri'], 2048) ?? '',
   }
 }
 
@@ -94,7 +94,7 @@ function sanitizeDataPart(part: Record<string, unknown>): WireMessagePart {
   // it is rendered as data, never interpolated, so passed through.
   return {
     type: 'data',
-    data: part.data as Readonly<Record<string, unknown>>,
+    data: part['data'] as Readonly<Record<string, unknown>>,
   }
 }
 
@@ -115,7 +115,7 @@ const PART_SANITIZERS: Record<
  * verbatim (it is rendered as data, never interpolated).
  */
 function sanitizePart(part: Record<string, unknown>): WireMessagePart {
-  const type = typeof part.type === 'string' ? part.type : 'data'
+  const type = typeof part['type'] === 'string' ? part['type'] : 'data'
   return (PART_SANITIZERS[type] ?? sanitizeDataPart)(part)
 }
 
@@ -124,15 +124,15 @@ function isMetadataNumericFields(m: Record<string, unknown>): boolean {
   // ``typeof === 'number'`` would let those through and poison the store
   // (downstream cost-aggregation / token-sum math silently propagates them).
   return (
-    (m.tokens_used === null || Number.isFinite(m.tokens_used))
-    && (m.cost === null || Number.isFinite(m.cost))
+    (m['tokens_used'] === null || Number.isFinite(m['tokens_used']))
+    && (m['cost'] === null || Number.isFinite(m['cost']))
   )
 }
 
 function isMetadataIdFields(m: Record<string, unknown>): boolean {
   return (
-    (m.task_id === null || typeof m.task_id === 'string')
-    && (m.project_id === null || typeof m.project_id === 'string')
+    (m['task_id'] === null || typeof m['task_id'] === 'string')
+    && (m['project_id'] === null || typeof m['project_id'] === 'string')
   )
 }
 
@@ -151,7 +151,7 @@ function isMetadataExtraField(value: unknown): boolean {
  * ``MessageMetadata`` carries nullable id pointers, numeric usage
  * fields, and an ``extra`` array of ``[string, string]`` tuples.
  */
-function isMessageMetadataShape(value: unknown): boolean {
+function isMessageMetadataShape(value: unknown): value is Message['metadata'] {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return false
   }
@@ -159,7 +159,7 @@ function isMessageMetadataShape(value: unknown): boolean {
   return (
     isMetadataIdFields(m)
     && isMetadataNumericFields(m)
-    && isMetadataExtraField(m.extra)
+    && isMetadataExtraField(m['extra'])
   )
 }
 
@@ -182,18 +182,27 @@ function isMessageStringFields(c: Record<string, unknown>): boolean {
 }
 
 /**
+ * Validated wire shape: the structural guards narrow `parts` / `attachments`
+ * to typed record arrays and `metadata` to the message metadata shape, so the
+ * downstream sanitizers consume them without unsafe casts.
+ */
+interface ValidatedMessageShape extends Record<string, unknown> {
+  parts: readonly Record<string, unknown>[]
+  attachments: readonly Record<string, unknown>[]
+  metadata: Message['metadata']
+}
+
+/**
  * Shallow structural check: every ``Message`` string field is a
  * ``string`` on the wire and ``attachments`` / ``metadata`` carry
  * well-formed nested shapes.
  */
-function isMessageShape(
-  c: Record<string, unknown>,
-): c is Record<string, unknown> & Message {
+function isMessageShape(c: Record<string, unknown>): c is ValidatedMessageShape {
   return (
     isMessageStringFields(c)
-    && isPartsShape(c.parts)
-    && isPartsShape(c.attachments)
-    && isMessageMetadataShape(c.metadata)
+    && isPartsShape(c['parts'])
+    && isPartsShape(c['attachments'])
+    && isMessageMetadataShape(c['metadata'])
   )
 }
 
@@ -228,12 +237,12 @@ interface MessageStringFields {
 
 function extractMessageStrings(c: Record<string, unknown>): MessageStringFields {
   return {
-    id: sanitizeWsString(c.id, 128) ?? '',
-    timestamp: sanitizeWsString(c.timestamp, 64) ?? '',
-    sender: sanitizeWsString(c.sender) ?? '',
-    to: sanitizeWsString(c.to) ?? '',
-    channel: sanitizeWsString(c.channel) ?? '',
-    text: sanitizeWsString(c.text, 4096) ?? '',
+    id: sanitizeWsString(c['id'], 128) ?? '',
+    timestamp: sanitizeWsString(c['timestamp'], 64) ?? '',
+    sender: sanitizeWsString(c['sender']) ?? '',
+    to: sanitizeWsString(c['to']) ?? '',
+    channel: sanitizeWsString(c['channel']) ?? '',
+    text: sanitizeWsString(c['text'], 4096) ?? '',
   }
 }
 
@@ -247,7 +256,7 @@ function validateAndExtractStrings(
   const strings = extractMessageStrings(c)
   if (requiredStringsAllNonEmpty(strings)) return strings
   log.error('WS message blanked by sanitization, skipping', {
-    id: sanitizeForLog(c.id),
+    id: sanitizeForLog(c['id']),
     hasBlankId: strings.id.length === 0,
     hasBlankTo: strings.to.length === 0,
     hasBlankChannel: strings.channel.length === 0,
@@ -263,17 +272,17 @@ export function parseWsMessage(
   payload: WsEvent['payload'],
 ): Message | null {
   if (
-    !payload.message
-    || typeof payload.message !== 'object'
-    || Array.isArray(payload.message)
+    !payload['message']
+    || typeof payload['message'] !== 'object'
+    || Array.isArray(payload['message'])
   ) return null
 
-  const c = payload.message as Record<string, unknown>
+  const c = payload['message'] as Record<string, unknown>
   if (!isMessageShape(c)) {
     log.error('Malformed WS payload, skipping', {
-      id: sanitizeForLog(c.id),
-      hasSender: typeof c.sender === 'string',
-      hasChannel: typeof c.channel === 'string',
+      id: sanitizeForLog(c['id']),
+      hasSender: typeof c['sender'] === 'string',
+      hasChannel: typeof c['channel'] === 'string',
     })
     return null
   }
@@ -281,24 +290,20 @@ export function parseWsMessage(
   const strings = validateAndExtractStrings(c)
   if (strings === null) return null
 
-  const type = sanitizeWsEnum(c.type, MESSAGE_TYPE_VALUES, 'announcement', {
+  const type = sanitizeWsEnum(c['type'], MESSAGE_TYPE_VALUES, 'announcement', {
     maxLen: 64,
     field: 'message.type',
   })
   const priority = sanitizeWsEnum(
-    c.priority,
+    c['priority'],
     MESSAGE_PRIORITY_VALUES,
     'normal',
     { maxLen: 64, field: 'message.priority' },
   )
 
-  // ``isPartsShape`` already validated both arrays, so the casts are sound.
-  const parts = (c.parts as unknown as Record<string, unknown>[]).map(
-    sanitizePart,
-  )
-  const attachments = (
-    c.attachments as unknown as Record<string, unknown>[]
-  ).map(sanitizePart)
+  // `isMessageShape` narrowed both arrays to typed record arrays already.
+  const parts = c.parts.map(sanitizePart)
+  const attachments = c.attachments.map(sanitizePart)
 
   return {
     ...strings,

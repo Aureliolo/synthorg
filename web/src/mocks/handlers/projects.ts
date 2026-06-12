@@ -35,7 +35,7 @@ export const projectsHandlers = [
   ),
   http.get('/api/v1/projects/:id', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getProject>(buildProject({ id: String(params.id) })),
+      successFor<typeof getProject>(buildProject({ id: String(params['id']) })),
     ),
   ),
   http.post('/api/v1/projects', async ({ request }) => {

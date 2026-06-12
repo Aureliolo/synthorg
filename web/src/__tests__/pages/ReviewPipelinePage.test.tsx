@@ -12,7 +12,7 @@ function seedPipelineWithStage() {
     http.get('/api/v1/reviews/:taskId/pipeline', ({ params }) =>
       HttpResponse.json(
         successFor<typeof getReviewPipeline>({
-          task_id: String(params.taskId),
+          task_id: String(params['taskId']),
           final_verdict: 'pass',
           total_duration_ms: 12,
           reviewed_at: '2026-04-19T00:00:00Z',

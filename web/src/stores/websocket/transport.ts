@@ -181,18 +181,18 @@ function handleAuthOk(thisSocket: WebSocket, set: WsSet): void {
 }
 
 function handleAck(msg: Record<string, unknown>, set: WsSet): void {
-  if (isWsChannelArray(msg.channels)) {
-    set({ subscribedChannels: [...msg.channels] })
+  if (isWsChannelArray(msg['channels'])) {
+    set({ subscribedChannels: [...msg['channels']] })
   }
 }
 
 function handleEventOrLog(msg: Record<string, unknown>): void {
   if (!isWsEvent(msg)) {
     log.warn('Message failed WsEvent validation, discarding:', {
-      hasEventType: typeof msg.event_type,
-      hasChannel: typeof msg.channel,
-      hasTimestamp: typeof msg.timestamp,
-      hasPayload: typeof msg.payload,
+      hasEventType: typeof msg['event_type'],
+      hasChannel: typeof msg['channel'],
+      hasTimestamp: typeof msg['timestamp'],
+      hasPayload: typeof msg['payload'],
     })
     return
   }
@@ -213,21 +213,21 @@ function handleEventOrLog(msg: Record<string, unknown>): void {
 }
 
 function routeIncomingMessage(msg: Record<string, unknown>, set: WsSet): void {
-  if (msg.action === 'pong') {
+  if (msg['action'] === 'pong') {
     if (pongTimer) {
       clearTimeout(pongTimer)
       pongTimer = null
     }
     return
   }
-  if (msg.action === 'subscribed' || msg.action === 'unsubscribed') {
+  if (msg['action'] === 'subscribed' || msg['action'] === 'unsubscribed') {
     handleAck(msg, set)
     return
   }
-  if (msg.error) {
+  if (msg['error']) {
     log.error(
       'Server error:',
-      sanitizeForLog(msg.error, LOG_SANITIZE_MAX_LENGTH),
+      sanitizeForLog(msg['error'], LOG_SANITIZE_MAX_LENGTH),
     )
     return
   }
@@ -341,7 +341,7 @@ function wireSocketHandlers(
   thisSocket.onmessage = (event: MessageEvent) => {
     const msg = parseIncomingFrame(event.data)
     if (!msg) return
-    if (msg.action === 'auth_ok') {
+    if (msg['action'] === 'auth_ok') {
       handleAuthOk(thisSocket, set)
       return
     }

@@ -447,7 +447,7 @@ describe('handleWsEvent', () => {
     // must reject it rather than let sanitizeWsEnum silently coerce
     // the missing field to 'review_gate' (misstated provenance).
     const noSource: Record<string, unknown> = { ...makeApproval('no-source') }
-    delete noSource.source
+    delete noSource['source']
     const event = makeWsEvent(noSource)
     useApprovalsStore.getState().handleWsEvent(event)
     expect(useApprovalsStore.getState().approvals).toHaveLength(0)
@@ -688,7 +688,7 @@ describe('batchApprove', () => {
     server.use(
       http.post('/api/v1/approvals/:id/approve', ({ params }) =>
         HttpResponse.json(
-          apiSuccess(makeApproval(String(params.id), { status: 'approved' })),
+          apiSuccess(makeApproval(String(params['id']), { status: 'approved' })),
         ),
       ),
     )
@@ -710,7 +710,7 @@ describe('batchApprove', () => {
 
     server.use(
       http.post('/api/v1/approvals/:id/approve', ({ params }) => {
-        if (params.id === '1') {
+        if (params['id'] === '1') {
           return HttpResponse.json(
             apiSuccess(makeApproval('1', { status: 'approved' })),
           )
@@ -746,9 +746,9 @@ describe('batchReject', () => {
     const capturedBodies: unknown[] = []
     server.use(
       http.post('/api/v1/approvals/:id/reject', async ({ params, request }) => {
-        capturedBodies.push({ id: params.id, body: await request.json() })
+        capturedBodies.push({ id: params['id'], body: await request.json() })
         return HttpResponse.json(
-          apiSuccess(makeApproval(String(params.id), { status: 'rejected' })),
+          apiSuccess(makeApproval(String(params['id']), { status: 'rejected' })),
         )
       }),
     )
@@ -773,7 +773,7 @@ describe('batchReject', () => {
 
     server.use(
       http.post('/api/v1/approvals/:id/reject', ({ params }) => {
-        if (params.id === '1') {
+        if (params['id'] === '1') {
           return HttpResponse.json(
             apiSuccess(makeApproval('1', { status: 'rejected' })),
           )

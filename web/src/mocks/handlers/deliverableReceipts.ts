@@ -56,8 +56,8 @@ export const deliverableReceiptsHandlers = [
     HttpResponse.json(
       successFor<typeof getDeliverableReceipt>(
         buildDeliverableReceipt({
-          deliverable_doc_slug: String(params.slug),
-          project_id: String(params.projectId),
+          deliverable_doc_slug: String(params['slug']),
+          project_id: String(params['projectId']),
         }),
       ),
     ),
