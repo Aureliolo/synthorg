@@ -163,10 +163,6 @@ class BudgetEnforcerRiskMixin:
         Returns:
             The resulting ``RiskRecord``, or ``None`` when unavailable.
         """
-        from synthorg.budget.risk_record import (  # noqa: PLC0415
-            RiskRecord as _RiskRecord,
-        )
-
         risk_cfg = self._budget_config.risk_budget
         if (
             not risk_cfg.enabled
@@ -177,7 +173,7 @@ class BudgetEnforcerRiskMixin:
 
         try:
             score = self._risk_scorer.score(action_type)
-            record = _RiskRecord(
+            record = RiskRecord(
                 agent_id=agent_id,
                 task_id=task_id,
                 action_type=action_type,

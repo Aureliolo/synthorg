@@ -279,9 +279,6 @@ def build_soft_presets(
         A tuple of ``CloudPreset`` instances, one per non-denied,
         non-featured LiteLLM chat namespace, sorted alphabetically.
     """
-    # Local import to break the circular dependency described in
-    # _make_soft_preset.
-
     covered: frozenset[str] = frozenset(p.litellm_provider for p in featured)
     softs: list[CloudPreset] = []
     for namespace in _iter_litellm_chat_namespaces():

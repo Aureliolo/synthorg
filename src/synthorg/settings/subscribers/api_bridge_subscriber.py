@@ -56,7 +56,7 @@ class ApiBridgeSettingsSubscriber:
     Holds references to :class:`AppState` (where the snapshot lives)
     and :class:`SettingsService` (carried for parity with peer
     subscribers; the resolver is reached via ``app_state.config_resolver``
-    so the subscriber sees the same DB > env > YAML > default chain
+    so the subscriber sees the same DB > env > code-default chain
     every other consumer does).
 
     On a watched-key change the subscriber resolves the integer value
