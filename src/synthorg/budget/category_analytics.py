@@ -7,7 +7,7 @@ compute orchestration overhead ratios from cost records tagged with
 
 import math
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -18,11 +18,9 @@ from synthorg.budget.call_category import (
 from synthorg.budget.coordination_config import (
     OrchestrationAlertThresholds,
 )
+from synthorg.budget.cost_record import CostRecord
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.budget.cost_record import CostRecord
 
 logger = get_logger(__name__)
 

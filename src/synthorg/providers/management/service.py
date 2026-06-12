@@ -20,10 +20,10 @@ core.
 import asyncio
 import json
 from collections.abc import AsyncIterator, Mapping
-from typing import TYPE_CHECKING
 
 from pydantic import JsonValue
 
+from synthorg.api.state import AppState
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import (
@@ -106,14 +106,8 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.providers.routing.selector import ModelCandidateSelector
 from synthorg.providers.url_utils import is_self_url, redact_url
-
-if TYPE_CHECKING:
-    # AppState (api.*) is a genuine import cycle; ConfigResolver /
-    # SettingsService are concrete classes injected via mocks in tests
-    # (a runtime import would make typeguard reject the mock).
-    from synthorg.api.state import AppState
-    from synthorg.settings.resolver import ConfigResolver
-    from synthorg.settings.service import SettingsService
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 

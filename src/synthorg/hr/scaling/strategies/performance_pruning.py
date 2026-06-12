@@ -6,25 +6,20 @@ adaptation.
 """
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
+from synthorg.hr.pruning.policy import PruningPolicy
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
 from synthorg.hr.scaling.models import ScalingContext, ScalingDecision, ScalingSignal
 from synthorg.hr.scaling.signals.benchmark import BENCHMARK_REGRESSION_SIGNAL
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_STRATEGY_EVALUATED
 
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from synthorg.hr.performance.models import AgentPerformanceSnapshot
-    from synthorg.hr.pruning.policy import PruningPolicy
-
-    EvolutionChecker = Callable[[NotBlankStr], Awaitable[bool]]
+EvolutionChecker = Callable[[NotBlankStr], Awaitable[bool]]
 
 logger = get_logger(__name__)
 

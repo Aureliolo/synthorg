@@ -13,29 +13,23 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.hr.errors import PruningUnrestartableError
+from synthorg.hr.offboarding_service import OffboardingService
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.pruning.models import PruningServiceConfig
 from synthorg.hr.pruning.service import PruningService
 from synthorg.hr.registry import AgentRegistryService
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
-
-
-class _FakeOffboarding:
-    async def offboard(self, request: object) -> None:
-        del request
-
-
-class _FakeTracker:
-    pass
 
 
 def _make_service() -> PruningService:
     return PruningService(
         policies=(),
         registry=AgentRegistryService(),
-        tracker=_FakeTracker(),  # type: ignore[arg-type]
+        tracker=mock_of[PerformanceTracker](),
         approval_store=ApprovalStore(),
-        offboarding_service=_FakeOffboarding(),  # type: ignore[arg-type]
+        offboarding_service=mock_of[OffboardingService](),
         config=PruningServiceConfig(evaluation_interval_seconds=3600.0),
     )
 

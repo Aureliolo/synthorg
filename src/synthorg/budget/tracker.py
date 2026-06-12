@@ -14,14 +14,17 @@ import asyncio
 import math
 import time
 from collections import OrderedDict, defaultdict
+from collections.abc import Callable
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Final, NamedTuple, override
+from typing import Final, NamedTuple, override
 
 from synthorg.budget._tracker_helpers import (
     _aggregate,
     _filter_records,
     _validate_time_range,
 )
+from synthorg.budget.config import BudgetConfig
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.errors import MixedCurrencyAggregationError
@@ -32,6 +35,7 @@ from synthorg.budget.spending_summary import (
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
@@ -53,17 +57,9 @@ from synthorg.observability.events.budget import (
     BUDGET_TRACKER_CREATED,
 )
 from synthorg.observability.metrics_hub import record_budget_query
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.budget.cost_record import CostRecord
-    from synthorg.persistence.project_cost_aggregate_protocol import (
-        ProjectCostAggregateRepository,
-    )
-
-from synthorg.core.types import NotBlankStr
+from synthorg.persistence.project_cost_aggregate_protocol import (
+    ProjectCostAggregateRepository,
+)
 
 logger = get_logger(__name__)
 

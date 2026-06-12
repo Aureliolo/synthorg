@@ -8,8 +8,9 @@ and trust integration.
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
+
+from pydantic import AwareDatetime
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -48,9 +49,6 @@ from synthorg.observability.events.promotion import (
     PROMOTION_REQUESTED,
 )
 from synthorg.security.trust.service import TrustService
-
-if TYPE_CHECKING:
-    from pydantic import AwareDatetime
 
 logger = get_logger(__name__)
 

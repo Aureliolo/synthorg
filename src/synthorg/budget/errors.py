@@ -6,15 +6,13 @@ these exceptions are needed by both the budget enforcer and the
 engine layer.
 """
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 from uuid import UUID
 
+from synthorg.budget.quota import DegradationAction
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from synthorg.budget.quota import DegradationAction
 
 
 class BudgetExhaustedError(DomainError):

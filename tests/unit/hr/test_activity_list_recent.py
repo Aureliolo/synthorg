@@ -256,14 +256,13 @@ class TestListRecentActivity:
     ) -> None:
         """A failing optional source must not abort the merge."""
 
-        class _BoomCostTracker:
-            async def get_records(
-                self,
-                **_: object,
-            ) -> tuple[CostRecord, ...]:
-                msg = "cost tracker explodes"
-                raise RuntimeError(msg)
+        async def _boom_get_records(**_: object) -> tuple[CostRecord, ...]:
+            msg = "cost tracker explodes"
+            raise RuntimeError(msg)
 
+        boom_cost_tracker = mock_of[CostTracker](
+            get_records=AsyncMock(side_effect=_boom_get_records),
+        )
         completed_at = _now() - timedelta(minutes=5)
         cast(MagicMock, performance_tracker.get_task_metrics).return_value = (
             _make_task_metric(
@@ -275,7 +274,7 @@ class TestListRecentActivity:
         service = ActivityFeedService(
             performance_tracker=performance_tracker,
             lifecycle_repo=lifecycle_repo,
-            cost_tracker=_BoomCostTracker(),  # type: ignore[arg-type]
+            cost_tracker=boom_cost_tracker,
         )
 
         page, total = await service.list_recent_activity(offset=0, limit=10)

@@ -4,12 +4,14 @@ Implements configurable N-of-M threshold gates for promotion/demotion
 criteria evaluation (DESIGN_SPEC D13).
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import PromotionDirection
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
+from synthorg.hr.promotion.config import PromotionCriteriaConfig
 from synthorg.hr.promotion.models import CriterionResult, PromotionEvaluation
 from synthorg.hr.seniority import SeniorityLevel, compare_seniority
 from synthorg.observability import get_logger
@@ -17,12 +19,6 @@ from synthorg.observability.events.promotion import (
     PROMOTION_EVALUATE_COMPLETE,
     PROMOTION_EVALUATE_START,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.hr.performance.models import AgentPerformanceSnapshot
-    from synthorg.hr.promotion.config import PromotionCriteriaConfig
 
 logger = get_logger(__name__)
 

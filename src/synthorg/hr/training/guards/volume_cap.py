@@ -5,20 +5,16 @@ Items are already ranked by the curation stage, so truncation
 preserves the highest-scoring items.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.hr.training.models import (
     ContentType,
     TrainingGuardDecision,
     TrainingItem,
+    TrainingPlan,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_VOLUME_CAP_ENFORCED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.training.models import TrainingPlan
 
 logger = get_logger(__name__)
 

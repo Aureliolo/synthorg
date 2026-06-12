@@ -4,11 +4,10 @@ Defines the pluggable interface for mapping seniority levels to
 LLM model identifiers.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.hr.seniority import SeniorityLevel
+from synthorg.core.agent import AgentIdentity
+from synthorg.hr.seniority import SeniorityLevel
 
 
 # Pluggable model-mapping seam: SeniorityModelMapping in

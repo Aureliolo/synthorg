@@ -8,7 +8,9 @@ and stateless.
 import math
 import statistics
 from collections import defaultdict
-from typing import TYPE_CHECKING, Final
+from collections.abc import Sequence
+from datetime import datetime, timedelta
+from typing import Final
 
 from synthorg.budget._aggregation import (
     compute_cost_per_1k,
@@ -16,6 +18,8 @@ from synthorg.budget._aggregation import (
     sum_cost,
     sum_tokens,
 )
+from synthorg.budget.config import BudgetConfig
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import (
     DEFAULT_CURRENCY,
     assert_currencies_match,
@@ -38,15 +42,8 @@ from synthorg.observability.events.cfo import (
     CFO_DOWNGRADE_SKIPPED,
     CFO_INSUFFICIENT_WINDOWS,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from datetime import datetime, timedelta
-
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.budget.cost_record import CostRecord
-    from synthorg.providers.routing.models import ResolvedModel
-    from synthorg.providers.routing.resolver import ModelResolver
+from synthorg.providers.routing.models import ResolvedModel
+from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
 

@@ -12,16 +12,14 @@ an extractor with the shared finalize step to produce a
 ``PillarScoringStrategy``.
 """
 
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.hr.evaluation.enums import EvaluationPillar
-    from synthorg.hr.evaluation.models import EvaluationContext
+from synthorg.hr.evaluation.enums import EvaluationPillar
+from synthorg.hr.evaluation.models import EvaluationContext
 
 # Read-only sentinels used as default factories so the type-level
 # `Mapping` (read-only) promise matches the runtime value. These are

@@ -6,9 +6,8 @@ module under the size limit.
 
 import math
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import OrchestrationAlertLevel
 from synthorg.budget.category_analytics import (
@@ -17,9 +16,11 @@ from synthorg.budget.category_analytics import (
     build_category_breakdown,
     compute_orchestration_ratio,
 )
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.coordination_config import (
     OrchestrationAlertThresholds,
 )
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.spending_summary import (
@@ -29,6 +30,7 @@ from synthorg.budget.spending_summary import (
     SpendingSummary,
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
@@ -39,13 +41,6 @@ from synthorg.observability.events.budget import (
     BUDGET_QUERY_EXCEEDS_RETENTION,
     BUDGET_SUMMARY_BUILT,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.budget.cost_record import CostRecord
-    from synthorg.core.clock import Clock
 
 _COST_WINDOW_HOURS = 24 * 30
 

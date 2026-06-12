@@ -5,23 +5,19 @@ a TrainingPlan from the new agent's identity and executing it.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import OnboardingStep
-from synthorg.hr.training.models import TrainingPlan, TrainingResult
+from synthorg.hr.onboarding_service import OnboardingService
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.training.models import ContentType, TrainingPlan, TrainingResult
+from synthorg.hr.training.service import TrainingService
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_AGENT_NOT_FOUND,
     HR_TRAINING_PLAN_CREATED,
     HR_TRAINING_REVIEW_PENDING,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.onboarding_service import OnboardingService
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.hr.training.models import ContentType
-    from synthorg.hr.training.service import TrainingService
 
 logger = get_logger(__name__)
 

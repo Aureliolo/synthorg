@@ -19,12 +19,15 @@ internals.
 """
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED,
@@ -34,10 +37,10 @@ from synthorg.observability.events.security import (
 )
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.hr.registry import AgentRegistryService
+    # Cycle breaker: ``security.autonomy.models`` pulls ``security/__init__``'s
+    # eager re-exports (engine -> communication -> meeting.participant), which
+    # import ``hr.registry`` back before it finishes. These types are named
+    # for signatures only.
     from synthorg.security.autonomy.models import (
         AutonomyUpdate,
         AutonomyUpdateResult,

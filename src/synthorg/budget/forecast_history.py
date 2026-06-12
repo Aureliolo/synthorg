@@ -16,7 +16,7 @@ the matching observations within the cost window.
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.budget._cost_window import (
     COST_WINDOW_DAYS,
@@ -25,12 +25,10 @@ from synthorg.budget._cost_window import (
     utc_now,
 )
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.normalization import normalize_identifier
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.hr.registry import AgentRegistryService
 
 logger = get_logger(__name__)
 

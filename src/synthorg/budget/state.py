@@ -8,11 +8,10 @@ after persistence connects. All fields are ``None`` until wired;
 readers guard accordingly.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.budget.automated_reports import AutomatedReportService
 from synthorg.budget.benchmark_protocol import (
     BenchmarkScoreProvider,
@@ -27,9 +26,6 @@ from synthorg.persistence.benchmark_score_protocol import (
 from synthorg.persistence.cost_forecast_protocol import (
     CostForecastRepository,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 
 class BudgetStateSlice(BaseFeatureStateSlice):

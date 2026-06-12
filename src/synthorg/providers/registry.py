@@ -7,8 +7,9 @@ provider's ``driver`` field to select the appropriate factory.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
@@ -29,11 +30,6 @@ from .errors import (
     DriverFactoryNotFoundError,
     DriverNotRegisteredError,
 )
-
-if TYPE_CHECKING:
-    # config.schema transitively re-imports providers/__init__ (this
-    # module is in its eager chain); a runtime import forms a cycle.
-    from synthorg.config.schema import ProviderConfig
 
 logger = get_logger(__name__)
 

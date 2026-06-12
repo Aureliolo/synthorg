@@ -3,11 +3,14 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.api.state import AppState
 from synthorg.hr.state import HrStateSlice
 
 if TYPE_CHECKING:
+    # Cycle breaker: ``api.construction_wiring`` pulls the
+    # ``communication.config`` engine<->communication cold-import cycle, so
+    # ``ConstructionDeps`` is named for signatures only.
     from synthorg.api.construction_wiring import ConstructionDeps
-    from synthorg.api.state import AppState
 
 
 def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:

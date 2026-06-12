@@ -12,9 +12,11 @@ import datetime as _dt
 import math
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
-from synthorg.budget.report_config import ReportPeriod
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.report_config import AutomatedReportingConfig, ReportPeriod
+from synthorg.budget.report_models import SpendingReport
 from synthorg.budget.report_templates import (
     AgentPerformanceSummary,
     ComprehensiveReport,
@@ -23,8 +25,13 @@ from synthorg.budget.report_templates import (
     RiskTrendsReport,
     TaskCompletionReport,
 )
+from synthorg.budget.reports import ReportGenerator
+from synthorg.budget.risk_record import RiskRecord
+from synthorg.budget.risk_tracker import RiskTracker
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.hr.performance.models import TaskMetricRecord
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.reporting import (
     REPORTING_GENERATION_COMPLETED,
@@ -33,16 +40,6 @@ from synthorg.observability.events.reporting import (
     REPORTING_PERIOD_COMPUTED,
     REPORTING_SERVICE_CREATED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.cost_record import CostRecord
-    from synthorg.budget.report_config import AutomatedReportingConfig
-    from synthorg.budget.report_models import SpendingReport
-    from synthorg.budget.reports import ReportGenerator
-    from synthorg.budget.risk_record import RiskRecord
-    from synthorg.budget.risk_tracker import RiskTracker
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
 _DEFAULT_TOP_N: Final[int] = 10

@@ -2,11 +2,13 @@
 
 from datetime import UTC, datetime
 from functools import partial
-from typing import TYPE_CHECKING
 
 from synthorg.budget.billing import daily_period_start
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.errors import RiskBudgetExhaustedError
 from synthorg.budget.risk_check import RiskCheckResult
+from synthorg.budget.risk_record import RiskRecord
+from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.risk_budget import (
@@ -17,12 +19,7 @@ from synthorg.observability.events.risk_budget import (
     RISK_BUDGET_RECORD_FAILED,
     RISK_BUDGET_TASK_LIMIT_EXCEEDED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.budget.risk_record import RiskRecord
-    from synthorg.budget.risk_tracker import RiskTracker
-    from synthorg.security.risk_scorer import RiskScorer
+from synthorg.security.risk_scorer import RiskScorer
 
 logger = get_logger(__name__)
 
@@ -166,10 +163,6 @@ class BudgetEnforcerRiskMixin:
         Returns:
             The resulting ``RiskRecord``, or ``None`` when unavailable.
         """
-        from synthorg.budget.risk_record import (  # noqa: PLC0415
-            RiskRecord as _RiskRecord,
-        )
-
         risk_cfg = self._budget_config.risk_budget
         if (
             not risk_cfg.enabled
@@ -180,7 +173,7 @@ class BudgetEnforcerRiskMixin:
 
         try:
             score = self._risk_scorer.score(action_type)
-            record = _RiskRecord(
+            record = RiskRecord(
                 agent_id=agent_id,
                 task_id=task_id,
                 action_type=action_type,

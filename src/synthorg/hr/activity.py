@@ -10,20 +10,25 @@ from typing import TYPE_CHECKING
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost_detail
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
+from synthorg.hr.models import AgentLifecycleEvent
+from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_ACTIVITY_REDACTION_MISMATCH
+from synthorg.tools.invocation_record import ToolInvocationRecord
 
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from synthorg.budget.cost_record import CostRecord
+    # Cycle breaker: importing synthorg.communication.delegation.models pulls
+    # the eager communication package __init__, which loads engine and
+    # re-enters communication.delegation -> communication.config mid-init; a
+    # module-level import here closes that cold-import cycle, so DelegationRecord
+    # is named for the converter/merge signatures only.
     from synthorg.communication.delegation.models import DelegationRecord
-    from synthorg.hr.models import AgentLifecycleEvent
-    from synthorg.hr.performance.models import TaskMetricRecord
-    from synthorg.tools.invocation_record import ToolInvocationRecord
 
 
 class ActivityEvent(BaseModel):

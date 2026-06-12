@@ -8,10 +8,11 @@ as calibration records for drift analysis against the behavioral strategy.
 import json
 import random
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -19,7 +20,10 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.hr.performance.models import LlmCalibrationRecord
+from synthorg.hr.performance.models import (
+    CollaborationMetricRecord,
+    LlmCalibrationRecord,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.performance import (
     PERF_LLM_SAMPLE_COMPLETED,
@@ -29,11 +33,7 @@ from synthorg.observability.events.performance import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.hr.performance.models import CollaborationMetricRecord
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 _DEFAULT_SAMPLING_RATE: Final[float] = 0.01

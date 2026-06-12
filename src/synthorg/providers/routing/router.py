@@ -4,8 +4,8 @@ Constructed from ``RoutingConfig`` and a provider config dict.
 Delegates to strategy implementations.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.config.agent_schema import RoutingConfig
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.routing import (
     ROUTING_DECISION_MADE,
@@ -19,12 +19,6 @@ from .models import RoutingDecision, RoutingRequest
 from .resolver import ModelResolver
 from .selector import ModelCandidateSelector
 from .strategies import STRATEGY_MAP
-
-if TYPE_CHECKING:
-    # config.schema transitively re-imports providers/__init__ (the routing
-    # package is in its eager chain); a runtime import forms a cycle.
-    from synthorg.config.agent_schema import RoutingConfig
-    from synthorg.config.schema import ProviderConfig
 
 logger = get_logger(__name__)
 

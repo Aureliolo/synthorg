@@ -10,19 +10,15 @@ Composed with ``ConfigurablePillarScorer`` to produce the
 intelligence ``PillarScoringStrategy``.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.hr.evaluation.constants import MAX_SCORE
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.metric_extractor_protocol import ExtractedMetrics
+from synthorg.hr.evaluation.models import EvaluationContext
 from synthorg.observability import get_logger
 from synthorg.observability.events.evaluation import (
     EVAL_CALIBRATION_DRIFT_HIGH,
     EVAL_METRIC_SKIPPED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.evaluation.models import EvaluationContext
 
 logger = get_logger(__name__)
 

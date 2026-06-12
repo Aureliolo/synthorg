@@ -26,7 +26,9 @@ from typing import Literal, override
 
 import pytest
 
+from synthorg.hr.performance.inflection_protocol import InflectionSink
 from synthorg.hr.performance.tracker import PerformanceTracker
+from tests._shared import mock_of
 
 from .conftest import make_collab_metric, make_task_metric
 
@@ -213,8 +215,8 @@ class TestSetInflectionSinkAtomic:
         can verify *which* caller won, not just that a sink exists.
         """
         tracker = PerformanceTracker()
-        sink_a: object = object()
-        sink_b: object = object()
+        sink_a = mock_of[InflectionSink]()
+        sink_b = mock_of[InflectionSink]()
 
         barrier = asyncio.Barrier(2)
         acquires = 0
@@ -238,8 +240,8 @@ class TestSetInflectionSinkAtomic:
         tracker._metrics_lock = _CoordinatedLock()
 
         results = await asyncio.gather(
-            tracker.set_inflection_sink(sink_a),  # type: ignore[arg-type]
-            tracker.set_inflection_sink(sink_b),  # type: ignore[arg-type]
+            tracker.set_inflection_sink(sink_a),
+            tracker.set_inflection_sink(sink_b),
             return_exceptions=True,
         )
 

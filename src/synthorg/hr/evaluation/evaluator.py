@@ -10,7 +10,6 @@ weight redistribution.
 import asyncio
 import math
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.config import EvaluationConfig
@@ -26,11 +25,13 @@ from synthorg.hr.evaluation.models import (
     ResilienceMetrics,
     redistribute_weights,
 )
+from synthorg.hr.evaluation.pillar_protocol import PillarScoringStrategy
 from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
     LlmCalibrationRecord,
     TaskMetricRecord,
 )
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.observability import get_logger
 from synthorg.observability.events.evaluation import (
     EVAL_FEEDBACK_RECORDED,
@@ -39,11 +40,7 @@ from synthorg.observability.events.evaluation import (
     EVAL_WEIGHTS_REDISTRIBUTED,
 )
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
-
-if TYPE_CHECKING:
-    from synthorg.hr.evaluation.pillar_protocol import PillarScoringStrategy
-    from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
@@ -85,7 +82,7 @@ class EvaluationService:
         governance_strategy: PillarScoringStrategy | None = None,
         ux_strategy: PillarScoringStrategy | None = None,
         config: EvaluationConfig | None = None,
-        config_resolver: ConfigResolver | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         """Initialize the evaluation service."""
         self._tracker = tracker

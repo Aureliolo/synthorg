@@ -4,17 +4,15 @@ Runtime-checkable protocols for pluggable scaling strategies,
 signal sources, triggers, and guards.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from synthorg.hr.scaling.enums import ScalingActionType
-    from synthorg.hr.scaling.models import (
-        ScalingContext,
-        ScalingDecision,
-        ScalingSignal,
-    )
+from synthorg.hr.scaling.enums import ScalingActionType
+from synthorg.hr.scaling.models import (
+    ScalingContext,
+    ScalingDecision,
+    ScalingSignal,
+)
 
 
 @runtime_checkable

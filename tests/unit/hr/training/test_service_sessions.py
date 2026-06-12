@@ -19,7 +19,9 @@ from synthorg.hr.training.models import (
     TrainingPlanStatus,
     TrainingResult,
 )
+from synthorg.hr.training.protocol import CurationStrategy, SourceSelector
 from synthorg.hr.training.service import TrainingService
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability.events.hr import (
     HR_TRAINING_SESSION_RECORD_FAILED as _RECORD_FAILED_EVENT,
 )
@@ -29,7 +31,7 @@ from synthorg.observability.events.hr import (
 from synthorg.observability.events.training import (
     HR_TRAINING_PLAN_STATUS_TRANSITIONED as _TRANSITION_EVENT,
 )
-from tests._shared import as_uuid, sid
+from tests._shared import as_uuid, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -56,29 +58,6 @@ def _result(plan_id: str = "plan-1", new_agent_id: str = "agent-new") -> Trainin
     )
 
 
-class _NoopSelector:
-    """Minimal selector protocol stub -- never invoked in session tests."""
-
-    async def select_sources(self, plan: TrainingPlan) -> tuple[object, ...]:
-        return ()
-
-
-class _NoopCuration:
-    """Minimal curation protocol stub -- never invoked in session tests."""
-
-    async def curate(  # type: ignore[no-untyped-def]
-        self, items, plan, content_type
-    ):
-        return ()
-
-
-class _NoopMemoryBackend:
-    """Minimal memory backend stub -- never invoked in session tests."""
-
-    async def store(self, request):  # type: ignore[no-untyped-def]
-        return None
-
-
 def _build_service(*, raises: Exception | None = None) -> TrainingService:
     """Construct a real :class:`TrainingService` wired to noop stubs.
 
@@ -95,11 +74,11 @@ def _build_service(*, raises: Exception | None = None) -> TrainingService:
     result (or the requested exception).
     """
     service = TrainingService(
-        selector=_NoopSelector(),  # type: ignore[arg-type]
+        selector=mock_of[SourceSelector](),
         extractors={},
-        curation=_NoopCuration(),  # type: ignore[arg-type]
+        curation=mock_of[CurationStrategy](),
         guards=(),
-        memory_backend=_NoopMemoryBackend(),  # type: ignore[arg-type]
+        memory_backend=mock_of[MemoryBackend](),
     )
     calls: list[str] = []
 

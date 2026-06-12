@@ -4,16 +4,15 @@ Transforms :class:`AgentPerformanceSnapshot` into a flat
 :class:`AgentPerformanceSummary` suitable for dashboard display.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection
-from synthorg.hr.performance.models import TrendResult, WindowMetrics
-
-if TYPE_CHECKING:
-    from synthorg.hr.performance.models import AgentPerformanceSnapshot
+from synthorg.hr.performance.models import (
+    AgentPerformanceSnapshot,
+    TrendResult,
+    WindowMetrics,
+)
 
 _WINDOW_7D = "7d"
 _WINDOW_30D = "30d"

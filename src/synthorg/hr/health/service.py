@@ -18,24 +18,21 @@ available window so health reacts quickly to regressions without
 constantly redefining "recent" on its own.
 """
 
-from typing import TYPE_CHECKING, Final, Literal, Self
+from typing import Final, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import (
+    AgentPerformanceSnapshot,
+    WindowMetrics,
+)
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.hr import (
     HR_AGENT_HEALTH_COMPUTED,
     HR_AGENT_HEALTH_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.performance.models import (
-        AgentPerformanceSnapshot,
-        WindowMetrics,
-    )
-    from synthorg.hr.performance.tracker import PerformanceTracker
-
 
 logger = get_logger(__name__)
 

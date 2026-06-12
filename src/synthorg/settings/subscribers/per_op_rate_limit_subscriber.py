@@ -15,8 +15,9 @@ switching backends is not a hot-reload concern.
 
 import json
 import re
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
+from synthorg.api.state import AppState
 from synthorg.config.rate_limits import (
     PerOpConcurrencyConfig,
     PerOpRateLimitConfig,
@@ -29,9 +30,6 @@ from synthorg.observability.events.settings import (
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.service import SettingsService
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

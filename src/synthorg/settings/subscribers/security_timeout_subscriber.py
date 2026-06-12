@@ -7,8 +7,6 @@ startup-time application of the same setting lives in
 ``synthorg.api.lifecycle_helpers._apply_security_timeout_interval``.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
@@ -16,12 +14,8 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.service import SettingsService
-
-if TYPE_CHECKING:
-    # Cycle breaker: the security package reads settings at runtime, so
-    # the scheduler is named for signatures only.
-    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 
 logger = get_logger(__name__)
 

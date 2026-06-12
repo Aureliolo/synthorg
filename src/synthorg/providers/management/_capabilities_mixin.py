@@ -8,11 +8,11 @@ the contract for mypy strict.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 from pydantic import JsonValue
 
-from synthorg.config.schema import (
+from synthorg.config.provider_schema import (
     ProviderConfig,
     ProviderModelConfig,
 )
@@ -48,11 +48,7 @@ from synthorg.providers.management.capability_dtos import (
     SyncModelsRequest,
     SyncModelsResponse,
 )
-
-if TYPE_CHECKING:
-    # ConfigResolver is concrete and injected via ``AsyncMock(spec=...)``
-    # in tests; a runtime import would make typeguard reject the mock.
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -129,7 +125,9 @@ class _ServiceProtocol(Protocol):
         """Discover models for a provider (provided by the host service)."""
         ...
 
-    async def _validate_and_persist(self, providers: dict[str, ProviderConfig]) -> None:
+    async def _validate_and_persist(
+        self, new_providers: dict[str, ProviderConfig]
+    ) -> None:
         """Validate + persist + hot-reload providers (provided by host)."""
         ...
 

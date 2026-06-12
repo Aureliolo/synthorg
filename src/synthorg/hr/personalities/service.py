@@ -11,8 +11,6 @@ The underlying service is the authoritative CRUD surface; this
 module is intentionally narrow.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -20,12 +18,10 @@ from synthorg.observability.events.preset import (
     PRESET_INVALID_REQUEST,
     PRESET_NOT_FOUND,
 )
-
-if TYPE_CHECKING:
-    from synthorg.templates.preset_service import (
-        PersonalityPresetService,
-        PresetEntry,
-    )
+from synthorg.templates.preset_service import (
+    PersonalityPresetService,
+    PresetEntry,
+)
 
 logger = get_logger(__name__)
 

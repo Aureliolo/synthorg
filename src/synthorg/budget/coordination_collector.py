@@ -12,6 +12,7 @@ remaining metric collection.
 
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
+from synthorg.budget.baseline_store import BaselineStore
 from synthorg.budget.coordination_config import (
     CoordinationMetricName,
     CoordinationMetricsConfig,
@@ -40,7 +41,11 @@ from synthorg.budget.coordination_metrics import (
     compute_straggler_gap,
     compute_token_speedup_ratio,
 )
-from synthorg.budget.coordination_store import CoordinationMetricsRecord
+from synthorg.budget.coordination_store import (
+    CoordinationMetricsRecord,
+    CoordinationMetricsStore,
+)
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
@@ -59,9 +64,11 @@ from synthorg.observability.events.coordination_metrics import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.budget.baseline_store import BaselineStore
-    from synthorg.budget.coordination_store import CoordinationMetricsStore
-    from synthorg.budget.tracker import CostTracker
+    # Cycle breakers: ``communication.bus_protocol`` pulls
+    # ``communication.config`` and ``notifications.dispatcher`` pulls
+    # ``settings.resolver``, whose cold-import chains re-enter the
+    # still-initialising ``budget`` package, so the collector names them for
+    # signatures only.
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.notifications.dispatcher import NotificationDispatcher
 

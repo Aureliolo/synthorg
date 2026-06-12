@@ -4,18 +4,14 @@ Combines multiple selectors, merges their results, and
 deduplicates agent IDs while preserving order.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
+from synthorg.hr.training.protocol import SourceSelector
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,
     HR_TRAINING_SELECTOR_CONFIG_INVALID,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.seniority import SeniorityLevel
-    from synthorg.hr.training.protocol import SourceSelector
 
 logger = get_logger(__name__)
 

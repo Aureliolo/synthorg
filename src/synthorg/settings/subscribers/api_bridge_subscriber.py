@@ -14,8 +14,7 @@ its ``LIMIT`` clamp on the lifecycle-events query. Additional
 consumers need hot-reload semantics.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
@@ -25,9 +24,6 @@ from synthorg.observability.events.settings import (
 from synthorg.settings.bridge_configs import ApiBridgeConfig
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import config_resolver_of
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -60,7 +56,7 @@ class ApiBridgeSettingsSubscriber:
     Holds references to :class:`AppState` (where the snapshot lives)
     and :class:`SettingsService` (carried for parity with peer
     subscribers; the resolver is reached via ``app_state.config_resolver``
-    so the subscriber sees the same DB > env > YAML > default chain
+    so the subscriber sees the same DB > env > code-default chain
     every other consumer does).
 
     On a watched-key change the subscriber resolves the integer value

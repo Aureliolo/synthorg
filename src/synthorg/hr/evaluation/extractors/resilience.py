@@ -6,16 +6,12 @@ with ``ConfigurablePillarScorer`` to produce the resilience
 ``PillarScoringStrategy``.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.hr.evaluation.config import ResilienceConfig
 from synthorg.hr.evaluation.constants import MAX_SCORE, NEUTRAL_SCORE
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.extractors._shared import log_disabled_metrics
 from synthorg.hr.evaluation.metric_extractor_protocol import ExtractedMetrics
-
-if TYPE_CHECKING:
-    from synthorg.hr.evaluation.config import ResilienceConfig
-    from synthorg.hr.evaluation.models import EvaluationContext, ResilienceMetrics
+from synthorg.hr.evaluation.models import EvaluationContext, ResilienceMetrics
 
 
 class ResilienceMetricExtractor:

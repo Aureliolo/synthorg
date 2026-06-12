@@ -7,10 +7,11 @@ agents, aggregates by tool name, and produces summary items.
 import asyncio
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
@@ -18,11 +19,8 @@ from synthorg.observability.events.training import (
     HR_TRAINING_EXTRACTOR_CONFIG_INVALID,
     HR_TRAINING_ITEMS_EXTRACTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.hr.seniority import SeniorityLevel
-    from synthorg.tools.invocation_record import ToolInvocationRecord
-    from synthorg.tools.invocation_tracker import ToolInvocationTracker
+from synthorg.tools.invocation_record import ToolInvocationRecord
+from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 logger = get_logger(__name__)
 

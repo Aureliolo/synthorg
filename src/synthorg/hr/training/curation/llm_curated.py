@@ -6,7 +6,7 @@ to RelevanceScoreCuration when no provider is available or when
 the provider call fails.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 
@@ -21,6 +21,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.curation.relevance import (
     RelevanceScoreCuration,
 )
@@ -38,9 +39,6 @@ from synthorg.providers.models import (
     CompletionConfig,
 )
 from synthorg.providers.protocol import CompletionProvider
-
-if TYPE_CHECKING:
-    from synthorg.hr.seniority import SeniorityLevel
 
 logger = get_logger(__name__)
 _DEFAULT_TEMPERATURE: Final[float] = 0.3

@@ -14,14 +14,11 @@ the rejection at a richer scope (with ``agent_id`` / ``task_id`` /
 import math
 from collections import defaultdict
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
 
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.budget.cost_record import CostRecord
 
 logger = get_logger(__name__)
 

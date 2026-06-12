@@ -7,17 +7,13 @@ the resolver and read service are wired once persistence is connected.
 All fields are ``None`` until wired; readers guard accordingly.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.infrastructure.services import SettingsReadService
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
-
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 
 class SettingsStateSlice(BaseFeatureStateSlice):

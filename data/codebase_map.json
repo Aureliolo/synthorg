@@ -2445,7 +2445,7 @@
     },
     {
       "kind": "code",
-      "loc": 73,
+      "loc": 71,
       "loc_cap": 500,
       "module": "src/synthorg/budget/_aggregation.py",
       "owning_feature": "budget"
@@ -2473,14 +2473,14 @@
     },
     {
       "kind": "code",
-      "loc": 363,
+      "loc": 362,
       "loc_cap": 500,
       "module": "src/synthorg/budget/_optimizer_helpers.py",
       "owning_feature": "budget"
     },
     {
       "kind": "code",
-      "loc": 298,
+      "loc": 296,
       "loc_cap": 500,
       "module": "src/synthorg/budget/_optimizer_routing.py",
       "owning_feature": "budget"
@@ -2494,7 +2494,7 @@
     },
     {
       "kind": "code",
-      "loc": 431,
+      "loc": 429,
       "loc_cap": 500,
       "module": "src/synthorg/budget/automated_reports.py",
       "owning_feature": "budget"
@@ -2550,7 +2550,7 @@
     },
     {
       "kind": "code",
-      "loc": 208,
+      "loc": 207,
       "loc_cap": 500,
       "module": "src/synthorg/budget/call_analytics.py",
       "owning_feature": "budget"
@@ -2585,7 +2585,7 @@
     },
     {
       "kind": "code",
-      "loc": 301,
+      "loc": 300,
       "loc_cap": 500,
       "module": "src/synthorg/budget/category_analytics.py",
       "owning_feature": "budget"
@@ -2599,7 +2599,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 778,
+      "loc": 780,
       "loc_cap": 1100,
       "module": "src/synthorg/budget/coordination_collector.py",
       "owning_feature": "budget"
@@ -2662,7 +2662,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 785,
+      "loc": 784,
       "loc_cap": 1100,
       "module": "src/synthorg/budget/enforcer.py",
       "owning_feature": "budget"
@@ -2676,7 +2676,7 @@
     },
     {
       "kind": "code",
-      "loc": 320,
+      "loc": 319,
       "loc_cap": 500,
       "module": "src/synthorg/budget/errors.py",
       "owning_feature": "budget"
@@ -2690,7 +2690,7 @@
     },
     {
       "kind": "code",
-      "loc": 98,
+      "loc": 97,
       "loc_cap": 500,
       "module": "src/synthorg/budget/forecast_history.py",
       "owning_feature": "budget"
@@ -2704,7 +2704,7 @@
     },
     {
       "kind": "code",
-      "loc": 87,
+      "loc": 86,
       "loc_cap": 500,
       "module": "src/synthorg/budget/forecast_roles.py",
       "owning_feature": "budget"
@@ -2732,7 +2732,7 @@
     },
     {
       "kind": "code",
-      "loc": 418,
+      "loc": 417,
       "loc_cap": 500,
       "module": "src/synthorg/budget/optimizer.py",
       "owning_feature": "budget"
@@ -2753,7 +2753,7 @@
     },
     {
       "kind": "code",
-      "loc": 88,
+      "loc": 86,
       "loc_cap": 500,
       "module": "src/synthorg/budget/pareto_assignments.py",
       "owning_feature": "budget"
@@ -2774,7 +2774,7 @@
     },
     {
       "kind": "code",
-      "loc": 210,
+      "loc": 208,
       "loc_cap": 500,
       "module": "src/synthorg/budget/quota_poller.py",
       "owning_feature": "budget"
@@ -2823,7 +2823,7 @@
     },
     {
       "kind": "code",
-      "loc": 297,
+      "loc": 296,
       "loc_cap": 500,
       "module": "src/synthorg/budget/reports.py",
       "owning_feature": "budget"
@@ -2844,7 +2844,7 @@
     },
     {
       "kind": "code",
-      "loc": 188,
+      "loc": 183,
       "loc_cap": 500,
       "module": "src/synthorg/budget/risk_enforcer.py",
       "owning_feature": "budget"
@@ -2858,7 +2858,7 @@
     },
     {
       "kind": "code",
-      "loc": 291,
+      "loc": 290,
       "loc_cap": 500,
       "module": "src/synthorg/budget/risk_tracker.py",
       "owning_feature": "budget"
@@ -2872,14 +2872,14 @@
     },
     {
       "kind": "code",
-      "loc": 46,
+      "loc": 44,
       "loc_cap": 500,
       "module": "src/synthorg/budget/state.py",
       "owning_feature": "budget"
     },
     {
       "kind": "complex_service",
-      "loc": 737,
+      "loc": 736,
       "loc_cap": 1100,
       "module": "src/synthorg/budget/tracker.py",
       "owning_feature": "budget"
@@ -2893,14 +2893,14 @@
     },
     {
       "kind": "code",
-      "loc": 312,
+      "loc": 309,
       "loc_cap": 500,
       "module": "src/synthorg/budget/tracker_summary.py",
       "owning_feature": "budget"
     },
     {
       "kind": "code",
-      "loc": 373,
+      "loc": 371,
       "loc_cap": 500,
       "module": "src/synthorg/budget/trends.py",
       "owning_feature": "budget"
@@ -8052,7 +8052,7 @@
     },
     {
       "kind": "code",
-      "loc": 149,
+      "loc": 147,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/configurable_scorer.py",
       "owning_feature": "hr"
@@ -8080,7 +8080,7 @@
     },
     {
       "kind": "code",
-      "loc": 490,
+      "loc": 488,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/evaluator.py",
       "owning_feature": "hr"
@@ -8115,42 +8115,42 @@
     },
     {
       "kind": "code",
-      "loc": 51,
+      "loc": 49,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/extractors/_shared.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 179,
+      "loc": 177,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/extractors/efficiency.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 125,
+      "loc": 123,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/extractors/experience.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 127,
+      "loc": 125,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/extractors/governance.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 124,
+      "loc": 122,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/extractors/intelligence.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 94,
+      "loc": 92,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/extractors/resilience.py",
       "owning_feature": "hr"
@@ -8164,7 +8164,7 @@
     },
     {
       "kind": "code",
-      "loc": 153,
+      "loc": 152,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/metric_extractor_protocol.py",
       "owning_feature": "hr"
@@ -8206,14 +8206,14 @@
     },
     {
       "kind": "code",
-      "loc": 215,
+      "loc": 214,
       "loc_cap": 500,
       "module": "src/synthorg/hr/health/service.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 495,
+      "loc": 493,
       "loc_cap": 500,
       "module": "src/synthorg/hr/hiring_service.py",
       "owning_feature": "hr"
@@ -8241,14 +8241,14 @@
     },
     {
       "kind": "code",
-      "loc": 309,
+      "loc": 306,
       "loc_cap": 500,
       "module": "src/synthorg/hr/offboarding_service.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 139,
+      "loc": 137,
       "loc_cap": 500,
       "module": "src/synthorg/hr/onboarding_service.py",
       "owning_feature": "hr"
@@ -8269,14 +8269,14 @@
     },
     {
       "kind": "code",
-      "loc": 98,
+      "loc": 97,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/ci_quality_strategy.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 123,
+      "loc": 121,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/collaboration_override_store.py",
       "owning_feature": "hr"
@@ -8290,7 +8290,7 @@
     },
     {
       "kind": "code",
-      "loc": 296,
+      "loc": 294,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/composite_quality_strategy.py",
       "owning_feature": "hr"
@@ -8311,7 +8311,7 @@
     },
     {
       "kind": "code",
-      "loc": 341,
+      "loc": 342,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/llm_calibration_sampler.py",
       "owning_feature": "hr"
@@ -8339,7 +8339,7 @@
     },
     {
       "kind": "code",
-      "loc": 165,
+      "loc": 164,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/quality_override_store.py",
       "owning_feature": "hr"
@@ -8353,7 +8353,7 @@
     },
     {
       "kind": "code",
-      "loc": 151,
+      "loc": 152,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/summary.py",
       "owning_feature": "hr"
@@ -8367,7 +8367,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 914,
+      "loc": 913,
       "loc_cap": 1100,
       "module": "src/synthorg/hr/performance/tracker.py",
       "owning_feature": "hr"
@@ -8402,7 +8402,7 @@
     },
     {
       "kind": "code",
-      "loc": 95,
+      "loc": 93,
       "loc_cap": 500,
       "module": "src/synthorg/hr/personalities/service.py",
       "owning_feature": "hr"
@@ -8416,7 +8416,7 @@
     },
     {
       "kind": "code",
-      "loc": 35,
+      "loc": 34,
       "loc_cap": 500,
       "module": "src/synthorg/hr/promotion/approval_protocol.py",
       "owning_feature": "hr"
@@ -8430,14 +8430,14 @@
     },
     {
       "kind": "code",
-      "loc": 37,
+      "loc": 36,
       "loc_cap": 500,
       "module": "src/synthorg/hr/promotion/criteria_protocol.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 32,
+      "loc": 31,
       "loc_cap": 500,
       "module": "src/synthorg/hr/promotion/model_mapping_protocol.py",
       "owning_feature": "hr"
@@ -8451,28 +8451,28 @@
     },
     {
       "kind": "code",
-      "loc": 112,
+      "loc": 110,
       "loc_cap": 500,
       "module": "src/synthorg/hr/promotion/seniority_approval_strategy.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 68,
+      "loc": 66,
       "loc_cap": 500,
       "module": "src/synthorg/hr/promotion/seniority_model_mapping.py",
       "owning_feature": "hr"
     },
     {
       "kind": "service",
-      "loc": 541,
+      "loc": 539,
       "loc_cap": 600,
       "module": "src/synthorg/hr/promotion/service.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 172,
+      "loc": 170,
       "loc_cap": 500,
       "module": "src/synthorg/hr/promotion/threshold_evaluator.py",
       "owning_feature": "hr"
@@ -8493,21 +8493,21 @@
     },
     {
       "kind": "code",
-      "loc": 247,
+      "loc": 246,
       "loc_cap": 500,
       "module": "src/synthorg/hr/pruning/policy.py",
       "owning_feature": "hr"
     },
     {
       "kind": "complex_service",
-      "loc": 668,
+      "loc": 665,
       "loc_cap": 1100,
       "module": "src/synthorg/hr/pruning/service.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 78,
+      "loc": 76,
       "loc_cap": 500,
       "module": "src/synthorg/hr/queue_return_strategy.py",
       "owning_feature": "hr"
@@ -8521,7 +8521,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 692,
+      "loc": 691,
       "loc_cap": 1100,
       "module": "src/synthorg/hr/registry.py",
       "owning_feature": "hr"
@@ -8535,7 +8535,7 @@
     },
     {
       "kind": "code",
-      "loc": 26,
+      "loc": 24,
       "loc_cap": 500,
       "module": "src/synthorg/hr/registry_testing.py",
       "owning_feature": "hr"
@@ -8563,7 +8563,7 @@
     },
     {
       "kind": "code",
-      "loc": 120,
+      "loc": 118,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/decision_service.py",
       "owning_feature": "hr"
@@ -8584,7 +8584,7 @@
     },
     {
       "kind": "code",
-      "loc": 177,
+      "loc": 175,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/factory.py",
       "owning_feature": "hr"
@@ -8598,35 +8598,35 @@
     },
     {
       "kind": "code",
-      "loc": 145,
+      "loc": 144,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/guards/approval_gate.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 63,
+      "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/guards/composite.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 127,
+      "loc": 126,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/guards/conflict_resolver.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 121,
+      "loc": 120,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/guards/cooldown.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 94,
+      "loc": 93,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/guards/rate_limit.py",
       "owning_feature": "hr"
@@ -8640,7 +8640,7 @@
     },
     {
       "kind": "code",
-      "loc": 100,
+      "loc": 99,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/protocols.py",
       "owning_feature": "hr"
@@ -8668,14 +8668,14 @@
     },
     {
       "kind": "code",
-      "loc": 83,
+      "loc": 81,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/signals/budget.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 104,
+      "loc": 102,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/signals/performance.py",
       "owning_feature": "hr"
@@ -8689,7 +8689,7 @@
     },
     {
       "kind": "code",
-      "loc": 104,
+      "loc": 103,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/signals/workload.py",
       "owning_feature": "hr"
@@ -8710,7 +8710,7 @@
     },
     {
       "kind": "code",
-      "loc": 174,
+      "loc": 171,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/strategies/performance_pruning.py",
       "owning_feature": "hr"
@@ -8745,14 +8745,14 @@
     },
     {
       "kind": "code",
-      "loc": 36,
+      "loc": 34,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/triggers/composite.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 101,
+      "loc": 99,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/triggers/threshold.py",
       "owning_feature": "hr"
@@ -8766,7 +8766,7 @@
     },
     {
       "kind": "code",
-      "loc": 106,
+      "loc": 104,
       "loc_cap": 500,
       "module": "src/synthorg/hr/state.py",
       "owning_feature": "hr"
@@ -8787,14 +8787,14 @@
     },
     {
       "kind": "code",
-      "loc": 131,
+      "loc": 129,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/_guards_runner.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 148,
+      "loc": 146,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/_storage.py",
       "owning_feature": "hr"
@@ -8815,14 +8815,14 @@
     },
     {
       "kind": "code",
-      "loc": 254,
+      "loc": 253,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/curation/llm_curated.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 88,
+      "loc": 87,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/curation/relevance.py",
       "owning_feature": "hr"
@@ -8836,28 +8836,28 @@
     },
     {
       "kind": "code",
-      "loc": 105,
+      "loc": 103,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/extractors/procedural.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 105,
+      "loc": 103,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/extractors/semantic.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 147,
+      "loc": 146,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/extractors/tool_patterns.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 279,
+      "loc": 277,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/factory.py",
       "owning_feature": "hr"
@@ -8871,21 +8871,21 @@
     },
     {
       "kind": "code",
-      "loc": 113,
+      "loc": 112,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/guards/review_gate.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 94,
+      "loc": 93,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/guards/sanitization.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 95,
+      "loc": 93,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/guards/volume_cap.py",
       "owning_feature": "hr"
@@ -8899,28 +8899,28 @@
     },
     {
       "kind": "code",
-      "loc": 112,
+      "loc": 109,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/onboarding_integration.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 168,
+      "loc": 166,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/plan_service.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 119,
+      "loc": 118,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/protocol.py",
       "owning_feature": "hr"
     },
     {
       "kind": "service",
-      "loc": 572,
+      "loc": 570,
       "loc_cap": 600,
       "module": "src/synthorg/hr/training/service.py",
       "owning_feature": "hr"
@@ -8934,28 +8934,28 @@
     },
     {
       "kind": "code",
-      "loc": 87,
+      "loc": 85,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/source_selectors/composite.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 181,
+      "loc": 180,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/source_selectors/department_diversity.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 133,
+      "loc": 132,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/source_selectors/role_top_performers.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 89,
+      "loc": 87,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/source_selectors/user_curated.py",
       "owning_feature": "hr"
@@ -17061,7 +17061,7 @@
     },
     {
       "kind": "adapter",
-      "loc": 694,
+      "loc": 693,
       "loc_cap": 700,
       "module": "src/synthorg/providers/drivers/litellm_driver.py",
       "owning_feature": "providers"
@@ -17117,7 +17117,7 @@
     },
     {
       "kind": "code",
-      "loc": 42,
+      "loc": 40,
       "loc_cap": 500,
       "module": "src/synthorg/providers/family.py",
       "owning_feature": "providers"
@@ -17138,7 +17138,7 @@
     },
     {
       "kind": "code",
-      "loc": 495,
+      "loc": 494,
       "loc_cap": 500,
       "module": "src/synthorg/providers/health_prober.py",
       "owning_feature": "providers"
@@ -17152,7 +17152,7 @@
     },
     {
       "kind": "code",
-      "loc": 451,
+      "loc": 452,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/_capabilities_mixin.py",
       "owning_feature": "providers"
@@ -17208,7 +17208,7 @@
     },
     {
       "kind": "code",
-      "loc": 304,
+      "loc": 302,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/allowlist.py",
       "owning_feature": "providers"
@@ -17243,14 +17243,14 @@
     },
     {
       "kind": "code",
-      "loc": 196,
+      "loc": 194,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/preset_override_service.py",
       "owning_feature": "providers"
     },
     {
       "kind": "complex_service",
-      "loc": 1008,
+      "loc": 1006,
       "loc_cap": 1100,
       "module": "src/synthorg/providers/management/service.py",
       "owning_feature": "providers"
@@ -17271,7 +17271,7 @@
     },
     {
       "kind": "code",
-      "loc": 248,
+      "loc": 246,
       "loc_cap": 500,
       "module": "src/synthorg/providers/preset_softlist.py",
       "owning_feature": "providers"
@@ -17299,7 +17299,7 @@
     },
     {
       "kind": "code",
-      "loc": 336,
+      "loc": 335,
       "loc_cap": 500,
       "module": "src/synthorg/providers/registry.py",
       "owning_feature": "providers"
@@ -17341,14 +17341,14 @@
     },
     {
       "kind": "code",
-      "loc": 164,
+      "loc": 163,
       "loc_cap": 500,
       "module": "src/synthorg/providers/routing/_smart_strategy.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 333,
+      "loc": 331,
       "loc_cap": 500,
       "module": "src/synthorg/providers/routing/_strategy_helpers.py",
       "owning_feature": "providers"
@@ -17376,14 +17376,14 @@
     },
     {
       "kind": "code",
-      "loc": 288,
+      "loc": 286,
       "loc_cap": 500,
       "module": "src/synthorg/providers/routing/resolver.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 128,
+      "loc": 126,
       "loc_cap": 500,
       "module": "src/synthorg/providers/routing/router.py",
       "owning_feature": "providers"
@@ -17397,14 +17397,14 @@
     },
     {
       "kind": "code",
-      "loc": 400,
+      "loc": 399,
       "loc_cap": 500,
       "module": "src/synthorg/providers/routing/strategies.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 79,
+      "loc": 77,
       "loc_cap": 500,
       "module": "src/synthorg/providers/state.py",
       "owning_feature": "providers"
@@ -18804,7 +18804,7 @@
     },
     {
       "kind": "service",
-      "loc": 575,
+      "loc": 574,
       "loc_cap": 600,
       "module": "src/synthorg/settings/dispatcher.py",
       "owning_feature": "settings"
@@ -18846,7 +18846,7 @@
     },
     {
       "kind": "code",
-      "loc": 65,
+      "loc": 63,
       "loc_cap": 500,
       "module": "src/synthorg/settings/kill_switch.py",
       "owning_feature": "settings"
@@ -18874,7 +18874,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 1036,
+      "loc": 1037,
       "loc_cap": 1100,
       "module": "src/synthorg/settings/resolver.py",
       "owning_feature": "settings"
@@ -18902,7 +18902,7 @@
     },
     {
       "kind": "code",
-      "loc": 63,
+      "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/settings/state.py",
       "owning_feature": "settings"
@@ -18923,21 +18923,21 @@
     },
     {
       "kind": "code",
-      "loc": 105,
+      "loc": 103,
       "loc_cap": 500,
       "module": "src/synthorg/settings/subscribers/api_bridge_subscriber.py",
       "owning_feature": "settings"
     },
     {
       "kind": "code",
-      "loc": 162,
+      "loc": 160,
       "loc_cap": 500,
       "module": "src/synthorg/settings/subscribers/backup_subscriber.py",
       "owning_feature": "settings"
     },
     {
       "kind": "code",
-      "loc": 103,
+      "loc": 101,
       "loc_cap": 500,
       "module": "src/synthorg/settings/subscribers/memory_bridge_subscriber.py",
       "owning_feature": "settings"
@@ -18958,14 +18958,14 @@
     },
     {
       "kind": "code",
-      "loc": 308,
+      "loc": 307,
       "loc_cap": 500,
       "module": "src/synthorg/settings/subscribers/per_op_rate_limit_subscriber.py",
       "owning_feature": "settings"
     },
     {
       "kind": "code",
-      "loc": 114,
+      "loc": 112,
       "loc_cap": 500,
       "module": "src/synthorg/settings/subscribers/provider_subscriber.py",
       "owning_feature": "settings"
@@ -18979,14 +18979,14 @@
     },
     {
       "kind": "code",
-      "loc": 116,
+      "loc": 114,
       "loc_cap": 500,
       "module": "src/synthorg/settings/subscribers/security_timeout_subscriber.py",
       "owning_feature": "settings"
     },
     {
       "kind": "code",
-      "loc": 97,
+      "loc": 95,
       "loc_cap": 500,
       "module": "src/synthorg/settings/subscribers/workers_bridge_subscriber.py",
       "owning_feature": "settings"

@@ -7,11 +7,10 @@ operations (create, update, delete).
 """
 
 import json
-from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from synthorg.config.schema import ProviderConfig
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -25,13 +24,8 @@ from synthorg.providers.discovery_policy import (
     extract_host_port,
     seed_from_presets,
 )
-
-if TYPE_CHECKING:
-    # ConfigResolver / SettingsService are concrete classes injected
-    # duck-typed via ``mock_of[...]`` in tests; a runtime import would
-    # make typeguard enforce a nominal isinstance the mocks fail.
-    from synthorg.settings.resolver import ConfigResolver
-    from synthorg.settings.service import SettingsService
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 

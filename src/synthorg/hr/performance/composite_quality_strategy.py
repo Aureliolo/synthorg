@@ -8,11 +8,16 @@ the other layers.
 
 import asyncio
 import math
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.performance.models import QualityScoreResult
+from synthorg.hr.performance.models import QualityScoreResult, TaskMetricRecord
+from synthorg.hr.performance.quality_override_store import (
+    QualityOverrideStore,
+)
+from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.performance import (
     PERF_COMPOSITE_SCORED,
@@ -20,14 +25,6 @@ from synthorg.observability.events.performance import (
     PERF_QUALITY_OVERRIDE_APPLIED,
 )
 from synthorg.providers.resilience.errors import RetryExhaustedError
-
-if TYPE_CHECKING:
-    from synthorg.core.task import AcceptanceCriterion
-    from synthorg.hr.performance.models import TaskMetricRecord
-    from synthorg.hr.performance.quality_override_store import (
-        QualityOverrideStore,
-    )
-    from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
 
 logger = get_logger(__name__)
 

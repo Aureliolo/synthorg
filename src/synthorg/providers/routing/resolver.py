@@ -12,8 +12,8 @@ immutability after construction.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.routing import (
@@ -27,11 +27,6 @@ from synthorg.observability.events.routing import (
 from .errors import ModelResolutionError
 from .models import ResolvedModel
 from .selector import ModelCandidateSelector, QuotaAwareSelector
-
-if TYPE_CHECKING:
-    # config.schema transitively re-imports providers/__init__ (the routing
-    # package is in its eager chain); a runtime import forms a cycle.
-    from synthorg.config.schema import ProviderConfig
 
 logger = get_logger(__name__)
 

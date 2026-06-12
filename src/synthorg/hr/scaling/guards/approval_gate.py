@@ -7,20 +7,18 @@ status later.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType
+from synthorg.hr.scaling.models import ScalingDecision
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.hr import HR_SCALING_GUARD_APPLIED
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.hr.scaling.models import ScalingDecision
 
 logger = get_logger(__name__)
 _DEFAULT_EXPIRY_DAYS: Final[int] = 7

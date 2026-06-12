@@ -6,12 +6,12 @@ generation, approval submission, and agent instantiation.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.role import Skill
@@ -26,6 +26,7 @@ from synthorg.hr.errors import (
     OnboardingError,
 )
 from synthorg.hr.models import CandidateCard, HiringRequest
+from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger, safe_error_description
@@ -41,10 +42,6 @@ from synthorg.observability.events.hr import (
     HR_HIRING_REQUEST_NOT_FOUND,
 )
 from synthorg.security.autonomy.enums import ActionType
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.hr.onboarding_service import OnboardingService
 
 logger = get_logger(__name__)
 

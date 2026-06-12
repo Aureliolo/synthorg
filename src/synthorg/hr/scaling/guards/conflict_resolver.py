@@ -7,15 +7,13 @@ strategies.
 
 import copy
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
+from synthorg.hr.scaling.models import ScalingDecision
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_GUARD_APPLIED
-
-if TYPE_CHECKING:
-    from synthorg.hr.scaling.models import ScalingDecision
 
 logger = get_logger(__name__)
 

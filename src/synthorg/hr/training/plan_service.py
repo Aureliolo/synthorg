@@ -25,7 +25,6 @@ this one closes the remaining gap.
 """
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.persistence_errors import PersistenceError
@@ -41,12 +40,10 @@ from synthorg.observability.events.training import (
     HR_TRAINING_PLAN_FAILED,
     HR_TRAINING_PLAN_OVERRIDES_UPDATED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.training_protocol import (
-        TrainingPlanRepository,
-        TrainingResultRepository,
-    )
+from synthorg.persistence.training_protocol import (
+    TrainingPlanRepository,
+    TrainingResultRepository,
+)
 
 logger = get_logger(__name__)
 

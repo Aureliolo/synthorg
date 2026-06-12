@@ -19,7 +19,6 @@ override at read time is a planned enhancement.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from pydantic import JsonValue
 
@@ -29,6 +28,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_PRESET_OVERRIDE_DELETED,
     PROVIDER_PRESET_OVERRIDE_UPDATED,
 )
+from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
 from synthorg.providers.errors import ProviderValidationError
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.capability_dtos import (
@@ -37,12 +37,6 @@ from synthorg.providers.management.capability_dtos import (
     ProviderAuditActor,
 )
 from synthorg.providers.presets import CloudPreset, LocalPreset, get_preset
-
-if TYPE_CHECKING:
-    # PresetOverrideRepo is a runtime_checkable protocol; tests inject a
-    # duck-typed fake whose ``delete`` positional name differs, so a runtime
-    # import would make typeguard reject the fake (concrete-faked collaborator).
-    from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
 
 logger = get_logger(__name__)
 

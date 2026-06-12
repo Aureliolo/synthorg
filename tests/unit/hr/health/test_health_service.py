@@ -1,6 +1,7 @@
 """Unit tests for :class:`AgentHealthService`."""
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -10,6 +11,8 @@ from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
     WindowMetrics,
 )
+from synthorg.hr.performance.tracker import PerformanceTracker
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -40,19 +43,12 @@ def _snapshot(windows: tuple[WindowMetrics, ...]) -> AgentPerformanceSnapshot:
     )
 
 
-class _FakeTracker:
-    """Minimal stand-in for :class:`PerformanceTracker`."""
-
-    def __init__(self, snapshot: AgentPerformanceSnapshot) -> None:
-        self._snapshot = snapshot
-        self.calls: list[str] = []
-
-    async def get_snapshot(
-        self,
-        agent_id: NotBlankStr,
-    ) -> AgentPerformanceSnapshot:
-        self.calls.append(str(agent_id))
-        return self._snapshot
+def _tracker(snapshot: AgentPerformanceSnapshot) -> PerformanceTracker:
+    """Autospec ``PerformanceTracker`` whose ``get_snapshot`` returns *snapshot*."""
+    tracker: PerformanceTracker = mock_of[PerformanceTracker](
+        get_snapshot=AsyncMock(return_value=snapshot),
+    )
+    return tracker
 
 
 class TestVerdict:
@@ -63,7 +59,7 @@ class TestVerdict:
             (_window(window_size="7d", success_rate=0.9, completed=9, failed=1),),
         )
         service = AgentHealthService(
-            performance_tracker=_FakeTracker(snap),  # type: ignore[arg-type]
+            performance_tracker=_tracker(snap),
         )
 
         report = await service.get_agent_health(NotBlankStr("agent-xyz"))
@@ -90,7 +86,7 @@ class TestVerdict:
             ),
         )
         service = AgentHealthService(
-            performance_tracker=_FakeTracker(snap),  # type: ignore[arg-type]
+            performance_tracker=_tracker(snap),
         )
 
         report = await service.get_agent_health(NotBlankStr("agent-xyz"))
@@ -103,7 +99,7 @@ class TestVerdict:
             (_window(window_size="7d", success_rate=0.8, completed=8, failed=2),),
         )
         service = AgentHealthService(
-            performance_tracker=_FakeTracker(snap),  # type: ignore[arg-type]
+            performance_tracker=_tracker(snap),
         )
 
         report = await service.get_agent_health(NotBlankStr("agent-xyz"))
@@ -126,7 +122,7 @@ class TestVerdict:
             ),
         )
         service = AgentHealthService(
-            performance_tracker=_FakeTracker(snap),  # type: ignore[arg-type]
+            performance_tracker=_tracker(snap),
         )
 
         report = await service.get_agent_health(NotBlankStr("agent-xyz"))
@@ -140,7 +136,7 @@ class TestNoSignal:
     async def test_no_windows_reports_healthy_none(self) -> None:
         snap = _snapshot(())
         service = AgentHealthService(
-            performance_tracker=_FakeTracker(snap),  # type: ignore[arg-type]
+            performance_tracker=_tracker(snap),
         )
 
         report = await service.get_agent_health(NotBlankStr("agent-xyz"))
@@ -168,7 +164,7 @@ class TestNoSignal:
             ),
         )
         service = AgentHealthService(
-            performance_tracker=_FakeTracker(snap),  # type: ignore[arg-type]
+            performance_tracker=_tracker(snap),
         )
 
         report = await service.get_agent_health(NotBlankStr("agent-xyz"))
@@ -204,7 +200,7 @@ class TestWindowPicking:
         )
         snap = _snapshot(windows)
         service = AgentHealthService(
-            performance_tracker=_FakeTracker(snap),  # type: ignore[arg-type]
+            performance_tracker=_tracker(snap),
         )
 
         report = await service.get_agent_health(NotBlankStr("agent-xyz"))
@@ -232,7 +228,7 @@ class TestWindowPicking:
         )
         snap = _snapshot(windows)
         service = AgentHealthService(
-            performance_tracker=_FakeTracker(snap),  # type: ignore[arg-type]
+            performance_tracker=_tracker(snap),
         )
 
         report = await service.get_agent_health(NotBlankStr("agent-xyz"))

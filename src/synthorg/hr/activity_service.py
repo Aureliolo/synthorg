@@ -20,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr._activity_validation import (
@@ -28,6 +29,8 @@ from synthorg.hr._activity_validation import (
     validate_window,
 )
 from synthorg.hr.activity import ActivityEvent, merge_activity_timeline
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.persistence_protocol import LifecycleEventRepository
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -38,25 +41,23 @@ from synthorg.observability.events.hr import (
     HR_ACTIVITY_LIFECYCLE_CAP_HIT,
     HR_ACTIVITY_SOURCE_FETCH_FAILED,
 )
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.tools.invocation_record import ToolInvocationRecord
+from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 if TYPE_CHECKING:
-    # Cross-package signature types stay TYPE_CHECKING: hoisting
-    # ``budget.cost_record`` to runtime triggers the budget<->providers
-    # cold-import cycle (providers/__init__ eagerly re-exports
-    # BaseCompletionProvider, which imports budget.cost_record back).
-    # PEP 649 evaluates these annotations lazily, so the signatures
-    # resolve without a runtime import.
+    # Cycle breakers (signatures only, lazily resolved under PEP 649):
+    # - ``budget.cost_record`` triggers the budget<->providers cold-import
+    #   cycle (providers/__init__ eagerly re-exports BaseCompletionProvider,
+    #   which imports budget.cost_record back).
+    # - ``communication.delegation.*`` triggers the communication<->engine
+    #   cold-import cycle (communication/__init__ pulls meeting -> engine ->
+    #   classification -> delegation back through communication.config).
     from synthorg.budget.cost_record import CostRecord
-    from synthorg.budget.tracker import CostTracker
     from synthorg.communication.delegation.models import DelegationRecord
     from synthorg.communication.delegation.record_store import (
         DelegationRecordStore,
     )
-    from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.hr.persistence_protocol import LifecycleEventRepository
-    from synthorg.settings.resolver import ConfigResolver
-    from synthorg.tools.invocation_record import ToolInvocationRecord
-    from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 logger = get_logger(__name__)
 
@@ -125,7 +126,7 @@ class ActivityFeedService:
         *,
         performance_tracker: PerformanceTracker,
         lifecycle_repo: LifecycleEventRepository,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
         tool_invocation_tracker: ToolInvocationTracker | None = None,
         delegation_store: DelegationRecordStore | None = None,
         config_resolver: ConfigResolver | None = None,

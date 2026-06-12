@@ -6,14 +6,9 @@ select a model from a different provider family than the agent.
 """
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
 
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    # config.schema -> api.config -> ... -> security.safety_classifier
-    # re-imports this module; a runtime import forms a cycle.
-    from synthorg.config.schema import ProviderConfig
 
 logger = get_logger(__name__)
 

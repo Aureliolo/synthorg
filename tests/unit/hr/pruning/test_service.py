@@ -1,6 +1,7 @@
 """Tests for PruningService."""
 
 from datetime import UTC, datetime, timedelta
+from typing import override
 from unittest.mock import AsyncMock
 from uuid import UUID
 
@@ -11,10 +12,13 @@ from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
 from synthorg.hr.models import FiringRequest, OffboardingRecord
+from synthorg.hr.offboarding_service import OffboardingService
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.pruning.models import PruningEvaluation, PruningServiceConfig
 from synthorg.hr.pruning.service import PruningService
 from synthorg.hr.registry import AgentRegistryService
+from tests._shared import FakeClock, mock_of
 from tests.unit.hr.conftest import make_agent_identity
 
 from .conftest import (
@@ -25,34 +29,38 @@ from .conftest import (
 # ── Fakes ────────────────────────────────────────────────────────
 
 
-class FakeTracker:
-    """Fake PerformanceTracker returning pre-configured snapshots."""
+def _tracker(
+    snapshots: dict[str, AgentPerformanceSnapshot] | None = None,
+) -> PerformanceTracker:
+    """Autospec ``PerformanceTracker`` returning pre-configured snapshots."""
+    snaps = snapshots or {}
 
-    def __init__(
-        self,
-        snapshots: dict[str, object] | None = None,
-    ) -> None:
-        self._snapshots = snapshots or {}
-
-    async def get_snapshot(
-        self,
+    async def _get(
         agent_id: NotBlankStr,
         *,
-        now: object = None,
-    ) -> object:
+        now: datetime | None = None,
+    ) -> AgentPerformanceSnapshot:
         key = str(agent_id)
-        if key in self._snapshots:
-            return self._snapshots[key]
+        if key in snaps:
+            return snaps[key]
         return make_performance_snapshot(agent_id=key)
 
+    tracker: PerformanceTracker = mock_of[PerformanceTracker](
+        get_snapshot=AsyncMock(side_effect=_get)
+    )
+    return tracker
 
-class FakeOffboardingService:
+
+class FakeOffboardingService(OffboardingService):
     """Fake OffboardingService that records calls."""
 
     def __init__(self) -> None:
+        # Test fake: the parent initialiser is intentionally skipped --
+        # only ``offboard`` is exercised, so no real dependencies are wired.
         self.offboard_calls: list[FiringRequest] = []
         self.should_raise: Exception | None = None
 
+    @override
     async def offboard(self, request: FiringRequest) -> OffboardingRecord:
         if self.should_raise is not None:
             raise self.should_raise
@@ -130,12 +138,12 @@ def registry() -> AgentRegistryService:
 
 @pytest.fixture
 def approval_store() -> ApprovalStore:
-    return ApprovalStore()
+    return ApprovalStore(clock=FakeClock(start=NOW))
 
 
 @pytest.fixture
-def tracker() -> FakeTracker:
-    return FakeTracker()
+def tracker() -> PerformanceTracker:
+    return _tracker()
 
 
 @pytest.fixture
@@ -147,7 +155,7 @@ def _make_service(  # noqa: PLR0913
     *,
     policies: tuple[object, ...] = (),
     registry: AgentRegistryService | None = None,
-    tracker: object | None = None,
+    tracker: PerformanceTracker | None = None,
     approval_store: ApprovalStore | None = None,
     offboarding: FakeOffboardingService | None = None,
     config: PruningServiceConfig | None = None,
@@ -157,9 +165,9 @@ def _make_service(  # noqa: PLR0913
     return PruningService(
         policies=policies,  # type: ignore[arg-type]
         registry=registry or AgentRegistryService(),
-        tracker=tracker or FakeTracker(),  # type: ignore[arg-type]
+        tracker=tracker or _tracker(),
         approval_store=approval_store or ApprovalStore(),
-        offboarding_service=offboarding or FakeOffboardingService(),  # type: ignore[arg-type]
+        offboarding_service=offboarding or FakeOffboardingService(),
         config=config,
         on_notification=on_notification,  # type: ignore[arg-type]
     )
@@ -176,15 +184,15 @@ class TestPruningServiceInit:
         self,
         registry: AgentRegistryService,
         approval_store: ApprovalStore,
-        tracker: FakeTracker,
+        tracker: PerformanceTracker,
         offboarding: FakeOffboardingService,
     ) -> None:
         service = PruningService(
             policies=(AlwaysEligiblePolicy(),),
             registry=registry,
-            tracker=tracker,  # type: ignore[arg-type]
+            tracker=tracker,
             approval_store=approval_store,
-            offboarding_service=offboarding,  # type: ignore[arg-type]
+            offboarding_service=offboarding,
         )
         assert service is not None
         assert not service.is_running
@@ -224,7 +232,7 @@ class TestPruningCycle:
         self,
         registry: AgentRegistryService,
         approval_store: ApprovalStore,
-        tracker: FakeTracker,
+        tracker: PerformanceTracker,
     ) -> None:
         agent1 = make_agent_identity(name="agent-a")
         agent2 = make_agent_identity(name="agent-b")
@@ -245,7 +253,7 @@ class TestPruningCycle:
         self,
         registry: AgentRegistryService,
         approval_store: ApprovalStore,
-        tracker: FakeTracker,
+        tracker: PerformanceTracker,
     ) -> None:
         agent = make_agent_identity(name="poor-performer")
         await registry.register(agent)
@@ -319,28 +327,21 @@ class TestPruningCycle:
             approval_store=approval_store,
         )
 
-        # Pin wall-clock to NOW so the lazy-expiration check inside
-        # ApprovalStore._check_expiration_locked sees the same time as
-        # the pruning cycle.  Without this, real wall-clock may exceed
-        # expires_at and silently expire the first approval.  The
-        # store reads time through its injected Clock seam, so swap
-        # ``approval_store._clock.now`` for a fixed-NOW callable for
-        # the duration of the test.
-        original_now = approval_store._clock.now
-        approval_store._clock.now = lambda: NOW  # type: ignore[method-assign]
-        try:
-            # First cycle creates approval.
-            job1 = await service.run_pruning_cycle(now=NOW)
-            assert job1.approval_requests_created == 1
+        # The ``approval_store`` fixture injects ``FakeClock(NOW)`` so the
+        # lazy-expiration check inside ``ApprovalStore`` sees the same time
+        # as the pruning cycle; without a pinned clock real wall-clock may
+        # exceed ``expires_at`` and silently expire the first approval.
 
-            # Second cycle should skip (pending approval already exists).
-            job2 = await service.run_pruning_cycle(now=NOW)
-            assert job2.approval_requests_created == 0
+        # First cycle creates approval.
+        job1 = await service.run_pruning_cycle(now=NOW)
+        assert job1.approval_requests_created == 1
 
-            items = await approval_store.list_items(action_type="hr:prune")
-            assert len(items) == 1
-        finally:
-            approval_store._clock.now = original_now  # type: ignore[method-assign]
+        # Second cycle should skip (pending approval already exists).
+        job2 = await service.run_pruning_cycle(now=NOW)
+        assert job2.approval_requests_created == 0
+
+        items = await approval_store.list_items(action_type="hr:prune")
+        assert len(items) == 1
 
     async def test_cycle_aggregates_errors_without_stopping(
         self,
@@ -354,22 +355,23 @@ class TestPruningCycle:
         await registry.register(agent2)
 
         # Use a tracker that fails for agent1 but succeeds for agent2.
-        class PartialFailTracker:
-            async def get_snapshot(
-                self,
-                agent_id: NotBlankStr,
-                *,
-                now: object = None,
-            ) -> AgentPerformanceSnapshot:
-                if str(agent_id) == str(agent1.id):
-                    msg = "Snapshot failed"
-                    raise RuntimeError(msg)
-                return make_performance_snapshot(agent_id=str(agent_id))
+        async def _partial_fail(
+            agent_id: NotBlankStr,
+            *,
+            now: datetime | None = None,
+        ) -> AgentPerformanceSnapshot:
+            if str(agent_id) == str(agent1.id):
+                msg = "Snapshot failed"
+                raise RuntimeError(msg)
+            return make_performance_snapshot(agent_id=str(agent_id))
 
+        partial_tracker = mock_of[PerformanceTracker](
+            get_snapshot=AsyncMock(side_effect=_partial_fail),
+        )
         service = _make_service(
             policies=(AlwaysEligiblePolicy(),),
             registry=registry,
-            tracker=PartialFailTracker(),
+            tracker=partial_tracker,
             approval_store=approval_store,
         )
         job = await service.run_pruning_cycle(now=NOW)

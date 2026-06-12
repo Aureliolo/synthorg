@@ -6,7 +6,7 @@ Follows the same polling-loop pattern as
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Final, NamedTuple
+from typing import Final, NamedTuple
 
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.channel import Channel
@@ -37,13 +37,8 @@ from synthorg.observability.events.settings import (
     SETTINGS_SUBSCRIBER_RESTART_REQUIRED,
 )
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.subscriber import SettingsSubscriber
-
-if TYPE_CHECKING:
-    # Concrete-faked collaborator: tests drive the dispatcher with a
-    # duck-typed resolver stub, so a runtime import would make typeguard
-    # reject the fake.
-    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -87,7 +82,7 @@ class SettingsChangeDispatcher:
         message_bus: MessageBus,
         subscribers: tuple[SettingsSubscriber, ...],
         *,
-        config_resolver: ConfigResolver | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         self._bus = message_bus
         self._subscribers = subscribers
@@ -98,7 +93,7 @@ class SettingsChangeDispatcher:
         # ``lifecycle_helpers.build_settings_change_dispatcher`` so
         # operators can flip ``settings.dispatcher.enabled`` to pause
         # propagation without restarting.
-        self._config_resolver: ConfigResolver | None = config_resolver
+        self._config_resolver: ConfigResolverProtocol | None = config_resolver
         self._resolve_failed_logged: bool = False
         self._task: asyncio.Task[None] | None = None
         self._running: bool = False

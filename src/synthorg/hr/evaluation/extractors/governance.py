@@ -12,18 +12,14 @@ prior ``AuditBasedGovernanceStrategy`` so behavioural parity is
 exact (same trust-level numerics, same demotion penalty).
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.constants import MAX_SCORE, NEUTRAL_SCORE
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.extractors._shared import log_disabled_metrics
 from synthorg.hr.evaluation.metric_extractor_protocol import ExtractedMetrics
+from synthorg.hr.evaluation.models import EvaluationContext
 from synthorg.observability import get_logger
 from synthorg.observability.events.evaluation import EVAL_TRUST_LEVEL_UNKNOWN
-
-if TYPE_CHECKING:
-    from synthorg.hr.evaluation.models import EvaluationContext
 
 logger = get_logger(__name__)
 

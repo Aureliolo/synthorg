@@ -1,18 +1,11 @@
 """Backup settings subscriber -- react to backup setting changes."""
 
-from typing import TYPE_CHECKING
-
+from synthorg.backup.service import BackupService
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
 from synthorg.settings.service import SettingsService
-
-if TYPE_CHECKING:
-    # Cycle breaker: ``backup.service`` reaches back into the settings
-    # package at runtime (kill-switch reads), so the subscriber names it
-    # for signatures only.
-    from synthorg.backup.service import BackupService
 
 logger = get_logger(__name__)
 

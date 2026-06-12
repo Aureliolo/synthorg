@@ -6,25 +6,23 @@ until the approval item is approved.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import Final
 from uuid import UUID, uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.hr.training.models import (
     ContentType,
     TrainingGuardDecision,
     TrainingItem,
+    TrainingPlan,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_REVIEW_GATE_CREATED,
     HR_TRAINING_REVIEW_GATE_FAILED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.hr.training.models import TrainingPlan
 
 logger = get_logger(__name__)
 

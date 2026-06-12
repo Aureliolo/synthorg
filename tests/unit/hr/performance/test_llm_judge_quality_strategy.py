@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, override
+from typing import override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -14,19 +14,18 @@ from synthorg.hr.performance.llm_judge_quality_strategy import (
     LlmJudgeQualityStrategy,
 )
 from synthorg.providers.base import BaseCompletionProvider
-from synthorg.providers.models import CompletionResponse, TokenUsage
+from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    StreamChunk,
+    TokenUsage,
+    ToolDefinition,
+)
 from synthorg.providers.protocol import CompletionProvider
 
 from .conftest import make_acceptance_criterion, make_task_metric
-
-if TYPE_CHECKING:
-    from synthorg.providers.capabilities import ModelCapabilities
-    from synthorg.providers.models import (
-        ChatMessage,
-        CompletionConfig,
-        StreamChunk,
-        ToolDefinition,
-    )
 
 NOW = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
 
