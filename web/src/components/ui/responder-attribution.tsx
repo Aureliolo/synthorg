@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 
 import { Avatar } from './avatar'
+import { Skeleton } from './skeleton'
 
 export interface ResponderAttributionProps {
   /** Display name of the responding role agent. */
@@ -9,6 +10,8 @@ export interface ResponderAttributionProps {
   role: string
   /** Optional concern topic that selected the role (e.g. "budget"). */
   topic?: string | null
+  /** When true, render a placeholder while the routing decision resolves. */
+  loading?: boolean
   className?: string
 }
 
@@ -23,8 +26,22 @@ export function ResponderAttribution({
   name,
   role,
   topic,
+  loading = false,
   className,
 }: ResponderAttributionProps) {
+  if (loading) {
+    return (
+      <div
+        className={cn('mt-1 flex items-center gap-1.5', className)}
+        role="status"
+        aria-label="Resolving responder"
+      >
+        <Skeleton className="size-5 rounded-full" />
+        <Skeleton className="h-3 w-20" />
+        <Skeleton className="h-3 w-10" />
+      </div>
+    )
+  }
   return (
     <div
       className={cn(

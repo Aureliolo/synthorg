@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { StatPill } from './stat-pill'
+import { Skeleton } from './skeleton'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency } from '@/utils/format'
 
@@ -40,4 +41,15 @@ export const Multiple: Story = {
       <StatPill label="Spend" value={SAMPLE_SPEND} />
     </div>
   ),
+}
+
+// Shimmer placeholder shown in the pill's slot while the metric is fetching.
+export const Loading: Story = {
+  args: { label: 'Success rate', value: 0 },
+  render: () => <Skeleton className="h-[28px] w-16 rounded-full" />,
+}
+
+// Degraded "unavailable" reading uses the dash sentinel rather than hiding.
+export const Unavailable: Story = {
+  args: { label: 'Success rate', value: '--' },
 }

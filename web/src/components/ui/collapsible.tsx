@@ -15,10 +15,16 @@ export interface CollapsibleProps {
   onOpenChange?: (open: boolean) => void
   /** Body content; rendered when expanded. */
   children: ReactNode
+  /** When true, the trigger is non-interactive and dimmed (e.g. while a parent save is in flight). */
+  disabled?: boolean
   /** Optional className applied to the outer wrapper. */
   className?: string
   /** Optional className applied to the body when expanded. */
   contentClassName?: string
+}
+
+function hasRenderableSummary(summary: ReactNode): boolean {
+  return summary !== undefined && summary !== null && summary !== false
 }
 
 /**
@@ -39,6 +45,7 @@ export function Collapsible({
   open: controlledOpen,
   onOpenChange,
   children,
+  disabled = false,
   className,
   contentClassName,
 }: CollapsibleProps) {
@@ -48,10 +55,11 @@ export function Collapsible({
   const open = isControlled ? controlledOpen : uncontrolledOpen
 
   const toggle = useCallback(() => {
+    if (disabled) return
     const next = !open
     if (!isControlled) setUncontrolledOpen(next)
     onOpenChange?.(next)
-  }, [isControlled, onOpenChange, open])
+  }, [disabled, isControlled, onOpenChange, open])
 
   const bodyId = `collapsible-body-${generatedId}`
 
@@ -60,10 +68,12 @@ export function Collapsible({
       <button
         type="button"
         onClick={toggle}
+        disabled={disabled}
         aria-expanded={open}
         aria-controls={bodyId}
         className={cn(
           'flex w-full items-center justify-between gap-3 p-card text-left transition-colors hover:bg-card-hover rounded-lg',
+          'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent',
           FOCUS_RING,
         )}
       >
@@ -77,7 +87,7 @@ export function Collapsible({
           />
           {title}
         </span>
-        {summary !== undefined && summary !== null && summary !== false && (
+        {hasRenderableSummary(summary) && (
           <span className="text-xs text-muted-foreground">{summary}</span>
         )}
       </button>
