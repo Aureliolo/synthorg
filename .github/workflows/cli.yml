@@ -9,7 +9,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# CARDINAL RULE (#2322): correctness gates must never be conditioned on which
+# CARDINAL RULE: correctness gates must never be conditioned on which
 # files changed. This workflow deliberately carries NO top-level ``paths:``
 # filter -- the Go lint / test / vuln correctness jobs run on every PR and
 # push. Only the build / perf jobs (cli-build, cli-bench, cli-fuzz) remain
@@ -589,8 +589,10 @@ jobs:
 
       # Same Rekor retry ladder for the checksums-file attestation. The
       # bundle-path output is consumed below, so it is coalesced across
-      # whichever attempt succeeded (a failed/skipped attempt emits an
-      # empty output, which GitHub's `||` treats as falsy).
+      # whichever attempt succeeded: a continue-on-error attempt that
+      # failed, or a skipped later attempt, emits an empty output that
+      # GitHub's `||` treats as falsy, so the coalesce resolves to the one
+      # attempt that produced a bundle.
       - name: Attest checksums file provenance (attempt 1)
         id: attest_checksums_1
         continue-on-error: true

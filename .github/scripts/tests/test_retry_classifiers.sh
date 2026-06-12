@@ -9,8 +9,8 @@
 # `grep -q` exits on first match and closes the pipe, `printf` takes EPIPE,
 # and `pipefail` makes the pipeline report the writer's non-zero status --
 # so the match is masked, a genuinely-transient error is misclassified as
-# terminal, and NOT retried. That is what left a sandbox image
-# pushed-but-unsigned and the Verify Image Signatures gate red.
+# terminal, and NOT retried (the image is then signed on zero attempts
+# instead of the full retry budget, leaving it pushed-but-unsigned).
 #
 # This test feeds exactly that shape (transient token first, >64 KB
 # trailing body) through the REAL helpers and asserts they classify it as
