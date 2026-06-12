@@ -24,6 +24,7 @@ from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
     cursor_secret_of,
+    paginate_cursor,
 )
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -53,17 +54,25 @@ class ExperimentsController(Controller):
         self,
         state: State,
         experiment: PathId,
-    ) -> ApiResponse[tuple[ExperimentVariant, ...]]:
-        """List every registered variant for an experiment.
+        limit: CursorLimit = _DEFAULT_LIMIT,
+        cursor: CursorParam = None,
+    ) -> PaginatedResponse[ExperimentVariant]:
+        """List registered variants for an experiment (cursor-paginated).
 
         Returns:
-            Result matching the declared return annotation.
+            ``PaginatedResponse[ExperimentVariant]`` instance.
         """
         app_state: AppState = state.app_state
         variants = await experiment_service_of(app_state).list_variants(
             NotBlankStr(experiment),
         )
-        return ApiResponse(data=variants)
+        page, meta = paginate_cursor(
+            variants,
+            limit=limit,
+            cursor=cursor,
+            secret=cursor_secret_of(app_state),
+        )
+        return PaginatedResponse(data=page, pagination=meta)
 
     @post(
         "/{experiment:str}/variants",

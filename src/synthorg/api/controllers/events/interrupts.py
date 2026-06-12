@@ -1,7 +1,7 @@
 # module-kind: controller
 """Polling fallback controller for interrupt management at /interrupts."""
 
-from typing import Annotated
+from typing import Annotated, Final
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State
@@ -15,12 +15,20 @@ from synthorg.api.controllers.events._shared import (
     _require_interrupt_store,
     _resolve_interrupt,
 )
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_approval_roles, require_read_access
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
+
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 class InterruptController(Controller):
@@ -41,15 +49,19 @@ class InterruptController(Controller):
                 description="Filter to interrupts for this session; omit to list all.",
             ),
         ] = None,
-    ) -> ApiResponse[tuple[InterruptResponse, ...]]:
-        """List pending interrupts.
+        limit: CursorLimit = _DEFAULT_LIMIT,
+        cursor: CursorParam = None,
+    ) -> PaginatedResponse[InterruptResponse]:
+        """List pending interrupts (cursor-paginated).
 
         Args:
             state: Application state.
             session_id: Optional session filter.
+            limit: Page size (default 50, max 200).
+            cursor: Opaque cursor from the previous page.
 
         Returns:
-            List of pending interrupts.
+            A bounded page of pending interrupts.
         """
         app_state: AppState = state.app_state
         store = _require_interrupt_store(app_state)
@@ -70,7 +82,13 @@ class InterruptController(Controller):
             )
             for i in pending
         )
-        return ApiResponse(data=items)
+        page, meta = paginate_cursor(
+            items,
+            limit=limit,
+            cursor=cursor,
+            secret=cursor_secret_of(app_state),
+        )
+        return PaginatedResponse(data=page, pagination=meta)
 
     @post(
         "/{interrupt_id:str}/resume",

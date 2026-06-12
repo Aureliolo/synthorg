@@ -13,6 +13,7 @@ from synthorg.api.controllers.agent_roster import (
     ActiveAgentSummary,
     AgentRosterController,
 )
+from synthorg.api.cursor import CursorSecret
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
@@ -33,7 +34,9 @@ async def test_lists_only_active_agents_with_uuids() -> None:
     departed = make_identity(name="Old", role="COO", status=AgentStatus.TERMINATED)
     registry = await build_registry(ceo, cfo, departed)
     state = State()
-    state.app_state = make_app_state(agent_registry=registry)
+    state.app_state = make_app_state(
+        agent_registry=registry, cursor_secret=CursorSecret.ephemeral()
+    )
 
     result = await AgentRosterController.list_active_agents.fn(
         _controller(), state=state
@@ -53,7 +56,9 @@ async def test_lists_only_active_agents_with_uuids() -> None:
 async def test_empty_org_returns_empty_list() -> None:
     registry = await build_registry()
     state = State()
-    state.app_state = make_app_state(agent_registry=registry)
+    state.app_state = make_app_state(
+        agent_registry=registry, cursor_secret=CursorSecret.ephemeral()
+    )
 
     result = await AgentRosterController.list_active_agents.fn(
         _controller(), state=state

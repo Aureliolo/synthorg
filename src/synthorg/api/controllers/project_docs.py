@@ -24,6 +24,7 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
+    DOCS_HISTORY_DEFAULT_LIMIT,
     DOCS_SEARCH_DEFAULT_LIMIT,
     DOCS_SEARCH_MAX_LIMIT,
 )
@@ -187,8 +188,12 @@ class ProjectDocsController(Controller):
         state: State,
         project_id: PathId,
         slug: PathId,
+        limit: CursorLimit = DOCS_HISTORY_DEFAULT_LIMIT,
     ) -> Response[ApiResponse[tuple[DocVersion, ...]]]:
         """Return the git commit history for one doc.
+
+        ``limit`` caps the returned commits (default 50, max 200); the
+        previous fixed 50-commit cap was invisible to callers.
 
         Returns:
             Result matching the declared return annotation.
@@ -196,6 +201,7 @@ class ProjectDocsController(Controller):
         versions = await _docs_service(state).history(
             project_id=NotBlankStr(project_id),
             slug=NotBlankStr(slug),
+            limit=limit,
         )
         return Response(
             content=ApiResponse[tuple[DocVersion, ...]](data=versions),

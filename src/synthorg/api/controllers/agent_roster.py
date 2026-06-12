@@ -16,14 +16,24 @@ controller; both mount under ``/agents`` and the literal ``/active``
 route resolves ahead of ``/{agent_id}``.
 """
 
+from typing import Final
+
 from litestar import Controller, get
 from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import require_read_access
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import agent_registry_of
+
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 class ActiveAgentSummary(BaseModel):
@@ -55,27 +65,36 @@ class AgentRosterController(Controller):
 
     @get("/active")
     async def list_active_agents(
-        self, state: State
-    ) -> ApiResponse[tuple[ActiveAgentSummary, ...]]:
+        self,
+        state: State,
+        limit: CursorLimit = _DEFAULT_LIMIT,
+        cursor: CursorParam = None,
+    ) -> PaginatedResponse[ActiveAgentSummary]:
         """List active registered agents with their runtime UUIDs.
 
         Unlike ``GET /agents`` (the config-time roster, which has no
         ids), this reads the live registry so each agent carries its
-        stable ``AgentIdentity.id``. An org with no active agents returns
-        an empty list (not an error).
+        stable ``AgentIdentity.id``. Cursor-paginated so a large active
+        roster (the group-chat participant picker) returns a bounded page.
 
         Returns:
-            ``ApiResponse`` wrapping the active agents.
+            ``PaginatedResponse`` wrapping the active agents.
         """
-        registry = agent_registry_of(state.app_state)
+        app_state = state.app_state
+        registry = agent_registry_of(app_state)
         actives = await registry.list_active()
-        return ApiResponse(
-            data=tuple(
-                ActiveAgentSummary(
-                    id=NotBlankStr(str(agent.id)),
-                    name=agent.name,
-                    role=agent.role,
-                )
-                for agent in actives
+        summaries = tuple(
+            ActiveAgentSummary(
+                id=NotBlankStr(str(agent.id)),
+                name=agent.name,
+                role=agent.role,
             )
+            for agent in actives
         )
+        page, meta = paginate_cursor(
+            summaries,
+            limit=limit,
+            cursor=cursor,
+            secret=cursor_secret_of(app_state),
+        )
+        return PaginatedResponse(data=page, pagination=meta)
