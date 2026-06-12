@@ -15,16 +15,12 @@ gate on the committed a2a state-slice build outcome, and the optional engine
 controllers gate on their work-entry adapter being wired.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.a2a.state import A2aStateSlice
+from synthorg.api.state import AppState
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.engine.state import EngineStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.persistence.state import PersistenceStateSlice
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 
 def _integrations_enabled(app_state: AppState) -> bool:

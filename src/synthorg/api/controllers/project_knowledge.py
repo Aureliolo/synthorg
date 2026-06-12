@@ -6,7 +6,7 @@ or the admin MCP handlers; this controller exposes list / search / get
 for the corpus UI.
 """
 
-from typing import TYPE_CHECKING, Annotated, Final
+from typing import Annotated, Final
 
 from litestar import Controller, Response, get
 from litestar.datastructures import State
@@ -29,11 +29,9 @@ from synthorg.knowledge.constants import (
     KNOWLEDGE_SEARCH_MAX_LIMIT,
 )
 from synthorg.knowledge.models import KnowledgeHit, KnowledgeSource
+from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.knowledge.service import KnowledgeService
 
 logger = get_logger(__name__)
 

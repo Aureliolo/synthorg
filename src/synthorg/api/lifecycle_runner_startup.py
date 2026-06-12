@@ -10,9 +10,9 @@ parameters so the builder owns their domain-event routing.
 
 import asyncio
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 
 from synthorg import __version__
+from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.lifecycle import (
     _maybe_start_health_prober,
     _safe_shutdown,
@@ -43,10 +43,16 @@ from synthorg.api.lifecycle_runner_support import (
     _wire_approval_gate,
     _wire_workflow_observer,
 )
+from synthorg.api.state import AppState
 from synthorg.api.webhook_cleanup import _webhook_receipt_cleanup_loop
 from synthorg.approval.state import ApprovalStateSlice
+from synthorg.backup.service import BackupService
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.communication.state import CommunicationStateSlice
+from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.state import (
     HrStateSlice,
     agent_registry_of,
@@ -65,22 +71,13 @@ from synthorg.observability.events.api import (
     API_SERVICE_AUTO_WIRED,
 )
 from synthorg.observability.state import ObservabilityStateSlice
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.state import has_active_provider
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 from synthorg.tools.state import ToolsStateSlice, tool_invocation_tracker_of
 from synthorg.workers.state import RuntimeStateSlice
-
-if TYPE_CHECKING:
-    from synthorg.api.bus_bridge import MessageBusBridge
-    from synthorg.api.state import AppState
-    from synthorg.backup.service import BackupService
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.communication.meeting.scheduler import MeetingScheduler
-    from synthorg.config.schema import RootConfig
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-    from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
 logger = get_logger(__name__)
 

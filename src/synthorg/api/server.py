@@ -4,13 +4,14 @@ Provides a convenience function to start the API server
 with settings from ``RootConfig``.
 """
 
-from typing import TYPE_CHECKING, TypedDict
+from typing import TypedDict
 
 import uvicorn
 
 from synthorg.api.app import create_app
 from synthorg.api.drain import RequestDrainMiddleware
 from synthorg.api.lifecycle import _DRAIN_TIMEOUT_SECONDS
+from synthorg.config.schema import RootConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
@@ -19,9 +20,6 @@ from synthorg.observability.events.api import (
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_int, parse_str_tuple_json
-
-if TYPE_CHECKING:
-    from synthorg.config.schema import RootConfig
 
 logger = get_logger(__name__)
 

@@ -213,13 +213,62 @@ def _mocked_annotation_lookup(
     return None
 
 
+_LITESTAR_SCOPE_TYPED_DICTS = frozenset({"HTTPScope", "WebSocketScope", "BaseScope"})
+
+
+def _litestar_scope_lookup(
+    origin_type: object,
+    args: tuple[object, ...],
+    extras: tuple[object, ...],
+) -> TypeCheckerCallable | None:
+    """Skip checks for litestar's ASGI ``Scope`` TypedDicts.
+
+    litestar's ``HTTPScope`` / ``WebSocketScope`` (and their ``BaseScope``)
+    declare ``app: Litestar`` and ``litestar_app: Litestar`` under litestar's own
+    ``if TYPE_CHECKING:`` block (``litestar.types.asgi_types``). Any synthorg code
+    annotating ``scope: Scope`` (the ASGI drain middleware, raw-ASGI handlers)
+    makes typeguard's ``check_typed_dict`` eagerly evaluate those members, raising
+    a raw ``NameError: Litestar`` that no synthorg-side hoist can fix (the guard
+    lives in the third-party package). Skip the structural check for these
+    TypedDicts; the ASGI value is a plain ``dict`` litestar itself validates.
+
+    Matched by name + module rather than importing litestar, so this module stays
+    free of any import that would run before the typeguard import hook installs.
+    The skip emits a ``TypeHintWarning`` so the unchecked surface stays countable,
+    like the forward-ref WARN path.
+    """
+    if (
+        getattr(origin_type, "__name__", "") in _LITESTAR_SCOPE_TYPED_DICTS
+        and getattr(origin_type, "__module__", "") == "litestar.types.asgi_types"
+    ):
+
+        def _skip(
+            value: object,
+            _origin_type: object,
+            _args: tuple[object, ...],
+            _memo: TypeCheckMemo,
+        ) -> None:
+            warnings.warn(
+                "Skipping type check: litestar's ASGI Scope TypedDict declares "
+                "'app: Litestar' under litestar's own TYPE_CHECKING guard, which "
+                "cannot be resolved at runtime; litestar validates the ASGI "
+                "scope dict itself.",
+                TypeHintWarning,
+                stacklevel=2,
+            )
+
+        return _skip
+    return None
+
+
 _registered = False
 
 
 def register_policy_honoring_checker() -> None:
     """Install the WARN-activation checker extensions at the front of the chain.
 
-    Registers four lookups: the NameError-tolerant wrapper (eager-eval
+    Registers five lookups: the Litestar Scope TypedDict skip (third-party
+    ``TYPE_CHECKING``-guarded members), the NameError-tolerant wrapper (eager-eval
     ``TYPE_CHECKING``-only signatures), the unbound-pydantic-generic relaxation,
     the mocked-annotation skip (a patched annotation type that resolves to a
     ``Mock``), and the pydantic discriminated-union skip (e.g. ``JsonValue``).
@@ -229,9 +278,9 @@ def register_policy_honoring_checker() -> None:
     global _registered  # noqa: PLW0603 -- module-level one-shot guard
     if _registered:
         return
-    # Each ``insert(0, ...)`` prepends, so the LAST inserted runs FIRST.
-    # ``_mocked_annotation_lookup`` must run before the others: a Mock's
-    # ``_is_protocol`` is truthy, so the builtin (delegated to by
+    # Each ``insert(0, ...)`` prepends, so the checker inserted LAST runs FIRST.
+    # ``_mocked_annotation_lookup`` must run before the pydantic/policy lookups:
+    # a Mock's ``_is_protocol`` is truthy, so the builtin (delegated to by
     # ``_policy_honoring_lookup``) would route a mocked annotation type to
     # ``check_protocol`` and raise a ``TypeError`` the NameError wrapper does not
     # catch.
@@ -239,4 +288,9 @@ def register_policy_honoring_checker() -> None:
     typeguard.checker_lookup_functions.insert(0, _policy_honoring_lookup)
     typeguard.checker_lookup_functions.insert(0, _pydantic_discriminated_union_lookup)
     typeguard.checker_lookup_functions.insert(0, _mocked_annotation_lookup)
+    # Inserted last, so it runs FIRST of all the lookups: litestar's ASGI
+    # ``Scope`` TypedDicts must be skipped before ``_policy_honoring_lookup``
+    # delegates them to the builtin ``check_typed_dict``, whose eager member
+    # eval raises ``NameError: Litestar`` from the third-party guard.
+    typeguard.checker_lookup_functions.insert(0, _litestar_scope_lookup)
     _registered = True

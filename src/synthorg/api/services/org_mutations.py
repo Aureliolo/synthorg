@@ -9,11 +9,12 @@ on version conflict.
 
 import json
 import math
-from typing import TYPE_CHECKING, Final, TypedDict, override
+from typing import Final, TypedDict, override
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.services._org_agent_mutations import OrgAgentMutationsMixin
 from synthorg.api.services._org_department_mutations import OrgDepartmentMutationsMixin
+from synthorg.budget.config import BudgetConfig
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.core.company import Company
 from synthorg.core.company_departments import Department
@@ -32,14 +33,11 @@ from synthorg.organization.models import (
     UpdateCompanyRequest,
     UpdateDepartmentRequest,
 )
+from synthorg.persistence.version_protocol import VersionRepository
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.versioning import VersioningService
-
-if TYPE_CHECKING:
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.persistence.version_protocol import VersionRepository
 
 logger = get_logger(__name__)
 

@@ -13,7 +13,6 @@ Also resolves the EventStreamHub janitor settings used by the
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
 
 from synthorg.api.api_core_state import (
     ApiCoreStateSlice,
@@ -22,6 +21,7 @@ from synthorg.api.api_core_state import (
     session_store_of,
     ticket_store_of,
 )
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -40,9 +40,6 @@ from synthorg.settings.registry import (
     registered_default_float,
 )
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

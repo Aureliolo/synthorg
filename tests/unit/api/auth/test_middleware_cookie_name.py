@@ -5,6 +5,7 @@ from typing import Never
 
 import pytest
 import structlog.testing
+from typeguard import suppress_type_checks
 
 from synthorg.api.auth.middleware import _DEFAULT_COOKIE_NAME, _get_cookie_name
 
@@ -22,7 +23,7 @@ class TestGetCookieNameFallback:
 
         app_state = _RaisesOnCookieName()
 
-        with structlog.testing.capture_logs() as logs:
+        with structlog.testing.capture_logs() as logs, suppress_type_checks():
             name = _get_cookie_name(app_state)  # type: ignore[arg-type]
 
         assert name == _DEFAULT_COOKIE_NAME
@@ -43,7 +44,7 @@ class TestGetCookieNameFallback:
         config = SimpleNamespace(api=api)
         app_state = SimpleNamespace(config=config)
 
-        with structlog.testing.capture_logs() as logs:
+        with structlog.testing.capture_logs() as logs, suppress_type_checks():
             name = _get_cookie_name(app_state)  # type: ignore[arg-type]
 
         assert name == "my-session"

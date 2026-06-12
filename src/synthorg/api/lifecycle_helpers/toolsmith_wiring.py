@@ -1,29 +1,27 @@
 """Toolsmith (self-extending toolkit) construction + startup wiring.
 
-Relocated out of the ``create_app`` body: the backend-specific authored-tool
-repository builder, the toolsmith-runtime factory, and the startup step that
-wires the toolsmith once a provider + connected persistence are present.
+Groups the backend-specific authored-tool repository builder, the
+toolsmith-runtime factory, and the startup step that wires the toolsmith once
+a provider and connected persistence are present, so the composition root
+stays a thin caller.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.toolsmith.factory import ToolsmithRuntime
+from synthorg.meta.toolsmith.models import ToolBlueprint
+from synthorg.meta.toolsmith.protocol import GoldenScorecardProvider
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
 from synthorg.providers.registry import ProviderRegistry
-
-if TYPE_CHECKING:
-    from synthorg.meta.config import SelfImprovementConfig
-    from synthorg.meta.toolsmith.factory import ToolsmithRuntime
-    from synthorg.meta.toolsmith.models import ToolBlueprint
-    from synthorg.meta.toolsmith.protocol import GoldenScorecardProvider
-    from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
-    from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 

@@ -7,7 +7,7 @@ import secrets
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
 import argon2
 import jwt
@@ -17,6 +17,7 @@ from synthorg.api.auth.claims import JwtClaims
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
 from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.api.boundary import parse_typed
+from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import User
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
@@ -34,11 +35,8 @@ from synthorg.observability.events.security import (
     SECURITY_AUTH_REFRESH_CREATED,
     SECURITY_AUTH_REFRESH_REJECTED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.auth.config import AuthConfig
-    from synthorg.persistence.auth_protocol import RefreshTokenRepository
-    from synthorg.persistence.user_protocol import UserRepository
+from synthorg.persistence.auth_protocol import RefreshTokenRepository
+from synthorg.persistence.user_protocol import UserRepository
 
 logger = get_logger(__name__)
 
@@ -335,7 +333,7 @@ class AuthService:
 
     async def persist_refresh_token(
         self,
-        store: object,
+        store: RefreshTokenRepository,
         *,
         token_hash: str,
         session_id: str,
@@ -353,8 +351,7 @@ class AuthService:
 
         Args:
             store: The :class:`RefreshTokenRepository` instance to
-                write through.  Typed as ``object`` to keep this
-                module free of persistence-layer imports.
+                write through.
             token_hash: HMAC-SHA256 hex digest of the raw refresh token.
             session_id: Session identifier.
             user_id: User identifier.
@@ -363,7 +360,7 @@ class AuthService:
         Raises:
             QueryError: If the underlying repo write fails.
         """
-        await store.create(  # type: ignore[attr-defined]
+        await store.create(
             token_hash=token_hash,
             session_id=session_id,
             user_id=user_id,

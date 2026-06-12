@@ -11,7 +11,7 @@ into a composite ``(created_at, id)`` seek tuple internally -- the
 wire format stays the same.
 """
 
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from litestar.params import QueryParameter
 
@@ -25,11 +25,9 @@ from synthorg.api.cursor import (
     encode_keyset_cursor,
 )
 from synthorg.api.dto import DEFAULT_LIMIT, MAX_LIMIT, PaginationMeta
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_CURSOR_INVALID
-
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
 
 logger = get_logger(__name__)
 

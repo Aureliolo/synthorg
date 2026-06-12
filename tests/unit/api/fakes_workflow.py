@@ -1,7 +1,6 @@
 """In-memory fake workflow repositories for API unit tests."""
 
 import copy
-from typing import TYPE_CHECKING
 
 from packaging.version import InvalidVersion, Version
 
@@ -9,7 +8,10 @@ from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
 )
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.engine.workflow.enums import WorkflowExecutionStatus, WorkflowNodeType
+from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,
@@ -21,12 +23,7 @@ from synthorg.persistence.workflow_definition_protocol import (
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionFilterSpec,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.workflow.definition import WorkflowDefinition
-    from synthorg.engine.workflow.execution_models import WorkflowExecution
-    from synthorg.versioning import VersionSnapshot
+from synthorg.versioning import VersionSnapshot
 
 
 class FakeWorkflowDefinitionRepository:

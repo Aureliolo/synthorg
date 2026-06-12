@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, cast
 
 from pydantic import JsonValue
 
+from synthorg.api.controllers.setup_models import SetupAgentRequest, SetupAgentSummary
+from synthorg.config.schema import ProviderConfig
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.normalization import normalize_optional_string
 from synthorg.observability import get_logger
@@ -23,19 +25,15 @@ from synthorg.observability.events.setup import (
 )
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.service import SettingsService
+from synthorg.templates.model_matcher import ModelMatcherConfig
+from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
 
 if TYPE_CHECKING:
-    from synthorg.api.controllers.setup_models import (
-        SetupAgentRequest,
-        SetupAgentSummary,
-    )
-    from synthorg.config.schema import ProviderConfig
-    from synthorg.settings.service import SettingsService
-    from synthorg.templates.model_matcher import (
-        ModelMatcherConfig,
-        _ProviderWithModels,
-    )
-    from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
+    # Referenced only inside a string-literal ``cast`` annotation, so the name
+    # never resolves at runtime: keep it guarded to avoid importing a private
+    # type across the package boundary.
+    from synthorg.templates.model_matcher import _ProviderWithModels
 
 logger = get_logger(__name__)
 
@@ -456,10 +454,6 @@ def agent_dict_to_summary(
     Returns:
         ``SetupAgentSummary`` instance.
     """
-    from synthorg.api.controllers.setup_models import (  # noqa: PLC0415
-        SetupAgentSummary,
-    )
-
     # Normalize string fields so whitespace-only values fall through
     # to defaults (NotBlankStr rejects blank strings).
     name = _agent_str(agent, "name") or "unknown"

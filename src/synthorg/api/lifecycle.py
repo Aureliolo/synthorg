@@ -8,8 +8,7 @@ This module retains the graceful ordered teardown (``_safe_shutdown``) with its
 per-service budgets and the health-prober startup helper.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.lifecycle_shared import (
     _AsyncStartStop,
     _cleanup_on_failure,
@@ -22,28 +21,25 @@ from synthorg.api.lifecycle_startup import (
     _safe_startup,
     _wire_ontology_service,
 )
+from synthorg.api.state import AppState
 from synthorg.backup.models import BackupTrigger
+from synthorg.backup.service import BackupService
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_SHUTDOWN, API_APP_STARTUP
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.health_prober import ProviderHealthProber
 from synthorg.providers.state import (
     ProvidersStateSlice,
     provider_health_tracker_of,
 )
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
-
-if TYPE_CHECKING:
-    from synthorg.api.bus_bridge import MessageBusBridge
-    from synthorg.api.state import AppState
-    from synthorg.backup.service import BackupService
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.communication.meeting.scheduler import MeetingScheduler
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.hr.performance.tracker import PerformanceTracker
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-    from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
 __all__ = [
     "_DRAIN_TIMEOUT_SECONDS",

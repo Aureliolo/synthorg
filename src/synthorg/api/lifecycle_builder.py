@@ -10,8 +10,8 @@ re-exported here for the existing import sites.
 
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
-from typing import TYPE_CHECKING
 
+from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.lifecycle_runner_shutdown import _run_shutdown
 from synthorg.api.lifecycle_runner_startup import _run_startup
 from synthorg.api.lifecycle_runner_support import (
@@ -20,6 +20,12 @@ from synthorg.api.lifecycle_runner_support import (
     _wire_approval_gate,
     _wire_workflow_observer,
 )
+from synthorg.api.state import AppState
+from synthorg.backup.service import BackupService
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.communication.meeting.scheduler import MeetingScheduler
+from synthorg.config.schema import RootConfig
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import (
     API_AUDIT_RETENTION,
@@ -28,18 +34,9 @@ from synthorg.observability.events.api import (
 from synthorg.observability.events.persistence.webhook_receipt import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.bus_bridge import MessageBusBridge
-    from synthorg.api.state import AppState
-    from synthorg.backup.service import BackupService
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.communication.meeting.scheduler import MeetingScheduler
-    from synthorg.config.schema import RootConfig
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-    from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
 __all__ = [
     "_build_lifecycle",

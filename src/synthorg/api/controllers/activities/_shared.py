@@ -12,7 +12,6 @@ these as ``from synthorg.api.controllers.activities._shared import ...``.
 import asyncio
 from collections.abc import Awaitable
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from synthorg.api.state import AppState
 from synthorg.budget.cost_record import CostRecord
@@ -26,6 +25,7 @@ from synthorg.hr.activity import (
     ActivityEvent,
     merge_activity_timeline,
 )
+from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.state import performance_tracker_of
 from synthorg.observability import (
@@ -39,9 +39,6 @@ from synthorg.observability.events.api import (
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.invocation_record import ToolInvocationRecord
 from synthorg.tools.state import ToolsStateSlice
-
-if TYPE_CHECKING:
-    from synthorg.hr.models import AgentLifecycleEvent
 
 logger = get_logger(__name__)
 

@@ -11,7 +11,7 @@ unavailable). Approve additionally needs the work pipeline + cost
 forecast store; it 503s when the dispatcher is absent.
 """
 
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from litestar import Controller, get, patch, post
 from litestar.datastructures import State
@@ -33,6 +33,7 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.state import AppState
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
@@ -47,13 +48,10 @@ from synthorg.meta.charter.models import (
     ProjectCharter,
     ScopeBoundaries,
 )
+from synthorg.meta.charter.service import CharterInterviewService
 from synthorg.meta.charter.state import CharterStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.charter import CHARTER_SUBSTRATE_UNAVAILABLE
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
-    from synthorg.meta.charter.service import CharterInterviewService
 
 logger = get_logger(__name__)
 

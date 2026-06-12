@@ -7,22 +7,20 @@ counter store; the login-attempt helpers + constant-time dummy hash are
 used by the session controller's login flow.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from litestar import Request
 from litestar.datastructures import State
 from litestar.middleware.rate_limit import RateLimitConfig as LitestarRateLimitConfig
 
 from synthorg.api.api_core_state import ApiCoreStateSlice, lockout_store_of
+from synthorg.api.state import AppState
 from synthorg.core.domain_errors import AccountLockedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_AUTH_ACCOUNT_LOCKED,
     SECURITY_AUTH_LOCKOUT_CLEARED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

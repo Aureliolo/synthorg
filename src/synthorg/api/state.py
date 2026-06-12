@@ -16,29 +16,25 @@ keep their once-only / if-absent / hot-replace semantics.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from synthorg.api.state_bridge_config import BridgeConfigState
 from synthorg.api.state_per_op_limits import PerOpLimitsState
 from synthorg.api.state_request_locks import RequestLockRegistry
 from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.api.state_ws_auth_limits import WsAuthLimits
+from synthorg.client.models import ClientRequest
+from synthorg.config.schema import RootConfig
 from synthorg.core.clock import Clock, SystemClock
-
-if TYPE_CHECKING:
-    from synthorg.client.models import ClientRequest
-    from synthorg.config.schema import RootConfig
-    from synthorg.engine.brownfield.models import CodebaseImportSubmission
-    from synthorg.engine.coordination.service import MultiAgentCoordinator
-    from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveSubmission
-    from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
-    from synthorg.engine.pipeline.entry.task_board_adapter import (
-        TaskBoardEntryAdapter,
-    )
-    from synthorg.engine.pipeline.protocol import WorkPipeline
-    from synthorg.notifications.dispatcher import NotificationDispatcher
-    from synthorg.providers.registry import ProviderRegistry
-    from synthorg.workers.execution_service import WorkerExecutionService
+from synthorg.engine.brownfield.models import CodebaseImportSubmission
+from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveSubmission
+from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
+from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter
+from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.providers.registry import ProviderRegistry
+from synthorg.workers.execution_service import WorkerExecutionService
 
 
 class AppState(AppStateSliceMixin):

@@ -8,21 +8,18 @@ live provider config.
 """
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
 
+from synthorg.api.controllers.setup_models import (
+    SetupAgentRequest,
+    UpdateAgentModelRequest,
+)
+from synthorg.config.schema import ProviderConfig
 from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_MODEL_NOT_FOUND,
     SETUP_PROVIDER_NOT_FOUND,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.controllers.setup_models import (
-        SetupAgentRequest,
-        UpdateAgentModelRequest,
-    )
-    from synthorg.config.schema import ProviderConfig
 
 logger = get_logger(__name__)
 

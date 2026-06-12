@@ -3,7 +3,7 @@
 import hashlib
 import hmac as _hmac
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, override
+from typing import override
 
 import jwt
 from litestar.connection import ASGIConnection
@@ -23,14 +23,16 @@ from synthorg.api.api_core_state import (
     session_store_of,
 )
 from synthorg.api.auth.claims import JwtClaims
-from synthorg.api.auth.service import SecretNotConfiguredError
+from synthorg.api.auth.service import AuthService, SecretNotConfiguredError
 from synthorg.api.auth.system_user import (
     SYSTEM_AUDIENCE,
     SYSTEM_ISSUER,
     USER_AUDIENCE,
     USER_ISSUER,
 )
-from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
+from synthorg.api.state import AppState
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.auth.models import ApiKey, AuthenticatedUser, AuthMethod
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.normalization import extract_bearer_token
 from synthorg.observability import get_logger, safe_error_description
@@ -43,12 +45,6 @@ from synthorg.observability.events.security import (
     SECURITY_AUTH_SUCCESS,
 )
 from synthorg.persistence.state import persistence_of
-
-if TYPE_CHECKING:
-    from synthorg.api.auth.service import AuthService
-    from synthorg.api.state import AppState
-    from synthorg.core.auth.config import AuthConfig
-    from synthorg.core.auth.models import ApiKey
 
 logger = get_logger(__name__)
 

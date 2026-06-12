@@ -10,24 +10,22 @@ both import them without an import cycle.
 
 import asyncio
 from collections.abc import Awaitable
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
+from synthorg.api.bus_bridge import MessageBusBridge
+from synthorg.backup.service import BackupService
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.communication.meeting.scheduler import MeetingScheduler
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
     safe_error_description,
 )
 from synthorg.observability.events.api import API_APP_STARTUP
-
-if TYPE_CHECKING:
-    from synthorg.api.bus_bridge import MessageBusBridge
-    from synthorg.backup.service import BackupService
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.communication.meeting.scheduler import MeetingScheduler
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-    from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
 logger = get_logger(__name__)
 

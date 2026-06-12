@@ -3,7 +3,7 @@
 import asyncio
 import json
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from litestar import Controller, get, post
 from litestar.datastructures import State
@@ -34,9 +34,7 @@ from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.state import SettingsStateSlice
 from synthorg.templates.errors import TemplateNotFoundError
 from synthorg.templates.pack_loader import PackInfo, list_packs, load_pack
-
-if TYPE_CHECKING:
-    from synthorg.templates.schema import TemplateDepartmentConfig
+from synthorg.templates.schema import TemplateDepartmentConfig
 
 logger = get_logger(__name__)
 

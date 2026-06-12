@@ -7,17 +7,13 @@ controllers can read their slice immediately; the feature wiring hooks in
 Kept out of ``api/app.py`` so the boot step does not inflate that god-module.
 """
 
-from typing import TYPE_CHECKING
-
 from litestar import Controller
 from litestar.handlers import WebsocketRouteHandler
 
 from synthorg._core.features import ControllerRegistration, discover_features
+from synthorg.api.state import AppState
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 

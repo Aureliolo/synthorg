@@ -5,7 +5,7 @@ happen in-process via the agent tool or MCP handler; this controller exposes
 list / get / history / search for the operator dashboard.
 """
 
-from typing import TYPE_CHECKING, Annotated, Final
+from typing import Annotated, Final
 
 from litestar import Controller, Response, get
 from litestar.datastructures import State
@@ -35,10 +35,8 @@ from synthorg.project_brain.models import (
     BrainSearchHit,
     BrainSummary,
 )
+from synthorg.project_brain.service import ProjectBrainService
 from synthorg.project_brain.state import ProjectBrainStateSlice
-
-if TYPE_CHECKING:
-    from synthorg.project_brain.service import ProjectBrainService
 
 _DEFAULT_LIST_LIMIT: Final[int] = 50
 

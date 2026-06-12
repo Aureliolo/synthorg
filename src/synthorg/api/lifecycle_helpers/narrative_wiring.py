@@ -7,17 +7,13 @@ size-budget tier. The narrator reads the docs engine and project brain
 already-built work pipeline; it is best-effort and idempotent.
 """
 
-from typing import TYPE_CHECKING
-
+from synthorg.api.state import AppState
+from synthorg.budget.tracker import CostTracker
+from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.chief_of_staff import COS_NARRATIVE_SKIPPED
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
-    from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 

@@ -8,8 +8,6 @@ here) stay cohesive and ``feature_wiring`` remains a thin dispatcher
 under its size tier.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.api.app_builders import build_chief_of_staff_proposer
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.conversational_builders import (
@@ -19,21 +17,19 @@ from synthorg.api.conversational_builders import (
 from synthorg.api.lifecycle_helpers.conversational_reconcile import (
     reconcile_orphaned_conversational_intake,
 )
+from synthorg.api.state import AppState
+from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+from synthorg.meta.chief_of_staff.routing import RoleRouter
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
-    from synthorg.meta.chief_of_staff.routing import RoleRouter
-    from synthorg.meta.config import SelfImprovementConfig
-    from synthorg.persistence.conversational_factory import ConversationalRepositories
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.providers.registry import ProviderRegistry
+from synthorg.persistence.conversational_factory import ConversationalRepositories
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 

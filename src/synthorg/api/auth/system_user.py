@@ -15,6 +15,10 @@ from synthorg.core.auth.roles import HumanRole
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_AUTH_SYSTEM_USER_ENSURED
 
+# Both stay guarded as cold-import cycle-breakers: ``service`` imports this
+# module at runtime (USER_AUDIENCE / USER_ISSUER), and the persistence user
+# repositories import ``is_system_user`` from here, so a module-level import of
+# either would close a partial-initialisation cycle.
 if TYPE_CHECKING:
     from synthorg.api.auth.service import AuthService
     from synthorg.persistence.protocol import PersistenceBackend

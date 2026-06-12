@@ -22,8 +22,9 @@ from synthorg.docs_engine.models import (
     LivingDocument,
     ProseBlock,
 )
+from synthorg.docs_engine.service import DocsService
 from synthorg.docs_engine.state import DocsStateSlice
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, mock_of
 
 _NOW = datetime(2026, 5, 20, tzinfo=UTC)
 
@@ -96,13 +97,32 @@ class _PaginatingDocsService:
         return self._items[offset : offset + limit]
 
 
+def _as_docs_service(fake: object) -> DocsService | None:
+    """Wrap a read-path fake as a spec'd ``DocsService`` double.
+
+    The fake duck-types only the read methods a given test exercises; binding
+    them onto a ``mock_of[DocsService]`` autospec keeps the service-resolver's
+    runtime type boundary satisfied while preserving the fake's behaviour.
+    ``None`` passes through so the unwired-service path stays exercisable.
+    """
+    if fake is None:
+        return None
+    overrides = {
+        method: bound
+        for method in ("list_docs", "read_doc", "search", "history")
+        if (bound := getattr(fake, method, None)) is not None
+    }
+    service: DocsService = mock_of[DocsService](**overrides)
+    return service
+
+
 @contextmanager
 def _with_docs_service(
     async_test_client: LoopAsyncClient, svc: object
 ) -> Iterator[None]:
     app_state = async_test_client.app.state.app_state
     original_slice = app_state.slice(DocsStateSlice)
-    app_state.swap_slice(DocsStateSlice.model_construct(service=svc))  # type: ignore[arg-type]  # fake duck-types the service for read-path tests
+    app_state.swap_slice(DocsStateSlice.model_construct(service=_as_docs_service(svc)))
     try:
         yield
     finally:

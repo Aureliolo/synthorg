@@ -161,6 +161,7 @@ from synthorg.api.controllers.workflows.validation import (
     WorkflowValidationController,
 )
 from synthorg.api.controllers.ws import ws_handler
+from synthorg.api.state import AppState
 from synthorg.client.state import has_simulation_runtime
 from synthorg.deliverable_receipts.api_controller import (
     DeliverableReceiptController,
@@ -274,9 +275,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     CockpitController,
     SteeringController,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
 
 
 def _has_objective_entry_adapter(app_state: AppState) -> bool:

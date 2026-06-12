@@ -6,7 +6,7 @@ the service orchestration.
 
 import json
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, TypedDict
+from typing import TypedDict
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.config.agent_schema import AgentConfig
@@ -26,14 +26,12 @@ from synthorg.observability.events.api import (
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
 )
-
-if TYPE_CHECKING:
-    from synthorg.organization.models import (
-        CreateDepartmentRequest,
-        ReorderDepartmentsRequest,
-        UpdateDepartmentRequest,
-    )
-    from synthorg.settings.service import SettingsService
+from synthorg.organization.models import (
+    CreateDepartmentRequest,
+    ReorderDepartmentsRequest,
+    UpdateDepartmentRequest,
+)
+from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 

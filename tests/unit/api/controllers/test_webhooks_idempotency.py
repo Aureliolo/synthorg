@@ -13,11 +13,12 @@ shape.
 """
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import structlog.testing
+from litestar import Request
 from litestar.datastructures import State
 from litestar.testing import RequestFactory
 
@@ -26,17 +27,10 @@ from synthorg.api.controllers import _webhooks_wiring
 from synthorg.api.controllers.webhooks import _shared as webhooks_shared
 from synthorg.api.controllers.webhooks import ingest as webhooks_ingest
 from synthorg.api.services.idempotency_service import IdempotencyService
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.config.schema import RootConfig
 from synthorg.observability.events.integrations import WEBHOOK_ACCEPTED
-from tests._shared import JsonDict, make_app_state
-
-if TYPE_CHECKING:
-    from litestar import Request
-
-    from synthorg.communication.bus_protocol import MessageBus
-
-
-class _FakeBus:
-    """Minimal stand-in for the message-bus interface used by the helper."""
+from tests._shared import JsonDict, make_app_state, mock_of
 
 
 @pytest.mark.unit
@@ -73,7 +67,7 @@ class TestPublishWebhookEventAndLog:
 
         with structlog.testing.capture_logs() as logs:
             result = await webhooks_shared._publish_webhook_event_and_log(
-                bus=cast("MessageBus", _FakeBus()),
+                bus=mock_of[MessageBus](),
                 connection_name="conn-a",
                 event_type="issues.opened",
                 payload={"x": 1},
@@ -157,7 +151,7 @@ class TestPublishWithDurableIdempotency:
             event_type="push",
             nonce="sha256:deadbeef",
             connection_type="github",
-            bus=cast("MessageBus", _FakeBus()),
+            bus=mock_of[MessageBus](),
             payload={"y": 2},
             dedup_source="body_sha256",
         )
@@ -358,19 +352,10 @@ class TestReceiveWebhookEndToEnd:
         ``message_bus`` plus ``request.headers``.
         """
 
-        class _ConfigWebhooks:
-            max_payload_bytes = 1_000_000
-
-        class _ConfigIntegrations:
-            webhooks = _ConfigWebhooks()
-
-        class _Config:
-            integrations = _ConfigIntegrations()
-
         app_state = make_app_state(
-            config=_Config(),
+            config=RootConfig(company_name="test"),
             connection_catalog=object(),
-            message_bus=_FakeBus(),
+            message_bus=mock_of[MessageBus](),
         )
         state = State({"app_state": app_state})
         request = RequestFactory().get(path="/", headers=request_headers)

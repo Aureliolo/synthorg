@@ -1,12 +1,9 @@
 """Tests for the session store."""
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
 
 import aiosqlite
 import pytest

@@ -6,7 +6,6 @@ identifier extractors the rate-limit tiers use.
 
 import ipaddress
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 
 from litestar import Request
 from litestar.datastructures import State
@@ -21,18 +20,16 @@ from litestar.types import Middleware
 from synthorg.api.auth.context import AuthContextMiddleware
 from synthorg.api.auth.csrf import create_csrf_middleware_class
 from synthorg.api.auth.middleware import create_auth_middleware_class
+from synthorg.api.config import ApiConfig
 from synthorg.api.etag import ETagMiddleware
 from synthorg.api.middleware import RequestLoggingMiddleware
 from synthorg.api.rate_limits import PerOpConcurrencyMiddleware
+from synthorg.core.auth.config import AuthConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_NETWORK_EXPOSURE_WARNING
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_str_tuple_json
-
-if TYPE_CHECKING:
-    from synthorg.api.config import ApiConfig
-    from synthorg.core.auth.config import AuthConfig
 
 logger = get_logger(__name__)
 

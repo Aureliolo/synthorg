@@ -13,10 +13,12 @@ Per-connection retention semantics follow ``Connection.webhook_receipt_retention
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Final, Literal, NamedTuple
+from typing import Final, Literal, NamedTuple
 
-from synthorg.core.clock import SystemClock
+from synthorg.api.state import AppState
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.integrations.connections.models import Connection
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -32,11 +34,6 @@ from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_float, registered_default_int
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
-    from synthorg.core.clock import Clock
-    from synthorg.integrations.connections.models import Connection
 
 
 class _CleanupOutcome(NamedTuple):

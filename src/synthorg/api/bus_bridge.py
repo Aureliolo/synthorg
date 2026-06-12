@@ -7,7 +7,7 @@ events to Litestar's ``ChannelsPlugin`` for WebSocket delivery.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from litestar.channels import ChannelsPlugin
 
@@ -32,9 +32,7 @@ from synthorg.observability.events.api import (
     API_BUS_BRIDGE_SUBSCRIBE_FAILED,
 )
 from synthorg.settings.enums import SettingNamespace
-
-if TYPE_CHECKING:
-    from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 

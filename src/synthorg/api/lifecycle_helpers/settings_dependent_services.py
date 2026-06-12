@@ -10,10 +10,9 @@ service is injected) and at startup (when the settings service is
 auto-wired) to keep them composed.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.services.org_mutations import OrgMutationService
+from synthorg.api.state import AppState
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
@@ -25,13 +24,10 @@ from synthorg.providers.management.preset_override_service import (
 )
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.state import ProvidersStateSlice
+from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.service import SettingsService
 from synthorg.settings.state import SettingsStateSlice
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
-    from synthorg.settings.dispatcher import SettingsChangeDispatcher
-    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
