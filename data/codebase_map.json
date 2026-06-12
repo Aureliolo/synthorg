@@ -1388,7 +1388,7 @@
     },
     {
       "kind": "code",
-      "loc": 398,
+      "loc": 395,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/setup_agents.py",
       "owning_feature": "api_core"

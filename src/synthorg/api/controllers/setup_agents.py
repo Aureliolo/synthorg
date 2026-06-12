@@ -454,10 +454,6 @@ def agent_dict_to_summary(
     Returns:
         ``SetupAgentSummary`` instance.
     """
-    from synthorg.api.controllers.setup_models import (  # noqa: PLC0415
-        SetupAgentSummary,
-    )
-
     # Normalize string fields so whitespace-only values fall through
     # to defaults (NotBlankStr rejects blank strings).
     name = _agent_str(agent, "name") or "unknown"
