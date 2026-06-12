@@ -278,7 +278,43 @@ runs:
         fi
         echo "✓ ghcr.io/${REPO_PATH}:${TAG} -> ${ACTUAL} (signed)"
 
-    - name: Attest build provenance (SLSA Level 3)
+    # Same Rekor retry ladder as the cosign-installer above: the
+    # attestation writes a Rekor tlog entry against Sigstore's public-good
+    # backend, which intermittently times out. Three attempts with backoff
+    # before failing hard; attestation is idempotent (push-to-registry
+    # re-uploads the same bundle), and the final attempt has no
+    # continue-on-error so a terminal error still fails the job.
+    - name: Attest build provenance (SLSA Level 3, attempt 1)
+      id: attest_base_1
+      continue-on-error: true
+      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+      with: # zizmor: ignore[template-injection]
+        subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base
+        subject-digest: ${{ steps.push.outputs.digest }}
+        push-to-registry: true
+
+    - name: Back off before base-image attest retry 1
+      if: steps.attest_base_1.outcome == 'failure'
+      shell: bash
+      run: sleep 15
+
+    - name: Attest build provenance (SLSA Level 3, attempt 2)
+      if: steps.attest_base_1.outcome == 'failure'
+      id: attest_base_2
+      continue-on-error: true
+      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+      with: # zizmor: ignore[template-injection]
+        subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base
+        subject-digest: ${{ steps.push.outputs.digest }}
+        push-to-registry: true
+
+    - name: Back off before base-image attest retry 2
+      if: steps.attest_base_2.outcome == 'failure'
+      shell: bash
+      run: sleep 30
+
+    - name: Attest build provenance (SLSA Level 3, final attempt)
+      if: steps.attest_base_2.outcome == 'failure'
       uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
       with: # zizmor: ignore[template-injection]
         subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base

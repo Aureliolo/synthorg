@@ -9,7 +9,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# CARDINAL RULE (#2322): correctness gates must never be conditioned on which
+# CARDINAL RULE: correctness gates must never be conditioned on which
 # files changed. This workflow deliberately carries NO top-level ``paths:``
 # filter -- the Go lint / test / vuln correctness jobs run on every PR and
 # push. Only the build / perf jobs (cli-build, cli-bench, cli-fuzz) remain
@@ -455,7 +455,33 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
-      - name: Install Syft
+      # Syft is pulled from a GitHub release; ride a transient GitHub /
+      # network blip on the same 3-attempt backoff ladder as the attest
+      # steps. No downstream output consumed, so a straight ladder; the
+      # final attempt has no continue-on-error and fails the job.
+      - name: Install Syft (attempt 1)
+        id: install_syft_1
+        continue-on-error: true
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+
+      - name: Back off before Syft install retry 1
+        if: steps.install_syft_1.outcome == 'failure'
+        shell: bash
+        run: sleep 15
+
+      - name: Install Syft (attempt 2)
+        if: steps.install_syft_1.outcome == 'failure'
+        id: install_syft_2
+        continue-on-error: true
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+
+      - name: Back off before Syft install retry 2
+        if: steps.install_syft_2.outcome == 'failure'
+        shell: bash
+        run: sleep 30
+
+      - name: Install Syft (final attempt)
+        if: steps.install_syft_2.outcome == 'failure'
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
 
       - name: Wait for GitHub Release to exist
@@ -495,8 +521,14 @@ jobs:
           fi
 
       - name: Sign checksums with cosign (keyless)
+        # Route through the shared helper so a transient Fulcio/Rekor blip
+        # (tlog fetch timeout, 5xx, 429) retries on the same budget every
+        # docker push and image-sign already gets, instead of failing the
+        # release. sign-blob is safe to re-run: a retry overwrites the
+        # bundle and mints a fresh keyless signature over the same bytes.
         run: |
-          cosign sign-blob --yes cli/dist/checksums.txt \
+          bash .github/scripts/cosign_sign_with_retry.sh sign-blob \
+            cli/dist/checksums.txt \
             --bundle cli/dist/checksums.txt.cosign.bundle
 
       - name: Upload assets to draft release
@@ -505,30 +537,100 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           # gh release upload finds draft releases (unlike GoReleaser's API).
-          # --clobber overwrites if assets already exist (idempotent on re-run).
-          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+          # --clobber overwrites if assets already exist (idempotent on re-run),
+          # so the retry wrapper is safe; a transient GitHub API blip is
+          # retried instead of failing the release.
+          .github/scripts/gh_with_retry.sh "upload CLI release assets" \
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
             cli/dist/*.tar.gz cli/dist/*.zip \
             cli/dist/checksums.txt cli/dist/checksums.txt.cosign.bundle
 
-      - name: Attest build provenance (SLSA Level 3)
+      # The attestation writes a Rekor transparency-log entry against
+      # Sigstore's public-good backend, which intermittently times out and
+      # would otherwise fail an entire release on a single network blip.
+      # Ride three attempts with backoff before failing hard, mirroring the
+      # cosign-installer ladder in the publish-* actions. Attestation is
+      # idempotent (the bundle upload uses --clobber), so re-attempts are
+      # safe; the final attempt has no continue-on-error, so a genuine
+      # terminal error (malformed subject) still fails all three attempts
+      # and fails the job.
+      - name: Attest build provenance (SLSA Level 3, attempt 1)
+        id: attest_manifest_1
+        continue-on-error: true
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           # subject-checksums treats the file as a manifest: attests every
           # binary archive listed inside it (the primary SLSA L3 attestations).
           subject-checksums: cli/dist/checksums.txt
 
-      - name: Attest checksums file provenance
-        id: attest-checksums
+      - name: Back off before provenance-attest retry 1
+        if: steps.attest_manifest_1.outcome == 'failure'
+        shell: bash
+        run: sleep 15
+
+      - name: Attest build provenance (SLSA Level 3, attempt 2)
+        if: steps.attest_manifest_1.outcome == 'failure'
+        id: attest_manifest_2
+        continue-on-error: true
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-checksums: cli/dist/checksums.txt
+
+      - name: Back off before provenance-attest retry 2
+        if: steps.attest_manifest_2.outcome == 'failure'
+        shell: bash
+        run: sleep 30
+
+      - name: Attest build provenance (SLSA Level 3, final attempt)
+        if: steps.attest_manifest_2.outcome == 'failure'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-checksums: cli/dist/checksums.txt
+
+      # Same Rekor retry ladder for the checksums-file attestation. The
+      # bundle-path output is consumed below, so it is coalesced across
+      # whichever attempt succeeded: a continue-on-error attempt that
+      # failed, or a skipped later attempt, emits an empty output that
+      # GitHub's `||` treats as falsy, so the coalesce resolves to the one
+      # attempt that produced a bundle.
+      - name: Attest checksums file provenance (attempt 1)
+        id: attest_checksums_1
+        continue-on-error: true
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           # subject-path attests the checksums.txt file itself; bundle-path
           # output is uploaded as .sigstore.json for OpenSSF Scorecard scoring.
           subject-path: cli/dist/checksums.txt
 
+      - name: Back off before checksums-attest retry 1
+        if: steps.attest_checksums_1.outcome == 'failure'
+        shell: bash
+        run: sleep 15
+
+      - name: Attest checksums file provenance (attempt 2)
+        if: steps.attest_checksums_1.outcome == 'failure'
+        id: attest_checksums_2
+        continue-on-error: true
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: cli/dist/checksums.txt
+
+      - name: Back off before checksums-attest retry 2
+        if: steps.attest_checksums_2.outcome == 'failure'
+        shell: bash
+        run: sleep 30
+
+      - name: Attest checksums file provenance (final attempt)
+        if: steps.attest_checksums_2.outcome == 'failure'
+        id: attest_checksums_3
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: cli/dist/checksums.txt
+
       - name: Upload provenance bundle to release
         env:
           GH_TOKEN: ${{ github.token }}
-          BUNDLE: ${{ steps.attest-checksums.outputs.bundle-path }}
+          BUNDLE: ${{ steps.attest_checksums_3.outputs.bundle-path || steps.attest_checksums_2.outputs.bundle-path || steps.attest_checksums_1.outputs.bundle-path }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           if [ -z "$BUNDLE" ] || [ ! -f "$BUNDLE" ]; then
@@ -542,7 +644,8 @@ jobs:
           # classifies .sigstore.json as a signature, not provenance).
           jq -e -c '.dsseEnvelope' "$BUNDLE" > cli/dist/checksums.txt.intoto.jsonl
 
-          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+          .github/scripts/gh_with_retry.sh "upload provenance bundle" \
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
             cli/dist/checksums.txt.sigstore.json \
             cli/dist/checksums.txt.intoto.jsonl
 
@@ -553,7 +656,8 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
 
           # Download checksums from the release assets.
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+          .github/scripts/gh_with_retry.sh "download release checksums" \
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern "checksums.txt" --dir /tmp
 
           # Extract per-platform checksums.
@@ -626,7 +730,8 @@ jobs:
 
           # Idempotent: strip existing CLI Installation section (+ preceding ---) before appending.
           # Uses awk to buffer --- lines so the separator doesn't accumulate on re-runs.
-          EXISTING_BODY="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body)"
+          EXISTING_BODY="$(.github/scripts/gh_with_retry.sh "read release body" \
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body)"
           CLEANED_BODY="$(printf '%s' "$EXISTING_BODY" | awk '
             /^---$/ { buf=$0; next }
             /^## CLI Installation$/ { buf=""; skip=1; next }
@@ -639,6 +744,7 @@ jobs:
           tmpfile="$(mktemp)"
           trap 'rm -f "$tmpfile"' EXIT
           printf '%s' "$FULL_BODY" > "$tmpfile"
-          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"
+          .github/scripts/gh_with_retry.sh "edit release notes" \
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"
 
           echo "Release notes updated with install instructions, checksums, and provenance."

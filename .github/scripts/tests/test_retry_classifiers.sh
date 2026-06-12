@@ -9,8 +9,8 @@
 # `grep -q` exits on first match and closes the pipe, `printf` takes EPIPE,
 # and `pipefail` makes the pipeline report the writer's non-zero status --
 # so the match is masked, a genuinely-transient error is misclassified as
-# terminal, and NOT retried. That is what left a sandbox image
-# pushed-but-unsigned and the Verify Image Signatures gate red.
+# terminal, and NOT retried (the image is then signed on zero attempts
+# instead of the full retry budget, leaving it pushed-but-unsigned).
 #
 # This test feeds exactly that shape (transient token first, >64 KB
 # trailing body) through the REAL helpers and asserts they classify it as
@@ -55,6 +55,23 @@ if grep -q 'non-transient error' <<<"$out" && ! grep -q 'hit transient' <<<"$out
   pass "docker_push does not retry a genuine non-transient error"
 else
   fail "docker_push retried a non-transient error (classifier too broad)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- shared classifier: a Sigstore Rekor/Fulcio tlog timeout retries -----
+# The shared TRANSIENT_RE (single source in docker_push_with_retry.sh, also
+# consumed by cosign sign / sign-blob via --print-transient-re) must
+# classify a Rekor "network timeout" / "error fetching tlog entry" as
+# transient. Guards the Sigstore-signature addition at its source: drive it
+# through the docker_push helper so a regression that drops the pattern from
+# the canonical regex fails here.
+out="$(DOCKER_PUSH_RETRY_ATTEMPTS=2 DOCKER_PUSH_RETRY_BACKOFF=0 \
+  bash "$PUSH_HELPER" "selftest-rekor" \
+  bash -c 'echo "error fetching tlog entry: network timeout at: https://rekor.sigstore.dev/api/v1/log/entries/108e9186"; exit 1' 2>&1)" || true
+if grep -q 'hit transient registry error' <<<"$out" && ! grep -q 'non-transient error' <<<"$out"; then
+  pass "shared classifier retries a Rekor tlog network timeout"
+else
+  fail "shared TRANSIENT_RE missing the Sigstore Rekor/Fulcio network-timeout signature"
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 
@@ -120,6 +137,54 @@ if [ "$rc" -eq 0 ] && grep -q 'already signed' <<<"$out"; then
   pass "cosign_sign treats createLogEntryConflict as success"
 else
   fail "cosign_sign did not treat createLogEntryConflict as idempotent success (rc=${rc})"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# A local blob file for the sign-blob mode cases (cleaned by the STUB_DIR
+# trap). The helper forwards everything after `sign-blob` to cosign, but
+# the stub ignores its args and only controls the exit body, so the exact
+# file contents do not matter.
+blob_file="$STUB_DIR/checksums.txt"
+printf 'deadbeef  artifact.tar.gz\n' >"$blob_file"
+
+# --- cosign sign-blob mode: a Rekor tlog timeout must be retried --------
+# sign-blob reaches the same Fulcio/Rekor backends as image signing; a
+# transient "network timeout" reading/writing the Rekor tlog must retry,
+# not fail. Reuses the >64 KB transient-token-first body so the blob path
+# is also guarded against the broken-pipe misclassification.
+REKOR_TIMEOUT='printf "Error: signing checksums.txt: network timeout at: https://rekor.sigstore.dev/api/v1/log/entries/108e9186 "; head -c 100000 </dev/zero | tr "\0" x; printf "\n"; exit 1'
+cat >"$STUB_DIR/cosign" <<STUB
+#!/usr/bin/env bash
+$REKOR_TIMEOUT
+STUB
+chmod +x "$STUB_DIR/cosign"
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_SIGN_RETRY_ATTEMPTS=2 COSIGN_SIGN_RETRY_BACKOFF=0 \
+  bash "$COSIGN_HELPER" sign-blob "$blob_file" --bundle "${blob_file}.bundle" 2>&1)" || true
+if grep -q 'hit transient error' <<<"$out" && ! grep -q 'non-transient error' <<<"$out"; then
+  pass "cosign sign-blob retries a Rekor network timeout"
+else
+  fail "cosign sign-blob did not retry a Rekor network timeout (sign-blob mode or Rekor signature broken)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- cosign sign-blob mode: a genuine error must NOT be retried ---------
+# Symmetric negative control for blob mode: an auth denial is terminal and
+# must bubble immediately, proving the new mode did not become
+# retry-everything.
+cat >"$STUB_DIR/cosign" <<'STUB'
+#!/usr/bin/env bash
+echo "denied: requested access to the resource is denied"
+exit 1
+STUB
+chmod +x "$STUB_DIR/cosign"
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_SIGN_RETRY_ATTEMPTS=3 COSIGN_SIGN_RETRY_BACKOFF=0 \
+  bash "$COSIGN_HELPER" sign-blob "$blob_file" --bundle "${blob_file}.bundle" 2>&1)" || true
+if grep -q 'non-transient error' <<<"$out" && ! grep -q 'hit transient error' <<<"$out"; then
+  pass "cosign sign-blob does not retry a genuine non-transient error"
+else
+  fail "cosign sign-blob retried a non-transient error (classifier too broad)"
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 

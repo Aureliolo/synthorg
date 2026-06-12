@@ -44,7 +44,17 @@ set -euo pipefail
 # response just never arrives in time. Both the headers and body variants
 # are kept so a stall after the upload starts streaming also retries --
 # `docker push` is idempotent, so re-pushing on a body-timeout is safe.
-TRANSIENT_RE='page is taking too long|unknown blob|blob unknown|blob upload invalid|manifest unknown|received unexpected HTTP status: 5[0-9]{2}|HTTP/[0-9.]+ 5[0-9]{2}|HTTP 5[0-9]{2}|status: 5[0-9]{2}|429 Too Many Requests|temporarily unavailable|server is currently unable|service unavailable|bad gateway|gateway time-?out|i/o timeout|tls handshake|connection reset|connection refused|EOF|unexpected EOF|read: connection|net/http: TLS handshake|context deadline exceeded|Client\.Timeout exceeded|timeout awaiting response headers|timeout awaiting response body|request canceled'
+#
+# `network timeout` and `error fetching tlog entry` cover the Sigstore
+# public-good backends (Rekor transparency log, Fulcio CA) that every
+# cosign sign / sign-blob and attestation call reaches. A `cosign sign-blob`
+# that times out reading or writing a Rekor tlog entry is exactly as
+# transient as a GHCR 5xx, and re-running it is safe (a fresh keyless
+# signature over the same bytes is equally valid). These signatures are
+# definitionally transient -- a terminal cosign error (auth denial, malformed
+# digest, Rekor schema rejection) never phrases itself as a network/fetch
+# timeout -- so adding them never masks a real failure on the push path.
+TRANSIENT_RE='page is taking too long|unknown blob|blob unknown|blob upload invalid|manifest unknown|received unexpected HTTP status: 5[0-9]{2}|HTTP/[0-9.]+ 5[0-9]{2}|HTTP 5[0-9]{2}|status: 5[0-9]{2}|429 Too Many Requests|temporarily unavailable|server is currently unable|service unavailable|bad gateway|gateway time-?out|i/o timeout|tls handshake|connection reset|connection refused|EOF|unexpected EOF|read: connection|net/http: TLS handshake|context deadline exceeded|Client\.Timeout exceeded|timeout awaiting response headers|timeout awaiting response body|request canceled|network timeout|error fetching tlog entry'
 
 # Discovery flag: callers that need to share the same regex (for example the
 # inline retag-inspect retry loop, which must drop a couple of patterns the
