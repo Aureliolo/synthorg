@@ -2844,7 +2844,7 @@
     },
     {
       "kind": "code",
-      "loc": 186,
+      "loc": 183,
       "loc_cap": 500,
       "module": "src/synthorg/budget/risk_enforcer.py",
       "owning_feature": "budget"
