@@ -305,7 +305,7 @@ sum(rate(synthorg_client_disconnects_total{reason="transport_error"}[5m]))
 
 Import `monitoring/grafana/synthorg-overview.json` into any Grafana v10+ instance. The file is Grafana v10-compatible dashboard JSON (authored against the v11 editor, which emits a schema readable by v10) with a single `${DS_PROMETHEUS}` template variable bound to your Prometheus data source plus four filter variables: `$agent_id` (sourced from `synthorg_agent_cost_total`'s `agent_id` label, used by Cost & Budget + Audit & Security panels), `$agent` (sourced from `synthorg_tasks_total`'s `agent` label, used by the Tasks row's per-agent panel), `$workflow_definition_id`, and `$department`. The two agent-named variables exist because `synthorg_tasks_total` and `synthorg_agent_cost_total` use different label names (`agent` vs `agent_id`); panels filter on whichever variable matches their underlying metric.
 
-The dashboard organises 30+ panels into seven collapsible rows. Only `Health & SLO` is expanded by default; expand the others as needed to keep the unfiltered view scannable.
+The dashboard organises over forty panels into ten collapsible rows. Only `Health & SLO` is expanded by default; expand the others as needed to keep the unfiltered view scannable.
 
 | Row | Default | Panels |
 |-----|---------|--------|
@@ -316,6 +316,9 @@ The dashboard organises 30+ panels into seven collapsible rows. Only `Health & S
 | `Cost & Budget` | collapsed | `synthorg_cost_total`, monthly cost, daily used %, top-25 per-agent cost, agent budget used % |
 | `Audit & Security` | collapsed | Audit chain append rate, depth, last-append age, audit-log fill-ratio gauge, security verdicts, agent identity version changes, API error categories |
 | `Client Health` | collapsed | Client disconnects by transport+reason, API request rate by status class, OTLP export batches, OTLP dropped records, cache hit rate, app info |
+| `Decisions` | collapsed | Approval decisions/sec (`synthorg_approval_decisions_total`), escalation outcomes/sec (`synthorg_escalation_outcomes_total`), blueprint instantiations/sec (`synthorg_blueprint_instantiations_total`) |
+| `Configuration & MCP` | collapsed | Settings mutations/sec by namespace (`synthorg_settings_mutations_total`), MCP handler success rate (`synthorg_mcp_handler_outcomes_total`), MCP handler p95 latency by tool (`synthorg_mcp_handler_duration_seconds`) |
+| `Audit & Performance` | collapsed | Audit chain append rate by status (`synthorg_audit_chain_appends_total`), audit chain integrity over the last hour (`synthorg_audit_chain_verifications_total`), budget query p95 latency by query type (`synthorg_budget_query_duration_seconds`) |
 
 To install via the Grafana UI: `Dashboards → New → Import → Upload JSON file`. Via the provisioning API: `POST /api/dashboards/db` with `{"dashboard": <file>, "overwrite": true, "inputs": [...]}`.
 

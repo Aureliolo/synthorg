@@ -50,7 +50,13 @@ _SCOPED_FILES: Final[tuple[str, ...]] = (
     "docs/index.md",
     "docs/roadmap/index.md",
     "docs/architecture/decisions.md",
+    "docs/architecture/tech-stack.md",
     "docs/reference/convention-gates.md",
+    "docs/reference/mcp-handler-contract.md",
+    "docs/design/tools.md",
+    "docs/design/self-improvement.md",
+    "docs/guides/settings-reference.md",
+    "docs/guides/custom-mcp-server-dev.md",
 )
 
 _MARKER_RE: Final[re.Pattern[str]] = re.compile(

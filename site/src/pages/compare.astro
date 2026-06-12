@@ -165,12 +165,14 @@ const description = `Interactive comparison of SynthOrg against ${competitorCoun
     "name": title,
     "description": description,
     "url": "https://synthorg.io/compare/",
+    "dateModified": new Date().toISOString(),
     "mainEntity": {
       "@type": "SoftwareApplication",
       "name": "SynthOrg",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "Cross-platform",
       "url": "https://synthorg.io",
+      "codeRepository": "https://github.com/Aureliolo/synthorg",
     },
   }).replace(/</g, "\\u003c")} />
 </Base>

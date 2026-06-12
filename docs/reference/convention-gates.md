@@ -30,6 +30,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_dependency_inversion.py` | push | `api`/`engine`/`communication`/`persistence` | full | no | none | keep |
 | `check_doc_drift_counts.py` | commit+push | design/research docs + `events/` | full | no | none | keep |
 | `check_doc_numeric_macros.py` | push | README + public docs + `runtime_stats.yaml` | full | no | none | keep |
+| `check_docs_nav_coverage.py` | push | `docs/**/*.md` + `mkdocs.yml` nav | full | no | allowlist in gate | add |
 | `check_docstring_completeness.py` | push | `src/` + `tests/` (ruff DOC201/202/501) | full | no | none | keep |
 | `check_domain_error_hierarchy.py` | push | `src/synthorg/` | full | no | `domain_error_hierarchy_baseline.txt` | keep |
 | `check_dto_types_ts_in_sync.py` | commit+push | `api/` + `core/` + `*.gen.ts` | full | no | none | keep |
@@ -95,7 +96,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->73<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->74<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

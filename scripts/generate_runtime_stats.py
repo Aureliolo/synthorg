@@ -8,6 +8,9 @@ Sources (best-effort; failures keep the previously-stored value):
 * ``providers_via_litellm`` -- ``len(litellm.models_by_provider)``
 * ``subagents``             -- ``glob .claude/agents/*.md``
 * ``convention_gates``      -- ``glob scripts/check_*.py``
+* ``mcp_tools``             -- tool builders in ``meta/mcp/domains/*.py``
+* ``mcp_domains``           -- non-underscore modules in ``meta/mcp/domains/``
+* ``settings_namespaces``   -- ``SettingNamespace`` members in ``settings/enums.py``
 
 Run before ``zensical build``::
 
@@ -64,6 +67,9 @@ _SOURCES: Final[dict[str, str]] = {
     "providers_via_litellm": "len(litellm.models_by_provider)",
     "subagents": "glob .claude/agents/*.md",
     "convention_gates": "glob scripts/check_*.py",
+    "mcp_tools": "tool builders in src/synthorg/meta/mcp/domains/*.py",
+    "mcp_domains": "non-underscore modules in src/synthorg/meta/mcp/domains/",
+    "settings_namespaces": "SettingNamespace members in settings/enums.py",
 }
 
 
@@ -268,12 +274,93 @@ def _fetch_convention_gates() -> StatEntry:
     return {"raw": count, "display": str(count)}
 
 
+_MCP_DOMAINS_DIR: Final[Path] = (
+    REPO_ROOT / "src" / "synthorg" / "meta" / "mcp" / "domains"
+)
+_MCP_TOOL_BUILDER_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b(?:read_tool|write_tool|admin_tool|tool_def)\("
+)
+_SETTINGS_ENUMS_PATH: Final[Path] = (
+    REPO_ROOT / "src" / "synthorg" / "settings" / "enums.py"
+)
+_SETTING_NAMESPACE_ENUM: Final[str] = "SettingNamespace"
+
+
+def _fetch_mcp_tools() -> StatEntry:
+    """Count MCP tool definitions via builder call-sites in ``domains/*.py``.
+
+    Counts ``read_tool`` / ``write_tool`` / ``admin_tool`` / ``tool_def``
+    invocations across the domain modules: each call site builds exactly
+    one ``MCPToolDef``. A source scan avoids importing the service-heavy
+    handler graph just to size the surface.
+    """
+    name = "mcp_tools"
+    source = _SOURCES[name]
+    if not _MCP_DOMAINS_DIR.is_dir():
+        raise _StatFetchError(name, source, f"{_MCP_DOMAINS_DIR} not found")
+    count = 0
+    for path in _MCP_DOMAINS_DIR.glob("*.py"):
+        count += len(_MCP_TOOL_BUILDER_RE.findall(path.read_text(encoding="utf-8")))
+    if count == 0:
+        raise _StatFetchError(name, source, "no tool builder call-sites found")
+    return {"raw": count, "display": str(count)}
+
+
+def _fetch_mcp_domains() -> StatEntry:
+    """Count MCP domain modules (non-underscore ``domains/*.py`` files)."""
+    name = "mcp_domains"
+    source = _SOURCES[name]
+    if not _MCP_DOMAINS_DIR.is_dir():
+        raise _StatFetchError(name, source, f"{_MCP_DOMAINS_DIR} not found")
+    count = sum(1 for p in _MCP_DOMAINS_DIR.glob("*.py") if not p.name.startswith("_"))
+    if count == 0:
+        raise _StatFetchError(name, source, "no domain modules found")
+    return {"raw": count, "display": str(count)}
+
+
+def _fetch_settings_namespaces() -> StatEntry:
+    """Count ``SettingNamespace`` enum members in ``settings/enums.py``.
+
+    The enum is the authoritative namespace registry; an ``ast`` walk
+    avoids importing the settings package's initialisation chain.
+    """
+    name = "settings_namespaces"
+    source = _SOURCES[name]
+    if not _SETTINGS_ENUMS_PATH.is_file():
+        raise _StatFetchError(name, source, f"{_SETTINGS_ENUMS_PATH} not found")
+    try:
+        tree = ast.parse(_SETTINGS_ENUMS_PATH.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError) as exc:
+        raise _StatFetchError(
+            name, source, f"could not parse {_SETTINGS_ENUMS_PATH.name}: {exc}"
+        ) from exc
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != _SETTING_NAMESPACE_ENUM:
+            continue
+        members = sum(
+            1 for stmt in node.body if isinstance(stmt, ast.Assign | ast.AnnAssign)
+        )
+        if members == 0:
+            raise _StatFetchError(
+                name, source, f"{_SETTING_NAMESPACE_ENUM} has no members"
+            )
+        return {"raw": members, "display": str(members)}
+    raise _StatFetchError(
+        name,
+        source,
+        f"{_SETTING_NAMESPACE_ENUM} not found in {_SETTINGS_ENUMS_PATH.name}",
+    )
+
+
 _FETCHERS: dict[str, Callable[[], StatEntry]] = {
     "tests": _fetch_tests,
     "providers_curated": _fetch_providers_curated,
     "providers_via_litellm": _fetch_providers_via_litellm,
     "subagents": _fetch_subagents,
     "convention_gates": _fetch_convention_gates,
+    "mcp_tools": _fetch_mcp_tools,
+    "mcp_domains": _fetch_mcp_domains,
+    "settings_namespaces": _fetch_settings_namespaces,
 }
 
 

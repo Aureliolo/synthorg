@@ -19,9 +19,9 @@ Defaults shown below are compiled into the binary; tunable defaults are also rea
 | `init` | `--log-level` | (prompted) | Backend log level (`debug` / `info` / `warn` / `error`) |
 | `init` | `--image-tag` | (pinned) | Override container image tag |
 | `init` | `--channel` | `stable` | Release channel (`stable` / `dev`) |
-| `init` | `--bus-backend` | `inproc` | Communication bus backend (`inproc` / `nats`) |
+| `init` | `--bus-backend` | `internal` | Communication bus backend (`internal` / `nats`) |
 | `init` | `--persistence-backend` | `sqlite` | Persistence backend (`sqlite` / `postgres`) |
-| `init` | `--postgres-port` | `5432` | Host port when `--persistence-backend=postgres` |
+| `init` | `--postgres-port` | `3002` | Host port when `--persistence-backend=postgres` (1-65535) |
 | `init` | `--encrypt-secrets` | `true` | Encrypt connection secrets at rest via Fernet (`true` / `false`) |
 | `start` | `--no-wait` | `false` | Skip the health check after start |
 | `start` | `--timeout` | `90s` | Health-check timeout (Go duration, e.g. `90s`, `2m`) |
@@ -29,7 +29,7 @@ Defaults shown below are compiled into the binary; tunable defaults are also rea
 | `start` | `--dry-run` | `false` | Show what would happen without executing |
 | `start` | `--no-detach` | `false` | Run in foreground (stream logs; Ctrl+C to stop) |
 | `start` | `--no-verify` | `false` | Skip image signature verification (also `--skip-verify`) |
-| `stop` | `--timeout` / `-t` | `10s` (Docker Compose default) | Graceful shutdown timeout (the CLI passes no `--timeout` unless set, deferring to Docker Compose) |
+| `stop` | `--timeout` / `-t` | (unset) | Graceful shutdown timeout (e.g. `30s`, `1m`); when unset the CLI passes no `--timeout`, deferring to the Docker Compose default of 10s |
 | `stop` | `--volumes` | `false` | Remove named volumes (destructive) |
 | `update` | `--dry-run` | `false` | Show what would happen without executing |
 | `update` | `--no-restart` | `false` | Pull images but do not restart containers |

@@ -258,7 +258,8 @@ External tools are integrated via the **Model Context Protocol** (MCP).
 
 ### SynthOrg MCP Tool Surface
 
-SynthOrg exposes its own MCP server offering 200+ tools across 21 domain
+SynthOrg exposes its own MCP server offering <!--RS:mcp_tools-->241<!--/RS-->
+tools across <!--RS:mcp_domains-->21<!--/RS--> domain
 modules (agents, analytics, approvals, brain, budget, charter, cockpit,
 communication, coordination, docs, infrastructure, integrations, knowledge,
 memory, meta, organisation, quality, research, signals, tasks, workflows).
@@ -340,7 +341,7 @@ placeholder factories:
   for future surgical use. Emits `MCP_HANDLER_SERVICE_FALLBACK`;
   META-MCP-2 removed every call site and the integration sweep at
   `tests/integration/mcp/test_tool_surface.py` asserts zero emissions of
-  this event across the full 242-tool surface.
+  this event across the full <!--RS:mcp_tools-->241<!--/RS-->-tool surface.
 - `capability_gap(tool_name, reason)`: live handler whose underlying
   primitive does not yet expose the required method (e.g. agent
   `activity_feed`, memory fine-tune orchestrator on a backend that
@@ -416,9 +417,12 @@ domain-specific codes set via the `domain_code` kwarg on `err(...)`.
 
 **Registry Immutability.** Each domain handler module exports an
 `XXX_HANDLERS: Mapping[str, ToolHandler]` constant wrapped in
-`MappingProxyType` to enforce read-only access;
+`MappingProxyType` to enforce read-only access. Each feature manifest
+pairs its domain via `mcp_descriptor(...)` with a deferred
+`handlers_factory` that returns that constant;
 `build_handler_map()` in `src/synthorg/meta/mcp/handlers/__init__.py`
-merges them and raises on duplicate keys.
+walks `discover_features()`, merges every feature's `handlers_factory()`
+map, and raises on a duplicate key across features.
 
 **Schema-Level Validation.** Admin-op schemas in
 `src/synthorg/meta/mcp/domains/*.py` enforce the `reason` field as a
@@ -485,7 +489,7 @@ registered, and persistence is connected.
 
 ## Progressive Tool Disclosure
 
-When the tool inventory exceeds ~30 tools, loading every full definition into the LLM
+When the tool inventory exceeds roughly thirty tools, loading every full definition into the LLM
 context upfront becomes a major token tax. Progressive disclosure uses a three-level
 hierarchy inspired by Google ADK's skill loading pattern:
 

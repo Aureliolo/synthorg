@@ -126,8 +126,8 @@ src/synthorg/meta/
     invoker.py         -- MCPToolInvoker (handler dispatch + error mapping)
     errors.py          -- ArgumentValidationError + GuardrailViolationError
     tool_builder.py    -- read_tool / write_tool / admin_tool builders
-    domains/           -- 21 domain tool definition modules (200+ tools)
-    handlers/          -- 21 domain handler modules + common envelope helpers
+    domains/           -- 21 domain tool definition modules (241 tools)
+    handlers/          -- domain handler modules + common envelope helpers
                          (ok / err / not_supported / require_admin_guardrails)
 
   chief_of_staff/      -- Interactive agent role + advanced capabilities
@@ -192,7 +192,7 @@ src/synthorg/meta/
 | Scope | Deployment + product level | Code modification altitude for framework improvements |
 | Rollout | Before/after default, canary + A/B test opt-in | Per-proposal choice; A/B uses group assignment + statistical comparison |
 | Regression | Tiered: threshold + statistical | Layer 1 for catastrophic, Layer 2 for subtle degradation |
-| Signals consumed | 7 live domains + offline benchmark | Performance, budget, coordination, scaling, errors, evolution, telemetry, plus the opt-in golden-benchmark curve |
+| Signals consumed | seven live signal domains + offline benchmark | Performance, budget, coordination, scaling, errors, evolution, telemetry, plus the opt-in golden-benchmark curve |
 | Evolution boundary | Org-wide default; override + advisory alternatives | Clear separation from per-agent #243 |
 | Safe defaults | Disabled, opt-in, mandatory approval | Never auto-applies without human review |
 | Cross-deployment analytics | Dedicated protocol in `meta/telemetry/` | Domain events, not log records; follows meta/ pluggable pattern |
@@ -428,7 +428,7 @@ reports owns async job lifecycle + artifact storage.
 
 ## Follow-up Issues
 
-1. ~~Full API-as-MCP server~~: completed via #1353 (issue #1339; 242 tools, 21 domains, capability-based scoping)
+1. ~~Full API-as-MCP server~~: completed via #1353 (issue #1339; <!--RS:mcp_tools-->241<!--/RS--> tools, <!--RS:mcp_domains-->21<!--/RS--> domains, capability-based scoping)
 2. ~~Product-level improvement~~: completed via #1340 (CODE_MODIFICATION altitude, LLM code gen, CI validation, draft PR creation)
 3. ~~Cross-deployment analytics~~: completed via #1341 (opt-in anonymised telemetry, pattern aggregation, threshold recommendations; see `docs/cross-deployment-privacy.md`)
 4. ~~Chief of Staff advanced capabilities~~: completed via #1342 (outcome learning, proactive alerts, NL chat)

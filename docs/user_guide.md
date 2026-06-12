@@ -79,14 +79,14 @@ After the containers are running, open the web dashboard at [http://localhost:30
 4. **Company**: name your synthetic organisation, set a description, choose a display currency, and select a model tier profile (Economy, Balanced, or Premium).
 5. **Agents**: customise agent names, personality presets, and model assignments. Agents are pre-populated from the selected template with models matched to configured providers.
 6. **Theme**: set UI preferences including colour palette, typography, layout density, animation level, and sidebar position.
-7. **Complete**: review a summary of your configuration and finish setup. This stores the company and brings up the platform; the agent runtime that puts the organisation to work is in active development (see the [Roadmap](roadmap/index.md)).
+7. **Complete**: review a summary of your configuration and finish setup. This stores the company and brings up the platform; with a configured provider the agent runtime puts the organisation to work, exercised by deterministic e2e harnesses with a scripted provider (see the [Roadmap](roadmap/index.md)).
 
 The backend validates that a company and at least one provider exist before allowing setup to finish. Agents are optional (Quick Setup skips agent configuration). Steps are completed sequentially; a later step only appears done if all prior steps are also complete. Completed steps show a summary and can be revisited via the step indicator. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
 
 To start fresh, use `synthorg wipe` (offers an interactive backup, wipes all data, and optionally restarts with a clean slate to re-open the setup wizard) or delete the `api.setup_complete` setting via the settings API.
 
-!!! info "Honest status"
-    The platform, dashboard, CLI, and setup wizard are built and available. The autonomous agent runtime that makes the organisation execute work end-to-end is in active development and not yet wired, so a configured company does not yet run agents. See the [Roadmap](roadmap/index.md) for exactly what is available now versus in active development.
+!!! info "Honest status: pre-alpha"
+    The platform, dashboard, CLI, and setup wizard are built and available. With a configured provider the agent runtime, multi-agent coordinator, and work pipeline run a configured company, exercised by deterministic e2e harnesses with a scripted provider (no real LLM spend). Operator-facing onboarding against a real provider and real workloads is the focus of current work. See the [Roadmap](roadmap/index.md) for exactly what is available now versus in active development.
 
 ## Templates
 

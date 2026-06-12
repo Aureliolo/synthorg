@@ -3,7 +3,8 @@
 
 Scans a fixed set of public documentation files for digit literals
 adjacent to known stat nouns (``tests``, ``providers``, ``agents``,
-``stars``, ``releases``) and stat keywords (``Mem0``, ``version``,
+``stars``, ``releases``, ``tools``, ``domains``, ``namespaces``) and stat
+keywords (``Mem0``, ``version``,
 ``release(d|s)``, ``current``, ``latest``). Any such literal must be
 wrapped in ``<!--RS:NAME-->...<!--/RS-->`` markers driven by
 ``data/runtime_stats.yaml`` so the value can be regenerated at build
@@ -37,13 +38,21 @@ _SCOPED_FILES: Final[tuple[str, ...]] = (
     "docs/index.md",
     "docs/roadmap/index.md",
     "docs/architecture/decisions.md",
+    "docs/architecture/tech-stack.md",
     "docs/reference/convention-gates.md",
+    "docs/reference/mcp-handler-contract.md",
+    "docs/design/tools.md",
+    "docs/design/self-improvement.md",
+    "docs/guides/settings-reference.md",
+    "docs/guides/custom-mcp-server-dev.md",
 )
 
 _NUMBER: Final[str] = (
     r"\d{1,3}(?:[,.]\d{3})+\+?(?:[kKmM]\+?)?|\d{4,}\+?(?:[kKmM]\+?)?|\d{1,3}\+?(?:[kKmM]\+?)?"
 )
-_STAT_NOUN: Final[str] = r"(?:tests?|providers?|agents?|stars?|releases?)"
+_STAT_NOUN: Final[str] = (
+    r"(?:tests?|providers?|agents?|stars?|releases?|tools?|domains?|namespaces?)"
+)
 _KEYWORD: Final[str] = r"(?:Mem0|version|release[ds]?|current|latest)"
 
 _NEAR_NUMBER_RE: Final[re.Pattern[str]] = re.compile(

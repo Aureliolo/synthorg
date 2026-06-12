@@ -8,12 +8,13 @@ description: Stand up the SynthOrg platform and configure a company in about 5 m
 This tutorial walks you through installing SynthOrg, starting the platform,
 and configuring your first company, in about 5 minutes.
 
-!!! warning "Honest status"
-    The platform, dashboard, CLI, and setup wizard below work today. The
-    autonomous agent runtime that executes work is in active development and
-    not yet wired: a task you submit advances through its lifecycle states,
-    but an agent does not yet execute it. The "designed flow" section makes
-    the distinction explicit. See the [Roadmap](../roadmap/index.md).
+!!! warning "Honest status: pre-alpha"
+    The platform, dashboard, CLI, and setup wizard below work today. With a
+    configured provider the agent runtime executes submitted tasks (LLM +
+    sandboxed tools) under a minimal safety spine, exercised by deterministic
+    e2e harnesses with a scripted provider. What is not yet exercised is
+    operator-facing onboarding against a real provider and real workloads.
+    See the [Roadmap](../roadmap/index.md).
 
 ---
 
@@ -30,9 +31,10 @@ graph TD
 ```
 
 By design, the CEO handles strategy and task decomposition while the
-Full-Stack Developer writes code and builds features. That execution
-behaviour is the runtime work in active development; the steps below set up
-the company that will run it.
+Full-Stack Developer writes code and builds features. With a configured
+provider the runtime drives that execution (exercised today under
+deterministic e2e harnesses with a scripted provider); the steps below set up
+the company that runs it.
 
 ---
 
@@ -152,10 +154,11 @@ active development. See the [Roadmap](../roadmap/index.md) for current status.
 
 ---
 
-## The Designed Flow (in active development)
+## The Task Execution Flow
 
-This is what submitting a task is **designed** to do once the agent runtime
-is wired. It is not what happens end to end today.
+This is what submitting a task does end to end with a configured provider. The
+runtime is wired and exercised by deterministic e2e harnesses with a scripted
+provider; the same flow runs against a real LLM once you configure one.
 
 ```mermaid
 sequenceDiagram
@@ -177,10 +180,13 @@ sequenceDiagram
     Engine-->>You: Result available
 ```
 
-1. **Task created**: the engine validates the task and queues it. (Works today.)
-2. **Task routed**: a routing strategy matches the task to the best-suited agent. (Designed; in active development.)
-3. **Agent executes**: the assigned agent uses its configured LLM in a ReAct loop. (Designed; in active development.)
-4. **Result returned**: the completed task and its artifacts appear in the dashboard and API. (Designed; in active development.)
+1. **Task created**: the engine validates the task and queues it.
+2. **Task routed**: a routing strategy matches the task to the best-suited agent.
+3. **Agent executes**: the assigned agent uses its configured LLM in a ReAct loop.
+4. **Result returned**: the completed task and its artifacts appear in the dashboard and API.
+
+With a scripted provider this runs under the e2e harness today; with a real
+provider configured it runs against your chosen LLM.
 
 ---
 

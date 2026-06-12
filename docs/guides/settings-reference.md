@@ -1,22 +1,27 @@
 ---
 title: Settings Reference
-description: How SynthOrg settings resolve, the 22 runtime-editable namespaces, how to view and change settings at runtime, and which changes require a restart.
+description: How SynthOrg settings resolve, the runtime-editable namespaces, how to view and change settings at runtime, and which changes require a restart.
 ---
 
 # Settings Reference
 
-SynthOrg has ~100 individually-resolved settings across 22 namespaces (9 user-facing + 13 operator-only). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime.
+SynthOrg has around a hundred individually-resolved settings across <!--RS:settings_namespaces-->28<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime.
 
 ---
 
 ## Resolution Order
 
-Settings resolve through four layers, in priority order (first wins):
+Settings resolve through three sources, in priority order (first wins):
 
 1. **Database**: values set via the REST API or dashboard persist here
 2. **Environment variables** (`SYNTHORG_<NAMESPACE>_<KEY>`)
-3. **YAML config file** (`synthorg-config.yaml` at boot)
-4. **Code defaults** (the `SettingDefinition.default` field)
+3. **Code defaults** (the `SettingDefinition.default` field)
+
+YAML (`synthorg-config.yaml`) is a company-template ingestion format read once
+at boot, not a precedence tier: its values seed the database on first run and
+are thereafter resolved through the chain above. See
+[Configuration Precedence](../reference/configuration-precedence.md) for the
+full model.
 
 DB-backed changes take effect without restart unless the setting is marked `restart_required=True`.
 
@@ -48,6 +53,7 @@ Values marked `sensitive=True` (API keys, webhook URLs, passwords) are Fernet-en
 | `coordination` | Coordination metrics, error taxonomy, orchestration ratio alerts |
 | `observability` | Log level, correlation tracking, sink overrides, custom sinks |
 | `backup` | Enabled, schedule, compression, retention count/age |
+| `cockpit` | Flight-recorder run replay, stuck/runaway thresholds, snapshot cadence, steering proposer and active-directive limits |
 
 ### Operator-only (operator-tunable, hidden from the basic UI)
 
@@ -68,6 +74,11 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 | `simulations` | Per-run timeouts for synthetic-client task and code-review simulations |
 | `telemetry` | Anonymous product telemetry opt-in (off by default; token embedded at build) |
 | `workers` | Uvicorn worker count, distributed dispatcher publish retry budget and backoff |
+| `objectives` | Default project for stated-objective intake |
+| `research` | Research-mode provider/model and pipeline strategies (query planning, credibility triage, deduplication, synthesis) |
+| `charter` | Deep CEO-interview charter pacing (model, turns, temperature, token budget) and default currency |
+| `external_api` | Governed external API access: provider, response-size cap, timeout, and per-minute rate limit |
+| `demo` | Demo-mode showcase content (e.g. greeting copy) |
 
 ### Security headers and error documentation
 

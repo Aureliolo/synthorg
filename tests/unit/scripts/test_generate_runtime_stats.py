@@ -67,6 +67,9 @@ def _fake_fetchers(
         "providers_via_litellm": lambda: {"raw": 100, "display": "100+"},
         "subagents": lambda: {"raw": 7, "display": "7"},
         "convention_gates": lambda: {"raw": 36, "display": "36"},
+        "mcp_tools": lambda: {"raw": 241, "display": "241"},
+        "mcp_domains": lambda: {"raw": 21, "display": "21"},
+        "settings_namespaces": lambda: {"raw": 28, "display": "28"},
     }
     if overrides:
         base.update(overrides)

@@ -68,7 +68,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 
 | Resource | Path | Purpose |
 |---|---|---|
-| Auth | `/auth` | 8 routes under Auth. |
+| Auth | `/auth` | 9 routes under Auth. |
 | Users | `/users` | 4 routes under Users. |
 
 ### Organisation and agents
@@ -79,7 +79,8 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Agent Autonomy | `/agents/{agent_id}/autonomy` | Agent Autonomy endpoint. |
 | Agent Collaboration | `/agents/{agent_id}/collaboration` | 3 routes under Agent Collaboration. |
 | Agent Quality | `/agents/{agent_id}/quality/override` | Agent Quality endpoint. |
-| Agents | `/agents` | 10 routes under Agents. |
+| Agents | `/agents` | 11 routes under Agents. |
+| Charter | `/meta/charters` | 5 routes under Charter. |
 | Clients | `/clients` | 3 routes under Clients. |
 | Company | `/company` | 5 routes under Company. |
 | Departments | `/departments` | 8 routes under Departments. |
@@ -88,6 +89,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Personalities | `/personalities` | 3 routes under Personalities. |
 | Roles | `/roles/{role_name}/versions` | 2 routes under Roles. |
 | Scaling | `/scaling` | 6 routes under Scaling. |
+| Training | `/agents/{agent_id}/training` | 5 routes under Training. |
 
 ### Work and coordination
 
@@ -95,12 +97,17 @@ run the generator after `scripts/export_openapi.py` to refresh.
 |---|---|---|
 | Approvals | `/approvals` | 4 routes under Approvals. |
 | Artifacts | `/artifacts` | 3 routes under Artifacts. |
+| Deliverable Receipts | `/projects/{project_id}/docs/{slug}/receipt` | 2 routes under Deliverable Receipts. |
 | Escalations | `/conflicts/escalations` | 4 routes under Escalations. |
 | Meetings | `/meetings` | 3 routes under Meetings. |
 | Messages | `/messages` | 3 routes under Messages. |
+| Project Brain | `/projects/{project_id}/brain` | 4 routes under Project Brain. |
+| Project Docs | `/projects/{project_id}/docs` | 4 routes under Project Docs. |
+| Project Knowledge | `/projects/{project_id}/knowledge` | 3 routes under Project Knowledge. |
 | Projects | `/projects` | 2 routes under Projects. |
+| Requests | `/requests` | 5 routes under Requests. |
 | Reviews | `/reviews/{task_id}` | 2 routes under Reviews. |
-| Tasks | `/tasks` | 4 routes under Tasks. |
+| Tasks | `/tasks` | 5 routes under Tasks. |
 
 ### Workflows
 
@@ -119,20 +126,29 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Admin | `/admin` | 15 routes under Admin. |
 | Analytics | `/analytics` | 3 routes under Analytics. |
 | Backups | `/admin/backups` | 3 routes under Backups. |
-| Budget | `/budget` | 5 routes under Budget. |
+| Budget | `/budget` | 11 routes under Budget. |
+| Capabilities | `/capabilities` | Capabilities endpoint. |
 | Ceremony Policy | `/ceremony-policy` | 3 routes under Ceremony Policy. |
-| Coordination | `/coordination` | 2 routes under Coordination. |
+| Cockpit | `/cockpit` | 8 routes under Cockpit. |
+| Coordination | `/coordination/metrics, /tasks/{task_id}/coordinate` | 2 routes under Coordination. |
+| Cost Forecast | `/budget` | 6 routes under Cost Forecast. |
+| Demo | `/demo` | Demo endpoint. |
 | Event Stream | `/events` | 2 routes under Event Stream. |
-| Health | `/healthz` | 2 routes under Health. |
-| Integrations | `/connections` | 19 routes under Integrations. |
+| Experiments | `/experiments/{experiment}` | 3 routes under Experiments. |
+| Health | `/healthz, /readyz` | 2 routes under Health. |
+| Integrations | `/integrations, /connections, /oauth, /webhooks` | 21 routes under Integrations. |
 | Interrupts | `/interrupts` | 2 routes under Interrupts. |
+| Knowledge | `/knowledge` | Knowledge endpoint. |
+| Learning | `/learning/curve` | Learning endpoint. |
 | Memory Admin | `/admin/memory` | 12 routes under Memory Admin. |
-| Meta | `/meta` | 15 routes under Meta. |
+| Meta | `/meta` | 18 routes under Meta. |
 | Meta Analytics | `/meta/analytics` | 3 routes under Meta Analytics. |
 | Metrics | `/metrics` | Metrics endpoint. |
 | Providers | `/providers` | 20 routes under Providers. |
+| Reports | `/reports` | 2 routes under Reports. |
 | Security | `/security/audit` | Security endpoint. |
 | Settings | `/settings` | 9 routes under Settings. |
+| Simulations | `/simulations` | 4 routes under Simulations. |
 
 <!-- END: auto-generated endpoint table -->
 

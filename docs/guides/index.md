@@ -5,7 +5,7 @@ description: Practical how-to guides for configuring and operating SynthOrg.
 
 # Guides
 
-Practical guides for configuring, operating, and extending your synthetic organisation. Each guide is self-contained with a clear goal. Start with the Quickstart Tutorial if you are new to SynthOrg. Note: the platform and configuration surface are available today; the agent runtime that executes work is in active development (see the [Roadmap](../roadmap/index.md)).
+Practical guides for configuring, operating, and extending your synthetic organisation. Each guide is self-contained with a clear goal. Start with the Quickstart Tutorial if you are new to SynthOrg. Note: the platform, configuration surface, and the agent runtime that executes work are available today, exercised by deterministic e2e harnesses with a scripted provider; operator-facing maturity and real-provider acceptance are in active development (see the [Roadmap](../roadmap/index.md)).
 
 !!! tip "New to SynthOrg?"
 

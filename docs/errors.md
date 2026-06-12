@@ -10,6 +10,11 @@ SynthOrg's API returns structured error responses following
 Every error includes machine-readable metadata that agents can use for
 programmatic error handling and autonomous retry logic.
 
+This page is the API consumer's reference: response shape, content
+negotiation, and the error-code tables. For the stable problem-type URIs and
+the `NotFoundError` class hierarchy behind these responses, see the
+[Error Code Reference](reference/errors.md).
+
 ---
 
 ## Content Negotiation

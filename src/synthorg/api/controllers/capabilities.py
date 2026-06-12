@@ -74,6 +74,7 @@ class CapabilitiesController(Controller):
     """Runtime feature-flag introspection for the web dashboard."""
 
     path = "/capabilities"
+    tags = ("capabilities",)
     guards = [require_read_access]  # noqa: RUF012
 
     @get(

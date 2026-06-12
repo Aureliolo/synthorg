@@ -13,6 +13,8 @@ SynthOrg's REST API emits RFC 9457 [`Problem Details`](https://www.rfc-editor.or
 
 Clients should dispatch on `error_code` (most specific) and fall back to `error_category` for generic handling. Messages and titles are human-readable and may change without notice; the code is the contract.
 
+This page is the developer-oriented reference for the problem-type URIs and the `NotFoundError` class hierarchy. For the response surface and content negotiation an API consumer sees, see the [Error Reference](../errors.md).
+
 ## Category URIs
 
 | Category | `type` URI | Code range |

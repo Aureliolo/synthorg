@@ -2,11 +2,11 @@
 
 **An autonomous product studio you operate**: a self-hostable platform where a synthetic organisation of role-based AI agents is designed to plan and deliver products under budgets and governance.
 
-SynthOrg lets you define agents with roles, hierarchy, budgets, and tools as a virtual organisation. The platform, infrastructure, and subsystem libraries are built and tested; the agent runtime that makes the organisation execute work is in active development.
+SynthOrg lets you define agents with roles, hierarchy, budgets, and tools as a virtual organisation. The platform, infrastructure, and runtime are built and tested; the agent runtime, multi-agent coordinator, and work pipeline are wired and exercised by deterministic e2e harnesses. Operator-facing maturity and real-provider acceptance are the focus of current work.
 
-!!! warning "Honest status: the agent runtime is in active development"
+!!! warning "Honest status: pre-alpha"
 
-    The platform, dashboard, CLI, persistence, and subsystem libraries are built and tested. The autonomous agent runtime that runs the organisation end to end is **not yet wired** and is the focus of current work. Design-specification pages describe intended behaviour and mark per-area status; treat any gap between a spec and the code as the work, not the spec. See the [Roadmap](roadmap/index.md) for exactly what is available now versus in active development.
+    SynthOrg is **pre-alpha**. The platform, dashboard, CLI, persistence, provider layer, agent runtime, multi-agent coordinator, work pipeline spine, intake engine, sandbox lifecycle dispatch, and distributed-path consumers are all wired and exercised by deterministic e2e harnesses with a scripted provider (no real LLM spend). Operator-facing onboarding against a real provider and real workloads has not been exercised end to end by a human. Design-specification pages describe intended behaviour and mark per-area status; treat any gap between a spec and the code as the work, not the spec. See the [Roadmap](roadmap/index.md) for exactly what is available now versus in active development.
 
 ---
 
@@ -44,7 +44,7 @@ SynthOrg lets you define agents with roles, hierarchy, budgets, and tools as a v
 
 ## Design Specification
 
-The design spec covers the full intended architecture of SynthOrg, from agent identity to budget enforcement. It is the source of truth for designed behaviour; each area marks its current wiring status, since the agent runtime is in active development.
+The design spec covers the full intended architecture of SynthOrg, from agent identity to budget enforcement. It is the source of truth for designed behaviour; each area marks its current wiring status as operator-facing maturity lands.
 
 <div class="grid cards" markdown>
 
@@ -108,20 +108,20 @@ The design spec covers the full intended architecture of SynthOrg, from agent id
 
 ---
 
-## Key capabilities (designed)
+## Key capabilities
 
-These describe the designed system. The provider layer is shipped; the
-others are built and unit-tested as components and run via the agent runtime,
-which is in active development (see the [Roadmap](roadmap/index.md)).
+These run today, exercised by deterministic e2e harnesses with a scripted
+provider; real-provider acceptance and operator polish are in flight (see the
+[Roadmap](roadmap/index.md)).
 
-- **Agent Orchestration**: agents with roles, models, and tools; designed task decomposition, routing, and collaboration.
-- **Budget Enforcement**: designed per-agent cost limits, auto-downgrade to cheaper models, spending reports, and CFO-level cost optimisation.
-- **Security & Trust**: designed SecOps agent, fail-closed rule engine, progressive trust, autonomy levels, and audit logging.
-- **Memory**: designed per-agent and shared organisational memory with retrieval pipeline, consolidation, and archival.
-- **Communication**: designed message bus, delegation, conflict resolution, and meeting protocols.
-- **HR Engine**: designed hiring, firing, onboarding, offboarding, performance tracking, and promotion criteria.
+- **Agent Orchestration**: agents with roles, models, and tools; task decomposition, routing, and collaboration through the multi-agent coordinator and work pipeline spine.
+- **Budget Enforcement**: per-agent cost limits, auto-downgrade to cheaper models, spending reports, and CFO-level cost optimisation.
+- **Security & Trust**: SecOps agent, fail-closed rule engine, progressive trust, autonomy levels, and audit logging.
+- **Memory**: per-agent and shared organisational memory with retrieval pipeline, consolidation, and archival.
+- **Communication**: message bus, delegation, conflict resolution, and meeting protocols.
+- **HR Engine**: hiring, firing, onboarding, offboarding, performance tracking, and promotion criteria.
 - **Tool Integration**: built-in tools (file system, git, sandbox, code runner) plus an MCP bridge for external tools.
-- **LLM Providers** (available now): provider-agnostic via LiteLLM, with routing strategies, retry/rate-limiting, and capability matching.
+- **LLM Providers**: provider-agnostic via LiteLLM, with routing strategies, retry/rate-limiting, and capability matching.
 
 ---
 
