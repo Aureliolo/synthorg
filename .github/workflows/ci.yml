@@ -203,7 +203,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The Postgres drift arm pulls postgres:18-alpine via testcontainers
+    # (cold on this runner, since no start-postgres precedes it), applies
+    # every revision, then runs pg_dump -- heavier than the git-state +
+    # SQLite-drift steps this budget was originally sized for.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -273,6 +277,16 @@ jobs:
 
       - name: SQLite drift detection
         run: uv run python scripts/check_schema_drift_revisions.py --backend sqlite
+
+      # Schema drift is a global invariant, independent of which tests
+      # run, so it is validated once here rather than on every persistence
+      # test job. The Postgres arm brings its own throwaway database via
+      # testcontainers (Docker on the runner) and dumps it with an
+      # in-container pg_dump, so it needs neither the start-postgres
+      # service nor the postgresql-client package -- only the synced test
+      # dependencies this job already installs.
+      - name: Postgres drift detection
+        run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
 
   # ── Python: Type Check ──
   type-check:
@@ -549,9 +563,6 @@ jobs:
 
       - uses: ./.github/actions/warm-tree-sitter-cache
 
-      - name: Postgres drift detection
-        run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
-
       # Mirror test-unit's forensic plumbing -- see the long comment on
       # that step (line ~374) for the full rationale. Without this,
       # SIGABRT from our pytest-timeout monkey-patch (tests/conftest.py)
@@ -702,9 +713,6 @@ jobs:
       - uses: ./.github/actions/install-postgres-18-client
 
       - uses: ./.github/actions/warm-tree-sitter-cache
-
-      - name: Postgres drift detection
-        run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
 
       # See test-unit (line ~374) for the rationale on core dumps.
       - name: Enable core dumps

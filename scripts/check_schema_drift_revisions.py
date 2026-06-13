@@ -76,7 +76,13 @@ _REVISION_PATHS: Final[dict[str, Path]] = {
     ),
 }
 
-_POSTGRES_TESTCONTAINER_IMAGE: Final[str] = "postgres:18-alpine"
+# Digest-pinned for supply-chain integrity; mirrors the pin in the
+# start-postgres composite action so the drift gate and the test
+# suites validate against the same Postgres image bytes.
+_POSTGRES_TESTCONTAINER_IMAGE: Final[str] = (
+    "postgres:18-alpine@sha256:"
+    "96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88"
+)
 _POSTGRES_DEFAULT_PORT: Final[int] = 5432
 """Default Postgres listener port inside the testcontainer.
 
@@ -197,9 +203,12 @@ async def _dump_postgres_schema(revisions_path: Path) -> str:
         dbname = pg.dbname
         url = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{dbname}"
         await migrations.migrate_apply(url, revisions_path=revisions_path)
-        dump = await asyncio.to_thread(
-            _run_pg_dump, pg.get_wrapped_container().id, user, dbname
-        )
+        wrapped_container = pg.get_wrapped_container()
+        if wrapped_container is None or wrapped_container.id is None:
+            msg = "Postgres testcontainer has no id; cannot run pg_dump."
+            raise SystemExit(msg)
+        container_id = wrapped_container.id
+        dump = await asyncio.to_thread(_run_pg_dump, container_id, user, dbname)
     return _strip_postgres_dump_prelude(dump)
 
 
