@@ -44,7 +44,17 @@ runs:
           /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
         echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
           | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
-        sudo apt-get update
+        # Refresh only the PGDG list, not every source. The hosted Ubuntu
+        # image bakes in third-party repos (packages.microsoft.com azure-cli
+        # and prod) that intermittently answer 403 Forbidden; a full
+        # ``apt-get update`` then exits 100 and fails this step even though
+        # the package we need came from PGDG. The base archive indices are
+        # already present from image provisioning, so scoping the refresh to
+        # pgdg.list is sufficient to resolve postgresql-client-18 and its deps.
+        sudo apt-get update \
+          -o Dir::Etc::sourcelist="sources.list.d/pgdg.list" \
+          -o Dir::Etc::sourceparts="-" \
+          -o APT::Get::List-Cleanup="0"
         sudo apt-get install -y postgresql-client-18
         echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
         /usr/lib/postgresql/18/bin/pg_dump --version

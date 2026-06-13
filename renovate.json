@@ -26,6 +26,18 @@
   },
   "packageRules": [
     {
+      "description": "DHI (dhi.io) is a pull-through proxy fronting registry.docker.io. Renovate resolves dhi.io image digests against dhi.io but misroutes tag/version discovery to index.docker.io (Docker Hub library/*), which carries no -debian13 variants, so version lookups return no-result (surfaced as a 'Package lookup failures' dashboard warning) and a major-line bump like 19-debian13 would never surface. The registryAliases self-mapping does not redirect tag discovery; this explicit registryUrls does. Covers dhi.io/postgres and dhi.io/nats.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["dhi.io/**"],
+      "registryUrls": ["https://dhi.io"]
+    },
+    {
+      "description": "tmp's historical 0.0.4 metadata has a non-spec array `repository` field that fails Renovate's strict npm Zod schema (repository lacks the .catch() leniency homepage has), aborting the whole package lookup with a 'Package lookup failures: no-result' warning. tmp here is only a transitive security pin via overrides, already at the latest 0.2.7, so there is nothing to update; disable lookup to keep the dashboard clean.",
+      "matchManagers": ["npm"],
+      "matchDepNames": ["tmp"],
+      "enabled": false
+    },
+    {
       "description": "Python dependencies (pep621 + pre-commit). Footprint: pyproject.toml, uv.lock, .pre-commit-config.yaml. Disjoint from Web and Infrastructure groups.",
       "matchManagers": ["pep621", "pre-commit"],
       "groupName": "Python dependencies",
