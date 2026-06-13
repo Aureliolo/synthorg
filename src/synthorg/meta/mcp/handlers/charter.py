@@ -21,12 +21,19 @@ from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import InterviewTurnArgs
 from synthorg.meta.charter.service import CharterInterviewService
 from synthorg.meta.charter.state import CharterStateSlice
+from synthorg.meta.mcp.domains._charter_args import (
+    CharterApproveArgs,
+    CharterCancelArgs,
+    CharterGetArgs,
+    CharterInterviewArgs,
+    CharterListArgs,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
-from synthorg.meta.mcp.handlers.common_args import require_arg
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_invoke_failed,
@@ -45,21 +52,7 @@ _TOOL_GET = "synthorg_charter_get"
 _TOOL_CANCEL = "synthorg_charter_cancel"
 _TOOL_APPROVE = "synthorg_charter_approve"
 
-_ARG_MESSAGE = "message"
-_ARG_CONVERSATION_ID = "conversation_id"
-_ARG_PROJECT = "project"
-_ARG_CHARTER_ID = "charter_id"
-_ARG_STATUS = "status"
-_ARG_PROJECT_ID = "project_id"
-_ARG_CREATED_BY = "created_by"
-_ARG_LIMIT = "limit"
-_ARG_OFFSET = "offset"
-
-_DEFAULT_LIMIT: int = 50
 _MCP_OWNER_FALLBACK: NotBlankStr = NotBlankStr("mcp-operator")
-_TY_STATUS = "charter status enum value"
-_TY_NONNEG_INT = "non-negative int"
-_TY_POS_INT = "positive int"
 
 
 def _actor_id(actor: AgentIdentity | None) -> NotBlankStr:
@@ -99,54 +92,6 @@ def _require_charter_dispatcher(app_state: AppState) -> CharterDispatcher:
     return dispatcher
 
 
-def _opt_nonblank(arguments: dict[str, object], key: str) -> NotBlankStr | None:
-    """Return opt nonblank.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key)
-    if raw is None or (isinstance(raw, str) and not raw.strip()):
-        return None
-    if not isinstance(raw, str):
-        raise ArgumentValidationError(key, "string or null")
-    return NotBlankStr(raw)
-
-
-def _parse_status(arguments: dict[str, object]) -> CharterStatus | None:
-    """Return parse status.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(_ARG_STATUS)
-    if raw is None or raw == "":
-        return None
-    if not isinstance(raw, str):
-        raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS)
-    try:
-        return CharterStatus(raw)
-    except ValueError as exc:
-        raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS) from exc
-
-
-def _parse_int(
-    arguments: dict[str, object], key: str, *, default: int, floor: int
-) -> int:
-    """Return parse int.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key)
-    if raw in (None, ""):
-        return default
-    if not isinstance(raw, int) or isinstance(raw, bool) or raw < floor:
-        ty = _TY_POS_INT if floor > 0 else _TY_NONNEG_INT
-        raise ArgumentValidationError(key, ty)
-    return raw
-
-
 async def _charter_interview(
     *,
     app_state: AppState,
@@ -156,13 +101,15 @@ async def _charter_interview(
     """Return charter interview."""
     try:
         svc = _require_charter_service(app_state)
-        message = require_arg(arguments, _ARG_MESSAGE, str)
+        interview_args = typed_args(arguments, CharterInterviewArgs)
         result = await svc.run_turn(
             InterviewTurnArgs(
-                message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, message)),
+                message=NotBlankStr(
+                    wrap_untrusted(TAG_TASK_DATA, interview_args.message)
+                ),
                 created_by=_actor_id(actor),
-                conversation_id=_opt_nonblank(arguments, _ARG_CONVERSATION_ID),
-                project=_opt_nonblank(arguments, _ARG_PROJECT),
+                conversation_id=interview_args.conversation_id,
+                project=interview_args.project,
             )
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_INTERVIEW)
@@ -185,17 +132,16 @@ async def _charter_list(
     """Return charter list."""
     try:
         svc = _require_charter_service(app_state)
-        status = _parse_status(arguments)
-        project_id = _opt_nonblank(arguments, _ARG_PROJECT_ID)
-        created_by = _opt_nonblank(arguments, _ARG_CREATED_BY)
-        limit = _parse_int(arguments, _ARG_LIMIT, default=_DEFAULT_LIMIT, floor=1)
-        offset = _parse_int(arguments, _ARG_OFFSET, default=0, floor=0)
+        list_args = typed_args(arguments, CharterListArgs)
+        status = (
+            CharterStatus(list_args.status) if list_args.status is not None else None
+        )
         charters = await svc.list_charters(
             status=status,
-            project_id=project_id,
-            created_by=created_by,
-            limit=limit,
-            offset=offset,
+            project_id=list_args.project_id,
+            created_by=list_args.created_by,
+            limit=list_args.limit,
+            offset=list_args.offset,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_LIST)
         return ok([c.model_dump(mode="json") for c in charters])
@@ -217,7 +163,7 @@ async def _charter_get(
     """Return charter get."""
     try:
         svc = _require_charter_service(app_state)
-        charter_id = NotBlankStr(require_arg(arguments, _ARG_CHARTER_ID, str))
+        charter_id = typed_args(arguments, CharterGetArgs).charter_id
         charter = await svc.get(charter_id)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_GET)
         return ok(charter.model_dump(mode="json"))
@@ -245,7 +191,7 @@ async def _charter_cancel(
         # cancel another user's draft.
         require_admin_guardrails(arguments, actor)
         svc = _require_charter_service(app_state)
-        charter_id = NotBlankStr(require_arg(arguments, _ARG_CHARTER_ID, str))
+        charter_id = typed_args(arguments, CharterCancelArgs).charter_id
         cancelled = await svc.cancel_charter(
             charter_id,
             cancelled_by=_actor_id(actor),
@@ -272,7 +218,7 @@ async def _charter_approve(
     try:
         require_admin_guardrails(arguments, actor)
         dispatcher = _require_charter_dispatcher(app_state)
-        charter_id = NotBlankStr(require_arg(arguments, _ARG_CHARTER_ID, str))
+        charter_id = typed_args(arguments, CharterApproveArgs).charter_id
         result = await dispatcher.approve(charter_id, approved_by=_actor_id(actor))
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_APPROVE)
         return ok(result.model_dump(mode="json"))
