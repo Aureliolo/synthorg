@@ -129,8 +129,8 @@ function onConnectImpl(
     source: connection.source,
     target: connection.target,
     type: nodeTypeToEdgeType(sourceNode?.type),
-    sourceHandle: connection.sourceHandle ?? null,
-    targetHandle: connection.targetHandle ?? null,
+    sourceHandle: connection.sourceHandle,
+    targetHandle: connection.targetHandle,
     data: deriveEdgeData(sourceNode?.type, connection.sourceHandle),
   }
   const newEdges = [...edges, newEdge]

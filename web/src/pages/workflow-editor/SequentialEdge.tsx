@@ -15,7 +15,7 @@ function SequentialEdgeComponent(props: EdgeProps) {
     <BaseEdge
       id={props.id}
       path={edgePath}
-      style={{ stroke: 'var(--so-border-bright)', strokeWidth: 1.5 }}
+      style={{ stroke: 'var(--so-border-bright)', strokeWidth: 'var(--so-stroke-thin)' }}
       {...(props.markerEnd != null && { markerEnd: props.markerEnd })}
     />
   )

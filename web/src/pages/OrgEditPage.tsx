@@ -9,6 +9,7 @@ import { ToggleField } from '@/components/ui/toggle-field'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import type { UpdateCompanyRequest } from '@/api/types/org'
+import { AUTONOMY_LEVEL_VALUES, type AutonomyLevel } from '@/api/types/enums'
 import { useOrgEditData } from '@/hooks/useOrgEditData'
 import { ROUTES } from '@/router/routes'
 import { OrgEditSkeleton } from './org-edit/OrgEditSkeleton'
@@ -16,19 +17,23 @@ import { YamlEditorPanel } from './org-edit/YamlEditorPanel'
 import { OrgEditTabs } from './org-edit/OrgEditTabs'
 import { useOrgEditTab } from './org-edit/useOrgEditTab'
 
+const VALID_AUTONOMY_LEVELS: ReadonlySet<string> = new Set(AUTONOMY_LEVEL_VALUES)
+
 /** Map a parsed YAML document onto a typed company-update request. */
 function buildCompanyUpdate(parsed: Record<string, unknown>): UpdateCompanyRequest {
   // Omit keys the YAML doesn't set so the existing value is not silently
-  // cleared (a dropped key is wire-identical to the previous ``: undefined``);
-  // null only when the YAML explicitly sets the key to null (the
-  // user-intentional "clear" path).
+  // cleared (a dropped key is wire-identical to the previous ``: undefined``).
+  // An explicit ``null`` is forwarded only for fields the backend treats as a
+  // clear; ``autonomy_level`` is NOT one of those (the backend's partial-update
+  // guard ignores a null autonomy_level), so a null there is a backend no-op.
+  const autonomyRaw = parsed['autonomy_level']
   return {
     ...(typeof parsed['company_name'] === 'string'
       ? { company_name: parsed['company_name'] }
       : {}),
-    ...(typeof parsed['autonomy_level'] === 'string'
-      ? { autonomy_level: parsed['autonomy_level'] as Exclude<UpdateCompanyRequest['autonomy_level'], undefined> }
-      : parsed['autonomy_level'] === null
+    ...(typeof autonomyRaw === 'string' && VALID_AUTONOMY_LEVELS.has(autonomyRaw)
+      ? { autonomy_level: autonomyRaw as AutonomyLevel }
+      : autonomyRaw === null
         ? { autonomy_level: null }
         : {}),
     ...(typeof parsed['budget_monthly'] === 'number' && Number.isFinite(parsed['budget_monthly'])
