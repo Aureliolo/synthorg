@@ -213,6 +213,22 @@ func TestCheckPortsDetectsConflict(t *testing.T) {
 	defer func() { _ = ln.Close() }()
 	port := ln.Addr().(*net.TCPAddr).Port
 
+	// Drain the accept queue so the dial in checkPorts reliably completes
+	// its handshake. A real listening service accepts connections; an
+	// unaccepted listener lets macOS drop/delay SYNs into the backlog under
+	// load, timing out checkPorts' 1s dial and hiding the conflict (this is
+	// the macOS-only flake on the -race CI runner). Accepting mirrors real
+	// service behaviour and makes detection deterministic across platforms.
+	go func() {
+		for {
+			conn, acceptErr := ln.Accept()
+			if acceptErr != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+
 	conflicts := checkPorts(ctx, port, 0)
 	if len(conflicts) == 0 {
 		t.Error("expected port conflict for occupied port")

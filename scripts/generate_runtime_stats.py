@@ -34,13 +34,11 @@ import datetime as dt
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, TypedDict
+from typing import Final, TypedDict
 
 import yaml
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _OUT_FILE: Path = REPO_ROOT / "data" / "runtime_stats.yaml"
@@ -277,9 +275,36 @@ def _fetch_convention_gates() -> StatEntry:
 _MCP_DOMAINS_DIR: Final[Path] = (
     REPO_ROOT / "src" / "synthorg" / "meta" / "mcp" / "domains"
 )
-_MCP_TOOL_BUILDER_RE: Final[re.Pattern[str]] = re.compile(
-    r"\b(?:read_tool|write_tool|admin_tool|tool_def)\("
+_MCP_TOOL_BUILDERS: Final[frozenset[str]] = frozenset(
+    {"read_tool", "write_tool", "admin_tool", "tool_def"}
 )
+
+
+def _count_tool_builders(tree: ast.Module) -> int:
+    """Count MCP tool-builder call-sites in a parsed module.
+
+    Walks the AST for ``ast.Call`` nodes whose callee name is one of
+    ``_MCP_TOOL_BUILDERS``. An AST scan (rather than a text regex) cannot
+    miscount builder names that appear in comments, docstrings, or string
+    literals, and it matches builder calls regardless of whitespace or
+    line breaks between the name and its argument list.
+    """
+    count = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func
+        if isinstance(callee, ast.Name):
+            name = callee.id
+        elif isinstance(callee, ast.Attribute):
+            name = callee.attr
+        else:
+            continue
+        if name in _MCP_TOOL_BUILDERS:
+            count += 1
+    return count
+
+
 _SETTINGS_ENUMS_PATH: Final[Path] = (
     REPO_ROOT / "src" / "synthorg" / "settings" / "enums.py"
 )
@@ -291,10 +316,11 @@ def _fetch_mcp_tools() -> StatEntry:
 
     Counts ``read_tool`` / ``write_tool`` / ``admin_tool`` invocations
     across the domain modules: each call site builds exactly one
-    ``MCPToolDef``. The regex also matches ``tool_def`` (the low-level
-    builder the three helpers delegate to), but the domain modules call
-    it only through those helpers. A source scan avoids importing the
-    service-heavy handler graph just to size the surface.
+    ``MCPToolDef``. ``tool_def`` (the low-level builder the three helpers
+    delegate to) is also counted, but the domain modules call it only
+    through those helpers. An AST scan avoids importing the service-heavy
+    handler graph just to size the surface, and -- unlike a text regex --
+    cannot miscount builder names that appear in comments or strings.
 
     The three failure paths (directory absent, no ``.py`` files, files
     present but zero call-sites) raise distinct ``_StatFetchError``
@@ -316,7 +342,13 @@ def _fetch_mcp_tools() -> StatEntry:
             raise _StatFetchError(
                 name, source, f"could not read {path.name}: {exc}"
             ) from exc
-        count += len(_MCP_TOOL_BUILDER_RE.findall(text))
+        try:
+            tree = ast.parse(text, filename=str(path))
+        except SyntaxError as exc:
+            raise _StatFetchError(
+                name, source, f"could not parse {path.name}: {exc}"
+            ) from exc
+        count += _count_tool_builders(tree)
     if count == 0:
         raise _StatFetchError(
             name, source, "domain files present but no tool builder call-sites matched"

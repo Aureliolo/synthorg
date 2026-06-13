@@ -3,8 +3,8 @@
 ## Current status
 
 SynthOrg is **pre-alpha**. The platform, infrastructure, and runtime are built
-and tested (<!--RS:tests-->35,000+<!--/RS--> tests in the latest run, 80%+
-coverage) and integrated through a REST + WebSocket API, a React 19 dashboard,
+and tested (<!--RS:tests-->35,000+<!--/RS--> tests in the latest run) and
+integrated through a REST + WebSocket API, a React 19 dashboard,
 and a Go CLI. The agent runtime, multi-agent coordinator, work pipeline spine,
 intake engine, sandbox lifecycle dispatch, and distributed-path consumers are
 all wired and exercised by deterministic e2e harnesses with a scripted provider
