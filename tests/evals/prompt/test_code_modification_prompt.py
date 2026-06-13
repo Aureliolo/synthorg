@@ -57,10 +57,13 @@ class TestCodeModificationPromptContract:
             "expected at least one CompletionConfig(...) call in "
             "CodeModificationStrategy"
         )
-        call = config_calls[0]
+        # Scan every CompletionConfig call rather than only ``config_calls[0]``
+        # so an unrelated earlier call (e.g. a retry-budget config added by a
+        # future refactor) cannot shift the index and mask the real one.
         assert any(
             kw.arg == "temperature"
             and ast.unparse(kw.value) == "self._code_config.temperature"
+            for call in config_calls
             for kw in call.keywords
         ), (
             "CompletionConfig.temperature must come from "
@@ -70,6 +73,7 @@ class TestCodeModificationPromptContract:
         assert any(
             kw.arg == "max_tokens"
             and ast.unparse(kw.value) == "self._code_config.max_tokens"
+            for call in config_calls
             for kw in call.keywords
         ), (
             "CompletionConfig.max_tokens must come from "

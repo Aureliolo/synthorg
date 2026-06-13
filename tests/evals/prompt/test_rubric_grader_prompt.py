@@ -26,9 +26,10 @@ class TestRubricGraderPromptContract:
     def test_temperature_is_zero(self) -> None:
         """Grader must run at temperature=0 for deterministic scores.
 
-        Checked via an AST walk (resilient to formatting) and a
-        substring cross-check (guards against accidentally removing
-        the keyword during a refactor).
+        Checked via an AST walk only: it is resilient to formatting (a
+        re-spaced or line-split keyword cannot cause a false failure) and
+        immune to docstring mentions (a literal in prose cannot cause a
+        false pass). A plain substring check would fail on both counts.
         """
         import ast
         import inspect
@@ -36,13 +37,10 @@ class TestRubricGraderPromptContract:
         from synthorg.engine.quality.graders.llm import LLMRubricGrader
 
         source = inspect.getsource(LLMRubricGrader)
-        assert "temperature=0.0" in source, (
-            "LLMRubricGrader must pin temperature=0.0 for determinism"
-        )
         # AST-level check: find a ``temperature=0.0`` keyword
         # argument inside a ``Call`` (CompletionConfig construction)
         # anywhere in the grader class. This refuses to pass if the
-        # substring appears only in a docstring.
+        # literal appears only in a docstring.
         tree = ast.parse(source)
         found = any(
             isinstance(node, ast.keyword)
