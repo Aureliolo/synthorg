@@ -106,7 +106,7 @@ export function Breadcrumbs({ items, maxItems = 4, className }: BreadcrumbsProps
       <ol className="flex flex-wrap items-center gap-1.5">
         {visibleItems.map((item, idx) => (
           <li
-            key={typeof item === 'string' ? `ellipsis-${idx}` : `${item.label}-${idx}`}
+            key={item === 'ellipsis' ? 'ellipsis' : (item.to ?? item.label)}
             className="flex items-center gap-1.5"
           >
             <BreadcrumbRow item={item} isLast={idx === visibleItems.length - 1} />
