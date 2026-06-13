@@ -120,17 +120,19 @@ def _server_key(proxy: PostgresContainerProxy) -> str:
 
 
 async def _drop_database(proxy: PostgresContainerProxy, db_name: str) -> None:
-    """Terminate remaining sessions on *db_name* and drop it."""
+    """Drop *db_name*, force-terminating any remaining sessions.
+
+    ``WITH (FORCE)`` (PG13+) terminates lingering connections atomically,
+    avoiding the race between a separate ``pg_terminate_backend`` and the
+    drop.
+    """
     async with await psycopg.AsyncConnection.connect(
         _admin_conninfo(proxy), autocommit=True
     ) as admin:
         await admin.execute(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-            "WHERE datname = %s AND pid != pg_backend_pid()",
-            (db_name,),
-        )
-        await admin.execute(
-            sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(db_name))
+            sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                sql.Identifier(db_name)
+            )
         )
 
 
@@ -149,11 +151,20 @@ async def _build_template(proxy: PostgresContainerProxy) -> None:
     """
     admin = _admin_conninfo(proxy)
     async with await psycopg.AsyncConnection.connect(admin, autocommit=True) as conn:
-        # A sealed template cannot be dropped until datistemplate is cleared.
-        await conn.execute(
-            "UPDATE pg_database SET datistemplate = false WHERE datname = %s",
+        # A sealed template cannot be dropped until IS_TEMPLATE is cleared.
+        # Use the supported DDL (direct pg_database catalog writes need
+        # allow_system_table_mods, off by default); ALTER errors if the DB
+        # is absent, so gate it on an existence check.
+        res = await conn.execute(
+            "SELECT 1 FROM pg_database WHERE datname = %s AND datistemplate = true",
             (TEMPLATE_DB_NAME,),
         )
+        if await res.fetchone() is not None:
+            await conn.execute(
+                sql.SQL("ALTER DATABASE {} WITH IS_TEMPLATE false").format(
+                    sql.Identifier(TEMPLATE_DB_NAME)
+                )
+            )
         await conn.execute(
             sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
                 sql.Identifier(TEMPLATE_DB_NAME)
@@ -232,9 +243,17 @@ async def clone_from_template(
     try:
         await backend.connect()
     except BaseException:
-        with contextlib.suppress(Exception):
-            await backend.disconnect()
-        with contextlib.suppress(Exception):
+
+        async def _cleanup() -> None:
+            with contextlib.suppress(Exception):
+                await backend.disconnect()
             await _drop_database(proxy, db_name)
+
+        # Shield the best-effort teardown so a cancellation of the calling
+        # task cannot interrupt it mid-way and leak the half-created DB,
+        # and suppress everything (including CancelledError) so the
+        # original connect failure is the exception that propagates.
+        with contextlib.suppress(BaseException):
+            await asyncio.shield(_cleanup())
         raise
     return backend

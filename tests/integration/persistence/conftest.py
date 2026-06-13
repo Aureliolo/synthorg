@@ -183,8 +183,12 @@ async def postgres_backend(
     try:
         yield backend
     finally:
-        await backend.disconnect()
-        await drop_test_database(postgres_container, db_name)
+        # Drop even if disconnect raises, else a failed disconnect leaks
+        # the per-test database onto the shared server for the session.
+        try:
+            await backend.disconnect()
+        finally:
+            await drop_test_database(postgres_container, db_name)
 
 
 _TIMESCALEDB_IMAGE = "timescale/timescaledb:2.26.2-pg18-oss"
