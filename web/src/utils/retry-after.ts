@@ -54,9 +54,11 @@ function _resolveRetryAfterRaw(
 
 /** Parse a delta-seconds Retry-After value into milliseconds, or null. */
 function _parseRetryAfterDelta(trimmed: string): number | null {
+  // The pattern already guarantees a non-empty run of ASCII digits, so
+  // parseInt yields a finite, non-negative integer; no further guard is
+  // needed (an over-large value is clamped downstream by MAX_RETRY_AFTER_MS).
   if (!/^\d+$/.test(trimmed)) return null
-  const seconds = Number.parseInt(trimmed, 10)
-  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null
+  return Number.parseInt(trimmed, 10) * 1000
 }
 
 /** Parse an HTTP-date Retry-After value into milliseconds, or null. */
@@ -90,7 +92,7 @@ export function parseRetryAfterMs(
     // long-standing behaviour. Surface it as a structured warn so a
     // misconfigured backend or hostile proxy is visible in ops
     // dashboards instead of merely producing tight retry loops.
-    log.warn('Malformed Retry-After header', sanitizeForLog({ value: trimmed }))
+    log.warn('Malformed Retry-After header', sanitizeForLog(trimmed))
     return 0
   }
   if (ms > MAX_RETRY_AFTER_MS) return DO_NOT_RETRY
@@ -106,8 +108,12 @@ export interface RetryableResponse {
 export interface RetryAfterLoopParams<R extends RetryableResponse> {
   /** The already-issued first response (axios: the 429 error's response). */
   readonly first: R
-  /** Re-issue the request for a retry attempt; resolves to the response. */
-  readonly send: () => Promise<R>
+  /**
+   * Re-issue the request for a retry attempt; resolves to the response.
+   * Receives the 1-based attempt number so callers can stamp it on the
+   * request without relying on mutable outer state.
+   */
+  readonly send: (attempt: number) => Promise<R>
   /** Compute the wait for *response* (header source + envelope fallback vary). */
   readonly getRetryAfterMs: (response: R) => number
   /** Whether this request may be replayed at all (idempotency gate). */
@@ -120,17 +126,6 @@ export interface RetryAfterLoopParams<R extends RetryableResponse> {
   readonly onBeforeRetry?: (attempt: number, waitMs: number) => void
 }
 
-/**
- * The single 429 retry policy shared by the axios interceptor and the
- * raw-``fetch`` helper. Re-issues *send* up to {@link MAX_RATE_LIMIT_RETRIES}
- * times while the response is a 429 and the request is replayable, honouring
- * ``Retry-After`` (via *getRetryAfterMs*), the {@link DO_NOT_RETRY} ceiling,
- * and an optional abort signal.
- *
- * Returns the first non-429 response, or the most recent 429 once the budget
- * is exhausted / the wait exceeds the ceiling / the caller aborts -- the
- * consumer decides how to surface that terminal 429.
- */
 /** Whether *response* still warrants a retry under the budget + replay gate. */
 function _canRetry(
   response: RetryableResponse,
@@ -144,6 +139,17 @@ function _canRetry(
   )
 }
 
+/**
+ * The single 429 retry policy shared by the axios interceptor and the
+ * raw-``fetch`` helper. Re-issues *send* up to {@link MAX_RATE_LIMIT_RETRIES}
+ * times while the response is a 429 and the request is replayable, honouring
+ * ``Retry-After`` (via *getRetryAfterMs*), the {@link DO_NOT_RETRY} ceiling,
+ * and an optional abort signal.
+ *
+ * Returns the first non-429 response, or the most recent 429 once the budget
+ * is exhausted / the wait exceeds the ceiling / the caller aborts -- the
+ * consumer decides how to surface that terminal 429.
+ */
 export async function retryAfterLoop<R extends RetryableResponse>(
   params: RetryAfterLoopParams<R>,
 ): Promise<R> {
@@ -159,7 +165,7 @@ export async function retryAfterLoop<R extends RetryableResponse>(
     beforeRetry(attempt, waitMs)
     await sleep(waitMs)
     if (aborted()) return response
-    response = await send()
+    response = await send(attempt)
   }
   return response
 }

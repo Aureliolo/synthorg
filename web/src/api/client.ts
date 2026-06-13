@@ -163,14 +163,13 @@ async function _retryRateLimit(
 ): Promise<AxiosResponse> {
   const method = (config.method ?? '').toLowerCase()
   let lastError: ApiAxiosError = error
-  let retryCount = 0
   const final = await retryAfterLoop<AxiosResponse>({
     first: firstResponse,
-    send: async () => {
+    send: async (attempt: number) => {
       const headers: Record<string, string> = {
         ...(config.headers as Record<string, string>),
       }
-      headers[RETRY_COUNT_HEADER] = String(retryCount)
+      headers[RETRY_COUNT_HEADER] = String(attempt)
       const retryConfig = {
         ...config,
         headers,
@@ -188,7 +187,6 @@ async function _retryRateLimit(
     retriable: true,
     sleep,
     onBeforeRetry: (attempt) => {
-      retryCount = attempt
       // Surfaces backend rate-limit pressure to dashboards / operators.
       // ``log.warn`` (not ``info``) because the web logger ships only
       // ``debug | warn | error`` levels; a silent absorbed 429 is a
