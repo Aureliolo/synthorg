@@ -1,10 +1,12 @@
-"""Typed argument models for the MCP ``cockpit`` steering tools.
+"""Typed argument models for every MCP ``cockpit`` tool.
 
-Covers the project-scoped ``steer`` / ``steer_supersede`` / ``steer_list`` tools.
-The pre-existing read + intervene cockpit tools keep their JSON-Schema-only
-registration; these three are the new steering surface and route through
-``parse_typed`` at the invoker so blank ids and malformed payloads are rejected
-at the MCP boundary rather than slipping into the service write path.
+Covers the read surface (``get_live_activity`` / ``get_flight_recorder_frames``
+/ ``seek_flight_recorder`` / ``steer_list``), the task-intervention surface
+(``intervene_pause`` / ``intervene_kill``) and the project-scoped steering
+surface (``steer`` / ``steer_supersede``). Every tool routes its external
+``arguments`` through ``parse_typed`` at the invoker so blank ids and malformed
+payloads are rejected at the MCP boundary rather than slipping into the service
+write path.
 """
 
 from pydantic import Field
@@ -12,7 +14,38 @@ from pydantic import Field
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention import SupersedeMode
 from synthorg.engine.intervention.enums import InterventionKind
-from synthorg.meta.mcp.domains._common_args import AdminGuardrailFields, _ArgsBase
+from synthorg.meta.mcp.domains._common_args import (
+    AdminGuardrailFields,
+    PaginationFields,
+    _ArgsBase,
+)
+
+
+class LiveActivityArgs(_ArgsBase):
+    """Args for ``cockpit.get_live_activity`` (read, no parameters)."""
+
+
+class FramesArgs(PaginationFields):
+    """Args for ``cockpit.get_flight_recorder_frames`` (read)."""
+
+    execution_id: NotBlankStr = Field(description="Execution run identifier")
+
+
+class SeekArgs(_ArgsBase):
+    """Args for ``cockpit.seek_flight_recorder`` (read)."""
+
+    execution_id: NotBlankStr = Field(description="Execution run identifier")
+    turn_index: int = Field(ge=1, description="1-based target turn index")
+
+
+class InterveneArgs(AdminGuardrailFields):
+    """Args for ``cockpit.intervene_pause`` / ``intervene_kill`` (admin).
+
+    Both task-lifecycle interventions share the same surface: a single
+    ``task_id`` plus the admin guardrail fields.
+    """
+
+    task_id: NotBlankStr = Field(description="Task to act on")
 
 
 class SteerArgs(AdminGuardrailFields):
