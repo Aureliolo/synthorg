@@ -9,6 +9,7 @@ OAuth provider configuration (list / configure / remove) through
 """
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
@@ -16,6 +17,11 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import (
     client_facade_service_of,
     oauth_facade_service_of,
+)
+from synthorg.meta.mcp.domains._remaining_args import (
+    ClientsGetArgs,
+    ClientsGetSatisfactionArgs,
+    ClientsListArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -27,6 +33,7 @@ from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _require_str,
     _require_uuid,
     _to_jsonable,
+    typed_args,
 )
 from synthorg.meta.mcp.handlers.common import (
     err,
@@ -35,7 +42,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
     get_optional_str,
     require_actor_id,
 )
@@ -51,6 +57,9 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
+
+_ARG_CLIENT_ID = "client_id"
+_TY_UUID = "UUID string"
 
 
 async def _oauth_list_providers(
@@ -79,6 +88,9 @@ async def _oauth_list_providers(
     return ok([_to_jsonable(p) for p in providers])
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads flat
+# name/client_id/authorize_url/token_url/scopes, but OauthConfigureProviderArgs
+# declares provider + an opaque `config` dict.
 async def _oauth_configure_provider(
     *,
     app_state: AppState,
@@ -118,6 +130,9 @@ async def _oauth_configure_provider(
     return ok(record.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads `name`
+# and enforces guardrails, but OauthRemoveProviderArgs declares `provider` and no
+# AdminGuardrailFields.
 async def _oauth_remove_provider(
     *,
     app_state: AppState,
@@ -176,7 +191,8 @@ async def _clients_list(
     """
     tool = "synthorg_clients_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, ClientsListArgs)
+        offset, limit = page_args.offset, page_args.limit
         clients = await client_facade_service_of(app_state).list_clients()
         page, pagination = paginate_sequence(
             clients,
@@ -204,10 +220,17 @@ async def _clients_get(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``client_id`` is not a UUID string.
     """
     tool = "synthorg_clients_get"
     try:
-        client_id = _require_uuid(arguments, "client_id")
+        client_id = typed_args(arguments, ClientsGetArgs).client_id
+        try:
+            UUID(client_id)
+        except ValueError as uuid_exc:
+            raise ArgumentValidationError(_ARG_CLIENT_ID, _TY_UUID) from uuid_exc
         client = await client_facade_service_of(app_state).get_client(client_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -224,6 +247,8 @@ async def _clients_get(
     return ok(client.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# contact_email + notes, but ClientsCreateArgs declares only `name`.
 async def _clients_create(
     *,
     app_state: AppState,
@@ -259,6 +284,8 @@ async def _clients_create(
     return ok(client.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler enforces
+# require_admin_guardrails but ClientsDeactivateArgs declares no AdminGuardrailFields.
 async def _clients_deactivate(
     *,
     app_state: AppState,
@@ -314,10 +341,17 @@ async def _clients_get_satisfaction(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``client_id`` is not a UUID string.
     """
     tool = "synthorg_clients_get_satisfaction"
     try:
-        client_id = _require_uuid(arguments, "client_id")
+        client_id = typed_args(arguments, ClientsGetSatisfactionArgs).client_id
+        try:
+            UUID(client_id)
+        except ValueError as uuid_exc:
+            raise ArgumentValidationError(_ARG_CLIENT_ID, _TY_UUID) from uuid_exc
         result = await client_facade_service_of(app_state).get_satisfaction(client_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
