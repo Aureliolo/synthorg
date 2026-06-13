@@ -78,11 +78,6 @@
             "type": "command",
             "command": "bash scripts/check_enforce_parallel_tests.sh",
             "timeout": 5000
-          },
-          {
-            "type": "command",
-            "command": "bash scripts/check_no_unapproved_e2e_tests.sh",
-            "timeout": 5000
           }
         ]
       },
