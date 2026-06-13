@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, ListFilter, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
@@ -233,12 +233,15 @@ function EmptyChannelsSection({
   // Empty-channels section: collapsed by default so the user can see active
   // threads at a glance. Includes a chevron toggle and a count so they know
   // more channels exist below the fold.
+  // ``useId`` keeps the toggle/panel association unique even when two
+  // ChannelSidebar instances (mobile drawer + desktop nav) mount at once.
+  const panelId = useId()
   return (
     <div className="mt-1 border-t border-border pt-3">
       <button
         type="button"
         aria-expanded={expanded}
-        aria-controls="empty-channels-panel"
+        aria-controls={panelId}
         onClick={onToggle}
         className="flex w-full items-center gap-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
       >
@@ -250,7 +253,7 @@ function EmptyChannelsSection({
         <span>Empty ({emptyCount})</span>
       </button>
       {expanded && (
-        <div id="empty-channels-panel" className="mt-2 flex flex-col gap-3">
+        <div id={panelId} className="mt-2 flex flex-col gap-3">
           {TYPE_ORDER.map((type) => {
             const items = emptyByType.get(type)
             if (!items || items.length === 0) return null

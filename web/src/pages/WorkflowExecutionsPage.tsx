@@ -4,7 +4,7 @@
  * Lists recent runs for a single workflow definition with a Cancel action for
  * executions still in flight.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDownWideNarrow, ArrowUpWideNarrow } from 'lucide-react'
 import { useParams } from 'react-router'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
@@ -57,6 +57,7 @@ interface ExecutionsView {
 function useExecutionsView(executions: readonly WorkflowExecution[]): ExecutionsView {
   const [statusFilter, setStatusFilter] = useState<ExecStatusFilter>('all')
   const [sortDir, setSortDir] = useState<ExecSortDir>('desc')
+  const didMountRef = useRef(false)
 
   const processed = useMemo(() => {
     const filtered =
@@ -72,8 +73,13 @@ function useExecutionsView(executions: readonly WorkflowExecution[]): Executions
   const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize, resetPage } =
     useListPagination({ items: processed, namespace: 'executions' })
 
-  // Filter / sort changes narrow the list, so return to page 1.
+  // Filter / sort changes narrow the list, so return to page 1. Skip the
+  // initial mount so a deep-linked ``?executionsPage=...`` survives.
   useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
     resetPage()
   }, [statusFilter, sortDir, resetPage])
 

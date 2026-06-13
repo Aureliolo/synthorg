@@ -29,7 +29,11 @@ function buildCompanyUpdate(parsed: Record<string, unknown>): UpdateCompanyReque
         : parsed['autonomy_level'] === null
           ? null
           : undefined,
-    budget_monthly: typeof parsed['budget_monthly'] === 'number' ? parsed['budget_monthly'] : undefined,
+    budget_monthly:
+      typeof parsed['budget_monthly'] === 'number'
+      && Number.isFinite(parsed['budget_monthly'])
+        ? parsed['budget_monthly']
+        : undefined,
     communication_pattern:
       typeof parsed['communication_pattern'] === 'string' ? parsed['communication_pattern'] : undefined,
   }

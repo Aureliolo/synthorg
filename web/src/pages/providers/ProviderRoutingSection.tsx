@@ -101,9 +101,22 @@ function useProviderRouting(): RoutingController {
     void Promise.resolve().then(() => { load() })
   }, [load])
 
-  const handleChange = useCallback((key: string, value: string) => {
-    setDirty((prev) => ({ ...prev, [key]: value }))
-  }, [])
+  const handleChange = useCallback(
+    (key: string, value: string) => {
+      setDirty((prev) => {
+        // Typing the persisted value back in clears the key rather than
+        // recording a no-op edit, so "Save" disables and we never POST
+        // an unchanged setting.
+        const persisted = state.entries.find((entry) => entry.definition.key === key)?.value
+        if (persisted === undefined) return prev
+        if (value === persisted) {
+          return Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key))
+        }
+        return { ...prev, [key]: value }
+      })
+    },
+    [state.entries],
+  )
 
   const handleSave = useCallback(() => {
     const changed = Object.entries(dirty)

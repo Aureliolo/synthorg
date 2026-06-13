@@ -179,11 +179,18 @@ function readRetryAfterHeaderMs(error: AxiosError): number | null {
 function isApiRequestError(
   error: unknown,
 ): error is Error & { errorDetail: ErrorDetail | null } {
-  return (
-    error instanceof Error
-    && error.name === 'ApiRequestError'
-    && 'errorDetail' in error
-  )
+  if (
+    !(error instanceof Error)
+    || error.name !== 'ApiRequestError'
+    || !('errorDetail' in error)
+  ) {
+    return false
+  }
+  // A malformed look-alike with ``errorDetail: undefined`` would pass a
+  // presence-only check yet throw when a caller reads ``errorDetail.retry_after``;
+  // require it to be null or an object so the read path is safe.
+  const detail = (error as { errorDetail: unknown }).errorDetail
+  return detail === null || typeof detail === 'object'
 }
 
 /** Check if an error is an Axios error. */

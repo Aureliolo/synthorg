@@ -2,7 +2,7 @@
  * Entity catalog section: card grid with filter tabs.
  */
 import { ArrowDownAZ, ArrowUpAZ, Shapes } from 'lucide-react'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useOntologyStore } from '@/stores/ontology'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
@@ -194,10 +194,16 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
 
   const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize, resetPage } =
     useListPagination({ items: sortedEntities, namespace: 'entities' })
+  const didMountRef = useRef(false)
 
   // Filters and sort narrow the set, so jump back to page 1 rather than
-  // stranding the operator on a now-clamped last page.
+  // stranding the operator on a now-clamped last page. Skip the initial
+  // mount so a deep-linked ``?entitiesPage=...`` survives.
   useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
     resetPage()
   }, [searchQuery, tierFilter, sortBy, sortDirection, resetPage])
 

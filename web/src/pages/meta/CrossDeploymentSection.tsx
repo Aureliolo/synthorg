@@ -15,10 +15,11 @@ import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonText } from '@/components/ui/skeleton'
 import { listPatterns, listRecommendations } from '@/api/endpoints/meta-analytics'
 import type { AggregatedPattern, ThresholdRecommendation } from '@/api/types'
+import { ErrorCode } from '@/api/types/errors'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { formatNumber } from '@/utils/format'
-import { getErrorMessage } from '@/utils/errors'
+import { getErrorCode, getErrorMessage, isAxiosError } from '@/utils/errors'
 
 const log = createLogger('CrossDeploymentSection')
 
@@ -32,12 +33,16 @@ interface CrossDeploymentState {
 }
 
 /**
- * True only for a genuine 503 (collector disabled), which getErrorMessage
- * renders as a service-unavailable / restarting string. A 500 (INTERNAL)
- * is a real backend fault and must NOT be masked as "not enabled".
+ * True only for a genuine 503 (collector disabled), which the backend
+ * raises as `ServiceUnavailableError` (structured `SERVICE_UNAVAILABLE`
+ * code, HTTP 503). Branching on the typed code rather than message text
+ * keeps a real backend fault (e.g. a 500 whose prose happens to contain
+ * "unavailable") from being masked as "not enabled". The HTTP-status
+ * fallback covers envelopes that arrive without a structured code.
  */
 function isServiceUnavailable(error: unknown): boolean {
-  return /unavailable|restarting/i.test(getErrorMessage(error))
+  if (getErrorCode(error) === ErrorCode.SERVICE_UNAVAILABLE) return true
+  return isAxiosError(error) && error.response?.status === 503
 }
 
 type FetchResults = readonly [

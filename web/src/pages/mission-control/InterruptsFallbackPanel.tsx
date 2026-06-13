@@ -126,7 +126,10 @@ function InterruptCard({
 function useInterruptsFallback() {
   const wsConnected = useWebSocketStore((s) => s.connected)
   const [interrupts, setInterrupts] = useState<readonly InterruptResponse[]>([])
-  const [busyId, setBusyId] = useState<string | null>(null)
+  // Track every in-flight resume by id: a single scalar would let an
+  // earlier completion clear the busy flag while a later resume on a
+  // different card is still running, re-enabling it for a duplicate POST.
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set())
 
   const fetchInterrupts = useCallback(async () => {
     const items = await listInterrupts()
@@ -149,7 +152,11 @@ function useInterruptsFallback() {
 
   const resume = useCallback(
     (id: string, payload: ResumeInterruptRequest) => {
-      setBusyId(id)
+      setBusyIds((prev) => {
+        const next = new Set(prev)
+        next.add(id)
+        return next
+      })
       void resumeInterrupt(id, payload)
         .then(() => {
           useToastStore.getState().add({ variant: 'success', title: 'Interrupt resumed' })
@@ -163,16 +170,22 @@ function useInterruptsFallback() {
             description: getErrorMessage(err),
           })
         })
-        .finally(() => setBusyId(null))
+        .finally(() =>
+          setBusyIds((prev) => {
+            const next = new Set(prev)
+            next.delete(id)
+            return next
+          }),
+        )
     },
     [fetchInterrupts],
   )
 
-  return { wsConnected, interrupts, busyId, error: polling.error, resume }
+  return { wsConnected, interrupts, busyIds, error: polling.error, resume }
 }
 
 export function InterruptsFallbackPanel() {
-  const { wsConnected, interrupts, busyId, error, resume } = useInterruptsFallback()
+  const { wsConnected, interrupts, busyIds, error, resume } = useInterruptsFallback()
 
   // Connected: the live transport surfaces interrupts; render nothing.
   if (wsConnected) return null
@@ -205,7 +218,7 @@ export function InterruptsFallbackPanel() {
               key={interrupt.id}
               interrupt={interrupt}
               onResume={resume}
-              busy={busyId === interrupt.id}
+              busy={busyIds.has(interrupt.id)}
             />
           ))
         )}

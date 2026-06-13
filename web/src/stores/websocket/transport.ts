@@ -164,6 +164,13 @@ function scheduleReconnect(set: WsSet, get: WsGet): void {
 }
 
 function handleAuthOk(thisSocket: WebSocket, set: WsSet): void {
+  // Tear down the SSE fallback only once the replacement WS is proven
+  // usable (authenticated). Doing it here rather than before the ticket
+  // exchange keeps the fallback live through a failed handshake, so a
+  // dropped ticket / never-reached ``auth_ok`` does not leave the
+  // dashboard with neither transport. The WS does not dispatch events
+  // before ``auth_ok``, so there is no double-fire window to close.
+  closeSseFallback(set)
   set({ connected: true })
   reconnectAttempts = 0
   // Successful handshake clears the proxy-block suspicion; if
@@ -367,12 +374,6 @@ async function doConnect(
   resetProtocolMismatchCount()
   shouldBeConnected = true
   intentionalClose = false
-
-  // Close any active SSE fallback before attempting a fresh WS: if the
-  // handshake later succeeds, a still-open SSE client would double-fire
-  // ``dispatchEvent`` on every channel event (once per transport). This
-  // keeps the "only one transport at a time" invariant the dispatch assumes.
-  closeSseFallback(set)
 
   const ticket = await fetchTicketOrReconnect(set, get)
   if (ticket === null) return

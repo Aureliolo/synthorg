@@ -57,13 +57,11 @@ type SinkPayload = { sink_overrides: string; custom_sinks: string }
 
 function buildOverridePayload(v: SinkFormValues): SinkPayload {
   const override: Record<string, unknown> = { level: v.level, json_format: v.jsonFormat, enabled: v.enabled }
-  if (!v.isConsole && v.rotationStrategy !== 'none') {
-    override['rotation'] = {
-      strategy: v.rotationStrategy,
-      max_bytes: Number(v.maxBytes),
-      backup_count: Number(v.backupCount),
-    }
-  }
+  // Reuse the save-path normalisation so "Test Config" validates the exact
+  // rotation payload "Save" would persist (preserves backup_count 0, never
+  // emits non-finite numbers).
+  const rotation = buildSaveRotation(v)
+  if (rotation !== null) override['rotation'] = rotation
   return { sink_overrides: JSON.stringify({ [v.sink!.identifier]: override }), custom_sinks: '[]' }
 }
 
@@ -76,13 +74,8 @@ function buildCustomPayload(v: SinkFormValues): SinkPayload | null {
     json_format: v.jsonFormat,
     enabled: v.enabled,
   }
-  if (!v.isConsole && v.rotationStrategy !== 'none') {
-    customSink['rotation'] = {
-      strategy: v.rotationStrategy,
-      max_bytes: Number(v.maxBytes) || DEFAULT_MAX_BYTES,
-      backup_count: Number(v.backupCount) || DEFAULT_BACKUP_COUNT,
-    }
-  }
+  const rotation = buildSaveRotation(v)
+  if (rotation !== null) customSink['rotation'] = rotation
   if (v.routingPrefixes.length > 0) customSink['routing_prefixes'] = v.routingPrefixes
   return { sink_overrides: '{}', custom_sinks: JSON.stringify([customSink]) }
 }
