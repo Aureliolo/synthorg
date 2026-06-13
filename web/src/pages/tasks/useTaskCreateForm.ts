@@ -113,6 +113,7 @@ function validateTaskForm(form: TaskCreateFormState): TaskCreateFormErrors {
 }
 
 function buildPayload(form: TaskCreateFormState): CreateTaskRequest {
+  const assignedTo = form.assigned_to.trim()
   return {
     title: form.title.trim(),
     description: form.description.trim(),
@@ -120,7 +121,7 @@ function buildPayload(form: TaskCreateFormState): CreateTaskRequest {
     priority: form.priority,
     project: form.project.trim(),
     created_by: form.created_by.trim(),
-    ...(form.assigned_to.trim() ? { assigned_to: form.assigned_to.trim() } : {}),
+    ...(assignedTo ? { assigned_to: assignedTo } : {}),
     estimated_complexity: form.estimated_complexity,
     budget_limit: form.budget_limit ? Number(form.budget_limit) : 0,
   }

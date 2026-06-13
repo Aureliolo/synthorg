@@ -53,11 +53,11 @@ async function fetchOneSubworkflowPage(
 ): Promise<PaginatedResult<SubworkflowSummary>> {
   return query
     ? searchSubworkflows(query, {
-        cursor: cursor ?? undefined,
+        ...(cursor != null && { cursor }),
         limit: PAGE_SIZE,
       })
     : listSubworkflows({
-        cursor: cursor ?? undefined,
+        ...(cursor != null && { cursor }),
         limit: PAGE_SIZE,
       })
 }
