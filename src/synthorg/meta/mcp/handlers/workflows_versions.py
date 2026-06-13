@@ -16,7 +16,9 @@ from synthorg.engine.state import (
 )
 from synthorg.engine.workflow.service import WorkflowDefinitionNotFoundError
 from synthorg.engine.workflow.version_service import WorkflowVersionService
+from synthorg.meta.mcp.domains._workflows_org_args import WorkflowVersionsListArgs
 from synthorg.meta.mcp.errors import ArgumentValidationError
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
@@ -25,7 +27,6 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
     require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -109,8 +110,9 @@ async def _workflow_versions_list(
     if service is None:
         return capability_gap(tool, _WHY_VERSION_SERVICE)
     try:
-        def_id = require_non_blank(arguments, _ARG_DEF_ID)
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, WorkflowVersionsListArgs)
+        def_id = page_args.workflow_id
+        offset, limit = page_args.offset, page_args.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -129,6 +131,8 @@ async def _workflow_versions_list(
     return ok(data=dump_many(page), pagination=meta)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
+# `revision` int, but WorkflowVersionsGetArgs declares the field `version_num`.
 async def _workflow_versions_get(
     *,
     app_state: AppState,

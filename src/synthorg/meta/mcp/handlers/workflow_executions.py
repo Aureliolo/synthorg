@@ -24,10 +24,15 @@ from synthorg.engine.state import EngineStateSlice, workflow_execution_service_o
 from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,
 )
+from synthorg.meta.mcp.domains._workflows_org_args import (
+    WorkflowExecutionsCancelArgs,
+    WorkflowExecutionsGetArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     capability_gap,
     dump_many,
@@ -60,7 +65,6 @@ logger = get_logger(__name__)
 
 _TY_NON_BLANK = "non-blank string"
 _ARG_DEF_ID = "workflow_id"
-_ARG_EXEC_ID = "execution_id"
 _WHY_EXECUTION_SERVICE = (
     "workflow_execution_service is not wired on app_state in this deployment"
 )
@@ -120,6 +124,9 @@ def _parse_start_args(
     return def_id, project, copy.deepcopy(context_raw)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler requires
+# workflow_id and ignores status, but WorkflowExecutionsListArgs makes workflow_id
+# optional and declares a status filter the handler never forwards.
 async def workflow_executions_list(
     *,
     app_state: AppState,
@@ -171,7 +178,7 @@ async def workflow_executions_get(
     if service is None:
         return capability_gap(tool, _WHY_EXECUTION_SERVICE)
     try:
-        execution_id = require_non_blank(arguments, _ARG_EXEC_ID)
+        execution_id = typed_args(arguments, WorkflowExecutionsGetArgs).execution_id
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -191,6 +198,9 @@ async def workflow_executions_get(
     return ok(data=execution.model_dump(mode="json"))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# project + context, but WorkflowExecutionsStartArgs declares workflow_id +
+# parameters.
 async def workflow_executions_start(
     *,
     app_state: AppState,
@@ -265,7 +275,7 @@ async def workflow_executions_cancel(
     if service is None:
         return capability_gap(tool, _WHY_EXECUTION_SERVICE)
     try:
-        execution_id = require_non_blank(arguments, _ARG_EXEC_ID)
+        execution_id = typed_args(arguments, WorkflowExecutionsCancelArgs).execution_id
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
