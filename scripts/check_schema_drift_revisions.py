@@ -203,10 +203,11 @@ async def _dump_postgres_schema(revisions_path: Path) -> str:
         dbname = pg.dbname
         url = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{dbname}"
         await migrations.migrate_apply(url, revisions_path=revisions_path)
-        container_id = pg.get_wrapped_container().id
-        if container_id is None:
+        wrapped_container = pg.get_wrapped_container()
+        if wrapped_container is None or wrapped_container.id is None:
             msg = "Postgres testcontainer has no id; cannot run pg_dump."
             raise SystemExit(msg)
+        container_id = wrapped_container.id
         dump = await asyncio.to_thread(_run_pg_dump, container_id, user, dbname)
     return _strip_postgres_dump_prelude(dump)
 
