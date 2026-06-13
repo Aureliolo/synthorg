@@ -151,10 +151,12 @@ For each non-IRRELEVANT changelog item, check our actual usage:
 
 1. **BREAKING**: Does the removed/renamed/changed thing appear in our config or code? If yes → must fix. If no → note but no action needed.
 2. **DEPRECATION**: Are we using the deprecated feature? If yes → plan migration. If no → skip.
-3. **NEW FEATURE**: Could we use this? Would it simplify our config, improve reliability, enable something we wanted?
-4. **IMPROVEMENT**: Does it affect a feature we use? Quantify impact if possible.
+3. **NEW FEATURE**: Could we use this? Reach an explicit verdict; don't leave it at "could". For each new capability decide one of: **ADOPT** (worth turning on; record the exact change, i.e. which config key / rule / flag, in which file), **DEFER** (worth adopting but not in this PR; becomes a follow-up item), or **SKIP** (genuinely not applicable; one-line reason). Newly-introduced opt-in lint / type-check / security rules are the highest-value case and **default to ADOPT**: a new rule almost always encodes a real bug class the maintainers think is worth catching, and enabling it is the entire reason to read a linter's changelog. "It's only a preview rule, or it lives in a recommended preset we don't currently inherit" is a reason to enable it *deliberately*, NOT a reason to ignore it.
+4. **IMPROVEMENT**: Does it affect a feature we use? Quantify impact if possible. If acting on it needs a change on our side (opting into a new fast-path, raising a now-safe limit, switching to a new recommended setting), treat it like a NEW FEATURE and give it an **ADOPT / DEFER / SKIP** verdict too.
 5. **BUGFIX**: Were we hitting this bug? Check if we have workarounds that can now be removed.
 6. **SECURITY**: Does it affect our usage? What's the severity?
+
+**Every NEW FEATURE and IMPROVEMENT item must carry one of the three verdicts (ADOPT / DEFER / SKIP) with a one-line reason; bare "no action" is not an allowed disposition for these two categories.** ADOPT and DEFER items are not optional polish; they are a primary deliverable of reviewing a changelog. Every ADOPT item flows into Phase 6's "Opt-in improvements to adopt" list and into the Phase 7 decision so the user can choose to enable it (in this PR or as a follow-up). A scan that finds an adoptable new rule/flag and then merges the PR without ever offering to enable it has failed at its core job.
 
 ## Phase 4: Build Docs Site (for docs dependencies only)
 
@@ -295,9 +297,10 @@ Present ONLY actionable items (skip IRRELEVANT):
 
 List concrete actions to take, grouped by timing:
 - **Before merge**: things that must be fixed for the PR to work
-- **With merge**: config improvements to make in this PR before merging
-- **After merge**: follow-up items (non-blocking but valuable)
-- **No action needed**: if the update is clean, say so explicitly
+- **Opt-in improvements to adopt**: every ADOPT item from Phase 3 (new lint / type / security rules, new config flags, new fast-paths) with the exact change spelled out, i.e. which key / rule / flag in which file (e.g. "enable `RUF076` in `[tool.ruff.lint] select` in `pyproject.toml`"). For each, say whether it's cheap enough to do in this PR or better as a follow-up. If there genuinely are none, write "no new capabilities worth adopting" explicitly; do not just omit the section, because a silent omission is indistinguishable from never having looked.
+- **With merge**: config improvements / workaround removals to make in this PR before merging
+- **After merge**: follow-up items, including DEFER-ed adoptions (non-blocking but valuable)
+- **No action needed**: if the update is genuinely clean, say so explicitly
 
 ## Phase 7: User Decision
 
@@ -307,7 +310,7 @@ After presenting all PR reports, route each PR by its triage state. Only invoke 
 
 **Default: clean PRs auto-merge without prompting.** A PR is "clean" when ALL the following hold:
 - CI is fully green: every check is in `SUCCESS`, `SKIPPED`, or `NEUTRAL` state. No `FAILURE`, `CANCELLED`, `TIMED_OUT`, `IN_PROGRESS`, `QUEUED`, or `PENDING` checks. The same allowed-state list Phase 8's "Merge as-is" CI re-verification uses.
-- Phase 3 cross-reference produced **zero** "must fix" / "should adopt" / "remove workaround" items (i.e. no entries under the Recommendations report's "Before merge" / "With merge" sections).
+- Phase 3 cross-reference produced **zero** "must fix" / "remove workaround" items AND **zero ADOPT verdicts** (i.e. no entries under the Recommendations report's "Before merge", "With merge", or "Opt-in improvements to adopt" sections). A PR that introduces an adoptable new rule / flag / capability is NEVER silently auto-merged: the adoption opportunity has to be offered to the user first. (A DEFER-only PR may still auto-merge, but the plain-text announcement must name the deferred adoption so it is not lost.)
 - The PR is not a major version bump that warranted a migration-guide review (major bumps always go through the per-PR prompt even when changelog scan is clean, because the surface area is too large for a silent default).
 - For multi-PR batches: the overlap question above has been resolved AND this PR's wave is current.
 
@@ -341,14 +344,23 @@ For PRs with actionable items, failing CI, or a major bump that needs explicit c
 "What should we do with PR #<N> (<package> <from>→<to>)?"
 ```
 
-Options:
-- **"Merge as-is"**: No changes needed, changelog reviewed, ship it
-- **"Improve and merge"**: Apply the recommended config improvements, then merge (describe what will be changed)
-- **"Investigate first"**: Something needs deeper review before deciding (specify what)
-- **"Close / Skip"**: Don't want this update (e.g., breaking change not worth the migration)
+Options (pick the ≤ 4 that fit this PR's situation; AskUserQuestion shows at most four, plus an automatic "Other"):
+
+When the review surfaced **ADOPT items** (new rules / flags / capabilities worth enabling), lead with these:
+- **"Adopt and merge"** (list this first / Recommended when adoption is cheap): enable the ADOPT items from Phase 6 on the PR branch, confirm CI + lint still pass, then merge. State exactly what gets turned on. This is the default for a PR whose only actionable content is opt-in wins; it is the whole reason the adoption opportunity was surfaced.
+- **"Merge now, adopt later"**: merge the bump as-is and open a follow-up for the ADOPT/DEFER items (name them). Use when the adoption is worth doing but you don't want to grow this PR's scope.
+- **"Merge as-is, skip adoption"**: merge the bump and consciously decline the new capability (the decision is recorded in the approval rationale's Follow-ups line).
+
+Otherwise (major bump with nothing to adopt, or config fixes needed):
+- **"Merge as-is"**: no changes needed, changelog reviewed, ship it
+- **"Improve and merge"**: apply recommended config improvements / workaround removals (describe them), then merge
+
+Always available:
+- **"Investigate first"**: something needs deeper review before deciding (specify what)
+- **"Close / Skip"**: don't want this update (e.g., breaking change not worth the migration)
 
 **If CI is failing on a PR**, replace "Merge as-is" with:
-- **"Fix CI and merge"**: Investigate the failure, fix it, then merge
+- **"Fix CI and merge"**: investigate the failure, fix it, then merge
 
 **Multiple clean PRs: per-PR triage question is skipped; the batch overlap question still applies if overlaps exist.**
 
@@ -434,6 +446,26 @@ gh pr review <number> --approve --body "Decision: lockfile-only refresh; CI gree
 
    Confirm `state == "MERGED"` and `mergedAt != null`. If not merged, inform the user and surface the prior step's stderr.
 
+### Adopt and merge
+
+Use the **Improve and merge** mechanics below, with the adoption itself as the committed change: on the PR branch, make the exact edits the Phase 6 "Opt-in improvements to adopt" list specified (enable the new rule in the linter config, set the new flag, switch to the new recommended setting), then run the relevant local gate before pushing so you are not relying on remote CI to discover a self-inflicted break:
+- new ruff rule → `uv run ruff check . ` (and `--fix` if it has an autofix); fix or `# noqa`-justify any new findings in the same commit, never blanket-disable the rule you just enabled.
+- new eslint / typescript-eslint rule → `bash -c "cd web && npm run lint"` (the dashboard lint runs `--max-warnings 0`, so a new `warn`-level rule fails CI; either fix the findings or set the rule's level deliberately with a comment).
+- new type-check or security gate → the matching `uv run mypy ...` / audit command from `CLAUDE.md`.
+
+The approval rationale (Phase 8 "Approve with rationale") must name the capability adopted and the findings it surfaced, and the `Follow-ups:` line records any adoption deferred to a later PR. If enabling the rule surfaces a large backlog of findings that can't be cleanly resolved in this PR, stop and fall back to **"Merge now, adopt later"** rather than merging a half-applied rule.
+
+### Merge now, adopt later
+
+Run the **Merge as-is** path to land the bump, then file a follow-up for the deferred adoption (do not skip the follow-up; an un-filed DEFER is just a silent SKIP):
+
+```bash
+gh issue create --repo <owner>/<repo> --title "Adopt <capability> from <package> <version>" \
+  --body "Surfaced by dependency review of #<PR>. ADOPT: <exact change, e.g. enable RUF076 in pyproject.toml>. Deferred from the bump PR to keep its scope to the version change."
+```
+
+The approval rationale's `Follow-ups:` line must reference the created issue number so the trail is closed.
+
 ### Improve and merge
 
 **Before checkout:** Verify the working tree is clean (`git status --porcelain`). If dirty, warn the user and ask them to commit or stash first.
@@ -475,13 +507,14 @@ After all merges complete, if any PRs were merged, automatically run `/post-merg
 - **NEVER skip changelog review**: every dependency update, regardless of type (CI action, Python package, Docker image), gets a full changelog analysis between the old and new versions.
 - **Be specific about what affects us**: don't just list changelog items, cross-reference each one against our actual config and code usage.
 - **Major version bumps get extra scrutiny**: check for a migration guide. Always fetch it if breaking changes are ambiguous or potentially affect our usage; skip only when all breaking changes are clearly in internal APIs we don't use.
+- **Offering improvements is the point, not a bonus**: reviewing a changelog exists to catch four things equally: breaking changes to handle, deprecations to migrate, workarounds to remove, AND new capabilities to adopt. A new opt-in lint / type / security rule, a new config flag, or a new fast-path is an ADOPT/DEFER/SKIP decision the user gets to make (Phase 3 verdict → Phase 6 "Opt-in improvements to adopt" → Phase 7 "Adopt and merge" option), never something the skill silently shelves as "no action". If a bump introduces an adoptable improvement, the skill MUST surface it and offer to enable it; merging such a PR without ever presenting the adoption choice is a skill failure.
 - **Don't merge with failing CI**: if CI fails, investigate and fix first.
 - **Always approve before merge, with rationale**: every `gh pr merge` invocation in this skill MUST submit `gh pr review <number> --approve --body-file <rationale-file>` first. No exception.
 
   **Applies to every merge path:**
   - Phase 7 auto-merge default for clean PRs (`PR #<N> is clean ... merging as-is`).
   - Phase 8 strategy paths (`Lockfile-only batch`, `Wave-based parallel`, `Strict sequential`, `Combine into one PR`, `Defer the conflicting subset`).
-  - Per-PR action sections (`Merge as-is`, `Improve and merge`, `Fix CI and merge`).
+  - Per-PR action sections (`Merge as-is`, `Adopt and merge`, `Merge now, adopt later`, `Improve and merge`, `Fix CI and merge`).
 
   **Rationale content (the three-part body from Phase 8):**
   - `Decision:` one sentence stating bump type and why merging now.
