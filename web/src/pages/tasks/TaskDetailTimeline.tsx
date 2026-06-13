@@ -8,8 +8,8 @@ interface TimelineEntry {
   readonly id: string
   readonly icon: typeof Circle
   readonly title: string
-  readonly description?: string
-  readonly timestamp?: string
+  readonly description?: string | undefined
+  readonly timestamp?: string | undefined
   readonly tone: 'neutral' | 'accent' | 'success'
 }
 

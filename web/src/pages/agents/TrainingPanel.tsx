@@ -157,8 +157,8 @@ function buildPlanRequest(cfg: TrainingPanelConfig): TrainingPlanRequest {
     : undefined
   return {
     override_sources: cfg.overrideSources,
-    content_types: contentTypes.length > 0 ? contentTypes : undefined,
-    custom_caps: customCapsPayload,
+    ...(contentTypes.length > 0 ? { content_types: contentTypes } : {}),
+    ...(customCapsPayload !== undefined ? { custom_caps: customCapsPayload } : {}),
     skip_training: cfg.skipTraining,
     require_review: cfg.requireReview,
   }

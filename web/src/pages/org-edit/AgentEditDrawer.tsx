@@ -100,7 +100,7 @@ function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
     setSubmitError(null)
     const result = await onUpdate(agent.id, {
       name: trimmedName,
-      role: form.role.trim() || undefined,
+      ...(form.role.trim() ? { role: form.role.trim() } : {}),
       department: form.department,
       level: form.level,
     })

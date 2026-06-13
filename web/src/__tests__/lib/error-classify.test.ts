@@ -16,7 +16,7 @@ function axiosErrorWithStatus(status: number): AxiosError {
 describe('classifyError', () => {
   it('network error (no response) is transient + retryable', () => {
     const err = new AxiosError('network fail')
-    err.response = undefined
+    delete err.response
     const c = classifyError(err)
     expect(c.isTransient).toBe(true)
     expect(c.isClient).toBe(false)

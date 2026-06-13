@@ -54,7 +54,7 @@ async function confirmInstallImpl(
   try {
     const result = await installMcpServer({
       catalog_entry_id: ctx.entryId,
-      connection_name: ctx.connectionName ?? undefined,
+      ...(ctx.connectionName != null ? { connection_name: ctx.connectionName } : {}),
     })
     if (generation !== _installGeneration) return null
     const installed = new Set(get().installedEntryIds)

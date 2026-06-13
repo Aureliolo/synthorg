@@ -17,25 +17,25 @@ const SEARCH_WIDTH_STYLE: Record<SearchInputWidth, string> = {
 export interface SearchInputProps {
   value: string
   onChange: (value: string) => void
-  placeholder?: string
+  placeholder?: string | undefined
   /** Accessible label (required when no visible label is rendered). */
-  ariaLabel?: string
+  ariaLabel?: string | undefined
   /**
    * Enable the global `/` shortcut to focus this input. Default false. Ignored
    * when the active element is already inside an input / textarea / contenteditable.
    * Set to true on the primary list page search; leave false on nested searches.
    */
-  focusShortcut?: boolean
-  disabled?: boolean
+  focusShortcut?: boolean | undefined
+  disabled?: boolean | undefined
   /**
    * Maximum width cap. `'wide'` (default) suits list-page primary search;
    * `'narrow'` suits compact contexts like settings search. Mapped to
    * `--so-search-max-*` tokens so the cap adapts with theme density.
    */
-  maxWidth?: SearchInputWidth
-  className?: string
+  maxWidth?: SearchInputWidth | undefined
+  className?: string | undefined
   /** React 19 style ref that exposes `focus` and `clear` imperative methods. */
-  ref?: RefObject<SearchInputHandle | null>
+  ref?: RefObject<SearchInputHandle | null> | undefined
 }
 
 function isEditable(el: Element | null): boolean {

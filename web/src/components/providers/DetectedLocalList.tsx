@@ -27,12 +27,12 @@ export interface DetectedLocalListProps {
    * Surfaced inline so the operator sees that a probe was attempted
    * and reachable to the API even if it didn't yield a working URL.
    */
-  probeErrors?: Readonly<Partial<Record<string, string>>>
+  probeErrors?: Readonly<Partial<Record<string, string>>> | undefined
   probing: boolean
   providers: Readonly<Record<string, ProviderConfig>>
   onAddLocal: (presetName: string, detectedUrl: string) => void | Promise<void>
   /** Open the credential form pre-filled with the cloud counterpart preset. */
-  onAddCloud?: (cloudPresetName: string) => void
+  onAddCloud?: ((cloudPresetName: string) => void) | undefined
   onReprobe: () => void | Promise<void>
 }
 

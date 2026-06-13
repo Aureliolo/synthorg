@@ -35,10 +35,10 @@ interface ShortcutDeps {
   readonly selectedIndex: number | null
   readonly lastGRef: React.RefObject<number>
   readonly setSelectedIndex: React.Dispatch<React.SetStateAction<number | null>>
-  readonly onOpen?: (index: number) => void
-  readonly onEdit?: (index: number) => void
-  readonly onDelete?: (index: number) => void
-  readonly onFocusSearch?: () => void
+  readonly onOpen?: ((index: number) => void) | undefined
+  readonly onEdit?: ((index: number) => void) | undefined
+  readonly onDelete?: ((index: number) => void) | undefined
+  readonly onFocusSearch?: (() => void) | undefined
 }
 
 type ShortcutAction = (event: KeyboardEvent, deps: ShortcutDeps) => void

@@ -24,15 +24,15 @@ export interface SpendBurnChartProps {
   trendData: readonly TrendDataPoint[]
   forecast: ForecastResponse | null
   budgetTotal: number
-  budgetRemaining?: number
-  alerts?: BudgetAlertConfig
-  currency?: string
+  budgetRemaining?: number | undefined
+  alerts?: BudgetAlertConfig | undefined
+  currency?: string | undefined
 }
 
 interface ChartDataPoint {
   label: string
-  actual?: number
-  projected?: number
+  actual?: number | undefined
+  projected?: number | undefined
 }
 
 // Recharts margin requires numeric values. Mirrors --so-space-2 (8px).
@@ -81,10 +81,10 @@ function buildChartData(
 }
 
 function ChartTooltipContent({ active, payload, label, currency }: {
-  active?: boolean
-  payload?: Array<{ value: number; dataKey: string }>
-  label?: string
-  currency?: string
+  active?: boolean | undefined
+  payload?: Array<{ value: number; dataKey: string }> | undefined
+  label?: string | undefined
+  currency?: string | undefined
 }) {
   if (!active || !payload?.length) return null
   return (
@@ -106,8 +106,8 @@ function SpendBurnStats({
   currency,
 }: {
   forecast: ForecastResponse | null
-  budgetRemaining?: number
-  currency?: string
+  budgetRemaining?: number | undefined
+  currency?: string | undefined
 }) {
   return (
     <div className="flex gap-2">
@@ -152,7 +152,7 @@ function AlertReferenceLines({
   alerts,
   budgetTotal,
 }: {
-  alerts?: BudgetAlertConfig
+  alerts?: BudgetAlertConfig | undefined
   budgetTotal: number
 }) {
   if (!alerts || budgetTotal <= 0) return null
@@ -205,8 +205,8 @@ interface SpendBurnBodyProps {
   chartData: readonly ChartDataPoint[]
   forecast: ForecastResponse | null
   budgetTotal: number
-  alerts?: BudgetAlertConfig
-  currency?: string
+  alerts?: BudgetAlertConfig | undefined
+  currency?: string | undefined
   todayLabel: string
 }
 

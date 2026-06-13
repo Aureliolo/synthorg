@@ -63,9 +63,9 @@ type Attribution = Pick<
 
 function toAttribution(result: ConversationalProposeResponse): Attribution {
   return {
-    responderRole: result.responder_role ?? undefined,
-    responderName: result.responder_name ?? undefined,
-    routedTopic: result.routed_topic ?? undefined,
+    ...(result.responder_role != null && { responderRole: result.responder_role }),
+    ...(result.responder_name != null && { responderName: result.responder_name }),
+    ...(result.routed_topic != null && { routedTopic: result.routed_topic }),
   }
 }
 

@@ -9,8 +9,8 @@ interface ProviderModelRowProps {
   model: ProviderModelResponse
   supportsDelete: boolean
   supportsConfig: boolean
-  onDelete?: (modelId: string) => void
-  onConfigure?: (model: ProviderModelResponse) => void
+  onDelete?: ((modelId: string) => void) | undefined
+  onConfigure?: ((model: ProviderModelResponse) => void) | undefined
 }
 
 function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
@@ -105,8 +105,8 @@ interface ProviderModelListProps {
   models: readonly ProviderModelResponse[]
   supportsDelete?: boolean
   supportsConfig?: boolean
-  onDelete?: (modelId: string) => void
-  onConfigure?: (model: ProviderModelResponse) => void
+  onDelete?: ((modelId: string) => void) | undefined
+  onConfigure?: ((model: ProviderModelResponse) => void) | undefined
 }
 
 export function ProviderModelList({

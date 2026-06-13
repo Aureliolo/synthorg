@@ -11,7 +11,7 @@ export interface SinkCardProps {
    * previews) the Delete button is suppressed so the card still renders
    * without a wire-up.
    */
-  onDelete?: (sink: SinkInfo) => void
+  onDelete?: ((sink: SinkInfo) => void) | undefined
 }
 
 const LEVEL_COLORS: Record<string, string> = {

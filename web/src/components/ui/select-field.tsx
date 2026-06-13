@@ -12,12 +12,12 @@ export interface SelectFieldProps {
   options: readonly SelectOption[]
   value: string
   onChange: (value: string) => void
-  error?: string | null
-  hint?: string
-  disabled?: boolean
-  required?: boolean
-  className?: string
-  placeholder?: string
+  error?: string | null | undefined
+  hint?: string | undefined
+  disabled?: boolean | undefined
+  required?: boolean | undefined
+  className?: string | undefined
+  placeholder?: string | undefined
 }
 
 export interface SelectFieldHelpProps {

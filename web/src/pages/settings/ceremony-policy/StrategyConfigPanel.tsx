@@ -13,13 +13,13 @@ export interface StrategyConfigPanelProps {
   strategy: CeremonyStrategyType
   config: Record<string, unknown>
   onChange: (config: Record<string, unknown>) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 type StrategyConfigBody = ComponentType<{
   config: Record<string, unknown>
   onChange: (config: Record<string, unknown>) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }>
 
 // Table-driven dispatch: the exhaustive Record makes TypeScript enforce a

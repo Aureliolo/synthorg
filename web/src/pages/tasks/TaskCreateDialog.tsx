@@ -336,8 +336,8 @@ function TaskCreateDialogActions({ submitting, onSubmit }: TaskCreateDialogActio
 
 interface FormFieldProps {
   label: string
-  error?: string
-  required?: boolean
+  error?: string | undefined
+  required?: boolean | undefined
   children: React.ReactNode
 }
 

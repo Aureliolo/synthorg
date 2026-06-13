@@ -9,13 +9,13 @@ export interface HealthStatusRowProps {
   label: string
   description: string
   state: SubsystemState
-  detail?: string
+  detail?: string | undefined
   /**
    * Optional recovery action (e.g. "Retry now"). Rendered as a small
    * button inside the card footer; only surfaced when the subsystem is
    * in a terminal failure state.
    */
-  action?: { label: string; onClick: () => void }
+  action?: { label: string; onClick: () => void } | undefined
 }
 
 export function HealthStatusRow({

@@ -126,8 +126,8 @@ export const STATUS_BADGE_CLASSES: Record<SemanticColor | 'text-secondary', stri
 // -- Client-side filtering --------------------------------------------------
 
 export interface MeetingPageFilters {
-  status?: MeetingStatus
-  meetingType?: string
+  status?: MeetingStatus | undefined
+  meetingType?: string | undefined
 }
 
 export function filterMeetings(

@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import { apiClient, unwrap, unwrapPaginated, withSignal, type PaginatedResult } from '../client'
 import type { KnowledgeHit, KnowledgeSource } from '../types'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
@@ -16,7 +16,7 @@ export async function listProjectKnowledgeSources(
 ): Promise<PaginatedResult<KnowledgeSource>> {
   const response = await apiClient.get<PaginatedResponse<KnowledgeSource>>(
     `/projects/${encodeURIComponent(projectId)}/knowledge`,
-    { params, signal },
+    withSignal(signal, { params }),
   )
   return unwrapPaginated<KnowledgeSource>(response)
 }
@@ -28,7 +28,7 @@ export async function getProjectKnowledgeSource(
 ): Promise<KnowledgeSource> {
   const response = await apiClient.get<ApiResponse<KnowledgeSource>>(
     `/projects/${encodeURIComponent(projectId)}/knowledge/${encodeURIComponent(sourceId)}`,
-    { signal },
+    withSignal(signal),
   )
   return unwrap(response)
 }
@@ -41,7 +41,7 @@ export async function searchProjectKnowledge(
 ): Promise<readonly KnowledgeHit[]> {
   const response = await apiClient.get<ApiResponse<readonly KnowledgeHit[]>>(
     `/projects/${encodeURIComponent(projectId)}/knowledge/search`,
-    { params: { q: query, limit }, signal },
+    withSignal(signal, { params: { q: query, limit } }),
   )
   return unwrap(response)
 }
@@ -58,7 +58,7 @@ export async function listGlobalKnowledgeSources(
 ): Promise<PaginatedResult<KnowledgeSource>> {
   const response = await apiClient.get<PaginatedResponse<KnowledgeSource>>(
     '/knowledge',
-    { params, signal },
+    withSignal(signal, { params }),
   )
   return unwrapPaginated<KnowledgeSource>(response)
 }

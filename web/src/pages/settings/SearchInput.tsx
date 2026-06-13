@@ -11,9 +11,9 @@ export interface SearchInputHandle {
 export interface SearchInputProps {
   value: string
   onChange: (query: string) => void
-  className?: string
-  ref?: React.Ref<SearchInputHandle>
-  resultCount?: number
+  className?: string | undefined
+  ref?: React.Ref<SearchInputHandle> | undefined
+  resultCount?: number | undefined
 }
 
 export function SearchInput({ value, onChange, className, ref, resultCount }: SearchInputProps) {

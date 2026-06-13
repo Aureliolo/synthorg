@@ -53,7 +53,7 @@ function DescriptionField({ task }: TaskFieldProps) {
           // never inadvertently clears the task's existing priority.
           const updated = await useTasksStore.getState().updateTask(task.id, {
             description: value,
-            expected_version: task.version,
+            expected_version: task.version ?? null,
           })
           if (!updated) {
             throw new Error('Failed to save description')
@@ -77,7 +77,7 @@ function PriorityField({ task }: TaskFieldProps) {
         // render after the store's ``upsertTask`` succeeds.
         await useTasksStore.getState().updateTask(task.id, {
           priority: value as Priority,
-          expected_version: task.version,
+          expected_version: task.version ?? null,
         })
       }}
     />

@@ -135,7 +135,7 @@ function FlowCanvas(props: WorkflowEditorCanvasProps) {
       edges={edges as Edge[]}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
-      defaultViewport={defaultViewport}
+      {...(defaultViewport !== undefined && { defaultViewport })}
       fitView={!defaultViewport}
       fitViewOptions={{ padding: 0.2 }}
       onMoveEnd={onMoveEnd}

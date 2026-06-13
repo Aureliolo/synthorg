@@ -60,9 +60,9 @@ export async function requestPermission(): Promise<NotificationPermission> {
 
 export interface BrowserNotificationPayload {
   readonly title: string
-  readonly body?: string
-  readonly href?: string
-  readonly tag?: string
+  readonly body?: string | undefined
+  readonly href?: string | undefined
+  readonly tag?: string | undefined
 }
 
 export function show(payload: BrowserNotificationPayload): void {
@@ -80,9 +80,9 @@ export function show(payload: BrowserNotificationPayload): void {
 
   try {
     const notification = new Notification(payload.title, {
-      body: payload.body,
       icon: '/favicon.svg',
-      tag: payload.tag,
+      ...(payload.body !== undefined && { body: payload.body }),
+      ...(payload.tag !== undefined && { tag: payload.tag }),
     })
     recordNotification()
 

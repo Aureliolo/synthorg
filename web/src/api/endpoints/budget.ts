@@ -1,4 +1,4 @@
-import { apiClient, unwrap, type PaginatedResult, ApiRequestError } from '../client'
+import { apiClient, unwrap, withSignal, type PaginatedResult, ApiRequestError } from '../client'
 import type {
   AgentSpending,
   BudgetConfig,
@@ -106,7 +106,7 @@ export async function getAgentSpending(agentId: string): Promise<AgentSpending> 
 }
 
 export async function getParetoFrontier(signal?: AbortSignal): Promise<ParetoFrontier> {
-  const response = await apiClient.get<ApiResponse<ParetoFrontier>>('/budget/pareto', { signal })
+  const response = await apiClient.get<ApiResponse<ParetoFrontier>>('/budget/pareto', withSignal(signal))
   return unwrap(response)
 }
 

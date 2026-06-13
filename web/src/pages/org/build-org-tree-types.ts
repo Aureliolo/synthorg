@@ -163,9 +163,9 @@ export interface BuildOrgTreeArgs {
   config: CompanyConfig
   runtimeStatuses: Record<string, AgentRuntimeStatus>
   departmentHealths: readonly DepartmentHealth[]
-  owners?: readonly OwnerInfo[]
-  deptAdmins?: readonly DeptAdminInfo[]
-  currentUserId?: string
+  owners?: readonly OwnerInfo[] | undefined
+  deptAdmins?: readonly DeptAdminInfo[] | undefined
+  currentUserId?: string | undefined
 }
 
 // ── Internal build accumulator ──────────────────────────────

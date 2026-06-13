@@ -195,10 +195,10 @@ function asSseRaw(value: unknown): SseRawEvent | null {
   }
   const id = sanitizeWsString(record['id'])
   return {
-    id,
     type,
     timestamp,
     payload: record['payload'],
+    ...(id !== undefined && { id }),
   }
 }
 

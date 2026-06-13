@@ -11,16 +11,16 @@ import type { WsEvent } from '@/api/types/websocket'
 export interface EnqueueParams {
   readonly category: NotificationCategory
   readonly title: string
-  readonly description?: string
-  readonly href?: string
-  readonly entityId?: string
-  readonly severity?: NotificationSeverity
+  readonly description?: string | undefined
+  readonly href?: string | undefined
+  readonly entityId?: string | undefined
+  readonly severity?: NotificationSeverity | undefined
   /**
    * Optional inline action label + handler forwarded to the toast
    * fan-out (so e.g. a "Retry" button can sit on a connection-lost
    * notification). Drawer / browser routes ignore this field today.
    */
-  readonly toastAction?: { label: string; onClick: () => void }
+  readonly toastAction?: { label: string; onClick: () => void } | undefined
 }
 
 export interface NotificationsState {

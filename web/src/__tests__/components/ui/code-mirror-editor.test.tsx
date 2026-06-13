@@ -35,7 +35,7 @@ vi.mock('@codemirror/view', () => {
       const self = this
       this.dispatch = mockDispatch.mockImplementation((tr: { changes?: { insert?: string }; effects?: unknown }) => {
         if (tr.changes && 'insert' in tr.changes) {
-          self._docString = tr.changes.insert as string
+          self._docString = tr.changes.insert
           // Invoke the captured updateListener (mirrors real CodeMirror behavior)
           capturedUpdateListener?.({
             docChanged: true,

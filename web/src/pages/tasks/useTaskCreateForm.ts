@@ -120,7 +120,7 @@ function buildPayload(form: TaskCreateFormState): CreateTaskRequest {
     priority: form.priority,
     project: form.project.trim(),
     created_by: form.created_by.trim(),
-    assigned_to: form.assigned_to.trim() || undefined,
+    ...(form.assigned_to.trim() ? { assigned_to: form.assigned_to.trim() } : {}),
     estimated_complexity: form.estimated_complexity,
     budget_limit: form.budget_limit ? Number(form.budget_limit) : 0,
   }

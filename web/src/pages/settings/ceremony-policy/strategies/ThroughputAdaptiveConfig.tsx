@@ -3,7 +3,7 @@ import { InputField } from '@/components/ui/input-field'
 export interface ThroughputAdaptiveConfigProps {
   config: Record<string, unknown>
   onChange: (config: Record<string, unknown>) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 export function ThroughputAdaptiveConfig({ config, onChange, disabled }: ThroughputAdaptiveConfigProps) {

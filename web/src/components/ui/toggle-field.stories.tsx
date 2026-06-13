@@ -35,7 +35,7 @@ export const Disabled: Story = {
   args: { label: 'Enable feature', checked: true, disabled: true, onChange: () => {} },
 }
 
-function InteractiveToggle({ label, description }: { label: string; description?: string }) {
+function InteractiveToggle({ label, description }: { label: string; description?: string | undefined }) {
   const [checked, setChecked] = useState(false)
   return <ToggleField label={label} description={description} checked={checked} onChange={setChecked} />
 }

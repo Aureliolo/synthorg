@@ -5,7 +5,7 @@ import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
 export interface MilestoneDrivenConfigProps {
   config: Record<string, unknown>
   onChange: (config: Record<string, unknown>) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 export function MilestoneDrivenConfig({ config, onChange, disabled }: MilestoneDrivenConfigProps) {

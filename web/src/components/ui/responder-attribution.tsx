@@ -9,10 +9,10 @@ export interface ResponderAttributionProps {
   /** Role of the responding agent (e.g. "CFO"). */
   role: string
   /** Optional concern topic that selected the role (e.g. "budget"). */
-  topic?: string | null
+  topic?: string | null | undefined
   /** When true, render a placeholder while the routing decision resolves. */
-  loading?: boolean
-  className?: string
+  loading?: boolean | undefined
+  className?: string | undefined
 }
 
 /**

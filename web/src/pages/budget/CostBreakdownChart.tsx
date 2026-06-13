@@ -11,8 +11,8 @@ export interface CostBreakdownChartProps {
   breakdown: readonly BreakdownSlice[]
   dimension: BreakdownDimension
   onDimensionChange: (dim: BreakdownDimension) => void
-  deptDisabled?: boolean
-  currency?: string
+  deptDisabled?: boolean | undefined
+  currency?: string | undefined
 }
 
 const DIMENSION_OPTIONS: readonly SegmentedControlOption<BreakdownDimension>[] = [
@@ -24,9 +24,9 @@ const DIMENSION_OPTIONS: readonly SegmentedControlOption<BreakdownDimension>[] =
 const MAX_LEGEND_SLICES = 6
 
 function DonutTooltipContent({ active, payload, currency }: {
-  active?: boolean
-  payload?: Array<{ payload: BreakdownSlice }>
-  currency?: string
+  active?: boolean | undefined
+  payload?: Array<{ payload: BreakdownSlice }> | undefined
+  currency?: string | undefined
 }) {
   if (!active || !payload?.length) return null
   const slice = payload[0]!.payload

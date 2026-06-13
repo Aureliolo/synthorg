@@ -209,7 +209,9 @@ describe('filterAgents', () => {
   })
 
   it('treats agent with undefined status as active for filtering', () => {
-    const withUndefined = [...agents, { ...agents[0]!, status: undefined, name: 'NoStatus' }]
+    const { status: omitStatus, ...noStatusBase } = agents[0]!
+    void omitStatus
+    const withUndefined = [...agents, { ...noStatusBase, name: 'NoStatus' }]
     const result = filterAgents(withUndefined, { status: 'active' })
     expect(result.map((a) => a.name)).toContain('NoStatus')
   })
@@ -225,9 +227,11 @@ describe('sortAgents', () => {
   ]
 
   it('treats agent with undefined status as active for sorting', () => {
+    const { status: omitStatus, ...noStatus } = makeAgent({ name: 'No Status' })
+    void omitStatus
     const withUndefined = [
       makeAgent({ name: 'Terminated Agent', status: 'terminated' }),
-      makeAgent({ name: 'No Status', status: undefined }),
+      noStatus,
       makeAgent({ name: 'Active Agent', status: 'active' }),
     ]
     const result = sortAgents(withUndefined, 'status', 'asc')

@@ -9,15 +9,15 @@ export interface InlineEditProps {
   value: string
   onSave: (newValue: string) => Promise<void>
   /** Validation function -- return error string or null. */
-  validate?: (value: string) => string | null
-  placeholder?: string
+  validate?: ((value: string) => string | null) | undefined
+  placeholder?: string | undefined
   /** Custom render for the display value. */
-  renderDisplay?: (value: string) => React.ReactNode
+  renderDisplay?: ((value: string) => React.ReactNode) | undefined
   /** Input type (default: "text"). */
-  type?: 'text' | 'number'
-  className?: string
+  type?: 'text' | 'number' | undefined
+  className?: string | undefined
   /** Whether editing is disabled. */
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 interface InlineEditMachine {
@@ -132,7 +132,7 @@ function InlineEditDisplay({
   flashClassName: string
   renderDisplay: ((value: string) => React.ReactNode) | undefined
   onClick: () => void
-  className?: string
+  className?: string | undefined
 }) {
   return (
     <div className={cn('inline-block', className)}>
@@ -163,7 +163,7 @@ function InlineEditField({
 }: {
   machine: InlineEditMachine
   type: 'text' | 'number'
-  className?: string
+  className?: string | undefined
 }) {
   const errorId = useId()
   const { state, editValue, error, inputRef } = machine

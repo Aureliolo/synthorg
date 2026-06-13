@@ -43,7 +43,7 @@ function RolePill({
   busy,
 }: {
   role: OrgRole
-  scopedDepartments?: readonly string[]
+  scopedDepartments?: readonly string[] | undefined
   onRevoke: () => void
   busy: boolean
 }) {

@@ -206,10 +206,12 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
     // handed a value that would block saving the other edits.
     const normalizedPattern = form.communication_pattern.trim()
     const ok = await onUpdate({
-      company_name: form.company_name.trim() || undefined,
+      ...(form.company_name.trim() ? { company_name: form.company_name.trim() } : {}),
       autonomy_level: form.autonomy_level,
       budget_monthly: form.budget_monthly,
-      communication_pattern: VALID_COMM_PATTERNS.has(normalizedPattern) ? normalizedPattern : undefined,
+      ...(VALID_COMM_PATTERNS.has(normalizedPattern)
+        ? { communication_pattern: normalizedPattern }
+        : {}),
     })
     if (ok) setDirty(false)
   }, [form, onUpdate])

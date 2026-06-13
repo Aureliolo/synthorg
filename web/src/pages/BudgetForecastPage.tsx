@@ -25,7 +25,7 @@ type ForecastData = BudgetData['forecast']
 function ProjectionRow({ point, cumulative, currency, totalMonthly }: {
   point: ForecastPoint
   cumulative: number
-  currency?: string
+  currency?: string | undefined
   totalMonthly: number
 }) {
   const budgetPct = totalMonthly > 0 ? (cumulative / totalMonthly) * 100 : 0

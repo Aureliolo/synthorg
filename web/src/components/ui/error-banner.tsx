@@ -25,13 +25,13 @@ function isActionObject(value: unknown): value is ErrorBannerAction {
 
 export interface ErrorBannerProps {
   /** Layout density. `section` is the default page-level banner; `inline` is compact for form rows/cards; `offline` is the connectivity variant. */
-  variant?: ErrorBannerVariant
+  variant?: ErrorBannerVariant | undefined
   /** Color + ARIA role mapping. `error` uses role=alert, `warning`/`info` use role=status. Ignored when variant='offline' (forces warning). */
-  severity?: ErrorBannerSeverity
+  severity?: ErrorBannerSeverity | undefined
   title: string
   description?: string | React.ReactNode
   /** When provided, renders a Retry button that invokes this handler. */
-  onRetry?: () => void
+  onRetry?: (() => void) | undefined
   /**
    * When set, the Retry button is disabled and shows a live countdown
    * (``Retry in 12s``) until the cooldown expires. Pass the seconds
@@ -40,7 +40,7 @@ export interface ErrorBannerProps {
    * the countdown reaches zero. The countdown is cosmetic only: the
    * caller still owns the actual retry decision via ``onRetry``.
    */
-  retryAfterSeconds?: number | null
+  retryAfterSeconds?: number | null | undefined
   /**
    * Optional token that re-arms the countdown when the value changes,
    * even if ``retryAfterSeconds`` is unchanged. Pass a fresh value
@@ -49,11 +49,11 @@ export interface ErrorBannerProps {
    * ``retry_after`` to restart the cooldown rather than leave the
    * Retry button enabled after the previous countdown reached zero.
    */
-  retryResetToken?: string | number | null
+  retryResetToken?: string | number | null | undefined
   /** When provided, renders a Dismiss (X) button that invokes this handler. */
-  onDismiss?: () => void
+  onDismiss?: (() => void) | undefined
   /** Override the default icon (by severity). Always rendered at h-4 w-4 for consistency. */
-  icon?: LucideIcon
+  icon?: LucideIcon | undefined
   /** Optional action label shown next to Retry (e.g. "Learn more" link). */
   action?: ErrorBannerAction | React.ReactNode
   /**
@@ -62,8 +62,8 @@ export interface ErrorBannerProps {
    * next to the action row so operators can paste the ID into a
    * support ticket. Use `ApiRequestError.correlationId` to source it.
    */
-  correlationId?: string | null
-  className?: string
+  correlationId?: string | null | undefined
+  className?: string | undefined
 }
 
 const SEVERITY_ICON: Record<ErrorBannerSeverity, LucideIcon> = {

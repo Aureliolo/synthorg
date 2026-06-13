@@ -45,7 +45,7 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   role: fc.constantFrom('Engineer', 'Designer', 'Analyst', 'Manager', 'SRE'),
   department: arbDepartment,
   level: arbLevel,
-  status: fc.option(arbStatus, { nil: undefined }),
+  status: arbStatus,
   personality: fc.constant({
     traits: ['analytical'],
     communication_style: 'direct',
@@ -80,6 +80,16 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   hiring_date: fc.integer({ min: 1735689600000, max: 1767225600000 }).map(
     (ms) => new Date(ms).toISOString(),
   ),
+}, {
+  // ``status`` is left optional (sometimes omitted) so the generator still
+  // exercises the no-status path that ``filterAgents``/``sortAgents`` treat
+  // as active, without emitting an explicit ``undefined`` (rejected under
+  // exactOptionalPropertyTypes).
+  requiredKeys: [
+    'id', 'name', 'role', 'department', 'level', 'personality', 'model',
+    'memory', 'tools', 'authority', 'autonomy_level', 'strategic_output_mode',
+    'personality_preset', 'tier', 'model_requirement', 'hiring_date',
+  ],
 })
 
 const arbWindowMetrics: fc.Arbitrary<WindowMetrics> = fc.nat({ max: 100 }).chain((dataPointCount) =>

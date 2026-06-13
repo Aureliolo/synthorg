@@ -94,10 +94,11 @@ export function useOrgChartPngExport(fitView: FitViewFn): OrgChartPngExportResul
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => resolve())
       })
+      const backgroundColor = resolveExportBackground(target)
       dataUrl = await toPng(target, {
-        backgroundColor: resolveExportBackground(target),
         pixelRatio: 2,
         cacheBust: true,
+        ...(backgroundColor !== undefined && { backgroundColor }),
       })
       const link = document.createElement('a')
       link.href = dataUrl

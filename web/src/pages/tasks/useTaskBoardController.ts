@@ -388,7 +388,7 @@ async function processDragEnd(
     () =>
       transitionTask(taskId, {
         target_status: targetStatus,
-        expected_version: sourceTask.version,
+        expected_version: sourceTask.version ?? null,
       }),
   )
   if (result === null) {

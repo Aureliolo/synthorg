@@ -27,6 +27,6 @@ export type PaginatedResponse<T> =
 
 export interface PaginationParams {
   /** Opaque pagination cursor from the previous page response. */
-  cursor?: string | null
-  limit?: number
+  cursor?: string | null | undefined
+  limit?: number | undefined
 }

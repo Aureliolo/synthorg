@@ -86,15 +86,17 @@ export function StaggerItem({
   'data-testid': testId,
   role,
 }: StaggerItemProps) {
+  // exactOptionalPropertyTypes: Motion's HTMLMotionProps decline an explicit
+  // `undefined`, so optional props are spread in only when defined.
+  const optionalProps = {
+    ...(layoutId !== undefined && { layoutId }),
+    ...(layout !== undefined && { layout }),
+    ...(className !== undefined && { className }),
+    ...(testId !== undefined && { 'data-testid': testId }),
+    ...(role !== undefined && { role }),
+  }
   return (
-    <motion.div
-      variants={cardEntrance}
-      layoutId={layoutId}
-      layout={layout}
-      className={className}
-      data-testid={testId}
-      role={role}
-    >
+    <motion.div variants={cardEntrance} {...optionalProps}>
       {children}
     </motion.div>
   )

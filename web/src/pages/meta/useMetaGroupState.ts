@@ -17,19 +17,19 @@ export interface GroupMessage {
   /** Bubble body. For ``invite`` bubbles this is the stated reason. */
   content: string
   /** Attributed agent name, on ``agent`` bubbles. */
-  agentName?: string
+  agentName?: string | undefined
   /** Attributed agent role, on ``agent`` bubbles. */
-  role?: string
+  role?: string | undefined
   /** Inviting agent's name, on ``invite`` bubbles. */
-  requestedByName?: string
+  requestedByName?: string | undefined
   /** Invite target's name, on ``invite`` bubbles. */
-  targetName?: string
+  targetName?: string | undefined
   /** Invite target's role, on ``invite`` bubbles (``undefined`` when the
    *  target was named directly rather than by role). */
-  targetRole?: string
+  targetRole?: string | undefined
   /** Backing approval id, on ``invite`` bubbles: the in-context
    *  Approve/Reject buttons resolve this approval. */
-  approvalId?: string
+  approvalId?: string | undefined
   /** Set once the operator resolves an ``invite`` in context. The
    *  invited agent joins on the next round after ``approved``. */
   resolved?: 'approved' | 'declined'

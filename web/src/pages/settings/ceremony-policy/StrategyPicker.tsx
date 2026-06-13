@@ -15,7 +15,7 @@ const STRATEGY_OPTIONS = CEREMONY_STRATEGY_TYPES.map((s) => ({
 export interface StrategyPickerProps {
   value: CeremonyStrategyType
   onChange: (strategy: CeremonyStrategyType) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 export function StrategyPicker({ value, onChange, disabled }: StrategyPickerProps) {

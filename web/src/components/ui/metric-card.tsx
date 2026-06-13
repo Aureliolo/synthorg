@@ -5,15 +5,15 @@ import { Sparkline } from './sparkline'
 export interface MetricCardProps {
   label: string
   value: string | number
-  change?: { value: number; direction: 'up' | 'down' }
-  sparklineData?: number[]
-  progress?: { current: number; total: number }
-  subText?: string
-  className?: string
+  change?: { value: number; direction: 'up' | 'down' } | undefined
+  sparklineData?: number[] | undefined
+  progress?: { current: number; total: number } | undefined
+  subText?: string | undefined
+  className?: string | undefined
   /** Inline style for flash animation (from useFlash). */
-  flashStyle?: React.CSSProperties
+  flashStyle?: React.CSSProperties | undefined
   /** Whether to animate numeric value transitions. Default: false. */
-  animateValue?: boolean
+  animateValue?: boolean | undefined
 }
 
 function _computeProgressPct(progress: MetricCardProps['progress']): number {
@@ -123,7 +123,7 @@ export function MetricCard({
   )
 }
 
-function ChangeBadge({ value, direction, className }: { value: number; direction: 'up' | 'down'; className?: string }) {
+function ChangeBadge({ value, direction, className }: { value: number; direction: 'up' | 'down'; className?: string | undefined }) {
   const isUp = direction === 'up'
   const label = isUp ? `Up ${value} percent` : `Down ${value} percent`
 

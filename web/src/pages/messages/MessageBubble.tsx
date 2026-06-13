@@ -15,8 +15,8 @@ import type { Message } from '@/api/types/messages'
 
 interface MessageBubbleProps {
   message: Message
-  isNew?: boolean
-  onClick?: () => void
+  isNew?: boolean | undefined
+  onClick?: (() => void) | undefined
 }
 
 export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {

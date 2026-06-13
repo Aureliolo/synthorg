@@ -14,9 +14,9 @@ const CONNECTION_TO_PROVIDER: Record<
 
 export interface ConnectionHealthBadgeProps {
   status: ConnectionHealthStatus
-  label?: boolean
-  pulse?: boolean
-  className?: string
+  label?: boolean | undefined
+  pulse?: boolean | undefined
+  className?: string | undefined
 }
 
 /**

@@ -38,7 +38,7 @@ function headerSortLabel(
 
 export interface AgentSpendingTableProps {
   rows: readonly AgentSpendingRow[]
-  currency?: string
+  currency?: string | undefined
 }
 
 // Proportional column widths (character-based) so the table grows with
@@ -114,7 +114,7 @@ function ColumnHeader({ col, sortKey, sortDir, onSort }: {
 
 interface SpendingRowProps {
   row: AgentSpendingRow
-  currency?: string
+  currency?: string | undefined
 }
 
 const SpendingRow = memo(function SpendingRow({ row, currency }: SpendingRowProps) {

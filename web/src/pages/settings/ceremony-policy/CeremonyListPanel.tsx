@@ -16,14 +16,14 @@ export interface CeremonyListPanelProps {
   ceremonyNames: readonly string[]
   /** Called when a ceremony override changes. */
   onOverrideChange: (name: string, policy: CeremonyPolicyConfig | null) => void
-  saving?: boolean
+  saving?: boolean | undefined
 }
 
 interface CeremonyRowProps {
   name: string
   policy: CeremonyPolicyConfig | null
   onOverrideChange: (name: string, policy: CeremonyPolicyConfig | null) => void
-  saving?: boolean
+  saving?: boolean | undefined
 }
 
 function policyFieldsFromOverride(policy: CeremonyPolicyConfig | null, strategy: CeremonyStrategyType) {
@@ -40,7 +40,7 @@ interface CeremonyOverrideBodyProps {
   strategy: CeremonyStrategyType
   onOverrideChange: (name: string, policy: CeremonyPolicyConfig | null) => void
   onStrategyChange: (strategy: CeremonyStrategyType) => void
-  saving?: boolean
+  saving?: boolean | undefined
 }
 
 function CeremonyOverrideBody({

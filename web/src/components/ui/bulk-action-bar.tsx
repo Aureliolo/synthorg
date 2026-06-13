@@ -17,9 +17,9 @@ export interface BulkActionBarProps {
    * bar does not manage loading state internally so callers can show
    * per-action spinners alongside the disabled state.
    */
-  loading?: boolean
+  loading?: boolean | undefined
   /** Optional aria-label override. Defaults to "Bulk actions". */
-  ariaLabel?: string
+  ariaLabel?: string | undefined
 }
 
 const BAR_VARIANTS = {

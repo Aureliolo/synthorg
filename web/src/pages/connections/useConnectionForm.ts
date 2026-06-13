@@ -209,8 +209,8 @@ function prepareConnectionSubmit(
 export interface ConnectionFormModalArgs {
   open: boolean
   mode: Mode
-  initialType?: ConnectionType
-  connection?: Connection | null
+  initialType?: ConnectionType | undefined
+  connection?: Connection | null | undefined
   onClose: () => void
 }
 

@@ -17,27 +17,27 @@ export interface ProgressIndicatorProps {
   /** Visual variant. */
   variant: 'determinate' | 'indeterminate' | 'stages'
   /** [0, 100] for `determinate`. Ignored otherwise. */
-  value?: number
+  value?: number | undefined
   /** Label shown above the bar/list (e.g. "Training model"). */
-  label?: string
+  label?: string | undefined
   /** Optional ETA or status line for determinate/indeterminate variants. */
-  description?: string
+  description?: string | undefined
   /** List of stages for `stages` variant. */
-  stages?: readonly ProgressStage[]
+  stages?: readonly ProgressStage[] | undefined
   /**
    * When provided on the `indeterminate` variant, renders a live
    * elapsed-time chip ("2m 34s") next to the description and updates
    * once per second. Ignored on the determinate and stages variants.
    */
-  startedAt?: Date | string | null
+  startedAt?: Date | string | null | undefined
   /**
    * When `startedAt` is set and elapsed exceeds this threshold, the
    * indeterminate bar + elapsed chip switch to a warning colour to
    * signal a long-running operation. Operators interpret this as
    * "this is taking longer than expected"; the run is not interrupted.
    */
-  warningAfterSeconds?: number
-  className?: string
+  warningAfterSeconds?: number | undefined
+  className?: string | undefined
 }
 
 interface StageMeta {
@@ -158,11 +158,11 @@ function IndeterminateHeader({
 }
 
 interface IndeterminateBarProps {
-  label?: string
-  description?: string
-  startedAt?: Date | string | null
-  warningAfterSeconds?: number
-  className?: string
+  label?: string | undefined
+  description?: string | undefined
+  startedAt?: Date | string | null | undefined
+  warningAfterSeconds?: number | undefined
+  className?: string | undefined
 }
 
 function IndeterminateBar({

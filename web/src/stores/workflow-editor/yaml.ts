@@ -72,9 +72,9 @@ export function parseDefinition(def: WorkflowDefinition): {
       source: e.source_node_id,
       target: e.target_node_id,
       type: meta.visualType,
-      sourceHandle: meta.sourceHandle,
+      sourceHandle: meta.sourceHandle ?? null,
       data: { edgeType: meta.edgeType, branch: meta.branch },
-      label: e.label ?? undefined,
+      ...(e.label != null && { label: e.label }),
     }
   })
   const yaml = regenerateYaml(nodes, edges, def)

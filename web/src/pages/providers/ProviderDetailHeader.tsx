@@ -61,9 +61,9 @@ interface ProviderHeaderActionsProps {
   onDelete: () => void
   onTestConnection: () => void
   testingConnection: boolean
-  onRefresh?: () => void
+  onRefresh?: (() => void) | undefined
   refreshing: boolean
-  onPullModel?: () => void
+  onPullModel?: (() => void) | undefined
   supportsPull: boolean
 }
 

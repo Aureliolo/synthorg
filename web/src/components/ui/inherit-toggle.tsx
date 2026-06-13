@@ -7,9 +7,9 @@ export interface InheritToggleProps {
   /** Called when the toggle changes. */
   onChange: (inherit: boolean) => void
   /** Label for the inherit source (e.g. "project"). */
-  inheritFrom?: string
-  disabled?: boolean
-  className?: string
+  inheritFrom?: string | undefined
+  disabled?: boolean | undefined
+  className?: string | undefined
 }
 
 export function InheritToggle({

@@ -50,7 +50,7 @@ interface SinkFormValues {
   isConsole: boolean
   isDefault: boolean
   sink: SinkInfo | null
-  isNew?: boolean
+  isNew?: boolean | undefined
 }
 
 type SinkPayload = { sink_overrides: string; custom_sinks: string }

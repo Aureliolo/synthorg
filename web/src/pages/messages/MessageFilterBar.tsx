@@ -34,7 +34,7 @@ interface MessageFilterBarProps {
   filters: MessagePageFilters
   onFiltersChange: (filters: MessagePageFilters) => void
   totalCount: number
-  filteredCount?: number
+  filteredCount?: number | undefined
 }
 
 export function MessageFilterBar({

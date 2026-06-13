@@ -13,7 +13,7 @@ export interface DetectedLocalRowProps {
   alreadyAddedCloud: boolean
   adding: AddingKind | null
   onAddLocal: (presetName: string, detectedUrl: string) => void
-  onAddCloud?: (cloudPresetName: string) => void
+  onAddCloud?: ((cloudPresetName: string) => void) | undefined
 }
 
 function AddLocalCell({
@@ -53,7 +53,7 @@ function AddCloudCell({
   cloudCounterpart: string | undefined
   alreadyAddedCloud: boolean
   adding: AddingKind | null
-  onAddCloud?: (cloudPresetName: string) => void
+  onAddCloud?: ((cloudPresetName: string) => void) | undefined
 }) {
   if (!cloudCounterpart || !onAddCloud) return null
   if (alreadyAddedCloud) {

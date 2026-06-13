@@ -213,7 +213,7 @@ function pushUniqueEdge(
     source,
     target,
     type: visualType,
-    sourceHandle: isTrue ? 'true' : isFalse ? 'false' : undefined,
+    sourceHandle: isTrue ? 'true' : isFalse ? 'false' : null,
     data: {
       edgeType,
       branch: isTrue ? 'true' : isFalse ? 'false' : undefined,

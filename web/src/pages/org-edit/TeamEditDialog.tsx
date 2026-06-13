@@ -10,10 +10,10 @@ export interface TeamEditDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   mode: 'create' | 'edit'
-  team?: TeamConfig
+  team?: TeamConfig | undefined
   onCreateTeam: (data: CreateTeamRequest) => Promise<TeamConfig | null>
   onUpdateTeam: (teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig | null>
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 /** Validate the team form; returns an error message or null. */

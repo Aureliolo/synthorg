@@ -4,10 +4,10 @@ import { cn } from '@/lib/utils'
 
 interface SectionCardProps {
   title: string
-  icon?: LucideIcon
+  icon?: LucideIcon | undefined
   action?: ReactNode
   children: ReactNode
-  className?: string
+  className?: string | undefined
 }
 
 export function SectionCard({

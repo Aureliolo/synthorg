@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import { apiClient, unwrap, unwrapPaginated, withSignal, type PaginatedResult } from '../client'
 import type {
   BrainEntry,
   BrainEntryKind,
@@ -23,7 +23,7 @@ export async function listProjectBrain(
 ): Promise<PaginatedResult<BrainSummary>> {
   const response = await apiClient.get<PaginatedResponse<BrainSummary>>(
     `/projects/${encodeURIComponent(projectId)}/brain`,
-    { params, signal },
+    withSignal(signal, { params }),
   )
   return unwrapPaginated<BrainSummary>(response)
 }
@@ -35,7 +35,7 @@ export async function getProjectBrainEntry(
 ): Promise<BrainEntry> {
   const response = await apiClient.get<ApiResponse<BrainEntry>>(
     `/projects/${encodeURIComponent(projectId)}/brain/${encodeURIComponent(entryId)}`,
-    { signal },
+    withSignal(signal),
   )
   return unwrap(response)
 }
@@ -47,7 +47,7 @@ export async function getProjectBrainHistory(
 ): Promise<readonly BrainEntryVersion[]> {
   const response = await apiClient.get<ApiResponse<readonly BrainEntryVersion[]>>(
     `/projects/${encodeURIComponent(projectId)}/brain/${encodeURIComponent(entryId)}/history`,
-    { signal },
+    withSignal(signal),
   )
   return unwrap(response)
 }
@@ -60,7 +60,7 @@ export async function searchProjectBrain(
 ): Promise<readonly BrainSearchHit[]> {
   const response = await apiClient.get<ApiResponse<readonly BrainSearchHit[]>>(
     `/projects/${encodeURIComponent(projectId)}/brain/search`,
-    { params: { q: query, limit }, signal },
+    withSignal(signal, { params: { q: query, limit } }),
   )
   return unwrap(response)
 }

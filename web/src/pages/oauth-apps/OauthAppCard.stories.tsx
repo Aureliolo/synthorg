@@ -49,7 +49,9 @@ type Story = StoryObj<typeof meta>
 
 export const Default: Story = {}
 export const WithoutConnect: Story = {
-  args: {
-    onConnect: undefined,
-  },
+  // Render without ``onConnect`` so the card hides its Connect action. A
+  // render override (rather than ``args: { onConnect: undefined }``) keeps the
+  // story's args object free of an explicit ``undefined`` under
+  // exactOptionalPropertyTypes.
+  render: (args) => <OauthAppCard {...args} onConnect={undefined} />,
 }

@@ -30,7 +30,7 @@ function ConditionalEdgeComponent(props: EdgeProps) {
           strokeWidth: 'var(--so-stroke-thin)',
           strokeDasharray: 'var(--so-dash-loose)',
         }}
-        markerEnd={props.markerEnd}
+        {...(props.markerEnd != null && { markerEnd: props.markerEnd })}
       />
       <EdgeLabelRenderer>
         <div

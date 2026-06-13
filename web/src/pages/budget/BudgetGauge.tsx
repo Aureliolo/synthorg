@@ -8,7 +8,7 @@ export interface BudgetGaugeProps {
   usedPercent: number
   budgetRemaining: number
   daysUntilExhausted: number | null
-  currency?: string
+  currency?: string | undefined
 }
 
 export function BudgetGauge({

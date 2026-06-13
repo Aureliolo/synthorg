@@ -10,8 +10,8 @@ import type { Project } from '@/api/types/projects'
 interface ProjectCardProps {
   project: Project
   /** When defined, renders a selection checkbox overlay. */
-  onToggleSelect?: (id: string) => void
-  selected?: boolean
+  onToggleSelect?: ((id: string) => void) | undefined
+  selected?: boolean | undefined
 }
 
 interface ProjectCardData {

@@ -3,7 +3,7 @@ import { InputField } from '@/components/ui/input-field'
 export interface EventDrivenConfigProps {
   config: Record<string, unknown>
   onChange: (config: Record<string, unknown>) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 export function EventDrivenConfig({ config, onChange, disabled }: EventDrivenConfigProps) {

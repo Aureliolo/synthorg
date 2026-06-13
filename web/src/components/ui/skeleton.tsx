@@ -1,10 +1,10 @@
 import { cn } from '@/lib/utils'
 
 export interface SkeletonProps {
-  className?: string
+  className?: string | undefined
   /** Whether to show shimmer animation (respects prefers-reduced-motion). Default: true. */
-  shimmer?: boolean
-  style?: React.CSSProperties
+  shimmer?: boolean | undefined
+  style?: React.CSSProperties | undefined
 }
 
 const SHIMMER_CLASSES =

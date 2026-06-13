@@ -72,11 +72,11 @@ export function buildCreateFromPresetRequest(
     preset_name: presetName,
     name: v.name.trim(),
     auth_type: v.authType,
-    api_key: v.authType === 'api_key' && v.apiKey ? v.apiKey : undefined,
+    api_key: v.authType === 'api_key' && v.apiKey ? v.apiKey : null,
     subscription_token:
-      v.authType === 'subscription' && v.subscriptionToken ? v.subscriptionToken : undefined,
+      v.authType === 'subscription' && v.subscriptionToken ? v.subscriptionToken : null,
     tos_accepted: v.authType === 'subscription' && v.tosAccepted,
-    base_url: v.baseUrl.trim() || undefined,
+    base_url: v.baseUrl.trim() || null,
   }
 }
 
@@ -84,28 +84,28 @@ export function buildCreateProviderRequest(v: ProviderFormValues): CreateProvide
   return {
     name: v.name.trim(),
     driver: 'litellm',
-    litellm_provider: v.litellmProvider || undefined,
+    litellm_provider: v.litellmProvider || null,
     auth_type: v.authType,
-    api_key: v.authType === 'api_key' && v.apiKey ? v.apiKey : undefined,
+    api_key: v.authType === 'api_key' && v.apiKey ? v.apiKey : null,
     subscription_token:
-      v.authType === 'subscription' && v.subscriptionToken ? v.subscriptionToken : undefined,
+      v.authType === 'subscription' && v.subscriptionToken ? v.subscriptionToken : null,
     tos_accepted: v.authType === 'subscription' && v.tosAccepted,
-    base_url: v.baseUrl.trim() || undefined,
+    base_url: v.baseUrl.trim() || null,
     models: [],
   }
 }
 
 export function buildUpdateProviderRequest(v: ProviderFormValues): UpdateProviderRequest {
   return {
-    litellm_provider: v.litellmProvider || undefined,
+    litellm_provider: v.litellmProvider || null,
     auth_type: v.authType,
-    api_key: v.authType === 'api_key' && v.apiKey ? v.apiKey : undefined,
+    api_key: v.authType === 'api_key' && v.apiKey ? v.apiKey : null,
     clear_api_key: v.authType !== 'api_key',
     subscription_token:
-      v.authType === 'subscription' && v.subscriptionToken ? v.subscriptionToken : undefined,
+      v.authType === 'subscription' && v.subscriptionToken ? v.subscriptionToken : null,
     clear_subscription_token: v.authType !== 'subscription',
     tos_accepted: v.authType === 'subscription' && v.tosAccepted,
-    base_url: v.baseUrl.trim() || undefined,
+    base_url: v.baseUrl.trim() || null,
   }
 }
 

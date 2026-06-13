@@ -13,7 +13,7 @@ export interface SettingFieldProps {
   definition: SettingDefinition
   value: string
   onChange: (value: string) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 function parseArrayItems(value: string): string[] {
@@ -92,7 +92,7 @@ function ArraySettingField({
 }: {
   value: string
   onChange: (value: string) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }) {
   const items = useMemo(() => parseArrayItems(value), [value])
   return (

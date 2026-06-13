@@ -13,11 +13,11 @@ export interface SettingRowProps {
   onChange: (value: string) => void
   saving: boolean
   /** Whether the controller setting for this dependent is disabled. */
-  controllerDisabled?: boolean
+  controllerDisabled?: boolean | undefined
   /** Trigger a flash animation (e.g. on WebSocket update). */
-  flash?: boolean
+  flash?: boolean | undefined
   /** Search query to highlight matching text. */
-  highlightQuery?: string
+  highlightQuery?: string | undefined
 }
 
 /** Highlight matching substrings in text with accent background. */

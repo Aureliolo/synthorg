@@ -8,11 +8,11 @@ export interface AgentCardProps {
   role: string
   department: string
   status: AgentRuntimeStatus
-  currentTask?: string
-  timestamp?: string
-  className?: string
+  currentTask?: string | undefined
+  timestamp?: string | undefined
+  className?: string | undefined
   /** Inline style for flash animation (from useFlash). */
-  flashStyle?: React.CSSProperties
+  flashStyle?: React.CSSProperties | undefined
 }
 
 export function AgentCard({

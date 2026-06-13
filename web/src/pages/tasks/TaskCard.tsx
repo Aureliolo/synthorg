@@ -22,7 +22,7 @@ export interface TaskCardProps {
    * should thread the active currency through explicitly per the
    * regional-defaults policy (no privileged region/currency in framework
    * code). */
-  currency?: string
+  currency?: string | undefined
 }
 
 export function TaskCard({
@@ -96,7 +96,7 @@ function TaskCardHeader({ title, status }: TaskCardHeaderProps) {
 
 interface TaskCardFooterProps {
   task: DashboardTask
-  currency?: string
+  currency?: string | undefined
 }
 
 function TaskCardFooter({ task, currency }: TaskCardFooterProps) {

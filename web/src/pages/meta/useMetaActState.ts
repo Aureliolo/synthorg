@@ -16,11 +16,11 @@ export interface ActMessage {
   /** Bubble body: the instruction, the agent's final message, or a notice. */
   content: string
   /** Acting agent's name, on ``action`` bubbles. */
-  agentName?: string
+  agentName?: string | undefined
   /** Tools the action executed, on ``action`` bubbles. */
-  toolCalls?: readonly ExecutedToolCall[]
+  toolCalls?: readonly ExecutedToolCall[] | undefined
   /** Approval id, on ``action`` bubbles when the action parked for consent. */
-  parkedApprovalId?: string
+  parkedApprovalId?: string | undefined
 }
 
 export interface MetaActState {
