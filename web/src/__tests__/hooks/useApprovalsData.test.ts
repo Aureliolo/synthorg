@@ -22,6 +22,7 @@ vi.mock('@/hooks/usePolling', () => ({
   usePolling: vi.fn().mockReturnValue({
     active: false,
     error: null,
+    isRefetching: false,
     start: mockPollingStart,
     stop: mockPollingStop,
   }),

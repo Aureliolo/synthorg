@@ -11,8 +11,12 @@ permissions:
   contents: read
 
 concurrency:
+  # Do NOT cancel in progress: a `labeled` event fires for ANY label, and
+  # concurrency is evaluated before the job-level `run-evals` `if`, so
+  # cancelling here would kill a running eval whenever an unrelated label is
+  # added/removed on the same PR (the bulk of the historical cancelled runs).
   group: agent-evals-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   agent-evals:

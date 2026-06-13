@@ -1104,6 +1104,9 @@ repos:
         language: system
         files: ^(src/synthorg|tests|scripts|docs|README\.md|CLAUDE\.md|\.codespellrc).*$
         pass_filenames: false
+        # Full-tree spell scan is the slowest pre-commit gate; defer to
+        # pre-push alongside the other prose gates (vale, lychee).
+        stages: [pre-push]
 
       # SQL lint for migration revisions and the canonical schema.
       # Frozen historical revisions are exempted via .sqlfluffignore;

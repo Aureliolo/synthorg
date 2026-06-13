@@ -3,8 +3,6 @@
 from datetime import date
 from uuid import uuid4
 
-import pytest
-
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.meta.mcp.registry import DomainToolRegistry, MCPToolDef
 
@@ -60,13 +58,5 @@ def registry_with(*tools: MCPToolDef) -> DomainToolRegistry:
     registry = DomainToolRegistry()
     for t in tools:
         registry.register(t)
-    registry.freeze()
-    return registry
-
-
-@pytest.fixture  # lint-allow: orphan-fixture -- reserved for empty-registry tests
-def empty_registry() -> DomainToolRegistry:
-    """Return a fresh empty frozen registry."""
-    registry = DomainToolRegistry()
     registry.freeze()
     return registry
