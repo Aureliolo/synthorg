@@ -2,21 +2,56 @@
  * Provider mock-data builders.
  */
 
+/**
+ * Provider config, mirroring ``ProviderConfig`` from ``@/api/types``
+ * (the wire shape ``listProviders`` paginates over ``/providers`` and
+ * keys into a ``Record<string, ProviderConfig>`` by ``name``). The
+ * minimal earlier shape crashed the provider card, which reads
+ * ``models`` and the ``has_*`` credential flags.
+ */
 export interface MockProvider {
-  id: string
   name: string
-  family: string
-  enabled: boolean
-  health: 'up' | 'degraded' | 'down' | 'unknown'
+  driver: string
+  litellm_provider: string | null
+  auth_type: string
+  base_url: string | null
+  models: string[]
+  has_api_key: boolean
+  has_oauth_credentials: boolean
+  has_custom_header: boolean
+  has_subscription_token: boolean
+  tos_accepted_at: string | null
+  oauth_token_url: string | null
+  oauth_client_id: string | null
+  oauth_scope: string | null
+  custom_header_name: string | null
+  preset_name: string | null
+  supports_model_pull: boolean
+  supports_model_delete: boolean
+  supports_model_config: boolean
 }
 
 export function makeProvider(overrides: Partial<MockProvider> = {}): MockProvider {
   return {
-    id: 'provider-001',
     name: 'example-provider',
-    family: 'example',
-    enabled: true,
-    health: 'up',
+    driver: 'litellm',
+    litellm_provider: null,
+    auth_type: 'api_key',
+    base_url: null,
+    models: [],
+    has_api_key: true,
+    has_oauth_credentials: false,
+    has_custom_header: false,
+    has_subscription_token: false,
+    tos_accepted_at: null,
+    oauth_token_url: null,
+    oauth_client_id: null,
+    oauth_scope: null,
+    custom_header_name: null,
+    preset_name: null,
+    supports_model_pull: false,
+    supports_model_delete: false,
+    supports_model_config: false,
     ...overrides,
   }
 }

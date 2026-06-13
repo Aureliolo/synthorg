@@ -36,12 +36,12 @@ test.describe('Approval critical flow', () => {
       timestamp: '2026-04-01T12:00:00Z',
       payload: { ...approval, approval_id: approval.id },
     })
-    // The notifications store enqueues an "Approval approved" toast
-    // for this event_type. Asserting that title is visible proves the
-    // WS frame reached the registered handler -- a regression in the
-    // envelope check or notifications dispatch chain would prevent
-    // the toast from ever rendering.
+    // The notifications store's ws-handler enqueues an "Approval approved"
+    // entry into the notification drawer for this event_type. Open the
+    // drawer and assert that title is visible -- proof the WS frame
+    // reached the registered handler; a regression in the envelope check
+    // or notifications dispatch chain would leave the entry unrendered.
+    await page.getByRole('button', { name: /notifications/i }).click()
     await expect(page.getByText('Approval approved').first()).toBeVisible()
-    await expect(page.locator('main')).toBeVisible()
   })
 })

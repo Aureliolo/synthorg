@@ -1,40 +1,32 @@
 import { test, expect } from '@playwright/test'
 import { mockApiRoutes, freezeTime } from '../fixtures/mock-api'
 import { installWebSocketHarness, injectEvent } from '../fixtures/websocket-harness'
-import { makeMemoryEntry, makeOntologyFact } from '../factories'
+import { makeOntologyEntity } from '../factories'
 
 /**
- * Critical-flow E2E: memory / ontology surface.
+ * Critical-flow E2E: ontology catalogue + WS personality-trim intake.
  *
- * Mounts the page with deterministic memory entries and ontology
- * facts, then drives a personality-trimmed event through the WS
- * harness so the notifications dispatch chain is exercised.
+ * The ``/ontology`` page renders the entity catalogue from
+ * ``listEntities`` -> ``GET /ontology/entities`` (NOT a raw memory/fact
+ * feed). This spec seeds one deterministic entity, asserts the catalogue
+ * row renders and its detail opens on click, then drives a
+ * ``personality.trimmed`` WS frame so the notifications dispatch chain is
+ * exercised end-to-end (the entry lands in the notification drawer).
  */
 
 test.describe('Memory recall critical flow', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
-    // Register the catch-all FIRST so the specific route stubs
-    // below override it: Playwright matches route handlers in LIFO
-    // order, so the most-recently-registered handler wins.
     await mockApiRoutes(page)
-    await page.route('**/api/v1/memory/search**', (route) =>
+    // Trailing ``**`` so the glob matches the paginated request
+    // (``/ontology/entities?limit=...``); the page reads this endpoint
+    // (drift reports fall through to the empty catch-all, which is fine).
+    await page.route('**/api/v1/ontology/entities**', (route) =>
       route.fulfill({
         json: {
           success: true,
-          data: [makeMemoryEntry()],
-          error: null,
-          error_detail: null,
-          pagination: { total: 1, offset: 0, limit: 50 },
-        },
-      }),
-    )
-    await page.route('**/api/v1/ontology/facts**', (route) =>
-      route.fulfill({
-        json: {
-          success: true,
-          data: [makeOntologyFact()],
+          data: [makeOntologyEntity()],
           error: null,
           error_detail: null,
           pagination: { total: 1, offset: 0, limit: 50 },
@@ -43,47 +35,33 @@ test.describe('Memory recall critical flow', () => {
     )
   })
 
-  test('loads the ontology page and processes a trim event', async ({ page }) => {
+  test('loads the ontology catalogue and processes a trim event', async ({ page }) => {
     await page.goto('/ontology')
     await expect(page).toHaveURL(/\/ontology/)
     await expect(page.locator('main')).toBeVisible()
-    // Assert BOTH seeded surfaces independently so a regression that
-    // hides either the memory panel OR the ontology panel fails this
-    // test. A single OR-regex assertion would let one surface go
-    // missing silently, weakening the signal.
-    await expect(
-      page.getByText('Always validate inputs before processing').first(),
-    ).toBeVisible()
-    await expect(page.getByText('reports_to').first()).toBeVisible()
 
-    // Real UI interaction: click on the seeded ontology fact and
-    // assert a click-specific postcondition (the seeded subject /
-    // object pair becomes visible in the detail surface). Asserting
-    // only ``main`` visibility wouldn't catch a click-handler
-    // regression because ``main`` was already visible above.
-    const factEntry = page.getByText('reports_to').first()
-    await factEntry.click()
-    // makeOntologyFact seeds entity='agent-001' / relation='reports_to'
-    // / target='agent-002'. The relation text was already visible
-    // before the click, so assert one of the related entity strings
-    // surfaces after the click -- a regression that breaks the
-    // selection/detail-open handler would leave the entity text
-    // unrendered.
-    await expect(
-      page.getByText(/agent-001|agent-002/).first(),
-    ).toBeVisible()
+    // The seeded entity name renders in the catalogue.
+    const entity = page.getByText('TaskAssignment').first()
+    await expect(entity).toBeVisible()
+
+    // Real UI interaction: select the entity. A click-handler regression
+    // would leave the detail (the entity's definition) unrendered.
+    await entity.click()
+    await expect(page.getByText('A task assigned to an agent.').first()).toBeVisible()
 
     // Drive a personality-trimmed event through the harness. The
     // event_type is in ``WS_EVENT_TYPE_VALUES`` and the notifications
-    // store enqueues a "Personality trimmed" entry, so visibility of
-    // that title proves the WS frame conformed to the runtime
-    // validator (``isWsEvent``) and reached the dispatch chain.
+    // store's ws-handler enqueues a "Personality trimmed" drawer entry,
+    // so its visibility (after opening the drawer) proves the WS frame
+    // conformed to the runtime validator (``isWsEvent``) and reached the
+    // dispatch chain.
     await injectEvent(page, {
       event_type: 'personality.trimmed',
       channel: 'agents',
       timestamp: '2026-04-01T12:00:00Z',
       payload: { agent_id: 'agent-001', agent_name: 'Alice' },
     })
+    await page.getByRole('button', { name: /notifications/i }).click()
     await expect(page.getByText('Personality trimmed').first()).toBeVisible()
   })
 })

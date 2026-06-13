@@ -26,7 +26,7 @@ test.describe('Workflows list + system.error notification path', () => {
     // Catch-all FIRST so the specific stub below wins (Playwright
     // matches handlers LIFO).
     await mockApiRoutes(page)
-    await page.route('**/api/v1/workflows', (route) =>
+    await page.route('**/api/v1/workflows**', (route) =>
       route.fulfill({
         json: {
           success: true,

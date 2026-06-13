@@ -18,12 +18,12 @@ test.describe('Fine-tuning pipeline critical flow', () => {
     await mockApiRoutes(page)
     const status = makeFineTuneStatus({ stage: 'training', progress: 0.42, run_id: 'run-001' })
     const run = makeFineTuneRun({ id: 'run-001' })
-    await page.route('**/api/v1/fine-tuning/status', (route) =>
+    await page.route('**/api/v1/admin/memory/fine-tune/status**', (route) =>
       route.fulfill({
         json: { success: true, data: status, error: null, error_detail: null },
       }),
     )
-    await page.route('**/api/v1/fine-tuning/runs', (route) =>
+    await page.route('**/api/v1/admin/memory/fine-tune/runs**', (route) =>
       route.fulfill({
         json: {
           success: true,
@@ -39,10 +39,11 @@ test.describe('Fine-tuning pipeline critical flow', () => {
   test('loads the fine-tuning page and processes a stage_changed WS event', async ({ page }) => {
     await page.goto('/settings/memory/fine-tuning')
     await expect(page.locator('main')).toBeVisible()
-    // The initial API mock returns ``stage: 'training'``; the
-    // pipeline progress bar therefore shows "Stage: Training"
-    // before the WS event flips the store to ``evaluating``.
-    await expect(page.getByText('Stage: Training').first()).toBeVisible()
+    // The initial API mock returns ``stage: 'training'``; the pipeline
+    // progress bar's ``formatStage`` maps that to "Contrastive
+    // Fine-Tuning" (PipelineProgressBar.tsx) before the WS event flips
+    // the store to ``evaluating``.
+    await expect(page.getByText('Stage: Contrastive Fine-Tuning').first()).toBeVisible()
 
     // Use the real wire event type ``memory.fine_tune.stage_changed``;
     // the store handler in web/src/stores/fine-tuning.ts (~line 252)
@@ -55,6 +56,6 @@ test.describe('Fine-tuning pipeline critical flow', () => {
       payload: { run_id: 'run-001', stage: 'evaluating', previous_stage: 'training' },
     })
 
-    await expect(page.getByText('Stage: Evaluation').first()).toBeVisible()
+    await expect(page.getByText('Stage: Evaluating Checkpoint').first()).toBeVisible()
   })
 })
