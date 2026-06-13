@@ -31,6 +31,10 @@ from synthorg.core.agent import (
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
+from synthorg.meta.mcp.domains._simple_args import (
+    ApprovalsGetArgs,
+    ApprovalsRejectArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -38,6 +42,7 @@ from synthorg.meta.mcp.errors import (
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     dump_many,
     err,
@@ -145,6 +150,8 @@ def _coerce_risk(raw: object, *, field: str = "risk_level") -> ApprovalRiskLevel
 # --- handlers --------------------------------------------------------------
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler coerces risk_level to
+# the ApprovalRiskLevel enum but ApprovalsListArgs.risk_level is a string Literal.
 async def _list_approvals(
     *,
     app_state: AppState,
@@ -209,7 +216,7 @@ async def _get_approval(
     tool = "synthorg_approvals_get"
 
     try:
-        approval_id = require_non_blank(arguments, "approval_id")
+        approval_id = typed_args(arguments, ApprovalsGetArgs).approval_id
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -230,6 +237,8 @@ async def _get_approval(
     return ok(data=item.model_dump(mode="json"))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler defaults title to
+# description[:80] when absent but ApprovalsCreateArgs makes title a required field.
 async def _create_approval(
     *,
     app_state: AppState,
@@ -348,6 +357,8 @@ async def _decide(
     return saved
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler treats absent comment
+# as None (reason=None) but ApprovalsApproveArgs defaults comment to "" (reason="").
 async def _approve(
     *,
     app_state: AppState,
@@ -417,7 +428,7 @@ async def _reject(
 
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        approval_id = require_non_blank(arguments, "approval_id")
+        approval_id = typed_args(arguments, ApprovalsRejectArgs).approval_id
         saved = await _decide(
             app_state=app_state,
             approval_id=approval_id,
