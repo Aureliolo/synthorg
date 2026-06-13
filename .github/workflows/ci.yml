@@ -589,7 +589,7 @@ jobs:
           uv run python -m pytest tests/ \
             -m integration \
             -k "not [sqlite-" \
-            -n auto \
+            -n 8 \
             --max-worker-restart=0 \
             --splits 4 \
             --group ${{ matrix.shard }} \
