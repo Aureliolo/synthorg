@@ -148,6 +148,11 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
         "scripts/check_persistence_boundary.py",
         # Shared conftest bootstraps the test database via aiosqlite.
         "tests/conftest.py",
+        # Shared helper that builds a migrated Postgres template database
+        # and clones per-test DBs from it; holds a psycopg driver and
+        # issues CREATE/DROP/ALTER DATABASE DDL for that purpose -- same
+        # test-DB-bootstrap rationale as tests/conftest.py.
+        "tests/_shared/postgres_template.py",
         # Integration / unit tests that legitimately hold driver
         # handles for cross-subsystem fixtures.
         "tests/integration/engine/identity/test_identity_versioning.py",
