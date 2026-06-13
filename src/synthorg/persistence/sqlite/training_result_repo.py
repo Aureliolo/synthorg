@@ -7,7 +7,6 @@ Provides ``SQLiteTrainingResultRepository`` which persists
 import contextlib
 import json
 import sqlite3
-from datetime import UTC, datetime
 from uuid import UUID
 
 import aiosqlite
@@ -25,6 +24,10 @@ from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.datetime_marshaller import (
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext
 
@@ -124,8 +127,8 @@ def _result_to_params(result: TrainingResult) -> tuple[object, ...]:
         _serialize_approvals(result.pending_approvals),
         int(result.review_pending),
         _serialize_errors(result.errors),
-        result.started_at.astimezone(UTC).isoformat(),
-        result.completed_at.astimezone(UTC).isoformat(),
+        format_iso_utc(result.started_at),
+        format_iso_utc(result.completed_at),
     )
 
 
@@ -193,10 +196,8 @@ def _row_to_result(row: aiosqlite.Row) -> TrainingResult:
         )
         data["review_pending"] = bool(data["review_pending"])
         data["errors"] = tuple(json.loads(data["errors"]))
-        data["started_at"] = datetime.fromisoformat(data["started_at"])
-        data["completed_at"] = datetime.fromisoformat(
-            data["completed_at"],
-        )
+        data["started_at"] = coerce_row_timestamp(data["started_at"])
+        data["completed_at"] = coerce_row_timestamp(data["completed_at"])
         return TrainingResult.model_validate(data)
     except (
         json.JSONDecodeError,

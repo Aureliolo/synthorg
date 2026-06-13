@@ -9,7 +9,7 @@ in their own table keyed by ``(subworkflow_id, semver)``.  See
 import json
 import sqlite3
 from collections.abc import Iterable
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal, cast
 from uuid import UUID
 
@@ -49,7 +49,10 @@ from synthorg.observability.events.persistence.subworkflow import (
     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared.datetime_marshaller import format_iso_utc
+from synthorg.persistence._shared.datetime_marshaller import (
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext
 
@@ -75,15 +78,15 @@ def _semver_sort_key(version: str) -> Version:
 
 
 def _parse_created_at(value: object) -> datetime:
-    """Parse an ISO timestamp, forcing UTC.
+    """Parse a stored ISO timestamp to a tz-aware UTC datetime.
 
     Returns:
         Result of type ``datetime``.
+
+    Raises:
+        ValueError: If a stored string is naive (no timezone offset).
     """
-    dt = datetime.fromisoformat(str(value))
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return dt
+    return coerce_row_timestamp(value)
 
 
 def _deserialize_row(

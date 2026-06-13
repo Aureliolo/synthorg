@@ -65,6 +65,21 @@ class TestSQLiteUserRepository:
         result = await user_repo.get("nonexistent")
         assert result is None
 
+    async def test_naive_created_at_rejected(
+        self,
+        user_repo: SQLiteUserRepository,
+        db: aiosqlite.Connection,
+    ) -> None:
+        """A stored naive timestamp is rejected on read, not silently coerced."""
+        await user_repo.save(_make_user())
+        await db.execute(
+            "UPDATE users SET created_at = ? WHERE id = ?",
+            ("2026-01-01T00:00:00", "user-001"),
+        )
+        await db.commit()
+        with pytest.raises(QueryError):
+            await user_repo.get("user-001")
+
     async def test_get_by_username(self, user_repo: SQLiteUserRepository) -> None:
         user = _make_user()
         await user_repo.save(user)

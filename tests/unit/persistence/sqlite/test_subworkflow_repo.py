@@ -169,6 +169,22 @@ class TestSaveAndGet:
         with pytest.raises(QueryError, match="Failed to deserialize"):
             await repo.get(("not-a-uuid", "1.0.0"))
 
+    async def test_get_rejects_naive_created_at(
+        self,
+        repo: SQLiteSubworkflowRepository,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        # A stored naive ``created_at`` must surface as a domain ``QueryError``
+        # (deserialisation failure), not be silently coerced to UTC.
+        await repo.save(_make_subworkflow())
+        await migrated_db.execute(
+            "UPDATE subworkflows SET created_at = ? WHERE subworkflow_id = ?",
+            ("2026-01-01T00:00:00", sid("sub-quarterly-close")),
+        )
+        await migrated_db.commit()
+        with pytest.raises(QueryError):
+            await repo.get((sid("sub-quarterly-close"), "1.0.0"))
+
 
 @pytest.mark.unit
 class TestListVersions:

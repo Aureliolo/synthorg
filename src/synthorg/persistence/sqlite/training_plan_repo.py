@@ -7,7 +7,6 @@ Provides ``SQLiteTrainingPlanRepository`` which persists
 import contextlib
 import json
 import sqlite3
-from datetime import UTC, datetime
 from uuid import UUID
 
 import aiosqlite
@@ -26,6 +25,10 @@ from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.datetime_marshaller import (
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.training_protocol import TrainingPlanFilterSpec
@@ -111,10 +114,8 @@ def _plan_to_params(plan: TrainingPlan) -> tuple[object, ...]:
         int(plan.skip_training),
         int(plan.require_review),
         plan.status.value,
-        plan.created_at.astimezone(UTC).isoformat(),
-        plan.executed_at.astimezone(UTC).isoformat()
-        if plan.executed_at is not None
-        else None,
+        format_iso_utc(plan.created_at),
+        format_iso_utc(plan.executed_at) if plan.executed_at is not None else None,
     )
 
 
@@ -146,11 +147,9 @@ def _row_to_plan(row: aiosqlite.Row) -> TrainingPlan:
         data["skip_training"] = bool(data["skip_training"])
         data["require_review"] = bool(data["require_review"])
         data["status"] = TrainingPlanStatus(data["status"])
-        data["created_at"] = datetime.fromisoformat(data["created_at"])
+        data["created_at"] = coerce_row_timestamp(data["created_at"])
         if data["executed_at"] is not None:
-            data["executed_at"] = datetime.fromisoformat(
-                data["executed_at"],
-            )
+            data["executed_at"] = coerce_row_timestamp(data["executed_at"])
         return TrainingPlan.model_validate(data)
     except (
         json.JSONDecodeError,

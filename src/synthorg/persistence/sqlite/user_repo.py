@@ -16,7 +16,6 @@ preserves the SQLite-side parity with the Postgres twin
 import contextlib
 import json
 import sqlite3
-from datetime import UTC, datetime
 
 import aiosqlite
 from pydantic import ValidationError
@@ -49,6 +48,10 @@ from synthorg.observability.events.persistence.user import (
     PERSISTENCE_USER_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.datetime_marshaller import (
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 from synthorg.persistence._shared.pagination import (
     validate_pagination_args,
 )
@@ -112,8 +115,8 @@ def _row_to_user(row: aiosqlite.Row) -> User:
     data = dict(row)
     data["must_change_password"] = bool(data["must_change_password"])
     data["role"] = HumanRole(data["role"])
-    data["created_at"] = datetime.fromisoformat(data["created_at"])
-    data["updated_at"] = datetime.fromisoformat(data["updated_at"])
+    data["created_at"] = coerce_row_timestamp(data["created_at"])
+    data["updated_at"] = coerce_row_timestamp(data["updated_at"])
     # Deserialize JSON columns (may be missing in pre-migration rows).
     raw_org = data.get("org_roles")
     parsed_org = json.loads("[]" if raw_org is None else raw_org)
@@ -147,9 +150,9 @@ def _row_to_api_key(row: aiosqlite.Row) -> ApiKey:
     data = dict(row)
     data["revoked"] = bool(data["revoked"])
     data["role"] = HumanRole(data["role"])
-    data["created_at"] = datetime.fromisoformat(data["created_at"])
+    data["created_at"] = coerce_row_timestamp(data["created_at"])
     if data["expires_at"] is not None:
-        data["expires_at"] = datetime.fromisoformat(data["expires_at"])
+        data["expires_at"] = coerce_row_timestamp(data["expires_at"])
     return ApiKey.model_validate(data)
 
 
@@ -214,8 +217,8 @@ ON CONFLICT(id) DO UPDATE SET
                         int(user.must_change_password),
                         json.dumps([r.value for r in user.org_roles]),
                         json.dumps(list(user.scoped_departments)),
-                        user.created_at.astimezone(UTC).isoformat(),
-                        user.updated_at.astimezone(UTC).isoformat(),
+                        format_iso_utc(user.created_at),
+                        format_iso_utc(user.updated_at),
                     ),
                 )
                 await self._db.commit()
@@ -651,12 +654,8 @@ ON CONFLICT(id) DO UPDATE SET
                         key.name,
                         key.role.value,
                         key.user_id,
-                        key.created_at.astimezone(UTC).isoformat(),
-                        (
-                            key.expires_at.astimezone(UTC).isoformat()
-                            if key.expires_at
-                            else None
-                        ),
+                        format_iso_utc(key.created_at),
+                        (format_iso_utc(key.expires_at) if key.expires_at else None),
                         int(key.revoked),
                     ),
                 )

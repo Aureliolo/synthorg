@@ -1,7 +1,6 @@
 """SQLite repository implementation for Artifact."""
 
 import sqlite3
-from datetime import UTC, datetime
 
 import aiosqlite
 from pydantic import ValidationError
@@ -20,6 +19,10 @@ from synthorg.observability.events.persistence.artifact import (
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.datetime_marshaller import (
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext
 
@@ -41,11 +44,7 @@ def _row_to_artifact(row: aiosqlite.Row) -> Artifact:
     data["type"] = ArtifactType(data["type"])
     raw_ts = data["created_at"]
     if raw_ts is not None:
-        parsed = datetime.fromisoformat(raw_ts)
-        # Ensure timezone-aware -- stored as UTC ISO string.
-        data["created_at"] = (
-            parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
-        )
+        data["created_at"] = coerce_row_timestamp(raw_ts)
     return Artifact.model_validate(data)
 
 
@@ -153,7 +152,7 @@ class SQLiteArtifactRepository:
             QueryError: If the database operation fails.
         """
         created_at_iso = (
-            artifact.created_at.astimezone(UTC).isoformat()
+            format_iso_utc(artifact.created_at)
             if artifact.created_at is not None
             else None
         )

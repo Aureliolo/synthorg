@@ -6,6 +6,7 @@ import aiosqlite
 import pytest
 
 from synthorg.core.artifact import Artifact, ArtifactType
+from synthorg.core.persistence_errors import QueryError
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.sqlite.artifact_repo import SQLiteArtifactRepository
 from tests._shared.persistence import make_private_write_context
@@ -191,3 +192,18 @@ class TestSQLiteArtifactRepository:
         assert fetched.created_at is not None
         assert fetched.created_at.tzinfo is not None
         assert fetched.created_at == ts
+
+    async def test_naive_created_at_rejected(
+        self,
+        repo: SQLiteArtifactRepository,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        """A stored naive timestamp is rejected on read, not silently coerced."""
+        await repo.save(_make_artifact(artifact_id="a-naive"))
+        await migrated_db.execute(
+            "UPDATE artifacts SET created_at = ? WHERE id = ?",
+            ("2026-01-01T00:00:00", "a-naive"),
+        )
+        await migrated_db.commit()
+        with pytest.raises(QueryError):
+            await repo.get("a-naive")
