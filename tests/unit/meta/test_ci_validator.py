@@ -34,7 +34,11 @@ class TestCiPathSafety:
     def test_existing_py_files_drops_flag_injection(self, tmp_path: Path) -> None:
         (tmp_path / "real.py").write_text("", encoding="utf-8")
         result = _existing_py_files(tmp_path, ("real.py", "--plugin=evil.py"))
-        assert result == ["real.py"]
+        # The validated file is forwarded as a resolved absolute path.
+        assert result == [str((tmp_path / "real.py").resolve())]
+
+    def test_rejects_del_control_char(self, tmp_path: Path) -> None:
+        assert _is_safe_ci_path(tmp_path, "src/mo\x7fd.py") is False
 
 
 _FAKE_FILES = ("src/synthorg/meta/strategies/new.py",)
