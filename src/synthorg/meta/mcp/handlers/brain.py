@@ -27,6 +27,7 @@ from synthorg.meta.mcp.domains._brain_args import (
 )
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -135,7 +136,7 @@ async def _brain_append(
     try:
         require_admin_guardrails(arguments, actor)
         svc = _require_brain_service(app_state)
-        args = BrainAppendArgs.model_validate(arguments)
+        args = typed_args(arguments, BrainAppendArgs)
         entry = await _append_entry(svc, args)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_APPEND)
         return ok(entry.model_dump(mode="json"))
@@ -164,7 +165,7 @@ async def _brain_resolve(
     try:
         require_admin_guardrails(arguments, actor)
         svc = _require_brain_service(app_state)
-        args = BrainResolveArgs.model_validate(arguments)
+        args = typed_args(arguments, BrainResolveArgs)
         entry = await svc.resolve(
             project_id=args.project_id,
             entry_id=args.entry_id,
@@ -195,7 +196,7 @@ async def _brain_supersede(
     try:
         require_admin_guardrails(arguments, actor)
         svc = _require_brain_service(app_state)
-        args = BrainSupersedeArgs.model_validate(arguments)
+        args = typed_args(arguments, BrainSupersedeArgs)
         entry = await svc.supersede(
             project_id=args.project_id,
             entry_id=args.entry_id,
@@ -226,7 +227,7 @@ async def _brain_clear_blocker(
     try:
         require_admin_guardrails(arguments, actor)
         svc = _require_brain_service(app_state)
-        args = BrainClearBlockerArgs.model_validate(arguments)
+        args = typed_args(arguments, BrainClearBlockerArgs)
         entry = await svc.clear_blocker(
             project_id=args.project_id,
             entry_id=args.entry_id,
@@ -256,7 +257,7 @@ async def _brain_get(
     """Return one brain entry envelope, latest or at an exact revision (read)."""
     try:
         svc = _require_brain_service(app_state)
-        args = BrainGetArgs.model_validate(arguments)
+        args = typed_args(arguments, BrainGetArgs)
         entry = await svc.get_entry(
             project_id=args.project_id,
             entry_id=args.entry_id,
@@ -282,7 +283,7 @@ async def _brain_list(
     """Return the current-state projection envelope for a project (read)."""
     try:
         svc = _require_brain_service(app_state)
-        args = BrainListArgs.model_validate(arguments)
+        args = typed_args(arguments, BrainListArgs)
         summaries = await svc.list_current(
             project_id=args.project_id,
             entry_kind=args.entry_kind,
@@ -310,7 +311,7 @@ async def _brain_query(
     """Return semantic-search hits across a project's indexed brain (read)."""
     try:
         svc = _require_brain_service(app_state)
-        args = BrainQueryArgs.model_validate(arguments)
+        args = typed_args(arguments, BrainQueryArgs)
         hits = await svc.query(
             project_id=args.project_id,
             query=args.query,
@@ -333,7 +334,7 @@ async def _brain_history(
     """Return the structured revision-chain envelope of one brain entry (read)."""
     try:
         svc = _require_brain_service(app_state)
-        args = BrainHistoryArgs.model_validate(arguments)
+        args = typed_args(arguments, BrainHistoryArgs)
         revisions = await svc.history(
             project_id=args.project_id,
             entry_id=args.entry_id,

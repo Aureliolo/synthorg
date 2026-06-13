@@ -41,6 +41,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_feature_manifest.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_forbidden_literals.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_frozen_model_extra_forbid.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
+| `check_handler_arguments_get.py` | push | `meta/mcp/` | full | no | none | keep |
 | `check_image_signatures.py` | CI (`docker.yml`) | published image digests | n/a | n/a | none | keep |
 | `check_list_pagination.py` | commit+push | `persistence/` | full | no | `list_pagination_baseline.txt` | keep |
 | `check_local_ci_parity.py` | commit+push | `.pre-commit-config.yaml` + `ci.yml` | full | no | none | **add** (keystone) |

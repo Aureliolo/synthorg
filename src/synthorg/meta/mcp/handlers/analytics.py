@@ -154,13 +154,15 @@ def _parse_str_dict(
     return out
 
 
-def _parse_report_id(arguments: dict[str, object]) -> UUID:
-    """Return parse report id.
+def _parse_report_id(raw: str) -> UUID:
+    """Coerce a validated ``report_id`` string into a :class:`UUID`.
+
+    Returns:
+        The parsed ``UUID``.
 
     Raises:
         ArgumentValidationError: Raised on the corresponding failure path.
     """
-    raw = typed_args(arguments, ReportsGetArgs).report_id
     try:
         return UUID(raw)
     except ValueError as exc:
@@ -385,7 +387,7 @@ async def _reports_get(
 ) -> str:
     """Return reports get."""
     try:
-        report_id = _parse_report_id(arguments)
+        report_id = _parse_report_id(typed_args(arguments, ReportsGetArgs).report_id)
         report = await reports_service_of(app_state).get_report(report_id)
         if report is None:
             missing = LookupError(f"Report {report_id} not found")

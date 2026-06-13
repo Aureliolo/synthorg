@@ -490,6 +490,10 @@ def _parse_activities_args(
     return offset, limit, project, task_id, window_hours
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# project/task_id/window_hours via _parse_activities_args, but ActivitiesListArgs
+# declares type/agent_id/last_n_hours -- divergent field sets + service call.
+# Needs a batched contract decision before migrating.
 async def _activities_list(
     *,
     app_state: AppState,
