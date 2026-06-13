@@ -786,7 +786,7 @@
     },
     {
       "kind": "code",
-      "loc": 111,
+      "loc": 112,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/capabilities.py",
       "owning_feature": "api_core"
@@ -1241,7 +1241,7 @@
     },
     {
       "kind": "code",
-      "loc": 138,
+      "loc": 139,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/reports.py",
       "owning_feature": "api_core"
@@ -1451,7 +1451,7 @@
     },
     {
       "kind": "code",
-      "loc": 496,
+      "loc": 497,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/training.py",
       "owning_feature": "api_core"

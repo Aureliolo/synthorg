@@ -430,7 +430,22 @@ repos:
         # scripts/check_doc_numeric_macros.py + the YAML source of
         # truth + the injector/generator/gate themselves. Keep this
         # list in sync with `_SCOPED_FILES` whenever the scope changes.
-        files: ^(README\.md|docs/index\.md|docs/roadmap/index\.md|docs/architecture/decisions\.md|docs/reference/convention-gates\.md|data/runtime_stats\.yaml|scripts/(check_doc_numeric_macros|inject_runtime_stats|generate_runtime_stats)\.py)$
+        files: ^(README\.md|docs/index\.md|docs/roadmap/index\.md|docs/architecture/(decisions|tech-stack)\.md|docs/reference/(convention-gates|mcp-handler-contract|standards|research|claude-reference|protocols-audit|conventions)\.md|docs/design/(tools|self-improvement|providers|observability)\.md|docs/guides/(settings-reference|custom-mcp-server-dev|index)\.md|data/runtime_stats\.yaml|scripts/(check_doc_numeric_macros|inject_runtime_stats|generate_runtime_stats)\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: docs-nav-coverage
+        name: docs nav coverage (every page in nav or allowlisted)
+        entry: uv
+        args: [run, python, scripts/check_docs_nav_coverage.py]
+        language: system
+        # A new docs/ page silently absent from the mkdocs nav, or a nav
+        # entry pointing at a deleted file, both surface here. The gate
+        # enforces that every docs/**/*.md is reachable from the nav or on
+        # the documented internal-only allowlist in the gate script.
+        # Trigger on any docs page add/remove/rename, the nav config, or
+        # the gate script itself.
+        files: ^(docs/.*\.md|mkdocs\.yml|scripts/check_docs_nav_coverage\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 

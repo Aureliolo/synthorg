@@ -1,9 +1,9 @@
 schema_version: 1
-last_generated_utc: '2026-06-11T19:23:09Z'
-generator_revision: 247572b3d
+last_generated_utc: '2026-06-12T23:48:14Z'
+generator_revision: 65be32f5b
 stats:
   tests:
-    raw: 35510
+    raw: 35517
     rounded: 35000
     display: 35,000+
   providers_curated:
@@ -16,11 +16,23 @@ stats:
     raw: 26
     display: '26'
   convention_gates:
-    raw: 73
-    display: '73'
+    raw: 74
+    display: '74'
+  mcp_tools:
+    raw: 241
+    display: '241'
+  mcp_domains:
+    raw: 21
+    display: '21'
+  settings_namespaces:
+    raw: 28
+    display: '28'
 sources:
   tests: uv run python -m pytest --collect-only -q
   providers_curated: synthorg.providers.presets.list_featured_presets
   providers_via_litellm: len(litellm.models_by_provider)
   subagents: glob .claude/agents/*.md
   convention_gates: glob scripts/check_*.py
+  mcp_tools: tool builders in src/synthorg/meta/mcp/domains/*.py
+  mcp_domains: non-underscore modules in src/synthorg/meta/mcp/domains/
+  settings_namespaces: SettingNamespace members in src/synthorg/settings/enums.py

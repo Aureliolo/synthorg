@@ -25,7 +25,7 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 
 The **Dashboard** column maps each metric to a row in the default Grafana overview dashboard (`monitoring/grafana/synthorg-overview.json`). Rows are collapsible; the only row expanded by default is `Health & SLO`. The dashboard exposes four filter variables (`$agent_id`, `$agent`, `$workflow_definition_id`, `$department`) that drill panels down per-entity; the two agent-named variables exist because `synthorg_tasks_total` uses `agent` while the per-agent cost metrics use `agent_id`. Default queries aggregate across the full set so the unfiltered view is always meaningful.
 
-Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py`; PromQL filters that reference values outside those allowlists will never match data. The five formerly-unbounded labels (`agent_id`, `agent`, `department`, `workflow_definition_id` on the metrics noted below) are validated against a registry-bound snapshot rebuilt on every Prometheus scrape; unknown values drop that one sample with a `metrics.scrape.failed` WARN log per unknown label per scrape. The log repeats on the next scrape if the value is still unknown.
+Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py`; PromQL filters that reference values outside those allowlists will never match data. The four formerly-unbounded labels (`agent_id`, `agent`, `department`, `workflow_definition_id` on the metrics noted below) are validated against a registry-bound snapshot rebuilt on every Prometheus scrape; unknown values drop that one sample with a `metrics.scrape.failed` WARN log per unknown label per scrape. The log repeats on the next scrape if the value is still unknown.
 
 ### Info
 
@@ -50,6 +50,7 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | `synthorg_budget_daily_used_percent` | Gauge | - | Daily utilisation (prorated). | `Cost & Budget` |
 | `synthorg_agent_cost_total` | Gauge | `agent_id` (registry-bound) | Per-agent accumulated cost. | `Cost & Budget` |
 | `synthorg_agent_budget_used_percent` | Gauge | `agent_id` (registry-bound) | Per-agent daily utilisation. | `Cost & Budget` |
+| `synthorg_budget_query_duration_seconds` | Histogram | `query_type` | Budget read-path query duration (`query_type` bounded to `balance` / `available_spend` / `burn_rate` / `daily_spend` / `cost_summary` / `total_cost` / `agent_cost` / `project_cost`; buckets 1ms-1s). | `Audit & Performance` |
 
 ### Agents & tasks
 
@@ -99,6 +100,7 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | Metric | Type | Labels | Description | Dashboard |
 |--------|------|--------|-------------|-----------|
 | `synthorg_audit_chain_appends_total` | Counter | `status` | Audit chain append operations (`status` bounded to `signed` / `fallback` / `error`). | `Audit & Security` |
+| `synthorg_audit_chain_verifications_total` | Counter | `outcome` | Audit chain integrity verifications (`outcome` bounded to `valid` / `broken`); a non-zero `broken` rate is the chain-tampering alert signal. | `Audit & Performance` |
 | `synthorg_audit_chain_depth` | Gauge | - | Current hash chain length. | `Audit & Security` |
 | `synthorg_audit_chain_last_append_timestamp_seconds` | Gauge | - | Unix timestamp of the most recent append. | `Audit & Security` |
 | `synthorg_security_audit_log_fill_ratio` | Gauge | - | Security audit log occupancy as a fraction of `max_entries` (0.0 empty, 1.0 full). Alert at 0.9: increase retention or archive older entries before the ring buffer wraps and overwrites unread evidence. | `Audit & Security` |
@@ -123,6 +125,22 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | `synthorg_escalation_queue_depth` | Gauge | `department` (registry-bound) | Pending escalations awaiting decision. | `Health & SLO` |
 | `synthorg_agent_identity_version_changes_total` | Counter | `agent_id` (registry-bound), `change_type` | Identity-version lifecycle events (`change_type` bounded to `created` / `updated` / `rolled_back` / `archived`). | `Audit & Security` |
 | `synthorg_workflow_execution_seconds` | Histogram | `workflow_definition_id` (registry-bound), `status` | Workflow execution duration (`status` bounded to `completed` / `failed` / `cancelled` / `timeout`; buckets 0.5s-3600s). | `Workflows` |
+
+### Decisions
+
+| Metric | Type | Labels | Description | Dashboard |
+|--------|------|--------|-------------|-----------|
+| `synthorg_approval_decisions_total` | Counter | `outcome` | Approval-gate terminal decisions (`outcome` bounded to `approved` / `rejected` / `expired`). | `Decisions` |
+| `synthorg_escalation_outcomes_total` | Counter | `outcome` | Conflict-resolution escalation terminal outcomes (`outcome` bounded to `resolved` / `escalated_to_human` / `auto_resolved` / `notify_failed` / `sweeper_failed`). | `Decisions` |
+| `synthorg_blueprint_instantiations_total` | Counter | `outcome` | Workflow blueprint instantiation attempts (`outcome` bounded to `success` / `validation_error` / `not_found` / `unknown_error`). | `Decisions` |
+
+### Configuration & MCP
+
+| Metric | Type | Labels | Description | Dashboard |
+|--------|------|--------|-------------|-----------|
+| `synthorg_settings_mutations_total` | Counter | `namespace` | Settings mutations by namespace (`namespace` bounded to the settings-namespace allowlist, one entry per `settings/definitions/` file). | `Configuration & MCP` |
+| `synthorg_mcp_handler_outcomes_total` | Counter | `tool`, `outcome` | MCP handler invocations by tool (`outcome` bounded to `success` / `error` / `validation_error` / `guardrail_violated` / `not_found` / `capability_unsupported`). | `Configuration & MCP` |
+| `synthorg_mcp_handler_duration_seconds` | Histogram | `tool`, `outcome` | MCP handler invocation duration by tool and outcome (buckets 1ms-10s). | `Configuration & MCP` |
 
 ## Suggested PromQL queries
 
@@ -305,7 +323,7 @@ sum(rate(synthorg_client_disconnects_total{reason="transport_error"}[5m]))
 
 Import `monitoring/grafana/synthorg-overview.json` into any Grafana v10+ instance. The file is Grafana v10-compatible dashboard JSON (authored against the v11 editor, which emits a schema readable by v10) with a single `${DS_PROMETHEUS}` template variable bound to your Prometheus data source plus four filter variables: `$agent_id` (sourced from `synthorg_agent_cost_total`'s `agent_id` label, used by Cost & Budget + Audit & Security panels), `$agent` (sourced from `synthorg_tasks_total`'s `agent` label, used by the Tasks row's per-agent panel), `$workflow_definition_id`, and `$department`. The two agent-named variables exist because `synthorg_tasks_total` and `synthorg_agent_cost_total` use different label names (`agent` vs `agent_id`); panels filter on whichever variable matches their underlying metric.
 
-The dashboard organises 30+ panels into seven collapsible rows. Only `Health & SLO` is expanded by default; expand the others as needed to keep the unfiltered view scannable.
+The dashboard organises over forty panels into ten collapsible rows. Only `Health & SLO` is expanded by default; expand the others as needed to keep the unfiltered view scannable.
 
 | Row | Default | Panels |
 |-----|---------|--------|
@@ -316,6 +334,9 @@ The dashboard organises 30+ panels into seven collapsible rows. Only `Health & S
 | `Cost & Budget` | collapsed | `synthorg_cost_total`, monthly cost, daily used %, top-25 per-agent cost, agent budget used % |
 | `Audit & Security` | collapsed | Audit chain append rate, depth, last-append age, audit-log fill-ratio gauge, security verdicts, agent identity version changes, API error categories |
 | `Client Health` | collapsed | Client disconnects by transport+reason, API request rate by status class, OTLP export batches, OTLP dropped records, cache hit rate, app info |
+| `Decisions` | collapsed | Approval decisions/sec (`synthorg_approval_decisions_total`), escalation outcomes/sec (`synthorg_escalation_outcomes_total`), blueprint instantiations/sec (`synthorg_blueprint_instantiations_total`) |
+| `Configuration & MCP` | collapsed | Settings mutations/sec by namespace (`synthorg_settings_mutations_total`), MCP handler success rate (`synthorg_mcp_handler_outcomes_total`), MCP handler p95 latency by tool (`synthorg_mcp_handler_duration_seconds`) |
+| `Audit & Performance` | collapsed | Audit chain append rate by status (`synthorg_audit_chain_appends_total`), audit chain integrity over the last hour (`synthorg_audit_chain_verifications_total`), budget query p95 latency by query type (`synthorg_budget_query_duration_seconds`) |
 
 To install via the Grafana UI: `Dashboards → New → Import → Upload JSON file`. Via the provisioning API: `POST /api/dashboards/db` with `{"dashboard": <file>, "overwrite": true, "inputs": [...]}`.
 

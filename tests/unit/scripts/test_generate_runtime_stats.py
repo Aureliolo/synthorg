@@ -67,6 +67,9 @@ def _fake_fetchers(
         "providers_via_litellm": lambda: {"raw": 100, "display": "100+"},
         "subagents": lambda: {"raw": 7, "display": "7"},
         "convention_gates": lambda: {"raw": 36, "display": "36"},
+        "mcp_tools": lambda: {"raw": 241, "display": "241"},
+        "mcp_domains": lambda: {"raw": 21, "display": "21"},
+        "settings_namespaces": lambda: {"raw": 28, "display": "28"},
     }
     if overrides:
         base.update(overrides)
@@ -120,10 +123,16 @@ class TestMainHappyPath:
         assert stats["providers_via_litellm"]["display"] == "100+"
         assert stats["subagents"]["display"] == "7"
         assert stats["convention_gates"]["display"] == "36"
+        assert stats["mcp_tools"]["display"] == "241"
+        assert stats["mcp_domains"]["display"] == "21"
+        assert stats["settings_namespaces"]["display"] == "28"
         assert "sources" in loaded
-        # Sources mapping is informational; ensure every stat has a source.
+        # Sources mapping is informational; ensure every stat has the
+        # expected source string, so a stale source value (not just a
+        # missing key) is caught.
         for stat_name in stats:
             assert stat_name in loaded["sources"]
+            assert loaded["sources"][stat_name] == gen._SOURCES[stat_name]
 
         out = capsys.readouterr().out
         assert "wrote" in out.lower()
@@ -269,6 +278,126 @@ class TestFetchConventionGates:
             pytest.raises(gen._StatFetchError),
         ):
             gen._fetch_convention_gates()
+
+
+@pytest.mark.unit
+class TestFetchMcpTools:
+    """`_fetch_mcp_tools` counts tool-builder call-sites in `domains/*.py`."""
+
+    def test_counts_builder_callsites(self, tmp_path: Path) -> None:
+        domains = tmp_path / "domains"
+        domains.mkdir()
+        (domains / "alpha.py").write_text(
+            "read_tool('a', 'list', '')\nwrite_tool('a', 'set', '')\n",
+            encoding="utf-8",
+        )
+        (domains / "beta.py").write_text(
+            "admin_tool('b', 'wipe', '')\n", encoding="utf-8"
+        )
+        # Non-py files and underscore arg modules without builders do not count.
+        (domains / "_args.py").write_text("X = 1\n", encoding="utf-8")
+        (domains / "notes.txt").write_text("read_tool(\n", encoding="utf-8")
+
+        with patch.object(gen, "_MCP_DOMAINS_DIR", domains):
+            result = gen._fetch_mcp_tools()
+        assert result["raw"] == 3
+        assert result["display"] == "3"
+
+    def test_raises_when_dir_missing(self, tmp_path: Path) -> None:
+        with (
+            patch.object(gen, "_MCP_DOMAINS_DIR", tmp_path / "nope"),
+            pytest.raises(gen._StatFetchError),
+        ):
+            gen._fetch_mcp_tools()
+
+    def test_raises_when_no_callsites(self, tmp_path: Path) -> None:
+        domains = tmp_path / "domains"
+        domains.mkdir()
+        (domains / "empty.py").write_text("X = 1\n", encoding="utf-8")
+        with (
+            patch.object(gen, "_MCP_DOMAINS_DIR", domains),
+            pytest.raises(gen._StatFetchError),
+        ):
+            gen._fetch_mcp_tools()
+
+
+@pytest.mark.unit
+class TestFetchMcpDomains:
+    """`_fetch_mcp_domains` counts non-underscore `domains/*.py` modules."""
+
+    def test_counts_non_underscore_modules(self, tmp_path: Path) -> None:
+        domains = tmp_path / "domains"
+        domains.mkdir()
+        for name in ("alpha.py", "beta.py", "_args.py", "__init__.py"):
+            (domains / name).write_text("# stub\n", encoding="utf-8")
+        with patch.object(gen, "_MCP_DOMAINS_DIR", domains):
+            result = gen._fetch_mcp_domains()
+        assert result["raw"] == 2
+        assert result["display"] == "2"
+
+    def test_raises_when_dir_missing(self, tmp_path: Path) -> None:
+        with (
+            patch.object(gen, "_MCP_DOMAINS_DIR", tmp_path / "nope"),
+            pytest.raises(gen._StatFetchError),
+        ):
+            gen._fetch_mcp_domains()
+
+    def test_raises_when_all_underscore(self, tmp_path: Path) -> None:
+        domains = tmp_path / "domains"
+        domains.mkdir()
+        (domains / "_args.py").write_text("# stub\n", encoding="utf-8")
+        with (
+            patch.object(gen, "_MCP_DOMAINS_DIR", domains),
+            pytest.raises(gen._StatFetchError),
+        ):
+            gen._fetch_mcp_domains()
+
+
+@pytest.mark.unit
+class TestFetchSettingsNamespaces:
+    """`_fetch_settings_namespaces` ast-counts the `SettingNamespace` enum."""
+
+    def _write_enum(self, tmp_path: Path, body: str) -> Path:
+        target = tmp_path / "enums.py"
+        target.write_text(body, encoding="utf-8")
+        return target
+
+    def test_counts_enum_members(self, tmp_path: Path) -> None:
+        target = self._write_enum(
+            tmp_path,
+            "from enum import StrEnum\n\n\n"
+            "class SettingNamespace(StrEnum):\n"
+            '    API = "api"\n'
+            '    BUDGET = "budget"\n'
+            '    MEMORY = "memory"\n',
+        )
+        with patch.object(gen, "_SETTINGS_ENUMS_PATH", target):
+            result = gen._fetch_settings_namespaces()
+        assert result["raw"] == 3
+        assert result["display"] == "3"
+
+    def test_raises_when_file_missing(self, tmp_path: Path) -> None:
+        with (
+            patch.object(gen, "_SETTINGS_ENUMS_PATH", tmp_path / "nope.py"),
+            pytest.raises(gen._StatFetchError),
+        ):
+            gen._fetch_settings_namespaces()
+
+    def test_raises_when_class_absent(self, tmp_path: Path) -> None:
+        target = self._write_enum(tmp_path, "OTHER = 1\n")
+        with (
+            patch.object(gen, "_SETTINGS_ENUMS_PATH", target),
+            pytest.raises(gen._StatFetchError),
+        ):
+            gen._fetch_settings_namespaces()
+
+    def test_raises_on_syntax_error(self, tmp_path: Path) -> None:
+        target = self._write_enum(tmp_path, "class SettingNamespace(:\n")
+        with (
+            patch.object(gen, "_SETTINGS_ENUMS_PATH", target),
+            pytest.raises(gen._StatFetchError),
+        ):
+            gen._fetch_settings_namespaces()
 
 
 @pytest.mark.unit

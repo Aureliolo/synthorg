@@ -43,21 +43,22 @@ TAG_TO_SECTION: Final[dict[str, str]] = {
     # Identity and users
     "auth": "Identity and users",
     "users": "Identity and users",
-    # Organization and agents
-    "company": "Organization and agents",
-    "departments": "Organization and agents",
-    "agents": "Organization and agents",
-    "autonomy": "Organization and agents",
-    "collaboration": "Organization and agents",
-    "quality": "Organization and agents",
-    "activities": "Organization and agents",
-    "personalities": "Organization and agents",
-    "ontology": "Organization and agents",
-    "roles": "Organization and agents",
-    "scaling": "Organization and agents",
-    "evaluation": "Organization and agents",
-    "clients": "Organization and agents",
-    "training": "Organization and agents",
+    # Organisation and agents
+    "company": "Organisation and agents",
+    "departments": "Organisation and agents",
+    "agents": "Organisation and agents",
+    "autonomy": "Organisation and agents",
+    "collaboration": "Organisation and agents",
+    "quality": "Organisation and agents",
+    "activities": "Organisation and agents",
+    "personalities": "Organisation and agents",
+    "ontology": "Organisation and agents",
+    "roles": "Organisation and agents",
+    "scaling": "Organisation and agents",
+    "evaluation": "Organisation and agents",
+    "clients": "Organisation and agents",
+    "training": "Organisation and agents",
+    "charter": "Organisation and agents",
     # Work and coordination
     "projects": "Work and coordination",
     "tasks": "Work and coordination",
@@ -68,6 +69,12 @@ TAG_TO_SECTION: Final[dict[str, str]] = {
     "conflict-escalations": "Work and coordination",
     "reviews": "Work and coordination",
     "requests": "Work and coordination",
+    "objectives": "Work and coordination",
+    "brownfield": "Work and coordination",
+    "project_brain": "Work and coordination",
+    "project_docs": "Work and coordination",
+    "project_knowledge": "Work and coordination",
+    "deliverable_receipts": "Work and coordination",
     # Workflows
     "workflows": "Workflows",
     "workflow-executions": "Workflows",
@@ -92,11 +99,20 @@ TAG_TO_SECTION: Final[dict[str, str]] = {
     "meta-analytics": "Operations and platform",
     "security": "Operations and platform",
     "admin": "Operations and platform",
+    "reports": "Operations and platform",
+    "capabilities": "Operations and platform",
+    "cockpit": "Operations and platform",
+    "experiments": "Operations and platform",
+    "forecast": "Operations and platform",
+    "knowledge": "Operations and platform",
+    "learning": "Operations and platform",
+    "simulations": "Operations and platform",
+    "demo": "Operations and platform",
 }
 
 SECTION_ORDER: Final[tuple[str, ...]] = (
     "Identity and users",
-    "Organization and agents",
+    "Organisation and agents",
     "Work and coordination",
     "Workflows",
     "Operations and platform",
@@ -152,6 +168,22 @@ TAG_DISPLAY: Final[dict[str, str]] = {
     "meta-analytics": "Meta Analytics",
     "security": "Security",
     "admin": "Admin",
+    "reports": "Reports",
+    "capabilities": "Capabilities",
+    "charter": "Charter",
+    "cockpit": "Cockpit",
+    "experiments": "Experiments",
+    "forecast": "Cost Forecast",
+    "knowledge": "Knowledge",
+    "learning": "Learning",
+    "objectives": "Objectives",
+    "brownfield": "Brownfield Intake",
+    "project_brain": "Project Brain",
+    "project_docs": "Project Docs",
+    "project_knowledge": "Project Knowledge",
+    "deliverable_receipts": "Deliverable Receipts",
+    "simulations": "Simulations",
+    "demo": "Demo",
 }
 
 # Tag -> base path used in the rendered table.  Auto-derived from the
@@ -159,6 +191,8 @@ TAG_DISPLAY: Final[dict[str, str]] = {
 # derivation produces an empty string fall back to this manual map.
 TAG_BASE_PATH_FALLBACK: Final[dict[str, str]] = {
     "health": "/healthz, /readyz",
+    "coordination": "/coordination/metrics, /tasks/{task_id}/coordinate",
+    "Integrations": "/integrations, /connections, /oauth, /webhooks",
 }
 
 API_PREFIX: Final[str] = "/api/v1"

@@ -2,13 +2,10 @@
 """Substitute build-time numeric values into public docs.
 
 Reads ``data/runtime_stats.yaml`` and rewrites the inner content of
-every ``<!--RS:NAME-->...<!--/RS-->`` marker in the in-scope docs:
-
-* ``README.md``
-* ``docs/index.md``
-* ``docs/roadmap/index.md``
-* ``docs/architecture/decisions.md``
-* ``docs/reference/convention-gates.md``
+every ``<!--RS:NAME-->...<!--/RS-->`` marker in the in-scope docs. The
+exact set of scoped docs lives in the ``_SCOPED_FILES`` constant below
+(README plus selected ``docs/`` reference, design, and guide pages);
+consult it for the authoritative list rather than duplicating it here.
 
 The rewrite is idempotent: running twice produces identical output.
 Unknown marker names raise :class:`_UnknownStatError` so typos in
@@ -50,7 +47,21 @@ _SCOPED_FILES: Final[tuple[str, ...]] = (
     "docs/index.md",
     "docs/roadmap/index.md",
     "docs/architecture/decisions.md",
+    "docs/architecture/tech-stack.md",
     "docs/reference/convention-gates.md",
+    "docs/reference/mcp-handler-contract.md",
+    "docs/reference/standards.md",
+    "docs/reference/research.md",
+    "docs/reference/claude-reference.md",
+    "docs/reference/protocols-audit.md",
+    "docs/reference/conventions.md",
+    "docs/design/tools.md",
+    "docs/design/self-improvement.md",
+    "docs/design/providers.md",
+    "docs/design/observability.md",
+    "docs/guides/settings-reference.md",
+    "docs/guides/custom-mcp-server-dev.md",
+    "docs/guides/index.md",
 )
 
 _MARKER_RE: Final[re.Pattern[str]] = re.compile(

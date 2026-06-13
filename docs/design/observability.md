@@ -172,7 +172,7 @@ Default levels per domain module (overridable via `LogConfig.logger_levels`):
 
 ### Event Taxonomy
 
-100+ domain-specific event constant modules under `observability/events/` (one per subsystem:
+100+ domain-specific event constant modules under `observability/events/` (one per subsystem: <!-- lint-allow: doc-numeric-macros -- event-module floor claim, gated by check_doc_drift_counts.py -->
 api, budget, risk_budget, reporting, blueprint, workflow_version, tool, git, engine, communication, security, etc.). Every log call uses a typed constant
 (e.g., `API_REQUEST_STARTED`, `BUDGET_RECORD_ADDED`) for consistent, grep-friendly event
 names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
@@ -193,7 +193,7 @@ names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
 | `MCP_HANDLER_SERVICE_FALLBACK` | WARNING | Legacy helper `service_fallback()` emitted; META-MCP-2 removed every call site and the integration sweep at `tests/integration/mcp/test_tool_surface.py` asserts zero emissions. Helper retained for future surgical use. |
 | `MCP_HANDLER_CAPABILITY_GAP` | INFO | Live handler whose underlying primitive does not expose the required method; wire envelope matches `not_supported` (`domain_code="not_supported"`) but the event channel distinguishes "primitive gap" from "handler unwired" and from "backend-unsupported". Some primitives may never grow the method (infrastructure limits of the selected backend); others may acquire it in a later release. The event records the current gap, not a forward commitment. |
 | `MCP_HANDLER_LAZY_SERVICE_INIT` | DEBUG | Handler constructed its service facade per-call because `app_state` had not wired one. Telemetry for legacy bootstrap paths. |
-| `MCP_HANDLERS_BUILT` | DEBUG (ERROR on duplicate key) | Handler registry successfully composed from the 21 domain modules. |
+| `MCP_HANDLERS_BUILT` | DEBUG (ERROR on duplicate key) | Handler registry successfully composed from the <!--RS:mcp_domains-->21<!--/RS--> domain modules. |
 
 All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` on credential-sensitive paths (never `logger.exception(..., error=str(exc))`) to avoid leaking secrets through traceback frame-locals (SEC-1).
 

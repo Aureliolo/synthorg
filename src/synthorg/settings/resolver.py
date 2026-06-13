@@ -11,7 +11,7 @@ The size is driven by the breadth of typed accessors the rest of the
 codebase consumes: every scalar type (str / int / float / bool / enum
 / json), every composed Pydantic config model (budget / api /
 coordination), and every per-namespace bridge config block lands here
-so the registry's DB > env > YAML > default precedence (and the
+so the registry's DB > env > default precedence (and the
 ``settings.value.resolved`` audit log) fire from one place. Shrinking
 requires either generating the bridge-config wrappers or letting each
 namespace bridge resolve its own settings, both of which trade the

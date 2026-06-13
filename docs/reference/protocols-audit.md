@@ -248,7 +248,7 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 | meta/appliers/architecture_applier.py | 79 | `ArchitectureApplierContext` | 1 | 0 | 3 | KEEP | Plug-in context. |
 | meta/appliers/prompt_applier.py | 35 | `PromptApplierContext` | 1 | 0 | 3 | KEEP | Plug-in context. |
 | meta/evolution/outcome_store_protocol.py | 31 | `EvolutionOutcomeStore` | 1 | 0 | 3 | KEEP | Plug-in `Store`. |
-| meta/mcp/handler_protocol.py | 19 | `ToolHandler` | 0 | 0 | 2 | KEEP | Public MCP extension surface (200+ tool handlers); add `@runtime_checkable` candidate. |
+| meta/mcp/handler_protocol.py | 19 | `ToolHandler` | 0 | 0 | 2 | KEEP | Public MCP extension surface (<!--RS:mcp_tools-->241<!--/RS--> tool handlers); add `@runtime_checkable` candidate. |
 | meta/protocol.py | 38 | `SignalAggregator` | 1 | 0 | 4 | KEEP | Plug-in `Aggregator`. |
 | meta/protocol.py | 78 | `SignalRule` | 1 | 0 | 6 | KEEP | Plug-in `Rule`. |
 | meta/protocol.py | 108 | `ImprovementStrategy` | 1 | 0 | 4 | KEEP | Plug-in `Strategy`. |
@@ -395,7 +395,7 @@ Each retained protocol carries a one-line `# <reason>` design-rationale comment 
 
 Categories of re-flag rationale:
 
-1. **Multiple structural impls in the same file or sibling file** (impl count missed by the regex). Examples: `ConfidenceFormatter` (4 impls + `_FORMATTERS` factory in same file), `ImpactScorer` (3 impls), `StrategicContextProvider` (2 impls), `CostTierResolver` (2 impls + factory), `ShadowTaskProvider` (2 impls in `shadow_providers.py`), `TimestampProvider` (2 impls in same file), `TraceHandler` (`NoopTraceHandler` in same file + `OtlpTraceHandler` in sibling), `TrustStrategy` (4 strategy files + 117 test occurrences), 9 of 10 hr/ candidates (impl files named `*_strategy.py`), `LocalModelManager` (`OllamaModelManager` in same file).
+1. **Multiple structural impls in the same file or sibling file** (impl count missed by the regex). Examples: `ConfidenceFormatter` (4 impls + `_FORMATTERS` factory in same file), `ImpactScorer` (3 impls), `StrategicContextProvider` (2 impls), `CostTierResolver` (2 impls + factory), `ShadowTaskProvider` (2 impls in `shadow_providers.py`), `TimestampProvider` (2 impls in same file), `TraceHandler` (`NoopTraceHandler` in same file + `OtlpTraceHandler` in sibling), `TrustStrategy` (4 strategy files + 117 test occurrences), 9 of 10 hr/ candidates (impl files named `*_strategy.py`), `LocalModelManager` (`OllamaModelManager` in same file). <!-- lint-allow: doc-numeric-macros -- structural-impl audit occurrence counts, not build-time stats -->
 
 2. **Factory or registry dispatch** that the script's regex cannot see. Examples: `ConnectionAuthenticator` (registry in `connections/types/__init__.py`), `ConnectionHealthCheck` (`_CHECK_REGISTRY` in `prober.py`), `CaptureStrategy`/`PropagationStrategy`/`PruningStrategy` (each backed by a per-area `factory.py` with 3 impls), `OntologyInjectionStrategy` (`injection/factory.py`), `RiskTierClassifier` (`timeout/factory.py` + `engine/_security_factory`), `SandboxLifecycleStrategy` (`create_lifecycle_strategy` config-discriminated factory with 3 impls).
 
@@ -403,7 +403,7 @@ Categories of re-flag rationale:
 
 4. **Vendor-agnostic public extension surface** (no built-in impl by design; consumed via injection from MCP / user / external integration). Examples: `JudgeEvaluator` (debate/hybrid LLM judge), `WebSearchProvider` (threaded through `tools/factory.py` at 4 callsites), `ShadowAgentRunner` (production wires to `AgentEngine.run` via caller-supplied adapter), `TunnelProvider` (ngrok/cloudflared abstraction wired via `IntegrationsBundle`), `OrgInflectionSink` and `AlertSink` (downstream observability hooks).
 
-5. **Multi-impl injection points missed by the audit doc's own duplicate detection**. `ParticipantResolver`@`meeting/participant.py:56` was flagged as a "dead duplicate" of an alleged twin in `meeting/protocol.py`; the twin does not exist. The participant.py copy has 2 impls (`PassthroughParticipantResolver`, `RegistryParticipantResolver`) in the same file and 3 test files.
+5. **Multi-impl injection points missed by the audit doc's own duplicate detection**. `ParticipantResolver`@`meeting/participant.py:56` was flagged as a "dead duplicate" of an alleged twin in `meeting/protocol.py`; the twin does not exist. The participant.py copy has 2 impls (`PassthroughParticipantResolver`, `RegistryParticipantResolver`) in the same file and 3 test files. <!-- lint-allow: doc-numeric-macros -- structural-impl audit occurrence counts, not build-time stats -->
 
 ### Issue #1865 outcomes (REVIEW pass + duplicate folds)
 

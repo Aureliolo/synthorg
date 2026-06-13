@@ -4,23 +4,23 @@ On-demand reference for implementing tool handlers in `src/synthorg/meta/mcp/han
 
 ## Surface
 
-SynthOrg exposes 200+ tools across the 21 domain modules under `src/synthorg/meta/mcp/domains/` (tasks, agents, meta, budget, analytics, coordination, quality, signals, approvals, workflows, organisation, communication, integrations, infrastructure, memory, brain, charter, cockpit, docs, knowledge, research). Tools are classified by capability action (`read_tool` / `write_tool` / `admin_tool`) via the builders in `src/synthorg/meta/mcp/tool_builder.py`; only the `admin_tool` subset is destructive and subject to the guardrail triple.
+SynthOrg exposes <!--RS:mcp_tools-->241<!--/RS--> tools across the <!--RS:mcp_domains-->21<!--/RS--> domain modules under `src/synthorg/meta/mcp/domains/` (tasks, agents, meta, budget, analytics, coordination, quality, signals, approvals, workflows, organisation, communication, integrations, infrastructure, memory, brain, charter, cockpit, docs, knowledge, research). Tools are classified by capability action (`read_tool` / `write_tool` / `admin_tool`) via the builders in `src/synthorg/meta/mcp/tool_builder.py`; only the `admin_tool` subset is destructive and subject to the guardrail triple.
 
 ## ToolHandler protocol
 
-**Signature**: `async def _<tool>(*, app_state, arguments: dict[str, Any], actor: AgentIdentity | None = None) -> str`. The `actor` kwarg threads calling-agent identity through the invoker so destructive-op guardrails can attribute audit records. Handlers that don't care about identity still accept and ignore it.
+**Signature**: `async def _<tool>(*, app_state, arguments: dict[str, object], actor: AgentIdentity | None = None) -> str`. The `actor` kwarg threads calling-agent identity through the invoker so destructive-op guardrails can attribute audit records. Handlers that don't care about identity still accept and ignore it.
 
-## Argument validation (typed-args path, #1611 Phase 4)
+## Argument validation (typed-args path)
 
-Each builder accepts an optional `args_model: type[BaseModel]` kwarg that flows through to `MCPToolDef.args_model`. When set, the invoker validates the raw `arguments` dict against the Pydantic model **before** dispatching to the handler. The validation call routes through the canonical typed-boundary helper (`synthorg.api.boundary.parse_typed("mcp.tool", arguments, args_model)`) so a malformed payload emits the cross-boundary `api.boundary.validation_failed` warning alongside the existing `mcp.server.invoke.failed` event -- see [typed-boundaries.md](typed-boundaries.md) for the full contract.
+Each builder accepts an optional `args_model: type[BaseModel]` kwarg that flows through to `MCPToolDef.args_model`. When set, the invoker validates the raw `arguments` dict against the Pydantic model **before** dispatching to the handler. The validation call routes through the canonical typed-boundary helper (`synthorg.api.boundary.parse_typed("mcp.tool", arguments, args_model)`) so when `parse_typed` runs Pydantic validation and rejects the payload it emits the cross-boundary `api.boundary.validation_failed` warning alongside the existing `mcp.server.invoke_failed` event -- see [typed-boundaries.md](typed-boundaries.md) for the full contract.
 
 - Validation success: the invoker takes the validated model's `model_dump(mode="python")` and passes that dict to the handler. Every key matches the model's declared fields with no extras (because args models use `extra="forbid"`); enum/datetime/etc. values are already coerced.
 - Validation failure: the invoker short-circuits with a `{"status": "error", "error_type": "ArgumentValidationError", "domain_code": "invalid_argument", "message": "...", "tool": ...}` envelope. The handler is never invoked.
 
-The handler's signature stays at `arguments: dict[str, Any]` (the protocol contract) so existing handlers don't need to migrate; the dict is just structurally sound after validation. Handlers that want compile-time typed access can call `args_model.model_validate(arguments)` locally (a no-op re-validate that returns the typed model with full mypy-strict field access):
+The handler's signature stays at `arguments: dict[str, object]` (the protocol contract) so existing handlers don't need to migrate; the dict is just structurally sound after validation. Handlers that want compile-time typed access can call `args_model.model_validate(arguments)` locally (a no-op re-validate that returns the typed model with full mypy-strict field access):
 
 ```python
-async def list_tasks_handler(*, app_state, arguments: dict[str, Any], actor=None) -> str:
+async def list_tasks_handler(*, app_state, arguments: dict[str, object], actor=None) -> str:
     args = TasksListArgs.model_validate(arguments)  # typed access from here on
     page = await app_state.task_service.list(
         status=args.status, offset=args.offset, limit=args.limit,
@@ -49,7 +49,7 @@ Return a JSON string built by helpers in `common.py`:
 - `capability_gap(tool, reason)` when the handler is wired but the underlying primitive does not expose the required method. Emits `MCP_HANDLER_CAPABILITY_GAP` at INFO.
 - `not_supported(tool, reason)` for tools registered without a concrete handler. Emits `MCP_HANDLER_NOT_IMPLEMENTED` at WARNING.
 
-Never emit a bare `{"status": "not_implemented"}` payload; `make_placeholder_handler` delegates to `not_supported()` so every unwired tool ships the single agreed envelope. The `service_fallback()` helper is retained in `common.py` but has zero call sites after META-MCP-2; `tests/integration/mcp/test_tool_surface.py` asserts zero `MCP_HANDLER_SERVICE_FALLBACK` emissions across the full 242-tool surface.
+Never emit a bare `{"status": "not_implemented"}` payload; `make_placeholder_handler` delegates to `not_supported()` so every unwired tool ships the single agreed envelope. The `service_fallback()` helper is retained in `common.py` but has zero call sites after META-MCP-2; `tests/integration/mcp/test_tool_surface.py` asserts zero `MCP_HANDLER_SERVICE_FALLBACK` emissions across the full <!--RS:mcp_tools-->241<!--/RS-->-tool surface.
 
 Use the helpers in `common_args.py` for tools without `args_model`:
 

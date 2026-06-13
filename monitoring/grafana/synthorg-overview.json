@@ -62,7 +62,7 @@
     {
       "type": "gauge",
       "id": 3,
-      "title": "Budget utilization",
+      "title": "Budget utilisation",
       "description": "Accumulated cost as % of monthly budget. Alert over 80%.",
       "targets": [
         {
@@ -379,7 +379,7 @@
         {
           "type": "gauge",
           "id": 503,
-          "title": "Daily budget utilization",
+          "title": "Daily budget utilisation",
           "description": "synthorg_budget_daily_used_percent (prorated daily share of the monthly cap).",
           "targets": [
             {
@@ -410,7 +410,7 @@
         {
           "type": "timeseries",
           "id": 504,
-          "title": "Per-agent budget utilization %",
+          "title": "Per-agent budget utilisation %",
           "description": "synthorg_agent_budget_used_percent over time, per agent ($agent_id).",
           "targets": [
             {
@@ -525,6 +525,21 @@
           ],
           "fieldConfig": {"defaults": {"unit": "reqps"}},
           "gridPos": {"h": 8, "w": 8, "x": 16, "y": 26}
+        },
+        {
+          "type": "gauge",
+          "id": 605,
+          "title": "Security audit log fill ratio",
+          "description": "synthorg_security_audit_log_fill_ratio: fraction of the audit-log retention budget consumed; warns before TSA / signing-infrastructure backpressure forces rotation.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "synthorg_security_audit_log_fill_ratio",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"min": 0, "max": 1, "unit": "percentunit", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.75}, {"color": "red", "value": 0.9}]}}},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 34}
         }
       ]
     },

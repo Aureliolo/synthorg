@@ -8,6 +8,9 @@ Sources (best-effort; failures keep the previously-stored value):
 * ``providers_via_litellm`` -- ``len(litellm.models_by_provider)``
 * ``subagents``             -- ``glob .claude/agents/*.md``
 * ``convention_gates``      -- ``glob scripts/check_*.py``
+* ``mcp_tools``             -- tool builders in ``meta/mcp/domains/*.py``
+* ``mcp_domains``           -- non-underscore modules in ``meta/mcp/domains/``
+* ``settings_namespaces``   -- ``SettingNamespace`` members in ``src/synthorg/settings/enums.py``
 
 Run before ``zensical build``::
 
@@ -31,13 +34,11 @@ import datetime as dt
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, TypedDict
+from typing import Final, TypedDict
 
 import yaml
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _OUT_FILE: Path = REPO_ROOT / "data" / "runtime_stats.yaml"
@@ -64,6 +65,9 @@ _SOURCES: Final[dict[str, str]] = {
     "providers_via_litellm": "len(litellm.models_by_provider)",
     "subagents": "glob .claude/agents/*.md",
     "convention_gates": "glob scripts/check_*.py",
+    "mcp_tools": "tool builders in src/synthorg/meta/mcp/domains/*.py",
+    "mcp_domains": "non-underscore modules in src/synthorg/meta/mcp/domains/",
+    "settings_namespaces": "SettingNamespace members in src/synthorg/settings/enums.py",
 }
 
 
@@ -268,12 +272,155 @@ def _fetch_convention_gates() -> StatEntry:
     return {"raw": count, "display": str(count)}
 
 
+_MCP_DOMAINS_DIR: Final[Path] = (
+    REPO_ROOT / "src" / "synthorg" / "meta" / "mcp" / "domains"
+)
+_MCP_TOOL_BUILDERS: Final[frozenset[str]] = frozenset(
+    {"read_tool", "write_tool", "admin_tool", "tool_def"}
+)
+
+
+def _count_tool_builders(tree: ast.Module) -> int:
+    """Count MCP tool-builder call-sites in a parsed module.
+
+    Walks the AST for ``ast.Call`` nodes whose callee name is one of
+    ``_MCP_TOOL_BUILDERS``. An AST scan (rather than a text regex) cannot
+    miscount builder names that appear in comments, docstrings, or string
+    literals, and it matches builder calls regardless of whitespace or
+    line breaks between the name and its argument list.
+    """
+    count = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func
+        if isinstance(callee, ast.Name):
+            name = callee.id
+        elif isinstance(callee, ast.Attribute):
+            name = callee.attr
+        else:
+            continue
+        if name in _MCP_TOOL_BUILDERS:
+            count += 1
+    return count
+
+
+_SETTINGS_ENUMS_PATH: Final[Path] = (
+    REPO_ROOT / "src" / "synthorg" / "settings" / "enums.py"
+)
+_SETTING_NAMESPACE_ENUM: Final[str] = "SettingNamespace"
+
+
+def _fetch_mcp_tools() -> StatEntry:
+    """Count MCP tool definitions via builder call-sites in ``domains/*.py``.
+
+    Counts ``read_tool`` / ``write_tool`` / ``admin_tool`` invocations
+    across the domain modules: each call site builds exactly one
+    ``MCPToolDef``. ``tool_def`` (the low-level builder the three helpers
+    delegate to) is also counted, but the domain modules call it only
+    through those helpers. An AST scan avoids importing the service-heavy
+    handler graph just to size the surface, and -- unlike a text regex --
+    cannot miscount builder names that appear in comments or strings.
+
+    The three failure paths (directory absent, no ``.py`` files, files
+    present but zero call-sites) raise distinct ``_StatFetchError``
+    reasons; the caller preserves the prior YAML value in every case
+    rather than publishing a transient ``0``.
+    """
+    name = "mcp_tools"
+    source = _SOURCES[name]
+    if not _MCP_DOMAINS_DIR.is_dir():
+        raise _StatFetchError(name, source, f"{_MCP_DOMAINS_DIR} not found")
+    py_files = list(_MCP_DOMAINS_DIR.glob("*.py"))
+    if not py_files:
+        raise _StatFetchError(name, source, "no .py files under domains/")
+    count = 0
+    for path in py_files:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise _StatFetchError(
+                name, source, f"could not read {path.name}: {exc}"
+            ) from exc
+        try:
+            tree = ast.parse(text, filename=str(path))
+        except SyntaxError as exc:
+            raise _StatFetchError(
+                name, source, f"could not parse {path.name}: {exc}"
+            ) from exc
+        count += _count_tool_builders(tree)
+    if count == 0:
+        raise _StatFetchError(
+            name, source, "domain files present but no tool builder call-sites matched"
+        )
+    return {"raw": count, "display": str(count)}
+
+
+def _fetch_mcp_domains() -> StatEntry:
+    """Count MCP domain modules (non-underscore ``domains/*.py`` files).
+
+    Distinguishes a missing directory from a present-but-empty one so a
+    broken path and a refactor that removes every domain module surface
+    as different warnings; the caller preserves the prior value in both.
+    """
+    name = "mcp_domains"
+    source = _SOURCES[name]
+    if not _MCP_DOMAINS_DIR.is_dir():
+        raise _StatFetchError(name, source, f"{_MCP_DOMAINS_DIR} not found")
+    py_files = list(_MCP_DOMAINS_DIR.glob("*.py"))
+    if not py_files:
+        raise _StatFetchError(name, source, "no .py files under domains/")
+    count = sum(1 for p in py_files if not p.name.startswith("_"))
+    if count == 0:
+        raise _StatFetchError(
+            name, source, "domain files present but all are underscore-prefixed"
+        )
+    return {"raw": count, "display": str(count)}
+
+
+def _fetch_settings_namespaces() -> StatEntry:
+    """Count ``SettingNamespace`` enum members in ``settings/enums.py``.
+
+    The enum is the authoritative namespace registry; an ``ast`` walk
+    avoids importing the settings package's initialisation chain.
+    """
+    name = "settings_namespaces"
+    source = _SOURCES[name]
+    if not _SETTINGS_ENUMS_PATH.is_file():
+        raise _StatFetchError(name, source, f"{_SETTINGS_ENUMS_PATH} not found")
+    try:
+        tree = ast.parse(_SETTINGS_ENUMS_PATH.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError) as exc:
+        raise _StatFetchError(
+            name, source, f"could not parse {_SETTINGS_ENUMS_PATH.name}: {exc}"
+        ) from exc
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != _SETTING_NAMESPACE_ENUM:
+            continue
+        members = sum(
+            1 for stmt in node.body if isinstance(stmt, ast.Assign | ast.AnnAssign)
+        )
+        if members == 0:
+            raise _StatFetchError(
+                name, source, f"{_SETTING_NAMESPACE_ENUM} has no members"
+            )
+        return {"raw": members, "display": str(members)}
+    raise _StatFetchError(
+        name,
+        source,
+        f"{_SETTING_NAMESPACE_ENUM} not found in {_SETTINGS_ENUMS_PATH.name}",
+    )
+
+
 _FETCHERS: dict[str, Callable[[], StatEntry]] = {
     "tests": _fetch_tests,
     "providers_curated": _fetch_providers_curated,
     "providers_via_litellm": _fetch_providers_via_litellm,
     "subagents": _fetch_subagents,
     "convention_gates": _fetch_convention_gates,
+    "mcp_tools": _fetch_mcp_tools,
+    "mcp_domains": _fetch_mcp_domains,
+    "settings_namespaces": _fetch_settings_namespaces,
 }
 
 

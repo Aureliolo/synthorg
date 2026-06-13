@@ -114,7 +114,7 @@ Recorded-LLM **cassettes** make a company run deterministic and free to re-execu
 
 The framework uses **LiteLLM** as the provider abstraction layer:
 
-- Unified API across 100+ providers
+- Unified API across <!--RS:providers_via_litellm-->90+<!--/RS--> providers
 - Built-in cost tracking
 - Automatic retries and fallbacks
 - Load balancing across providers

@@ -120,6 +120,7 @@ class ReportsController(Controller):
     """Automated report generation endpoints."""
 
     path = "/reports"
+    tags = ("reports",)
     guards = [require_read_access]  # noqa: RUF012
 
     @post(

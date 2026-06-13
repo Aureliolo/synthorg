@@ -119,16 +119,29 @@ nav:
       - Quickstart Tutorial: guides/quickstart.md
       - Company Configuration: guides/company-config.md
       - Agent Roles & Hierarchy: guides/agents.md
+      - Agent Management: guides/agent-management.md
       - Budget & Cost Control: guides/budget.md
+      - Cost Attribution: guides/cost-attribution.md
+      - Dynamic Scoring: guides/dynamic-scoring.md
       - Security & Trust Policies: guides/security.md
+      - Approval Workflow: guides/approval-workflow.md
       - Tool Integration (MCP): guides/mcp-tools.md
+      - Custom MCP Server Development: guides/custom-mcp-server-dev.md
+      - Custom Rules & Meta-Loop: guides/custom-rules-and-meta-loop.md
+      - Ontology Extension: guides/ontology-extension.md
+      - Adding a Provider: guides/adding-a-provider.md
       - Deployment (Docker): guides/deployment.md
+      - Workers & Background Tasks: guides/workers-and-background-tasks.md
       - Centralized Logging: guides/centralized-logging.md
+      - Monitoring: guides/monitoring.md
       - Memory Configuration: guides/memory.md
       - Settings Reference: guides/settings-reference.md
       - Notifications & Events: guides/notifications-and-events.md
+      - Webhook Management: guides/webhook-management.md
+      - A2A Federation: guides/a2a-federation.md
+      - Ceremony Scheduling Tuning: guides/ceremony-scheduling-tuning.md
       - Workflow API Tutorial: guides/workflow-api.md
-      - Agent Management: guides/agent-management.md
+      - REST API Examples: guides/rest-api-examples.md
       - Human Interaction & API: guides/human-interaction.md
       - Persistence Migrations: guides/persistence-migrations.md
       - Contributing: guides/contributing.md
@@ -144,6 +157,7 @@ nav:
       - Communication Event Stream: design/communication-events.md
       - Engine: design/engine.md
       - Agent Execution: design/agent-execution.md
+      - Mid-Flight Steering: design/mid-flight-steering.md
       - Coordination & Resilience: design/coordination.md
       - Verification & Quality: design/verification-quality.md
       - Distributed Runtime: design/distributed-runtime.md
@@ -151,8 +165,12 @@ nav:
       - Memory Organizational: design/memory-organizational.md
       - Memory Operational: design/memory-operational.md
       - Memory Learning: design/memory-learning.md
+      - Memory Consistency: design/memory-consistency.md
+      - Long-Horizon Project Brain: design/project-brain.md
       - Living Documentation: design/living-documentation.md
       - Knowledge and Provenance: design/knowledge-substrate.md
+      - Research Mode: design/research-mode.md
+      - Brownfield Intake: design/brownfield-intake.md
       - Providers: design/providers.md
       - Budget & Cost: design/budget.md
       - Tools & Capabilities: design/tools.md
@@ -164,7 +182,6 @@ nav:
       - Persistence: design/persistence.md
       - A2A Protocol: design/a2a-protocol.md
       - Integrations: design/integrations.md
-      - Memory Consistency: design/memory-consistency.md
       - Ontology: design/ontology.md
       - Client Simulation: design/client-simulation.md
       - Strategy & Trendslop Mitigation: design/strategy.md
@@ -175,28 +192,81 @@ nav:
       - UX Research: design/ux-research.md
       - Ceremony Scheduling: design/ceremony-scheduling.md
       - Web HTTP Adapter: design/web-http-adapter.md
+      - Web Active-Handle Detection: design/web-active-handle-detection.md
       - Internationalization: design/internationalization.md
   - Architecture:
       - architecture/index.md
       - Tech Stack: architecture/tech-stack.md
+      - ACG Glossary: architecture/acg-glossary.md
       - Decision Log: architecture/decisions.md
+      - Decisions (ADRs):
+          - ADR-0001 Repository Protocol Consolidation: decisions/0001-repository-protocol-consolidation.md
+          - ADR-0002 Dispatch Registry Consolidation: decisions/0002-dispatch-registry-consolidation.md
+          - ADR-0003 Actor Identity Contextvar Migration: decisions/0003-actor-contextvar-migration.md
+          - ADR-0004 Pre-resolved Config Objects: decisions/0004-pre-resolved-config-objects.md
+          - ADR-0005 Memory Consolidation Axis Split: decisions/0005-memory-consolidation-axis-split.md
+          - ADR-0006 Tiered Module-Size Policy: decisions/0006-tiered-module-size-policy.md
+          - ADR-0007 Feature-Manifest Substrate: decisions/0007-feature-manifest-substrate.md
+          - ADR-0008 Controller Decomposition: decisions/0008-controller-decomposition.md
+          - ADR-0009 Import-Layering Contracts: decisions/0009-import-layering-contracts.md
+          - ADR-0010 AI-Navigation Index: decisions/0010-ai-navigation-index.md
+          - ADR-0011 Architectural Feedback Loop: decisions/0011-architectural-feedback-loop.md
+          - ADR-0012 Cold-Import Cycle Break: decisions/0012-cold-import-cycle-break.md
   - Roadmap:
       - roadmap/index.md
       - Open Questions: roadmap/open-questions.md
       - Future Vision: roadmap/future-vision.md
+  - Research:
+      - ACG Formalism Evaluation: research/acg-formalism-evaluation.md
+      - Agent-Controlled Compaction: research/agent-controlled-compaction.md
+      - Control-Plane Audit: research/control-plane-audit.md
+      - Execution-Safety Threat Model: research/execution-safety-threat-model.md
+      - GitButler Concurrency Evaluation: research/gitbutler-concurrency-eval.md
+      - LGPL Postgres Driver Decision: research/lgpl-postgres-driver-decision.md
+      - LLM Provider Auth Survey: research/llm-provider-auth-survey.md
+      - Multi-Agent Failure Audit: research/multi-agent-failure-audit.md
+      - S1 Multi-Agent Decision: research/s1-multi-agent-decision.md
   - Reference:
       - reference/research.md
       - reference/standards.md
       - Implicit Conventions: reference/conventions.md
       - Framework Comparison: reference/comparison.md
-      - CLI Per-Command Flags: reference/cli-commands.md
-      - CLI Config Subcommands: reference/cli-config-subcommands.md
-      - CLI Environment Variables: reference/cli-env-vars.md
-      - CLI Persistence Backends: reference/cli-persistence-backends.md
-      - Configuration Precedence: reference/configuration-precedence.md
-      - Embedding Evaluation: reference/embedding-evaluation.md
-      - Scoring Hyperparameters: reference/scoring-hyperparameters.md
       - Error Reference: errors.md
+      - Error Code Reference: reference/errors.md
+      - Cross-Deployment Privacy: cross-deployment-privacy.md
+      - Configuration:
+          - Configuration Precedence: reference/configuration-precedence.md
+          - Environment Variables: reference/environment-variables.md
+          - YAML Schema: reference/yaml-schema.md
+          - Regional Defaults: reference/regional-defaults.md
+      - CLI:
+          - CLI Per-Command Flags: reference/cli-commands.md
+          - CLI Config Subcommands: reference/cli-config-subcommands.md
+          - CLI Environment Variables: reference/cli-env-vars.md
+          - CLI Persistence Backends: reference/cli-persistence-backends.md
+      - Conventions & Architecture:
+          - Convention Gates: reference/convention-gates.md
+          - Import Layering: reference/import-layering.md
+          - Lifecycle Sync: reference/lifecycle-sync.md
+          - Persistence Boundary: reference/persistence-boundary.md
+          - Pluggable Subsystems: reference/pluggable-subsystems.md
+          - Protocols Audit: reference/protocols-audit.md
+          - Typed Boundaries: reference/typed-boundaries.md
+          - Retry Patterns: reference/retry-patterns.md
+          - Scaffolding: reference/scaffolding.md
+          - Feature Manifest: reference/feature-manifest.md
+          - MCP Handler Contract: reference/mcp-handler-contract.md
+          - Prompt Safety: reference/sec-prompt-safety.md
+          - Dead API Endpoints: reference/dead-api-endpoints.md
+          - Audit Category Gate Coverage: reference/audit-category-gate-coverage.md
+      - Telemetry: reference/telemetry.md
+      - Evaluation:
+          - Embedding Evaluation: reference/embedding-evaluation.md
+          - Scoring Hyperparameters: reference/scoring-hyperparameters.md
+      - Operations:
+          - Developer Reference: reference/claude-reference.md
+          - Release Cadence: reference/release-cadence.md
+          - GitHub Environments: reference/github-environments.md
   - Security: security.md
   - Licensing: licensing.md
   - REST API: openapi/index.md

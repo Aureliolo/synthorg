@@ -8,10 +8,9 @@ Numbers are stable identifiers; resolved questions are removed without renumberi
 
 | # | Question | Impact | Notes |
 |---|----------|--------|-------|
-| 1 | How deep should agent personality affect output? | Medium | Too deep leads to inconsistency; too shallow makes all agents feel the same. Capability-aware prompt profiles (#805) will add tier-based personality condensation. |
+| 1 | How deep should agent personality affect output? | Medium | Too deep leads to inconsistency; too shallow makes all agents feel the same. Capability-aware prompt profiles (#805) provide tier-based personality condensation. |
 | 4 | Should agents be able to create/modify other agents? | Medium | For example, a CTO "hires" a developer by creating a new agent config. |
-| 6 | What metrics define "good" agent performance? | Medium | Five-pillar evaluation framework (#1017) provides structure; quality scoring Layers 2+3 (#230) will add LLM judge and human override. |
-| 8 | Optimal message bus for local-first architecture? | Medium | asyncio queues for single-process; NATS JetStream shipped for distributed deployments. |
+| 6 | What metrics define "good" agent performance? | Medium | Five-pillar evaluation framework (#1017) provides structure; quality scoring Layers 2+3 (#230) add an LLM judge and human override. |
 
 ---
 
@@ -24,7 +23,7 @@ Numbers are stable identifiers; resolved questions are removed without renumberi
 | Agent quality degradation with cheap models | Medium | Capability-aware prompt profiles (#805) adapt prompts to model tier. Quality gates and minimum model requirements per task type. |
 | Third-party library breaking changes | Medium | Python deps exact-pinned (`==`), JS deps range-based with lockfiles. Integration tests, abstraction layers, Renovate daily updates. |
 | Memory retrieval quality | Medium | Hybrid retrieval (dense + BM25 sparse with RRF fusion) shipped. LMEB-guided embedding selection implemented. Domain fine-tuning pipeline not yet implemented; config and checkpoint lookup wired, training stages raise `NotImplementedError` (#1001). |
-| Agent personality inconsistency | Low | Strong system prompts, personality presets with condensed/minimal variants planned (#805). |
+| Agent personality inconsistency | Low | Strong system prompts, personality presets with condensed/minimal variants (#805). |
 | WebSocket scaling | Low | In-process channels today. Multi-instance fan-out can ride on the shipped NATS JetStream bus when needed. |
 
 ---
@@ -38,4 +37,4 @@ Numbers are stable identifiers; resolved questions are removed without renumberi
 | Agent execution bottlenecks | Medium | Async execution, parallel agent processing, queue-based architecture. TaskGroup for structured concurrency. |
 | Data loss on crash | Medium | WAL mode SQLite, checkpoint recovery, backup/restore with scheduled retention. |
 | Orchestration overhead exceeds productive work | Medium | LLM call analytics with proxy metrics implemented. Call categorisation and orchestration ratio alerts planned. |
-| SQLite contention under concurrent access | Low | Single-writer with WAL mode handles read concurrency well. PostgreSQL backend planned for write-heavy workloads. |
+| SQLite contention under concurrent access | Low | Single-writer with WAL mode handles read concurrency well. The PostgreSQL backend (conformance-tested for parity) handles write-heavy and multi-instance workloads. |

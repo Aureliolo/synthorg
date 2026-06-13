@@ -189,6 +189,7 @@ class TrainingController(Controller):
     """Training mode API endpoints."""
 
     path = "/agents/{agent_id:str}/training"
+    tags = ("training",)
 
     @post(
         "/plan",
