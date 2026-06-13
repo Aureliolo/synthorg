@@ -1,3 +1,4 @@
+# module-kind: service
 """Hiring service.
 
 Orchestrates the hiring pipeline: request creation, candidate

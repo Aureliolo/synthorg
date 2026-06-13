@@ -7,12 +7,13 @@ as calibration records for drift analysis against the behavioral strategy.
 
 import json
 import random
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -70,6 +71,9 @@ class LlmCalibrationSampler:
         model: Model identifier to use for sampling.
         sampling_rate: Fraction of events to sample (0.0-1.0).
         retention_days: Days to retain calibration records.
+        clock: Time source for ``sampled_at`` stamping and retention
+            pruning. Defaults to :class:`SystemClock`; tests inject a
+            :class:`FakeClock` so the pruning cutoff is deterministic.
 
     Raises:
         ValueError: If sampling_rate or retention_days are out of bounds.
@@ -84,6 +88,7 @@ class LlmCalibrationSampler:
         retention_days: int = _DEFAULT_RETENTION_DAYS,
         currency: CurrencyCode = DEFAULT_CURRENCY,
         cost_tracker: CostTracker | None = None,
+        clock: Clock | None = None,
     ) -> None:
         if not (0.0 <= sampling_rate <= 1.0):
             msg = f"sampling_rate must be in [0.0, 1.0], got {sampling_rate}"
@@ -97,6 +102,7 @@ class LlmCalibrationSampler:
         self._retention_days = retention_days
         self._currency = currency
         self._cost_tracker = cost_tracker
+        self._clock = clock or SystemClock()
         self._records: dict[str, list[LlmCalibrationRecord]] = {}
 
     def should_sample(self) -> bool:
@@ -149,7 +155,7 @@ class LlmCalibrationSampler:
 
         calibration_record = LlmCalibrationRecord(
             agent_id=record.agent_id,
-            sampled_at=datetime.now(UTC),
+            sampled_at=self._clock.now(),
             interaction_record_id=NotBlankStr(str(record.id)),
             llm_score=llm_score,
             behavioral_score=behavioral_score,
@@ -406,7 +412,7 @@ class LlmCalibrationSampler:
 
     def _prune_expired(self) -> None:
         """Remove calibration records older than the retention period."""
-        cutoff = datetime.now(UTC) - timedelta(days=self._retention_days)
+        cutoff = self._clock.now() - timedelta(days=self._retention_days)
         for agent_key in list(self._records):
             self._records[agent_key] = [
                 r for r in self._records[agent_key] if r.sampled_at >= cutoff

@@ -9,6 +9,7 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.llm_calibration_sampler import LlmCalibrationSampler
 from synthorg.providers.models import CompletionResponse, TokenUsage
+from tests._shared import FakeClock
 
 from .conftest import make_calibration_record, make_collab_metric
 
@@ -36,13 +37,20 @@ def _make_sampler(
     provider: AsyncMock | None = None,
     sampling_rate: float = 1.0,
     retention_days: int = 90,
+    clock: FakeClock | None = None,
 ) -> LlmCalibrationSampler:
-    """Build a sampler with sensible defaults (100% rate for testing)."""
+    """Build a sampler with sensible defaults (100% rate for testing).
+
+    The clock defaults to a :class:`FakeClock` pinned at ``NOW`` so the
+    retention-pruning cutoff is deterministic regardless of wall-clock
+    time (the prune window is ``now - retention_days``).
+    """
     return LlmCalibrationSampler(
         provider=provider or _make_provider(),
         model=NotBlankStr("test-small-001"),
         sampling_rate=sampling_rate,
         retention_days=retention_days,
+        clock=clock or FakeClock(start=NOW),
     )
 
 
@@ -371,23 +379,10 @@ class TestGetDriftSummary:
 class TestRetentionPruning:
     """Old calibration records are pruned."""
 
-    async def test_old_records_pruned(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+    async def test_old_records_pruned(self) -> None:
         """Records older than retention_days are pruned on next sample."""
-        # Pin datetime.now to NOW so pruning cutoff is deterministic.
-        monkeypatch.setattr(
-            "synthorg.hr.performance.llm_calibration_sampler.datetime",
-            type(
-                "FrozenDatetime",
-                (datetime,),
-                {
-                    "now": classmethod(lambda cls, tz=None: NOW),
-                },
-            ),
-        )
-
+        # The sampler's clock is pinned at NOW (FakeClock default), so the
+        # pruning cutoff (now - retention_days) is deterministic.
         sampler = _make_sampler(retention_days=7)
         # Insert an old calibration record directly.
         old_cal = make_calibration_record(
