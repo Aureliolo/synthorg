@@ -537,7 +537,6 @@ class ArtifactController(Controller):
         Raises:
             NotFoundError: If the artifact metadata or content is
                 missing (HTTP 404).
-            Exception: Raised on the corresponding failure path.
         """
         artifact = require_resource_or_404(
             await _service(state).get(artifact_id),

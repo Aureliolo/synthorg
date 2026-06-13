@@ -1,17 +1,11 @@
 # module-kind: service
 """Top-level service for the long-horizon project brain.
 
-Composes the append-only repository, the chunker, the indexer, the workspace
-writer, and the memory backend into a single async entry point. Agents reach it
-through :class:`WriteBrainEntryTool` / :class:`SearchBrainTool`; the MCP handlers
-and the read-only REST endpoints call it directly.
-
-Write-path contract: the SQL append is the durable commit point. The git
-snapshot and the memory index follow and are best-effort. A snapshot or index
-failure is logged with context but does NOT fail the call: the entry is already
-durably persisted, and re-raising would tempt the caller to retry, which (the
-store being append-only) would create a duplicate revision. The next write
-re-commits the latest state and re-indexes idempotently by the entry tag.
+Composes the append-only repository, chunker, indexer, workspace writer, and
+memory backend into one async entry point reached via the brain tools, MCP
+handlers, and read-only REST endpoints. Write-path contract (the SQL append is
+the durable commit point; the git snapshot and memory index follow best-effort)
+is documented on :meth:`ProjectBrainService._append_revision`.
 """
 
 from pathlib import Path
@@ -412,11 +406,7 @@ class ProjectBrainService:
         project_id: NotBlankStr,
         entry_id: NotBlankStr,
     ) -> BrainEntry | None:
-        """Return the latest revision of one entry, or ``None`` if absent.
-
-        Returns:
-            The latest revision, or ``None``.
-        """
+        """Return the latest revision of one entry, or ``None`` if absent."""
         return await self._repo.get_current(project_id, entry_id)
 
     async def list_current(  # noqa: PLR0913 -- filter dimensions are explicit
@@ -431,11 +421,7 @@ class ProjectBrainService:
         limit: int = BRAIN_LIST_DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[BrainSummary, ...]:
-        """Return the current-state projection as list-view summaries.
-
-        Returns:
-            Current-state summaries matching the filter, newest-first.
-        """
+        """Return the current-state projection as list-view summaries (newest-first)."""
         spec = build_filter_spec(
             project_id=project_id,
             entry_kind=entry_kind,
@@ -459,15 +445,11 @@ class ProjectBrainService:
         limit: int = BRAIN_LIST_DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[BrainEntry, ...]:
-        """Return the current-state projection as full entries (with bodies).
+        """Return current-state entries (full bodies), newest-first.
 
-        The same single ``list_current`` query as :meth:`list_current`, but
-        keeps the full :class:`BrainEntry` rows instead of downgrading them to
-        summaries. Callers that need the body (e.g. receipt assembly) use this
-        to avoid a per-entry ``get_entry`` round trip (N+1 -> 1).
-
-        Returns:
-            Current-state entries matching the filter, newest-first.
+        Same query as :meth:`list_current` but keeps full rows so body-needing
+        callers (e.g. receipt assembly) avoid a per-entry ``get_entry`` round
+        trip (N+1 -> 1).
         """
         spec = build_filter_spec(
             project_id=project_id,
@@ -489,11 +471,7 @@ class ProjectBrainService:
         author: NotBlankStr | None = None,
         related_task_id: NotBlankStr | None = None,
     ) -> int:
-        """Count current-state entries matching the filter.
-
-        Returns:
-            Number of current-state entries that match (for pagination).
-        """
+        """Return the number of current-state entries matching the filter."""
         spec = build_filter_spec(
             project_id=project_id,
             entry_kind=entry_kind,
@@ -511,12 +489,9 @@ class ProjectBrainService:
         query: NotBlankStr,
         limit: int = BRAIN_SEARCH_DEFAULT_LIMIT,
     ) -> tuple[BrainSearchHit, ...]:
-        """Semantic search over indexed brain entries for a project.
+        """Semantic search over a project's indexed brain entries.
 
-        Args:
-            project_id: Owning project.
-            query: Search text.
-            limit: Maximum hits (bounded by ``BRAIN_SEARCH_MAX_LIMIT``).
+        ``limit`` is bounded by ``BRAIN_SEARCH_MAX_LIMIT``.
 
         Returns:
             Hits ordered by descending relevance.
@@ -556,9 +531,6 @@ class ProjectBrainService:
     ) -> tuple[BrainEntry, ...]:
         """Return the full structured revision chain of one entry, oldest-first.
 
-        Returns:
-            The entry's revisions, oldest-first.
-
         Raises:
             BrainEntryNotFoundError: If the entry has no revisions.
         """
@@ -577,16 +549,9 @@ class ProjectBrainService:
         entry_id: NotBlankStr,
         limit: int = BRAIN_HISTORY_DEFAULT_LIMIT,
     ) -> tuple[BrainEntryVersion, ...]:
-        """Return the git-versioned history of one entry's snapshot.
+        """Return one entry's git-versioned snapshot history, newest-first.
 
-        Args:
-            project_id: Owning project.
-            entry_id: Logical entry id.
-            limit: Maximum versions, newest-first.
-
-        Returns:
-            The entry's git versions, newest-first (empty when the snapshot was
-            never committed).
+        Empty when the snapshot was never committed.
 
         Raises:
             BrainEntryNotFoundError: If the entry does not exist in the store.

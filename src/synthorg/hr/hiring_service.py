@@ -393,15 +393,9 @@ class HiringService:
         return identity
 
     def _evict_request(self, request_id: str) -> None:
-        """Drop a terminal request and its per-request lock.
-
-        Keeps ``_requests`` and ``_requests_locks`` bounded under continuous
-        hiring activity; completed requests are read back through the
-        persistence layer, not this in-memory cache.
-
-        Args:
-            request_id: The terminal request to forget.
-        """
+        """Drop a terminal request and its per-request lock."""
+        # Keeps ``_requests`` / ``_requests_locks`` bounded; completed requests
+        # are read back through persistence, not this in-memory cache.
         self._requests.pop(request_id, None)
         self._requests_locks.pop(request_id, None)
 

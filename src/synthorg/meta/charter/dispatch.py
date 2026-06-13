@@ -157,11 +157,8 @@ class CharterDispatcher:
     async def _lock_for(self, charter_id: str) -> AsyncIterator[None]:
         """Serialise per-charter dispatch, evicting the lock when idle.
 
-        Refcounted so a process dispatching many distinct charters does not
-        retain one ``asyncio.Lock`` per charter id forever.
-
-        Yields:
-            Control while the per-charter lock is held.
+        Refcounted so a many-charter process does not retain one
+        ``asyncio.Lock`` per charter id forever.
         """
         if self._locks_guard is None:
             self._locks_guard = asyncio.Lock()
