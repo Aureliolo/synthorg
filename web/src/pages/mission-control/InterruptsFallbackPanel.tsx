@@ -23,9 +23,13 @@ import { usePolling } from '@/hooks/usePolling'
 import { INTERRUPTS_POLL_INTERVAL } from '@/utils/constants'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
+import { sanitizeWsString } from '@/utils/ws-sanitize'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 
 const log = createLogger('InterruptsFallbackPanel')
+
+/** Generous cap for free-text interrupt questions (still clamps abuse). */
+const QUESTION_MAX_LEN = 2000
 
 function ToolApprovalActions({
   onResume,
@@ -92,19 +96,23 @@ function InterruptCard({
   busy: boolean
 }) {
   const resume = (payload: ResumeInterruptRequest) => onResume(interrupt.id, payload)
+  // The question / tool name originate from agent + tool activity, so
+  // strip control / bidi-override characters before display (the same
+  // defence applied to live WS payloads).
+  const question = sanitizeWsString(interrupt.question, QUESTION_MAX_LEN)
+  const toolName = sanitizeWsString(interrupt.tool_name)
+  const agentId = sanitizeWsString(interrupt.agent_id)
   return (
     <div className="space-y-2 rounded-lg border border-border bg-card p-card">
       <div className="flex items-center gap-2 text-sm">
         <span className="rounded-md border border-border px-2 py-0.5 text-xs uppercase text-text-secondary">
           {interrupt.type === 'tool_approval' ? 'Tool approval' : 'Info request'}
         </span>
-        <span className="font-mono text-xs text-muted-foreground">{interrupt.agent_id}</span>
+        <span className="font-mono text-xs text-muted-foreground">{agentId}</span>
       </div>
-      {interrupt.question != null && (
-        <p className="text-sm text-foreground">{interrupt.question}</p>
-      )}
-      {interrupt.tool_name != null && (
-        <p className="text-xs text-muted-foreground">Tool: {interrupt.tool_name}</p>
+      {question != null && <p className="text-sm text-foreground">{question}</p>}
+      {toolName != null && (
+        <p className="text-xs text-muted-foreground">Tool: {toolName}</p>
       )}
       {interrupt.type === 'tool_approval' ? (
         <ToolApprovalActions onResume={resume} disabled={busy} />
@@ -183,7 +191,9 @@ export function InterruptsFallbackPanel() {
             description={error}
           />
         )}
-        {interrupts.length === 0 ? (
+        {interrupts.length === 0 && error == null ? (
+          // Only when a poll actually succeeded with no items; a poll
+          // failure (error set) must not masquerade as "nothing pending".
           <EmptyState
             icon={AlertTriangle}
             title="No pending interrupts"

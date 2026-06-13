@@ -7,7 +7,7 @@
  * amplification) for one task/lead-agent run, filterable by task and
  * agent.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Network } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -56,6 +56,7 @@ function useCoordinationMetricsData(): CoordinationMetricsData {
   const [error, setError] = useState<string | null>(null)
   const [taskId, setTaskId] = useState('')
   const [agentId, setAgentId] = useState('')
+  const mountedRef = useRef(true)
 
   // Fetch the full snapshot once; task / agent filtering is applied
   // client-side so typing in the filters never refetches or races.
@@ -63,20 +64,29 @@ function useCoordinationMetricsData(): CoordinationMetricsData {
     setLoading(true)
     setError(null)
     void listCoordinationMetrics()
-      .then((result) => setAllRecords(result))
+      .then((result) => {
+        if (mountedRef.current) setAllRecords(result)
+      })
       .catch((err: unknown) => {
         const message = getErrorMessage(err)
         log.error('listCoordinationMetrics failed', { error: sanitizeForLog(message) })
-        setError(message)
+        if (mountedRef.current) setError(message)
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (mountedRef.current) setLoading(false)
+      })
   }, [])
 
   // Defer the initial fetch to a microtask so the effect body itself
   // performs no synchronous setState (set-state-in-effect rule); the
   // loading/error writes happen inside the deferred fetchMetrics call.
+  // The mounted ref drops a fetch that resolves after unmount.
   useEffect(() => {
+    mountedRef.current = true
     void Promise.resolve().then(fetchMetrics)
+    return () => {
+      mountedRef.current = false
+    }
   }, [fetchMetrics])
 
   const records = useMemo(
@@ -198,15 +208,17 @@ export default function CoordinationMetricsPage() {
         <SectionCard title="Coordination runs" icon={Network}>
           {loading && records.length === 0 ? (
             <SkeletonTable rows={5} columns={8} />
-          ) : records.length === 0 ? (
+          ) : records.length > 0 ? (
+            <CoordinationMetricsTable records={records} />
+          ) : error == null ? (
+            // Only the genuine "no data" case; a load failure is shown by
+            // the ErrorBanner above, so suppress the misleading empty state.
             <EmptyState
               icon={Network}
               title="No coordination metrics yet"
               description="Metrics appear here after multi-agent runs complete. Adjust the filters or run a coordinated task."
             />
-          ) : (
-            <CoordinationMetricsTable records={records} />
-          )}
+          ) : null}
         </SectionCard>
       </ErrorBoundary>
     </div>

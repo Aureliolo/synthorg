@@ -389,10 +389,10 @@ const maxSnippetLines = 5
 // zshrcPath, fishConfigPath, powershellProfilePath) from a fixed
 // allowlist of shell-specific config locations under the operator's
 // home directory; writing to those files is the entire purpose of the
-// completion uninstall flow. CodeQL alert #517 (go/path-injection)
-// flagged the os.WriteFile below because the data-flow tracer cannot
-// distinguish that allowlist from an arbitrary attacker-controlled
-// string -- dismissed as false-positive.
+// completion uninstall flow. A static path-injection tracer may flag
+// the os.WriteFile below because it cannot distinguish that fixed
+// allowlist from an arbitrary attacker-controlled string; the fixed
+// per-shell resolution is the guarantee.
 func removeMarkerBlock(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {

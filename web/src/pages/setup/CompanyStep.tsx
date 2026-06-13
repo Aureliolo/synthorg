@@ -78,7 +78,7 @@ function CompanyDetailsForm({
 
       <SelectField
         label="Display Currency"
-        options={[...CURRENCY_OPTIONS]}
+        options={CURRENCY_OPTIONS}
         value={currency}
         disabled={disabled}
         onChange={(value) => setCurrency(value as CurrencyCode)}

@@ -8,8 +8,6 @@ import {
   WS_MAX_MESSAGE_SIZE,
   WS_MAX_RECONNECT_ATTEMPTS,
   WS_PONG_TIMEOUT_MS,
-  WS_PROTOCOL_MISMATCH_THRESHOLD,
-  WS_PROTOCOL_VERSION,
   WS_RECONNECT_BASE_DELAY,
   WS_RECONNECT_JITTER_MAX,
   WS_RECONNECT_JITTER_MIN,
@@ -36,13 +34,13 @@ import {
   recordAbnormalCloseDuringHandshake,
   resetProxyBlockSuspicion,
 } from './sse-fallback'
+import { isSupportedWireVersion, resetProtocolMismatchCount } from './protocol-guard'
 import { getCurrentSocket, setCurrentSocket } from './transport-shared'
 import type { WsGet, WsSet } from './types'
 
 const log = createLogger('ws')
 
 let reconnectAttempts = 0
-let protocolMismatchCount = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let heartbeatTimer: ReturnType<typeof setTimeout> | null = null
 let pongTimer: ReturnType<typeof setTimeout> | null = null
@@ -191,27 +189,7 @@ function handleEventOrLog(msg: Record<string, unknown>, set: WsSet): void {
     })
     return
   }
-  const version = eventVersion(msg)
-  if (version !== WS_PROTOCOL_VERSION) {
-    log.warn('Discarding event with unsupported wire version:', {
-      received: version,
-      supported: WS_PROTOCOL_VERSION,
-      // event_type + channel are attacker-reachable via the
-      // WS payload; scrub before embedding in the log to close
-      // the log-injection vector.
-      event_type: sanitizeForLog(msg.event_type),
-      channel: sanitizeForLog(msg.channel),
-    })
-    // A silent drop leaves the socket "connected" while all real-time
-    // updates stop. Surface a persistent flag after a run of mismatches, or
-    // immediately when the server is ahead of us, so the UI can prompt a reload.
-    protocolMismatchCount += 1
-    if (version > WS_PROTOCOL_VERSION || protocolMismatchCount >= WS_PROTOCOL_MISMATCH_THRESHOLD) {
-      set({ protocolVersionMismatch: true })
-    }
-    return
-  }
-  protocolMismatchCount = 0
+  if (!isSupportedWireVersion(eventVersion(msg), msg, set)) return
   dispatchEvent(msg)
 }
 
@@ -386,16 +364,14 @@ async function doConnect(
   get: WsGet,
 ): Promise<void> {
   set({ reconnectExhausted: false, protocolVersionMismatch: false })
-  protocolMismatchCount = 0
+  resetProtocolMismatchCount()
   shouldBeConnected = true
   intentionalClose = false
 
-  // Close any active SSE fallback before attempting a fresh WS.
-  // If the WS handshake later succeeds, the SSE client would otherwise
-  // remain open and ``dispatchEvent`` would fire on every channel
-  // event twice -- once from the WS frame, once from the SSE stream.
-  // Tearing it down here keeps the "only one transport at a time"
-  // invariant the dispatch chain assumes.
+  // Close any active SSE fallback before attempting a fresh WS: if the
+  // handshake later succeeds, a still-open SSE client would double-fire
+  // ``dispatchEvent`` on every channel event (once per transport). This
+  // keeps the "only one transport at a time" invariant the dispatch assumes.
   closeSseFallback(set)
 
   const ticket = await fetchTicketOrReconnect(set, get)
@@ -439,7 +415,7 @@ function _resetReconnectState(): void {
   connectGeneration++
   connectPromise = null
   reconnectAttempts = 0
-  protocolMismatchCount = 0
+  resetProtocolMismatchCount()
   resetProxyBlockSuspicion()
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
@@ -461,18 +437,25 @@ function disconnectImpl(set: WsSet): void {
 }
 
 async function retryImpl(set: WsSet, get: WsGet): Promise<void> {
-  // Wired to the "Retry" action surfaced on reconnect-exhausted
-  // toasts and badges. Resets the failure budget and asks the
-  // store to attempt a fresh connect; the regular reconnect /
-  // auth_ok / heartbeat path takes over from there.
+  // Wired to the "Retry" action on reconnect-exhausted toasts / badges.
+  // Resets the failure budget and asks the store to attempt a fresh
+  // connect; the regular reconnect / auth_ok / heartbeat path takes over.
   reconnectAttempts = 0
-  protocolMismatchCount = 0
+  resetProtocolMismatchCount()
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
   set({ reconnectExhausted: false, protocolVersionMismatch: false })
-  await connectImpl(set, get)
+  // A manual retry whose ticket exchange fails (e.g. auth error) would
+  // reject unhandled with reconnectExhausted cleared; re-arm it so the
+  // Retry affordance stays visible.
+  try {
+    await connectImpl(set, get)
+  } catch (err) {
+    log.error('Manual retry failed:', sanitizeForLog(err))
+    set({ reconnectExhausted: true })
+  }
 }
 
 export function teardownTransport(): void {
@@ -485,9 +468,10 @@ export function teardownTransport(): void {
     socket.onopen = socket.onclose = socket.onerror = socket.onmessage = null
     try {
       socket.close()
-    } catch {
-      // Best-effort: a half-closed mock or a socket that already
-      // raised on construction must not block the teardown.
+    } catch (err) {
+      // Best-effort: a half-closed / construction-failed socket must not
+      // block teardown, but log so a genuine close failure is not swallowed.
+      log.warn('socket.close() threw during teardown', sanitizeForLog(err))
     }
     setCurrentSocket(null)
   }

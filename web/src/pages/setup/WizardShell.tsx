@@ -114,13 +114,14 @@ function useWizardReEntryToast(
   stepOrder: readonly WizardStep[],
 ): void {
   const reEntryToastShownRef = useRef(false)
-  const companyExistedAtMountRef = useRef<boolean | null>(null)
-  if (companyExistedAtMountRef.current === null) {
-    companyExistedAtMountRef.current = companyPresent
-  }
+  // Capture the mount-time value via useRef's initialiser so the render
+  // body stays free of side effects (no null-sentinel mutation): useRef
+  // only honours the argument on the first render, which is exactly the
+  // "did the company already exist when this wizard mounted" signal.
+  const companyExistedAtMountRef = useRef(companyPresent)
   useEffect(() => {
     if (reEntryToastShownRef.current) return
-    if (companyExistedAtMountRef.current !== true) return
+    if (!companyExistedAtMountRef.current) return
     if (!companyPresent) return
     if (completeStepDone) return
     if (!stepOrder.includes('complete')) return

@@ -70,7 +70,10 @@ export function Collapsible({
         onClick={toggle}
         disabled={disabled}
         aria-expanded={open}
-        aria-controls={bodyId}
+        // Only reference the body when it is actually rendered; a
+        // dangling aria-controls (the body is unmounted while collapsed)
+        // points at a non-existent id and fails assistive-tech checks.
+        aria-controls={open ? bodyId : undefined}
         className={cn(
           'flex w-full items-center justify-between gap-3 p-card text-left transition-colors hover:bg-card-hover rounded-lg',
           'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent',

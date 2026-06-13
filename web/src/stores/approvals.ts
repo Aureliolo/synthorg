@@ -39,7 +39,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
     // values (the captured ``epoch`` will not match the new
     // ``requestEpoch``). Resetting the seq counters and the
     // optimistic-transition set keeps fresh calls starting from
-    // clean state (#1600 Phase 5).
+    // clean state.
     bumpRequestEpoch()
     _resetPendingTransitions()
     _resetDetailRequestSeq()

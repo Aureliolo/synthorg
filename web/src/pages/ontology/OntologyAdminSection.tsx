@@ -4,7 +4,7 @@
  * to write-access roles by the backend; success and failure surface as
  * toasts.
  */
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
@@ -21,7 +21,7 @@ type AdminAction = 'derive' | 'sync' | null
 export function OntologyAdminSection() {
   const [running, setRunning] = useState<AdminAction>(null)
 
-  const runDerive = () => {
+  const runDerive = useCallback(() => {
     setRunning('derive')
     void deriveOntology()
       .then((result) => {
@@ -40,12 +40,23 @@ export function OntologyAdminSection() {
         })
       })
       .finally(() => setRunning(null))
-  }
+  }, [])
 
-  const runSync = () => {
+  const runSync = useCallback(() => {
     setRunning('sync')
     void syncOrgMemory()
       .then((result) => {
+        // The backend returns HTTP 200 with this status (not an error)
+        // when no org-memory backend is wired; a "Published 0" success
+        // toast would misrepresent that as a completed no-op sync.
+        if (result['status'] === 'sync_service_not_configured') {
+          useToastStore.getState().add({
+            variant: 'warning',
+            title: 'Sync unavailable',
+            description: 'No org-memory backend is configured, so there was nothing to sync.',
+          })
+          return
+        }
         useToastStore.getState().add({
           variant: 'success',
           title: 'Org memory synced',
@@ -61,11 +72,11 @@ export function OntologyAdminSection() {
         })
       })
       .finally(() => setRunning(null))
-  }
+  }, [])
 
   return (
     <SectionCard title="Admin" icon={Wrench}>
-      <div className="space-y-4">
+      <div className="space-y-section-gap">
         <p className="text-sm text-muted-foreground">
           Re-derive entity definitions from decorated models, or force a
           re-sync of all definitions into org memory. Both are safe to re-run.

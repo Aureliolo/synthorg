@@ -21,6 +21,9 @@ import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 
 const log = createLogger('AgentMemoryAdmin')
 
+/** Upper bound on an accepted memory-entry id (defence against paste abuse). */
+const MEMORY_ID_MAX_LEN = 128
+
 export interface AgentMemoryAdminProps {
   agentId: string
 }
@@ -37,7 +40,7 @@ export function AgentMemoryAdmin({ agentId }: AgentMemoryAdminProps) {
 
   const handleConfirm = async (): Promise<boolean> => {
     const trimmed = memoryId.trim()
-    if (trimmed === '') return false
+    if (trimmed === '' || trimmed.length > MEMORY_ID_MAX_LEN) return false
     setDeleting(true)
     try {
       await deleteMemoryEntry(agentId, trimmed)
@@ -63,7 +66,7 @@ export function AgentMemoryAdmin({ agentId }: AgentMemoryAdminProps) {
 
   return (
     <SectionCard title="Memory administration" icon={Trash2}>
-      <div className="space-y-4">
+      <div className="space-y-section-gap">
         <p className="text-sm text-muted-foreground">
           Delete a single memory entry owned by this agent. Enter the entry
           id (from logs or a memory export); this cannot be undone.
@@ -75,6 +78,7 @@ export function AgentMemoryAdmin({ agentId }: AgentMemoryAdminProps) {
               value={memoryId}
               onChange={(e) => setMemoryId(e.currentTarget.value)}
               placeholder="e.g. mem_01H..."
+              maxLength={MEMORY_ID_MAX_LEN}
             />
           </div>
           <Button

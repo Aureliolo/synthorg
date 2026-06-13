@@ -37,12 +37,10 @@ func TestContentBoxWidth(t *testing.T) {
 	}
 }
 
-// TestRenderBox_truncatesOverflowingLines is the regression guard for the
-// Gemini review on PR #1626: when contentBoxWidth's terminal-width clamp
-// fires, content lines that exceed the clamped w MUST be truncated before
-// brow renders them; otherwise the right border overflows past the
-// top/bottom borders and the box appears broken (the original bug this
-// helper exists to prevent).
+// TestRenderBox_truncatesOverflowingLines guards the terminal-width clamp:
+// when contentBoxWidth's clamp fires, content lines that exceed the clamped
+// w MUST be truncated before brow renders them; otherwise the right border
+// overflows past the top/bottom borders and the box appears broken.
 func TestRenderBox_truncatesOverflowingLines(t *testing.T) {
 	w := 20
 	// 40-char line, far wider than w. ansi.Truncate is grapheme-aware so

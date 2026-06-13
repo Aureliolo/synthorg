@@ -227,7 +227,11 @@ async def _serialise_stream_event(
             error=safe_error_description(serialize_exc),
         )
         return None
-    return {"event": event.type.value, "data": data, "id": event.id}
+    # Strip CR/LF: the SSE wire format is newline-delimited, so a stray
+    # newline in the id would inject a spurious field line. Event ids are
+    # in-process opaque strings, but sanitise defensively at the boundary.
+    safe_id = event.id.replace("\r", "").replace("\n", "")
+    return {"event": event.type.value, "data": data, "id": safe_id}
 
 
 async def _run_revalidation_tick(

@@ -18,8 +18,7 @@ import type { AggregatedPattern, ThresholdRecommendation } from '@/api/types'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { formatNumber } from '@/utils/format'
-import { getErrorDetail, getErrorMessage } from '@/utils/errors'
-import { ErrorCategory } from '@/api/types/errors'
+import { getErrorMessage } from '@/utils/errors'
 
 const log = createLogger('CrossDeploymentSection')
 
@@ -32,10 +31,12 @@ interface CrossDeploymentState {
   error: string | null
 }
 
-/** A 503 surfaces as a service-unavailable message string from getErrorMessage. */
+/**
+ * True only for a genuine 503 (collector disabled), which getErrorMessage
+ * renders as a service-unavailable / restarting string. A 500 (INTERNAL)
+ * is a real backend fault and must NOT be masked as "not enabled".
+ */
 function isServiceUnavailable(error: unknown): boolean {
-  const category = getErrorDetail(error)?.error_category
-  if (category === ErrorCategory.INTERNAL) return true
   return /unavailable|restarting/i.test(getErrorMessage(error))
 }
 
@@ -50,20 +51,33 @@ function fulfilledOr<T>(result: PromiseSettledResult<readonly T[]>): readonly T[
 
 /** Reduce the settled pattern / recommendation results to display state. */
 function deriveState(results: FetchResults): CrossDeploymentState {
-  const failure = results.find((r) => r.status === 'rejected')
-  if (failure?.status === 'rejected') {
-    const unavailable = isServiceUnavailable(failure.reason)
-    if (!unavailable) {
+  const rejections = results.filter(
+    (r): r is PromiseRejectedResult => r.status === 'rejected',
+  )
+  if (rejections.length > 0) {
+    // Prefer a real (non-503) failure for display: a genuine backend
+    // error is more actionable than the "collector disabled" note, and
+    // must never be hidden behind a sibling 503. Log every real failure.
+    const real = rejections.find((r) => !isServiceUnavailable(r.reason))
+    if (real) {
       log.error('cross-deployment fetch failed', {
-        error: sanitizeForLog(getErrorMessage(failure.reason)),
+        error: sanitizeForLog(getErrorMessage(real.reason)),
       })
+      return {
+        patterns: [],
+        recommendations: [],
+        loading: false,
+        unavailable: false,
+        error: getErrorMessage(real.reason),
+      }
     }
+    // All failures were 503: the collector is genuinely not enabled.
     return {
       patterns: [],
       recommendations: [],
       loading: false,
-      unavailable,
-      error: unavailable ? null : getErrorMessage(failure.reason),
+      unavailable: true,
+      error: null,
     }
   }
   return {

@@ -61,7 +61,12 @@ async function notifyConnectionLimited(): Promise<void> {
         'Real-time WebSocket is blocked. Falling back to SSE; some interactive features (chat, settings actions) may be unavailable until you reload after fixing your proxy.',
     })
   } catch (err) {
-    log.warn('Could not surface connection-limited toast', sanitizeForLog(err))
+    // Capture the error type so a ChunkLoadError (deploy-time hash
+    // change) is distinguishable from a store init failure.
+    log.warn('Could not surface connection-limited toast', {
+      errorType: err instanceof Error ? err.name : typeof err,
+      error: sanitizeForLog(err instanceof Error ? err.message : String(err)),
+    })
     log.warn(
       'SSE fallback active; chat and settings features unavailable until reload',
     )

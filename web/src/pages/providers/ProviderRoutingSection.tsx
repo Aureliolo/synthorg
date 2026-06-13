@@ -16,7 +16,7 @@ import type { SettingEntry } from '@/api/types/settings'
 import { useToastStore } from '@/stores/toast'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { getErrorMessage } from '@/utils/errors'
 import { SettingRow } from '../settings/SettingRow'
 
 const log = createLogger('ProviderRoutingSection')
@@ -63,12 +63,24 @@ function RoutingRows({
   )
 }
 
-export function ProviderRoutingSection() {
+interface RoutingController {
+  state: RoutingState
+  dirty: Readonly<Record<string, string>>
+  saving: boolean
+  load: () => void
+  handleChange: (key: string, value: string) => void
+  handleSave: () => void
+}
+
+function useProviderRouting(): RoutingController {
   const [state, setState] = useState<RoutingState>({ entries: [], loading: true, error: null })
   const [dirty, setDirty] = useState<Readonly<Record<string, string>>>({})
   const [saving, setSaving] = useState(false)
 
-  const load = useCallback(() => {
+  // Reload the persisted base values, resetting the dirty map to
+  // ``keepDirty`` (default empty). A partial save passes the edits that
+  // failed so they stay pending for a retry while the saved ones clear.
+  const load = useCallback((keepDirty: Readonly<Record<string, string>> = {}) => {
     setState((prev) => ({ ...prev, loading: true, error: null }))
     void getNamespaceSettings('providers')
       .then((all) => {
@@ -76,7 +88,7 @@ export function ProviderRoutingSection() {
           all.find((e) => e.definition.key === key),
         ).filter((e): e is SettingEntry => e !== undefined)
         setState({ entries, loading: false, error: null })
-        setDirty({})
+        setDirty(keepDirty)
       })
       .catch((err: unknown) => {
         const message = getErrorMessage(err)
@@ -86,7 +98,7 @@ export function ProviderRoutingSection() {
   }, [])
 
   useEffect(() => {
-    void Promise.resolve().then(load)
+    void Promise.resolve().then(() => { load() })
   }, [load])
 
   const handleChange = useCallback((key: string, value: string) => {
@@ -97,26 +109,45 @@ export function ProviderRoutingSection() {
     const changed = Object.entries(dirty)
     if (changed.length === 0) return
     setSaving(true)
-    void Promise.all(
-      changed.map(([key, value]) =>
-        updateSetting('providers', key, { value }),
-      ),
+    void Promise.allSettled(
+      changed.map(([key, value]) => updateSetting('providers', key, { value })),
     )
-      .then(() => {
-        useToastStore.getState().add({ variant: 'success', title: 'Routing settings saved' })
-        load()
-      })
-      .catch((err: unknown) => {
-        log.error('save routing settings failed', { error: sanitizeForLog(getErrorMessage(err)) })
+      .then((results) => {
+        const failed = changed.filter((_, i) => results[i]?.status === 'rejected')
+        if (failed.length === 0) {
+          useToastStore.getState().add({ variant: 'success', title: 'Routing settings saved' })
+          load()
+          return
+        }
+        // Partial failure: persist the successes (reload base values) but
+        // keep the failed edits pending so the operator can retry just
+        // those instead of losing every edit to one rejection.
+        const firstRejection = results.find(
+          (r): r is PromiseRejectedResult => r.status === 'rejected',
+        )
+        const message = firstRejection
+          ? getErrorMessage(firstRejection.reason)
+          : 'Some settings could not be saved'
+        log.error('save routing settings partial failure', {
+          failed: failed.length,
+          error: sanitizeForLog(message),
+        })
+        const failedDirty = Object.fromEntries(failed)
         useToastStore.getState().add({
           variant: 'error',
-          ...getCrudErrorTitle(err, 'Could not save routing settings'),
-          description: getErrorMessage(err),
+          title: `Could not save ${String(failed.length)} of ${String(changed.length)} settings`,
+          description: message,
         })
+        load(failedDirty)
       })
       .finally(() => setSaving(false))
   }, [dirty, load])
 
+  return { state, dirty, saving, load, handleChange, handleSave }
+}
+
+export function ProviderRoutingSection() {
+  const { state, dirty, saving, load, handleChange, handleSave } = useProviderRouting()
   const dirtyCount = Object.keys(dirty).length
 
   return (

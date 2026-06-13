@@ -201,9 +201,9 @@ export function useOrgChartData(
   const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
 
   // Synthesise owner list from the current session user.  Designed
-  // as an array so #1082 (multi-user ownership + per-dept admins)
-  // can pass multiple owners without changing this shape -- today
-  // it is exactly one element.
+  // as an array so future multi-user ownership (per-dept admins) can
+  // pass multiple owners without changing this shape; today it is
+  // exactly one element.
   const owners = useMemo<OwnerInfo[]>(() => {
     if (!currentUser) return []
     return [{ id: currentUser.id, displayName: currentUser.username }]

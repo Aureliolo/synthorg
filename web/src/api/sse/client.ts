@@ -133,7 +133,14 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
   }
 
   source.onmessage = (event: MessageEvent) => {
-    if (event.lastEventId) lastEventId = event.lastEventId
+    if (event.lastEventId) {
+      // Clamp the server-supplied id before we store / log it: it is
+      // attacker-influenced and otherwise uncapped (control chars, bidi
+      // overrides, unbounded length). The browser still sends the raw
+      // value as `Last-Event-ID`; this only guards our own debug surface.
+      const sanitizedId = sanitizeWsString(event.lastEventId)
+      if (sanitizedId !== undefined) lastEventId = sanitizedId
+    }
     if (typeof event.data !== 'string') return
     let parsed: unknown
     try {

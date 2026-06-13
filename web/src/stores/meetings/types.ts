@@ -30,7 +30,7 @@ export interface MeetingsState {
   handleWsEvent: (event: WsEvent) => void
   upsertMeeting: (meeting: MeetingResponse) => void
 
-  // Lifecycle (#1600 Phase 5). Reserved for teardown of timers /
+  // Lifecycle teardown. Reserved for teardown of timers /
   // listeners; today this store schedules no async resources, so
   // ``dispose`` is a no-op. The afterEach in ``web/src/test-setup.tsx``
   // calls it so the contract is uniform across domain stores and a

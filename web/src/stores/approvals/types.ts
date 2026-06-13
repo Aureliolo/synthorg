@@ -57,7 +57,7 @@ export interface ApprovalsState {
     reason: string,
   ) => Promise<{ succeeded: number; failed: number; failedReasons: string[] }>
 
-  // Lifecycle (#1600 Phase 5). No-op today; future timers / listeners
+  // Lifecycle teardown. No-op today; future timers / listeners
   // should be torn down here so the global ``afterEach`` in
   // ``web/src/test-setup.tsx`` releases them deterministically.
   dispose: () => void

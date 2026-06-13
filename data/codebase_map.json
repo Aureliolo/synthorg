@@ -940,7 +940,7 @@
     },
     {
       "kind": "code",
-      "loc": 326,
+      "loc": 327,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/events/_sse.py",
       "owning_feature": "api_core"
@@ -17089,7 +17089,7 @@
     },
     {
       "kind": "code",
-      "loc": 300,
+      "loc": 309,
       "loc_cap": 500,
       "module": "src/synthorg/providers/drivers/mappers.py",
       "owning_feature": "providers"

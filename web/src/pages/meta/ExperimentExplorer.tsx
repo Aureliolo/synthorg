@@ -132,20 +132,31 @@ export function ExperimentExplorer() {
     setData({ ...EMPTY, loading: true })
     void Promise.allSettled([listVariants(trimmed), listAssignments(trimmed)]).then(
       ([variantsResult, assignmentsResult]) => {
-        const failure = [variantsResult, assignmentsResult].find((r) => r.status === 'rejected')
-        if (failure?.status === 'rejected') {
-          const message = getErrorMessage(failure.reason)
+        const variants = variantsResult.status === 'fulfilled' ? variantsResult.value : []
+        const assignments =
+          assignmentsResult.status === 'fulfilled' ? assignmentsResult.value : []
+        // Only surface a hard error when BOTH calls fail; if one
+        // succeeds, show its data (e.g. a new experiment with variants
+        // but no assignments yet). Log a single-side failure so it is
+        // not lost.
+        if (
+          variantsResult.status === 'rejected'
+          && assignmentsResult.status === 'rejected'
+        ) {
+          const message = getErrorMessage(variantsResult.reason)
           log.error('experiment load failed', { error: sanitizeForLog(message) })
           setData({ ...EMPTY, error: message, loaded: true })
           return
         }
-        setData({
-          variants: variantsResult.status === 'fulfilled' ? variantsResult.value : [],
-          assignments: assignmentsResult.status === 'fulfilled' ? assignmentsResult.value : [],
-          loading: false,
-          error: null,
-          loaded: true,
-        })
+        const partial = [variantsResult, assignmentsResult].find(
+          (r) => r.status === 'rejected',
+        )
+        if (partial?.status === 'rejected') {
+          log.warn('experiment partial load failure', {
+            error: sanitizeForLog(getErrorMessage(partial.reason)),
+          })
+        }
+        setData({ variants, assignments, loading: false, error: null, loaded: true })
       },
     )
   }, [])

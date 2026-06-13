@@ -759,7 +759,10 @@ func retryAfterMessage(header string) string {
 	}
 	if t, err := http.ParseTime(header); err == nil {
 		if d := time.Until(t); d > 0 {
-			return fmt.Sprintf("retry after %d seconds", int(d.Seconds()))
+			// Floor at 1 so a sub-second-but-positive future date never
+			// renders as the misleading "retry after 0 seconds".
+			secs := max(int(d.Seconds()), 1)
+			return fmt.Sprintf("retry after %d seconds", secs)
 		}
 	}
 	return "try again later"
