@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.errors import SelfImprovementTriggerError
+from synthorg.meta.mcp.domains._simple_args import MetaQueryFeatureMapArgs
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -36,6 +37,7 @@ from synthorg.meta.mcp.errors import (
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
@@ -120,6 +122,8 @@ async def _meta_get_config(
     return ok(data=config_dump)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler paginates
+# (coerce_pagination) but MetaListRulesArgs declares no PaginationFields.
 async def _meta_list_rules(
     *,
     app_state: AppState,
@@ -208,6 +212,9 @@ async def _meta_get_mcp_server_config(
     return response
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: admin op reading
+# require_admin_guardrails (confirm/reason) but MetaTriggerCycleArgs declares
+# no AdminGuardrailFields.
 async def _meta_trigger_cycle(
     *,
     app_state: AppState,
@@ -267,6 +274,11 @@ async def _meta_query_feature_map(
     """
     tool = "synthorg_meta_query_feature_map"
     try:
+        name_filter = typed_args(arguments, MetaQueryFeatureMapArgs).name
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
+    try:
         # Deferred to avoid hauling the index builder into the handler-import
         # graph before the runtime is ready.
         from datetime import UTC, datetime  # noqa: PLC0415
@@ -281,7 +293,6 @@ async def _meta_query_feature_map(
             build_feature_map,
         )
 
-        name_filter = arguments.get("name")
         directories = feature_directories()
         maps = tuple(
             build_feature_map(feature, directories.get(feature.name, ""))
