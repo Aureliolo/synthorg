@@ -23,7 +23,6 @@ import type { ConnectionStatus, ConnectionType } from './enum-values.gen'
  * kept as aliases to avoid churning every call site.
  */
 export type McpCatalogEntry = CatalogEntry
-export type McpTransport = CatalogEntry['transport']
 export type McpInstallRequest = InstallEntryRequest
 export type McpInstallResponse = InstallEntryResponse
 export type ConnectionHealthStatus = ConnectionStatus
