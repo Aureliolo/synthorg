@@ -127,17 +127,17 @@ export function ExperimentExplorer() {
   const [data, setData] = useState<ExperimentData>(EMPTY)
   // Monotonic request token: a slow earlier load must not overwrite the
   // display once a newer load has been issued for a different key.
-  const requestSeq = useRef(0)
+  const requestSeqRef = useRef(0)
 
   const load = useCallback((experiment: string) => {
     const trimmed = experiment.trim()
     if (trimmed === '') return
-    const seq = requestSeq.current + 1
-    requestSeq.current = seq
+    const seq = requestSeqRef.current + 1
+    requestSeqRef.current = seq
     setData({ ...EMPTY, loading: true })
     void Promise.allSettled([listVariants(trimmed), listAssignments(trimmed)]).then(
       ([variantsResult, assignmentsResult]) => {
-        if (seq !== requestSeq.current) return
+        if (seq !== requestSeqRef.current) return
         const variants = variantsResult.status === 'fulfilled' ? variantsResult.value : []
         const assignments =
           assignmentsResult.status === 'fulfilled' ? assignmentsResult.value : []
