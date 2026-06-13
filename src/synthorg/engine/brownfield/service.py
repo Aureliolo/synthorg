@@ -10,15 +10,13 @@ same-source re-import re-scans in place (idempotent), while a *different*
 source onto an occupied project is refused.
 """
 
-import asyncio
 import re
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.codebase_structure_map import CodebaseStructureMap
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.brownfield.errors import BrownfieldWorkspaceNotEmptyError
@@ -89,42 +87,7 @@ class BrownfieldImportService:
         self._repo = structure_map_repo
         self._knowledge = knowledge_service
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._locks: dict[str, asyncio.Lock] = {}
-        self._locks_guard = asyncio.Lock()
-        self._locks_refcounts: dict[str, int] = {}
-
-    @asynccontextmanager
-    async def _lock_for(self, project_id: str) -> AsyncIterator[None]:
-        """Serialise imports per project, evicting the lock when idle.
-
-        Refcounted so a process importing many distinct projects over its
-        lifetime does not retain one ``asyncio.Lock`` per project forever.
-
-        Args:
-            project_id: Project whose imports must be serialised.
-
-        Yields:
-            Control while the per-project import lock is held.
-        """
-        async with self._locks_guard:
-            lock = self._locks.get(project_id)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._locks[project_id] = lock
-            self._locks_refcounts[project_id] = (
-                self._locks_refcounts.get(project_id, 0) + 1
-            )
-        try:
-            async with lock:
-                yield
-        finally:
-            async with self._locks_guard:
-                remaining = self._locks_refcounts[project_id] - 1
-                if remaining == 0:
-                    del self._locks_refcounts[project_id]
-                    del self._locks[project_id]
-                else:
-                    self._locks_refcounts[project_id] = remaining
+        self._locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     async def import_codebase(
         self, submission: CodebaseImportSubmission
@@ -144,7 +107,7 @@ class BrownfieldImportService:
             GitBackendSeedError: The seed (clone/copy) failed.
         """
         project_id = submission.project_id
-        async with self._lock_for(project_id):
+        async with self._locks.acquire(project_id):
             logger.info(
                 BROWNFIELD_IMPORT_STARTED,
                 project_id=project_id,

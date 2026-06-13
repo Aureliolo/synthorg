@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from typing import override
 from uuid import uuid4
 
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections._cache import ConnectionCacheMixin
@@ -98,10 +99,9 @@ class ConnectionCatalog(
         self._cache_valid = False
         # Per-name mutation lock used to serialize create/update/
         # delete/rotate for a given connection. Prevents races that
-        # would otherwise leave orphaned secrets or repo rows.
-        self._name_locks: dict[str, asyncio.Lock] = {}
-        self._name_locks_lock = asyncio.Lock()
-        self._name_locks_refcounts: dict[str, int] = {}
+        # would otherwise leave orphaned secrets or repo rows; the map
+        # evicts a name's lock once idle so it stays bounded.
+        self._name_locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     async def create(  # noqa: PLR0913
         self,

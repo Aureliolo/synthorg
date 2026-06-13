@@ -15,12 +15,12 @@ the new backend reports).
 import asyncio
 import shutil
 import stat
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Callable
 from pathlib import Path
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
@@ -95,8 +95,6 @@ class ProjectWorkspaceService:
         "_config",
         "_git_backend",
         "_locks",
-        "_locks_guard",
-        "_locks_refcounts",
         "_repo",
     )
 
@@ -114,9 +112,7 @@ class ProjectWorkspaceService:
         self._git_backend = git_backend
         self._config = config
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._locks: dict[str, asyncio.Lock] = {}
-        self._locks_guard = asyncio.Lock()
-        self._locks_refcounts: dict[str, int] = {}
+        self._locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     @property
     def git_backend(self) -> GitBackend:
@@ -187,36 +183,6 @@ class ProjectWorkspaceService:
             success=True,
         )
 
-    @asynccontextmanager
-    async def _lock_for(self, project_id: str) -> AsyncIterator[None]:
-        """Serialise provisioning per project, evicting the lock when idle.
-
-        Refcounted so a process provisioning many distinct projects over its
-        lifetime does not retain one ``asyncio.Lock`` per project forever.
-
-        Yields:
-            Control while the per-project provisioning lock is held.
-        """
-        async with self._locks_guard:
-            lock = self._locks.get(project_id)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._locks[project_id] = lock
-            self._locks_refcounts[project_id] = (
-                self._locks_refcounts.get(project_id, 0) + 1
-            )
-        try:
-            async with lock:
-                yield
-        finally:
-            async with self._locks_guard:
-                remaining = self._locks_refcounts[project_id] - 1
-                if remaining == 0:
-                    del self._locks_refcounts[project_id]
-                    del self._locks[project_id]
-                else:
-                    self._locks_refcounts[project_id] = remaining
-
     async def get_or_provision(
         self,
         project_id: NotBlankStr,
@@ -233,7 +199,7 @@ class ProjectWorkspaceService:
         Raises:
             GitBackendProvisionError: Repository provisioning failed.
         """
-        async with self._lock_for(project_id):
+        async with self._locks.acquire(project_id):
             row = await self._repo.get(project_id)
             kind = self._config.kind
             if row is not None and row.git_backend_kind == kind:

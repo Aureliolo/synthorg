@@ -275,9 +275,10 @@ class TestHiringServiceInstantiateAgent:
         candidate_id = str(updated.candidates[0].id)
         approved = await hiring_service.submit_for_approval(updated, candidate_id)
         await hiring_service.instantiate_agent(approved)
-        # The request and its lock are evicted on reaching the terminal state.
+        # The request is evicted on reaching the terminal state; its lock
+        # auto-evicts once the instantiate step releases it (no holders left).
         assert str(approved.id) not in hiring_service._requests
-        assert str(approved.id) not in hiring_service._requests_locks
+        assert len(hiring_service._request_locks) == 0
         with pytest.raises(HiringError, match="not found"):
             await hiring_service.instantiate_agent(approved)
 

@@ -13,10 +13,8 @@ pre-flight ForecastGate is intentionally bypassed) and the forecast row
 exists for audit and in-loop ceiling enforcement.
 """
 
-import asyncio
 import uuid
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Callable
 from datetime import datetime
 
 from synthorg.api.services.project_service import ProjectService
@@ -25,6 +23,7 @@ from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.forecaster import BriefSignal, compute_brief_hash
 from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
@@ -149,38 +148,7 @@ class CharterDispatcher:
         self._conversation_repo = conversation_repo
         self._budget_currency = budget_currency
         self._clock: Clock = clock or SystemClock()
-        self._locks: dict[str, asyncio.Lock] = {}
-        self._locks_guard: asyncio.Lock | None = None
-        self._locks_refcounts: dict[str, int] = {}
-
-    @asynccontextmanager
-    async def _lock_for(self, charter_id: str) -> AsyncIterator[None]:
-        """Serialise per-charter dispatch, evicting the lock when idle.
-
-        Refcounted so a many-charter process does not retain one
-        ``asyncio.Lock`` per charter id forever.
-        """
-        if self._locks_guard is None:
-            self._locks_guard = asyncio.Lock()
-        async with self._locks_guard:
-            lock = self._locks.get(charter_id)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._locks[charter_id] = lock
-            self._locks_refcounts[charter_id] = (
-                self._locks_refcounts.get(charter_id, 0) + 1
-            )
-        try:
-            async with lock:
-                yield
-        finally:
-            async with self._locks_guard:
-                remaining = self._locks_refcounts[charter_id] - 1
-                if remaining == 0:
-                    del self._locks_refcounts[charter_id]
-                    del self._locks[charter_id]
-                else:
-                    self._locks_refcounts[charter_id] = remaining
+        self._charter_locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     async def approve(
         self,
@@ -201,7 +169,7 @@ class CharterDispatcher:
         Returns:
             ``CharterApprovalResult`` instance.
         """
-        async with self._lock_for(charter_id):
+        async with self._charter_locks.acquire(charter_id):
             return await self._approve(charter_id, approved_by=approved_by)
 
     async def _approve(

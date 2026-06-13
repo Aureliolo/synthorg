@@ -8,12 +8,10 @@ chunks the source, short-circuits when the content hash is unchanged, and
 records lifecycle status on the source row.
 """
 
-import asyncio
 import builtins
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import current_execution_identity
 from synthorg.core.types import NotBlankStr
@@ -112,32 +110,7 @@ class KnowledgeService:
         # evict an entry once no waiter holds it, so the lock dict does
         # not grow unboundedly across a long-running process's history
         # of unique source ids.
-        self._source_locks: dict[NotBlankStr, asyncio.Lock] = {}
-        self._source_lock_refcounts: dict[NotBlankStr, int] = {}
-        self._source_locks_mutex = asyncio.Lock()
-
-    @asynccontextmanager
-    async def _source_lock(self, source_id: NotBlankStr) -> AsyncIterator[None]:
-        """Serialise writers for *source_id*; evict the lock when idle."""
-        async with self._source_locks_mutex:
-            lock = self._source_locks.get(source_id)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._source_locks[source_id] = lock
-            self._source_lock_refcounts[source_id] = (
-                self._source_lock_refcounts.get(source_id, 0) + 1
-            )
-        try:
-            async with lock:
-                yield
-        finally:
-            async with self._source_locks_mutex:
-                remaining = self._source_lock_refcounts[source_id] - 1
-                if remaining == 0:
-                    del self._source_lock_refcounts[source_id]
-                    del self._source_locks[source_id]
-                else:
-                    self._source_lock_refcounts[source_id] = remaining
+        self._source_locks: RefcountedLockMap[NotBlankStr] = RefcountedLockMap()
 
     async def ingest(
         self,
@@ -155,7 +128,7 @@ class KnowledgeService:
         source_id = derive_source_id(
             project_id=project_id, source_type=source_type, uri=uri
         )
-        async with self._source_lock(source_id):
+        async with self._source_locks.acquire(source_id):
             existing = await self._sources.get(source_id)
             return await self._run_ingest(
                 source_id=source_id,
@@ -173,7 +146,7 @@ class KnowledgeService:
         Returns:
             The persisted ``KnowledgeSource`` after the forced re-index.
         """
-        async with self._source_lock(source_id):
+        async with self._source_locks.acquire(source_id):
             logger.debug(KNOWLEDGE_REINDEX_STARTED, source_id=source_id)
             existing = await self._require_source(source_id)
             return await self._run_ingest(
@@ -307,7 +280,7 @@ class KnowledgeService:
         Returns:
             ``True`` when the source row was deleted.
         """
-        async with self._source_lock(source_id):
+        async with self._source_locks.acquire(source_id):
             await self._require_source(source_id)
             await self._indexer.purge_source(source_id)
             deleted = await self._sources.delete(source_id)

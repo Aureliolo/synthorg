@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.chunker import DocChunker
@@ -104,7 +105,6 @@ class DocsService:
         "_chunker",
         "_clock",
         "_indexer",
-        "_locks_guard",
         "_repo",
         "_workspace_service",
         "_write_locks",
@@ -129,22 +129,10 @@ class DocsService:
         self._writer = writer
         self._backend = backend
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._write_locks: dict[str, asyncio.Lock] = {}
-        self._locks_guard = asyncio.Lock()
-
-    async def _write_lock_for(self, project_id: NotBlankStr) -> asyncio.Lock:
-        """Return the per-project write lock, creating it on first use.
-
-        Slug derivation must be serialised with the write so two
-        concurrent same-title writes cannot derive the same slug and
-        silently overwrite one another.
-        """
-        async with self._locks_guard:
-            lock = self._write_locks.get(project_id)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._write_locks[project_id] = lock
-            return lock
+        # Serialises slug derivation with the write per project so two
+        # concurrent same-title writes cannot derive the same slug and
+        # silently overwrite one another; evicts the lock once idle.
+        self._write_locks: RefcountedLockMap[NotBlankStr] = RefcountedLockMap()
 
     async def write_doc(  # noqa: PLR0913 -- doc fields are intentionally explicit
         self,
@@ -185,8 +173,7 @@ class DocsService:
                 commit lands on disk; ``last_indexed_commit_sha`` stays
                 behind for replay).
         """
-        write_lock = await self._write_lock_for(project_id)
-        async with write_lock:
+        async with self._write_locks.acquire(project_id):
             resolved_slug, prior = await self._resolve_slug(
                 project_id=project_id,
                 title=title,

@@ -17,11 +17,10 @@ project sequence through one ``asyncio.Lock``).
 """
 
 import asyncio
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
@@ -70,8 +69,6 @@ class DocWriter:
     __slots__ = (
         "_git_backend",
         "_locks",
-        "_locks_guard",
-        "_locks_refcounts",
         "_workspace_service",
     )
 
@@ -83,39 +80,7 @@ class DocWriter:
     ) -> None:
         self._workspace_service = workspace_service
         self._git_backend = git_backend
-        self._locks: dict[str, asyncio.Lock] = {}
-        self._locks_guard = asyncio.Lock()
-        self._locks_refcounts: dict[str, int] = {}
-
-    @asynccontextmanager
-    async def _lock_for(self, project_id: str) -> AsyncIterator[None]:
-        """Serialise writes per project, evicting the lock when idle.
-
-        Refcounted so a process that writes docs for many projects over its
-        lifetime does not retain one ``asyncio.Lock`` per project forever.
-
-        Yields:
-            Control while the per-project lock is held.
-        """
-        async with self._locks_guard:
-            lock = self._locks.get(project_id)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._locks[project_id] = lock
-            self._locks_refcounts[project_id] = (
-                self._locks_refcounts.get(project_id, 0) + 1
-            )
-        try:
-            async with lock:
-                yield
-        finally:
-            async with self._locks_guard:
-                remaining = self._locks_refcounts[project_id] - 1
-                if remaining == 0:
-                    del self._locks_refcounts[project_id]
-                    del self._locks[project_id]
-                else:
-                    self._locks_refcounts[project_id] = remaining
+        self._locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     async def write(
         self,
@@ -137,7 +102,7 @@ class DocWriter:
             DocCommitError: Any phase (workspace resolution, file
                 write, git add/commit, or push) failed.
         """
-        async with self._lock_for(project_id):
+        async with self._locks.acquire(project_id):
             return await self._write_locked(project_id=project_id, doc=doc)
 
     async def _write_locked(
