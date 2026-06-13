@@ -1,9 +1,11 @@
-"""Optional JSONB-native query extension for Postgres backends.
+"""JSONB-native query extension contract.
 
-Defines the ``JsonbQueryCapability`` runtime-checkable protocol that
-Postgres repositories may implement.  SQLite repositories do not
-implement this protocol; call sites check with ``isinstance()``
-before using JSONB-specific query methods.
+Defines the ``JsonbQueryCapability`` runtime-checkable protocol.
+Repositories that compose it (e.g. ``AuditRepository``) make the JSONB
+query methods part of their contract: the Postgres implementation runs
+the GIN-indexed native query, while non-Postgres backends (SQLite, test
+fakes) raise :class:`JsonbQueryUnsupportedError`. Call sites invoke the
+methods directly instead of probing the backend with ``isinstance()``.
 
 All query methods use parameterised SQL internally to prevent
 injection.
@@ -19,12 +21,11 @@ from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 class JsonbQueryCapability[RowT](Protocol):
     """Optional JSONB-native query extension for Postgres backends.
 
-    Repositories implementing this protocol support GIN-indexed
-    queries on JSONB columns using Postgres-native operators.
-
-    Call sites should check ``isinstance(repo, JsonbQueryCapability)``
-    before invoking these methods.  Non-Postgres backends (SQLite)
-    do not implement this protocol.
+    Repositories composing this protocol support GIN-indexed queries on
+    JSONB columns using Postgres-native operators. The Postgres
+    implementation runs the native query; non-Postgres backends raise
+    :class:`JsonbQueryUnsupportedError` so call sites invoke the methods
+    directly without an ``isinstance`` capability probe.
     """
 
     async def query_jsonb_contains(  # noqa: PLR0913

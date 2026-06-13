@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Literal, Self
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -25,6 +26,8 @@ from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.core.validation import is_valid_action_type
+from synthorg.engine.intervention.enums import InterventionKind
+from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame
 
 DEFAULT_LIMIT: int = 50
 MAX_LIMIT: int = 200
@@ -851,6 +854,77 @@ class RollbackAgentIdentityRequest(BaseModel):
     )
 
 
+class FlightRecorderFrameResponse(BaseModel):
+    """API view of a recorded agent turn for cockpit replay.
+
+    Mirrors :class:`FlightRecorderFrame` field-for-field so the
+    persistence model stays behind the boundary: the cockpit controller
+    maps each frame to this response via :meth:`from_frame` instead of
+    leaking the persistence type into the HTTP surface.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr = Field(description="Unique frame identifier")
+    execution_id: NotBlankStr = Field(description="Execution run identifier")
+    task_id: NotBlankStr | None = Field(
+        default=None,
+        description="Task the agent was working on, when known",
+    )
+    agent_id: NotBlankStr = Field(description="Agent that produced the turn")
+    turn_index: int = Field(ge=1, description="1-based turn index within the run")
+    timestamp: AwareDatetime = Field(description="When the turn completed")
+    prompt_summary: str | None = Field(
+        default=None,
+        description="Redacted, length-bounded prompt summary",
+    )
+    response_summary: str | None = Field(
+        default=None,
+        description="Redacted, length-bounded model response summary",
+    )
+    decision: str | None = Field(
+        default=None,
+        description="Classified turn outcome (e.g. tool_call, completed)",
+    )
+    tool_calls: tuple[str, ...] = Field(
+        default=(),
+        description="Tool names invoked during the turn",
+    )
+    input_tokens: int = Field(default=0, ge=0, description="Prompt tokens")
+    output_tokens: int = Field(default=0, ge=0, description="Completion tokens")
+    cost: float = Field(default=0.0, ge=0, description="Turn cost")
+    status: TaskStatus = Field(description="Task status at turn completion")
+    intervention_kind: InterventionKind | None = Field(
+        default=None,
+        description="Operator intervention recorded on this turn, if any",
+    )
+
+    @classmethod
+    def from_frame(cls, frame: FlightRecorderFrame) -> FlightRecorderFrameResponse:
+        """Project a persistence-layer frame into its API response shape.
+
+        Returns:
+            The matching :class:`FlightRecorderFrameResponse`.
+        """
+        return cls(
+            id=frame.id,
+            execution_id=frame.execution_id,
+            task_id=frame.task_id,
+            agent_id=frame.agent_id,
+            turn_index=frame.turn_index,
+            timestamp=frame.timestamp,
+            prompt_summary=frame.prompt_summary,
+            response_summary=frame.response_summary,
+            decision=frame.decision,
+            tool_calls=frame.tool_calls,
+            input_tokens=frame.input_tokens,
+            output_tokens=frame.output_tokens,
+            cost=frame.cost,
+            status=frame.status,
+            intervention_kind=frame.intervention_kind,
+        )
+
+
 __all__ = [
     "ApiResponse",
     "ApproveRequest",
@@ -865,6 +939,7 @@ __all__ = [
     "CreateTaskRequest",
     "ErrorDetail",
     "ExecuteTaskRequest",
+    "FlightRecorderFrameResponse",
     "PaginatedResponse",
     "PaginationMeta",
     "ProblemDetail",

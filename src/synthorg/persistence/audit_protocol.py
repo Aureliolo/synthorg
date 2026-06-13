@@ -8,6 +8,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, AppendOnlyRepository
+from synthorg.persistence.jsonb_capability import JsonbQueryCapability
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 
 __all__ = [
@@ -69,13 +70,18 @@ class AuditFilterSpec(BaseModel):
 @runtime_checkable
 class AuditRepository(
     AppendOnlyRepository["AuditEntry", AuditFilterSpec],
+    JsonbQueryCapability["AuditEntry"],
     Protocol,
 ):
     """Append-only persistence + query interface for AuditEntry.
 
-    Composes :class:`AppendOnlyRepository`. Audit entries are immutable
-    records of security evaluations. No update operations are provided
-    to preserve audit integrity.
+    Composes :class:`AppendOnlyRepository` and
+    :class:`JsonbQueryCapability`. Audit entries are immutable records of
+    security evaluations. No update operations are provided to preserve
+    audit integrity. The JSONB query methods are part of the contract:
+    backends without Postgres-native JSONB support raise
+    :class:`JsonbQueryUnsupportedError` rather than the controller
+    branching on a capability probe.
 
     The single delete-style operation is :meth:`purge_before`, the
     retention sweeper used to enforce the operator-configurable

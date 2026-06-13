@@ -10293,6 +10293,56 @@ export type components = {
             /** @description 1-based turn index within the run */
             readonly turn_index: number;
         };
+        /** FlightRecorderFrameResponse */
+        readonly FlightRecorderFrameResponse: {
+            /** @description Agent that produced the turn */
+            readonly agent_id: string;
+            /**
+             * @description Turn cost
+             * @default 0
+             */
+            readonly cost: number;
+            /** @description Classified turn outcome (e.g. tool_call, completed) */
+            readonly decision: string | null;
+            /** @description Execution run identifier */
+            readonly execution_id: string;
+            /** @description Unique frame identifier */
+            readonly id: string;
+            /**
+             * @description Prompt tokens
+             * @default 0
+             */
+            readonly input_tokens: number;
+            /**
+             * @description Operator intervention recorded on this turn, if any
+             * @enum {string|null}
+             */
+            readonly intervention_kind: "pause" | "kill" | "hint" | "redirect" | null;
+            /**
+             * @description Completion tokens
+             * @default 0
+             */
+            readonly output_tokens: number;
+            /** @description Redacted, length-bounded prompt summary */
+            readonly prompt_summary: string | null;
+            /** @description Redacted, length-bounded model response summary */
+            readonly response_summary: string | null;
+            readonly status: components["schemas"]["TaskStatus"];
+            /** @description Task the agent was working on, when known */
+            readonly task_id: string | null;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly timestamp: string;
+            /**
+             * @description Tool names invoked during the turn
+             * @default []
+             */
+            readonly tool_calls: readonly string[];
+            /** @description 1-based turn index within the run */
+            readonly turn_index: number;
+        };
         /** Forecast */
         readonly Forecast: {
             /** @description SHA-256 hex digest of canonical brief JSON */
@@ -11992,10 +12042,10 @@ export type components = {
              */
             readonly success: boolean;
         };
-        /** PaginatedResponse[FlightRecorderFrame] */
-        readonly PaginatedResponse_FlightRecorderFrame_: {
+        /** PaginatedResponse[FlightRecorderFrameResponse] */
+        readonly PaginatedResponse_FlightRecorderFrameResponse_: {
             /** @default [] */
-            readonly data: readonly components["schemas"]["FlightRecorderFrame"][];
+            readonly data: readonly components["schemas"]["FlightRecorderFrameResponse"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -19300,7 +19350,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_FlightRecorderFrame_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_FlightRecorderFrameResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

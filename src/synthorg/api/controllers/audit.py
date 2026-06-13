@@ -33,7 +33,6 @@ from synthorg.observability.events.api import (
     API_AUDIT_QUERIED,
     API_VALIDATION_FAILED,
 )
-from synthorg.persistence.jsonb_capability import JsonbQueryCapability
 from synthorg.persistence.state import persistence_of
 from synthorg.security.models import AuditEntry
 from synthorg.security.state import SecurityStateSlice
@@ -305,14 +304,6 @@ class AuditController(Controller):
         """
         app_state = state.app_state
         repo = persistence_of(app_state).audit_entries
-
-        if not isinstance(repo, JsonbQueryCapability):
-            logger.warning(
-                API_VALIDATION_FAILED,
-                reason="jsonb_query_unsupported_backend",
-            )
-            msg = "JSONB queries require the Postgres backend"
-            raise ValidationError(msg)
 
         if jsonb_contains is not None and jsonb_key_exists is not None:
             logger.warning(
