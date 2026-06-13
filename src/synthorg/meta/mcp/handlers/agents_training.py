@@ -25,7 +25,14 @@ from synthorg.hr.state import (
     training_service_of,
 )
 from synthorg.hr.training.models import ContentType, TrainingPlan
+from synthorg.meta.mcp.domains._agents_args import (
+    PersonalitiesGetArgs,
+    PersonalitiesListArgs,
+    TrainingGetSessionArgs,
+    TrainingListSessionsArgs,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
@@ -34,7 +41,6 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
     require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -76,7 +82,8 @@ async def _personalities_list(
     """
     tool = "synthorg_personalities_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page = typed_args(arguments, PersonalitiesListArgs)
+        offset, limit = page.offset, page.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -109,7 +116,7 @@ async def _personalities_get(
     """
     tool = "synthorg_personalities_get"
     try:
-        name = require_non_blank(arguments, "name")
+        name = typed_args(arguments, PersonalitiesGetArgs).name
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -144,7 +151,8 @@ async def _training_list_sessions(
     """
     tool = "synthorg_training_list_sessions"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page = typed_args(arguments, TrainingListSessionsArgs)
+        offset, limit = page.offset, page.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -177,7 +185,7 @@ async def _training_get_session(
     """
     tool = "synthorg_training_get_session"
     try:
-        plan_id = require_non_blank(arguments, "session_id")
+        plan_id = typed_args(arguments, TrainingGetSessionArgs).session_id
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -201,6 +209,9 @@ async def _training_get_session(
     return ok(data=session.model_dump(mode="json"))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler builds a
+# TrainingPlan via the custom _parse_training_plan(arguments); TrainingStartSessionArgs
+# captures the inputs but needs an args-model -> TrainingPlan adapter to migrate.
 async def _training_start_session(
     *,
     app_state: AppState,
