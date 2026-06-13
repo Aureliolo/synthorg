@@ -17,9 +17,9 @@ Settings resolve through three sources, in priority order (first wins):
 2. **Environment variables** (`SYNTHORG_<NAMESPACE>_<KEY>`)
 3. **Code defaults** (the `SettingDefinition.default` field)
 
-YAML (`synthorg-config.yaml`) is a company-template ingestion format read once
-at boot, not a precedence tier: its values seed the database on first run and
-are thereafter resolved through the chain above. See
+YAML (`synthorg-config.yaml`) is a company-template ingestion format, not a
+precedence tier: `synthorg init` reads it once to seed the database, and its
+values are thereafter resolved through the chain above. See
 [Configuration Precedence](../reference/configuration-precedence.md) for the
 full model.
 

@@ -8,19 +8,19 @@ SynthOrg exposes <!--RS:mcp_tools-->241<!--/RS--> tools across the <!--RS:mcp_do
 
 ## ToolHandler protocol
 
-**Signature**: `async def _<tool>(*, app_state, arguments: dict[str, Any], actor: AgentIdentity | None = None) -> str`. The `actor` kwarg threads calling-agent identity through the invoker so destructive-op guardrails can attribute audit records. Handlers that don't care about identity still accept and ignore it.
+**Signature**: `async def _<tool>(*, app_state, arguments: dict[str, object], actor: AgentIdentity | None = None) -> str`. The `actor` kwarg threads calling-agent identity through the invoker so destructive-op guardrails can attribute audit records. Handlers that don't care about identity still accept and ignore it.
 
-## Argument validation (typed-args path, #1611 Phase 4)
+## Argument validation (typed-args path)
 
 Each builder accepts an optional `args_model: type[BaseModel]` kwarg that flows through to `MCPToolDef.args_model`. When set, the invoker validates the raw `arguments` dict against the Pydantic model **before** dispatching to the handler. The validation call routes through the canonical typed-boundary helper (`synthorg.api.boundary.parse_typed("mcp.tool", arguments, args_model)`) so a malformed payload emits the cross-boundary `api.boundary.validation_failed` warning alongside the existing `mcp.server.invoke.failed` event -- see [typed-boundaries.md](typed-boundaries.md) for the full contract.
 
 - Validation success: the invoker takes the validated model's `model_dump(mode="python")` and passes that dict to the handler. Every key matches the model's declared fields with no extras (because args models use `extra="forbid"`); enum/datetime/etc. values are already coerced.
 - Validation failure: the invoker short-circuits with a `{"status": "error", "error_type": "ArgumentValidationError", "domain_code": "invalid_argument", "message": "...", "tool": ...}` envelope. The handler is never invoked.
 
-The handler's signature stays at `arguments: dict[str, Any]` (the protocol contract) so existing handlers don't need to migrate; the dict is just structurally sound after validation. Handlers that want compile-time typed access can call `args_model.model_validate(arguments)` locally (a no-op re-validate that returns the typed model with full mypy-strict field access):
+The handler's signature stays at `arguments: dict[str, object]` (the protocol contract) so existing handlers don't need to migrate; the dict is just structurally sound after validation. Handlers that want compile-time typed access can call `args_model.model_validate(arguments)` locally (a no-op re-validate that returns the typed model with full mypy-strict field access):
 
 ```python
-async def list_tasks_handler(*, app_state, arguments: dict[str, Any], actor=None) -> str:
+async def list_tasks_handler(*, app_state, arguments: dict[str, object], actor=None) -> str:
     args = TasksListArgs.model_validate(arguments)  # typed access from here on
     page = await app_state.task_service.list(
         status=args.status, offset=args.offset, limit=args.limit,

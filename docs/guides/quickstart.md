@@ -148,9 +148,11 @@ Once the wizard completes, the dashboard loads and you will see:
 
     Replace `<your-jwt-token>` with the JWT from your admin session. See the [REST API Reference](../openapi/index.md) for authentication details.
 
-Today the task is created and advances through its lifecycle states. An agent
-does not yet pick it up and execute it: that is the agent runtime, which is in
-active development. See the [Roadmap](../roadmap/index.md) for current status.
+With a configured provider the agent runtime picks the task up and executes it
+(LLM + sandboxed tools under the safety spine), exercised today by deterministic
+e2e harnesses with a scripted provider. Without a real provider an empty company
+cleanly holds the task at its lifecycle states. See the
+[Roadmap](../roadmap/index.md) for current status.
 
 ---
 

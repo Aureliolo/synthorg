@@ -24,7 +24,7 @@ synthorg status   # Show container health and versions
 
 The web dashboard is at [http://localhost:3000](http://localhost:3000) (default port).
 
-Other CLI commands: `synthorg stop`, `synthorg logs`, `synthorg update`, `synthorg doctor`, `synthorg uninstall`, `synthorg backup`, `synthorg wipe`, `synthorg cleanup`, `synthorg config`, `synthorg version`. When updating, the CLI re-launches itself after binary replacement so the remaining steps (compose refresh, image pull) use the new version. If the compose template has structural changes (new environment variables, hardening tweaks), the diff is shown for approval before applying; version comment and image reference updates are applied automatically.
+Other CLI commands: `synthorg stop`, `synthorg logs`, `synthorg update`, `synthorg doctor`, `synthorg uninstall`, `synthorg backup`, `synthorg worker`, `synthorg wipe`, `synthorg cleanup`, `synthorg config`, `synthorg version`. When updating, the CLI re-launches itself after binary replacement so the remaining steps (compose refresh, image pull) use the new version. If the compose template has structural changes (new environment variables, hardening tweaks), the diff is shown for approval before applying; version comment and image reference updates are applied automatically.
 
 To automatically clean up old container images after updates (keeping only the current and previous version), run `synthorg config set auto_cleanup true`. Use `synthorg config get <key>` to retrieve a single configuration value (e.g., `synthorg config get channel`).
 

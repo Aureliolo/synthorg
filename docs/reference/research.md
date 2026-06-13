@@ -51,7 +51,7 @@ The following table compares major multi-agent frameworks that informed the desi
 
 !!! note "Applicability"
 
-    The paper tested identical agents on individual tasks. SynthOrg uses role-differentiated agents in an organisational structure. Thresholds (e.g., 45% capability ceiling, 3-4 agent sweet spot) are directional and will be validated empirically in this context.
+    The paper tested identical agents on individual tasks. SynthOrg uses role-differentiated agents in an organisational structure. Thresholds (e.g., 45% capability ceiling, 3-4 agent sweet spot) are directional and will be validated empirically in this context. <!-- lint-allow: doc-numeric-macros -- directional research-paper thresholds, not build-time stats -->
 
 ---
 
@@ -69,7 +69,7 @@ Rather than forking a framework, SynthOrg builds on battle-tested libraries:
 
 | Library | Role |
 |---------|------|
-| **LiteLLM** | Provider abstraction (100+ providers, unified API) |
+| **LiteLLM** | Provider abstraction (<!--RS:providers_via_litellm-->90+<!--/RS--> providers, unified API) |
 | **Mem0** | Agent memory (initial backend; custom stack future) |
 | **Litestar** | API layer (see [Tech Stack](../architecture/tech-stack.md#why-litestar-over-fastapi) for rationale) |
 | **MCP** | Tool integration standard |
@@ -80,11 +80,11 @@ Rather than forking a framework, SynthOrg builds on battle-tested libraries:
 
 ## Sources
 
-- [MetaGPT](https://github.com/FoundationAgents/MetaGPT): multi-agent SOP framework (64.5k stars)
-- [ChatDev 2.0](https://github.com/openbmb/ChatDev): zero-code multi-agent platform (31.2k stars)
+- [MetaGPT](https://github.com/FoundationAgents/MetaGPT): multi-agent SOP framework (64.5k stars) <!-- lint-allow: doc-numeric-macros -- third-party GitHub star count, not a build-time stat -->
+- [ChatDev 2.0](https://github.com/openbmb/ChatDev): zero-code multi-agent platform (31.2k stars) <!-- lint-allow: doc-numeric-macros -- third-party GitHub star count, not a build-time stat -->
 - [CrewAI](https://github.com/crewAIInc/crewAI): role-based agent collaboration framework
 - [AutoGen](https://github.com/microsoft/autogen): Microsoft async multi-agent framework
-- [LiteLLM](https://github.com/BerriAI/litellm): unified LLM API gateway (100+ providers)
+- [LiteLLM](https://github.com/BerriAI/litellm): unified LLM API gateway (<!--RS:providers_via_litellm-->90+<!--/RS--> providers)
 - [Mem0](https://github.com/mem0ai/mem0): universal memory layer for AI agents
 - [A2A Protocol](https://github.com/a2aproject/A2A): Agent-to-Agent protocol (Linux Foundation)
 - [MCP Specification](https://modelcontextprotocol.io/specification/2025-11-25): Model Context Protocol

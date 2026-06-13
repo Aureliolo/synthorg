@@ -220,9 +220,11 @@ contract.
 
 Every dispatch emits structured events and metrics:
 
-- `MCP_SERVER_INVOKE_START` at boundary entry; `MCP_HANDLER_INVOKE_SUCCESS` on
-  a returned `ok` envelope; `MCP_SERVER_INVOKE_FAILED` on tool/handler lookup
-  failure, validation failure, or guardrail rejection.
+- The invoker emits `MCP_SERVER_INVOKE_START` at boundary entry,
+  `MCP_SERVER_INVOKE_SUCCESS` on a successful dispatch, and
+  `MCP_SERVER_INVOKE_FAILED` on tool/handler lookup failure, validation failure,
+  or guardrail rejection. Handlers additionally emit `MCP_HANDLER_INVOKE_SUCCESS`
+  at INFO on a returned `ok` envelope (a per-tool logging convention).
 - The `synthorg_mcp_handler_outcomes_total` counter and
   `synthorg_mcp_handler_duration_seconds` histogram both carry `tool` and
   `outcome` labels with bounded values from `VALID_MCP_HANDLER_OUTCOMES`.

@@ -53,10 +53,18 @@ _SCOPED_FILES: Final[tuple[str, ...]] = (
     "docs/architecture/tech-stack.md",
     "docs/reference/convention-gates.md",
     "docs/reference/mcp-handler-contract.md",
+    "docs/reference/standards.md",
+    "docs/reference/research.md",
+    "docs/reference/claude-reference.md",
+    "docs/reference/protocols-audit.md",
+    "docs/reference/conventions.md",
     "docs/design/tools.md",
     "docs/design/self-improvement.md",
+    "docs/design/providers.md",
+    "docs/design/observability.md",
     "docs/guides/settings-reference.md",
     "docs/guides/custom-mcp-server-dev.md",
+    "docs/guides/index.md",
 )
 
 _MARKER_RE: Final[re.Pattern[str]] = re.compile(

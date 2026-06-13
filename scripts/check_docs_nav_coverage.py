@@ -13,7 +13,8 @@ one-line reason. Promote a page into the nav rather than expanding this
 list once it becomes user- or contributor-facing.
 
 Exit codes:
-    0 - every page is in nav or allowlisted; the allowlist is clean.
+    0 - every disk page is in nav or allowlisted; every nav entry resolves
+        to a file on disk; the allowlist is clean.
     1 - one or more coverage problems printed to stderr.
 """
 
@@ -51,8 +52,8 @@ class _NavLoader(yaml.SafeLoader):
 
     ``mkdocs.yml`` carries ``!ENV`` and ``!!python/name:`` tags (used by
     the material theme and pymdownx). The nav itself is plain data, so
-    every unknown tag is resolved to ``None`` rather than failing the
-    parse.
+    those two tags resolve to ``None`` instead of failing the parse; any
+    other unknown tag still raises, surfacing genuinely malformed config.
     """
 
 
@@ -84,11 +85,24 @@ def _collect_nav_md(node: object, out: set[str]) -> None:
 
 
 def _nav_paths() -> set[str]:
-    """Return the set of docs-relative ``.md`` paths referenced in the nav."""
+    """Return the set of docs-relative ``.md`` paths referenced in the nav.
+
+    Raises ``RuntimeError`` (not a raw traceback) when ``mkdocs.yml`` is
+    unreadable, malformed YAML, or missing a ``nav`` mapping, so ``main``
+    can print a clean ``error:`` line and exit 1.
+    """
     # _NavLoader subclasses SafeLoader; the custom tags resolve to None, so
     # no arbitrary object construction is possible.
-    text = MKDOCS_FILE.read_text(encoding="utf-8")
-    loaded = yaml.load(text, Loader=_NavLoader)  # noqa: S506
+    try:
+        text = MKDOCS_FILE.read_text(encoding="utf-8")
+    except OSError as exc:
+        msg = f"could not read {MKDOCS_FILE}: {type(exc).__name__}: {exc}"
+        raise RuntimeError(msg) from exc
+    try:
+        loaded = yaml.load(text, Loader=_NavLoader)  # noqa: S506
+    except yaml.YAMLError as exc:
+        msg = f"{MKDOCS_FILE.name} is not valid YAML: {exc}"
+        raise RuntimeError(msg) from exc
     if not isinstance(loaded, dict) or "nav" not in loaded:
         msg = "mkdocs.yml has no 'nav' mapping"
         raise RuntimeError(msg)
@@ -98,14 +112,28 @@ def _nav_paths() -> set[str]:
 
 
 def _disk_paths() -> set[str]:
-    """Return every docs-relative ``.md`` path on disk."""
-    return {path.relative_to(DOCS_DIR).as_posix() for path in DOCS_DIR.rglob("*.md")}
+    """Return every docs-relative ``.md`` path on disk.
+
+    Raises ``RuntimeError`` on a filesystem walk error so ``main`` can
+    report it cleanly rather than crashing with a traceback.
+    """
+    try:
+        return {
+            path.relative_to(DOCS_DIR).as_posix() for path in DOCS_DIR.rglob("*.md")
+        }
+    except OSError as exc:
+        msg = f"could not walk {DOCS_DIR}: {type(exc).__name__}: {exc}"
+        raise RuntimeError(msg) from exc
 
 
 def main() -> int:
     """Check nav coverage; return shell exit code."""
-    nav = _nav_paths()
-    disk = _disk_paths()
+    try:
+        nav = _nav_paths()
+        disk = _disk_paths()
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     allowlisted = set(ALLOWLIST)
 
     problems: list[str] = []

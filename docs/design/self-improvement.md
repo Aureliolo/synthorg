@@ -426,11 +426,7 @@ layer on top: analytics is a stateless view over `SignalsService`
 snapshots (single source of truth, no independent cache), and
 reports owns async job lifecycle + artifact storage.
 
-## Follow-up Issues
+## Open Follow-ups
 
-1. ~~Full API-as-MCP server~~: completed via #1353 (issue #1339; <!--RS:mcp_tools-->241<!--/RS--> tools, <!--RS:mcp_domains-->21<!--/RS--> domains, capability-based scoping)
-2. ~~Product-level improvement~~: completed via #1340 (CODE_MODIFICATION altitude, LLM code gen, CI validation, draft PR creation)
-3. ~~Cross-deployment analytics~~: completed via #1341 (opt-in anonymised telemetry, pattern aggregation, threshold recommendations; see `docs/cross-deployment-privacy.md`)
-4. ~~Chief of Staff advanced capabilities~~: completed via #1342 (outcome learning, proactive alerts, NL chat)
-5. ~~Custom rule authoring UI (visual rule builder)~~: shipped (#1343 / PR #1355)
-6. MCP handler remaining gaps: tracked in #1528 (CRUD writes) and #1529 (observability + memory + coordination), scoped as parallel-safe followups from META-MCP-2.
+- MCP handler remaining gaps: tracked in #1528 (CRUD writes) and #1529
+  (observability + memory + coordination), scoped as parallel-safe follow-ups.

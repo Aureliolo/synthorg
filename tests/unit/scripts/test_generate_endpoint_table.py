@@ -76,8 +76,18 @@ class TestCommonBasePath:
 class TestSectionForTag:
     """Tests for ``_section_for_tag`` (raises on unknown tags)."""
 
-    def test_known_tag_returns_section(self) -> None:
-        assert gen._section_for_tag("agents") == "Organisation and agents"
+    @pytest.mark.parametrize(
+        ("tag", "expected"),
+        [
+            ("auth", "Identity and users"),
+            ("agents", "Organisation and agents"),
+            ("tasks", "Work and coordination"),
+            ("workflows", "Workflows"),
+            ("health", "Operations and platform"),
+        ],
+    )
+    def test_known_tag_returns_section(self, tag: str, expected: str) -> None:
+        assert gen._section_for_tag(tag) == expected
 
     def test_unknown_tag_raises(self) -> None:
         # An unmapped tag is a documentation bug, not a recoverable
@@ -110,7 +120,7 @@ class TestBuildTable:
         }
         rendered = gen._build_table(schema)
         assert "### Identity and users" in rendered
-        assert "### Organisation and agents" in rendered
+        assert rendered.count("### Organisation and agents") == 1
         assert "### Operations and platform" in rendered
         assert "| Auth | `/auth/login` | Auth endpoint. |" in rendered
         assert "Agents" in rendered

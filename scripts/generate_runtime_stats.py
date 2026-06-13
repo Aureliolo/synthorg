@@ -10,7 +10,7 @@ Sources (best-effort; failures keep the previously-stored value):
 * ``convention_gates``      -- ``glob scripts/check_*.py``
 * ``mcp_tools``             -- tool builders in ``meta/mcp/domains/*.py``
 * ``mcp_domains``           -- non-underscore modules in ``meta/mcp/domains/``
-* ``settings_namespaces``   -- ``SettingNamespace`` members in ``settings/enums.py``
+* ``settings_namespaces``   -- ``SettingNamespace`` members in ``src/synthorg/settings/enums.py``
 
 Run before ``zensical build``::
 
@@ -69,7 +69,7 @@ _SOURCES: Final[dict[str, str]] = {
     "convention_gates": "glob scripts/check_*.py",
     "mcp_tools": "tool builders in src/synthorg/meta/mcp/domains/*.py",
     "mcp_domains": "non-underscore modules in src/synthorg/meta/mcp/domains/",
-    "settings_namespaces": "SettingNamespace members in settings/enums.py",
+    "settings_namespaces": "SettingNamespace members in src/synthorg/settings/enums.py",
 }
 
 
@@ -289,32 +289,60 @@ _SETTING_NAMESPACE_ENUM: Final[str] = "SettingNamespace"
 def _fetch_mcp_tools() -> StatEntry:
     """Count MCP tool definitions via builder call-sites in ``domains/*.py``.
 
-    Counts ``read_tool`` / ``write_tool`` / ``admin_tool`` / ``tool_def``
-    invocations across the domain modules: each call site builds exactly
-    one ``MCPToolDef``. A source scan avoids importing the service-heavy
-    handler graph just to size the surface.
+    Counts ``read_tool`` / ``write_tool`` / ``admin_tool`` invocations
+    across the domain modules: each call site builds exactly one
+    ``MCPToolDef``. The regex also matches ``tool_def`` (the low-level
+    builder the three helpers delegate to), but the domain modules call
+    it only through those helpers. A source scan avoids importing the
+    service-heavy handler graph just to size the surface.
+
+    The three failure paths (directory absent, no ``.py`` files, files
+    present but zero call-sites) raise distinct ``_StatFetchError``
+    reasons; the caller preserves the prior YAML value in every case
+    rather than publishing a transient ``0``.
     """
     name = "mcp_tools"
     source = _SOURCES[name]
     if not _MCP_DOMAINS_DIR.is_dir():
         raise _StatFetchError(name, source, f"{_MCP_DOMAINS_DIR} not found")
+    py_files = list(_MCP_DOMAINS_DIR.glob("*.py"))
+    if not py_files:
+        raise _StatFetchError(name, source, "no .py files under domains/")
     count = 0
-    for path in _MCP_DOMAINS_DIR.glob("*.py"):
-        count += len(_MCP_TOOL_BUILDER_RE.findall(path.read_text(encoding="utf-8")))
+    for path in py_files:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise _StatFetchError(
+                name, source, f"could not read {path.name}: {exc}"
+            ) from exc
+        count += len(_MCP_TOOL_BUILDER_RE.findall(text))
     if count == 0:
-        raise _StatFetchError(name, source, "no tool builder call-sites found")
+        raise _StatFetchError(
+            name, source, "domain files present but no tool builder call-sites matched"
+        )
     return {"raw": count, "display": str(count)}
 
 
 def _fetch_mcp_domains() -> StatEntry:
-    """Count MCP domain modules (non-underscore ``domains/*.py`` files)."""
+    """Count MCP domain modules (non-underscore ``domains/*.py`` files).
+
+    Distinguishes a missing directory from a present-but-empty one so a
+    broken path and a refactor that removes every domain module surface
+    as different warnings; the caller preserves the prior value in both.
+    """
     name = "mcp_domains"
     source = _SOURCES[name]
     if not _MCP_DOMAINS_DIR.is_dir():
         raise _StatFetchError(name, source, f"{_MCP_DOMAINS_DIR} not found")
-    count = sum(1 for p in _MCP_DOMAINS_DIR.glob("*.py") if not p.name.startswith("_"))
+    py_files = list(_MCP_DOMAINS_DIR.glob("*.py"))
+    if not py_files:
+        raise _StatFetchError(name, source, "no .py files under domains/")
+    count = sum(1 for p in py_files if not p.name.startswith("_"))
     if count == 0:
-        raise _StatFetchError(name, source, "no domain modules found")
+        raise _StatFetchError(
+            name, source, "domain files present but all are underscore-prefixed"
+        )
     return {"raw": count, "display": str(count)}
 
 

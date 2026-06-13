@@ -379,7 +379,7 @@ would under `SystemClock`).
 `loop_prevention/{circuit_breaker,dedup,rate_limit}.py` and
 `communication/meeting/scheduler.py` deliberately stay on the older
 `clock: Callable[[], float] = time.monotonic` shape. The migration
-churn there (~30 test sites passing callables) outweighs the
+churn there (~30 test sites passing callables) outweighs the <!-- lint-allow: doc-numeric-macros -- clock-migration test-site count, not a build-time stat -->
 testability win. New code uses the `Clock` Protocol; do not add new
 modules to the legacy-callable list without justification.
 
@@ -524,7 +524,7 @@ Success paths emit `logger.info(MCP_HANDLER_INVOKE_SUCCESS,
 tool_name=...)`. Do NOT emit custom `logger.error()` /
 `logger.warning()` calls from handlers -- these three helpers are
 the single source of truth so an event-name change touches one
-file, not 200+ handler methods.
+file, not <!--RS:mcp_tools-->241<!--/RS--> handler methods.
 
 ## 16. Repository file structure
 
