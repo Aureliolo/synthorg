@@ -45,16 +45,22 @@ def _suppress_typeguard_for_fake_task_queue() -> Iterator[None]:
 
 
 _HARD_CAP_SECONDS: Final[float] = 5.0
-_POLL_SECONDS: Final[float] = 0.01
 
 
 def _claim(task_id: str = "task-x") -> TaskClaim:
     return TaskClaim(task_id=task_id, new_status="assigned")
 
 
-def _fail_handler(outcome: DeadLetterOutcome, *, calls: list[str]) -> TaskFailHandler:
+def _fail_handler(
+    outcome: DeadLetterOutcome,
+    *,
+    calls: list[str],
+    done: asyncio.Event | None = None,
+) -> TaskFailHandler:
     async def _fail(task_id: str, reason: str) -> DeadLetterOutcome:
         calls.append(task_id)
+        if done is not None:
+            done.set()
         return outcome
 
     return _fail
@@ -194,18 +200,20 @@ async def test_start_stop_lifecycle_processes_via_loop() -> None:
     """The background loop drains the dead subject and is restart-safe."""
     queue = FakeJetStreamTaskQueue()
     calls: list[str] = []
+    processed = asyncio.Event()
     consumer = _consumer(
-        queue, _fail_handler(DeadLetterOutcome.TRANSITIONED, calls=calls)
+        queue,
+        _fail_handler(DeadLetterOutcome.TRANSITIONED, calls=calls, done=processed),
     )
     await consumer.start()
     with pytest.raises(RuntimeError, match="already running"):
         await consumer.start()
     queue.deliver_dead(_claim("looped"))
 
-    # Bounded poll: asyncio.timeout is the hard cap; no Event to await.
-    async with asyncio.timeout(_HARD_CAP_SECONDS):
-        while not calls:  # noqa: ASYNC110
-            await asyncio.sleep(_POLL_SECONDS)
+    # The background loop sets ``processed`` the instant it invokes the fail
+    # handler -- an exact handshake, not a timing budget. The cap converts a
+    # genuine hang (loop never drains the dead subject) into a fast failure.
+    await asyncio.wait_for(processed.wait(), _HARD_CAP_SECONDS)
     await consumer.stop()
     await consumer.stop()  # idempotent
 

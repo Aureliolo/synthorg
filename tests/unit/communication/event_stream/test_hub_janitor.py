@@ -9,6 +9,7 @@ never observes the post-sleep wakeup before the assertions read
 import asyncio
 import contextlib
 from datetime import UTC, datetime
+from typing import Final
 from uuid import uuid4
 
 import pytest
@@ -154,9 +155,14 @@ async def test_stop_timeout_marks_unrestartable(
     """
     hub = EventStreamHub(clock=FakeClock())
 
+    # Deliberately long: the loop is cancelled immediately after creation, so
+    # the value only has to outlast the test. The cancellation-timeout path,
+    # not the sleep, is what is under test here.
+    benign_loop_seconds: Final[float] = 3600.0
+
     async def _benign_loop() -> None:
         try:
-            await asyncio.sleep(3600)
+            await asyncio.sleep(benign_loop_seconds)
         except asyncio.CancelledError:
             return
 

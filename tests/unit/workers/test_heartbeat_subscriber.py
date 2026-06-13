@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.unit
 
 _HARD_CAP_SECONDS: Final[float] = 5.0
-_POLL_SECONDS: Final[float] = 0.01
 
 
 def _beat(worker_id: str, clock: FakeClock, claims_done: int = 0) -> bytes:
@@ -105,16 +104,28 @@ async def test_start_stop_lifecycle_and_delivery() -> None:
     clock = FakeClock()
     sub = _subscriber(queue, clock)
 
+    # Spy on the subscriber's message handler so the test waits on the exact
+    # moment a beat is recorded into _last_seen, not a polling budget. Patched
+    # before start() so the background loop's per-message lookup sees it.
+    processed = asyncio.Event()
+    real_on_message = sub._on_message
+
+    async def _record_then_signal(msg: object) -> None:
+        await real_on_message(cast("Msg", msg))
+        processed.set()
+
+    sub._on_message = _record_then_signal  # type: ignore[method-assign]
+
     await sub.start()
     with pytest.raises(RuntimeError, match="already running"):
         await sub.start()
     assert queue.subscribed_subject == "synthorg.workers.heartbeat.>"
 
     await queue.deliver_heartbeat(_beat("w-live", clock))
-    # Bounded poll: asyncio.timeout is the hard cap; no Event to await.
-    async with asyncio.timeout(_HARD_CAP_SECONDS):
-        while "w-live" not in sub._last_seen:  # noqa: ASYNC110
-            await asyncio.sleep(_POLL_SECONDS)
+    # The handshake fires when the loop records the beat; the cap turns a
+    # genuine never-delivered hang into a fast failure.
+    await asyncio.wait_for(processed.wait(), _HARD_CAP_SECONDS)
+    assert "w-live" in sub._last_seen
 
     await sub.stop()
     await sub.stop()  # idempotent

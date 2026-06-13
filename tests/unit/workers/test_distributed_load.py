@@ -48,18 +48,6 @@ terminal state; the cap converts that hang into a fast, legible
 failure instead of a suite timeout. Never raise this to paper over a
 slow path."""
 
-_POLL_SECONDS: Final[float] = 0.01
-"""Re-check interval while waiting on an invariant to settle."""
-
-
-async def _wait_until(predicate: Callable[[], bool]) -> None:
-    """Poll *predicate* until true or the hard cap elapses."""
-    # Bounded poll on external state (queue counters): there is no Event
-    # to await; asyncio.timeout above is the load-bearing hard cap.
-    async with asyncio.timeout(_HARD_CAP_SECONDS):
-        while not predicate():  # noqa: ASYNC110
-            await asyncio.sleep(_POLL_SECONDS)
-
 
 def _claim(task_id: str) -> TaskClaim:
     return TaskClaim(task_id=task_id, new_status="assigned")
@@ -68,12 +56,17 @@ def _claim(task_id: str) -> TaskClaim:
 async def _run_workers_until(
     *,
     workers: list[Worker],
+    queue: FakeJetStreamTaskQueue,
     predicate: Callable[[], bool],
 ) -> None:
-    """Run *workers* concurrently, stop them once *predicate* holds."""
+    """Run *workers* concurrently, stop them once *predicate* holds.
+
+    Waits on the queue's state-change handshake (``wait_for``) rather than a
+    polling interval; ``_HARD_CAP_SECONDS`` is the load-bearing cap.
+    """
     async with asyncio.TaskGroup() as tg:
         tasks = [tg.create_task(w.run()) for w in workers]
-        await _wait_until(predicate)
+        await queue.wait_for(predicate, _HARD_CAP_SECONDS)
         for w in workers:
             await w.stop()
         for t in tasks:
@@ -110,6 +103,7 @@ async def test_no_loss_no_duplication_under_concurrent_workers() -> None:
             await queue.publish_claim(_claim(f"task-{i}"))
         await _run_workers_until(
             workers=workers,
+            queue=queue,
             predicate=lambda: len(queue.acked) >= claim_count,
         )
 
@@ -146,6 +140,7 @@ async def test_redelivery_after_completion_is_deduped() -> None:
         await queue.publish_claim(claim)
         await _run_workers_until(
             workers=[worker],
+            queue=queue,
             predicate=lambda: len(queue.acked) >= 1,
         )
         # Same idempotency key redelivered (lost ack / crash-before-ack).
@@ -159,6 +154,7 @@ async def test_redelivery_after_completion_is_deduped() -> None:
         )
         await _run_workers_until(
             workers=[worker2],
+            queue=queue,
             predicate=lambda: len(queue.acked) >= 2,
         )
 
@@ -193,9 +189,9 @@ async def test_worker_extends_ack_during_long_execution() -> None:
     await queue.publish_claim(_claim("task-slow"))
     async with asyncio.TaskGroup() as tg:
         run_task = tg.create_task(worker.run())
-        await _wait_until(lambda: queue.in_progress_total >= 2)
+        await queue.wait_for(lambda: queue.in_progress_total >= 2, _HARD_CAP_SECONDS)
         release.set()
-        await _wait_until(lambda: len(queue.acked) == 1)
+        await queue.wait_for(lambda: len(queue.acked) == 1, _HARD_CAP_SECONDS)
         await worker.stop()
         await run_task
 
@@ -228,6 +224,7 @@ async def test_max_deliver_exceeded_routes_to_dead_subject() -> None:
     await queue.publish_claim(_claim("task-dead"))
     await _run_workers_until(
         workers=[worker],
+        queue=queue,
         predicate=lambda: len(queue.dead_letters) >= 1,
     )
 
@@ -255,9 +252,9 @@ async def test_worker_emits_heartbeat_on_interval() -> None:
     await queue.publish_claim(_claim("task-hb"))
     async with asyncio.TaskGroup() as tg:
         run_task = tg.create_task(worker.run())
-        await _wait_until(lambda: len(queue.core_published) >= 2)
+        await queue.wait_for(lambda: len(queue.core_published) >= 2, _HARD_CAP_SECONDS)
         release.set()
-        await _wait_until(lambda: len(queue.acked) == 1)
+        await queue.wait_for(lambda: len(queue.acked) == 1, _HARD_CAP_SECONDS)
         await worker.stop()
         await run_task
 

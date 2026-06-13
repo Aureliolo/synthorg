@@ -43,7 +43,6 @@ hang into a fast, legible failure rather than a suite timeout. Held
 below the per-module 120s test timeout so a tripped cap fails with a
 clear assertion instead of racing the suite-level timeout."""
 
-_POLL_SECONDS: Final[float] = 0.05
 _ACK_WAIT_SECONDS: Final[int] = 2
 _MAX_DELIVER: Final[int] = 2
 _HEARTBEAT_SECONDS: Final[int] = 1
@@ -114,10 +113,19 @@ async def task_queue(nats_url: str) -> AsyncIterator[JetStreamTaskQueue]:
             await queue.stop()
 
 
-async def _wait_until(predicate: Callable[[], bool]) -> None:
+async def _wait_until(
+    changed: asyncio.Condition,
+    predicate: Callable[[], bool],
+) -> None:
+    """Await *predicate* on the *changed* handshake, bounded by the hard cap.
+
+    Each executor / fail-handler notifies *changed* after recording its
+    progress, so the wait yields exactly when the awaited state appears rather
+    than on a polling interval; ``_HARD_CAP_SECONDS`` is the load-bearing cap.
+    """
     async with asyncio.timeout(_HARD_CAP_SECONDS):
-        while not predicate():  # noqa: ASYNC110 -- bounded poll; timeout is the cap
-            await asyncio.sleep(_POLL_SECONDS)
+        async with changed:
+            await changed.wait_for(predicate)
 
 
 async def test_synthetic_load_no_loss_no_duplication(
@@ -128,10 +136,13 @@ async def test_synthetic_load_no_loss_no_duplication(
     claim_count: Final[int] = 30
     executed: list[str] = []
     lock = asyncio.Lock()
+    changed = asyncio.Condition()
 
     async def executor(claim: TaskClaim) -> TaskClaimStatus:
         async with lock:
             executed.append(str(claim.task_id))
+        async with changed:
+            changed.notify_all()
         return TaskClaimStatus.SUCCESS
 
     async with make_sqlite_seen_claims() as repo:
@@ -149,7 +160,7 @@ async def test_synthetic_load_no_loss_no_duplication(
             ),
         )
         try:
-            await _wait_until(lambda: len(executed) >= claim_count)
+            await _wait_until(changed, lambda: len(executed) >= claim_count)
         finally:
             pool.cancel()
             with pytest.raises(asyncio.CancelledError):
@@ -172,13 +183,17 @@ async def test_long_execution_extends_ack_no_duplicate(
     """
     runs: list[str] = []
     duplicate_run = asyncio.Event()
+    changed = asyncio.Condition()
 
     async def slow_executor(claim: TaskClaim) -> TaskClaimStatus:
         task_id = str(claim.task_id)
         runs.append(task_id)
         if runs.count(task_id) > 1:
             duplicate_run.set()
-        # ~2x ack_wait: redelivery would fire here without extension.
+        async with changed:
+            changed.notify_all()
+        # Deliberate ~2x ack_wait latency (not a poll): without the worker's
+        # in_progress ack-extension, real JetStream would redeliver here.
         await asyncio.sleep(_ACK_WAIT_SECONDS * 2 + 1)
         return TaskClaimStatus.SUCCESS
 
@@ -196,7 +211,7 @@ async def test_long_execution_extends_ack_no_duplicate(
             ),
         )
         try:
-            await _wait_until(lambda: runs.count("slow-task") >= 1)
+            await _wait_until(changed, lambda: runs.count("slow-task") >= 1)
             # A redelivery would set duplicate_run; its absence within
             # multiple ack windows proves the working-ack held without
             # a fixed long sleep.
@@ -216,9 +231,12 @@ async def test_max_deliver_dead_letters_to_failed_no_loss(
 ) -> None:
     """A claim that always RETRYs ends FAILED via the DLQ, never lost."""
     failed: list[str] = []
+    changed = asyncio.Condition()
 
     async def fail_handler(task_id: str, reason: str) -> DeadLetterOutcome:
         failed.append(task_id)
+        async with changed:
+            changed.notify_all()
         return DeadLetterOutcome.TRANSITIONED
 
     async def always_retry(claim: TaskClaim) -> TaskClaimStatus:
@@ -245,7 +263,7 @@ async def test_max_deliver_dead_letters_to_failed_no_loss(
             ),
         )
         try:
-            await _wait_until(lambda: failed.count("doomed-task") >= 1)
+            await _wait_until(changed, lambda: failed.count("doomed-task") >= 1)
         finally:
             pool.cancel()
             with pytest.raises(asyncio.CancelledError):

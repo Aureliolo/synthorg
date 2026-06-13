@@ -19,7 +19,6 @@ from tests._shared.persistence import make_sqlite_seen_claims
 pytestmark = pytest.mark.unit
 
 _HARD_CAP_SECONDS: Final[float] = 5.0
-_POLL_SECONDS: Final[float] = 0.01
 _BASE: Final[datetime] = datetime(2026, 1, 1, tzinfo=UTC)
 
 
@@ -64,16 +63,28 @@ async def test_loop_prunes_then_stops_cleanly() -> None:
             interval_seconds=30.0,
             clock=FakeClock(start=_BASE + timedelta(seconds=100)),
         )
+        # Spy on the prune cycle so the test waits on the exact instant a sweep
+        # runs, not a polling budget. Patched before start() so the loop's
+        # per-cycle lookup sees it. The fake clock is already past the 1s TTL,
+        # so the first sweep removes the doomed claim.
+        swept = asyncio.Event()
+        real_prune_once = pruner._prune_once
+
+        async def _prune_then_signal() -> int:
+            removed = await real_prune_once()
+            swept.set()
+            return removed
+
+        pruner._prune_once = _prune_then_signal  # type: ignore[method-assign]
+
         await pruner.start()
         with pytest.raises(RuntimeError, match="already running"):
             await pruner.start()
 
-        # Bounded poll: asyncio.timeout is the hard cap; no Event to await.
-        async with asyncio.timeout(_HARD_CAP_SECONDS):
-            while await repo.is_completed(  # noqa: ASYNC110
-                idempotency_key=NotBlankStr("doomed"),
-            ):
-                await asyncio.sleep(_POLL_SECONDS)
+        # The handshake fires when the sweep completes; the cap turns a sweep
+        # that never runs into a fast failure instead of a suite timeout.
+        await asyncio.wait_for(swept.wait(), _HARD_CAP_SECONDS)
+        assert not await repo.is_completed(idempotency_key=NotBlankStr("doomed"))
 
         await pruner.stop()
         await pruner.stop()  # idempotent
