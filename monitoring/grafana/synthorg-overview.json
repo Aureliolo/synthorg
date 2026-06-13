@@ -62,7 +62,7 @@
     {
       "type": "gauge",
       "id": 3,
-      "title": "Budget utilization",
+      "title": "Budget utilisation",
       "description": "Accumulated cost as % of monthly budget. Alert over 80%.",
       "targets": [
         {
@@ -379,7 +379,7 @@
         {
           "type": "gauge",
           "id": 503,
-          "title": "Daily budget utilization",
+          "title": "Daily budget utilisation",
           "description": "synthorg_budget_daily_used_percent (prorated daily share of the monthly cap).",
           "targets": [
             {
@@ -410,7 +410,7 @@
         {
           "type": "timeseries",
           "id": 504,
-          "title": "Per-agent budget utilization %",
+          "title": "Per-agent budget utilisation %",
           "description": "synthorg_agent_budget_used_percent over time, per agent ($agent_id).",
           "targets": [
             {

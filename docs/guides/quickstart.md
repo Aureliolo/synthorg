@@ -150,8 +150,9 @@ Once the wizard completes, the dashboard loads and you will see:
 
 With a configured provider the agent runtime picks the task up and executes it
 (LLM + sandboxed tools under the safety spine), exercised today by deterministic
-e2e harnesses with a scripted provider. Without a real provider an empty company
-cleanly rejects task submission. See the
+e2e harnesses with a scripted provider. If you skip provider configuration the
+setup wizard blocks completion, and the task board rejects submissions until a
+runtime is configured. See the
 [Roadmap](../roadmap/index.md) for current status.
 
 ---

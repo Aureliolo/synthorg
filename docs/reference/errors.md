@@ -19,7 +19,7 @@ This page is the developer-oriented reference for the problem-type URIs and the 
 
 | Category | `type` URI | Code range |
 |----------|------------|------------|
-| Authentication / authorization | `https://synthorg.io/docs/errors#auth` | 1000-1999 |
+| Authentication / authorisation | `https://synthorg.io/docs/errors#auth` | 1000-1999 |
 | Request validation | `https://synthorg.io/docs/errors#validation` | 2000-2999 |
 | Resource not found | `https://synthorg.io/docs/errors#not_found` | 3000-3999 |
 | Conflict / duplicate | `https://synthorg.io/docs/errors#conflict` | 4000-4999 |
