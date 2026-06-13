@@ -10,9 +10,65 @@ Goals:
   a labelled example set so prompt regressions do not pass silently.
 """
 
+import ast
 import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
+
+
+def _is_completion_config(func: ast.expr) -> bool:
+    """Whether *func* names the ``CompletionConfig`` constructor."""
+    if isinstance(func, ast.Name):
+        return func.id == "CompletionConfig"
+    if isinstance(func, ast.Attribute):
+        return func.attr == "CompletionConfig"
+    return False
+
+
+def _completion_temperature_values(source: str) -> list[ast.expr]:
+    """Every ``temperature=`` value node passed to a ``CompletionConfig(...)``.
+
+    Used by the prompt-eval suites to assert the temperature contract via an
+    AST walk (resilient to formatting, immune to docstring mentions) rather
+    than substring matching.
+    """
+    tree = ast.parse(source)
+    values: list[ast.expr] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and _is_completion_config(node.func):
+            values.extend(kw.value for kw in node.keywords if kw.arg == "temperature")
+    return values
+
+
+def completion_temperature_is_literal(source: str, expected: float) -> bool:
+    """True if a ``CompletionConfig`` in *source* pins ``temperature=expected``.
+
+    Rejects ``bool`` constants explicitly: ``isinstance(True, int)`` is True in
+    Python, so ``temperature=False`` would otherwise satisfy ``== 0``.
+    """
+    for value in _completion_temperature_values(source):
+        if not isinstance(value, ast.Constant):
+            continue
+        literal = value.value
+        if isinstance(literal, bool):
+            continue
+        if isinstance(literal, int | float) and literal == expected:
+            return True
+    return False
+
+
+def completion_temperature_is_config_sourced(source: str) -> bool:
+    """True if every ``CompletionConfig`` temperature is drawn from an attribute.
+
+    Confirms the surface sources its temperature from a config object
+    (``self._config.temperature``) rather than a hardcoded literal, so a model
+    / config change flows through. Fails when no ``CompletionConfig`` call is
+    found (a miswired test) or when any temperature is a bare literal.
+    """
+    values = _completion_temperature_values(source)
+    if not values:
+        return False
+    return all(isinstance(value, ast.Attribute) for value in values)
 
 
 @dataclass(frozen=True)

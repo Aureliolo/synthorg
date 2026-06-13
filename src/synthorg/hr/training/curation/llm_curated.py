@@ -43,6 +43,14 @@ from synthorg.providers.protocol import CompletionProvider
 logger = get_logger(__name__)
 _DEFAULT_TEMPERATURE: Final[float] = 0.3
 _DEFAULT_TOP_K: Final[int] = 50
+_MAX_TOKENS: Final[int] = 1024
+"""Output ceiling for the curation selection response.
+
+Pinned explicitly so the curated selector does not inherit a
+provider-default ``max_tokens`` that varies across backends; the
+selection payload (ranked indices + brief rationale) fits well within
+this bound.
+"""
 
 
 class LLMCurated:
@@ -158,6 +166,7 @@ class LLMCurated:
                     model=self._model,
                     config=CompletionConfig(
                         temperature=self._temperature,
+                        max_tokens=_MAX_TOKENS,
                     ),
                 )
         except ProviderError as exc:

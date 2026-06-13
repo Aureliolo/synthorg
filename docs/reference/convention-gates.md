@@ -24,6 +24,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_backend_regional_defaults.py` | PostToolUse | backend region/currency edits | n/a | n/a | none | harden |
 | `check_baseline_growth.py` | commit+push | `scripts/*_baseline.{txt,json}` | staged | yes | guards baselines | keep |
 | `check_boundary_typed.py` | push | `src/synthorg/` | full | no | none | keep |
+| `check_completion_config_temperature.py` | commit+push | `src/synthorg/` | full | no | none | keep |
 | `check_convention_gate_inventory.py` | push | canonical docs + `convention_gate_map.yaml` | full | no | none | keep (meta-gate) |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_dead_api_endpoints.py` | push | `api/` + `web/src/` | full | no | `dead_api_endpoints_baseline.txt` | keep |

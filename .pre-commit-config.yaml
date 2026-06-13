@@ -48,7 +48,7 @@ ci:
   # local-only pre-push hook surface) so pre-commit.ci does not pick
   # them up; their CI counterpart is the ``Lint`` job in ``ci.yml``
   # which runs the same scripts on every PR.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, lint-imports, architecture-drift, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, feature-manifest, no-implicit-state-attribute, feature-index-freshness, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, completion-config-temperature, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, lint-imports, architecture-drift, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, feature-manifest, no-implicit-state-attribute, feature-index-freshness, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -281,6 +281,13 @@ repos:
         name: block logger.exception(...) calls and error=str(exc) sites
         entry: uv
         args: [run, python, scripts/check_logger_exception_str_exc.py]
+        language: system
+        files: ^src/synthorg/.*\.py$
+
+      - id: completion-config-temperature
+        name: CompletionConfig must pin an explicit temperature
+        entry: uv
+        args: [run, python, scripts/check_completion_config_temperature.py]
         language: system
         files: ^src/synthorg/.*\.py$
 
