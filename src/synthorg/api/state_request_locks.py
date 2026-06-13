@@ -187,12 +187,11 @@ class RequestLockRegistry:
             if lock is None:
                 return
             if lock.locked() or self._refs.get(request_id, 0) > 0:
-                # Caller violated the documented contract -- they're
-                # still holding the lock when asking us to evict it.
-                # Surface as DEBUG so the next reader of the logs can
-                # find the caller bug; not WARN because the no-op is
-                # safe (the registry just keeps the entry).
-                logger.debug(
+                # Caller violated the documented contract -- they're still
+                # holding the lock when asking us to evict it. The no-op is
+                # safe (the registry keeps the entry), but the violation is a
+                # caller bug, so surface it at WARNING for operator visibility.
+                logger.warning(
                     REQUEST_LOCK_RELEASE_SKIPPED_WHILE_HELD,
                     request_id=request_id,
                 )

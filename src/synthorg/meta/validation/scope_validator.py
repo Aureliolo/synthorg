@@ -9,9 +9,6 @@ from fnmatch import fnmatch
 from pathlib import PurePosixPath
 
 from synthorg.meta.models import CodeChange
-from synthorg.observability import get_logger
-
-logger = get_logger(__name__)
 
 
 class ScopeValidator:
