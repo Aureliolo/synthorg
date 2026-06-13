@@ -121,6 +121,11 @@ def check_budget(
         # (``_handle_budget_error`` parks a ceiling crossing for operator
         # resume rather than failing the task). Swallowing it here as a
         # generic ERROR would make the entire PARKED path unreachable.
+        logger.debug(
+            EXECUTION_LOOP_BUDGET_EXHAUSTED,
+            execution_id=ctx.execution_id,
+            turn=ctx.turn_count,
+        )
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
@@ -284,8 +289,10 @@ async def invoke_compaction(
 ) -> AgentContext | None:
     """Invoke compaction callback if configured.
 
-    Errors are logged but never propagated -- compaction must
-    not interrupt execution.
+    Errors are logged but never propagated -- compaction must not
+    interrupt execution. This includes provider failures such as
+    ``RetryExhaustedError`` from the compaction LLM call: compaction is
+    best-effort, so the loop continues uncompacted rather than failing.
 
     Args:
         ctx: Current agent context.

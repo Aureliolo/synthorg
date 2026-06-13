@@ -5,6 +5,7 @@ import asyncio
 from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.coordination_collector import CollectionInputs
+from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
@@ -554,8 +555,14 @@ class AgentEnginePostExecMixin:
         elif not loop_task.cancelled():
             # Settled with a non-cancellation failure: retrieve it so it is not
             # surfaced as an unretrieved task exception. (A cancelled task's
-            # ``exception()`` would itself raise, hence the guard.)
-            _ = loop_task.exception()
+            # ``exception()`` would itself raise, hence the guard.) A
+            # budget-ceiling crossing that settled inside the grace window is
+            # park-able and must reach the engine's budget handler -- as it
+            # would on the normal completion path (``loop_task.result()``) --
+            # rather than being masked as a wall-clock timeout ERROR.
+            settled_exc = loop_task.exception()
+            if isinstance(settled_exc, BudgetExhaustedError):
+                raise settled_exc
         return ExecutionResult(
             context=ctx,
             termination_reason=TerminationReason.ERROR,
