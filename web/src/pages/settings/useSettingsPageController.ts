@@ -17,6 +17,7 @@ import {
   computeChangedKeys,
   countRestartRequired,
   filterByNamespace,
+  isRedactedSensitiveValue,
   snapshotEntries,
 } from './settings-page-helpers'
 
@@ -192,15 +193,23 @@ interface CodeSaveDeps {
 
 /** Persist a batch of code-editor changes, prune saved drafts, surface restarts. */
 async function runCodeSave(changes: Map<string, string>, deps: CodeSaveDeps): Promise<Set<string>> {
-  const failedKeys = await saveSettingsBatch(changes, deps.updateSetting)
+  // Defensive guard: never persist the redaction placeholder for a
+  // sensitive value back to the backend (it would overwrite the real
+  // secret). An untouched placeholder normally never reaches here -- the
+  // redacted entries drive both serialisation and diff -- but drop it
+  // explicitly so a YAML re-dump quirk cannot leak the placeholder.
+  const sanitized = new Map(
+    [...changes].filter(([, value]) => !isRedactedSensitiveValue(value)),
+  )
+  const failedKeys = await saveSettingsBatch(sanitized, deps.updateSetting)
   deps.setDirtyValues((prev) => {
     const next = new Map(prev)
-    for (const key of changes.keys()) {
+    for (const key of sanitized.keys()) {
       if (!failedKeys.has(key)) next.delete(key)
     }
     return next
   })
-  const restartCount = countRestartRequired(changes.keys(), deps.entries, failedKeys)
+  const restartCount = countRestartRequired(sanitized.keys(), deps.entries, failedKeys)
   if (restartCount > 0) deps.setRestartBannerCount(restartCount)
   return failedKeys
 }

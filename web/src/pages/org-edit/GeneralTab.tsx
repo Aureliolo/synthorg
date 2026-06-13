@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, Settings } from 'lucide-react'
 import type { AutonomyLevel } from '@/api/types/enums'
 import type { CompanyConfig, UpdateCompanyRequest } from '@/api/types/org'
@@ -7,6 +7,34 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
+import { getNamespaceSettings } from '@/api/endpoints/settings'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
+import { getErrorMessage } from '@/utils/errors'
+import { CompanyProfileSection } from './CompanyProfileSection'
+
+const log = createLogger('GeneralTab')
+
+/** Resolve the configured display currency code (``budget/currency``). */
+function useBudgetCurrency(): string {
+  const [currency, setCurrency] = useState<string>(DEFAULT_CURRENCY)
+  useEffect(() => {
+    void Promise.resolve().then(() =>
+      getNamespaceSettings('budget')
+        .then((entries) => {
+          const value = entries.find((e) => e.definition.key === 'currency')?.value
+          if (value != null && value.trim() !== '') setCurrency(value)
+        })
+        .catch((err: unknown) => {
+          log.error('load budget currency failed', {
+            error: sanitizeForLog(getErrorMessage(err)),
+          })
+        }),
+    )
+  }, [])
+  return currency
+}
 
 export interface GeneralTabProps {
   config: CompanyConfig | null
@@ -78,10 +106,18 @@ interface CompanySettingsFieldsProps {
   updateForm: UpdateFormFn
   saving: boolean
   dirty: boolean
+  currencyCode: string
   onSave: () => void
 }
 
-function CompanySettingsFields({ form, updateForm, saving, dirty, onSave }: CompanySettingsFieldsProps) {
+function CompanySettingsFields({
+  form,
+  updateForm,
+  saving,
+  dirty,
+  currencyCode,
+  onSave,
+}: CompanySettingsFieldsProps) {
   return (
     <div className="space-y-5 max-w-xl">
       <InputField
@@ -101,7 +137,7 @@ function CompanySettingsFields({ form, updateForm, saving, dirty, onSave }: Comp
       />
 
       <InputField
-        label="Monthly Budget (EUR)"
+        label={`Monthly Budget (${currencyCode})`}
         type="number"
         value={String(form.budget_monthly)}
         onChange={(e) => {
@@ -140,6 +176,7 @@ function CompanySettingsFields({ form, updateForm, saving, dirty, onSave }: Comp
 }
 
 export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
+  const currencyCode = useBudgetCurrency()
   const [form, setForm] = useState<FormState>({
     company_name: '',
     autonomy_level: 'semi',
@@ -188,14 +225,18 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
   }
 
   return (
-    <SectionCard title="Company Settings" icon={Settings}>
-      <CompanySettingsFields
-        form={form}
-        updateForm={updateForm}
-        saving={saving}
-        dirty={dirty}
-        onSave={handleSave}
-      />
-    </SectionCard>
+    <div className="space-y-section-gap">
+      <SectionCard title="Company Settings" icon={Settings}>
+        <CompanySettingsFields
+          form={form}
+          updateForm={updateForm}
+          saving={saving}
+          dirty={dirty}
+          currencyCode={currencyCode}
+          onSave={handleSave}
+        />
+      </SectionCard>
+      <CompanyProfileSection />
+    </div>
   )
 }

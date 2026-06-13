@@ -221,6 +221,26 @@ const HIDDEN_SETTING_KEYS = [
 export const HIDDEN_SETTINGS: ReadonlySet<string> = new Set(HIDDEN_SETTING_KEYS)
 
 /**
+ * Settings hidden from the YAML code editor. Narrower than
+ * {@link HIDDEN_SETTINGS}: the complex observability sink settings are
+ * hidden from the GUI form (they have a dedicated sinks UI) but ARE
+ * editable as raw YAML in the code editor, so only the truly
+ * system-managed flag stays out of both surfaces.
+ */
+const CODE_EDITOR_HIDDEN_SETTING_KEYS = ['api/setup_complete'] as const
+export const CODE_EDITOR_HIDDEN_SETTINGS: ReadonlySet<string> = new Set(
+  CODE_EDITOR_HIDDEN_SETTING_KEYS,
+)
+
+/**
+ * Placeholder substituted for ``sensitive`` setting values in the code
+ * editor so secrets never render in the YAML buffer. Saving this exact
+ * value back is rejected (treated as "unchanged") so the real secret is
+ * never overwritten with the placeholder.
+ */
+export const SENSITIVE_VALUE_PLACEHOLDER = '••••••••'
+
+/**
  * Settings that carry elevated security risk when misconfigured.
  * The GUI shows an additional warning for these keys.
  */

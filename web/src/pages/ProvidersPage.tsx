@@ -20,6 +20,7 @@ import { ProviderGridView } from './providers/ProviderGridView'
 import { ProviderFilters } from './providers/ProviderFilters'
 import { ProvidersSkeleton } from './providers/ProvidersSkeleton'
 import { ProviderFormModal } from './providers/ProviderFormModal'
+import { ProviderRoutingSection } from './providers/ProviderRoutingSection'
 import type { ProbePresetResponse, ProviderConfig } from '@/api/types/providers'
 
 const log = createLogger('providers-page')
@@ -380,6 +381,10 @@ export default function ProvidersPage() {
         providersByName={providersByName}
         modal={modal}
       />
+
+      <ErrorBoundary level="section">
+        <ProviderRoutingSection />
+      </ErrorBoundary>
 
       <ProviderFormModal
         open={modal.modalOpen}
