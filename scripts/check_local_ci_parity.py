@@ -119,6 +119,7 @@ _PATH_SCOPED_BUILD_PERF: Final[dict[str, str]] = {
     "changes": "infra: the paths-filter job itself (produces the outputs)",
     "dashboard-build": "build/perf: production bundle + size budget",
     "dashboard-storybook-build": "build: Storybook static build",
+    "dashboard-e2e": "build-dependent: Playwright flows over the built bundle",
     "ci-pass": "aggregate rollup (always-run, gates on other jobs' results)",
     "branch-protection-audit": "post-merge infra audit, main-only (not a PR gate)",
 }
