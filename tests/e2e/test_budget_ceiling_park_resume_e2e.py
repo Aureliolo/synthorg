@@ -17,7 +17,6 @@ Zero real LLM spend: the provider is scripted with fixed token usage.
 """
 
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 
@@ -31,6 +30,7 @@ from synthorg.engine.park_service import ParkService
 from synthorg.providers.models import ToolCall
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import as_uuid
 
 from .conftest import (
     ScriptedProvider,
@@ -78,7 +78,7 @@ async def test_hard_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None:
     )
 
     identity = make_e2e_identity()
-    forecast_id = uuid4()
+    forecast_id = as_uuid("forecast-budget-ceiling")
     # The first turn calls a tool (accrues cost, keeps the loop going); the
     # next turn's budget pre-check sees the accrued cost cross the ceiling.
     over_budget = ScriptedProvider(

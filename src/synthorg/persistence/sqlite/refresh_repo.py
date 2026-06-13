@@ -182,11 +182,22 @@ class SQLiteRefreshTokenRepository:
                     created_at=parse_iso_utc(row["created_at"]),
                 ),
             )
-        async with self._db.execute(
-            "SELECT used FROM refresh_tokens WHERE token_hash = ?",
-            (token_hash,),
-        ) as check:
-            replay_row = await check.fetchone()
+        try:
+            async with self._db.execute(
+                "SELECT used FROM refresh_tokens WHERE token_hash = ?",
+                (token_hash,),
+            ) as check:
+                replay_row = await check.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to consume refresh token"
+            logger.warning(
+                API_AUTH_REFRESH_PERSISTENCE_ERROR,
+                operation="consume_replay_check",
+                token_hash=token_hash[:8],
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
         if replay_row is not None and replay_row["used"]:
             return RefreshConsumeOutcome(
                 reject_reason=RefreshRejectReason.REPLAY_DETECTED,

@@ -81,9 +81,16 @@ class _CompletionConfigFinder(ast.NodeVisitor):
 
     @override
     def visit_Call(self, node: ast.Call) -> None:
-        if _is_completion_config(node.func) and not _has_kwargs_unpack(node):
+        if _is_completion_config(node.func):
             kw = _temperature_kwarg(node)
-            if kw is None or _is_none_literal(kw.value):
+            if kw is not None:
+                # An explicit ``temperature=None`` violates regardless of any
+                # ``**kwargs`` also present.
+                if _is_none_literal(kw.value):
+                    self.hits.append(node.lineno)
+            elif not _has_kwargs_unpack(node):
+                # No ``temperature`` keyword and no ``**kwargs`` that could
+                # supply one: the value is unset.
                 self.hits.append(node.lineno)
         self.generic_visit(node)
 

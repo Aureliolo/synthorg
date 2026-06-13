@@ -416,8 +416,10 @@ class SQLiteIdempotencyRepository:
                     "DELETE FROM idempotency_keys WHERE expires_at <= ?",
                     (format_iso_utc(now),),
                 ) as cursor:
-                    await self._db.commit()
-                    return int(cursor.rowcount or 0)
+                    # Read rowcount before committing: a commit can invalidate
+                    # an open cursor, so capture the affected-row count first.
+                    rowcount = int(cursor.rowcount or 0)
+                await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -429,3 +431,4 @@ class SQLiteIdempotencyRepository:
                 )
                 msg = "Failed to cleanup expired idempotency keys"
                 raise QueryError(msg) from exc
+        return rowcount

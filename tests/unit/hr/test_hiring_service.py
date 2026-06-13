@@ -253,16 +253,17 @@ class TestHiringServiceInstantiateAgent:
                 selected_candidate_id=None,
             )
 
-    async def test_reinstantiate_after_terminal_eviction_raises(
+    async def test_reinstantiate_rejects_already_instantiated(
         self,
         hiring_service: HiringService,
     ) -> None:
         """Re-instantiating a request rejects (no double-instantiation).
 
-        Reaching INSTANTIATED evicts the request from the in-memory cache to
-        bound memory, so the second attempt fails the not-found lookup rather
-        than the already-instantiated status guard; either way the agent is
-        never instantiated twice.
+        The terminal INSTANTIATED request is retained in the in-memory cache
+        (this service has no persistence read path), so the second attempt
+        hits the already-instantiated status guard rather than a misleading
+        not-found lookup. The per-request lock still self-evicts once the
+        instantiate step releases it (no holders left).
         """
         req = await hiring_service.create_request(
             requested_by="cto",
@@ -275,11 +276,11 @@ class TestHiringServiceInstantiateAgent:
         candidate_id = str(updated.candidates[0].id)
         approved = await hiring_service.submit_for_approval(updated, candidate_id)
         await hiring_service.instantiate_agent(approved)
-        # The request is evicted on reaching the terminal state; its lock
+        # The terminal request stays cached as INSTANTIATED; only its lock
         # auto-evicts once the instantiate step releases it (no holders left).
-        assert str(approved.id) not in hiring_service._requests
+        assert str(approved.id) in hiring_service._requests
         assert len(hiring_service._request_locks) == 0
-        with pytest.raises(HiringError, match="not found"):
+        with pytest.raises(HiringError, match="already instantiated"):
             await hiring_service.instantiate_agent(approved)
 
     async def test_instantiate_triggers_onboarding(

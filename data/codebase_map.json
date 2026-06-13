@@ -8220,7 +8220,7 @@
     },
     {
       "kind": "service",
-      "loc": 502,
+      "loc": 493,
       "loc_cap": 600,
       "module": "src/synthorg/hr/hiring_service.py",
       "owning_feature": "hr"
@@ -16424,7 +16424,7 @@
     },
     {
       "kind": "code",
-      "loc": 374,
+      "loc": 375,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/idempotency_repo.py",
       "owning_feature": "persistence"
@@ -16592,7 +16592,7 @@
     },
     {
       "kind": "code",
-      "loc": 253,
+      "loc": 264,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/refresh_repo.py",
       "owning_feature": "persistence"

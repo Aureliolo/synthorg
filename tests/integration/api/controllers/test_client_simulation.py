@@ -361,7 +361,9 @@ class TestRequestController:
             # instead of leaking past the test boundary.
             pending = list(sim_state.background_tasks)
             gate.set()
-            await asyncio.gather(*pending, return_exceptions=True)
+            # No return_exceptions: a detached pipeline task that crashes
+            # must surface here and fail the test, not drain silently.
+            await asyncio.gather(*pending)
 
     async def test_reject_sets_cancelled(
         self,

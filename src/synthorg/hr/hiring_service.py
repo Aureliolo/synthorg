@@ -386,21 +386,15 @@ class HiringService:
             agent_id=str(identity.id),
             agent_name=str(identity.name),
         )
-        # INSTANTIATED is terminal: no further operation targets this request,
-        # so drop its in-memory model and lock instead of retaining both (the
-        # model can carry large candidate payloads) for the process lifetime.
-        self._evict_request(str(request.id))
+        # INSTANTIATED is the terminal state; the request stays in
+        # ``_requests`` so a retried instantiate_agent() (or any queued
+        # same-request step) reads it back and gets the precise
+        # already-instantiated validation error. This service has no
+        # persistence read path, so evicting here would turn a completed
+        # request into a misleading "not found". The per-request lock still
+        # self-evicts via ``RefcountedLockMap`` once no step holds it, which
+        # is what keeps the unbounded-lock growth in check.
         return identity
-
-    def _evict_request(self, request_id: str) -> None:
-        """Drop a terminal request's in-memory model.
-
-        Keeps ``_requests`` bounded; completed requests are read back
-        through persistence, not this in-memory cache. The per-request lock
-        self-evicts via ``RefcountedLockMap`` when the last holder releases,
-        so it must not be popped here (popping a held lock would orphan it).
-        """
-        self._requests.pop(request_id, None)
 
     def _apply_instantiated_status(self, request: HiringRequest) -> None:
         """Persist the APPROVED -> INSTANTIATED status flip and log it.

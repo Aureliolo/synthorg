@@ -55,8 +55,11 @@ export async function pointerDragTo(
   await target.waitFor({ state: 'visible' })
   const from = await source.boundingBox()
   const to = await target.boundingBox()
-  if (!from || !to) {
-    throw new Error('pointerDragTo: source or target has no bounding box')
+  if (!from) {
+    throw new Error('pointerDragTo: source element has no bounding box')
+  }
+  if (!to) {
+    throw new Error('pointerDragTo: target element has no bounding box')
   }
   const startX = from.x + from.width / 2
   const startY = from.y + from.height / 2
