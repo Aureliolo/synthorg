@@ -38,7 +38,6 @@ func TestConfigSetBackendPort(t *testing.T) {
 }
 
 func TestConfigSetBackendPortRejectsInvalid(t *testing.T) {
-	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -48,13 +47,16 @@ func TestConfigSetBackendPortRejectsInvalid(t *testing.T) {
 	}
 
 	for _, value := range []string{"0", "-1", "65536", "abc", ""} {
-		var buf bytes.Buffer
-		rootCmd.SetOut(&buf)
-		rootCmd.SetErr(&buf)
-		rootCmd.SetArgs([]string{"config", "set", "backend_port", value, "--data-dir", dir})
-		if err := rootCmd.Execute(); err == nil {
-			t.Errorf("expected error for backend_port=%q", value)
-		}
+		t.Run(value, func(t *testing.T) {
+			sandboxRootCmd(t)
+			var buf bytes.Buffer
+			rootCmd.SetOut(&buf)
+			rootCmd.SetErr(&buf)
+			rootCmd.SetArgs([]string{"config", "set", "backend_port", value, "--data-dir", dir})
+			if err := rootCmd.Execute(); err == nil {
+				t.Errorf("expected error for backend_port=%q", value)
+			}
+		})
 	}
 }
 
@@ -201,7 +203,6 @@ func TestConfigSetColor(t *testing.T) {
 }
 
 func TestConfigSetColorRejectsInvalid(t *testing.T) {
-	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -211,13 +212,16 @@ func TestConfigSetColorRejectsInvalid(t *testing.T) {
 	}
 
 	for _, value := range []string{"Always", "NEVER", "none", ""} {
-		var buf bytes.Buffer
-		rootCmd.SetOut(&buf)
-		rootCmd.SetErr(&buf)
-		rootCmd.SetArgs([]string{"config", "set", "color", value, "--data-dir", dir})
-		if err := rootCmd.Execute(); err == nil {
-			t.Errorf("expected error for color=%q", value)
-		}
+		t.Run(value, func(t *testing.T) {
+			sandboxRootCmd(t)
+			var buf bytes.Buffer
+			rootCmd.SetOut(&buf)
+			rootCmd.SetErr(&buf)
+			rootCmd.SetArgs([]string{"config", "set", "color", value, "--data-dir", dir})
+			if err := rootCmd.Execute(); err == nil {
+				t.Errorf("expected error for color=%q", value)
+			}
+		})
 	}
 }
 
@@ -345,7 +349,6 @@ func seedConfig(t *testing.T) (string, config.State) {
 }
 
 func TestConfigSetAutoBehaviorKeys(t *testing.T) {
-	sandboxRootCmd(t)
 	tests := []struct {
 		key   string
 		field func(config.State) bool
@@ -358,6 +361,7 @@ func TestConfigSetAutoBehaviorKeys(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
+			sandboxRootCmd(t)
 			dir, _ := seedConfig(t)
 			loaded := execConfigSet(t, dir, tt.key, "true")
 			if !tt.field(loaded) {

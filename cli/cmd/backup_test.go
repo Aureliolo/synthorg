@@ -500,15 +500,9 @@ func TestBackupList_SortCompletionRegistered(t *testing.T) {
 	// Cobra exposes registered completions via __complete; if a fixed
 	// completion is registered the values come back on stdout. We invoke
 	// the special completion subcommand to confirm the three values are
-	// surfaced. SetOut/SetErr/SetArgs leak between Execute() calls on
-	// rootCmd, so capture and restore them around the test body.
-	prevOut := rootCmd.OutOrStdout()
-	prevErr := rootCmd.ErrOrStderr()
-	t.Cleanup(func() {
-		rootCmd.SetOut(prevOut)
-		rootCmd.SetErr(prevErr)
-		rootCmd.SetArgs(nil)
-	})
+	// surfaced. sandboxRootCmd restores the writers AND the flag value +
+	// Changed state that Execute() otherwise leaks between tests.
+	sandboxRootCmd(t)
 
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)
