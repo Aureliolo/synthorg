@@ -115,8 +115,8 @@ function createReadOnlyVersionHistoryClient<T>(
       options: { cursor?: string | null; limit?: number } = {},
     ): Promise<PaginatedResult<VersionSnapshot<T>>> {
       const params: Record<string, string | number> = {}
-      if (options.cursor) params.cursor = options.cursor
-      if (typeof options.limit === 'number') params.limit = options.limit
+      if (options.cursor) params['cursor'] = options.cursor
+      if (typeof options.limit === 'number') params['limit'] = options.limit
       const response = await apiClient.get<
         PaginatedResponse<VersionSnapshot<T>>
       >(`${basePath}/versions`, { params })

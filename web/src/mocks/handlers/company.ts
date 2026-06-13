@@ -101,13 +101,13 @@ export const companyHandlers = [
   http.get('/api/v1/departments/:name', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getDepartment>(
-        buildDepartment({ name: String(params.name) }),
+        buildDepartment({ name: String(params['name']) }),
       ),
     ),
   ),
   http.get('/api/v1/departments/:name/health', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getDepartmentHealth>(buildDepartmentHealth(String(params.name))),
+      successFor<typeof getDepartmentHealth>(buildDepartmentHealth(String(params['name']))),
     ),
   ),
   http.post('/api/v1/departments', async ({ request }) => {
@@ -125,7 +125,7 @@ export const companyHandlers = [
       successFor<typeof updateDepartment>(
         buildDepartment({
           ...body,
-          name: String(params.name),
+          name: String(params['name']),
         }),
       ),
     )
@@ -157,7 +157,7 @@ export const companyHandlers = [
     const body = (await request.json()) as Partial<AgentConfig>
     return HttpResponse.json(
       successFor<typeof updateAgentOrg>(
-        buildAgent({ ...body, id: String(params.agentId) }),
+        buildAgent({ ...body, id: String(params['agentId']) }),
       ),
     )
   }),
@@ -178,7 +178,7 @@ export const companyHandlers = [
       const body = (await request.json()) as Partial<TeamConfig>
       return HttpResponse.json(
         successFor<typeof updateTeam>(
-          buildTeam({ ...body, name: String(params.teamName) }),
+          buildTeam({ ...body, name: String(params['teamName']) }),
         ),
       )
     },

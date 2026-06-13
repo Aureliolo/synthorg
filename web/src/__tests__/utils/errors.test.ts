@@ -50,6 +50,19 @@ function makeDetail(
   }
 }
 
+/**
+ * Build a duck-typed `ApiRequestError` (the shape `unwrap` throws)
+ * without importing the real class from `@/api/client`, which would
+ * pull `axios.create()` into this test module. `isApiRequestError`
+ * matches on `name === 'ApiRequestError'` plus the `errorDetail` field.
+ */
+function makeApiRequestError(message: string, detail: ErrorDetail | null): Error {
+  const error = new Error(message)
+  error.name = 'ApiRequestError'
+  Object.assign(error, { errorDetail: detail })
+  return error
+}
+
 describe('isAxiosError', () => {
   it('returns true for AxiosError', () => {
     expect(isAxiosError(makeAxiosError(400))).toBe(true)
@@ -248,6 +261,27 @@ describe('getErrorMessage', () => {
     const future = new Date(Date.now() + 90_000).toUTCString()
     const error = makeAxiosError(429, undefined, { 'retry-after': future })
     expect(getErrorMessage(error)).toContain('Try again in')
+  })
+
+  it('appends the retry hint for an ApiRequestError rate-limit detail', () => {
+    const detail = makeDetail(ErrorCategory.RATE_LIMIT, ErrorCode.RATE_LIMITED)
+    const error = makeApiRequestError('Slow down', { ...detail, retry_after: 120 })
+    const message = getErrorMessage(error)
+    expect(message).toContain('Slow down')
+    expect(message).toContain('Try again in')
+    expect(message).toContain('2 minutes')
+  })
+
+  it('does not append a retry hint when ApiRequestError retry_after is null', () => {
+    const detail = makeDetail(ErrorCategory.RATE_LIMIT, ErrorCode.RATE_LIMITED)
+    const error = makeApiRequestError('Slow down', detail)
+    expect(getErrorMessage(error)).toBe('Slow down')
+  })
+
+  it('leaves a non-rate-limit ApiRequestError message unchanged', () => {
+    const detail = makeDetail(ErrorCategory.VALIDATION)
+    const error = makeApiRequestError('Invalid field', { ...detail, retry_after: 30 })
+    expect(getErrorMessage(error)).toBe('Invalid field')
   })
 
   it('returns Error.message for non-axios Error with short message', () => {

@@ -54,7 +54,7 @@ export const projectBrainHandlers = [
   http.get('/api/v1/projects/:projectId/brain/:entryId', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getProjectBrainEntry>(
-        buildEntry({ entry_id: String(params.entryId) }),
+        buildEntry({ entry_id: String(params['entryId']) }),
       ),
     ),
   ),

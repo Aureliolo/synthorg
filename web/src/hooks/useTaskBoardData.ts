@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useTasksStore } from '@/stores/tasks'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import type { TaskStatus } from '@/api/types/enums'
 import type {
   CancelTaskRequest,
@@ -56,12 +57,13 @@ export function useTaskBoardData(): UseTaskBoardDataReturn {
     void useTasksStore.getState().fetchTasks({ limit: 200 })
   }, [])
 
-  // Lightweight polling for task refresh
+  // Lightweight polling for task refresh, gated against fresh WS state.
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useTasksStore.getState().fetchTasks({ limit: 200 })
   }, [])
 
-  const polling = usePolling(pollFn, TASK_POLL_INTERVAL)
+  const polling = usePolling(pollFn, TASK_POLL_INTERVAL, { skipIfFresh })
 
   const { start, stop } = polling
   useEffect(() => {
@@ -75,10 +77,11 @@ export function useTaskBoardData(): UseTaskBoardDataReturn {
       TASK_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
+          markFresh()
           useTasksStore.getState().handleWsEvent(event)
         },
       })),
-    [],
+    [markFresh],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({

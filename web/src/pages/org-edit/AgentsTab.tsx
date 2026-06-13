@@ -137,7 +137,7 @@ function reorderFromDragEvent(
 ): { department: string; orderedIds: string[] } | null {
   const { active, over } = event
   if (!over || active.id === over.id) return null
-  const draggedAgent = active.data.current?.agent as AgentConfig | undefined
+  const draggedAgent = active.data.current?.['agent'] as AgentConfig | undefined
   if (!draggedAgent) return null
   const deptAgents = agentsByDept.get(draggedAgent.department)
   if (!deptAgents) return null
@@ -169,7 +169,7 @@ function useAgentDragReorder(
   )
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveAgent((event.active.data.current?.agent as AgentConfig | undefined) ?? null)
+    setActiveAgent((event.active.data.current?.['agent'] as AgentConfig | undefined) ?? null)
   }, [])
 
   const handleDragEnd = useCallback(

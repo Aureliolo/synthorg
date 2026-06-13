@@ -139,7 +139,7 @@ function installDefaults(overrides: Overrides = {}) {
     ),
     http.get('/api/v1/departments/:name/health', ({ params }) =>
       overrides.departmentHealth
-        ? overrides.departmentHealth(String(params.name))
+        ? overrides.departmentHealth(String(params['name']))
         : HttpResponse.json(apiSuccess(mockDeptHealth)),
     ),
   )

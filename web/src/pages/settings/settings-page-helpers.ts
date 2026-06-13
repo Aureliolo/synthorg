@@ -1,5 +1,10 @@
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
-import { HIDDEN_SETTINGS, NAMESPACE_ORDER } from '@/utils/constants'
+import {
+  CODE_EDITOR_HIDDEN_SETTINGS,
+  HIDDEN_SETTINGS,
+  NAMESPACE_ORDER,
+  SENSITIVE_VALUE_PLACEHOLDER,
+} from '@/utils/constants'
 import { matchesSetting } from './utils'
 
 function compositeKey(entry: SettingEntry): string {
@@ -66,6 +71,13 @@ export function filterByNamespace(
 /**
  * Visible entries for the code editor, overlaid with GUI drafts so Code
  * mode sees unsaved GUI edits.
+ *
+ * Two differences from the GUI form: (1) the code editor uses the
+ * narrower {@link CODE_EDITOR_HIDDEN_SETTINGS} set, so the complex
+ * observability sink settings (hidden from the GUI form) are editable as
+ * raw YAML here; (2) ``sensitive`` values are redacted to a placeholder
+ * so secrets never render in the buffer. {@link isRedactedSensitiveValue}
+ * lets the save path drop an unchanged placeholder.
  */
 export function buildCodeEntries(
   entries: SettingEntry[],
@@ -75,13 +87,26 @@ export function buildCodeEntries(
   return entries
     .map((entry) => {
       const dirtyValue = dirtyValues.get(compositeKey(entry))
+      const value = dirtyValue ?? entry.value
+      if (dirtyValue === undefined && entry.definition.sensitive && value !== '') {
+        return { ...entry, value: SENSITIVE_VALUE_PLACEHOLDER }
+      }
       return dirtyValue !== undefined ? { ...entry, value: dirtyValue } : entry
     })
     .filter((e) => {
-      if (HIDDEN_SETTINGS.has(compositeKey(e))) return false
+      if (CODE_EDITOR_HIDDEN_SETTINGS.has(compositeKey(e))) return false
       if (!advancedMode && e.definition.level === 'advanced') return false
       return NAMESPACE_ORDER.includes(e.definition.namespace)
     })
+}
+
+/**
+ * True when a code-editor value is the untouched sensitive placeholder.
+ * The save path must skip such keys so a secret is never overwritten
+ * with the redaction placeholder.
+ */
+export function isRedactedSensitiveValue(value: string): boolean {
+  return value === SENSITIVE_VALUE_PLACEHOLDER
 }
 
 /** Count restart-required settings among a set of saved keys. */

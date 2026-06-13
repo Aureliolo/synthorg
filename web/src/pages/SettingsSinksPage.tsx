@@ -39,7 +39,7 @@ interface SinksPage {
 function useSinkAutoRefresh(fetchSinks: () => Promise<void> | void): void {
   const sinkHandler = useCallback(
     (event: WsEvent) => {
-      const key = sanitizeWsString((event.payload as Record<string, unknown> | undefined)?.key)
+      const key = sanitizeWsString((event.payload as Record<string, unknown> | undefined)?.['key'])
       if (key === 'observability/sink_overrides' || key === 'observability/custom_sinks') {
         void fetchSinks()
       }

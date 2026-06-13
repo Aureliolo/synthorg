@@ -7,12 +7,14 @@
  * structure (the only enumeration source): a role with zero assigned
  * agents will not appear.
  */
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { Briefcase } from 'lucide-react'
 import { useCompanyStore } from '@/stores/company'
 import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { SearchInput } from '@/components/ui/search-input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -48,7 +50,15 @@ export default function RolesPage() {
     }
   }, [])
 
-  const roles = useMemo(() => deriveRoles(config?.agents ?? []), [config])
+  const [searchQuery, setSearchQuery] = useState('')
+
+  // Filtering folds into the same memo that derives roles, so a query over a
+  // large org is a single cheap pass.
+  const roles = useMemo(() => {
+    const all = deriveRoles(config?.agents ?? [])
+    const query = searchQuery.trim().toLowerCase()
+    return query ? all.filter((r) => r.name.toLowerCase().includes(query)) : all
+  }, [config, searchQuery])
 
   return (
     <div className="space-y-section-gap">
@@ -62,7 +72,18 @@ export default function RolesPage() {
         <ErrorBanner severity="error" title="Could not load roles" description={error} />
       )}
 
-      <RolesBody roles={roles} loading={loading} error={error} />
+      <SearchFilterSort
+        search={
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search roles by name"
+            ariaLabel="Search roles"
+          />
+        }
+      />
+
+      <RolesBody roles={roles} loading={loading} error={error} searchActive={searchQuery.trim() !== ''} />
     </div>
   )
 }
@@ -71,9 +92,10 @@ interface RolesBodyProps {
   roles: readonly RoleSummary[]
   loading: boolean
   error: string | null
+  searchActive: boolean
 }
 
-function RolesBody({ roles, loading, error }: RolesBodyProps) {
+function RolesBody({ roles, loading, error, searchActive }: RolesBodyProps) {
   if (loading && roles.length === 0) {
     return (
       <div className="flex flex-col gap-grid-gap">
@@ -88,8 +110,12 @@ function RolesBody({ roles, loading, error }: RolesBodyProps) {
     return (
       <EmptyState
         icon={Briefcase}
-        title="No roles defined"
-        description="Roles appear here once agents are assigned to them in the org structure."
+        title={searchActive ? 'No matching roles' : 'No roles defined'}
+        description={
+          searchActive
+            ? 'Try a different search term or clear the field above.'
+            : 'Roles appear here once agents are assigned to them in the org structure.'
+        }
       />
     )
   }

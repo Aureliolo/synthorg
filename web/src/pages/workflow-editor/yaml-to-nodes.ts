@@ -98,12 +98,12 @@ function parseYamlDocument(
     acc.errors.push('YAML must contain an object')
     return null
   }
-  const wfDefRaw = parsed.workflow_definition
+  const wfDefRaw = parsed['workflow_definition']
   if (!isObject(wfDefRaw)) {
     acc.errors.push('Missing "workflow_definition" key')
     return null
   }
-  const stepsRaw = wfDefRaw.steps
+  const stepsRaw = wfDefRaw['steps']
   if (!Array.isArray(stepsRaw)) {
     acc.errors.push('Missing or invalid "steps" array')
     return null

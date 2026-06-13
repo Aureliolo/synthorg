@@ -73,7 +73,7 @@ function fillConditionalConfig(
   config: Record<string, unknown>,
 ): void {
   const expr = stringOrUndef(step.condition)
-  if (expr) config.condition_expression = expr
+  if (expr) config['condition_expression'] = expr
 }
 
 function fillParallelSplitConfig(
@@ -81,7 +81,7 @@ function fillParallelSplitConfig(
   config: Record<string, unknown>,
 ): void {
   if (typeof step.max_concurrency === 'number') {
-    config.max_concurrency = step.max_concurrency
+    config['max_concurrency'] = step.max_concurrency
   }
 }
 
@@ -89,7 +89,7 @@ function fillParallelJoinConfig(
   step: YamlStepConfigInput,
   config: Record<string, unknown>,
 ): void {
-  config.join_strategy = stringOrUndef(step.join_strategy) ?? 'all'
+  config['join_strategy'] = stringOrUndef(step.join_strategy) ?? 'all'
 }
 
 function fillAgentAssignmentConfig(
@@ -97,11 +97,11 @@ function fillAgentAssignmentConfig(
   config: Record<string, unknown>,
 ): void {
   const strategy = stringOrUndef(step.strategy)
-  if (strategy) config.routing_strategy = strategy
+  if (strategy) config['routing_strategy'] = strategy
   const role = stringOrUndef(step.role)
-  if (role) config.role_filter = role
+  if (role) config['role_filter'] = role
   const agentName = stringOrUndef(step.agent_name)
-  if (agentName) config.agent_name = agentName
+  if (agentName) config['agent_name'] = agentName
 }
 
 function fillSubworkflowConfig(
@@ -109,14 +109,14 @@ function fillSubworkflowConfig(
   config: Record<string, unknown>,
 ): void {
   const subworkflowId = stringOrUndef(step.subworkflow_id)
-  if (subworkflowId) config.subworkflow_id = subworkflowId
+  if (subworkflowId) config['subworkflow_id'] = subworkflowId
   const version = stringOrUndef(step.version)
-  if (version) config.version = version
+  if (version) config['version'] = version
   if (isPlainObject(step.input_bindings)) {
-    config.input_bindings = step.input_bindings
+    config['input_bindings'] = step.input_bindings
   }
   if (isPlainObject(step.output_bindings)) {
-    config.output_bindings = step.output_bindings
+    config['output_bindings'] = step.output_bindings
   }
 }
 

@@ -356,7 +356,7 @@ export function validateA2APeerCredentials(
   const scheme = authScheme || 'api_key'
   const errors: Record<string, string> = {}
   if (!(scheme in A2A_SCHEME_REQUIRED_FIELDS)) {
-    errors._scheme = `Unsupported auth scheme: ${scheme}`
+    errors['_scheme'] = `Unsupported auth scheme: ${scheme}`
     return errors
   }
   // scheme is validated above; the non-null assertion is safe.

@@ -24,8 +24,8 @@ export interface ApprovalCardProps {
 }
 
 function isLowConfidence(approval: ApprovalResponse): boolean {
-  if (approval.metadata.low_confidence === 'true') return true
-  const raw = approval.metadata.confidence_score
+  if (approval.metadata['low_confidence'] === 'true') return true
+  const raw = approval.metadata['confidence_score']
   const score = raw != null ? parseFloat(raw) : NaN
   return !Number.isNaN(score) && score < 0.5
 }
@@ -203,8 +203,8 @@ function ApprovalCardHeader(props: ApprovalCardHeaderProps) {
         isPending={isPending}
         countdown={countdown}
         urgencyColor={urgencyColor}
-        isBlocked={approval.metadata.safety_classification === 'blocked'}
-        isSuspicious={approval.metadata.safety_classification === 'suspicious'}
+        isBlocked={approval.metadata['safety_classification'] === 'blocked'}
+        isSuspicious={approval.metadata['safety_classification'] === 'suspicious'}
         showLowConfidence={isLowConfidence(approval)}
       />
     </div>

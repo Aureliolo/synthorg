@@ -4,7 +4,7 @@
 Registers settings covering server, TLS, CORS, rate limiting (global
 + per-operation sliding-window + per-operation inflight),
 authentication, setup, and the WebSocket frame-receive / revalidation
-budget added in the #1683 reliability bundle.
+budget.
 
 Counts (kept generic on purpose; the registry below is the
 authoritative source so docstring counts do not silently drift on the
@@ -713,7 +713,7 @@ _r.register(
     )
 )
 
-# ── CFG-1 audit: cache, WS auth, cleanup, urgency ────────────────
+# ── Cache, WS auth, cleanup, urgency ─────────────────────────────
 
 _r.register(
     SettingDefinition(

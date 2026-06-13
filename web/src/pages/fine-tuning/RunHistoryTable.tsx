@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import type { FineTuneRun, FineTuneStage } from '@/api/endpoints/fine-tuning'
@@ -18,7 +19,24 @@ const STAGE_STATUS_MAP: Record<FineTuneStage, 'active' | 'idle' | 'error' | 'off
   deploying: 'active',
 }
 
-function RunRow({ run }: { run: FineTuneRun }) {
+/**
+ * Count DISTINCT completed stages that belong to the active-pipeline set.
+ * Deduplicating guards against a repeated stage name in ``stages_completed``
+ * inflating the count beyond ``ACTIVE_STAGES.size`` (e.g. rendering "9/7").
+ */
+function countActiveStagesCompleted(stages: readonly string[]): number {
+  const unique = new Set<FineTuneStage>()
+  for (const s of stages) {
+    if (ACTIVE_STAGES.has(s as FineTuneStage)) {
+      unique.add(s as FineTuneStage)
+    }
+  }
+  return unique.size
+}
+
+// Memoised so a single run's WS-driven progress update does not re-render
+// every other row in the table.
+const RunRow = memo(function RunRow({ run }: { run: FineTuneRun }) {
   return (
     <tr>
       <td className="py-2 pr-4 font-mono text-xs">
@@ -38,14 +56,14 @@ function RunRow({ run }: { run: FineTuneRun }) {
         </span>
       </td>
       <td className="py-2 pr-4 text-xs text-muted-foreground">
-        {new Set(run.stages_completed.filter((s) => ACTIVE_STAGES.has(s as FineTuneStage))).size}/{ACTIVE_STAGES.size}
+        {countActiveStagesCompleted(run.stages_completed)}/{ACTIVE_STAGES.size}
       </td>
       <td className="py-2 font-mono text-xs text-muted-foreground">
         {run.config.source_dir}
       </td>
     </tr>
   )
-}
+})
 
 export function RunHistoryTable() {
   const { runs } = useFineTuningStore(useShallow((s) => ({ runs: s.runs })))
@@ -61,7 +79,7 @@ export function RunHistoryTable() {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full min-w-[28rem] text-sm">
         <thead>
           <tr className="border-b border-border text-left text-muted-foreground">
             <th className="pb-2 pr-4">Date</th>

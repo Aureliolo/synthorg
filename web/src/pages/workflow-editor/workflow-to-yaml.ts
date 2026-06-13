@@ -116,7 +116,7 @@ function buildNodeContext(nodes: Node[], edges: Edge[]): NodeContext {
 }
 
 function buildStepData(node: Node, ctx: NodeContext): StepData {
-  const config = node.data.config as
+  const config = node.data['config'] as
     | Record<string, unknown>
     | undefined
   const step: StepData = { id: node.id, type: node.type ?? 'task' }
@@ -138,23 +138,23 @@ const STEP_FIELD_FILLERS: Readonly<Record<string, (args: StepFillerArgs) => void
     copyIfPresent(step, config, ['title', 'task_type', 'priority', 'complexity', 'coordination_topology'])
   },
   conditional: ({ step, config }) => {
-    if (config?.condition_expression) step.condition = config.condition_expression
+    if (config?.['condition_expression']) step['condition'] = config['condition_expression']
   },
   parallel_split: ({ step, config, node, ctx }) => {
     const branches = (ctx.outgoing.get(node.id) ?? [])
-      .filter((e) => (e.data)?.edgeType === 'parallel_branch')
+      .filter((e) => (e.data)?.['edgeType'] === 'parallel_branch')
       .map((e) => e.target)
-    if (branches.length > 0) step.branches = branches
-    if (config?.max_concurrency) step.max_concurrency = config.max_concurrency
+    if (branches.length > 0) step['branches'] = branches
+    if (config?.['max_concurrency']) step['max_concurrency'] = config['max_concurrency']
   },
   parallel_join: ({ step, config }) => {
-    step.join_strategy = (config?.join_strategy) || 'all'
+    step['join_strategy'] = (config?.['join_strategy']) || 'all'
   },
   agent_assignment: ({ step, config }) => {
     if (!config) return
-    if (config.routing_strategy) step.strategy = config.routing_strategy
-    if (config.role_filter) step.role = config.role_filter
-    if (config.agent_name) step.agent_name = config.agent_name
+    if (config['routing_strategy']) step['strategy'] = config['routing_strategy']
+    if (config['role_filter']) step['role'] = config['role_filter']
+    if (config['agent_name']) step['agent_name'] = config['agent_name']
   },
   subworkflow: ({ step, config }) => {
     if (!config) return
@@ -187,7 +187,7 @@ function fillDependsOn(step: StepData, nodeId: string, ctx: NodeContext): void {
     if (!srcNode || SKIP_TYPES.has(srcNode.type ?? '')) continue
     depEntries.push(buildDependsOnEntry(srcId, nodeId, ctx.edges))
   }
-  if (depEntries.length > 0) step.depends_on = depEntries
+  if (depEntries.length > 0) step['depends_on'] = depEntries
 }
 
 function buildDependsOnEntry(
@@ -196,7 +196,7 @@ function buildDependsOnEntry(
   edges: readonly Edge[],
 ): DependsOnEntry {
   const edge = edges.find((e) => e.source === srcId && e.target === nodeId)
-  const edgeType = (edge?.data)?.edgeType as
+  const edgeType = (edge?.data)?.['edgeType'] as
     | string
     | undefined
   if (edgeType === 'conditional_true') return { id: srcId, branch: 'true' }

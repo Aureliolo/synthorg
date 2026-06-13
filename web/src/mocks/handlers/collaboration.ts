@@ -22,7 +22,7 @@ export const collaborationHandlers = [
   http.get('/api/v1/agents/:id/collaboration/override', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getOverride>({
-        agent_id: String(params.id),
+        agent_id: String(params['id']),
         score: 0,
         reason: 'default',
         applied_by: 'system',
@@ -52,7 +52,7 @@ export const collaborationHandlers = [
         : null
     return HttpResponse.json(
       successFor<typeof setOverride>({
-        agent_id: String(params.id),
+        agent_id: String(params['id']),
         score: body.score,
         reason: body.reason,
         applied_by: 'user-1',
@@ -67,7 +67,7 @@ export const collaborationHandlers = [
   http.get('/api/v1/agents/:id/collaboration/calibration', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getCalibration>({
-        agent_id: String(params.id),
+        agent_id: String(params['id']),
         average_drift: null,
         records: [],
         record_count: 0,

@@ -6,8 +6,10 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { useMeetingsData } from '@/hooks/useMeetingsData'
 import { filterMeetings, type MeetingPageFilters } from '@/utils/meetings'
 import { MEETING_STATUS_VALUES, type MeetingStatus } from '@/api/types/meetings'
@@ -167,6 +169,10 @@ function MeetingsGrid({ meetings }: { meetings: MeetingList }) {
 
 export default function MeetingsPage() {
   const c = useMeetingsPageController()
+  const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize } = useListPagination({
+    items: c.filtered,
+    namespace: 'meetings',
+  })
 
   if (c.showSkeleton) {
     return <MeetingsSkeleton />
@@ -177,7 +183,7 @@ export default function MeetingsPage() {
       <ListHeader
         title="Meetings"
         count={c.filtered.length}
-        primaryAction={<Button onClick={() => c.setTriggerOpen(true)}>Trigger meeting</Button>}
+        primaryAction={<Button size="sm" onClick={() => c.setTriggerOpen(true)}>Trigger meeting</Button>}
       />
 
       <MeetingsBanners
@@ -200,7 +206,17 @@ export default function MeetingsPage() {
         <MeetingTimeline meetings={c.filtered} />
       </ErrorBoundary>
 
-      <MeetingsGrid meetings={c.filtered} />
+      <MeetingsGrid meetings={paginatedItems} />
+
+      {c.filtered.length > 0 && (
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={totalItems}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      )}
 
       {c.emptyStateProps && !c.error && <EmptyState {...c.emptyStateProps} />}
 

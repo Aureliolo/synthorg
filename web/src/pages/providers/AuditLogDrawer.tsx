@@ -34,24 +34,24 @@ const EVENT_LABEL: Record<ProviderAuditEventType, string> = {
 type AuditPayload = NonNullable<ProviderAuditEvent['payload']>
 
 function summariseModelId(payload: AuditPayload): string {
-  const id = payload.model_id
+  const id = payload['model_id']
   return typeof id === 'string' ? id : ''
 }
 
 function summariseFieldsChanged(payload: AuditPayload): string {
-  const fields = payload.fields_changed
+  const fields = payload['fields_changed']
   return Array.isArray(fields) ? fields.map(String).join(', ') : ''
 }
 
 function summariseSyncCounts(payload: AuditPayload): string {
-  const a = payload.added_count
-  const r = payload.removed_count
-  const u = payload.updated_count
+  const a = payload['added_count']
+  const r = payload['removed_count']
+  const u = payload['updated_count']
   return `+${typeof a === 'number' ? a : 0} / -${typeof r === 'number' ? r : 0} / ~${typeof u === 'number' ? u : 0}`
 }
 
 function summariseCredentials(payload: AuditPayload): string {
-  const masked = payload.masked_secret
+  const masked = payload['masked_secret']
   return typeof masked === 'string' ? masked : ''
 }
 

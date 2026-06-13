@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type ReactElement } from 'rea
 import { getReadiness } from '@/api/endpoints/health'
 import { useWebSocketStore } from '@/stores/websocket'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { cn } from '@/lib/utils'
 import { buildFetchedAtLabel, HealthPopoverContent } from './HealthPopoverContent'
 import { deriveHealthSubsystemStates } from './derive-subsystem-states'
@@ -39,7 +40,7 @@ function useFetchHealth(): {
         if (probeId !== latestProbeRef.current) return
         const fetchedAt = new Date()
         const message = err instanceof Error ? err.message : 'Health probe failed'
-        log.warn('Health probe failed', err)
+        log.warn('Health probe failed', { error: sanitizeForLog(message) })
         setLoadState({ state: 'error', message, fetchedAt })
         setNowMs(fetchedAt.getTime())
       })
@@ -65,7 +66,13 @@ export function HealthPopover({ children }: HealthPopoverProps) {
   const { loadState, nowMs, setNowMs, fetchHealth } = useFetchHealth()
   const wsConnected = useWebSocketStore((s) => s.connected)
   const wsReconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
-  const states = deriveHealthSubsystemStates(loadState, wsConnected, wsReconnectExhausted)
+  const sseFallbackActive = useWebSocketStore((s) => s.sseFallbackActive)
+  const states = deriveHealthSubsystemStates(
+    loadState,
+    wsConnected,
+    wsReconnectExhausted,
+    sseFallbackActive,
+  )
 
   // Live-updating "X seconds ago" ticker. Starts when the dialog opens,
   // stops when it closes, so we never hold a background timer for a

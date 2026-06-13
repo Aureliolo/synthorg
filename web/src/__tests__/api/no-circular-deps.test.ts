@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 /**
- * Regression test for #2072. The cycle
+ * Regression guard against import cycles. The cycle
  *   stores/auth -> api/endpoints/auth -> api/client -> stores/auth
  * was previously suppressed via `dpdm --skip-imports`. This file fails the
  * suite if either (a) the suppression is reintroduced or (b) a new edge

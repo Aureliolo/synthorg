@@ -30,7 +30,7 @@ workflow_definition:
     expect(result.errors).toHaveLength(0)
     const edge = findEdge(result.edges, 'step_a', 'step_b')
     expect(edge).toBeDefined()
-    expect(edge!.data?.edgeType).toBe('sequential')
+    expect(edge!.data?.['edgeType']).toBe('sequential')
   })
 
   it('parses object depends_on with branch true', () => {
@@ -52,8 +52,8 @@ workflow_definition:
     expect(result.errors).toHaveLength(0)
     const edge = findEdge(result.edges, 'check', 'deploy')
     expect(edge).toBeDefined()
-    expect(edge!.data?.edgeType).toBe('conditional_true')
-    expect(edge!.data?.branch).toBe('true')
+    expect(edge!.data?.['edgeType']).toBe('conditional_true')
+    expect(edge!.data?.['branch']).toBe('true')
   })
 
   it('parses object depends_on with branch false', () => {
@@ -75,8 +75,8 @@ workflow_definition:
     expect(result.errors).toHaveLength(0)
     const edge = findEdge(result.edges, 'check', 'rollback')
     expect(edge).toBeDefined()
-    expect(edge!.data?.edgeType).toBe('conditional_false')
-    expect(edge!.data?.branch).toBe('false')
+    expect(edge!.data?.['edgeType']).toBe('conditional_false')
+    expect(edge!.data?.['branch']).toBe('false')
   })
 
   it('supports mixed string and object depends_on entries', () => {
@@ -101,10 +101,10 @@ workflow_definition:
     expect(result.errors).toHaveLength(0)
     const seqEdge = findEdge(result.edges, 'setup', 'run')
     expect(seqEdge).toBeDefined()
-    expect(seqEdge!.data?.edgeType).toBe('sequential')
+    expect(seqEdge!.data?.['edgeType']).toBe('sequential')
     const condEdge = findEdge(result.edges, 'check', 'run')
     expect(condEdge).toBeDefined()
-    expect(condEdge!.data?.edgeType).toBe('conditional_true')
+    expect(condEdge!.data?.['edgeType']).toBe('conditional_true')
   })
 
   it('falls back to counter inference for object without branch', () => {
@@ -129,8 +129,8 @@ workflow_definition:
     expect(result.errors).toHaveLength(0)
     const trueEdge = findEdge(result.edges, 'check', 'yes_step')
     const falseEdge = findEdge(result.edges, 'check', 'no_step')
-    expect(trueEdge!.data?.edgeType).toBe('conditional_true')
-    expect(falseEdge!.data?.edgeType).toBe('conditional_false')
+    expect(trueEdge!.data?.['edgeType']).toBe('conditional_true')
+    expect(falseEdge!.data?.['edgeType']).toBe('conditional_false')
   })
 
   it('reports error for invalid depends_on entry type', () => {
@@ -172,7 +172,7 @@ workflow_definition:
     expect(result.warnings[0]).toContain('unrecognized branch')
     // Falls back to inference: first conditional edge is conditional_true
     const edge = findEdge(result.edges, 'check', 'step_b')
-    expect(edge!.data?.edgeType).toBe('conditional_true')
+    expect(edge!.data?.['edgeType']).toBe('conditional_true')
   })
 
   it('reports error for object with empty id', () => {

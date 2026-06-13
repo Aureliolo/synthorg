@@ -5,9 +5,11 @@ import { Shapes } from 'lucide-react'
 import { useOntologyData } from '@/hooks/useOntologyData'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { EntityCatalog } from './ontology/EntityCatalog'
 import { DriftMonitor } from './ontology/DriftMonitor'
+import { OntologyAdminSection } from './ontology/OntologyAdminSection'
 import { OntologySkeleton } from './ontology/OntologySkeleton'
 
 export default function OntologyPage() {
@@ -47,6 +49,11 @@ export default function OntologyPage() {
           title="No entities registered"
           description="Your ontology is empty. Entities appear once your agents register them or you define them via the API."
         />
+        {/* Keep the admin actions reachable here: derive / sync-org-memory are
+            exactly what an operator uses to bootstrap an empty ontology. */}
+        <ErrorBoundary level="section">
+          <OntologyAdminSection />
+        </ErrorBoundary>
       </div>
     )
   }
@@ -61,14 +68,23 @@ export default function OntologyPage() {
       )}
 
       {/* Entity Catalog */}
-      <EntityCatalog entities={filteredEntities} />
+      <ErrorBoundary level="section">
+        <EntityCatalog entities={filteredEntities} />
+      </ErrorBoundary>
 
       {/* Drift Monitor */}
-      <DriftMonitor
-        reports={driftReports}
-        loading={driftLoading}
-        error={driftError}
-      />
+      <ErrorBoundary level="section">
+        <DriftMonitor
+          reports={driftReports}
+          loading={driftLoading}
+          error={driftError}
+        />
+      </ErrorBoundary>
+
+      {/* Admin actions */}
+      <ErrorBoundary level="section">
+        <OntologyAdminSection />
+      </ErrorBoundary>
     </div>
   )
 }

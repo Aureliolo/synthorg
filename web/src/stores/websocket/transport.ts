@@ -8,7 +8,6 @@ import {
   WS_MAX_MESSAGE_SIZE,
   WS_MAX_RECONNECT_ATTEMPTS,
   WS_PONG_TIMEOUT_MS,
-  WS_PROTOCOL_VERSION,
   WS_RECONNECT_BASE_DELAY,
   WS_RECONNECT_JITTER_MAX,
   WS_RECONNECT_JITTER_MIN,
@@ -35,6 +34,7 @@ import {
   recordAbnormalCloseDuringHandshake,
   resetProxyBlockSuspicion,
 } from './sse-fallback'
+import { isSupportedWireVersion, resetProtocolMismatchCount } from './protocol-guard'
 import { getCurrentSocket, setCurrentSocket } from './transport-shared'
 import type { WsGet, WsSet } from './types'
 
@@ -127,22 +127,15 @@ function computeReconnectDelay(): number {
     WS_RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts),
     WS_RECONNECT_MAX_DELAY,
   )
-  // Apply +/-20% randomised jitter so a server-restart-driven
-  // reconnect storm de-correlates across clients instead of all
-  // clients hammering the gateway in lockstep on every backoff
-  // tick. Range comes from the ``WS_RECONNECT_JITTER_*`` ratios
-  // declared in ``utils/constants`` so the value is greppable and
-  // testable from a single source.
+  // +/-20% jitter (the ``WS_RECONNECT_JITTER_*`` ratios) de-correlates a
+  // server-restart-driven reconnect storm across clients.
   const jitterMultiplier =
     WS_RECONNECT_JITTER_MIN
     + Math.random() * (WS_RECONNECT_JITTER_MAX - WS_RECONNECT_JITTER_MIN)
-  // Clamp the post-rounding result to ``[1ms, WS_RECONNECT_MAX_DELAY]``.
-  // The 1ms floor stops a future tuning of the base / jitter
-  // constants that produces a sub-millisecond delay from collapsing
-  // the backoff to an immediate reconnect; the max ceiling stops the
-  // upper-bound jitter multiplier (1.2 today) from pushing the
-  // delay past the configured max once ``baseDelay`` is already
-  // saturated at ``WS_RECONNECT_MAX_DELAY``.
+  // Clamp to ``[1ms, WS_RECONNECT_MAX_DELAY]``: the floor stops a sub-ms
+  // delay collapsing the backoff to an immediate reconnect; the ceiling
+  // stops the upper jitter multiplier exceeding the max once ``baseDelay``
+  // is already saturated.
   return Math.max(
     1,
     Math.min(
@@ -171,6 +164,13 @@ function scheduleReconnect(set: WsSet, get: WsGet): void {
 }
 
 function handleAuthOk(thisSocket: WebSocket, set: WsSet): void {
+  // Tear down the SSE fallback only once the replacement WS is proven
+  // usable (authenticated). Doing it here rather than before the ticket
+  // exchange keeps the fallback live through a failed handshake, so a
+  // dropped ticket / never-reached ``auth_ok`` does not leave the
+  // dashboard with neither transport. The WS does not dispatch events
+  // before ``auth_ok``, so there is no double-fire window to close.
+  closeSseFallback(set)
   set({ connected: true })
   reconnectAttempts = 0
   // Successful handshake clears the proxy-block suspicion; if
@@ -181,57 +181,45 @@ function handleAuthOk(thisSocket: WebSocket, set: WsSet): void {
 }
 
 function handleAck(msg: Record<string, unknown>, set: WsSet): void {
-  if (isWsChannelArray(msg.channels)) {
-    set({ subscribedChannels: [...msg.channels] })
+  if (isWsChannelArray(msg['channels'])) {
+    set({ subscribedChannels: [...msg['channels']] })
   }
 }
 
-function handleEventOrLog(msg: Record<string, unknown>): void {
+function handleEventOrLog(msg: Record<string, unknown>, set: WsSet): void {
   if (!isWsEvent(msg)) {
     log.warn('Message failed WsEvent validation, discarding:', {
-      hasEventType: typeof msg.event_type,
-      hasChannel: typeof msg.channel,
-      hasTimestamp: typeof msg.timestamp,
-      hasPayload: typeof msg.payload,
+      hasEventType: typeof msg['event_type'],
+      hasChannel: typeof msg['channel'],
+      hasTimestamp: typeof msg['timestamp'],
+      hasPayload: typeof msg['payload'],
     })
     return
   }
-  const version = eventVersion(msg)
-  if (version !== WS_PROTOCOL_VERSION) {
-    log.warn('Discarding event with unsupported wire version:', {
-      received: version,
-      supported: WS_PROTOCOL_VERSION,
-      // event_type + channel are attacker-reachable via the
-      // WS payload; scrub before embedding in the log to close
-      // the log-injection vector.
-      event_type: sanitizeForLog(msg.event_type),
-      channel: sanitizeForLog(msg.channel),
-    })
-    return
-  }
+  if (!isSupportedWireVersion(eventVersion(msg), msg, set)) return
   dispatchEvent(msg)
 }
 
 function routeIncomingMessage(msg: Record<string, unknown>, set: WsSet): void {
-  if (msg.action === 'pong') {
+  if (msg['action'] === 'pong') {
     if (pongTimer) {
       clearTimeout(pongTimer)
       pongTimer = null
     }
     return
   }
-  if (msg.action === 'subscribed' || msg.action === 'unsubscribed') {
+  if (msg['action'] === 'subscribed' || msg['action'] === 'unsubscribed') {
     handleAck(msg, set)
     return
   }
-  if (msg.error) {
+  if (msg['error']) {
     log.error(
       'Server error:',
-      sanitizeForLog(msg.error, LOG_SANITIZE_MAX_LENGTH),
+      sanitizeForLog(msg['error'], LOG_SANITIZE_MAX_LENGTH),
     )
     return
   }
-  handleEventOrLog(msg)
+  handleEventOrLog(msg, set)
 }
 
 function shouldFallbackToSse(event: CloseEvent, wasConnected: boolean): boolean {
@@ -251,13 +239,13 @@ function shouldFallbackToSse(event: CloseEvent, wasConnected: boolean): boolean 
   return recordAbnormalCloseDuringHandshake() && !isSseFallbackActive()
 }
 
-function activateFallbackAndStopReconnect(): void {
+function activateFallbackAndStopReconnect(set: WsSet): void {
   shouldBeConnected = false
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
-  activateSseFallback()
+  activateSseFallback(set)
 }
 
 function handleClose(
@@ -281,7 +269,7 @@ function handleClose(
     return
   }
   if (shouldFallbackToSse(event, wasConnected)) {
-    activateFallbackAndStopReconnect()
+    activateFallbackAndStopReconnect(set)
     return
   }
   if (!intentionalClose && shouldBeConnected) {
@@ -341,7 +329,7 @@ function wireSocketHandlers(
   thisSocket.onmessage = (event: MessageEvent) => {
     const msg = parseIncomingFrame(event.data)
     if (!msg) return
-    if (msg.action === 'auth_ok') {
+    if (msg['action'] === 'auth_ok') {
       handleAuthOk(thisSocket, set)
       return
     }
@@ -382,17 +370,10 @@ async function doConnect(
   set: WsSet,
   get: WsGet,
 ): Promise<void> {
-  set({ reconnectExhausted: false })
+  set({ reconnectExhausted: false, protocolVersionMismatch: false })
+  resetProtocolMismatchCount()
   shouldBeConnected = true
   intentionalClose = false
-
-  // Close any active SSE fallback before attempting a fresh WS.
-  // If the WS handshake later succeeds, the SSE client would otherwise
-  // remain open and ``dispatchEvent`` would fire on every channel
-  // event twice -- once from the WS frame, once from the SSE stream.
-  // Tearing it down here keeps the "only one transport at a time"
-  // invariant the dispatch chain assumes.
-  closeSseFallback()
 
   const ticket = await fetchTicketOrReconnect(set, get)
   if (ticket === null) return
@@ -421,66 +402,77 @@ async function connectImpl(set: WsSet, get: WsGet): Promise<void> {
   return connectPromise
 }
 
-function disconnectImpl(set: WsSet): void {
+/**
+ * Reset the module-level reconnect bookkeeping shared by every
+ * intentional teardown (``disconnect`` and ``teardownTransport``):
+ * stop reconnecting, bump the generation so any in-flight ``doConnect``
+ * bails, and clear the failure / mismatch / proxy-block counters and
+ * timers. Socket close and store updates are left to the caller since
+ * they differ between the two paths.
+ */
+function _resetReconnectState(): void {
   intentionalClose = true
   shouldBeConnected = false
   connectGeneration++
   connectPromise = null
   reconnectAttempts = 0
+  resetProtocolMismatchCount()
+  resetProxyBlockSuspicion()
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
   stopHeartbeat()
+}
+
+function disconnectImpl(set: WsSet): void {
+  _resetReconnectState()
   const socket = getCurrentSocket()
   if (socket) {
     socket.close()
     setCurrentSocket(null)
   }
-  closeSseFallback()
-  resetProxyBlockSuspicion()
-  set({ connected: false, subscribedChannels: [] })
+  closeSseFallback(set)
+  set({ connected: false, subscribedChannels: [], protocolVersionMismatch: false })
   teardownSubscriptions()
 }
 
 async function retryImpl(set: WsSet, get: WsGet): Promise<void> {
-  // Wired to the "Retry" action surfaced on reconnect-exhausted
-  // toasts and badges. Resets the failure budget and asks the
-  // store to attempt a fresh connect; the regular reconnect /
-  // auth_ok / heartbeat path takes over from there.
+  // Wired to the "Retry" action on reconnect-exhausted toasts / badges.
+  // Resets the failure budget and asks the store to attempt a fresh
+  // connect; the regular reconnect / auth_ok / heartbeat path takes over.
   reconnectAttempts = 0
+  resetProtocolMismatchCount()
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
-  set({ reconnectExhausted: false })
-  await connectImpl(set, get)
+  set({ reconnectExhausted: false, protocolVersionMismatch: false })
+  // A manual retry whose ticket exchange fails (e.g. auth error) would
+  // reject unhandled with reconnectExhausted cleared; re-arm it so the
+  // Retry affordance stays visible.
+  try {
+    await connectImpl(set, get)
+  } catch (err) {
+    log.error('Manual retry failed:', sanitizeForLog(err))
+    set({ reconnectExhausted: true })
+  }
 }
 
 export function teardownTransport(): void {
-  intentionalClose = true
-  shouldBeConnected = false
-  connectGeneration++
-  connectPromise = null
-  reconnectAttempts = 0
+  _resetReconnectState()
   closeSseFallback()
-  resetProxyBlockSuspicion()
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-  stopHeartbeat()
   const socket = getCurrentSocket()
   if (socket) {
-    socket.onopen = null
-    socket.onclose = null
-    socket.onerror = null
-    socket.onmessage = null
+    // Detach all handlers before close so a mock / half-closed socket
+    // cannot fire callbacks after teardown.
+    socket.onopen = socket.onclose = socket.onerror = socket.onmessage = null
     try {
       socket.close()
-    } catch {
-      // Best-effort: a half-closed mock or a socket that already
-      // raised on construction must not block the teardown.
+    } catch (err) {
+      // Best-effort: a half-closed / construction-failed socket must not
+      // block teardown, but log so a genuine close failure is not swallowed.
+      log.warn('socket.close() threw during teardown', sanitizeForLog(err))
     }
     setCurrentSocket(null)
   }

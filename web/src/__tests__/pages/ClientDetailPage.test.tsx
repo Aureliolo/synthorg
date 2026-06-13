@@ -48,7 +48,7 @@ describe('ClientDetailPage', () => {
       http.get('/api/v1/clients/:id/satisfaction', ({ params }) =>
         HttpResponse.json(
           successFor<typeof getClientSatisfaction>({
-            client_id: String(params.id),
+            client_id: String(params['id']),
             total_reviews: 3,
             acceptance_rate: 0.67,
             average_score: 4.2,

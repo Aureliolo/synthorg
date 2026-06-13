@@ -223,7 +223,7 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
   const shortcutKey = isMacPlatform ? '⌘' : 'Ctrl'
 
   useEffect(() => {
-    if (process.env.NODE_ENV !== 'production' && overlayOpen && !onOverlayClose) {
+    if (process.env['NODE_ENV'] !== 'production' && overlayOpen && !onOverlayClose) {
       log.warn('`onOverlayClose` is required when `overlayOpen` is true; dismiss actions will be inert.')
     }
   }, [overlayOpen, onOverlayClose])

@@ -28,7 +28,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
     // before the dispose can never collide with post-dispose seq
     // values (the captured ``epoch`` will not match the new
     // ``requestEpoch``). Resetting the seq counters keeps fresh
-    // calls starting from zero (#1600 Phase 5).
+    // calls starting from zero.
     bumpRequestEpoch()
     _resetRequestSeqs()
   },

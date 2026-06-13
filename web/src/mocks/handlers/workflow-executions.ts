@@ -48,7 +48,7 @@ export const workflowExecutionsHandlers = [
     // hardcoded fallback that ``buildWorkflowExecution`` defaults to.
     // Otherwise a test that asserts on ``definition_id`` always sees
     // ``wf-default`` no matter which workflow it just queried.
-    const workflowId = String(params.workflowId ?? 'wf-default')
+    const workflowId = String(params['workflowId'] ?? 'wf-default')
     const rows = defaultExecutions.map((row) => ({
       ...row,
       definition_id: workflowId,
@@ -69,7 +69,7 @@ export const workflowExecutionsHandlers = [
   // wire shape matches the typed client.
   http.post('/api/v1/workflow-executions/:executionId/cancel', ({ params }) => {
     const executionId = String(
-      params.executionId ?? '9b2e4c6a-1d3f-4a5b-8c7d-0e1f2a3b4c5d',
+      params['executionId'] ?? '9b2e4c6a-1d3f-4a5b-8c7d-0e1f2a3b4c5d',
     )
     // ``updated_at`` and ``completed_at`` carry the same cancellation
     // timestamp because the backend emits them together when a run

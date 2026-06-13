@@ -10,20 +10,20 @@ export interface ExternalTriggerConfigProps {
 
 export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTriggerConfigProps) {
   const transitionEvent =
-    typeof config.transition_event === 'string' ? config.transition_event : ''
-  const [rawJson, setRawJson] = useState(() => JSON.stringify(config.sources ?? [], null, 2))
+    typeof config['transition_event'] === 'string' ? config['transition_event'] : ''
+  const [rawJson, setRawJson] = useState(() => JSON.stringify(config['sources'] ?? [], null, 2))
   const [jsonError, setJsonError] = useState<string | null>(null)
 
   // Sync rawJson when config.sources changes externally (e.g. parent reset).
   // rawJson is intentionally excluded from deps to avoid feedback loops;
   // we only want to sync when the *prop* changes, not when the user edits.
   useEffect(() => {
-    const incoming = JSON.stringify(config.sources ?? [], null, 2)
+    const incoming = JSON.stringify(config['sources'] ?? [], null, 2)
     // Only update if the semantic value differs to avoid cursor jumps
     // while the user is actively editing
     try {
       const currentParsed: unknown = JSON.parse(rawJson)
-      const incomingParsed = config.sources ?? []
+      const incomingParsed = config['sources'] ?? []
       if (JSON.stringify(currentParsed) !== JSON.stringify(incomingParsed)) {
         // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
         setRawJson(incoming)
@@ -38,7 +38,7 @@ export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTr
       setJsonError(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rawJson intentionally excluded: this resyncs local state FROM the prop, so depending on rawJson would loop
-  }, [config.sources])
+  }, [config['sources']])
 
   return (
     <div className="space-y-3">

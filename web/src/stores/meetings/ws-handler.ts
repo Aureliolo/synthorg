@@ -25,9 +25,9 @@ function upsertMeetingImpl(set: MeetingsSet, meeting: MeetingResponse): void {
 }
 
 function isMeetingPayloadObject(payload: Record<string, unknown>): boolean {
-  return typeof payload.meeting === 'object'
-    && payload.meeting !== null
-    && !Array.isArray(payload.meeting)
+  return typeof payload['meeting'] === 'object'
+    && payload['meeting'] !== null
+    && !Array.isArray(payload['meeting'])
 }
 
 function handleWsEventImpl(get: MeetingsGet, event: WsEvent): void {
@@ -36,13 +36,13 @@ function handleWsEventImpl(get: MeetingsGet, event: WsEvent): void {
     log.warn('Event has no meeting payload, skipping:', event.event_type)
     return
   }
-  const candidate = payload.meeting as Record<string, unknown>
+  const candidate = payload['meeting'] as Record<string, unknown>
   if (!isMeetingShape(candidate)) {
     log.error('Received malformed meeting WS payload, skipping upsert', {
-      meeting_id: sanitizeForLog(candidate.meeting_id),
-      hasStatus: typeof candidate.status === 'string',
-      hasTypeName: typeof candidate.meeting_type_name === 'string',
-      hasTokenBudget: typeof candidate.token_budget === 'number',
+      meeting_id: sanitizeForLog(candidate['meeting_id']),
+      hasStatus: typeof candidate['status'] === 'string',
+      hasTypeName: typeof candidate['meeting_type_name'] === 'string',
+      hasTokenBudget: typeof candidate['token_budget'] === 'number',
     })
     return
   }

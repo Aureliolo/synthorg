@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useApprovalsStore } from '@/stores/approvals'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import type {
   ApprovalResponse,
   ApproveRequest,
@@ -65,12 +66,12 @@ export function useApprovalsData(): UseApprovalsDataReturn {
     void useApprovalsStore.getState().fetchApprovals({ limit: APPROVAL_FETCH_LIMIT })
   }, [])
 
-  // Lightweight polling for approval refresh
+  // Lightweight polling for approval refresh, gated against fresh WS state.
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useApprovalsStore.getState().fetchApprovals({ limit: APPROVAL_FETCH_LIMIT })
   }, [])
-
-  const polling = usePolling(pollFn, APPROVAL_POLL_INTERVAL)
+  const polling = usePolling(pollFn, APPROVAL_POLL_INTERVAL, { skipIfFresh })
 
   const { start, stop } = polling
   useEffect(() => {
@@ -84,10 +85,11 @@ export function useApprovalsData(): UseApprovalsDataReturn {
       APPROVAL_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
+          markFresh()
           useApprovalsStore.getState().handleWsEvent(event)
         },
       })),
-    [],
+    [markFresh],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({

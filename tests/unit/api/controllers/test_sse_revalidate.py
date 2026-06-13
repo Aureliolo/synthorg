@@ -19,9 +19,11 @@ from typeguard import suppress_type_checks
 
 from synthorg.api.controllers.events._sse import (
     _run_revalidation_tick,
+    _serialise_stream_event,
     _user_revocation_reason,
 )
 from synthorg.api.state import AppState
+from synthorg.communication.event_stream.types import AgUiEventType, StreamEvent
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.core.auth.roles import HumanRole
 from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
@@ -79,6 +81,22 @@ def _make_app_state(  # noqa: PLR0913
     ws_limits.set_auth_revalidate_window_seconds(auth_revalidate_window_seconds)
     ws_limits.set_auth_revalidate_max_failures(auth_revalidate_max_failures)
     return app_state
+
+
+async def test_serialise_stream_event_includes_id_field() -> None:
+    """The SSE frame carries the event id so the browser can resume via
+    the ``Last-Event-ID`` header on reconnect."""
+    event = StreamEvent(
+        id="evt-42",
+        type=AgUiEventType.RUN_STARTED,
+        timestamp=datetime.now(UTC),
+        session_id="sess-1",
+    )
+    frame = await _serialise_stream_event(event, "sess-1")
+    assert frame is not None
+    assert frame["id"] == "evt-42"
+    assert frame["event"] == "run_started"
+    assert json.loads(frame["data"])["id"] == "evt-42"
 
 
 async def test_revocation_reason_returns_user_deleted_when_user_missing() -> None:

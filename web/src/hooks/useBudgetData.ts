@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useBudgetStore } from '@/stores/budget'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import type {
   ActivityItem,
   ForecastResponse,
@@ -54,11 +55,12 @@ export function useBudgetData(): UseBudgetDataReturn {
     void useBudgetStore.getState().fetchBudgetData()
   }, [])
 
-  // Polling for lightweight overview refresh
+  // Polling for lightweight overview refresh, gated against fresh WS state.
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useBudgetStore.getState().fetchOverview()
   }, [])
-  const polling = usePolling(pollFn, BUDGET_POLL_INTERVAL)
+  const polling = usePolling(pollFn, BUDGET_POLL_INTERVAL, { skipIfFresh })
   const { start, stop } = polling
   useEffect(() => {
     start()
@@ -71,10 +73,11 @@ export function useBudgetData(): UseBudgetDataReturn {
       BUDGET_CHANNELS.map((channel) => ({
         channel,
         handler: (event: WsEvent) => {
+          markFresh()
           useBudgetStore.getState().updateFromWsEvent(event)
         },
       })),
-    [],
+    [markFresh],
   )
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({
     bindings,

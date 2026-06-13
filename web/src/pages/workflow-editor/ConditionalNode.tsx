@@ -13,7 +13,7 @@ export interface ConditionalNodeData extends Record<string, unknown> {
 export type ConditionalNodeType = Node<ConditionalNodeData, 'conditional'>
 
 function ConditionalNodeComponent({ data, selected }: NodeProps<ConditionalNodeType>) {
-  const rawCondition = data.config.condition_expression
+  const rawCondition = data.config['condition_expression']
   const condition = typeof rawCondition === 'string' && rawCondition.trim() ? rawCondition : data.label
 
   return (

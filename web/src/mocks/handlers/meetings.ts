@@ -32,7 +32,7 @@ export const meetingsHandlers = [
   http.get('/api/v1/meetings/:id', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getMeeting>(
-        buildMeeting({ meeting_id: String(params.id) }),
+        buildMeeting({ meeting_id: String(params['id']) }),
       ),
     ),
   ),

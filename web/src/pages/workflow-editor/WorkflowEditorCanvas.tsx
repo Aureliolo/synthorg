@@ -129,6 +129,8 @@ function FlowCanvas(props: WorkflowEditorCanvasProps) {
     <ReactFlow
       aria-label="Workflow editor canvas"
       aria-describedby="workflow-editor-node-summary"
+      // @xyflow/react types `nodes`/`edges` as mutable arrays but never
+      // mutates them; the store owns these as readonly, so widen here only.
       nodes={nodes as Node[]}
       edges={edges as Edge[]}
       nodeTypes={nodeTypes}

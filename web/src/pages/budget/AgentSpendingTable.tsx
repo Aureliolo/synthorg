@@ -14,6 +14,28 @@ type SortDirection = 'asc' | 'desc'
 
 const LOCALE = getLocale()
 
+// Hoisted so the memoised SpendingRow does not allocate a new formatter on
+// every render of every row (locale is read once at module load).
+const PCT_FORMATTER = new Intl.NumberFormat(LOCALE, {
+  style: 'percent',
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+})
+
+/** Accessible name for a sortable header button, conveying the sort state. */
+function headerSortLabel(
+  label: string,
+  sortable: boolean,
+  active: boolean,
+  dir: SortDirection,
+): string | undefined {
+  if (!sortable) return undefined
+  if (active) {
+    return `${label}, sorted ${dir === 'asc' ? 'ascending' : 'descending'}. Activate to reverse the sort order.`
+  }
+  return `${label}, not sorted. Activate to sort by this column.`
+}
+
 export interface AgentSpendingTableProps {
   rows: readonly AgentSpendingRow[]
   currency?: string
@@ -68,6 +90,7 @@ function ColumnHeader({ col, sortKey, sortDir, onSort }: {
     <button
       type="button"
       onClick={() => col.sortable && onSort(col.key)}
+      disabled={!col.sortable}
       className={cn(
         'flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors focus-visible:text-foreground',
         FOCUS_RING,
@@ -75,7 +98,9 @@ function ColumnHeader({ col, sortKey, sortDir, onSort }: {
         col.width,
         col.key !== 'agentName' && 'justify-end',
       )}
-      aria-sort={sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+      // aria-sort is ignored on a button; this is a row widget, not a table,
+      // so the sort state is announced through the accessible name instead.
+      aria-label={headerSortLabel(col.label, col.sortable, sortKey === col.key, sortDir)}
     >
       {col.label}
       {sortKey === col.key && (
@@ -102,11 +127,7 @@ const SpendingRow = memo(function SpendingRow({ row, currency }: SpendingRowProp
         {formatCurrency(row.totalCost, currency)}
       </span>
       <span className={cn(COLUMN_WIDTHS.budgetPercent, 'text-right font-mono text-xs text-text-secondary')}>
-        {new Intl.NumberFormat(getLocale(), {
-          style: 'percent',
-          minimumFractionDigits: 1,
-          maximumFractionDigits: 1,
-        }).format(row.budgetPercent / 100)}
+        {PCT_FORMATTER.format(row.budgetPercent / 100)}
       </span>
       <span className={cn(COLUMN_WIDTHS.taskCount, 'text-right font-mono text-xs text-text-secondary')}>
         {row.taskCount}
@@ -149,7 +170,7 @@ function AgentSpendingTableInner({ rows, currency }: AgentSpendingTableProps) {
         <EmptyState
           icon={Users}
           title="No agent spending data"
-          description="Cost records will appear as agents consume tokens"
+          description="Cost records will appear as agents consume tokens."
         />
       ) : (
         <div className="space-y-grid-gap">

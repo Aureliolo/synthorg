@@ -5,7 +5,7 @@ import { getErrorMessage } from '@/utils/errors'
 // Honour ``FC_SEED`` so a CI failure can be reproduced locally:
 // ``FC_SEED=<n> npm --prefix web run test -- errors.property``.
 // Unset, fast-check picks its own seed each run (the default).
-const parsedSeed = Number.parseInt(process.env.FC_SEED ?? '', 10)
+const parsedSeed = Number.parseInt(process.env['FC_SEED'] ?? '', 10)
 const FC_SEED = Number.isFinite(parsedSeed) ? parsedSeed : undefined
 
 // Mock axios so the helper's classification logic is tested in
@@ -14,10 +14,10 @@ const FC_SEED = Number.isFinite(parsedSeed) ? parsedSeed : undefined
 vi.mock('axios', () => ({
   default: {
     isAxiosError: (err: unknown) =>
-      typeof err === 'object' && err !== null && (err as Record<string, unknown>).isAxiosError === true,
+      typeof err === 'object' && err !== null && (err as Record<string, unknown>)['isAxiosError'] === true,
   },
   isAxiosError: (err: unknown) =>
-    typeof err === 'object' && err !== null && (err as Record<string, unknown>).isAxiosError === true,
+    typeof err === 'object' && err !== null && (err as Record<string, unknown>)['isAxiosError'] === true,
 }))
 
 /** Build a fake AxiosError-shaped object without importing the real class. */

@@ -304,24 +304,32 @@ class TestGetCalibrationRecords:
 
     def test_filter_by_since(self) -> None:
         """Records can be filtered by sampled_at time."""
+        # Anchor the seeded records to the real clock rather than the fixed
+        # NOW constant. get_calibration_records prunes records older than
+        # retention_days against the wall clock, so a fixed past timestamp
+        # gets evicted before the ``since`` filter runs once real time moves
+        # more than retention_days past it (a calendar-driven time bomb).
+        # Relative-to-now records always sit inside the default window, so the
+        # test exercises the since filter deterministically on any date.
+        now = datetime.now(UTC)
         sampler = _make_sampler()
         old_cal = make_calibration_record(
             agent_id="agent-001",
-            sampled_at=NOW - timedelta(days=10),
+            sampled_at=now - timedelta(days=10),
         )
         recent_cal = make_calibration_record(
             agent_id="agent-001",
-            sampled_at=NOW,
+            sampled_at=now,
         )
         # Directly populate internal storage for time-sensitive test.
         sampler._records["agent-001"] = [old_cal, recent_cal]
 
         since_records = sampler.get_calibration_records(
-            since=NOW - timedelta(days=5),
+            since=now - timedelta(days=5),
         )
 
         assert len(since_records) == 1
-        assert since_records[0].sampled_at == NOW
+        assert since_records[0].sampled_at == now
 
 
 @pytest.mark.unit

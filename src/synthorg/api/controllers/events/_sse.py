@@ -206,6 +206,11 @@ async def _serialise_stream_event(
     under the McCabe / branch / statement ceilings. Failures are
     logged at WARNING and skipped; the parent loop should ``continue``.
 
+    The frame carries the event ``id`` so the browser EventSource records
+    it as ``lastEventId`` and replays it via the ``Last-Event-ID`` header
+    on reconnect. Keepalive / revoked frames deliberately omit ``id`` so
+    they never clobber the client's resume cursor.
+
     Returns:
         The ``dict[str, str]`` value when present, ``None`` otherwise.
     """
@@ -222,7 +227,11 @@ async def _serialise_stream_event(
             error=safe_error_description(serialize_exc),
         )
         return None
-    return {"event": event.type.value, "data": data}
+    # Strip CR/LF: the SSE wire format is newline-delimited, so a stray
+    # newline in the id would inject a spurious field line. Event ids are
+    # in-process opaque strings, but sanitise defensively at the boundary.
+    safe_id = event.id.replace("\r", "").replace("\n", "")
+    return {"event": event.type.value, "data": data, "id": safe_id}
 
 
 async def _run_revalidation_tick(

@@ -533,7 +533,12 @@ Every backend controller has a home in the page structure. No orphans.
 | AutonomyController | Agent Detail page (planned) |
 | CollaborationController | Agent Detail page (Collaboration override panel) |
 | CoordinationController | Task Board (task detail action) |
-| CoordinationMetricsController | Settings (coordination namespace) |
+| CoordinationMetricsController | Coordination Metrics page (per-run efficiency / overhead / redundancy table) |
+| ExperimentsController | Meta page (read-only Experiments explorer: variants + assignment history) |
+| MetaAnalyticsController | Meta Analytics page (Cross-deployment patterns section) |
+| OntologyController / OntologyAdminController | Ontology page (entity catalog + Admin section: re-derive, sync org memory) |
+| InterruptController | Mission Control (offline interrupts fallback panel) |
+| MemoryEntriesController | Agent Detail page (memory administration: delete entry, CEO/SYSTEM only) |
 | AuditController | Settings (security namespace) |
 | ProjectController | Projects page (list, detail, create), Task Board (project filter) |
 | ArtifactController | Artifacts page (list, detail, content preview, download) |

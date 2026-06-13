@@ -2,6 +2,7 @@ import { openSseFallback } from '@/api/sse/client'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { dispatchEvent } from './subscriptions'
+import type { WsSet } from './types'
 
 const log = createLogger('ws')
 
@@ -23,11 +24,12 @@ export function isSseFallbackActive(): boolean {
   return sseClient !== null
 }
 
-export function closeSseFallback(): void {
+export function closeSseFallback(set?: WsSet): void {
   if (sseClient) {
     sseClient.close()
     sseClient = null
   }
+  set?.({ sseFallbackActive: false, sseFallbackExhausted: false })
 }
 
 export function resetProxyBlockSuspicion(): void {
@@ -59,19 +61,27 @@ async function notifyConnectionLimited(): Promise<void> {
         'Real-time WebSocket is blocked. Falling back to SSE; some interactive features (chat, settings actions) may be unavailable until you reload after fixing your proxy.',
     })
   } catch (err) {
-    log.warn('Could not surface connection-limited toast', sanitizeForLog(err))
+    // Capture the error type so a ChunkLoadError (deploy-time hash
+    // change) is distinguishable from a store init failure.
+    log.warn('Could not surface connection-limited toast', {
+      errorType: err instanceof Error ? err.name : typeof err,
+      error: sanitizeForLog(err instanceof Error ? err.message : String(err)),
+    })
     log.warn(
       'SSE fallback active; chat and settings features unavailable until reload',
     )
   }
 }
 
-export function activateSseFallback(): void {
+export function activateSseFallback(set: WsSet): void {
   if (sseClient !== null) return
   log.warn('WS handshake repeatedly failed with 1006; activating SSE fallback')
   sseClient = openSseFallback({
     onOpen: () => {
       log.debug('SSE fallback connected')
+      // A clean (re)open means the fallback is live again; clear any prior
+      // exhausted flag so the banner returns to the "degraded" state.
+      set({ sseFallbackExhausted: false })
     },
     onEvent: (wsEvent) => {
       dispatchEvent(wsEvent)
@@ -79,6 +89,15 @@ export function activateSseFallback(): void {
     onError: (err) => {
       log.warn('SSE fallback transport error', sanitizeForLog(err.message))
     },
+    onExhausted: () => {
+      log.error('SSE fallback exhausted; no live transport remains')
+      // Clear the client ref and active flag so the line-77 guard does not
+      // strand re-activation: an exhausted client delivers nothing, so a
+      // later handshake-failure path must be able to open a fresh fallback.
+      sseClient = null
+      set({ sseFallbackActive: false, sseFallbackExhausted: true })
+    },
   })
+  set({ sseFallbackActive: true, sseFallbackExhausted: false })
   void notifyConnectionLimited()
 }

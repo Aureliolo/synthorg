@@ -142,3 +142,36 @@ describe('AgentsStep: unresolved-agent detection', () => {
     ).not.toBeInTheDocument()
   })
 })
+
+describe('AgentsStep: empty-state copy is wizard-mode aware', () => {
+  beforeEach(() => {
+    useSetupWizardStore.getState().reset()
+    // Stub the mount-time fetches to no-ops so the empty fallback renders
+    // synchronously: the store keeps ``agents: []`` and no async refetch
+    // fires, isolating the test to the empty-state copy branch.
+    useSetupWizardStore.setState({
+      fetchAgents: async () => {},
+      fetchPersonalityPresets: async () => {},
+      agents: [],
+      agentsLoading: false,
+      agentsError: null,
+    })
+  })
+
+  it('uses the default-template wording in quick mode', () => {
+    useSetupWizardStore.setState({ wizardMode: 'quick' })
+
+    renderWithRouter(<AgentsStep />, { initialEntries: ['/setup/agents'] })
+
+    expect(screen.getByText(/default company template/i)).toBeInTheDocument()
+  })
+
+  it('points at the template step in guided mode', () => {
+    useSetupWizardStore.setState({ wizardMode: 'guided' })
+
+    renderWithRouter(<AgentsStep />, { initialEntries: ['/setup/agents'] })
+
+    expect(screen.getByText(/apply a template to generate agents/i)).toBeInTheDocument()
+    expect(screen.queryByText(/default company template/i)).not.toBeInTheDocument()
+  })
+})

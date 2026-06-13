@@ -31,7 +31,7 @@ export const backupHandlers = [
   ),
   http.get('/api/v1/admin/backups/:id', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getBackup>(buildManifest({ backup_id: String(params.id) })),
+      successFor<typeof getBackup>(buildManifest({ backup_id: String(params['id']) })),
     ),
   ),
   http.delete('/api/v1/admin/backups/:id', () =>

@@ -59,8 +59,11 @@ function FineTuningPageContent({ ctrl }: FineTuningPageContentProps) {
         <PipelineControlPanel />
       </SectionCard>
 
-      {ctrl.isActive && ctrl.status && (
-        <SectionCard title="Progress" icon={Activity}>
+      {ctrl.status && (
+        <SectionCard title={ctrl.isActive ? 'Progress' : 'Last pipeline run'} icon={Activity}>
+          {/* Render the stepper read-only when the pipeline is idle so the
+              last-known stage stays visible on tab-switch, rather than the
+              progress section vanishing the moment a run settles. */}
           <PipelineStepper stage={ctrl.status.stage} />
           <PipelineProgressBar
             stage={ctrl.status.stage}

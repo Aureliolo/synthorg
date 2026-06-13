@@ -59,6 +59,11 @@ response. Each SSE event has:
 }
 ```
 
+The `id` is also written as the top-level SSE `id:` framing line (not just
+inside the JSON data), so a browser `EventSource` records it and replays it
+as the `Last-Event-ID` request header when it reconnects. CR / LF are
+stripped from the id before framing to prevent SSE field injection.
+
 The `EventStreamHub` (`communication/event_stream/stream.py`) is the single
 pub/sub source. Both the AG-UI dashboard and the A2A gateway consume
 from this hub, each applying their own projection layer.
@@ -80,8 +85,11 @@ mid-task clarification:
 - Payload: `interrupt_id`, `question`, `context_snippet`, `timeout_seconds`
 - Resume: `POST /api/v1/events/resume/{interrupt_id}` with `{response}`
 
-Non-SSE polling fallback for CLI/integration tests:
-`GET /api/v1/interrupts` + `POST /api/v1/interrupts/{id}/resume`.
+Non-SSE polling fallback: `GET /api/v1/interrupts` +
+`POST /api/v1/interrupts/{id}/resume`. Used by CLI/integration tests and
+by the dashboard's Mission Control interrupts panel, which polls these
+endpoints while the live WebSocket transport is down and otherwise stays
+hidden (the live surface owns interrupts when connected).
 
 ## EvidencePackage Schema
 

@@ -16,7 +16,7 @@ function ConditionalEdgeComponent(props: EdgeProps) {
     targetPosition: props.targetPosition,
   })
 
-  const isTrueBranch = props.data?.branch === 'true'
+  const isTrueBranch = props.data?.['branch'] === 'true'
   const color = isTrueBranch ? 'var(--so-success)' : 'var(--so-danger)'
   const label = props.label || (isTrueBranch ? 'true' : 'false')
 

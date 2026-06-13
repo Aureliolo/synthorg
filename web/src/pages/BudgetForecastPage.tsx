@@ -1,6 +1,7 @@
 import { lazy, Suspense, useMemo } from 'react'
 import { Calendar } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { ListHeader } from '@/components/ui/list-header'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -189,7 +190,7 @@ function DailyProjections({
       <EmptyState
         icon={Calendar}
         title="No forecast data"
-        description="Forecast projections will appear once enough spending data is available"
+        description="Forecast projections will appear once enough spending data is available."
       />
     )
   }
@@ -258,7 +259,7 @@ export default function BudgetForecastPage() {
           { label: 'Forecast' },
         ]}
       />
-      <h1 className="text-lg font-semibold text-foreground">Budget Forecast</h1>
+      <ListHeader title="Budget Forecast" />
 
       <ForecastBanners
         error={error}

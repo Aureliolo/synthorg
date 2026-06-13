@@ -75,7 +75,7 @@ export const trainingHandlers = [
   http.put('/api/v1/agents/:agentId/training/plan/:planId/overrides', ({ params }) =>
     HttpResponse.json(
       successFor<typeof updateTrainingOverrides>(
-        buildPlan({ id: String(params.planId) }),
+        buildPlan({ id: String(params['planId']) }),
       ),
     ),
   ),

@@ -18,14 +18,14 @@ export function isWsEvent(
   msg: Record<string, unknown>,
 ): msg is Record<string, unknown> & WsEvent {
   return (
-    typeof msg.event_type === 'string'
-    && VALID_WS_EVENT_TYPES.has(msg.event_type)
-    && typeof msg.channel === 'string'
-    && VALID_WS_CHANNELS.has(msg.channel)
-    && typeof msg.timestamp === 'string'
-    && typeof msg.payload === 'object'
-    && msg.payload !== null
-    && !Array.isArray(msg.payload)
+    typeof msg['event_type'] === 'string'
+    && VALID_WS_EVENT_TYPES.has(msg['event_type'])
+    && typeof msg['channel'] === 'string'
+    && VALID_WS_CHANNELS.has(msg['channel'])
+    && typeof msg['timestamp'] === 'string'
+    && typeof msg['payload'] === 'object'
+    && msg['payload'] !== null
+    && !Array.isArray(msg['payload'])
   )
 }
 
@@ -35,7 +35,7 @@ export function isWsEvent(
  * dispatch through the normal handler chain.
  */
 export function eventVersion(msg: Record<string, unknown>): number {
-  return typeof msg.version === 'number' ? msg.version : 1
+  return typeof msg['version'] === 'number' ? msg['version'] : 1
 }
 
 /** Validate that a channels array from a server ack contains only known channel strings. */

@@ -77,3 +77,4 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 
 - `src/synthorg/core/resilience/general_retry.py`: module docstring mirrors the carve-out list.
 - `src/synthorg/providers/resilience.py`: provider-boundary `RetryHandler`, coupled to `ProviderError.is_retryable`. Distinct from `GeneralRetryHandler`; do not unify the two without a separate design discussion.
+- `src/synthorg/providers/drivers/mappers.py` `extract_retry_after`: parses a 429/503 `Retry-After` header into a backoff hint, accepting both RFC 9110 forms: a delta-seconds integer and an HTTP-date (via `email.utils.parsedate_to_datetime`, with a clock seam for testability). Non-finite, negative, or already-past values are discarded so a malformed header never produces a negative or absurd sleep.

@@ -64,10 +64,10 @@ function isValidItem(item: unknown): item is NotificationItem {
     if (typeof obj[field] !== 'string') return false
   }
   return (
-    VALID_CATEGORIES.has(obj.category as string)
-    && VALID_SEVERITIES.has(obj.severity as string)
-    && typeof obj.read === 'boolean'
-    && isValidDispatchedTo(obj.dispatchedTo)
+    VALID_CATEGORIES.has(obj['category'] as string)
+    && VALID_SEVERITIES.has(obj['severity'] as string)
+    && typeof obj['read'] === 'boolean'
+    && isValidDispatchedTo(obj['dispatchedTo'])
   )
 }
 

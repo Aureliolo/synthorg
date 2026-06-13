@@ -97,7 +97,7 @@ export const mcpCatalogHandlers = [
     return HttpResponse.json(paginatedFor<typeof searchMcpCatalog>(_catalogPage(matches)))
   }),
   http.get('/api/v1/integrations/mcp/catalog/:entryId', ({ params }) => {
-    const entry = mockCatalogEntries.find((e) => e.id === params.entryId)
+    const entry = mockCatalogEntries.find((e) => e.id === params['entryId'])
     if (!entry) return HttpResponse.json(apiError('Catalog entry not found'), { status: 404 })
     return HttpResponse.json(successFor<typeof getMcpCatalogEntry>(entry))
   }),
@@ -139,7 +139,7 @@ export const mcpCatalogDefaultHandlers = [
   http.get('/api/v1/integrations/mcp/catalog/:entryId', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getMcpCatalogEntry>(
-        buildMcpCatalogEntry({ id: String(params.entryId), name: String(params.entryId) }),
+        buildMcpCatalogEntry({ id: String(params['entryId']), name: String(params['entryId']) }),
       ),
     ),
   ),

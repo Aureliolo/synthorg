@@ -313,7 +313,7 @@ export function SpendBurnChart({
         <EmptyState
           icon={TrendingUp}
           title="No spend data available"
-          description="Cost records will appear as agents consume tokens"
+          description="Cost records will appear as agents consume tokens."
         />
       ) : (
         <SpendBurnBody

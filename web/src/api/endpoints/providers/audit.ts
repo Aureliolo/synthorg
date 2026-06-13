@@ -10,8 +10,8 @@ export async function listProviderAudit(
   options: { cursor?: string | null; limit?: number } = {},
 ): Promise<PaginatedResult<ProviderAuditEvent>> {
   const params: Record<string, string | number> = {}
-  if (options.cursor) params.cursor = options.cursor
-  if (typeof options.limit === 'number') params.limit = options.limit
+  if (options.cursor) params['cursor'] = options.cursor
+  if (typeof options.limit === 'number') params['limit'] = options.limit
   const response = await apiClient.get<PaginatedResponse<ProviderAuditEvent>>(
     `/providers/${encodeURIComponent(name)}/audit`,
     { params },

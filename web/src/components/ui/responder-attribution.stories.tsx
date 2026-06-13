@@ -39,3 +39,13 @@ export const AllRoles: Story = {
     </div>
   ),
 }
+
+// Placeholder shown before the routing decision finalises.
+export const Loading: Story = {
+  args: { name: '', role: '', loading: true },
+}
+
+// No concern matched a specialist, so the response is attributed generically.
+export const Unrouted: Story = {
+  args: { name: 'Org assistant', role: 'General' },
+}

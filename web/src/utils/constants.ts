@@ -51,6 +51,32 @@ export const WS_PONG_TIMEOUT_MS = 10_000
 export const WS_PROTOCOL_VERSION = 1
 
 /**
+ * Consecutive SSE-fallback transport errors tolerated before the client gives
+ * up and surfaces an exhausted state. The browser's `EventSource` retries
+ * indefinitely on its own, so without this budget a prolonged SSE outage floods
+ * the backend with reconnect traffic; the WS path enforces the analogous
+ * `WS_MAX_RECONNECT_ATTEMPTS`.
+ */
+export const SSE_MAX_RECONNECT_ATTEMPTS = 10
+
+/**
+ * Consecutive WS wire-version mismatches tolerated before the client flags a
+ * persistent protocol mismatch (a server roll-out bumped the protocol and this
+ * client can no longer decode events). A single mismatch where the received
+ * version is newer than supported also trips it immediately.
+ */
+export const WS_PROTOCOL_MISMATCH_THRESHOLD = 5
+
+/**
+ * Window after a WebSocket-driven update during which a scheduled REST poll
+ * skips its fetch. Shorter than the 30s poll interval so a sluggish or dropped
+ * WS still results in eventual freshness via REST; long enough that a burst of
+ * WS events does not also trigger a redundant poll. Shared by every
+ * `usePolling` consumer that also subscribes to a WS channel.
+ */
+export const FRESHNESS_WINDOW_MS = 15_000
+
+/**
  * Max characters kept when sanitizing untrusted strings (server error
  * reasons, WS disconnect codes, etc.) for logging. Tighter than display
  * caps because log lines get truncated by aggregators and the control
@@ -195,6 +221,26 @@ const HIDDEN_SETTING_KEYS = [
 export const HIDDEN_SETTINGS: ReadonlySet<string> = new Set(HIDDEN_SETTING_KEYS)
 
 /**
+ * Settings hidden from the YAML code editor. Narrower than
+ * {@link HIDDEN_SETTINGS}: the complex observability sink settings are
+ * hidden from the GUI form (they have a dedicated sinks UI) but ARE
+ * editable as raw YAML in the code editor, so only the truly
+ * system-managed flag stays out of both surfaces.
+ */
+const CODE_EDITOR_HIDDEN_SETTING_KEYS = ['api/setup_complete'] as const
+export const CODE_EDITOR_HIDDEN_SETTINGS: ReadonlySet<string> = new Set(
+  CODE_EDITOR_HIDDEN_SETTING_KEYS,
+)
+
+/**
+ * Placeholder substituted for ``sensitive`` setting values in the code
+ * editor so secrets never render in the YAML buffer. Saving this exact
+ * value back is rejected (treated as "unchanged") so the real secret is
+ * never overwritten with the placeholder.
+ */
+export const SENSITIVE_VALUE_PLACEHOLDER = '••••••••'
+
+/**
  * Settings that carry elevated security risk when misconfigured.
  * The GUI shows an additional warning for these keys.
  */
@@ -221,6 +267,14 @@ export const SETTING_DEPENDENCIES: Readonly<Record<string, readonly string[]>> =
 
 /** Polling interval for settings page (ms). */
 export const SETTINGS_POLL_INTERVAL = 60_000
+
+/**
+ * Polling interval (ms) for the interrupts fallback. Only active while
+ * the live WebSocket transport is down, so a tighter cadence than the
+ * settings poll is acceptable: pending interrupts block agents and the
+ * operator needs them surfaced promptly.
+ */
+export const INTERRUPTS_POLL_INTERVAL = 10_000
 
 // ── Ceremony Policy ─────────────────────────────────────────
 

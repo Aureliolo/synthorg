@@ -48,7 +48,7 @@ export const webhooksHandlers = [
       successFor<typeof retryWebhookReceipt>({
         status: 'accepted',
         event_type: 'workflow.executed',
-        receipt_id: String(params.receiptId),
+        receipt_id: String(params['receiptId']),
       }),
     ),
   ),

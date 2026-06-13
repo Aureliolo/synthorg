@@ -1,9 +1,13 @@
 """Unit tests for provider driver mapping functions."""
 
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
+
 import pytest
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.providers.drivers.mappers import (
+    _parse_retry_after_seconds,
     extract_retry_after,
     extract_tool_calls,
     map_finish_reason,
@@ -405,3 +409,45 @@ class TestExtractRetryAfter:
     def test_negative_value_returns_none(self) -> None:
         """A negative retry-after delay is rejected."""
         assert extract_retry_after(_HeaderError({"Retry-After": "-5"})) is None
+
+    def test_future_http_date_parsed_to_delay(self) -> None:
+        """An RFC 9110 HTTP-date in the future yields the delay in seconds.
+
+        Uses the injectable ``now`` seam on ``_parse_retry_after_seconds``
+        so the delta is exact and the test does not depend on wall-clock
+        timing. ``format_datetime`` truncates to whole seconds, so the
+        reference instant is floored to match.
+        """
+        now = datetime.now(UTC).replace(microsecond=0)
+        future = now + timedelta(hours=1)
+        result = _parse_retry_after_seconds(
+            format_datetime(future, usegmt=True), now=now
+        )
+        assert result == pytest.approx(3600.0)
+
+    def test_past_http_date_returns_none(self) -> None:
+        """A past HTTP-date is a negative delay and is rejected."""
+        past = datetime.now(UTC) - timedelta(hours=1)
+        assert (
+            extract_retry_after(
+                _HeaderError({"Retry-After": format_datetime(past, usegmt=True)})
+            )
+            is None
+        )
+
+    def test_non_string_header_value_returns_none(self) -> None:
+        """A non-string, non-float-parseable header value yields ``None``."""
+        assert extract_retry_after(_HeaderError({"Retry-After": ["120"]})) is None
+
+    def test_naive_http_date_assumed_utc(self) -> None:
+        """A tz-less HTTP-date is interpreted as UTC.
+
+        ``format_datetime`` without ``usegmt`` emits the obsolete
+        ``-0000`` zone, which ``parsedate_to_datetime`` yields as a naive
+        datetime; the parser assumes UTC for it. Uses the injectable
+        ``now`` seam so the delta is exact and wall-clock-independent.
+        """
+        now = datetime.now(UTC).replace(microsecond=0)
+        future_naive = (now + timedelta(hours=1)).replace(tzinfo=None)
+        result = _parse_retry_after_seconds(format_datetime(future_naive), now=now)
+        assert result == pytest.approx(3600.0)

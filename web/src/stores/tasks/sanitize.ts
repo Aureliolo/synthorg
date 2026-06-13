@@ -123,7 +123,7 @@ function isArtifactsExpectedShape(
   if (!Array.isArray(value)) return false
   return value.every((entry) => {
     if (!isPlainObject(entry)) return false
-    return typeof entry.path === 'string' && typeof entry.type === 'string'
+    return typeof entry['path'] === 'string' && typeof entry['type'] === 'string'
   })
 }
 
@@ -134,10 +134,10 @@ function isAcceptanceCriteriaShape(
   if (!Array.isArray(value)) return false
   return value.every((ac) => {
     if (!isPlainObject(ac)) return false
-    const metValid = ac.met === undefined
-      || ac.met === null
-      || typeof ac.met === 'boolean'
-    return typeof ac.description === 'string' && metValid
+    const metValid = ac['met'] === undefined
+      || ac['met'] === null
+      || typeof ac['met'] === 'boolean'
+    return typeof ac['description'] === 'string' && metValid
   })
 }
 
@@ -177,13 +177,13 @@ function isTaskRequiredStringFields(c: Record<string, unknown>): boolean {
 
 function isTaskCollectionFields(c: Record<string, unknown>): boolean {
   return (
-    isStringArray(c.reviewers)
-    && isStringArray(c.dependencies)
-    && isStringArray(c.delegation_chain)
-    && isNullableStringArray(c.middleware_override)
-    && isPlainObject(c.metadata)
-    && isArtifactsExpectedShape(c.artifacts_expected)
-    && isAcceptanceCriteriaShape(c.acceptance_criteria)
+    isStringArray(c['reviewers'])
+    && isStringArray(c['dependencies'])
+    && isStringArray(c['delegation_chain'])
+    && isNullableStringArray(c['middleware_override'])
+    && isPlainObject(c['metadata'])
+    && isArtifactsExpectedShape(c['artifacts_expected'])
+    && isAcceptanceCriteriaShape(c['acceptance_criteria'])
   )
 }
 
@@ -210,19 +210,19 @@ function isTaskNumericFields(c: Record<string, unknown>): boolean {
   for (const field of TASK_REQUIRED_FINITE_NUMERIC_FIELDS) {
     if (!Number.isFinite(c[field])) return false
   }
-  if (c.version !== undefined && !Number.isFinite(c.version)) return false
-  if (c.cost !== undefined && !Number.isFinite(c.cost)) return false
-  return isNullableNumber(c.hard_ceiling)
+  if (c['version'] !== undefined && !Number.isFinite(c['version'])) return false
+  if (c['cost'] !== undefined && !Number.isFinite(c['cost'])) return false
+  return isNullableNumber(c['hard_ceiling'])
 }
 
 function isTaskOptionalScalars(c: Record<string, unknown>): boolean {
-  const sourceOk = c.source === undefined
-    || c.source === null
-    || typeof c.source === 'string'
+  const sourceOk = c['source'] === undefined
+    || c['source'] === null
+    || typeof c['source'] === 'string'
   return (
     isTaskNullableStringFields(c)
-    && isOptionalString(c.created_at)
-    && isOptionalString(c.updated_at)
+    && isOptionalString(c['created_at'])
+    && isOptionalString(c['updated_at'])
     && isTaskNumericFields(c)
     && sourceOk
   )
@@ -251,10 +251,10 @@ function isNullableClosedEnumMember(
 // dropping the frame here is the safer failure mode.
 function isTaskClosedEnumFields(c: Record<string, unknown>): boolean {
   return (
-    isClosedEnumMember(c.estimated_complexity, COMPLEXITY_SET)
-    && isClosedEnumMember(c.stakes, STAKES_SET)
-    && isNullableClosedEnumMember(c.task_structure, TASK_STRUCTURE_SET)
-    && isClosedEnumMember(c.coordination_topology, COORDINATION_TOPOLOGY_SET)
+    isClosedEnumMember(c['estimated_complexity'], COMPLEXITY_SET)
+    && isClosedEnumMember(c['stakes'], STAKES_SET)
+    && isNullableClosedEnumMember(c['task_structure'], TASK_STRUCTURE_SET)
+    && isClosedEnumMember(c['coordination_topology'], COORDINATION_TOPOLOGY_SET)
   )
 }
 

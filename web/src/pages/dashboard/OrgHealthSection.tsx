@@ -41,7 +41,7 @@ function OrgHealthSectionInner({ departments, overallHealth }: OrgHealthSectionP
         <EmptyState
           icon={Building2}
           title="No departments configured"
-          description="Set up your organization to see health metrics"
+          description="Set up your organization to see health metrics."
         />
       ) : (
         <div className="space-y-4">

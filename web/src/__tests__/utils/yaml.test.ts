@@ -17,17 +17,17 @@ describe('serializeToYaml', () => {
     const config = makeCompanyConfig()
     const yaml = serializeToYaml(config)
     const parsed = parseYaml(yaml)
-    expect(parsed.company_name).toBe('Test Corp')
-    expect(parsed.agents).toHaveLength(3)
-    expect(parsed.departments).toHaveLength(2)
+    expect(parsed['company_name']).toBe('Test Corp')
+    expect(parsed['agents']).toHaveLength(3)
+    expect(parsed['departments']).toHaveLength(2)
   })
 })
 
 describe('parseYaml', () => {
   it('parses a valid YAML string', () => {
     const parsed = parseYaml('company_name: Acme\nagents: []\n')
-    expect(parsed.company_name).toBe('Acme')
-    expect(parsed.agents).toEqual([])
+    expect(parsed['company_name']).toBe('Acme')
+    expect(parsed['agents']).toEqual([])
   })
 
   it('throws on non-object YAML (string)', () => {
@@ -110,9 +110,9 @@ describe('serializeToYaml / parseYaml property-based round-trip', () => {
       fc.property(arbCompanyConfig, (config) => {
         const yaml = serializeToYaml(config)
         const parsed = parseYaml(yaml)
-        expect(parsed.company_name).toBe(config.company_name)
-        expect(parsed.agents).toHaveLength(config.agents.length)
-        expect(parsed.departments).toHaveLength(config.departments.length)
+        expect(parsed['company_name']).toBe(config.company_name)
+        expect(parsed['agents']).toHaveLength(config.agents.length)
+        expect(parsed['departments']).toHaveLength(config.departments.length)
       }),
       { numRuns: 50 },
     )

@@ -43,7 +43,7 @@ export const approvalsHandlers = [
   ),
   http.get('/api/v1/approvals/:id', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getApproval>(buildApproval({ id: String(params.id) })),
+      successFor<typeof getApproval>(buildApproval({ id: String(params['id']) })),
     ),
   ),
   http.post('/api/v1/approvals', async ({ request }) => {
@@ -77,7 +77,7 @@ export const approvalsHandlers = [
     HttpResponse.json(
       successFor<typeof approveApproval>(
         buildApproval({
-          id: String(params.id),
+          id: String(params['id']),
           status: 'approved',
           decided_at: '2026-04-19T00:00:00Z',
           decided_by: 'user-1',
@@ -95,7 +95,7 @@ export const approvalsHandlers = [
     return HttpResponse.json(
       successFor<typeof rejectApproval>(
         buildApproval({
-          id: String(params.id),
+          id: String(params['id']),
           status: 'rejected',
           decision_reason: body.reason,
           decided_at: '2026-04-19T00:00:00Z',

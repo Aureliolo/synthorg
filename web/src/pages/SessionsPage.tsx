@@ -7,11 +7,14 @@
  * dedicated logout action elsewhere, so its row's revoke is disabled to
  * avoid a confusing self-logout.
  */
-import { useEffect, useState } from 'react'
-import { Loader2, MonitorSmartphone, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ArrowDown, ArrowUp, Loader2, MonitorSmartphone, Trash2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
+import { cn, FOCUS_RING } from '@/lib/utils'
 import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { SearchInput } from '@/components/ui/search-input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { StatPill } from '@/components/ui/stat-pill'
@@ -32,6 +35,60 @@ function deviceLabel(userAgent: string, fallback: string): string {
   return sanitizeWsString(userAgent, LOG_SANITIZE_MAX_LENGTH) || fallback
 }
 
+type SessionSortKey = 'last_active' | 'expires'
+type SortDirection = 'asc' | 'desc'
+
+const SORT_FIELD: Record<SessionSortKey, 'last_active_at' | 'expires_at'> = {
+  last_active: 'last_active_at',
+  expires: 'expires_at',
+}
+
+interface SessionsView {
+  searchQuery: string
+  setSearchQuery: (value: string) => void
+  sortKey: SessionSortKey | null
+  sortDir: SortDirection
+  toggleSort: (key: SessionSortKey) => void
+  displayed: readonly SessionInfo[]
+}
+
+/** Client-side search + sort over the session list. */
+function useSessionsView(sessions: readonly SessionInfo[]): SessionsView {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortKey, setSortKey] = useState<SessionSortKey | null>(null)
+  const [sortDir, setSortDir] = useState<SortDirection>('desc')
+
+  const toggleSort = useCallback((key: SessionSortKey) => {
+    setSortKey((prevKey) => {
+      if (prevKey === key) {
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+        return prevKey
+      }
+      setSortDir('desc')
+      return key
+    })
+  }, [])
+
+  const displayed = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    const filtered = query
+      ? sessions.filter(
+          (s) =>
+            deviceLabel(s.user_agent, '').toLowerCase().includes(query)
+            || s.ip_address.toLowerCase().includes(query),
+        )
+      : sessions
+    if (!sortKey) return filtered
+    const field = SORT_FIELD[sortKey]
+    const sign = sortDir === 'asc' ? 1 : -1
+    return [...filtered].sort(
+      (a, b) => (new Date(a[field]).getTime() - new Date(b[field]).getTime()) * sign,
+    )
+  }, [sessions, searchQuery, sortKey, sortDir])
+
+  return { searchQuery, setSearchQuery, sortKey, sortDir, toggleSort, displayed }
+}
+
 export default function SessionsPage() {
   const sessions = useAuthStore((s) => s.sessions)
   const loading = useAuthStore((s) => s.sessionsLoading)
@@ -39,6 +96,7 @@ export default function SessionsPage() {
   const fetchSessions = useAuthStore((s) => s.fetchSessions)
   const revokeSession = useAuthStore((s) => s.revokeSession)
   const [revokingId, setRevokingId] = useState<string | null>(null)
+  const view = useSessionsView(sessions)
 
   useEffect(() => {
     void fetchSessions('own')
@@ -58,10 +116,27 @@ export default function SessionsPage() {
         <ErrorBanner severity="error" title="Could not load sessions" description={error} />
       )}
 
+      {sessions.length > 0 && (
+        <SearchFilterSort
+          search={
+            <SearchInput
+              value={view.searchQuery}
+              onChange={view.setSearchQuery}
+              placeholder="Search by device or IP address"
+              ariaLabel="Search sessions"
+            />
+          }
+        />
+      )}
+
       <SessionsBody
-        sessions={sessions}
+        sessions={view.displayed}
         loading={loading}
         error={error}
+        searchActive={view.searchQuery.trim() !== ''}
+        sortKey={view.sortKey}
+        sortDir={view.sortDir}
+        onSort={view.toggleSort}
         onRevoke={setRevokingId}
       />
 
@@ -93,10 +168,61 @@ interface SessionsBodyProps {
   sessions: readonly SessionInfo[]
   loading: boolean
   error: string | null
+  searchActive: boolean
+  sortKey: SessionSortKey | null
+  sortDir: SortDirection
+  onSort: (key: SessionSortKey) => void
   onRevoke: (id: string) => void
 }
 
-function SessionsBody({ sessions, loading, error, onRevoke }: SessionsBodyProps) {
+function SortableHeader({
+  label,
+  columnKey,
+  sortKey,
+  sortDir,
+  onSort,
+  className,
+}: {
+  label: string
+  columnKey: SessionSortKey
+  sortKey: SessionSortKey | null
+  sortDir: SortDirection
+  onSort: (key: SessionSortKey) => void
+  className?: string
+}) {
+  const active = sortKey === columnKey
+  // Native <th> carries columnheader semantics, so aria-sort is valid here.
+  return (
+    <th
+      className={cn('px-3 py-2 font-medium', className)}
+      aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(columnKey)}
+        className={cn('flex items-center gap-1 transition-colors hover:text-foreground', FOCUS_RING)}
+      >
+        {label}
+        {active && (
+          sortDir === 'asc'
+            ? <ArrowUp className="size-3" aria-hidden="true" />
+            : <ArrowDown className="size-3" aria-hidden="true" />
+        )}
+      </button>
+    </th>
+  )
+}
+
+function SessionsBody({
+  sessions,
+  loading,
+  error,
+  searchActive,
+  sortKey,
+  sortDir,
+  onSort,
+  onRevoke,
+}: SessionsBodyProps) {
   if (loading && sessions.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -109,21 +235,39 @@ function SessionsBody({ sessions, loading, error, onRevoke }: SessionsBodyProps)
     return (
       <EmptyState
         icon={MonitorSmartphone}
-        title="No active sessions"
-        description="Active sessions for your account will appear here."
+        title={searchActive ? 'No matching sessions' : 'No active sessions'}
+        description={
+          searchActive
+            ? 'Try a different device name or IP address.'
+            : 'Active sessions for your account will appear here.'
+        }
       />
     )
   }
   return (
     <SectionCard title="Sessions" icon={MonitorSmartphone}>
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-xs">
+        <table className="w-full min-w-[40rem] text-xs">
           <thead className="bg-surface text-left text-text-secondary">
             <tr>
               <th className="px-3 py-2 font-medium">Device</th>
               <th className="w-40 px-3 py-2 font-medium">IP address</th>
-              <th className="w-44 px-3 py-2 font-medium">Last active</th>
-              <th className="w-44 px-3 py-2 font-medium">Expires</th>
+              <SortableHeader
+                label="Last active"
+                columnKey="last_active"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                className="w-44"
+              />
+              <SortableHeader
+                label="Expires"
+                columnKey="expires"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                className="w-44"
+              />
               <th className="w-28 px-3 py-2" />
             </tr>
           </thead>

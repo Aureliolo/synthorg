@@ -36,23 +36,26 @@ function handleWsEventImpl(
   set: MessagesSet,
   event: WsEvent,
   activeChannel: string | null,
-): void {
+): boolean {
   const message = parseWsMessage(event.payload)
-  if (!message) return
+  if (!message) return false
   // A live message proves the channel carries at least one entry,
   // so it graduates from the sidebar's "Empty" group to "Active"
   // immediately rather than waiting for the next activity probe.
   noteChannelActivity(set, message.channel)
   if (message.channel === activeChannel) {
     appendToActiveChannel(set, message)
-  } else {
-    bumpUnreadCount(set, message.channel)
+    // The active thread just received a live message, so its data is
+    // fresh; signal the caller to suppress the next redundant poll.
+    return true
   }
+  bumpUnreadCount(set, message.channel)
+  return false
 }
 
 export function createWsHandler(set: MessagesSet) {
   return {
-    handleWsEvent: (event: WsEvent, activeChannel: string | null) =>
+    handleWsEvent: (event: WsEvent, activeChannel: string | null): boolean =>
       handleWsEventImpl(set, event, activeChannel),
     toggleThread(taskId: string) {
       set((s) => {

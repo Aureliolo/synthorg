@@ -43,7 +43,9 @@ export interface MessagesState {
   fetchChannelActivity: () => Promise<void>
   fetchMessages: (channel: string, limit?: number) => Promise<void>
   fetchMoreMessages: (channel: string) => Promise<void>
-  handleWsEvent: (event: WsEvent, activeChannel: string | null) => void
+  /** Returns true when the event mutated the active channel's thread, so
+   *  the caller can gate freshness on a real active-channel update. */
+  handleWsEvent: (event: WsEvent, activeChannel: string | null) => boolean
   toggleThread: (taskId: string) => void
   resetUnread: (channel: string) => void
   clearNewMessageIds: () => void

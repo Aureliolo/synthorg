@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useMessagesStore } from '@/stores/messages'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import type { Channel, Message } from '@/api/types/messages'
 import type { WsChannel } from '@/api/types/websocket'
 
@@ -80,13 +81,14 @@ export function useMessagesData(activeChannel: string | null): UseMessagesDataRe
     useMessagesStore.getState().resetUnread(activeChannel)
   }, [activeChannel])
 
-  // Polling for current channel refresh
+  // Polling for current channel refresh, gated against fresh WS state.
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     if (!activeChannel) return
     await useMessagesStore.getState().fetchMessages(activeChannel)
   }, [activeChannel])
 
-  const polling = usePolling(pollFn, MESSAGES_POLL_INTERVAL)
+  const polling = usePolling(pollFn, MESSAGES_POLL_INTERVAL, { skipIfFresh })
 
   const { start, stop } = polling
   useEffect(() => {
@@ -101,12 +103,18 @@ export function useMessagesData(activeChannel: string | null): UseMessagesDataRe
       MESSAGES_WS_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
-          useMessagesStore
+          // Only mark fresh when the event actually mutated the ACTIVE
+          // channel; a frame for some other channel must not suppress the
+          // active channel's poll, which would leave its thread stale.
+          const didAffectActiveChannel = useMessagesStore
             .getState()
             .handleWsEvent(event, activeChannelRef.current)
+          if (didAffectActiveChannel) {
+            markFresh()
+          }
         },
       })),
-    [],
+    [markFresh],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })

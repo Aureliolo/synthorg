@@ -3,6 +3,7 @@ import { MessageSquare } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { ListHeader } from '@/components/ui/list-header'
 import { ChannelSidebar } from './messages/ChannelSidebar'
 import { MessageFilterBar } from './messages/MessageFilterBar'
 import { MessageList } from './messages/MessageList'
@@ -52,7 +53,7 @@ interface MessagesMainContentProps {
 function MessagesMainContent({ ctrl }: MessagesMainContentProps) {
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-section-gap">
-      <h1 className="text-lg font-semibold text-foreground">Messages</h1>
+      <ListHeader title="Messages" />
       <MessagesErrorBanners ctrl={ctrl} />
       {!ctrl.activeChannel && (
         <EmptyState

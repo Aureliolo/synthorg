@@ -72,6 +72,15 @@ function useSkipWizardSubmit(): SkipWizardSubmit {
         return
       }
       useSetupStore.setState({ setupComplete: true })
+      // Surface the post-setup guidance card on the dashboard, exactly
+      // as the full wizard's Complete step does. Without this the quick-
+      // setup path lands on a bare dashboard with no first-run guidance.
+      try {
+        window.localStorage.setItem('synthorg.firstRun', '1')
+      } catch {
+        // localStorage may be disabled (private mode); the guidance card
+        // simply won't surface. Setup completion proceeds regardless.
+      }
       useToastStore.getState().add({
         variant: 'success',
         title: `Welcome to ${trimmed}!`,

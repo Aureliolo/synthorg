@@ -31,6 +31,67 @@ const STEP_COMPONENTS: Record<WizardStep, React.ComponentType> = {
 /** Steps hidden from the progress bar (pre-wizard gates). */
 const HIDDEN_PROGRESS_STEPS = new Set<WizardStep>(['mode'])
 
+const GENERIC_NEXT_DISABLED_REASON =
+  'Complete the required fields on this step to continue.'
+
+interface StepLoadingFlags {
+  providersLoading: boolean
+  presetsLoading: boolean
+  probing: boolean
+  agentsLoading: boolean
+  companyLoading: boolean
+}
+
+/**
+ * Per-step loading captions. When the step is still fetching its own
+ * data, say so specifically ("Waiting for providers to load...") rather
+ * than the generic "complete the required fields" line, which would
+ * wrongly imply the operator forgot to fill something in. Each entry
+ * returns null when the step is loaded so the caller falls back to the
+ * generic copy.
+ */
+const STEP_LOADING_REASONS: Partial<
+  Record<WizardStep, (flags: StepLoadingFlags) => string | null>
+> = {
+  providers: (f) => {
+    if (f.providersLoading || f.presetsLoading) return 'Waiting for providers to load...'
+    return f.probing ? 'Probing providers...' : null
+  },
+  agents: (f) => (f.agentsLoading ? 'Waiting for agents to load...' : null),
+  company: (f) => (f.companyLoading ? 'Applying the template...' : null),
+}
+
+function deriveNextDisabledReason(
+  currentStep: WizardStep,
+  flags: StepLoadingFlags,
+): string {
+  return STEP_LOADING_REASONS[currentStep]?.(flags) ?? GENERIC_NEXT_DISABLED_REASON
+}
+
+/**
+ * Resolve the disabled-Next caption for the current step, reading the
+ * per-step loading flags from the store. Returns null when the step is
+ * already complete (Next is enabled, no caption needed).
+ */
+function useNextDisabledReason(
+  currentStep: WizardStep,
+  stepComplete: boolean,
+): string | null {
+  const providersLoading = useSetupWizardStore((s) => s.providersLoading)
+  const presetsLoading = useSetupWizardStore((s) => s.presetsLoading)
+  const probing = useSetupWizardStore((s) => s.probing)
+  const agentsLoading = useSetupWizardStore((s) => s.agentsLoading)
+  const companyLoading = useSetupWizardStore((s) => s.companyLoading)
+  if (stepComplete) return null
+  return deriveNextDisabledReason(currentStep, {
+    providersLoading,
+    presetsLoading,
+    probing,
+    agentsLoading,
+    companyLoading,
+  })
+}
+
 function isWizardStep(value: string, stepOrder: readonly WizardStep[]): value is WizardStep {
   return stepOrder.includes(value as WizardStep)
 }
@@ -53,13 +114,14 @@ function useWizardReEntryToast(
   stepOrder: readonly WizardStep[],
 ): void {
   const reEntryToastShownRef = useRef(false)
-  const companyExistedAtMountRef = useRef<boolean | null>(null)
-  if (companyExistedAtMountRef.current === null) {
-    companyExistedAtMountRef.current = companyPresent
-  }
+  // Capture the mount-time value via useRef's initialiser so the render
+  // body stays free of side effects (no null-sentinel mutation): useRef
+  // only honours the argument on the first render, which is exactly the
+  // "did the company already exist when this wizard mounted" signal.
+  const companyExistedAtMountRef = useRef(companyPresent)
   useEffect(() => {
     if (reEntryToastShownRef.current) return
-    if (companyExistedAtMountRef.current !== true) return
+    if (!companyExistedAtMountRef.current) return
     if (!companyPresent) return
     if (completeStepDone) return
     if (!stepOrder.includes('complete')) return
@@ -168,6 +230,8 @@ export function WizardShell() {
   const setStep = useSetupWizardStore((s) => s.setStep)
   const canNavigateTo = useSetupWizardStore((s) => s.canNavigateTo)
   const companyResponse = useSetupWizardStore((s) => s.companyResponse)
+  const stepComplete = stepsCompleted[currentStep]
+  const nextDisabledReason = useNextDisabledReason(currentStep, stepComplete)
 
   useWizardReEntryToast(companyResponse !== null, stepsCompleted.complete, stepOrder)
   useWizardUrlSync({ urlStep, stepOrder, canNavigateTo, setStep, stepsCompleted, navigate })
@@ -223,12 +287,8 @@ export function WizardShell() {
               currentStep={currentStep}
               onBack={handleBack}
               onNext={handleNext}
-              nextDisabled={!stepsCompleted[currentStep]}
-              nextDisabledReason={
-                !stepsCompleted[currentStep]
-                  ? 'Complete the required fields on this step to continue.'
-                  : null
-              }
+              nextDisabled={!stepComplete}
+              nextDisabledReason={nextDisabledReason}
             />
           </div>
         )}

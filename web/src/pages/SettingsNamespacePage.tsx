@@ -18,6 +18,14 @@ import { SettingsSkeleton } from './settings/SettingsSkeleton'
 import { buildControllerDisabledMap } from './settings/utils'
 import { filterNamespaceEntries } from './settings/settings-page-helpers'
 
+function isSettingNamespace(value: string | undefined): value is SettingNamespace {
+  return value !== undefined && (NAMESPACE_ORDER as readonly string[]).includes(value)
+}
+
+function resolveNamespace(value: string | undefined): SettingNamespace | null {
+  return isSettingNamespace(value) ? value : null
+}
+
 function SettingsBackHeader({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-4">
@@ -109,12 +117,11 @@ export default function SettingsNamespacePage() {
     entries,
     updateSetting,
   )
-  const validNamespace = NAMESPACE_ORDER.includes(namespace as SettingNamespace)
-  const ns = namespace as SettingNamespace
+  const ns = resolveNamespace(namespace)
 
   const filteredEntries = useMemo(
-    () => (validNamespace ? filterNamespaceEntries(entries, ns, advancedMode, searchQuery) : []),
-    [entries, ns, validNamespace, advancedMode, searchQuery],
+    () => (ns ? filterNamespaceEntries(entries, ns, advancedMode, searchQuery) : []),
+    [entries, ns, advancedMode, searchQuery],
   )
   const controllerDisabledMap = useMemo(
     () => buildControllerDisabledMap(entries, dirtyValues),
@@ -125,7 +132,7 @@ export default function SettingsNamespacePage() {
     return <SettingsSkeleton />
   }
 
-  if (!validNamespace) {
+  if (!ns) {
     return <UnknownNamespaceView namespace={namespace} />
   }
 

@@ -76,15 +76,15 @@ describe('useThemeStore', () => {
     it('saves to localStorage on setter call', () => {
       useThemeStore.getState().setColorPalette('stealth')
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!) as Record<string, string>
-      expect(stored.colorPalette).toBe('stealth')
+      expect(stored['colorPalette']).toBe('stealth')
     })
 
     it('saves multiple axis changes', () => {
       useThemeStore.getState().setDensity('dense')
       useThemeStore.getState().setTypography('ibm-plex')
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!) as Record<string, string>
-      expect(stored.density).toBe('dense')
-      expect(stored.typography).toBe('ibm-plex')
+      expect(stored['density']).toBe('dense')
+      expect(stored['typography']).toBe('ibm-plex')
     })
   })
 

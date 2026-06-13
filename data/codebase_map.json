@@ -758,7 +758,7 @@
     },
     {
       "kind": "code",
-      "loc": 137,
+      "loc": 139,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/brownfield.py",
       "owning_feature": "api_core"
@@ -940,7 +940,7 @@
     },
     {
       "kind": "code",
-      "loc": 322,
+      "loc": 327,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/events/_sse.py",
       "owning_feature": "api_core"
@@ -961,7 +961,7 @@
     },
     {
       "kind": "code",
-      "loc": 144,
+      "loc": 150,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/experiments.py",
       "owning_feature": "api_core"
@@ -1031,7 +1031,7 @@
     },
     {
       "kind": "controller",
-      "loc": 108,
+      "loc": 110,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/memory/embedder.py",
       "owning_feature": "api_core"
@@ -1066,7 +1066,7 @@
     },
     {
       "kind": "code",
-      "loc": 168,
+      "loc": 171,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/meta_analytics.py",
       "owning_feature": "api_core"
@@ -1087,7 +1087,7 @@
     },
     {
       "kind": "code",
-      "loc": 175,
+      "loc": 177,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/objectives.py",
       "owning_feature": "api_core"
@@ -17089,7 +17089,7 @@
     },
     {
       "kind": "code",
-      "loc": 281,
+      "loc": 309,
       "loc_cap": 500,
       "module": "src/synthorg/providers/drivers/mappers.py",
       "owning_feature": "providers"

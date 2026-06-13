@@ -9,7 +9,7 @@ export const qualityHandlers = [
   http.get('/api/v1/agents/:id/quality/override', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getQualityOverride>({
-        agent_id: String(params.id),
+        agent_id: String(params['id']),
         score: 0,
         reason: 'default',
         applied_by: 'system',
@@ -22,7 +22,7 @@ export const qualityHandlers = [
     const body = (await request.json()) as { score: number; reason: string }
     return HttpResponse.json(
       successFor<typeof setQualityOverride>({
-        agent_id: String(params.id),
+        agent_id: String(params['id']),
         score: body.score,
         reason: body.reason,
         applied_by: 'user-1',

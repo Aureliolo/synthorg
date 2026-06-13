@@ -58,6 +58,20 @@ function compareTasks(
   return dir === 'desc' ? -cmp : cmp
 }
 
+/** Accessible name for a sortable header button, conveying the sort state. */
+function sortLabel(
+  label: string,
+  sortable: boolean,
+  active: boolean,
+  dir: SortDirection,
+): string | undefined {
+  if (!sortable) return undefined
+  if (active) {
+    return `${label}, sorted ${dir === 'asc' ? 'ascending' : 'descending'}. Activate to reverse the sort order.`
+  }
+  return `${label}, not sorted. Activate to sort by this column.`
+}
+
 function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDirection>('asc')
@@ -81,7 +95,7 @@ function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
       <EmptyState
         icon={Inbox}
         title="No tasks found"
-        description="Try adjusting your filters or create a new task"
+        description="Try adjusting your filters or create a new task."
       />
     )
   }
@@ -94,6 +108,7 @@ function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
           <button
             key={col.key}
             type="button"
+            disabled={!col.sortable}
             onClick={() => col.sortable && handleSort(col.key)}
             className={cn(
               'flex items-center gap-1 rounded-sm text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors',
@@ -101,7 +116,10 @@ function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
               col.sortable && FOCUS_RING,
               col.width,
             )}
-            aria-sort={sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+            // aria-sort is ignored on a button (valid only on columnheader);
+            // this list is a row-button widget, not a table, so the sort state
+            // is announced through the button's accessible name instead.
+            aria-label={sortLabel(col.label, col.sortable, sortKey === col.key, sortDir)}
           >
             {col.label}
             {sortKey === col.key && (

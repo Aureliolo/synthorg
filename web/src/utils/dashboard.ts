@@ -52,7 +52,7 @@ export function computeMetricCards(
     {
       label: 'TASKS',
       value: overview.total_tasks,
-      subText: `${overview.tasks_by_status.completed ?? 0} completed`,
+      subText: `${overview.tasks_by_status['completed'] ?? 0} completed`,
     },
     {
       label: 'ACTIVE AGENTS',
@@ -74,7 +74,7 @@ export function computeMetricCards(
     },
     {
       label: 'IN REVIEW',
-      value: overview.tasks_by_status.in_review ?? 0,
+      value: overview.tasks_by_status['in_review'] ?? 0,
     },
   ]
 }
@@ -118,21 +118,21 @@ function _isNonEmptyString(value: unknown): value is string {
 }
 
 function _resolveAgentName(payload: WsEventPayload): string {
-  if (_isNonEmptyString(payload.agent_name)) return payload.agent_name
-  if (_isNonEmptyString(payload.assigned_to)) return payload.assigned_to
+  if (_isNonEmptyString(payload['agent_name'])) return payload['agent_name']
+  if (_isNonEmptyString(payload['assigned_to'])) return payload['assigned_to']
   return 'System'
 }
 
 function _resolveTaskId(payload: WsEventPayload): string | null {
-  return _isNonEmptyString(payload.task_id) ? payload.task_id : null
+  return _isNonEmptyString(payload['task_id']) ? payload['task_id'] : null
 }
 
 function _resolveDepartment(payload: WsEventPayload): ActivityItem['department'] {
   if (
-    typeof payload.department === 'string'
-    && isDepartmentName(payload.department)
+    typeof payload['department'] === 'string'
+    && isDepartmentName(payload['department'])
   ) {
-    return payload.department
+    return payload['department']
   }
   return null
 }
@@ -141,7 +141,7 @@ function _resolveDescription(
   payload: WsEventPayload,
   eventType: WsEventType,
 ): string {
-  if (_isNonEmptyString(payload.description)) return payload.description
+  if (_isNonEmptyString(payload['description'])) return payload['description']
   return describeEvent(eventType)
 }
 
@@ -153,7 +153,7 @@ interface ActivityIdArgs {
 }
 
 function _resolveActivityId({ event, payload, taskId, agentName }: ActivityIdArgs): string {
-  if (_isNonEmptyString(payload.id)) return payload.id
+  if (_isNonEmptyString(payload['id'])) return payload['id']
   if (taskId !== null) return taskId
   wsActivityCounter += 1
   return `${event.timestamp}-${event.event_type}-${agentName}-${wsActivityCounter}`

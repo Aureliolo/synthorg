@@ -3,8 +3,8 @@ import type { NotificationFilterGroup } from '@/types/notifications'
 import { CATEGORY_CONFIGS, FILTER_GROUP_LABELS } from '@/types/notifications'
 
 const GROUPS: readonly NotificationFilterGroup[] = [
-  'all' as const,
-  ...([...new Set(Object.values(CATEGORY_CONFIGS).map((c) => c.group))] as NotificationFilterGroup[]),
+  'all',
+  ...new Set(Object.values(CATEGORY_CONFIGS).map((c) => c.group)),
 ]
 
 interface NotificationFilterBarProps {

@@ -216,8 +216,8 @@ describe('useSettingsStore', () => {
                 value: body.value,
                 source: 'db',
                 definition: {
-                  namespace: String(params.namespace) as SettingEntry['definition']['namespace'],
-                  key: String(params.key),
+                  namespace: String(params['namespace']) as SettingEntry['definition']['namespace'],
+                  key: String(params['key']),
                 },
               }),
             ),

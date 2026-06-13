@@ -7,6 +7,9 @@ spawns the import + analysis pipeline run as a background task, and
 returns ``202 Accepted`` with the project id so callers correlate by it.
 The import (clone/copy + scan + index) and the agent analysis pass run
 asynchronously; the operator polls the project's structure map / tasks.
+
+API-only: this adapter-gated intake path is driven by external
+automation, not the dashboard, so it has no UI surface.
 """
 
 import asyncio

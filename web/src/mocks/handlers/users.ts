@@ -33,7 +33,7 @@ export const usersHandlers = [
     return HttpResponse.json(
       successFor<typeof grantOrgRole>(
         buildUser({
-          id: String(params.id),
+          id: String(params['id']),
           org_roles: body.role ? [body.role] : [],
           scoped_departments: body.scoped_departments ?? [],
         }),

@@ -19,7 +19,7 @@ import type {
   CreateProviderRequest,
   ProbePresetResponse,
 } from '@/api/types'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { useToastStore } from '@/stores/toast'
 import type {
@@ -285,8 +285,14 @@ async function createProviderFromPresetFullImpl(
     }
     return provider
   } catch (err) {
-    log.error('createProviderFromPresetFull failed:', getErrorMessage(err))
-    set({ providersError: getErrorMessage(err) })
+    const msg = getErrorMessage(err)
+    log.error('createProviderFromPresetFull failed:', msg)
+    set({ providersError: msg })
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to create provider'),
+      description: msg,
+    })
     return null
   }
 }
@@ -303,8 +309,14 @@ async function createProviderCustomImpl(
     get().recomputeAgentsRevalidation()
     return provider
   } catch (err) {
-    log.error('createProviderCustom failed:', getErrorMessage(err))
-    set({ providersError: getErrorMessage(err) })
+    const msg = getErrorMessage(err)
+    log.error('createProviderCustom failed:', msg)
+    set({ providersError: msg })
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to create provider'),
+      description: msg,
+    })
     return null
   }
 }

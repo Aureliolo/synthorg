@@ -55,7 +55,7 @@ export function DecisionHistory({ decisions }: DecisionHistoryProps) {
       {decisions.length === 0 ? (
         <EmptyState
           title="No recent decisions"
-          description="Trigger an evaluation to generate scaling decisions"
+          description="Trigger an evaluation to generate scaling decisions."
         />
       ) : (
         <div className="overflow-x-auto">

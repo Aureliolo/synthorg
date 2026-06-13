@@ -40,7 +40,7 @@ function DirectiveCard({ directive }: { directive: ActiveSteeringDirective }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <DirectiveKindBadge kind={directive.kind} />
         <span className="text-xs text-text-secondary">
-          {directive.author} -- {formatRelativeTime(directive.recorded_at)}
+          {directive.author} · {formatRelativeTime(directive.recorded_at)}
         </span>
       </div>
       <p className="mt-2 text-sm text-foreground">{directive.text}</p>

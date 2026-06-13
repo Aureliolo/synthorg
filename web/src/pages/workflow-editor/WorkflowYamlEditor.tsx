@@ -149,7 +149,7 @@ function applyParsedResultToStore(
     ...n,
     data: {
       ...n.data,
-      label: typeof n.data.label === 'string' ? n.data.label : n.id,
+      label: typeof n.data['label'] === 'string' ? n.data['label'] : n.id,
     },
   }))
   const snapshot = {

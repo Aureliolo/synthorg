@@ -22,8 +22,11 @@ function _wsStateFor(
   loadState: LoadState,
   wsConnected: boolean,
   wsReconnectExhausted: boolean,
+  sseFallbackActive: boolean,
 ): SubsystemState {
   if (wsConnected) return 'ok'
+  // SSE fallback is degraded-but-live, not down: events still flow.
+  if (sseFallbackActive) return 'degraded'
   if (wsReconnectExhausted) return 'down'
   if (loadState.state === 'loading') return 'loading'
   return 'degraded'
@@ -32,8 +35,10 @@ function _wsStateFor(
 function _wsDetailFor(
   wsConnected: boolean,
   wsReconnectExhausted: boolean,
+  sseFallbackActive: boolean,
 ): string | undefined {
   if (wsConnected) return undefined
+  if (sseFallbackActive) return 'SSE fallback active'
   return wsReconnectExhausted ? 'reconnect budget exhausted' : 'auto-reconnecting'
 }
 
@@ -57,10 +62,11 @@ export function deriveHealthSubsystemStates(
   loadState: LoadState,
   wsConnected: boolean,
   wsReconnectExhausted: boolean,
+  sseFallbackActive: boolean,
 ): DerivedSubsystemStates {
   const apiState = _apiStateFor(loadState)
-  const wsState = _wsStateFor(loadState, wsConnected, wsReconnectExhausted)
-  const wsDetail = _wsDetailFor(wsConnected, wsReconnectExhausted)
+  const wsState = _wsStateFor(loadState, wsConnected, wsReconnectExhausted, sseFallbackActive)
+  const wsDetail = _wsDetailFor(wsConnected, wsReconnectExhausted, sseFallbackActive)
   const persistence = loadState.state === 'ok' ? loadState.data.persistence : null
   const messageBus = loadState.state === 'ok' ? loadState.data.message_bus : null
   const persistenceState = _booleanProbeState(loadState, persistence)

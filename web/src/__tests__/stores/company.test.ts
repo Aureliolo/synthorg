@@ -145,7 +145,7 @@ describe('useCompanyStore', () => {
     useCompanyStore.setState({ config: configWithTwoDepts })
     server.use(
       http.get('/api/v1/departments/:name/health', ({ params }) => {
-        if (params.name === 'engineering') {
+        if (params['name'] === 'engineering') {
           return HttpResponse.json(apiSuccess(mockDeptHealth))
         }
         return HttpResponse.json(apiError('Not found'))

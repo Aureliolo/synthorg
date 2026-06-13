@@ -42,7 +42,7 @@ function readNodeLabel(data: unknown): string | undefined {
 
 function readNodeConfig(data: unknown): Record<string, unknown> | undefined {
   if (!isObject(data)) return undefined
-  const value = data.config
+  const value = data['config']
   return isObject(value) ? value : undefined
 }
 
@@ -89,14 +89,19 @@ function buildUpdatePayload(
 ) {
   return {
     workflow_type: definition.workflow_type,
-    nodes: nodes.map((n) => ({
-      id: n.id,
-      type: n.type!,
-      label: readNodeLabel(n.data) ?? n.id,
-      position_x: n.position.x,
-      position_y: n.position.y,
-      config: readNodeConfig(n.data) ?? {},
-    })) as readonly Record<string, unknown>[],
+    // Skip nodes without a type rather than coercing `undefined` to the
+    // string "undefined", which would silently corrupt the saved definition.
+    nodes: nodes.flatMap((n) => {
+      if (!n.type) return []
+      return [{
+        id: n.id,
+        type: n.type,
+        label: readNodeLabel(n.data) ?? n.id,
+        position_x: n.position.x,
+        position_y: n.position.y,
+        config: readNodeConfig(n.data) ?? {},
+      }]
+    }) as readonly Record<string, unknown>[],
     edges: edges.map((e) => ({
       id: e.id,
       source_node_id: e.source,

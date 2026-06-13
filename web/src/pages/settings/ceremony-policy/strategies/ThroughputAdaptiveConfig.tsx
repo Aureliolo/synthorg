@@ -7,14 +7,14 @@ export interface ThroughputAdaptiveConfigProps {
 }
 
 export function ThroughputAdaptiveConfig({ config, onChange, disabled }: ThroughputAdaptiveConfigProps) {
-  const dropPct = typeof config.velocity_drop_threshold_pct === 'number' && Number.isFinite(config.velocity_drop_threshold_pct)
-    ? config.velocity_drop_threshold_pct
+  const dropPct = typeof config['velocity_drop_threshold_pct'] === 'number' && Number.isFinite(config['velocity_drop_threshold_pct'])
+    ? config['velocity_drop_threshold_pct']
     : 30
-  const spikePct = typeof config.velocity_spike_threshold_pct === 'number' && Number.isFinite(config.velocity_spike_threshold_pct)
-    ? config.velocity_spike_threshold_pct
+  const spikePct = typeof config['velocity_spike_threshold_pct'] === 'number' && Number.isFinite(config['velocity_spike_threshold_pct'])
+    ? config['velocity_spike_threshold_pct']
     : 50
-  const windowSize = typeof config.measurement_window_tasks === 'number' && Number.isFinite(config.measurement_window_tasks)
-    ? config.measurement_window_tasks
+  const windowSize = typeof config['measurement_window_tasks'] === 'number' && Number.isFinite(config['measurement_window_tasks'])
+    ? config['measurement_window_tasks']
     : 10
 
   return (

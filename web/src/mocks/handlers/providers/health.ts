@@ -56,7 +56,7 @@ export const healthHandlers = [
     HttpResponse.json(
       successFor<typeof discoverModels>({
         discovered_models: [],
-        provider_name: String(params.name ?? 'provider-default'),
+        provider_name: String(params['name'] ?? 'provider-default'),
       }),
     ),
   ),

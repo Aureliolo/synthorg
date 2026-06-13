@@ -1,7 +1,7 @@
 import { SectionCard } from '@/components/ui/section-card'
 import { ProjectStatusBadge } from '@/components/ui/project-status-badge'
 import { MetadataGrid } from '@/components/ui/metadata-grid'
-import { formatCurrency, formatDateTime } from '@/utils/format'
+import { formatCurrency, formatDateTime, formatRelativeTime } from '@/utils/format'
 import type { Project } from '@/api/types/projects'
 
 interface ProjectHeaderProps {
@@ -21,7 +21,13 @@ function buildProjectMetadata(project: Project) {
     },
     {
       label: 'Deadline',
-      value: formatDateTime(project.deadline),
+      // Absolute date with the relative "due in N days" on hover so this
+      // matches the "Due" framing the project card uses in the list view.
+      value: (
+        <time dateTime={project.deadline ?? undefined} title={formatRelativeTime(project.deadline)}>
+          {formatDateTime(project.deadline)}
+        </time>
+      ),
     },
     {
       label: 'Tasks',

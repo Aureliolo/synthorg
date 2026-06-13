@@ -16,14 +16,32 @@ const meta: Meta<typeof WsConnectionBanner> = {
   // predictably regardless of real network state in Storybook.
   decorators: [
     (Story, { parameters }) => {
-      const connected = (parameters as { wsConnected?: boolean }).wsConnected ?? false
+      const p = parameters as {
+        wsConnected?: boolean
+        sseFallbackActive?: boolean
+        protocolVersionMismatch?: boolean
+      }
+      const connected = p.wsConnected ?? false
+      const sseFallbackActive = p.sseFallbackActive ?? false
+      const protocolVersionMismatch = p.protocolVersionMismatch ?? false
       useEffect(() => {
-        const previous = useWebSocketStore.getState().connected
-        useWebSocketStore.setState({ connected })
-        return () => {
-          useWebSocketStore.setState({ connected: previous })
+        const s = useWebSocketStore.getState()
+        const previous = {
+          connected: s.connected,
+          sseFallbackActive: s.sseFallbackActive,
+          sseFallbackExhausted: s.sseFallbackExhausted,
+          protocolVersionMismatch: s.protocolVersionMismatch,
         }
-      }, [connected])
+        useWebSocketStore.setState({
+          connected,
+          sseFallbackActive,
+          sseFallbackExhausted: false,
+          protocolVersionMismatch,
+        })
+        return () => {
+          useWebSocketStore.setState(previous)
+        }
+      }, [connected, sseFallbackActive, protocolVersionMismatch])
       return <Story />
     },
   ],
@@ -47,4 +65,22 @@ export const OfflineCustomCopy: Story = {
 /** When the socket is connected, the banner renders nothing. */
 export const Connected: Story = {
   parameters: { wsConnected: true },
+}
+
+/**
+ * WebSocket is blocked (e.g. a proxy that drops the upgrade) and events
+ * are arriving over the read-only SSE fallback: a degraded-but-live
+ * warning rather than a hard offline state.
+ */
+export const Degraded: Story = {
+  parameters: { wsConnected: false, sseFallbackActive: true },
+}
+
+/**
+ * The server advanced its wire protocol past the client: the socket
+ * still looks connected but events no longer decode, so the banner
+ * prompts a reload even while `connected` is true.
+ */
+export const ProtocolMismatch: Story = {
+  parameters: { wsConnected: true, protocolVersionMismatch: true },
 }

@@ -9,15 +9,15 @@ export interface MilestoneDrivenConfigProps {
 }
 
 export function MilestoneDrivenConfig({ config, onChange, disabled }: MilestoneDrivenConfigProps) {
-  const transitionMilestone = typeof config.transition_milestone === 'string' ? config.transition_milestone : ''
-  const [rawJson, setRawJson] = useState(() => JSON.stringify(Array.isArray(config.milestones) ? config.milestones : [], null, 2))
+  const transitionMilestone = typeof config['transition_milestone'] === 'string' ? config['transition_milestone'] : ''
+  const [rawJson, setRawJson] = useState(() => JSON.stringify(Array.isArray(config['milestones']) ? config['milestones'] : [], null, 2))
   const [jsonError, setJsonError] = useState<string | null>(null)
 
   // Sync rawJson when config.milestones changes externally (e.g. parent reset).
   // rawJson is intentionally excluded from deps to avoid feedback loops;
   // we only want to sync when the *prop* changes, not when the user edits.
   useEffect(() => {
-    const milestones = Array.isArray(config.milestones) ? config.milestones : []
+    const milestones = Array.isArray(config['milestones']) ? config['milestones'] : []
     const incoming = JSON.stringify(milestones, null, 2)
     try {
       const currentParsed: unknown = JSON.parse(rawJson)
@@ -36,7 +36,7 @@ export function MilestoneDrivenConfig({ config, onChange, disabled }: MilestoneD
       setJsonError(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rawJson intentionally excluded: this resyncs local state FROM the prop, so depending on rawJson would loop
-  }, [config.milestones])
+  }, [config['milestones']])
 
   return (
     <div className="space-y-3">

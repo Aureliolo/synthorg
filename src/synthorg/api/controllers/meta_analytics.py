@@ -106,6 +106,10 @@ class MetaAnalyticsController(Controller):
         Only available when ``collector_enabled=True``.
         Requires write access.
 
+        API-only: this is a backend-to-backend ingestion path used by
+        reporting deployments; it has no dashboard surface (the dashboard
+        only reads aggregated patterns and recommendations).
+
         Args:
             data: Batch of anonymized events.
 

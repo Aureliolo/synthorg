@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useOrgChartPrefs } from '@/stores/org-chart-prefs'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import { useCommunicationEdges } from '@/hooks/useCommunicationEdges'
 import { buildOrgTree, type OwnerInfo } from '@/pages/org/build-org-tree'
 import { applyDagreLayout } from '@/pages/org/layout'
@@ -200,18 +201,19 @@ export function useOrgChartData(
   const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
 
   // Synthesise owner list from the current session user.  Designed
-  // as an array so #1082 (multi-user ownership + per-dept admins)
-  // can pass multiple owners without changing this shape -- today
-  // it is exactly one element.
+  // as an array so future multi-user ownership (per-dept admins) can
+  // pass multiple owners without changing this shape; today it is
+  // exactly one element.
   const owners = useMemo<OwnerInfo[]>(() => {
     if (!currentUser) return []
     return [{ id: currentUser.id, displayName: currentUser.username }]
   }, [currentUser])
 
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useCompanyStore.getState().fetchDepartmentHealths()
   }, [])
-  const polling = usePolling(pollFn, ORG_POLL_INTERVAL)
+  const polling = usePolling(pollFn, ORG_POLL_INTERVAL, { skipIfFresh })
   useOrgInitialFetch(polling.start, polling.stop)
 
   // WebSocket bindings for real-time updates
@@ -220,11 +222,12 @@ export function useOrgChartData(
       ORG_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
+          markFresh()
           useCompanyStore.getState().updateFromWsEvent(event)
           useAgentsStore.getState().updateFromWsEvent(event)
         },
       })),
-    [],
+    [markFresh],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({

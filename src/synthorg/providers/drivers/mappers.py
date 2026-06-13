@@ -9,6 +9,8 @@ import copy
 import json
 import math
 from collections.abc import Mapping
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 
 from pydantic import JsonValue
 
@@ -28,6 +30,44 @@ from synthorg.providers.models import ChatMessage, ToolCall, ToolDefinition
 logger = get_logger(__name__)
 
 
+def _parse_retry_after_seconds(
+    raw: object,
+    now: datetime | None = None,
+) -> float | None:
+    """Parse a ``Retry-After`` value into a delay in seconds.
+
+    Accepts both RFC 9110 §10.2.3 forms: a delta-seconds number
+    (``"120"``) and an HTTP-date (``"Wed, 21 Oct 2026 07:28:00 GMT"``).
+    An HTTP-date is converted to the delay from ``now``; a past date
+    yields a negative delay, which the caller's finite/non-negative
+    guard rejects. Returns ``None`` when the value matches neither form.
+
+    Args:
+        raw: The raw header value (delta-seconds string or HTTP-date).
+        now: Reference instant for the HTTP-date delta; defaults to the
+            current UTC time. Injectable so tests are deterministic
+            without depending on wall-clock timing.
+
+    Returns:
+        The parsed seconds (possibly negative for a past date), or
+        ``None`` when unparseable.
+    """
+    try:
+        return float(raw)  # type: ignore[arg-type]
+    except ValueError, TypeError, OverflowError:
+        pass
+    if not isinstance(raw, str):
+        return None
+    try:
+        retry_dt = parsedate_to_datetime(raw)
+    except ValueError, TypeError:
+        return None
+    if retry_dt.tzinfo is None:
+        retry_dt = retry_dt.replace(tzinfo=UTC)
+    current = now if now is not None else datetime.now(UTC)
+    return (retry_dt - current).total_seconds()
+
+
 def extract_retry_after(exc: Exception) -> float | None:
     """Extract ``retry-after`` seconds from exception headers.
 
@@ -41,25 +81,22 @@ def extract_retry_after(exc: Exception) -> float | None:
     headers = getattr(exc, "headers", None)
     if not isinstance(headers, Mapping):
         return None
-    # Case-insensitive lookup per HTTP semantics
-    raw: str | None = None
+    # Case-insensitive lookup per HTTP semantics. The value is untyped
+    # (a malformed header may carry a list / number), so keep it as
+    # ``object`` and let ``_parse_retry_after_seconds`` reject non-strings.
+    raw: object = None
     for key, value in headers.items():
         if isinstance(key, str) and compare_ci(key, "retry-after"):
             raw = value
             break
     if raw is None:
         return None
-    try:
-        parsed = float(raw)
-    except ValueError, TypeError:
-        logger.debug(
-            PROVIDER_RETRY_AFTER_PARSE_FAILED,
-            raw_value=repr(raw),
-        )
-        return None
-    # ``float`` accepts ``"inf"`` / ``"nan"`` and signed values; a
-    # retry-after delay must be a finite, non-negative number of seconds.
-    if not math.isfinite(parsed) or parsed < 0:
+    parsed = _parse_retry_after_seconds(raw)
+    # ``float`` accepts ``"inf"`` / ``"nan"`` and signed values, and a
+    # past HTTP-date yields a negative delay; a retry-after must be a
+    # finite, non-negative number of seconds. A past date is a benign
+    # "retry now" the backoff handler treats as no hint.
+    if parsed is None or not math.isfinite(parsed) or parsed < 0:
         logger.debug(
             PROVIDER_RETRY_AFTER_PARSE_FAILED,
             raw_value=repr(raw),

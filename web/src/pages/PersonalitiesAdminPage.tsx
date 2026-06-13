@@ -7,16 +7,18 @@
  * surface only accepts mutations for the ``custom`` source so the runtime
  * cannot drift from the shipped defaults.
  */
-import { Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Plus, Sparkles, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Drawer } from '@/components/ui/drawer'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { InputField } from '@/components/ui/input-field'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
 import { SectionCard } from '@/components/ui/section-card'
+import { SkeletonCard } from '@/components/ui/skeleton'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SearchInput } from '@/components/ui/search-input'
 import { SelectField } from '@/components/ui/select-field'
@@ -98,8 +100,10 @@ interface CtrlProps {
 function PresetsBody({ ctrl }: CtrlProps) {
   if (ctrl.loading && ctrl.presets.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="size-6 animate-spin text-text-muted" />
+      <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
+        <SkeletonCard header lines={3} />
+        <SkeletonCard header lines={3} />
+        <SkeletonCard header lines={3} />
       </div>
     )
   }
@@ -118,7 +122,7 @@ function PresetsBody({ ctrl }: CtrlProps) {
   }
   if (ctrl.visible.length === 0) return null
   return (
-    <>
+    <ErrorBoundary level="section">
       <SectionCard title="Available presets" icon={Sparkles}>
         <ul className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
           {ctrl.pagination.paginatedItems.map((preset) => (
@@ -137,7 +141,7 @@ function PresetsBody({ ctrl }: CtrlProps) {
         onPageChange={ctrl.pagination.setPage}
         onPageSizeChange={ctrl.pagination.setPageSize}
       />
-    </>
+    </ErrorBoundary>
   )
 }
 

@@ -800,7 +800,7 @@ describe('websocket store', () => {
       expect(ws.sentMessages.length).toBe(sentBefore)
     })
 
-    it('teardown() clears every armed timer (regression for #1635)', async () => {
+    it('teardown() clears every armed timer', async () => {
       const ws = await connectAndAuth()
       // Heartbeat is now armed; arm the pong timer too by advancing
       // through one ping cycle without responding with a pong.

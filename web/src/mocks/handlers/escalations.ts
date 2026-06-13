@@ -52,7 +52,7 @@ export const escalationsHandlers = [
     HttpResponse.json(
       successFor<typeof getEscalation>(
         buildResponse({
-          escalation: buildEscalation({ id: String(params.id) }),
+          escalation: buildEscalation({ id: String(params['id']) }),
         }),
       ),
     ),
@@ -62,7 +62,7 @@ export const escalationsHandlers = [
       successFor<typeof submitEscalationDecision>(
         buildResponse({
           escalation: buildEscalation({
-            id: String(params.id),
+            id: String(params['id']),
             status: 'decided',
             decided_at: '2026-04-19T00:00:00Z',
             decided_by: 'user-1',
@@ -77,7 +77,7 @@ export const escalationsHandlers = [
       successFor<typeof cancelEscalation>(
         buildResponse({
           escalation: buildEscalation({
-            id: String(params.id),
+            id: String(params['id']),
             status: 'cancelled',
           }),
           status: 'cancelled',

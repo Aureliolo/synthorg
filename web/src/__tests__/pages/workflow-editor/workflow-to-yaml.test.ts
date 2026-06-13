@@ -77,12 +77,12 @@ describe('generateYamlPreview depends_on', () => {
     ]
     const output = generateYamlPreview(nodes, edges, 'test', 'agile')
     const steps = parseSteps(output)
-    const yesStep = steps.find((s) => s.id === 'yes_step')
-    const noStep = steps.find((s) => s.id === 'no_step')
+    const yesStep = steps.find((s) => s['id'] === 'yes_step')
+    const noStep = steps.find((s) => s['id'] === 'no_step')
     expect(yesStep).toBeDefined()
     expect(noStep).toBeDefined()
-    expect(yesStep!.depends_on).toEqual([{ id: 'check', branch: 'true' }])
-    expect(noStep!.depends_on).toEqual([{ id: 'check', branch: 'false' }])
+    expect(yesStep!['depends_on']).toEqual([{ id: 'check', branch: 'true' }])
+    expect(noStep!['depends_on']).toEqual([{ id: 'check', branch: 'false' }])
   })
 
   it('emits branches field for parallel_split node (no branch metadata in depends_on)', () => {
@@ -103,13 +103,13 @@ describe('generateYamlPreview depends_on', () => {
     const output = generateYamlPreview(nodes, edges, 'test', 'agile')
     const steps = parseSteps(output)
     // The split node should have a branches field listing targets
-    const forkStep = steps.find((s) => s.id === 'fork')
+    const forkStep = steps.find((s) => s['id'] === 'fork')
     expect(forkStep).toBeDefined()
-    expect(forkStep!.branches).toEqual(expect.arrayContaining(['a', 'b']))
+    expect(forkStep!['branches']).toEqual(expect.arrayContaining(['a', 'b']))
     // Child tasks should have plain string depends_on (no branch metadata)
-    const aStep = steps.find((s) => s.id === 'a')
+    const aStep = steps.find((s) => s['id'] === 'a')
     expect(aStep).toBeDefined()
-    expect(aStep!.depends_on).toEqual(['fork'])
+    expect(aStep!['depends_on']).toEqual(['fork'])
     expect(output).not.toContain('branch:')
   })
 
@@ -130,13 +130,13 @@ describe('generateYamlPreview depends_on', () => {
     const output = generateYamlPreview(nodes, edges, 'test', 'agile')
     const steps = parseSteps(output)
     // 'run' should have depends_on with { id: check, branch: 'true' }
-    const runStep = steps.find((s) => s.id === 'run')
+    const runStep = steps.find((s) => s['id'] === 'run')
     expect(runStep).toBeDefined()
-    expect(runStep!.depends_on).toEqual([{ id: 'check', branch: 'true' }])
+    expect(runStep!['depends_on']).toEqual([{ id: 'check', branch: 'true' }])
     // 'check' should have plain string depends_on from setup
-    const checkStep = steps.find((s) => s.id === 'check')
+    const checkStep = steps.find((s) => s['id'] === 'check')
     expect(checkStep).toBeDefined()
-    expect(checkStep!.depends_on).toEqual(['setup'])
+    expect(checkStep!['depends_on']).toEqual(['setup'])
   })
 
   it('conditional edges produce {id, branch} and sequential edges produce plain strings (property)', () => {
@@ -172,14 +172,14 @@ describe('generateYamlPreview depends_on', () => {
         const steps = parseSteps(output)
 
         for (const step of steps) {
-          if (!step.depends_on) continue
-          expect(Array.isArray(step.depends_on)).toBe(true)
-          for (const dep of step.depends_on as Array<unknown>) {
+          if (!step['depends_on']) continue
+          expect(Array.isArray(step['depends_on'])).toBe(true)
+          for (const dep of step['depends_on'] as Array<unknown>) {
             if (typeof dep === 'object' && dep !== null) {
               const obj = dep as Record<string, unknown>
-              expect(obj.id).toBeDefined()
-              expect(obj.branch).toBeDefined()
-              expect(obj.branch).toMatch(/^(true|false)$/)
+              expect(obj['id']).toBeDefined()
+              expect(obj['branch']).toBeDefined()
+              expect(obj['branch']).toMatch(/^(true|false)$/)
             } else {
               expect(typeof dep).toBe('string')
             }
@@ -187,19 +187,19 @@ describe('generateYamlPreview depends_on', () => {
         }
 
         // Conditional targets must have object depends_on
-        const yesStep = steps.find((s) => s.id === 'yes')
-        const noStep = steps.find((s) => s.id === 'no')
+        const yesStep = steps.find((s) => s['id'] === 'yes')
+        const noStep = steps.find((s) => s['id'] === 'no')
         expect(yesStep).toBeDefined()
         expect(noStep).toBeDefined()
-        expect(typeof (yesStep!.depends_on as Array<unknown>)[0]).toBe('object')
-        expect(typeof (noStep!.depends_on as Array<unknown>)[0]).toBe('object')
+        expect(typeof (yesStep!['depends_on'] as Array<unknown>)[0]).toBe('object')
+        expect(typeof (noStep!['depends_on'] as Array<unknown>)[0]).toBe('object')
 
         // Sequential tasks must have plain string depends_on
         for (let i = 1; i < taskCount; i++) {
-          const step = steps.find((s) => s.id === `task_${i}`)
+          const step = steps.find((s) => s['id'] === `task_${i}`)
           expect(step).toBeDefined()
-          expect(step!.depends_on).toBeDefined()
-          expect(typeof (step!.depends_on as Array<unknown>)[0]).toBe('string')
+          expect(step!['depends_on']).toBeDefined()
+          expect(typeof (step!['depends_on'] as Array<unknown>)[0]).toBe('string')
         }
       }),
       { numRuns: 20 },

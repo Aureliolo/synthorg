@@ -61,7 +61,7 @@ export const customRulesHandlers = [
   }),
   http.get('/api/v1/meta/custom-rules/:id', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getCustomRule>(buildCustomRule({ id: String(params.id) })),
+      successFor<typeof getCustomRule>(buildCustomRule({ id: String(params['id']) })),
     ),
   ),
   http.post('/api/v1/meta/custom-rules', async ({ request }) => {
@@ -78,7 +78,7 @@ export const customRulesHandlers = [
     const body = (await request.json()) as Partial<CustomRule>
     return HttpResponse.json(
       successFor<typeof updateCustomRule>(
-        buildCustomRule({ ...body, id: String(params.id) }),
+        buildCustomRule({ ...body, id: String(params['id']) }),
       ),
     )
   }),
@@ -87,7 +87,7 @@ export const customRulesHandlers = [
   ),
   http.post('/api/v1/meta/custom-rules/:id/toggle', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof toggleCustomRule>(buildCustomRule({ id: String(params.id) })),
+      successFor<typeof toggleCustomRule>(buildCustomRule({ id: String(params['id']) })),
     ),
   ),
   http.get('/api/v1/meta/rules', () =>

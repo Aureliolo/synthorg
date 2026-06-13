@@ -101,7 +101,7 @@ function useAccessibilityWarning(
   explicitLabel: string | undefined,
 ): void {
   useEffect(() => {
-    if (process.env.NODE_ENV === 'production') return
+    if (process.env['NODE_ENV'] === 'production') return
     if (trimmedTitle || explicitLabel) return
     log.warn('Either `title` or `ariaLabel` must be a non-empty string for accessible dialog naming.')
   }, [trimmedTitle, explicitLabel])

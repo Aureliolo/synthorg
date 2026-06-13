@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Collapsible } from './collapsible'
+import { SkeletonText } from './skeleton'
 
 const meta = {
   title: 'UI/Collapsible',
@@ -44,5 +45,23 @@ export const LongBody: Story = {
         <li>Risk trend chart</li>
       </ul>
     ),
+  },
+}
+
+// Gated trigger: the section cannot be toggled while a parent save is in flight.
+export const Disabled: Story = {
+  args: {
+    title: 'Advanced settings',
+    summary: 'Saving…',
+    disabled: true,
+    children: 'The trigger is dimmed and non-interactive until the save settles.',
+  },
+}
+
+// Async body content: a skeleton fills the expanded section while it loads.
+export const LoadingBody: Story = {
+  args: {
+    title: 'Live activity',
+    children: <SkeletonText lines={3} />,
   },
 }

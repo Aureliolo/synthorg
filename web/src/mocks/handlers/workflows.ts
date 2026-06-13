@@ -68,7 +68,7 @@ export const workflowsHandlers = [
   }),
   http.get('/api/v1/workflows/:id', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getWorkflow>(buildWorkflow({ id: String(params.id) })),
+      successFor<typeof getWorkflow>(buildWorkflow({ id: String(params['id']) })),
     ),
   ),
   http.post('/api/v1/workflows', async ({ request }) => {
@@ -84,7 +84,7 @@ export const workflowsHandlers = [
     const body = (await request.json()) as Partial<WorkflowDefinition>
     return HttpResponse.json(
       successFor<typeof updateWorkflow>(
-        buildWorkflow({ ...body, id: String(params.id) }),
+        buildWorkflow({ ...body, id: String(params['id']) }),
       ),
     )
   }),
@@ -109,11 +109,11 @@ export const workflowsHandlers = [
   http.get('/api/v1/workflows/:id/versions/:version', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getWorkflowVersion>({
-        entity_id: String(params.id),
-        version: Number(params.version),
+        entity_id: String(params['id']),
+        version: Number(params['version']),
         content_hash: 'sha256:0',
         snapshot: {
-          id: String(params.id),
+          id: String(params['id']),
           name: 'snapshot',
           description: '',
           workflow_type: 'sequential_pipeline',
@@ -130,7 +130,7 @@ export const workflowsHandlers = [
     const url = new URL(request.url)
     return HttpResponse.json(
       successFor<typeof getWorkflowDiff>({
-        definition_id: String(params.id),
+        definition_id: String(params['id']),
         from_version: Number(url.searchParams.get('from_version') ?? 1),
         to_version: Number(url.searchParams.get('to_version') ?? 2),
         node_changes: [],
@@ -142,7 +142,7 @@ export const workflowsHandlers = [
   }),
   http.post('/api/v1/workflows/:id/rollback', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof rollbackWorkflow>(buildWorkflow({ id: String(params.id) })),
+      successFor<typeof rollbackWorkflow>(buildWorkflow({ id: String(params['id']) })),
     ),
   ),
 ]

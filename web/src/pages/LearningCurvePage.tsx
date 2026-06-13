@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2, TrendingUp } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { MetricCard } from '@/components/ui/metric-card'
 import { getLearningCurve } from '@/api/endpoints/learning'
@@ -105,7 +106,9 @@ export default function LearningCurvePage() {
       ) : curve ? (
         <>
           <LearningSummaryCards curve={curve} />
-          <BenchmarkScoreChart curve={curve} />
+          <ErrorBoundary level="section">
+            <BenchmarkScoreChart curve={curve} />
+          </ErrorBoundary>
         </>
       ) : (
         <div className="flex items-center justify-center py-12 text-text-muted">

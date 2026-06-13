@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -126,7 +126,7 @@ describe('RequestQueuePage', () => {
     let scopeCall: { id: string; body: unknown } | undefined
     server.use(
       http.post('/api/v1/requests/:id/scope', async ({ params, request }) => {
-        scopeCall = { id: String(params.id), body: (await request.json()) as Record<string, unknown> }
+        scopeCall = { id: String(params['id']), body: (await request.json()) as Record<string, unknown> }
         return HttpResponse.json(
           successFor<typeof scopeRequest>(makeRequest({ status: 'scoping' })),
         )
@@ -135,6 +135,9 @@ describe('RequestQueuePage', () => {
     seedSubmittedRequest()
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Scope' }))
+    // The board action opens a confirmation dialog; confirm it to run.
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /^scope$/i }))
     await waitFor(() => {
       expect(scopeCall).toEqual({ id: 'req-1', body: { notes: 'Scoped from dashboard' } })
     })
@@ -144,7 +147,7 @@ describe('RequestQueuePage', () => {
     let approvedId: string | undefined
     server.use(
       http.post('/api/v1/requests/:id/approve', ({ params }) => {
-        approvedId = String(params.id)
+        approvedId = String(params['id'])
         return HttpResponse.json(
           successFor<typeof approveRequest>(makeRequest({ status: 'approved' })),
         )
@@ -153,6 +156,8 @@ describe('RequestQueuePage', () => {
     seedSubmittedRequest()
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /^approve$/i }))
     await waitFor(() => {
       expect(approvedId).toBe('req-1')
     })
@@ -162,7 +167,7 @@ describe('RequestQueuePage', () => {
     let rejectCall: { id: string; body: unknown } | undefined
     server.use(
       http.post('/api/v1/requests/:id/reject', async ({ params, request }) => {
-        rejectCall = { id: String(params.id), body: (await request.json()) as Record<string, unknown> }
+        rejectCall = { id: String(params['id']), body: (await request.json()) as Record<string, unknown> }
         return HttpResponse.json(
           successFor<typeof rejectRequest>(makeRequest({ status: 'cancelled' })),
         )
@@ -171,6 +176,8 @@ describe('RequestQueuePage', () => {
     seedSubmittedRequest()
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Reject' }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /^reject$/i }))
     await waitFor(() => {
       expect(rejectCall).toEqual({ id: 'req-1', body: { reason: 'Rejected from dashboard' } })
     })

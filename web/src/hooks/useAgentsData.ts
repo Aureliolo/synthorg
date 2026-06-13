@@ -3,6 +3,7 @@ import { useAgentsStore } from '@/stores/agents'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import { filterAgents, sortAgents } from '@/utils/agents'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import type { AgentConfig } from '@/api/types/agents'
 import type { WsChannel } from '@/api/types/websocket'
 
@@ -38,11 +39,12 @@ export function useAgentsData(): UseAgentsDataReturn {
     void useAgentsStore.getState().fetchAgents()
   }, [])
 
-  // Polling
+  // Polling, gated so a WS-active session does not also REST-poll on cadence.
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useAgentsStore.getState().fetchAgents()
   }, [])
-  const polling = usePolling(pollFn, AGENTS_POLL_INTERVAL)
+  const polling = usePolling(pollFn, AGENTS_POLL_INTERVAL, { skipIfFresh })
 
   const { start, stop } = polling
   useEffect(() => {
@@ -62,12 +64,20 @@ export function useAgentsData(): UseAgentsDataReturn {
         channel,
         handler: () => {
           if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
+          // Mark fresh only AFTER the debounced fetch runs: marking up-front lets
+          // a stream of WS events keep sliding the debounce while skipIfFresh
+          // stays true, starving both the debounced fetch and the periodic poll.
           wsDebounceRef.current = setTimeout(() => {
-            void useAgentsStore.getState().fetchAgents()
+            void useAgentsStore
+              .getState()
+              .fetchAgents()
+              .then(() => {
+                markFresh()
+              })
           }, WS_DEBOUNCE_MS)
         },
       })),
-    [],
+    [markFresh],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })

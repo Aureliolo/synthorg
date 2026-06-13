@@ -58,7 +58,7 @@ export const projectDocsHandlers = [
   ),
   http.get('/api/v1/projects/:projectId/docs/:slug', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getProjectDoc>(buildDoc({ slug: String(params.slug) })),
+      successFor<typeof getProjectDoc>(buildDoc({ slug: String(params['slug']) })),
     ),
   ),
   http.get('/api/v1/projects/:projectId/docs/:slug/history', () =>

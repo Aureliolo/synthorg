@@ -128,7 +128,7 @@ export default class ActiveHandleReporter implements Reporter {
     // project tree.
     this.logDir = resolveLeakLogDir(options.logDir)
     this.emitTelemetry =
-      options.emitTelemetry ?? process.env.CI === 'true'
+      options.emitTelemetry ?? process.env['CI'] === 'true'
   }
 
   onTestRunStart(): void {

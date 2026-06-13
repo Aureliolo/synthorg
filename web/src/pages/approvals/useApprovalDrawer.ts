@@ -102,7 +102,7 @@ export interface ApprovalDecision {
 }
 
 function confidenceLabelFor(approval: ApprovalResponse | null): string | null {
-  const raw = approval?.metadata.confidence_score
+  const raw = approval?.metadata['confidence_score']
   const score = raw != null ? parseFloat(raw) : NaN
   return !Number.isNaN(score) ? `${(score * 100).toFixed(0)}%` : null
 }

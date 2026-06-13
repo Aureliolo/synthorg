@@ -16,7 +16,7 @@ export const oauthHandlers = [
   http.get('/api/v1/oauth/status/:connectionName', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getOauthStatus>({
-        connection_name: String(params.connectionName),
+        connection_name: String(params['connectionName']),
         has_token: true,
         token_expires_at: '2026-05-11T12:00:00Z',
       }),
@@ -37,7 +37,7 @@ export const oauthDefaultHandlers = [
   http.get('/api/v1/oauth/status/:connectionName', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getOauthStatus>({
-        connection_name: String(params.connectionName),
+        connection_name: String(params['connectionName']),
         has_token: false,
         token_expires_at: null,
       }),

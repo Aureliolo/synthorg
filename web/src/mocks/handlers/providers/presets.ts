@@ -12,7 +12,7 @@ export const presetsHandlers = [
   http.patch('/api/v1/providers/presets/:presetName/override', ({ params }) =>
     HttpResponse.json(
       successFor<typeof updatePresetOverride>({
-        preset_name: String(params.presetName),
+        preset_name: String(params['presetName']),
         default_models: null,
         supported_auth_types: null,
         candidate_urls: null,

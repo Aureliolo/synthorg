@@ -151,7 +151,7 @@ export async function listCheckpoints(
   limit = 50,
 ): Promise<PaginatedResult<CheckpointRecord>> {
   const params: Record<string, string | number> = { limit }
-  if (cursor !== null) params.cursor = cursor
+  if (cursor !== null) params['cursor'] = cursor
   const response = await apiClient.get<PaginatedResponse<CheckpointRecord>>(
     `${BASE}/checkpoints`,
     { params },
@@ -187,7 +187,7 @@ export async function listRuns(
   limit = 50,
 ): Promise<PaginatedResult<FineTuneRun>> {
   const params: Record<string, string | number> = { limit }
-  if (cursor !== null) params.cursor = cursor
+  if (cursor !== null) params['cursor'] = cursor
   const response = await apiClient.get<PaginatedResponse<FineTuneRun>>(`${BASE}/runs`, {
     params,
   })

@@ -61,7 +61,7 @@ export default function ScalingPage() {
         title="Dynamic Scaling"
         refreshing={isRefetching}
         primaryAction={
-          <Button onClick={handleEvaluateNow} disabled={evaluating}>
+          <Button size="sm" onClick={handleEvaluateNow} disabled={evaluating}>
             {evaluating ? 'Evaluating...' : 'Evaluate Now'}
           </Button>
         }

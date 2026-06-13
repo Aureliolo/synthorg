@@ -59,7 +59,7 @@ The theme store also calls `teardown()` from its `import.meta.hot?.dispose(...)`
 
 ### WebSocket store is a deliberate exception
 
-`useWebSocketStore` exposes its own `teardown()` action (clears heartbeat / pong / reconnect timers, detaches socket event handlers, bumps `connectGeneration` to invalidate stale `doConnect` chains, resets observable state including `reconnectExhausted`) but is invoked from the file-local `resetStore()` in `web/src/__tests__/stores/websocket.test.ts`, NOT from the global `afterEach`. Wiring it into the global hook would eagerly import the apiClient chain in test-setup, which captures the unmocked `getCsrfToken` reference before tests that `vi.mock('@/utils/csrf')` can hoist; see PR #1603 commit `fcfddf30` for the diagnostic. The heartbeat tests pair this with `retry: 3` on three structurally-racy cases (matching the existing `first-message auth` precedent) to absorb the residual MSW-vs-fake-timer microtask race.
+`useWebSocketStore` exposes its own `teardown()` action (clears heartbeat / pong / reconnect timers, detaches socket event handlers, bumps `connectGeneration` to invalidate stale `doConnect` chains, resets observable state including `reconnectExhausted`, `sseFallbackActive`, `sseFallbackExhausted`, and `protocolVersionMismatch`) but is invoked from the file-local `resetStore()` in `web/src/__tests__/stores/websocket.test.ts`, NOT from the global `afterEach`. Wiring it into the global hook would eagerly import the apiClient chain in test-setup, which captures the unmocked `getCsrfToken` reference before tests that `vi.mock('@/utils/csrf')` can hoist; see PR #1603 commit `fcfddf30` for the diagnostic. The heartbeat tests pair this with `retry: 3` on three structurally-racy cases (matching the existing `first-message auth` precedent) to absorb the residual MSW-vs-fake-timer microtask race.
 
 ## Active-Handle Gate (MANDATORY)
 
@@ -117,6 +117,20 @@ Per-connection outbound is bounded by an `asyncio.Queue(maxsize=64)` of bytes. O
 ### User retry
 
 The `retry()` action on `useWebSocketStore` is the user-initiated escape hatch from the reconnect-exhausted state; wire it into any new surface that surfaces the disconnect toast.
+
+### SSE fallback transport
+
+When the WebSocket handshake fails twice consecutively with a 1006 close before `auth_ok` (the canonical proxy-blocked-upgrade signature), the store switches to a read-only SSE feed against `/api/v1/events/stream` (`web/src/api/sse/client.ts` + `web/src/stores/websocket/sse-fallback.ts`). The fallback projects AG-UI events through the same `dispatchEvent` chain so tasks / agents / approvals / budget keep updating; write-path features stay gated behind the "connection limited" toast. Three observable flags drive the UI:
+
+- `sseFallbackActive`: the SSE feed is live (WS is down). `WsConnectionBanner` renders a *degraded* (`severity="warning"`) state, not the hard *offline* state.
+- `sseFallbackExhausted`: the SSE feed itself exhausted `SSE_MAX_RECONNECT_ATTEMPTS` (the `EventSource` is closed; no live transport remains). The banner escalates to the offline / retry state.
+- `protocolVersionMismatch`: the server emitted events whose `version` the client repeatedly could not parse, set after a threshold so a banner can advise a reload.
+
+So `WsConnectionBanner` has three states, not two: *connected* (hidden), *degraded* (SSE fallback active), and *offline* (no transport / fallback exhausted). The client also records each frame's `lastEventId` (clamped via `sanitizeWsString`) so the browser replays `Last-Event-ID` on reconnect.
+
+### SSE / polling constants
+
+Alongside the WS wire constants, `web/src/utils/constants.ts` carries `SSE_MAX_RECONNECT_ATTEMPTS` (SSE fallback reconnect budget) and `INTERRUPTS_POLL_INTERVAL` (interrupt-panel poll cadence while WS is down). These are client-only (no server counterpart) and so are not covered by the protocol-version drift gate.
 
 ## See also
 

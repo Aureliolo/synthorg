@@ -69,7 +69,7 @@ describe('WebhookReceiptsPage', () => {
     let retriedId: string | undefined
     server.use(
       http.post('/api/v1/webhooks/receipts/:id/retry', ({ params }) => {
-        retriedId = String(params.id)
+        retriedId = String(params['id'])
         return HttpResponse.json(
           successFor<typeof retryWebhookReceipt>({
             status: 'accepted',

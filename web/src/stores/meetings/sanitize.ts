@@ -54,9 +54,9 @@ function isAgendaItemShape(value: unknown): boolean {
   if (!isPlainObject(value)) return false
   const v = value
   return (
-    typeof v.title === 'string'
-    && typeof v.description === 'string'
-    && (v.presenter_id === null || typeof v.presenter_id === 'string')
+    typeof v['title'] === 'string'
+    && typeof v['description'] === 'string'
+    && (v['presenter_id'] === null || typeof v['presenter_id'] === 'string')
   )
 }
 
@@ -88,7 +88,7 @@ function isContributionShape(value: unknown): boolean {
   // ``sanitizeWsEnum`` which emits the structured warning and falls
   // back, so a rolling backend that ships a new phase value doesn't
   // collapse the whole frame.
-  if (typeof value.phase !== 'string') return false
+  if (typeof value['phase'] !== 'string') return false
   for (const field of CONTRIBUTION_REQUIRED_NUMERIC_FIELDS) {
     if (!isNonNegInt(value[field])) return false
   }
@@ -105,19 +105,19 @@ function isActionItemShape(value: unknown): boolean {
   // allowlist miss here; ``sanitizeMinutesCollections`` runs
   // ``sanitizeWsEnum`` on priority and falls back consistently.
   return (
-    typeof value.description === 'string'
-    && (value.assignee_id === null || typeof value.assignee_id === 'string')
-    && typeof value.priority === 'string'
+    typeof value['description'] === 'string'
+    && (value['assignee_id'] === null || typeof value['assignee_id'] === 'string')
+    && typeof value['priority'] === 'string'
   )
 }
 
 function isMinutesAgendaShape(value: unknown): boolean {
   if (!isPlainObject(value)) return false
   return (
-    typeof value.title === 'string'
-    && typeof value.context === 'string'
-    && Array.isArray(value.items)
-    && value.items.every(isAgendaItemShape)
+    typeof value['title'] === 'string'
+    && typeof value['context'] === 'string'
+    && Array.isArray(value['items'])
+    && value['items'].every(isAgendaItemShape)
   )
 }
 
@@ -143,7 +143,7 @@ function isMinutesRequiredScalars(m: Record<string, unknown>): boolean {
   for (const field of MINUTES_REQUIRED_NUMERIC_FIELDS) {
     if (!isNonNegInt(m[field])) return false
   }
-  return typeof m.conflicts_detected === 'boolean'
+  return typeof m['conflicts_detected'] === 'boolean'
 }
 
 function isStringArrayValue(value: unknown): boolean {
@@ -159,11 +159,11 @@ function isShapedArray(
 
 function isMinutesCollections(m: Record<string, unknown>): boolean {
   return (
-    isStringArrayValue(m.participant_ids)
-    && isMinutesAgendaShape(m.agenda)
-    && isShapedArray(m.contributions, isContributionShape)
-    && isStringArrayValue(m.decisions)
-    && isShapedArray(m.action_items, isActionItemShape)
+    isStringArrayValue(m['participant_ids'])
+    && isMinutesAgendaShape(m['agenda'])
+    && isShapedArray(m['contributions'], isContributionShape)
+    && isStringArrayValue(m['decisions'])
+    && isShapedArray(m['action_items'], isActionItemShape)
   )
 }
 
@@ -186,13 +186,13 @@ function isMeetingMinutesShape(value: unknown): boolean {
 
 function isMeetingScalarFields(c: Record<string, unknown>): boolean {
   return (
-    typeof c.meeting_id === 'string'
-    && typeof c.status === 'string'
-    && typeof c.meeting_type_name === 'string'
-    && typeof c.protocol_type === 'string'
-    && typeof c.token_budget === 'number'
-    && Number.isFinite(c.token_budget)
-    && c.token_budget >= 0
+    typeof c['meeting_id'] === 'string'
+    && typeof c['status'] === 'string'
+    && typeof c['meeting_type_name'] === 'string'
+    && typeof c['protocol_type'] === 'string'
+    && typeof c['token_budget'] === 'number'
+    && Number.isFinite(c['token_budget'])
+    && c['token_budget'] >= 0
   )
 }
 
@@ -203,11 +203,11 @@ function isMeetingDurationField(value: unknown): boolean {
 
 function isMeetingNullableFields(c: Record<string, unknown>): boolean {
   return (
-    isMeetingMinutesShape(c.minutes)
-    && (c.error_message === null || typeof c.error_message === 'string')
-    && isMeetingDurationField(c.meeting_duration_seconds)
-    && (c.token_usage_by_participant === undefined
-      || isTokenUsageMap(c.token_usage_by_participant))
+    isMeetingMinutesShape(c['minutes'])
+    && (c['error_message'] === null || typeof c['error_message'] === 'string')
+    && isMeetingDurationField(c['meeting_duration_seconds'])
+    && (c['token_usage_by_participant'] === undefined
+      || isTokenUsageMap(c['token_usage_by_participant']))
   )
 }
 
@@ -224,7 +224,7 @@ export function isMeetingShape(
   // would drop the whole frame on rolling backend deploys.
   return (
     isMeetingScalarFields(c)
-    && isStringArrayValue(c.contribution_rank)
+    && isStringArrayValue(c['contribution_rank'])
     && isMeetingNullableFields(c)
   )
 }

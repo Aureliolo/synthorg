@@ -1,7 +1,7 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { DashboardAgentConfig } from '@/api/types/agents'
 import type { DepartmentHealth } from '@/api/types/analytics'
-import type { DepartmentName, SeniorityLevel } from '@/api/types/enums'
+import type { SeniorityLevel } from '@/api/types/enums'
 import type { CompanyConfig, DashboardDepartment } from '@/api/types/org'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 
@@ -44,7 +44,9 @@ export interface AgentNodeData {
   agentId: string
   name: string
   role: string
-  department: DepartmentName
+  // Opaque wire identifier; the chart never uses it as a typed lookup key,
+  // so it stays a plain string rather than a brand that needs casting.
+  department: string
   level: SeniorityLevel
   runtimeStatus: AgentRuntimeStatus
   /**

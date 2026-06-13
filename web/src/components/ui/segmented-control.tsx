@@ -94,7 +94,7 @@ export function SegmentedControl<T extends string>({
       onChange(next.value)
       const buttons = groupRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]')
       const targetButton = Array.from(buttons ?? []).find(
-        (btn) => btn.dataset.value === next.value,
+        (btn) => btn.dataset['value'] === next.value,
       )
       targetButton?.focus()
     },

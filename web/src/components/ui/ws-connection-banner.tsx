@@ -19,6 +19,31 @@ export interface WsConnectionBannerProps {
 const DEFAULT_TITLE = 'Real-time updates disconnected'
 const DEFAULT_DESCRIPTION = 'Data may be stale until the connection recovers.'
 
+type BannerKind = 'mismatch' | 'sse-degraded' | 'offline' | null
+
+/**
+ * Decide which (if any) connection banner to show from the websocket
+ * store flags. Kept as a pure helper so the component body stays under
+ * the complexity cap and the precedence (mismatch > connected >
+ * SSE-degraded > offline) is expressed in one readable ladder.
+ */
+function _resolveBannerKind(flags: {
+  connected: boolean
+  protocolVersionMismatch: boolean
+  sseFallbackActive: boolean
+  sseFallbackExhausted: boolean
+  showOffline: boolean
+}): BannerKind {
+  // The socket appears connected but events no longer decode: most
+  // severe, surfaced even while `connected` is true so the operator can
+  // reload.
+  if (flags.protocolVersionMismatch) return 'mismatch'
+  if (flags.connected) return null
+  // Degraded but live: events are arriving over the read-only SSE fallback.
+  if (flags.sseFallbackActive && !flags.sseFallbackExhausted) return 'sse-degraded'
+  return flags.showOffline ? 'offline' : null
+}
+
 // Grace window during which the initial-handshake transition is
 // allowed to stay silent. A session that starts offline and never
 // connects will still surface the banner once this timer elapses --
@@ -41,6 +66,9 @@ export function WsConnectionBanner({
   description = DEFAULT_DESCRIPTION,
 }: WsConnectionBannerProps = {}) {
   const connected = useWebSocketStore((s) => s.connected)
+  const sseFallbackActive = useWebSocketStore((s) => s.sseFallbackActive)
+  const sseFallbackExhausted = useWebSocketStore((s) => s.sseFallbackExhausted)
+  const protocolVersionMismatch = useWebSocketStore((s) => s.protocolVersionMismatch)
   const everConnectedRef = useRef(false)
   const [initialGraceElapsed, setInitialGraceElapsed] = useState(false)
 
@@ -56,7 +84,37 @@ export function WsConnectionBanner({
     if (connected) everConnectedRef.current = true
   }, [connected])
 
-  if (connected) return null
-  if (!everConnectedRef.current && !initialGraceElapsed) return null
-  return <ErrorBanner variant="offline" title={title} description={description} />
+  const showOffline = everConnectedRef.current || initialGraceElapsed
+  const kind = _resolveBannerKind({
+    connected,
+    protocolVersionMismatch,
+    sseFallbackActive,
+    sseFallbackExhausted,
+    showOffline,
+  })
+
+  if (kind === 'mismatch') {
+    return (
+      <ErrorBanner
+        variant="section"
+        severity="error"
+        title="Update required"
+        description="The server updated its real-time protocol. Reload the page to keep receiving live updates."
+      />
+    )
+  }
+  if (kind === 'sse-degraded') {
+    return (
+      <ErrorBanner
+        variant="section"
+        severity="warning"
+        title="Real-time updates degraded"
+        description="WebSocket is blocked; updates are arriving over a read-only fallback. Some interactive features may be unavailable until you reload."
+      />
+    )
+  }
+  if (kind === 'offline') {
+    return <ErrorBanner variant="offline" title={title} description={description} />
+  }
+  return null
 }

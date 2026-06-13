@@ -33,22 +33,22 @@ type CompanyYamlValidator = (parsed: Record<string, unknown>) => string | null
  * declarative statement.
  */
 const COMPANY_YAML_VALIDATORS: readonly CompanyYamlValidator[] = [
-  (p) => (typeof p.company_name !== 'string' || p.company_name.trim() === '')
+  (p) => (typeof p['company_name'] !== 'string' || p['company_name'].trim() === '')
     ? 'company_name must be a non-empty string'
     : null,
-  (p) => ('agents' in p && !Array.isArray(p.agents))
+  (p) => ('agents' in p && !Array.isArray(p['agents']))
     ? 'agents must be an array'
     : null,
-  (p) => ('departments' in p && !Array.isArray(p.departments))
+  (p) => ('departments' in p && !Array.isArray(p['departments']))
     ? 'departments must be an array'
     : null,
-  (p) => ('autonomy_level' in p && typeof p.autonomy_level !== 'string')
+  (p) => ('autonomy_level' in p && typeof p['autonomy_level'] !== 'string')
     ? 'autonomy_level must be a string'
     : null,
-  (p) => ('budget_monthly' in p && typeof p.budget_monthly !== 'number')
+  (p) => ('budget_monthly' in p && typeof p['budget_monthly'] !== 'number')
     ? 'budget_monthly must be a number'
     : null,
-  (p) => ('communication_pattern' in p && typeof p.communication_pattern !== 'string')
+  (p) => ('communication_pattern' in p && typeof p['communication_pattern'] !== 'string')
     ? 'communication_pattern must be a string'
     : null,
 ]

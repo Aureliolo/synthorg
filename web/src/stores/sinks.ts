@@ -38,14 +38,14 @@ function buildOverrideForSink(sink: SinkInfo): Record<string, unknown> {
     enabled: sink.enabled,
   }
   if (sink.rotation) {
-    override.rotation = {
+    override['rotation'] = {
       strategy: sink.rotation.strategy,
       max_bytes: sink.rotation.max_bytes,
       backup_count: sink.rotation.backup_count,
     }
   }
   if (sink.routing_prefixes.length > 0) {
-    override.routing_prefixes = [...sink.routing_prefixes]
+    override['routing_prefixes'] = [...sink.routing_prefixes]
   }
   return override
 }
@@ -84,10 +84,10 @@ async function saveCustomSink(sink: SinkInfo): Promise<void> {
     ...buildOverrideForSink(sink),
   }
   if (sink.routing_prefixes.length > 0) {
-    custom.routing_prefixes = [...sink.routing_prefixes]
+    custom['routing_prefixes'] = [...sink.routing_prefixes]
   }
   const existing = await readNamespaceArrayEntry('custom_sinks')
-  const merged = existing.filter((s) => s.file_path !== sink.identifier)
+  const merged = existing.filter((s) => s['file_path'] !== sink.identifier)
   merged.push(custom)
   await updateSetting('observability', 'custom_sinks', {
     value: JSON.stringify(merged),
@@ -104,7 +104,7 @@ async function deleteBuiltInSink(sink: SinkInfo): Promise<void> {
 
 async function deleteCustomSink(sink: SinkInfo): Promise<void> {
   const existing = await readNamespaceArrayEntry('custom_sinks')
-  const next = existing.filter((s) => s.file_path !== sink.identifier)
+  const next = existing.filter((s) => s['file_path'] !== sink.identifier)
   await updateSetting('observability', 'custom_sinks', {
     value: JSON.stringify(next),
   })

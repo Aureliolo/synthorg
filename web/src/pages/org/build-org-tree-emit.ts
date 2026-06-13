@@ -1,5 +1,4 @@
 import type { DashboardAgentConfig } from '@/api/types/agents'
-import type { DepartmentName } from '@/api/types/enums'
 import type { CompanyConfig, DashboardDepartment } from '@/api/types/org'
 import { resolveRuntimeStatus } from './status-mapping'
 import { emitDeptChildren } from './build-org-tree-children'
@@ -21,7 +20,9 @@ export function resolveRoot(
 ): { ceo: DashboardAgentConfig | null; ceoId: string | undefined; rootDept: DashboardDepartment | null } {
   const ceo = findCeo(agents)
   const ceoId = ceo ? ceo.id : undefined
-  const rootDeptName = ceo ? (ceo.department as DepartmentName) : null
+  // Opaque name match: an unknown department simply finds nothing and yields a
+  // null root, so no brand cast is needed on the wire string.
+  const rootDeptName = ceo ? ceo.department : null
   const rootDept = rootDeptName
     ? allDepartments.find((d) => d.name === rootDeptName) ?? null
     : null

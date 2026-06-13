@@ -45,3 +45,9 @@ export const WithValue: Story = {
 export const Disabled: Story = {
   args: { value: 'Sending...', disabled: true },
 }
+
+// In-flight send: the box keeps the message visible but disables the field and
+// send button (the send affordance is managed purely via `disabled`).
+export const Sending: Story = {
+  args: { value: 'Cut the cloud budget by 20%', disabled: true },
+}

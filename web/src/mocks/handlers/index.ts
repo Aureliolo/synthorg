@@ -60,15 +60,19 @@ import { coordinationHandlers } from './coordination'
 import { customRulesHandlers } from './custom-rules'
 import { deliverableReceiptsHandlers } from './deliverableReceipts'
 import { escalationsHandlers } from './escalations'
+import { experimentsHandlers } from './experiments'
 import { fineTuningHandlers } from './fine-tuning'
 import { healthHandlers } from './health'
 import { integrationHealthHandlers } from './integration-health'
+import { interruptsHandlers } from './interrupts'
 import { knowledgeHandlers } from './knowledge'
 import { learningHandlers } from './learning'
 import { mcpCatalogDefaultHandlers } from './mcp-catalog'
 import { meetingsHandlers } from './meetings'
+import { memoryHandlers } from './memory'
 import { messagesHandlers } from './messages'
 import { metaHandlers } from './meta'
+import { metaAnalyticsHandlers } from './meta-analytics'
 import { oauthDefaultHandlers } from './oauth'
 import { ontologyHandlers } from './ontology'
 import { personalitiesHandlers } from './personalities'
@@ -121,15 +125,19 @@ export const defaultHandlers = [
   ...customRulesHandlers,
   ...deliverableReceiptsHandlers,
   ...escalationsHandlers,
+  ...experimentsHandlers,
   ...fineTuningHandlers,
   ...healthHandlers,
   ...integrationHealthHandlers,
+  ...interruptsHandlers,
   ...knowledgeHandlers,
   ...learningHandlers,
   ...mcpCatalogDefaultHandlers,
   ...meetingsHandlers,
+  ...memoryHandlers,
   ...messagesHandlers,
   ...metaHandlers,
+  ...metaAnalyticsHandlers,
   ...oauthDefaultHandlers,
   ...ontologyHandlers,
   ...personalitiesHandlers,

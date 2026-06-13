@@ -7,9 +7,9 @@ import {
   type TrainingPlanRow,
 } from '@/pages/training/TrainingPlanTable'
 
-// id != name so a regression that addresses by name (the pre-#2248 bug)
-// is caught: the link href and the onExecute argument would carry the
-// name instead of this UUID.
+// id != name so a regression that addresses an agent by name instead
+// of id is caught: the link href and the onExecute argument would carry
+// the name instead of this UUID.
 const AGENT_ID = '11111111-2222-3333-4444-555555555555'
 const AGENT_NAME = 'Alice'
 

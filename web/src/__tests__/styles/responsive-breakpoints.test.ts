@@ -4,9 +4,8 @@ import { dirname, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * Tablet-breakpoint verification for the responsive width tokens added in the
- * design-system hygiene sweep (issue #1537 acceptance: tablet breakpoints
- * tested at 768, 1024, 1280).
+ * Tablet-breakpoint verification for the responsive width tokens: tablet
+ * breakpoints tested at 768, 1024, 1280.
  *
  * jsdom does not compute CSS layout, so we cannot measure a rendered Drawer
  * directly. Instead we lock the contract in two complementary ways:

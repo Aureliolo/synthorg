@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
@@ -28,6 +28,7 @@ interface CompanyDetailsFormProps {
   setCurrency: (value: CurrencyCode) => void
   templateVariables: Readonly<Record<string, TemplateVariableValue>>
   setTemplateVariable: (key: string, value: TemplateVariableValue) => void
+  disabled?: boolean
 }
 
 function CompanyDetailsForm({
@@ -39,6 +40,7 @@ function CompanyDetailsForm({
   setCurrency,
   templateVariables,
   setTemplateVariable,
+  disabled,
 }: CompanyDetailsFormProps) {
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-card">
@@ -48,6 +50,7 @@ function CompanyDetailsForm({
         value={companyName}
         onChange={(e) => setCompanyName(e.currentTarget.value)}
         placeholder="Your organization name"
+        disabled={disabled}
         // Hint sets expectations up front; the error below fires
         // only once the user crosses the boundary, so the two
         // never display together.
@@ -68,14 +71,16 @@ function CompanyDetailsForm({
         value={companyDescription}
         onChange={(e) => setCompanyDescription(e.currentTarget.value)}
         placeholder="Describe your organization (optional)"
+        disabled={disabled}
         hint="Max 1000 characters"
         error={graphemeLength(companyDescription) > 1000 ? 'Max 1000 characters' : null}
       />
 
       <SelectField
         label="Display Currency"
-        options={[...CURRENCY_OPTIONS]}
+        options={CURRENCY_OPTIONS}
         value={currency}
+        disabled={disabled}
         onChange={(value) => setCurrency(value as CurrencyCode)}
       />
 
@@ -86,7 +91,8 @@ function CompanyDetailsForm({
           { value: 'balanced', label: 'Balanced' },
           { value: 'premium', label: 'Premium' },
         ]}
-        value={String(templateVariables.model_tier_profile ?? 'balanced')}
+        value={String(templateVariables['model_tier_profile'] ?? 'balanced')}
+        disabled={disabled}
         onChange={(v) => setTemplateVariable('model_tier_profile', v)}
         hint="Influences which model tiers are assigned to agents."
       />
@@ -98,15 +104,68 @@ function ApplyTemplateButton({
   onApply,
   disabled,
   loading,
+  reapply,
 }: {
   onApply: () => void
   disabled: boolean
   loading: boolean
+  reapply: boolean
 }) {
+  const idleLabel = reapply ? 'Re-apply Template' : 'Apply Template'
   return (
     <Button onClick={onApply} disabled={disabled} className="w-full">
-      {loading ? 'Applying Template...' : 'Apply Template'}
+      {loading ? 'Applying Template...' : idleLabel}
     </Button>
+  )
+}
+
+interface CompanyApplyControlsProps {
+  fieldsLocked: boolean
+  showApplyButton: boolean
+  applyDisabled: boolean
+  companyLoading: boolean
+  editing: boolean
+  onApply: () => void
+  onStartEditing: () => void
+}
+
+/**
+ * Apply / re-apply affordances. Once a company is applied the form
+ * fields lock; this surfaces a locked-state note plus an explicit
+ * "Edit & re-apply" toggle so a post-apply change is a deliberate
+ * overwrite rather than a silently-inert edit.
+ */
+function CompanyApplyControls({
+  fieldsLocked,
+  showApplyButton,
+  applyDisabled,
+  companyLoading,
+  editing,
+  onApply,
+  onStartEditing,
+}: CompanyApplyControlsProps) {
+  return (
+    <>
+      {fieldsLocked && (
+        <div className="flex items-center justify-between gap-grid-gap rounded-lg border border-border bg-card p-card">
+          <p className="text-sm text-muted-foreground">
+            Company details are locked after applying. Edit and re-apply to
+            regenerate the company and its agents from the template.
+          </p>
+          <Button variant="outline" onClick={onStartEditing} className="shrink-0">
+            Edit &amp; re-apply
+          </Button>
+        </div>
+      )}
+      {showApplyButton && (
+        <ApplyTemplateButton
+          onApply={onApply}
+          disabled={applyDisabled}
+          loading={companyLoading}
+          reapply={editing}
+        />
+      )}
+    </>
   )
 }
 
@@ -184,6 +243,7 @@ function CompanyPreview({
 }
 
 function useCompanyStepController() {
+  const [editing, setEditing] = useState(false)
   const templates = useSetupWizardStore((s) => s.templates)
   const selectedTemplate = useSetupWizardStore((s) => s.selectedTemplate)
   const companyName = useSetupWizardStore((s) => s.companyName)
@@ -228,8 +288,21 @@ function useCompanyStepController() {
   }, [])
 
   const handleApplyTemplate = useCallback(async () => {
+    // Re-applying is a deliberate POST /setup/company, which the backend
+    // treats as an overwrite (settings_svc.set + agent regeneration) so
+    // long as setup is not yet complete -- it is the supported "edit"
+    // path, not a 409 duplicate. The store owns the error UX; only leave
+    // edit mode once the submit lands cleanly so a failed re-apply keeps
+    // the fields open for correction.
     await submitCompany()
+    if (useSetupWizardStore.getState().companyError === null) {
+      setEditing(false)
+    }
   }, [submitCompany])
+
+  const startEditing = useCallback(() => {
+    setEditing(true)
+  }, [])
 
   const goToProvidersStep = useCallback(() => {
     void navigate('/setup/providers')
@@ -251,11 +324,20 @@ function useCompanyStepController() {
   const tierCoverageInsufficient =
     companyErrorCode === ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT
 
+  // Once a company is applied the form fields would otherwise stay
+  // editable while every keystroke is silently inert (the backend state
+  // is already written). Lock the fields in the applied state and expose
+  // an explicit "Edit & re-apply" toggle that re-opens them and drives a
+  // fresh overwrite POST.
+  const applied = companyResponse !== null
+  const fieldsLocked = applied && !editing
+  const showApplyButton = !applied || editing
+
   return {
     selectedTemplate, companyName, setCompanyName, companyDescription, setCompanyDescription,
     currency, setCurrency, templateVariables, setTemplateVariable, selectedTemplateObj,
     companyResponse, companyError, agents, companyLoading, applyDisabled, tierCoverageInsufficient,
-    handleApplyTemplate, goToProvidersStep,
+    fieldsLocked, showApplyButton, editing, startEditing, handleApplyTemplate, goToProvidersStep,
   }
 }
 
@@ -277,6 +359,10 @@ export function CompanyStep() {
     companyLoading,
     applyDisabled,
     tierCoverageInsufficient,
+    fieldsLocked,
+    showApplyButton,
+    editing,
+    startEditing,
     handleApplyTemplate,
     goToProvidersStep,
   } = useCompanyStepController()
@@ -307,6 +393,7 @@ export function CompanyStep() {
         setCurrency={setCurrency}
         templateVariables={templateVariables}
         setTemplateVariable={setTemplateVariable}
+        disabled={fieldsLocked}
       />
 
       {/* Template variables */}
@@ -315,16 +402,18 @@ export function CompanyStep() {
         values={templateVariables}
         onChange={setTemplateVariable}
         currency={currency}
+        disabled={fieldsLocked}
       />
 
-      {/* Apply template button. */}
-      {!companyResponse && (
-        <ApplyTemplateButton
-          onApply={handleApplyTemplate}
-          disabled={applyDisabled}
-          loading={companyLoading}
-        />
-      )}
+      <CompanyApplyControls
+        fieldsLocked={fieldsLocked}
+        showApplyButton={showApplyButton}
+        applyDisabled={applyDisabled}
+        companyLoading={companyLoading}
+        editing={editing}
+        onApply={handleApplyTemplate}
+        onStartEditing={startEditing}
+      />
 
       <CompanyErrorBanner
         companyError={companyError}

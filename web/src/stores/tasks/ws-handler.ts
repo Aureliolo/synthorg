@@ -74,9 +74,9 @@ function requiredFieldsBlankOrMutated(
   if (!sanitized.id || !sanitized.project || !sanitized.created_by) {
     return true
   }
-  return sanitized.id !== candidate.id
-    || sanitized.project !== candidate.project
-    || sanitized.created_by !== candidate.created_by
+  return sanitized.id !== candidate['id']
+    || sanitized.project !== candidate['project']
+    || sanitized.created_by !== candidate['created_by']
 }
 
 function stringArrayFieldsMutated(
@@ -85,19 +85,19 @@ function stringArrayFieldsMutated(
 ): boolean {
   return !arraysEqual(
     sanitized.reviewers,
-    candidate.reviewers as readonly string[],
+    candidate['reviewers'] as readonly string[],
   )
     || !arraysEqual(
       sanitized.dependencies,
-      candidate.dependencies as readonly string[],
+      candidate['dependencies'] as readonly string[],
     )
     || !arraysEqual(
       sanitized.delegation_chain,
-      candidate.delegation_chain as readonly string[],
+      candidate['delegation_chain'] as readonly string[],
     )
     || !nullableArraysEqual(
       sanitized.middleware_override,
-      candidate.middleware_override,
+      candidate['middleware_override'],
     )
 }
 
@@ -105,8 +105,8 @@ function nullableIdFieldsMutated(
   sanitized: DashboardTask,
   candidate: Record<string, unknown>,
 ): boolean {
-  return !nullableIdEqual(sanitized.assigned_to, candidate.assigned_to)
-    || !nullableIdEqual(sanitized.parent_task_id, candidate.parent_task_id)
+  return !nullableIdEqual(sanitized.assigned_to, candidate['assigned_to'])
+    || !nullableIdEqual(sanitized.parent_task_id, candidate['parent_task_id'])
 }
 
 function checkSanitization(
@@ -134,20 +134,20 @@ function logMutationSkip(candidate: Record<string, unknown>): void {
   log.error(
     'Task payload lost or mutated identifier-bearing fields during sanitization, skipping upsert',
     sanitizeForLog({
-      id: candidate.id,
-      project: candidate.project,
-      created_by: candidate.created_by,
-      assigned_to: candidate.assigned_to,
-      parent_task_id: candidate.parent_task_id,
+      id: candidate['id'],
+      project: candidate['project'],
+      created_by: candidate['created_by'],
+      assigned_to: candidate['assigned_to'],
+      parent_task_id: candidate['parent_task_id'],
     }),
   )
 }
 
 function logMalformedSkip(candidate: Record<string, unknown>): void {
   log.error('Received malformed task WS payload, skipping upsert', {
-    id: sanitizeForLog(candidate.id),
-    hasTitle: typeof candidate.title === 'string',
-    hasStatus: typeof candidate.status === 'string',
+    id: sanitizeForLog(candidate['id']),
+    hasTitle: typeof candidate['title'] === 'string',
+    hasStatus: typeof candidate['status'] === 'string',
   })
 }
 
@@ -169,8 +169,8 @@ export function createWsHandler(get: TasksGet) {
   return {
     handleWsEvent(event: WsEvent): void {
       const { payload } = event
-      if (!isPlainObject(payload.task)) return
-      const candidate = payload.task
+      if (!isPlainObject(payload['task'])) return
+      const candidate = payload['task']
       if (!isTaskShape(candidate)) {
         logMalformedSkip(candidate)
         return
