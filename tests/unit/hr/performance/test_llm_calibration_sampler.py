@@ -302,8 +302,24 @@ class TestGetCalibrationRecords:
         assert len(agent1_records) == 1
         assert len(all_records) == 2
 
-    def test_filter_by_since(self) -> None:
+    def test_filter_by_since(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Records can be filtered by sampled_at time."""
+        # Pin datetime.now to NOW so the retention-prune cutoff is
+        # deterministic: get_calibration_records prunes against the wall
+        # clock, so once real time is more than retention_days past NOW the
+        # NOW-stamped record is evicted before the ``since`` filter runs (a
+        # calendar-driven time bomb). Mirrors TestRetentionPruning's pin.
+        monkeypatch.setattr(
+            "synthorg.hr.performance.llm_calibration_sampler.datetime",
+            type(
+                "FrozenDatetime",
+                (datetime,),
+                {
+                    "now": classmethod(lambda cls, tz=None: NOW),
+                },
+            ),
+        )
+
         sampler = _make_sampler()
         old_cal = make_calibration_record(
             agent_id="agent-001",
