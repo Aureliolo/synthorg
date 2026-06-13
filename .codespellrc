@@ -8,7 +8,7 @@
 # pre-commit invokes codespell with paths that include a `./` (or
 # Windows `.\`) prefix, which the bare `.vale/...` pattern does not
 # match. Keep both forms.
-skip = .venv,.git,.mypy_cache,.ruff_cache,.pytest_cache,.cache,.claude,node_modules,build,dist,htmlcov,coverage,.coverage,logs,*.log,*.log.*,*.lock,*.png,*.svg,*.jpg,*.jpeg,*.ico,*.gif,*.webp,*.pdf,*.bin,*_pb2.py,*.gen.*,*.min.js,_vendor,web/dist,web/build,storybook-static,site,_site,_audit,*.svg.gz,scripts/_codespell_baseline.txt,*package-lock.json,uv.lock,.codespellrc,.test_durations.*,*/.vale/styles/Google/*,*/.vale/styles/config/vocabularies/British/*,.vale/styles/Google/*,.vale/styles/config/vocabularies/British/*
+skip = .venv,.git,.mypy_cache,.ruff_cache,.pytest_cache,.cache,.claude,node_modules,build,dist,htmlcov,coverage,.coverage,logs,*.log,*.log.*,*.lock,*.png,*.svg,*.jpg,*.jpeg,*.ico,*.gif,*.webp,*.pdf,*.bin,*_pb2.py,*.gen.*,*.min.js,_vendor,web/dist,web/build,playwright-report,test-results,storybook-static,site,_site,_audit,*.svg.gz,scripts/_codespell_baseline.txt,*package-lock.json,uv.lock,.codespellrc,.test_durations.*,*/.vale/styles/Google/*,*/.vale/styles/config/vocabularies/British/*,.vale/styles/Google/*,.vale/styles/config/vocabularies/British/*
 # Project vocabulary lives in .vale/styles/config/vocabularies/SynthOrg/accept.txt (one term per line).
 # Vale (when wired) consumes the same file; sharing it keeps the two spellers in lock-step.
 ignore-words = .vale/styles/config/vocabularies/SynthOrg/accept.txt

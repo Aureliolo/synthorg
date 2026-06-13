@@ -7,7 +7,6 @@ Provides ``SQLiteTrainingResultRepository`` which persists
 import contextlib
 import json
 import sqlite3
-from datetime import UTC, datetime
 from uuid import UUID
 
 import aiosqlite
@@ -25,6 +24,10 @@ from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.datetime_marshaller import (
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext
 
@@ -124,8 +127,8 @@ def _result_to_params(result: TrainingResult) -> tuple[object, ...]:
         _serialize_approvals(result.pending_approvals),
         int(result.review_pending),
         _serialize_errors(result.errors),
-        result.started_at.astimezone(UTC).isoformat(),
-        result.completed_at.astimezone(UTC).isoformat(),
+        format_iso_utc(result.started_at),
+        format_iso_utc(result.completed_at),
     )
 
 
@@ -193,10 +196,8 @@ def _row_to_result(row: aiosqlite.Row) -> TrainingResult:
         )
         data["review_pending"] = bool(data["review_pending"])
         data["errors"] = tuple(json.loads(data["errors"]))
-        data["started_at"] = datetime.fromisoformat(data["started_at"])
-        data["completed_at"] = datetime.fromisoformat(
-            data["completed_at"],
-        )
+        data["started_at"] = coerce_row_timestamp(data["started_at"])
+        data["completed_at"] = coerce_row_timestamp(data["completed_at"])
         return TrainingResult.model_validate(data)
     except (
         json.JSONDecodeError,
@@ -287,11 +288,11 @@ class SQLiteTrainingResultRepository:
             QueryError: If the operation fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM training_results WHERE id = ?",
                 (str(result_id),),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch training result {result_id!r}"
             logger.warning(
@@ -322,11 +323,12 @@ class SQLiteTrainingResultRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM training_results WHERE id = ?",
                     (str(result_id),),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -339,7 +341,7 @@ class SQLiteTrainingResultRepository:
                 )
                 raise QueryError(msg) from exc
             else:
-                return cursor.rowcount > 0
+                return _db_rowcount > 0
 
     async def list_items(
         self,
@@ -363,11 +365,11 @@ class SQLiteTrainingResultRepository:
             limit, offset, event=HR_TRAINING_PERSISTENCE_ERROR
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM training_results ORDER BY id ASC LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list training results"
             logger.warning(
@@ -394,15 +396,15 @@ class SQLiteTrainingResultRepository:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """\
 SELECT * FROM training_results
 WHERE plan_id = ?
 ORDER BY completed_at DESC, id DESC
 LIMIT 1""",
                 (str(plan_id),),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch result for plan {plan_id!r}"
             logger.warning(
@@ -432,15 +434,15 @@ LIMIT 1""",
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """\
 SELECT * FROM training_results
 WHERE new_agent_id = ?
 ORDER BY completed_at DESC
 LIMIT 1""",
                 (str(agent_id),),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch latest result for {agent_id!r}"
             logger.warning(

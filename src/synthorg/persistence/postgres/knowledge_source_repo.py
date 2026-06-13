@@ -176,6 +176,40 @@ class PostgresKnowledgeSourceRepository:
         )
         return source
 
+    async def get_many(
+        self,
+        source_ids: tuple[KnowledgeSourceKey, ...],
+    ) -> tuple[KnowledgeSource, ...]:
+        """Fetch many sources by id in one round trip (ADR-0001 D7).
+
+        Returns:
+            The rows that exist, in unspecified order; missing ids are omitted.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        if not source_ids:
+            return ()
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    "SELECT * FROM knowledge_sources WHERE source_id = ANY(%s)",
+                    (list(source_ids),),
+                )
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to fetch knowledge sources by id"
+            logger.warning(
+                PERSISTENCE_KNOWLEDGE_SOURCE_FETCH_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return self._rows_to_tuple(tuple(rows))
+
     async def list_items(
         self,
         *,

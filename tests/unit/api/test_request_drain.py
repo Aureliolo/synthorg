@@ -69,7 +69,13 @@ async def _slow_app(
     *,
     delay_s: float,
 ) -> None:
-    """Inner app that sleeps before responding (test in-flight requests)."""
+    """Inner ASGI app that sleeps before responding.
+
+    The ``delay_s`` sleep is a deliberate test-double latency modelling a real
+    in-flight request still processing while the drain runs -- not a polling
+    budget. The caller chooses ``delay_s`` relative to the drain deadline under
+    test.
+    """
     if scope["type"] != "http":
         return
     await asyncio.sleep(delay_s)

@@ -439,8 +439,8 @@ class SQLiteApprovalRepository:
             FROM approvals WHERE id = ?
         """
         try:
-            cursor = await self._db.execute(sql, (approval_id,))
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, (approval_id,)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch approval {approval_id!r}"
             logger.warning(
@@ -482,8 +482,8 @@ class SQLiteApprovalRepository:
             FROM approvals WHERE id IN ({placeholders})
         """  # noqa: S608  -- placeholders is a closed-set "?,?,..." pattern
         try:
-            cursor = await self._db.execute(sql, tuple(ids))
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, tuple(ids)) as cursor:
+                rows = await cursor.fetchall()
             items = tuple(_row_to_item(r) for r in rows)
         except QueryError:
             raise
@@ -536,8 +536,8 @@ class SQLiteApprovalRepository:
             LIMIT ? OFFSET ?
         """
         try:
-            cursor = await self._db.execute(sql, (effective_limit, offset))
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, (effective_limit, offset)) as cursor:
+                rows = await cursor.fetchall()
             items = tuple(_row_to_item(r) for r in rows)
         except QueryError:
             raise
@@ -605,8 +605,8 @@ class SQLiteApprovalRepository:
             LIMIT ? OFFSET ?
         """  # noqa: S608  -- ``where`` is built from a closed set of column predicates
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
             items = tuple(_row_to_item(r) for r in rows)
         except QueryError:
             raise
@@ -650,8 +650,8 @@ class SQLiteApprovalRepository:
             SELECT COUNT(*) FROM approvals WHERE {where}
         """  # noqa: S608  -- ``where`` is built from a closed set of column predicates
         try:
-            cursor = await self._db.execute(sql, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
             assert row is not None  # noqa: S101  -- COUNT always returns a row
             return int(row[0])
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -696,8 +696,9 @@ class SQLiteApprovalRepository:
         params = (to_state.value, entity_id, from_state.value)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, params)
-                await self._db.commit()
+                async with self._db.execute(sql, params) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db,
@@ -712,7 +713,7 @@ class SQLiteApprovalRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
     async def consume_if_approved(
         self,
@@ -749,8 +750,9 @@ class SQLiteApprovalRepository:
         )
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, params)
-                await self._db.commit()
+                async with self._db.execute(sql, params) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db,
@@ -765,7 +767,7 @@ class SQLiteApprovalRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
     async def delete(self, approval_id: NotBlankStr) -> bool:
         """Delete an approval item by ID.
@@ -782,8 +784,9 @@ class SQLiteApprovalRepository:
         sql = "DELETE FROM approvals WHERE id = ?"
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, (approval_id,))
-                await self._db.commit()
+                async with self._db.execute(sql, (approval_id,)) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db, operation="delete", approval_id=approval_id
@@ -796,4 +799,4 @@ class SQLiteApprovalRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0

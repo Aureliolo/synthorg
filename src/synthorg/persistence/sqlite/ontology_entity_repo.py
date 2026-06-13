@@ -239,11 +239,11 @@ class SQLiteOntologyEntityRepository:
         Returns:
             The matching entity, or ``None`` when no row matches.
         """
-        cursor = await self._db.execute(
+        async with self._db.execute(
             "SELECT * FROM entity_definitions WHERE name = :name",
             {"name": name},
-        )
-        row = await cursor.fetchone()
+        ) as cursor:
+            row = await cursor.fetchone()
         if row is None:
             return None
         return self._row_to_entity(row)
@@ -258,7 +258,7 @@ class SQLiteOntologyEntityRepository:
         params = self._entity_to_params(entity)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     """UPDATE entity_definitions
                        SET tier = :tier, source = :source,
                            definition = :definition, fields = :fields,
@@ -268,20 +268,20 @@ class SQLiteOntologyEntityRepository:
                            updated_at = :updated_at
                        WHERE name = :name""",
                     params,
-                )
-                if cursor.rowcount == 0:
-                    # Roll back so the empty UPDATE does not leave the
-                    # shared connection inside an open implicit
-                    # transaction.
-                    with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
-                        await self._db.rollback()
-                    msg = f"Entity '{entity.name}' not found"
-                    logger.warning(
-                        ONTOLOGY_ENTITY_NOT_FOUND,
-                        entity_name=entity.name,
-                        op="update",
-                    )
-                    raise OntologyNotFoundError(msg)
+                ) as cursor:
+                    if cursor.rowcount == 0:
+                        # Roll back so the empty UPDATE does not leave the
+                        # shared connection inside an open implicit
+                        # transaction.
+                        with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                            await self._db.rollback()
+                        msg = f"Entity '{entity.name}' not found"
+                        logger.warning(
+                            ONTOLOGY_ENTITY_NOT_FOUND,
+                            entity_name=entity.name,
+                            op="update",
+                        )
+                        raise OntologyNotFoundError(msg)
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
@@ -309,11 +309,11 @@ class SQLiteOntologyEntityRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM entity_definitions WHERE name = :name",
                     {"name": name},
-                )
-                existed = cursor.rowcount > 0
+                ) as cursor:
+                    existed = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
@@ -344,13 +344,13 @@ class SQLiteOntologyEntityRepository:
         limit = validate_pagination_args(
             limit, offset, event=ONTOLOGY_ENTITY_DESERIALIZATION_FAILED
         )
-        cursor = await self._db.execute(
+        async with self._db.execute(
             """SELECT * FROM entity_definitions
                ORDER BY name ASC
                LIMIT :limit OFFSET :offset""",
             {"limit": limit, "offset": offset},
-        )
-        rows = await cursor.fetchall()
+        ) as cursor:
+            rows = await cursor.fetchall()
         return self._rows_to_entities(rows)
 
     async def list_entities(
@@ -371,26 +371,25 @@ class SQLiteOntologyEntityRepository:
         """
         effective_limit = 1000 if limit is None else int(limit)
         effective_offset = max(0, int(offset))
+        sql: str
+        params: dict[str, object]
         if tier is not None:
-            cursor = await self._db.execute(
-                """SELECT * FROM entity_definitions
+            sql = """SELECT * FROM entity_definitions
                    WHERE tier = :tier
                    ORDER BY name ASC
-                   LIMIT :limit OFFSET :offset""",
-                {
-                    "tier": tier.value,
-                    "limit": effective_limit,
-                    "offset": effective_offset,
-                },
-            )
+                   LIMIT :limit OFFSET :offset"""
+            params = {
+                "tier": tier.value,
+                "limit": effective_limit,
+                "offset": effective_offset,
+            }
         else:
-            cursor = await self._db.execute(
-                """SELECT * FROM entity_definitions
+            sql = """SELECT * FROM entity_definitions
                    ORDER BY name ASC
-                   LIMIT :limit OFFSET :offset""",
-                {"limit": effective_limit, "offset": effective_offset},
-            )
-        rows = await cursor.fetchall()
+                   LIMIT :limit OFFSET :offset"""
+            params = {"limit": effective_limit, "offset": effective_offset}
+        async with self._db.execute(sql, params) as cursor:
+            rows = await cursor.fetchall()
         return self._rows_to_entities(rows)
 
     async def search(
@@ -409,7 +408,7 @@ class SQLiteOntologyEntityRepository:
         pattern = f"%{escaped}%"
         effective_limit = 1000 if limit is None else int(limit)
         effective_offset = max(0, int(offset))
-        cursor = await self._db.execute(
+        async with self._db.execute(
             """SELECT * FROM entity_definitions
                WHERE name LIKE :pattern ESCAPE '\\'
                   OR definition LIKE :pattern ESCAPE '\\'
@@ -420,8 +419,8 @@ class SQLiteOntologyEntityRepository:
                 "limit": effective_limit,
                 "offset": effective_offset,
             },
-        )
-        rows = list(await cursor.fetchall())
+        ) as cursor:
+            rows = list(await cursor.fetchall())
         logger.debug(
             ONTOLOGY_SEARCH_EXECUTED,
             query=query,
@@ -465,13 +464,13 @@ class SQLiteOntologyEntityRepository:
         limit = validate_pagination_args(
             limit, offset, event=ONTOLOGY_ENTITY_DESERIALIZATION_FAILED
         )
-        cursor = await self._db.execute(
+        async with self._db.execute(
             """SELECT entity_id, MAX(version) AS latest_version
                FROM entity_definition_versions
                GROUP BY entity_id
                ORDER BY entity_id
                LIMIT ? OFFSET ?""",
             (limit, offset),
-        )
-        rows = await cursor.fetchall()
+        ) as cursor:
+            rows = await cursor.fetchall()
         return {NotBlankStr(row["entity_id"]): row["latest_version"] for row in rows}

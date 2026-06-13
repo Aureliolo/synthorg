@@ -185,7 +185,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     """\
 UPDATE projects SET
     name=?,
@@ -208,8 +208,9 @@ WHERE id=?""",
                         project.status.value,
                         str(project.id),
                     ),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 msg = f"Failed to update project {project.id!r}"
@@ -220,7 +221,7 @@ WHERE id=?""",
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            if cursor.rowcount == 0:
+            if _db_rowcount == 0:
                 logger.warning(
                     PERSISTENCE_PROJECT_SAVE_FAILED,
                     project_id=str(project.id),
@@ -282,10 +283,10 @@ ON CONFLICT(id) DO UPDATE SET
             QueryError: If the database query or deserialization fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM projects WHERE id = ?", (project_id,)
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch project {project_id!r}"
             logger.warning(
@@ -384,8 +385,8 @@ ON CONFLICT(id) DO UPDATE SET
         params.append(offset)
 
         try:
-            cursor = await self._db.execute(query, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list projects"
             logger.warning(
@@ -431,8 +432,8 @@ ON CONFLICT(id) DO UPDATE SET
             query += " WHERE " + " AND ".join(conditions)
 
         try:
-            cursor = await self._db.execute(query, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(query, params) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count projects"
             logger.warning(
@@ -457,10 +458,11 @@ ON CONFLICT(id) DO UPDATE SET
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM projects WHERE id = ?", (project_id,)
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 msg = f"Failed to delete project {project_id!r}"
@@ -471,4 +473,4 @@ ON CONFLICT(id) DO UPDATE SET
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return cursor.rowcount > 0
+            return _db_rowcount > 0

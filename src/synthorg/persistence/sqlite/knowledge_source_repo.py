@@ -158,11 +158,11 @@ ON CONFLICT(source_id) DO UPDATE SET
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM knowledge_sources WHERE source_id = ?",
                 (entity_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch knowledge source {entity_id!r}"
             logger.warning(
@@ -183,6 +183,38 @@ ON CONFLICT(source_id) DO UPDATE SET
         )
         return source
 
+    async def get_many(
+        self,
+        source_ids: tuple[KnowledgeSourceKey, ...],
+    ) -> tuple[KnowledgeSource, ...]:
+        """Fetch many sources by id in one round trip (ADR-0001 D7).
+
+        Returns:
+            The rows that exist, in unspecified order; missing ids are omitted.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        if not source_ids:
+            return ()
+        placeholders = ",".join("?" for _ in source_ids)
+        try:
+            async with self._db.execute(
+                "SELECT * FROM knowledge_sources "  # noqa: S608 -- placeholders are bound params, not interpolated values
+                f"WHERE source_id IN ({placeholders})",
+                tuple(source_ids),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to fetch knowledge sources by id"
+            logger.warning(
+                PERSISTENCE_KNOWLEDGE_SOURCE_FETCH_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return self._rows_to_tuple(tuple(rows))
+
     async def list_items(
         self,
         *,
@@ -202,13 +234,13 @@ ON CONFLICT(source_id) DO UPDATE SET
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """SELECT * FROM knowledge_sources
                    ORDER BY updated_at DESC, source_id DESC
                    LIMIT ? OFFSET ?""",
                 (effective_limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list knowledge sources"
             logger.warning(
@@ -230,11 +262,12 @@ ON CONFLICT(source_id) DO UPDATE SET
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM knowledge_sources WHERE source_id = ?",
                     (entity_id,),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback(
                     event=PERSISTENCE_KNOWLEDGE_SOURCE_DELETE_FAILED
@@ -247,7 +280,7 @@ ON CONFLICT(source_id) DO UPDATE SET
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return cursor.rowcount > 0
+            return _db_rowcount > 0
 
     async def query(
         self,
@@ -275,8 +308,8 @@ ON CONFLICT(source_id) DO UPDATE SET
         )
         params = (*params, effective_limit, offset)
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query knowledge sources"
             logger.warning(
@@ -306,8 +339,8 @@ ON CONFLICT(source_id) DO UPDATE SET
         where_sql, params = _build_query_sql(filter_spec)
         sql = f"SELECT COUNT(*) AS n {where_sql}"
         try:
-            cursor = await self._db.execute(sql, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count knowledge sources"
             logger.warning(

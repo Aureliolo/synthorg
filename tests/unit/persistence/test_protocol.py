@@ -138,6 +138,9 @@ class _FakeTaskRepository:
     async def save(self, entity: Task) -> None:
         pass
 
+    async def save_many(self, entities: tuple[Task, ...]) -> None:
+        del entities
+
     async def get(self, entity_id: NotBlankStr) -> Task | None:
         return None
 
@@ -845,6 +848,12 @@ class _FakeKnowledgeSourceRepository:
     async def get(self, entity_id: NotBlankStr) -> KnowledgeSource | None:
         del entity_id
         return None
+
+    async def get_many(
+        self, source_ids: tuple[NotBlankStr, ...]
+    ) -> tuple[KnowledgeSource, ...]:
+        del source_ids
+        return ()
 
     async def list_items(
         self,

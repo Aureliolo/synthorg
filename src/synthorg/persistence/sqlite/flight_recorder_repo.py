@@ -167,8 +167,8 @@ class SQLiteFlightRecorderFrameRepository:
         )
         params.extend([limit, offset])
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query flight recorder frames"
             logger.warning(
@@ -210,8 +210,8 @@ class SQLiteFlightRecorderFrameRepository:
         # FROM filter).
         params = [*base_params, *base_params, *base_params]
         try:
-            cursor = await self._db.execute(sql, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to aggregate flight recorder frames"
             logger.warning(
@@ -252,11 +252,11 @@ class SQLiteFlightRecorderFrameRepository:
             raise QueryError(msg)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM flight_recorder_frames WHERE timestamp < ?",
                     (format_iso_utc(normalize_utc(threshold)),),
-                )
-                count = cursor.rowcount
+                ) as cursor:
+                    count = cursor.rowcount
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):

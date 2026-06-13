@@ -24,7 +24,6 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConcurrencyLimitExceededError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
-    API_APP_STARTUP,
     API_GUARD_DENIED,
     API_REQUEST_ERROR,
 )
@@ -84,11 +83,11 @@ class InMemoryInflightStore(InflightStore):
         """
         if max_inflight <= 0:
             msg = "max_inflight must be positive"
-            # Validation error at decorator/config time, not runtime -- use
-            # the startup event constant so these surface with other boot
-            # misconfigurations rather than request-path errors.
+            # An invalid policy limit is rejected on the request path that
+            # consults it, so log it as a request error -- consistent with
+            # this store's other config-validation rejections.
             logger.warning(
-                API_APP_STARTUP,
+                API_REQUEST_ERROR,
                 error_type="inflight_invalid_config",
                 limiter="InMemoryInflightStore",
                 key=key,

@@ -302,12 +302,12 @@ class SQLiteOrgFactRepository:
             OrgMemoryQueryError: If the underlying call raises.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM org_facts_snapshot "
                 "WHERE fact_id = ? AND retracted_at IS NULL",
                 (fact_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except sqlite3.Error as exc:
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
@@ -413,8 +413,8 @@ class SQLiteOrgFactRepository:
         sql += " LIMIT ? OFFSET ?"
         params = (*params, effective_limit, effective_offset)
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
@@ -501,13 +501,13 @@ class SQLiteOrgFactRepository:
             limit, offset, event=ORG_MEMORY_QUERY_FAILED, fact_id=fact_id
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM org_facts_operation_log "
                 "WHERE fact_id = ? ORDER BY version ASC "
                 "LIMIT ? OFFSET ?",
                 (fact_id, limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,

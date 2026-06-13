@@ -97,12 +97,12 @@ class SQLiteMeetingCooldownRepository:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT meeting_type_name, last_triggered_at "
                 "FROM meeting_cooldown WHERE meeting_type_name = ?",
                 (meeting_type_name,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to load meeting cooldown {meeting_type_name!r}"
             logger.warning(
@@ -126,10 +126,10 @@ class SQLiteMeetingCooldownRepository:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT meeting_type_name, last_triggered_at FROM meeting_cooldown"
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to load meeting cooldown rows"
             logger.warning(
@@ -160,13 +160,13 @@ class SQLiteMeetingCooldownRepository:
             limit, offset, event=PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT meeting_type_name, last_triggered_at "
                 "FROM meeting_cooldown "
                 "ORDER BY meeting_type_name ASC LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list meeting cooldown rows"
             logger.warning(
@@ -210,11 +210,11 @@ class SQLiteMeetingCooldownRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM meeting_cooldown WHERE meeting_type_name = ?",
                     (meeting_type_name,),
-                )
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback_quietly(PERSISTENCE_MEETING_COOLDOWN_DELETE_FAILED)

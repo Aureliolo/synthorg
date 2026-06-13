@@ -43,6 +43,10 @@ class DocsFilterSpec(BaseModel):
         default=None,
         description="Optional tag filter (single tag, exact match)",
     )
+    related_task_id: NotBlankStr | None = Field(
+        default=None,
+        description="Only docs whose related_task_ids include this task id",
+    )
     updated_since: AwareDatetime | None = Field(
         default=None,
         description="Only docs with updated_at >= this timestamp",

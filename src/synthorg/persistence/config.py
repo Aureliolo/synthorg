@@ -236,6 +236,34 @@ class PostgresConfig(BaseModel):
             raise ValueError(msg)
         return value
 
+    @field_validator("host", "username", "database")
+    @classmethod
+    def _reject_unsafe_connection_chars(cls, value: NotBlankStr) -> NotBlankStr:
+        """Reject control characters that could reach the pg-tool argv.
+
+        ``host`` / ``username`` / ``database`` are interpolated into the
+        ``pg_dump`` / ``pg_restore`` argv as glued ``--flag=value`` elements
+        (no shell), and URL-encoded into the libpq DSN by ``to_postgres_url``,
+        so printable specials (spaces, ``@``, ``/`` in a quoted identifier or
+        service account) round-trip safely. Control characters do not: a
+        newline- or NUL-injected config (DB-precedence settings path) is a
+        smuggling vector and has no legitimate place in these fields, so it is
+        rejected at construction as defence-in-depth.
+
+        Returns:
+            The validated value, unchanged.
+
+        Raises:
+            ValueError: If the value carries a control character.
+        """
+        if any(char < " " or char == "\x7f" for char in value):
+            msg = (
+                "host, username, and database must not contain control "
+                f"characters: {value!r}"
+            )
+            raise ValueError(msg)
+        return value
+
     @model_validator(mode="after")
     def _validate_pool_sizes(self) -> Self:
         """Ensure ``pool_max_size`` is not smaller than ``pool_min_size``.

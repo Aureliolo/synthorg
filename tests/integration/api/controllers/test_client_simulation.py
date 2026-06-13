@@ -117,24 +117,25 @@ class _StubEntryAdapter:
         )
 
 
-class _SlowStubEntryAdapter(_StubEntryAdapter):
-    """``_StubEntryAdapter`` variant with a deterministic in-flight gap.
+class _GatedStubEntryAdapter(_StubEntryAdapter):
+    """``_StubEntryAdapter`` variant whose ``submit`` blocks on a caller gate.
 
-    ``test_approve_accepts_and_spawns_pipeline`` asserts that the
-    detached pipeline task is still in
-    ``sim_state.background_tasks`` after the ``/approve`` POST
-    returns. With the default stub, ``process_intake_pipeline``
-    finishes synchronously (fake persistence + immediate stub
-    submit), so the ``done_callback`` discards the task from the set
-    before the test reads it -- the assertion fails ``0 >= 1``. A
-    short ``asyncio.sleep`` keeps the task suspended past the
-    response, making the observation deterministic without coupling
-    the test to a specific timing budget elsewhere.
+    ``test_approve_accepts_and_spawns_pipeline`` asserts that the detached
+    pipeline task is still in ``sim_state.background_tasks`` after the
+    ``/approve`` POST returns. With the default stub, ``process_intake_pipeline``
+    finishes synchronously (fake persistence + immediate stub submit), so the
+    ``done_callback`` discards the task from the set before the test reads it --
+    the assertion fails ``0 >= 1``. Awaiting an explicit ``asyncio.Event`` keeps
+    the task suspended until the test has made its observation and releases the
+    gate: a deterministic handshake, not a timing budget.
     """
+
+    def __init__(self, gate: asyncio.Event) -> None:
+        self._gate = gate
 
     @override
     async def submit(self, request: ClientRequest) -> WorkPipelineResult:
-        await asyncio.sleep(0.5)
+        await self._gate.wait()
         return await super().submit(request)
 
 
@@ -330,10 +331,11 @@ class TestRequestController:
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """Approve returns 202 APPROVED and spawns the pipeline task."""
+        gate = asyncio.Event()
         client, sim_state = _build_client_with_adapter(
             fake_persistence,
             fake_message_bus,
-            intake_entry_adapter=_SlowStubEntryAdapter(),
+            intake_entry_adapter=_GatedStubEntryAdapter(gate),
         )
         async with client:
             client.headers.update(make_auth_headers("ceo"))
@@ -355,6 +357,13 @@ class TestRequestController:
             # The reconciliation task was registered synchronously
             # before the response returned (strong ref held).
             assert len(sim_state.background_tasks) >= 1
+            # Release the gated submit so the detached pipeline task drains
+            # instead of leaking past the test boundary.
+            pending = list(sim_state.background_tasks)
+            gate.set()
+            # No return_exceptions: a detached pipeline task that crashes
+            # must surface here and fail the test, not drain silently.
+            await asyncio.gather(*pending)
 
     async def test_reject_sets_cancelled(
         self,

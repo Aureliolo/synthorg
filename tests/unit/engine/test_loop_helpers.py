@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.errors import RunHardCeilingExceededError
 from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_control_helpers import (
@@ -214,6 +215,25 @@ class TestCheckBudget:
         result = check_budget(sample_agent_context, bad, [])
         assert result is not None
         assert result.termination_reason == TerminationReason.ERROR
+
+    def test_budget_exhausted_error_propagates(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        # A budget-policy stop (the per-run hard ceiling) must NOT be
+        # swallowed as a generic ERROR: it propagates so the engine can
+        # route a ceiling crossing to PARKED for operator resume.
+        def ceiling(_: AgentContext) -> bool:
+            msg = "crossed"
+            raise RunHardCeilingExceededError(
+                msg,
+                ceiling_amount=1.5,
+                accumulated_cost=1.5,
+                currency="USD",
+            )
+
+        with pytest.raises(RunHardCeilingExceededError):
+            check_budget(sample_agent_context, ceiling, [])
 
     def test_memory_error_propagates(
         self,

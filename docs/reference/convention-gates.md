@@ -24,6 +24,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_backend_regional_defaults.py` | PostToolUse | backend region/currency edits | n/a | n/a | none | harden |
 | `check_baseline_growth.py` | commit+push | `scripts/*_baseline.{txt,json}` | staged | yes | guards baselines | keep |
 | `check_boundary_typed.py` | push | `src/synthorg/` | full | no | none | keep |
+| `check_completion_config_temperature.py` | commit+push | `src/synthorg/` | full | no | none | keep |
 | `check_convention_gate_inventory.py` | push | canonical docs + `convention_gate_map.yaml` | full | no | none | keep (meta-gate) |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_dead_api_endpoints.py` | push | `api/` + `web/src/` | full | no | `dead_api_endpoints_baseline.txt` | keep |
@@ -96,7 +97,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->74<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->75<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

@@ -9,6 +9,7 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.llm_calibration_sampler import LlmCalibrationSampler
 from synthorg.providers.models import CompletionResponse, TokenUsage
+from tests._shared import FakeClock
 
 from .conftest import make_calibration_record, make_collab_metric
 
@@ -36,13 +37,20 @@ def _make_sampler(
     provider: AsyncMock | None = None,
     sampling_rate: float = 1.0,
     retention_days: int = 90,
+    clock: FakeClock | None = None,
 ) -> LlmCalibrationSampler:
-    """Build a sampler with sensible defaults (100% rate for testing)."""
+    """Build a sampler with sensible defaults (100% rate for testing).
+
+    The clock defaults to a :class:`FakeClock` pinned at ``NOW`` so the
+    retention-pruning cutoff is deterministic regardless of wall-clock
+    time (the prune window is ``now - retention_days``).
+    """
     return LlmCalibrationSampler(
         provider=provider or _make_provider(),
         model=NotBlankStr("test-small-001"),
         sampling_rate=sampling_rate,
         retention_days=retention_days,
+        clock=clock or FakeClock(start=NOW),
     )
 
 
@@ -304,32 +312,28 @@ class TestGetCalibrationRecords:
 
     def test_filter_by_since(self) -> None:
         """Records can be filtered by sampled_at time."""
-        # Anchor the seeded records to the real clock rather than the fixed
-        # NOW constant. get_calibration_records prunes records older than
-        # retention_days against the wall clock, so a fixed past timestamp
-        # gets evicted before the ``since`` filter runs once real time moves
-        # more than retention_days past it (a calendar-driven time bomb).
-        # Relative-to-now records always sit inside the default window, so the
-        # test exercises the since filter deterministically on any date.
-        now = datetime.now(UTC)
+        # The sampler's clock is pinned at NOW (FakeClock default), so the
+        # retention-pruning cutoff (now - retention_days) is deterministic:
+        # records seeded at NOW sit inside the window on any calendar date,
+        # and the ``since`` filter is exercised against the fixed NOW.
         sampler = _make_sampler()
         old_cal = make_calibration_record(
             agent_id="agent-001",
-            sampled_at=now - timedelta(days=10),
+            sampled_at=NOW - timedelta(days=10),
         )
         recent_cal = make_calibration_record(
             agent_id="agent-001",
-            sampled_at=now,
+            sampled_at=NOW,
         )
         # Directly populate internal storage for time-sensitive test.
         sampler._records["agent-001"] = [old_cal, recent_cal]
 
         since_records = sampler.get_calibration_records(
-            since=now - timedelta(days=5),
+            since=NOW - timedelta(days=5),
         )
 
         assert len(since_records) == 1
-        assert since_records[0].sampled_at == now
+        assert since_records[0].sampled_at == NOW
 
 
 @pytest.mark.unit
@@ -371,23 +375,10 @@ class TestGetDriftSummary:
 class TestRetentionPruning:
     """Old calibration records are pruned."""
 
-    async def test_old_records_pruned(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+    async def test_old_records_pruned(self) -> None:
         """Records older than retention_days are pruned on next sample."""
-        # Pin datetime.now to NOW so pruning cutoff is deterministic.
-        monkeypatch.setattr(
-            "synthorg.hr.performance.llm_calibration_sampler.datetime",
-            type(
-                "FrozenDatetime",
-                (datetime,),
-                {
-                    "now": classmethod(lambda cls, tz=None: NOW),
-                },
-            ),
-        )
-
+        # The sampler's clock is pinned at NOW (FakeClock default), so the
+        # pruning cutoff (now - retention_days) is deterministic.
         sampler = _make_sampler(retention_days=7)
         # Insert an old calibration record directly.
         old_cal = make_calibration_record(

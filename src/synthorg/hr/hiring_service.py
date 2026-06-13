@@ -1,10 +1,10 @@
+# module-kind: service
 """Hiring service.
 
 Orchestrates the hiring pipeline: request creation, candidate
 generation, approval submission, and agent instantiation.
 """
 
-import asyncio
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -14,6 +14,7 @@ from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.role import Skill
 from synthorg.core.types import NotBlankStr, stable_agent_id
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
@@ -79,10 +80,9 @@ class HiringService:
         # concurrent pipeline steps on the same request cannot lose an update
         # or double-instantiate, while steps on different requests still run
         # concurrently (the lock is held across ``await`` points such as
-        # approval-store writes and registry registration). HiringService has
-        # no start/stop lifecycle, so each lock binds to the active loop on
-        # first use without restart risk.
-        self._requests_locks: dict[str, asyncio.Lock] = {}
+        # approval-store writes and registry registration). The map evicts a
+        # request's lock once no step holds it, so it stays bounded.
+        self._request_locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     def _get_request(self, request_id: str) -> HiringRequest:
         """Look up a hiring request by ID.
@@ -193,7 +193,7 @@ class HiringService:
         Returns:
             Updated request with the new candidate appended.
         """
-        async with self._requests_locks.setdefault(str(request.id), asyncio.Lock()):
+        async with self._request_locks.acquire(str(request.id)):
             request = self._get_request(str(request.id))
             candidate = self._build_candidate(request)
             updated = request.model_copy(
@@ -253,7 +253,7 @@ class HiringService:
         Raises:
             InvalidCandidateError: If the candidate ID is not found.
         """
-        async with self._requests_locks.setdefault(str(request.id), asyncio.Lock()):
+        async with self._request_locks.acquire(str(request.id)):
             request = self._get_request(str(request.id))
 
             candidate = next(
@@ -367,7 +367,7 @@ class HiringService:
             InvalidCandidateError: If no candidate is selected.
             HiringError: If instantiation fails.
         """
-        async with self._requests_locks.setdefault(str(request.id), asyncio.Lock()):
+        async with self._request_locks.acquire(str(request.id)):
             request = self._get_request(str(request.id))
             self._validate_instantiation_status(request)
             candidate = self._find_selected_candidate(request)
@@ -386,6 +386,14 @@ class HiringService:
             agent_id=str(identity.id),
             agent_name=str(identity.name),
         )
+        # INSTANTIATED is the terminal state; the request stays in
+        # ``_requests`` so a retried instantiate_agent() (or any queued
+        # same-request step) reads it back and gets the precise
+        # already-instantiated validation error. This service has no
+        # persistence read path, so evicting here would turn a completed
+        # request into a misleading "not found". The per-request lock still
+        # self-evicts via ``RefcountedLockMap`` once no step holds it, which
+        # is what keeps the unbounded-lock growth in check.
         return identity
 
     def _apply_instantiated_status(self, request: HiringRequest) -> None:

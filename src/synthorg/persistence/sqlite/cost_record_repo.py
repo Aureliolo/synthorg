@@ -133,8 +133,8 @@ FROM cost_records"""
         params.extend([limit, offset])
 
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
             records = tuple(CostRecord.model_validate(dict(row)) for row in rows)
         except (
             sqlite3.Error,
@@ -195,8 +195,8 @@ FROM cost_records"""
                 "FROM cost_records"
             )
             agg_sql = f"{agg_select}{where_clause}"
-            cursor = await self._db.execute(agg_sql, tuple(params))
-            row = await cursor.fetchone()
+            async with self._db.execute(agg_sql, tuple(params)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to aggregate cost records"
             logger.warning(
@@ -264,11 +264,12 @@ FROM cost_records"""
         aware_threshold = normalize_utc(threshold)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM cost_records WHERE timestamp < ?",
                     (format_iso_utc(aware_threshold),),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = "Failed to purge cost records by threshold"
                 logger.warning(
@@ -277,4 +278,4 @@ FROM cost_records"""
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return cursor.rowcount
+            return _db_rowcount

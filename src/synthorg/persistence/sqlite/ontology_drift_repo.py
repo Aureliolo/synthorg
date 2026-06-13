@@ -157,15 +157,15 @@ class SQLiteOntologyDriftReportRepository:
         Returns:
             Tuple of matching rows; empty when no rows match.
         """
-        cursor = await self._db.execute(
+        async with self._db.execute(
             "SELECT entity_name, divergence_score, canonical_version, "
             "recommendation, divergent_agents "
             "FROM drift_reports "
             "WHERE entity_name = ? "
             "ORDER BY id DESC LIMIT ?",
             (entity_name, limit),
-        )
-        rows = await cursor.fetchall()
+        ) as cursor:
+            rows = await cursor.fetchall()
         return tuple(_row_to_report(row) for row in rows)
 
     async def get_all_latest(
@@ -178,7 +178,7 @@ class SQLiteOntologyDriftReportRepository:
         Returns:
             Tuple of matching rows; empty when no rows match.
         """
-        cursor = await self._db.execute(
+        async with self._db.execute(
             "SELECT entity_name, divergence_score, canonical_version, "
             "recommendation, divergent_agents "
             "FROM drift_reports dr "
@@ -188,6 +188,6 @@ class SQLiteOntologyDriftReportRepository:
             ") "
             "ORDER BY divergence_score DESC LIMIT ?",
             (limit,),
-        )
-        rows = await cursor.fetchall()
+        ) as cursor:
+            rows = await cursor.fetchall()
         return tuple(_row_to_report(row) for row in rows)

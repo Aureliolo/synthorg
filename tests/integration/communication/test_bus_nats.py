@@ -276,7 +276,16 @@ _PARK_POLL_INTERVAL_SECONDS: Final[float] = 0.005
 Promoted from a literal so the magic-number gate has a named target.
 The wall-clock 2s deadline above is the load-bearing primitive; this
 constant only controls how quickly the test re-checks ``in_flight_fetches``
-once the receive task is in flight."""
+once the receive task is in flight.
+
+This stays a bounded poll deliberately: "parked on ``bus.receive()``" is a
+production-internal state (``BusState.in_flight_fetches`` is set deep inside
+``receive`` once it blocks on the broker fetch), with no test-side seam to
+turn into an ``Event`` handshake. The only event-based alternative is a
+production hook that fires when a fetch parks -- a test-only signal in
+shipping code, which is a worse trade than this 2s-capped, early-exiting
+poll. The early-exit on ``receive_task.done()`` keeps it from masking a real
+error behind the cap."""
 
 
 async def test_receive_on_stopped_bus_raises(bus: MessageBus) -> None:

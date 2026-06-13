@@ -83,7 +83,6 @@
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
     "@types/d3-force": "3.0.10",
-    "@types/d3-hierarchy": "3.1.7",
     "@types/js-yaml": "4.0.9",
     "@types/node": "25.9.3",
     "@types/react": "19.2.17",

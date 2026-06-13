@@ -15,7 +15,7 @@ slots so the suite does not need a live NATS container -- the
 public ``start()`` path is unaffected.
 """
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -427,8 +427,12 @@ async def test_stop_drain_timeout_marks_unrestartable(
     queue = _make_queue()
     queue._stop_drain_timeout_seconds = 0.05
 
+    # Far longer than the 0.05s drain deadline above, so the stubbed drain is
+    # guaranteed still running when stop()'s wait_for trips its timeout.
+    slow_drain_seconds: Final[float] = 10.0
+
     async def _slow_drain() -> None:
-        await asyncio.sleep(10.0)
+        await asyncio.sleep(slow_drain_seconds)
 
     queue._client = AsyncMock(spec=_ClientStub)
     queue._client.drain.side_effect = _slow_drain

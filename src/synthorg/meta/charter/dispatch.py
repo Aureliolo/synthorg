@@ -13,7 +13,6 @@ pre-flight ForecastGate is intentionally bypassed) and the forecast row
 exists for audit and in-loop ceiling enforcement.
 """
 
-import asyncio
 import uuid
 from collections.abc import Callable
 from datetime import datetime
@@ -24,6 +23,7 @@ from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.forecaster import BriefSignal, compute_brief_hash
 from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
@@ -148,23 +148,7 @@ class CharterDispatcher:
         self._conversation_repo = conversation_repo
         self._budget_currency = budget_currency
         self._clock: Clock = clock or SystemClock()
-        self._locks: dict[str, asyncio.Lock] = {}
-        self._locks_guard: asyncio.Lock | None = None
-
-    async def _lock_for(self, charter_id: str) -> asyncio.Lock:
-        """Return the per-charter lock, creating it once.
-
-        Returns:
-            ``asyncio.Lock`` instance.
-        """
-        if self._locks_guard is None:
-            self._locks_guard = asyncio.Lock()
-        async with self._locks_guard:
-            lock = self._locks.get(charter_id)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._locks[charter_id] = lock
-            return lock
+        self._charter_locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     async def approve(
         self,
@@ -185,7 +169,7 @@ class CharterDispatcher:
         Returns:
             ``CharterApprovalResult`` instance.
         """
-        async with await self._lock_for(charter_id):
+        async with self._charter_locks.acquire(charter_id):
             return await self._approve(charter_id, approved_by=approved_by)
 
     async def _approve(

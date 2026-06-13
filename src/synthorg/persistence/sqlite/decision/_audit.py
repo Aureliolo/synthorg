@@ -152,11 +152,13 @@ class _AuditMixin(_DecisionRepoBase):
             QueryError: If the operation fails.
         """
         try:
-            async with self._write_context():
-                cursor = await self._db.execute(
+            async with (
+                self._write_context(),
+                self._db.execute(
                     "DELETE FROM decision_records WHERE recorded_at < ?",
                     (format_iso_utc(threshold),),
-                )
+                ) as cursor,
+            ):
                 await self._db.commit()
                 return cursor.rowcount
         except (sqlite3.Error, aiosqlite.Error) as exc:

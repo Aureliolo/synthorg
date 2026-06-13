@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
@@ -94,7 +95,6 @@ class ProjectWorkspaceService:
         "_config",
         "_git_backend",
         "_locks",
-        "_locks_guard",
         "_repo",
     )
 
@@ -112,8 +112,7 @@ class ProjectWorkspaceService:
         self._git_backend = git_backend
         self._config = config
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._locks: dict[str, asyncio.Lock] = {}
-        self._locks_guard = asyncio.Lock()
+        self._locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     @property
     def git_backend(self) -> GitBackend:
@@ -184,11 +183,6 @@ class ProjectWorkspaceService:
             success=True,
         )
 
-    async def _lock_for(self, project_id: str) -> asyncio.Lock:
-        """Return the per-project provisioning lock (created once)."""
-        async with self._locks_guard:
-            return self._locks.setdefault(project_id, asyncio.Lock())
-
     async def get_or_provision(
         self,
         project_id: NotBlankStr,
@@ -205,8 +199,7 @@ class ProjectWorkspaceService:
         Raises:
             GitBackendProvisionError: Repository provisioning failed.
         """
-        lock = await self._lock_for(project_id)
-        async with lock:
+        async with self._locks.acquire(project_id):
             row = await self._repo.get(project_id)
             kind = self._config.kind
             if row is not None and row.git_backend_kind == kind:

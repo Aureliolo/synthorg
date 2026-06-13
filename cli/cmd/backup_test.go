@@ -14,12 +14,11 @@ import (
 	"testing"
 )
 
-// NOTE: Tests in this file share the global rootCmd and must NOT call t.Parallel().
-// See runBackupCmd for the flag-reset workaround.
-// When adding new boolean flags to backup subcommands, add a
-// corresponding <theCmd>.Flags().Set("flag-name", "false") call in
-// runBackupCmd (targeting the specific command that owns the flag) to
-// prevent state leakage between tests.
+// NOTE: Tests in this file share the global rootCmd and must NOT call
+// t.Parallel(). runBackupCmd routes through sandboxRootCmd
+// (testhelpers_test.go), which snapshots and restores every flag's value AND
+// Changed bit, so a prior --confirm / --sort no longer leaks into the next
+// test and adding a new backup flag needs no per-flag reset here.
 
 // --- Unit tests for helper functions ---
 
@@ -289,48 +288,20 @@ func writeTestConfig(t *testing.T, backendPort int) string {
 	return dir
 }
 
-// runBackupCmd executes a backup subcommand and returns stdout+stderr output.
-// Resets the --confirm flag between runs to avoid stale state from prior tests
-// (Cobra does not reset flag values between Execute() calls on global commands).
-// Also clears the flag's `Changed` bit so MarkFlagRequired remains effective:
-// a prior Flags().Set() call would otherwise mark the flag as "supplied" and
-// short-circuit cobra's required-flag enforcement on the next invocation.
-// NOTE: If new persistent boolean flags are added to backup commands, add them here.
+// runBackupCmd executes a backup subcommand and returns combined stdout+stderr.
+// sandboxRootCmd snapshots the writers and the value+Changed bit of every flag
+// (including --confirm and --sort) and restores them on test cleanup, so each
+// test sees a hermetic rootCmd and MarkFlagRequired keeps firing.
 func runBackupCmd(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
-	// Reset sticky boolean flags before each execution.
-	confirmFlag := backupRestoreCmd.Flags().Lookup("confirm")
-	if confirmFlag == nil {
-		t.Fatal("--confirm flag not found on backup restore command")
-	}
-	if err := backupRestoreCmd.Flags().Set("confirm", "false"); err != nil {
-		t.Fatalf("resetting --confirm flag: %v", err)
-	}
-	// Clear Changed so MarkFlagRequired still fires when the test omits --confirm.
-	confirmFlag.Changed = false
-
-	// Reset --sort to its default; otherwise a prior TestBackupList_InvalidSort
-	// run leaves the flag value sticky and downstream order-sensitive tests
-	// inherit garbage state.
-	sortFlag := backupListCmd.Flags().Lookup("sort")
-	if sortFlag == nil {
-		t.Fatal("--sort flag not found on backup list command")
-	}
-	if err := backupListCmd.Flags().Set("sort", "newest"); err != nil {
-		t.Fatalf("resetting --sort flag: %v", err)
-	}
-	sortFlag.Changed = false
-
-	var buf bytes.Buffer
-	rootCmd.SetOut(&buf)
-	rootCmd.SetErr(&buf)
+	stdout, stderr, _ := sandboxRootCmd(t)
 	fullArgs := append([]string{"backup"}, args...)
 	if dir != "" {
 		fullArgs = append([]string{"--data-dir", dir}, fullArgs...)
 	}
 	rootCmd.SetArgs(fullArgs)
 	err := rootCmd.Execute()
-	return buf.String(), err
+	return stdout.String() + stderr.String(), err
 }
 
 // --- Integration tests: backup create ---
@@ -529,15 +500,9 @@ func TestBackupList_SortCompletionRegistered(t *testing.T) {
 	// Cobra exposes registered completions via __complete; if a fixed
 	// completion is registered the values come back on stdout. We invoke
 	// the special completion subcommand to confirm the three values are
-	// surfaced. SetOut/SetErr/SetArgs leak between Execute() calls on
-	// rootCmd, so capture and restore them around the test body.
-	prevOut := rootCmd.OutOrStdout()
-	prevErr := rootCmd.ErrOrStderr()
-	t.Cleanup(func() {
-		rootCmd.SetOut(prevOut)
-		rootCmd.SetErr(prevErr)
-		rootCmd.SetArgs(nil)
-	})
+	// surfaced. sandboxRootCmd restores the writers AND the flag value +
+	// Changed state that Execute() otherwise leaks between tests.
+	sandboxRootCmd(t)
 
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)

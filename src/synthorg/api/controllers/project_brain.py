@@ -24,6 +24,7 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.project_brain.constants import (
+    BRAIN_HISTORY_DEFAULT_LIMIT,
     BRAIN_SEARCH_DEFAULT_LIMIT,
     BRAIN_SEARCH_MAX_LIMIT,
 )
@@ -229,8 +230,12 @@ class ProjectBrainController(Controller):
         state: State,
         project_id: PathId,
         entry_id: PathId,
+        limit: CursorLimit = BRAIN_HISTORY_DEFAULT_LIMIT,
     ) -> Response[ApiResponse[tuple[BrainEntryVersion, ...]]]:
         """Return the git-versioned snapshot history for one entry.
+
+        ``limit`` caps the returned revisions (default 50, max 200); the
+        previous fixed 50-revision cap was invisible to callers.
 
         Returns:
             An :class:`ApiResponse` wrapping the entry's git versions,
@@ -239,6 +244,7 @@ class ProjectBrainController(Controller):
         versions = await _brain_service(state).git_history(
             project_id=NotBlankStr(project_id),
             entry_id=NotBlankStr(entry_id),
+            limit=limit,
         )
         return Response(
             content=ApiResponse[tuple[BrainEntryVersion, ...]](data=versions),

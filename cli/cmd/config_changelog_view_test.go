@@ -31,6 +31,7 @@ func TestConfigSetChangelogView(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			sandboxRootCmd(t)
 			var buf bytes.Buffer
 			rootCmd.SetOut(&buf)
 			rootCmd.SetErr(&buf)
@@ -67,6 +68,7 @@ func TestConfigGetChangelogViewDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	sandboxRootCmd(t)
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(&buf)
@@ -90,6 +92,7 @@ func TestConfigGetChangelogViewSet(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	sandboxRootCmd(t)
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(&buf)
@@ -113,6 +116,7 @@ func TestConfigUnsetChangelogView(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	sandboxRootCmd(t)
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(&buf)

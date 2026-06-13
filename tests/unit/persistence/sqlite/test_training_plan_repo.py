@@ -82,6 +82,21 @@ class TestSQLiteTrainingPlanRepository:
         result = await repo.get(sid("nonexistent"))
         assert result is None
 
+    async def test_naive_created_at_rejected(
+        self,
+        repo: SQLiteTrainingPlanRepository,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        """A stored naive timestamp is rejected on read, not silently coerced."""
+        await repo.save(_make_plan())
+        await migrated_db.execute(
+            "UPDATE training_plans SET created_at = ? WHERE id = ?",
+            ("2026-01-01T00:00:00", str(as_uuid("plan-001"))),
+        )
+        await migrated_db.commit()
+        with pytest.raises(QueryError):
+            await repo.get(sid("plan-001"))
+
     async def test_save_upsert_updates_existing(
         self,
         repo: SQLiteTrainingPlanRepository,

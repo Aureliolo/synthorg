@@ -120,6 +120,11 @@ class KnowledgeSourceRepository(
     Ordering invariant: :meth:`list_items` and :meth:`query` return rows
     in descending ``updated_at`` order (most-recently-touched first),
     with ``source_id`` as a stable tie-breaker.
+
+    One bespoke method is justified under ADR-0001 D7: :meth:`get_many`
+    is a real performance optimisation, letting receipt assembly resolve
+    every distinct source on a run in one round trip rather than issuing
+    one :meth:`get` per source (N+1).
     """
 
     @override
@@ -161,6 +166,18 @@ class KnowledgeSourceRepository(
     @override
     async def count(self, filter_spec: KnowledgeSourceFilter) -> int:
         """Count sources matching the filter spec."""
+        ...
+
+    async def get_many(
+        self,
+        source_ids: tuple[KnowledgeSourceKey, ...],
+    ) -> tuple[KnowledgeSource, ...]:
+        """Fetch many sources by id in one round trip (ADR-0001 D7).
+
+        Returns only the rows that exist; missing ids are silently
+        omitted. Order is unspecified; callers index by ``source_id``.
+        An empty ``source_ids`` returns an empty tuple without a query.
+        """
         ...
 
 

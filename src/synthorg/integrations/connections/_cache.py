@@ -10,8 +10,10 @@ type-checks the mixin in isolation.
 """
 
 import asyncio
+from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING
 
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.integrations.connections.models import Connection
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import paginate
@@ -28,8 +30,7 @@ class ConnectionCacheMixin:
         _cache: dict[str, Connection]
         _cache_lock: asyncio.Lock
         _cache_valid: bool
-        _name_locks: dict[str, asyncio.Lock]
-        _name_locks_lock: asyncio.Lock
+        _name_locks: RefcountedLockMap[str]
 
     async def rebind_repository(self, repository: ConnectionRepository) -> None:
         """Swap the underlying repository and invalidate the cache.
@@ -106,18 +107,17 @@ class ConnectionCacheMixin:
             return None
         return self._cache.get(name)
 
-    async def _lock_for(self, name: str) -> asyncio.Lock:
-        """Return (or create) the mutation lock for a connection name.
+    def _name_lock(self, name: str) -> AbstractAsyncContextManager[None]:
+        """Serialise mutations for a connection name; evict the lock when idle.
 
         Args:
             name: Connection name to lock.
 
         Returns:
-            The per-name ``asyncio.Lock`` (created on first use).
+            An async context manager holding the per-name lock for the
+            duration of the ``async with`` block. The backing
+            :class:`RefcountedLockMap` evicts the lock once its last
+            holder exits, so a process churning through many distinct
+            names does not retain one ``asyncio.Lock`` per name forever.
         """
-        async with self._name_locks_lock:
-            lock = self._name_locks.get(name)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._name_locks[name] = lock
-            return lock
+        return self._name_locks.acquire(name)

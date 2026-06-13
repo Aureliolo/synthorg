@@ -172,3 +172,145 @@ class TestDecisionRecordsCompositeIndex:
         assert "idx_dr_task_recorded_id" in plan, (
             f"Composite (task_id, recorded_at, id) index not used:\n{plan}"
         )
+
+
+async def _seed_conversation_family(backend: PostgresPersistenceBackend) -> None:
+    pool = backend._pool
+    assert pool is not None, "fixture must connect the backend before seeding"
+    conv = sid("conv-000")
+    async with pool.connection() as conn, conn.transaction():
+        for i in range(10):
+            await conn.execute(
+                "INSERT INTO conversations "
+                "(id, created_by, created_at, updated_at) VALUES (%s, %s, %s, %s)",
+                (
+                    sid(f"conv-{i:03d}"),
+                    "system",
+                    _BASE + timedelta(seconds=i),
+                    _BASE + timedelta(seconds=i),
+                ),
+            )
+        for i in range(10):
+            await conn.execute(
+                "INSERT INTO conversational_proposals "
+                "(id, conversation_id, approval_id, work_item_json, created_at) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (
+                    sid(f"prop-{i:03d}"),
+                    conv,
+                    sid(f"appr-{i:03d}"),
+                    "{}",
+                    _BASE + timedelta(seconds=i),
+                ),
+            )
+        # One invite per conversation: the partial unique index
+        # idx_cinv_one_pending_per_target forbids two pending invites with
+        # the same (conversation_id, target_agent_id), and new invites
+        # default to pending. Spreading across conversations keeps each pair
+        # distinct and mirrors what idx_cinv_target_agent_id serves -- one
+        # agent's invites across many conversations.
+        for i in range(10):
+            await conn.execute(
+                "INSERT INTO conversation_invites "
+                "(id, conversation_id, approval_id, requested_by_agent_id, "
+                "target_agent_id, reason, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (
+                    sid(f"inv-{i:03d}"),
+                    sid(f"conv-{i:03d}"),
+                    sid(f"iappr-{i:03d}"),
+                    _AGENTS[0],
+                    _AGENTS[i % len(_AGENTS)],
+                    "perf-index fixture",
+                    _BASE + timedelta(seconds=i),
+                ),
+            )
+
+
+async def _seed_webhook_receipts(backend: PostgresPersistenceBackend) -> None:
+    pool = backend._pool
+    assert pool is not None, "fixture must connect the backend before seeding"
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute(
+            "INSERT INTO connections (name, connection_type, auth_method, "
+            "created_at, updated_at) VALUES (%s, %s, %s, %s, %s)",
+            ("conn-perf", "generic_http", "api_key", _BASE, _BASE),
+        )
+        for i in range(10):
+            await conn.execute(
+                "INSERT INTO webhook_receipts (id, connection_name, received_at) "
+                "VALUES (%s, %s, %s)",
+                (sid(f"wh-{i:03d}"), "conn-perf", _BASE + timedelta(seconds=i)),
+            )
+
+
+class TestConversationFamilyPerfIndices:
+    async def test_conversations_list_index_used(
+        self,
+        postgres_backend: PostgresPersistenceBackend,
+    ) -> None:
+        await _seed_conversation_family(postgres_backend)
+        plan = await _explain_plan(
+            postgres_backend,
+            sql.SQL(
+                "SELECT * FROM conversations "
+                "ORDER BY created_at DESC, id DESC LIMIT 50",
+            ),
+            table="conversations",
+        )
+        assert "idx_conversations_created_id" in plan, (
+            f"(created_at DESC, id DESC) index not used for list_items:\n{plan}"
+        )
+
+    async def test_proposals_by_conversation_index_used(
+        self,
+        postgres_backend: PostgresPersistenceBackend,
+    ) -> None:
+        await _seed_conversation_family(postgres_backend)
+        plan = await _explain_plan(
+            postgres_backend,
+            sql.SQL(
+                "SELECT * FROM conversational_proposals WHERE conversation_id = %s "
+                "ORDER BY created_at DESC, id DESC LIMIT 50",
+            ),
+            sid("conv-000"),
+            table="conversational_proposals",
+        )
+        assert "idx_cp_conversation_id" in plan, (
+            f"(conversation_id, created_at DESC) index not used:\n{plan}"
+        )
+
+    async def test_invites_by_target_agent_index_used(
+        self,
+        postgres_backend: PostgresPersistenceBackend,
+    ) -> None:
+        await _seed_conversation_family(postgres_backend)
+        plan = await _explain_plan(
+            postgres_backend,
+            sql.SQL(
+                "SELECT * FROM conversation_invites "
+                "WHERE target_agent_id = %s LIMIT 50",
+            ),
+            _AGENTS[0],
+            table="conversation_invites",
+        )
+        assert "idx_cinv_target_agent_id" in plan, (
+            f"target_agent_id index not used for the status-agnostic query:\n{plan}"
+        )
+
+    async def test_webhook_receipts_list_index_used(
+        self,
+        postgres_backend: PostgresPersistenceBackend,
+    ) -> None:
+        await _seed_webhook_receipts(postgres_backend)
+        plan = await _explain_plan(
+            postgres_backend,
+            sql.SQL(
+                "SELECT * FROM webhook_receipts "
+                "ORDER BY received_at DESC, id DESC LIMIT 50",
+            ),
+            table="webhook_receipts",
+        )
+        assert "idx_webhook_receipts_received_id" in plan, (
+            f"(received_at DESC, id DESC) index not used for list_items:\n{plan}"
+        )

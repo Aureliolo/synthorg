@@ -109,13 +109,13 @@ INSERT OR REPLACE INTO circuit_breaker_state (
         """
         pair_key_a, pair_key_b = entity_id
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT pair_key_a, pair_key_b, bounce_count, "
                 "trip_count, opened_at FROM circuit_breaker_state "
                 "WHERE pair_key_a = ? AND pair_key_b = ?",
                 (pair_key_a, pair_key_b),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = (
                 f"Failed to fetch circuit breaker state for pair "
@@ -167,13 +167,13 @@ INSERT OR REPLACE INTO circuit_breaker_state (
             limit, offset, event=PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT pair_key_a, pair_key_b, bounce_count, "
                 "trip_count, opened_at FROM circuit_breaker_state "
                 "ORDER BY pair_key_a, pair_key_b LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list circuit breaker state"
             logger.warning(
@@ -235,12 +235,12 @@ INSERT OR REPLACE INTO circuit_breaker_state (
         pair_key_a, pair_key_b = entity_id
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM circuit_breaker_state "
                     "WHERE pair_key_a = ? AND pair_key_b = ?",
                     (pair_key_a, pair_key_b),
-                )
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback_quietly(

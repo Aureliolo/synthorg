@@ -2,7 +2,7 @@
 
 import sqlite3
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -182,7 +182,7 @@ class TestSQLiteProjectCostAggregateRepository:
             patch.object(
                 migrated_db,
                 "execute",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
                 side_effect=sqlite3.OperationalError("disk I/O error"),
             ),
             pytest.raises(QueryError),
@@ -200,7 +200,7 @@ class TestSQLiteProjectCostAggregateRepository:
             patch.object(
                 migrated_db,
                 "execute",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
                 side_effect=sqlite3.OperationalError("disk I/O error"),
             ),
             pytest.raises(QueryError),

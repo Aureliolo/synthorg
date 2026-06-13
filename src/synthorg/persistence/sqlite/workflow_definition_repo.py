@@ -144,7 +144,7 @@ class SQLiteWorkflowDefinitionRepository:
         )
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     UPDATE_SQL,
                     (
                         definition.name,
@@ -161,15 +161,18 @@ class SQLiteWorkflowDefinitionRepository:
                         str(definition.id),
                         definition.revision - 1,
                     ),
-                )
-                if cursor.rowcount == 0:
-                    # Distinguish "row missing" from "row exists with a
-                    # different revision" so callers get a precise error.
-                    probe = await self._db.execute(
+                ) as cursor:
+                    rowcount = cursor.rowcount
+                # Read rowcount, then close the write cursor before the probe
+                # SELECT and any rollback: nesting a second cursor and issuing
+                # transaction control inside an open cursor context can lock
+                # the shared aiosqlite connection.
+                if rowcount == 0:
+                    async with self._db.execute(
                         "SELECT revision FROM workflow_definitions WHERE id = ?",
                         (str(definition.id),),
-                    )
-                    existing = await probe.fetchone()
+                    ) as probe:
+                        existing = await probe.fetchone()
                     await self._db.rollback()
                     if existing is None:
                         return False
@@ -217,7 +220,7 @@ class SQLiteWorkflowDefinitionRepository:
         )
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     INSERT_IGNORE_SQL,
                     (
                         str(definition.id),
@@ -235,8 +238,9 @@ class SQLiteWorkflowDefinitionRepository:
                         definition.updated_at.astimezone(UTC).isoformat(),
                         definition.revision,
                     ),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except sqlite3.Error as exc:
                 await _rollback_quietly(self._db)
                 msg = f"Failed to create workflow definition {definition.id!r}"
@@ -247,7 +251,7 @@ class SQLiteWorkflowDefinitionRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
     async def save(self, entity: WorkflowDefinition) -> None:
         """Persist a workflow definition via upsert.
@@ -271,7 +275,7 @@ class SQLiteWorkflowDefinitionRepository:
         )
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     UPSERT_SQL,
                     (
                         str(entity.id),
@@ -289,16 +293,18 @@ class SQLiteWorkflowDefinitionRepository:
                         entity.updated_at.astimezone(UTC).isoformat(),
                         entity.revision,
                     ),
-                )
-                if cursor.rowcount == 0:
-                    # Zero rows affected means the ON CONFLICT WHERE clause
-                    # did not match -- the existing row has a different
-                    # revision than expected.
-                    check = await self._db.execute(
+                ) as cursor:
+                    rowcount = cursor.rowcount
+                # Read rowcount, then close the write cursor before the probe
+                # SELECT and any rollback: nesting a second cursor and issuing
+                # transaction control inside an open cursor context can lock
+                # the shared aiosqlite connection.
+                if rowcount == 0:
+                    async with self._db.execute(
                         "SELECT revision FROM workflow_definitions WHERE id = ?",
                         (str(entity.id),),
-                    )
-                    existing = await check.fetchone()
+                    ) as check:
+                        existing = await check.fetchone()
                     await self._db.rollback()
                     current = existing["revision"] if existing else "N/A"
                     msg = (
@@ -341,11 +347,11 @@ class SQLiteWorkflowDefinitionRepository:
             QueryError: If the database query or deserialization fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {WORKFLOW_DEFINITION_COLUMNS} FROM workflow_definitions WHERE id = ?",  # noqa: S608, E501
                 (definition_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = f"Failed to fetch workflow definition {definition_id!r}"
             logger.warning(
@@ -406,8 +412,8 @@ class SQLiteWorkflowDefinitionRepository:
         params.extend([limit, offset])
 
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to list workflow definitions"
             logger.warning(
@@ -454,8 +460,8 @@ class SQLiteWorkflowDefinitionRepository:
             "ORDER BY id ASC LIMIT ? OFFSET ?"
         )
         try:
-            cursor = await self._db.execute(sql, (limit, offset))
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, (limit, offset)) as cursor:
+                rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to list workflow definitions"
             logger.warning(
@@ -487,8 +493,8 @@ class SQLiteWorkflowDefinitionRepository:
             f"{where_clause}"
         )
         try:
-            cursor = await self._db.execute(sql, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = "Failed to count workflow definitions"
             logger.warning(
@@ -513,11 +519,12 @@ class SQLiteWorkflowDefinitionRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM workflow_definitions WHERE id = ?",
                     (definition_id,),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except sqlite3.Error as exc:
                 await _rollback_quietly(self._db)
                 msg = f"Failed to delete workflow definition {definition_id!r}"
@@ -529,7 +536,7 @@ class SQLiteWorkflowDefinitionRepository:
                 )
                 raise QueryError(msg) from exc
 
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
 
 __all__ = ["SQLiteWorkflowDefinitionRepository"]

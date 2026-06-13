@@ -49,6 +49,7 @@ def _row_to_metadata(row: aiosqlite.Row) -> DocMetadata:
     data = dict(row)
     data["doc_type"] = DocType(data["doc_type"])
     data["tags"] = tuple(json.loads(data["tags"]))
+    data["related_task_ids"] = tuple(json.loads(data["related_task_ids"]))
     data["created_at"] = coerce_row_timestamp(data["created_at"])
     data["updated_at"] = coerce_row_timestamp(data["updated_at"])
     return DocMetadata.model_validate(data)
@@ -86,6 +87,7 @@ class SQLiteDocsRepository:
             entity.doc_type.value,
             entity.title,
             json.dumps(list(entity.tags), sort_keys=True),
+            json.dumps(list(entity.related_task_ids), sort_keys=True),
             entity.head_commit_sha,
             entity.last_indexed_commit_sha,
             format_iso_utc(entity.created_at),
@@ -115,13 +117,14 @@ class SQLiteDocsRepository:
                 await self._db.execute(
                     """\
 INSERT INTO project_docs (project_id, slug, doc_type, title, tags,
-                          head_commit_sha, last_indexed_commit_sha,
-                          created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          related_task_ids, head_commit_sha,
+                          last_indexed_commit_sha, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(project_id, slug) DO UPDATE SET
     doc_type=excluded.doc_type,
     title=excluded.title,
     tags=excluded.tags,
+    related_task_ids=excluded.related_task_ids,
     head_commit_sha=excluded.head_commit_sha,
     last_indexed_commit_sha=excluded.last_indexed_commit_sha,
     created_at=excluded.created_at,
@@ -152,12 +155,12 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         """
         project_id, slug = entity_id
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """SELECT * FROM project_docs
                    WHERE project_id = ? AND slug = ?""",
                 (project_id, slug),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch living doc {project_id!r}/{slug!r}"
             logger.warning(
@@ -215,13 +218,13 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """SELECT * FROM project_docs
                    ORDER BY updated_at DESC, project_id ASC, slug ASC
                    LIMIT ? OFFSET ?""",
                 (effective_limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list living docs"
             logger.warning(
@@ -244,11 +247,12 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         project_id, slug = entity_id
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM project_docs WHERE project_id = ? AND slug = ?",
                     (project_id, slug),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback(event=PERSISTENCE_PROJECT_DOC_DELETE_FAILED)
                 msg = f"Failed to delete living doc {project_id!r}/{slug!r}"
@@ -260,7 +264,7 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return cursor.rowcount > 0
+            return _db_rowcount > 0
 
     async def query(
         self,
@@ -287,8 +291,8 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         )
         params = (*params, effective_limit, offset)
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to query living docs for project {filter_spec.project_id!r}"
             logger.warning(
@@ -320,8 +324,8 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         where_sql, params = _build_query_sql(filter_spec)
         sql = f"SELECT COUNT(*) AS n {where_sql}"
         try:
-            cursor = await self._db.execute(sql, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to count living docs for {filter_spec.project_id!r}"
             logger.warning(
@@ -401,6 +405,13 @@ def _build_query_sql(filter_spec: DocsFilterSpec) -> tuple[str, tuple[object, ..
         sql += " AND tags LIKE ? ESCAPE '\\'"
         needle = json.dumps(filter_spec.tag)
         params.append(f"%{_escape_like(needle)}%")
+    if filter_spec.related_task_id is not None:
+        # Membership test against the JSON-array column, same quoted-needle
+        # LIKE technique as ``tag`` so the surrounding quotes prevent a
+        # partial-id false match (id ``t1`` cannot match stored ``t12``).
+        sql += " AND related_task_ids LIKE ? ESCAPE '\\'"
+        task_needle = json.dumps(filter_spec.related_task_id)
+        params.append(f"%{_escape_like(task_needle)}%")
     if filter_spec.updated_since is not None:
         sql += " AND updated_at >= ?"
         params.append(format_iso_utc(filter_spec.updated_since))

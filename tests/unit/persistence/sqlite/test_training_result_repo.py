@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
@@ -122,6 +123,26 @@ class TestSQLiteTrainingResultRepository:
         _, result_repo = repos
         result = await result_repo.get_by_plan(sid("nonexistent"))
         assert result is None
+
+    async def test_naive_started_at_rejected(
+        self,
+        repos: tuple[
+            SQLiteTrainingPlanRepository,
+            SQLiteTrainingResultRepository,
+        ],
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        """A stored naive timestamp is rejected on read, not silently coerced."""
+        plan_repo, result_repo = repos
+        await plan_repo.save(_make_plan())
+        await result_repo.save(_make_result())
+        await migrated_db.execute(
+            "UPDATE training_results SET started_at = ? WHERE id = ?",
+            ("2026-01-01T00:00:00", str(as_uuid("result-001"))),
+        )
+        await migrated_db.commit()
+        with pytest.raises(QueryError):
+            await result_repo.get_by_plan(sid("plan-001"))
 
     async def test_get_latest(
         self,

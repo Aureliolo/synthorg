@@ -95,15 +95,17 @@ class _QueryMixin(_DecisionRepoBase):
             order_by = "recorded_at DESC, id DESC"
 
         try:
-            async with self._write_context():
-                cursor = await self._db.execute(
+            async with (
+                self._write_context(),
+                self._db.execute(
                     f"""\
                     SELECT {_COLS} FROM decision_records
                     WHERE {where_clause}
                     ORDER BY {order_by}
                     LIMIT ? OFFSET ?""",  # noqa: S608
                     (*params, effective_limit, offset),
-                )
+                ) as cursor,
+            ):
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query decision records"
@@ -135,11 +137,13 @@ class _QueryMixin(_DecisionRepoBase):
             QueryError: If the database query fails.
         """
         try:
-            async with self._write_context():
-                cursor = await self._db.execute(
+            async with (
+                self._write_context(),
+                self._db.execute(
                     f"SELECT {_COLS} FROM decision_records WHERE id = ?",  # noqa: S608
                     (record_id,),
-                )
+                ) as cursor,
+            ):
                 row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch decision record {record_id!r}"
@@ -197,18 +201,15 @@ class _QueryMixin(_DecisionRepoBase):
         )
         effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:
-            async with self._write_context():
-                # ``recorded_at ASC, id ASC`` matches the protocol's
-                # "oldest first" contract; ``version ASC`` would
-                # mis-place a backfilled decision (low ``recorded_at``
-                # but a freshly-allocated high ``version``) at the end
-                # of the list. Mirrors the Postgres backend.
-                cursor = await self._db.execute(
+            async with (
+                self._write_context(),
+                self._db.execute(
                     f"SELECT {_COLS} FROM decision_records "  # noqa: S608
                     "WHERE task_id = ? "
                     "ORDER BY recorded_at ASC, id ASC LIMIT ? OFFSET ?",
                     (task_id, effective_limit, offset),
-                )
+                ) as cursor,
+            ):
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list decision records for task {task_id!r}"
@@ -324,11 +325,13 @@ class _QueryMixin(_DecisionRepoBase):
                 f"WHERE {column} = ? ORDER BY recorded_at DESC, id DESC "
                 f"LIMIT ? OFFSET ?"
             )
-            async with self._write_context():
-                cursor = await self._db.execute(
+            async with (
+                self._write_context(),
+                self._db.execute(
                     query,
                     (agent_id, effective_limit, offset),
-                )
+                ) as cursor,
+            ):
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = (

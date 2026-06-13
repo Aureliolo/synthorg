@@ -223,7 +223,7 @@ class SQLiteVersionRepository[T: BaseModel]:
             raise QueryError(msg) from exc
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     self._insert_sql,
                     (
                         version.entity_id,
@@ -233,8 +233,9 @@ class SQLiteVersionRepository[T: BaseModel]:
                         version.saved_by,
                         format_iso_utc(version.saved_at),
                     ),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = (
                     f"Failed to save version {version.version} "
@@ -249,7 +250,7 @@ class SQLiteVersionRepository[T: BaseModel]:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
     async def get_version(
         self,
@@ -265,11 +266,11 @@ class SQLiteVersionRepository[T: BaseModel]:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 self._select_one_sql,
                 (entity_id, version),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch version {version} for {entity_id!r}"
             logger.warning(
@@ -298,11 +299,11 @@ class SQLiteVersionRepository[T: BaseModel]:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 self._select_latest_sql,
                 (entity_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch latest version for {entity_id!r}"
             logger.warning(
@@ -331,11 +332,11 @@ class SQLiteVersionRepository[T: BaseModel]:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 self._select_by_hash_sql,
                 (entity_id, content_hash),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch version by hash for {entity_id!r}"
             logger.warning(
@@ -374,11 +375,11 @@ class SQLiteVersionRepository[T: BaseModel]:
             msg = f"offset must be non-negative, got {offset}"
             raise ValueError(msg)
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 self._select_list_sql,
                 (entity_id, limit, offset),
-            )
-            rows = list(await cursor.fetchall())
+            ) as cursor:
+                rows = list(await cursor.fetchall())
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list versions for {entity_id!r}"
             logger.warning(
@@ -407,8 +408,8 @@ class SQLiteVersionRepository[T: BaseModel]:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(self._count_sql, (entity_id,))
-            row = await cursor.fetchone()
+            async with self._db.execute(self._count_sql, (entity_id,)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to count versions for {entity_id!r}"
             logger.warning(
@@ -432,9 +433,9 @@ class SQLiteVersionRepository[T: BaseModel]:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(self._delete_sql, (entity_id,))
-                await self._db.commit()
-                count = cursor.rowcount
+                async with self._db.execute(self._delete_sql, (entity_id,)) as cursor:
+                    await self._db.commit()
+                    count = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete versions for {entity_id!r}"
                 logger.warning(

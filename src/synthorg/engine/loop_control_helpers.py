@@ -11,6 +11,7 @@ fence responsibility lives upstream of the loop (see
 :mod:`synthorg.engine.loop_helpers` for the full wrap-ownership note).
 """
 
+from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.context import AgentContext
@@ -103,11 +104,29 @@ def check_budget(
 
     Returns:
         ``ExecutionResult`` with BUDGET_EXHAUSTED reason, or ``None``.
+
+    Raises:
+        BudgetExhaustedError: Propagated unchanged when the checker raises
+            a budget-policy stop (e.g. the per-run hard ceiling) so the
+            engine can route it (a ceiling crossing parks for resume).
     """
     if budget_checker is None:
         return None
     try:
         exhausted = budget_checker(ctx)
+    except BudgetExhaustedError:
+        # A budget-policy stop (e.g. the per-run hard ceiling) is not a
+        # checker bug: let it propagate so the engine's
+        # ``except BudgetExhaustedError`` handler can route it
+        # (``_handle_budget_error`` parks a ceiling crossing for operator
+        # resume rather than failing the task). Swallowing it here as a
+        # generic ERROR would make the entire PARKED path unreachable.
+        logger.debug(
+            EXECUTION_LOOP_BUDGET_EXHAUSTED,
+            execution_id=ctx.execution_id,
+            turn=ctx.turn_count,
+        )
+        raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         error_msg = f"Budget checker failed: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
@@ -270,8 +289,10 @@ async def invoke_compaction(
 ) -> AgentContext | None:
     """Invoke compaction callback if configured.
 
-    Errors are logged but never propagated -- compaction must
-    not interrupt execution.
+    Errors are logged but never propagated -- compaction must not
+    interrupt execution. This includes provider failures such as
+    ``RetryExhaustedError`` from the compaction LLM call: compaction is
+    best-effort, so the loop continues uncompacted rather than failing.
 
     Args:
         ctx: Current agent context.

@@ -9,6 +9,7 @@ from synthorg.api.auth.controller_dtos import SessionResponse
 from synthorg.api.auth.controller_helpers import extract_jti
 from synthorg.api.dto import ApiResponse
 from synthorg.api.path_params import PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
@@ -40,6 +41,7 @@ class AuthSessionsController(Controller):
     @get(
         "/sessions",
         summary="List active sessions",
+        guards=[per_op_rate_limit_from_policy("auth.sessions_list", key="user")],
     )
     async def list_sessions(
         self,
@@ -113,6 +115,7 @@ class AuthSessionsController(Controller):
         "/sessions/{session_id:str}",
         status_code=204,
         summary="Revoke a session",
+        guards=[per_op_rate_limit_from_policy("auth.sessions_revoke", key="user")],
     )
     async def revoke_session(
         self,

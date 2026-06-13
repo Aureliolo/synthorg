@@ -91,13 +91,13 @@ INSERT OR REPLACE INTO parked_contexts (
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT id, execution_id, agent_id, task_id, approval_id, "
                 "parked_at, context_json, metadata "
                 "FROM parked_contexts WHERE id = ?",
                 (parked_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to query parked context {parked_id!r}"
             logger.warning(
@@ -135,13 +135,13 @@ INSERT OR REPLACE INTO parked_contexts (
             limit, offset, event=PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT id, execution_id, agent_id, task_id, approval_id, "
                 "parked_at, context_json, metadata "
                 "FROM parked_contexts ORDER BY id LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list parked contexts"
             logger.warning(
@@ -165,13 +165,13 @@ INSERT OR REPLACE INTO parked_contexts (
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT id, execution_id, agent_id, task_id, approval_id, "
                 "parked_at, context_json, metadata "
                 "FROM parked_contexts WHERE approval_id = ?",
                 (approval_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to query parked context by approval {approval_id!r}"
             logger.warning(
@@ -212,15 +212,15 @@ INSERT OR REPLACE INTO parked_contexts (
             agent_id=agent_id,
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT id, execution_id, agent_id, task_id, approval_id, "
                 "parked_at, context_json, metadata "
                 "FROM parked_contexts WHERE agent_id = ? "
                 "ORDER BY parked_at DESC, id "
                 "LIMIT ? OFFSET ?",
                 (agent_id, limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to query parked contexts for agent {agent_id!r}"
             logger.warning(
@@ -251,12 +251,12 @@ INSERT OR REPLACE INTO parked_contexts (
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM parked_contexts WHERE id = ?",
                     (parked_id,),
-                )
-                await self._db.commit()
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    await self._db.commit()
+                    deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()

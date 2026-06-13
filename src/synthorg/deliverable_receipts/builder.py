@@ -48,7 +48,6 @@ from synthorg.persistence.knowledge_usage_protocol import (
     KnowledgeUsageFilterSpec,
     KnowledgeUsageRecordRepository,
 )
-from synthorg.project_brain.errors import BrainEntryNotFoundError
 from synthorg.project_brain.models import BrainEntryKind
 from synthorg.project_brain.service import ProjectBrainService
 from synthorg.providers.cassette.mode import CassetteConfig
@@ -142,13 +141,16 @@ class ReceiptBuilder:
         for row in rows:
             first_by_source.setdefault(row.source_id, row.chunk_id)
             hashes.setdefault(row.source_id, row.content_hash)
+        # One batch fetch for every distinct source instead of a get() per
+        # source (N+1 -> 1 round trip). Missing ids are simply absent from
+        # the map and fall through to the unresolved placeholder below.
+        resolved = {
+            source.source_id: source
+            for source in await self._knowledge_sources.get_many(tuple(first_by_source))
+        }
         entries: list[ReceiptSourceEntry] = []
-        # Resolved sequentially on purpose: these are repository round-trips
-        # on a single shared connection, so a TaskGroup fan-out yields no
-        # speedup (aiosqlite serialises) and risks pool exhaustion on
-        # Postgres. The distinct-source count is small in practice.
         for source_id, chunk_id in first_by_source.items():
-            source = await self._knowledge_sources.get(source_id)
+            source = resolved.get(source_id)
             title = _UNRESOLVED_TITLE if source is None else source.title
             uri = source_id if source is None else source.uri
             entries.append(
@@ -174,36 +176,26 @@ class ReceiptBuilder:
         """
         if self._brain_service is None:
             return ()
-        summaries = await self._brain_service.list_current(
+        # One current-state query returns the full entries (with rationale),
+        # so we no longer issue a get_entry per summary (N+1 -> 1). A single
+        # query is also a consistent snapshot, removing the prior
+        # list-then-get TOCTOU window entirely.
+        entries = await self._brain_service.list_current_entries(
             project_id=task.project,
             entry_kind=BrainEntryKind.DECISION,
             related_task_id=str(task.id),
             limit=_SIGNAL_QUERY_LIMIT,
         )
-        entries: list[ReceiptDecisionEntry] = []
-        # Sequential for the same reason as ``_sources``: shared-connection
-        # repository reads, small N. An entry listed by ``list_current`` can
-        # be deleted before ``get_entry`` runs (TOCTOU); skip that entry
-        # rather than letting a single missing decision sink the whole
-        # best-effort receipt build.
-        for summary in summaries:
-            try:
-                entry = await self._brain_service.get_entry(
-                    project_id=task.project,
-                    entry_id=summary.entry_id,
-                )
-            except BrainEntryNotFoundError:
-                continue
-            entries.append(
-                ReceiptDecisionEntry(
-                    entry_id=entry.entry_id,
-                    revision=entry.revision,
-                    title=entry.title,
-                    rationale=entry.rationale,
-                    recorded_at=entry.recorded_at,
-                )
+        return tuple(
+            ReceiptDecisionEntry(
+                entry_id=entry.entry_id,
+                revision=entry.revision,
+                title=entry.title,
+                rationale=entry.rationale,
+                recorded_at=entry.recorded_at,
             )
-        return tuple(entries)
+            for entry in entries
+        )
 
     async def _cost(self, task_id: NotBlankStr) -> tuple[float, CurrencyCode]:
         """Aggregate cost and resolve the currency for the task.

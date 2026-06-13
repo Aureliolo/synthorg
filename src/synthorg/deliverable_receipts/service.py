@@ -8,8 +8,6 @@ receipt, persists it, and projects a human-readable section into the
 doc. It also serves reads and validation for the REST controller.
 """
 
-from typing import Final
-
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -23,7 +21,6 @@ from synthorg.deliverable_receipts.renderer import ReceiptRenderer
 from synthorg.deliverable_receipts.validator import ReceiptValidator
 from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.errors import DocNotFoundError
-from synthorg.docs_engine.service import DocsService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable_receipts import (
     RECEIPT_BUILT,
@@ -42,9 +39,6 @@ from synthorg.persistence.flight_recorder_protocol import (
 
 logger = get_logger(__name__)
 
-#: Maximum deliverable docs scanned when resolving a task's deliverable.
-_DELIVERABLE_SCAN_LIMIT: Final[int] = 100
-
 
 class DeliverableReceiptService:
     """Build, store, render, and validate deliverable receipts."""
@@ -57,7 +51,6 @@ class DeliverableReceiptService:
         validator: ReceiptValidator,
         renderer: ReceiptRenderer,
         docs: DocsRepository,
-        docs_service: DocsService,
         flight_recorder: FlightRecorderFrameRepository,
     ) -> None:
         self._receipts = receipts
@@ -65,7 +58,6 @@ class DeliverableReceiptService:
         self._validator = validator
         self._renderer = renderer
         self._docs = docs
-        self._docs_service = docs_service
         self._flight_recorder = flight_recorder
 
     async def build_and_store(self, *, task: Task) -> DeliverableReceipt | None:
@@ -189,26 +181,20 @@ class DeliverableReceiptService:
     async def _resolve_deliverable_slug(self, task: Task) -> NotBlankStr | None:
         """Find the deliverable doc whose related tasks include this task.
 
-        Scans the project's deliverable docs recency-first and reads each
-        to inspect its ``related_task_ids`` (the metadata row does not
-        carry them).
+        The task link is denormalised onto the metadata row, so a single
+        filtered query resolves the slug; the previous read-every-body
+        scan (N+1) is gone.
 
         Returns:
-            The first matching deliverable doc's slug, or ``None`` when
-            the task has no deliverable document.
+            The most-recent matching deliverable doc's slug, or ``None``
+            when the task has no deliverable document.
         """
         metas = await self._docs.query(
-            DocsFilterSpec(project_id=task.project, doc_type=DocType.DELIVERABLE),
-            limit=_DELIVERABLE_SCAN_LIMIT,
+            DocsFilterSpec(
+                project_id=task.project,
+                doc_type=DocType.DELIVERABLE,
+                related_task_id=NotBlankStr(str(task.id)),
+            ),
+            limit=1,
         )
-        for meta in metas:
-            try:
-                doc = await self._docs_service.read_doc(
-                    project_id=task.project,
-                    slug=meta.slug,
-                )
-            except DocNotFoundError:
-                continue
-            if str(task.id) in doc.related_task_ids:
-                return meta.slug
-        return None
+        return metas[0].slug if metas else None

@@ -140,7 +140,7 @@ class SQLiteWorkflowExecutionRepository:
         params = self._serialize_execution(execution)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     """\
 INSERT INTO workflow_executions
     (id, definition_id, definition_revision, status, node_executions,
@@ -148,15 +148,15 @@ INSERT INTO workflow_executions
      error, version)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     params,
-                )
-                if cursor.rowcount == 0:
-                    msg = f"Workflow execution {execution.id!r} already exists"
-                    logger.warning(
-                        PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                        execution_id=str(execution.id),
-                        error=msg,
-                    )
-                    raise DuplicateRecordError(msg)
+                ) as cursor:
+                    if cursor.rowcount == 0:
+                        msg = f"Workflow execution {execution.id!r} already exists"
+                        logger.warning(
+                            PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                            execution_id=str(execution.id),
+                            error=msg,
+                        )
+                        raise DuplicateRecordError(msg)
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
                 await self._db.rollback()
@@ -202,7 +202,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         params = self._serialize_execution(execution)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     """\
 UPDATE workflow_executions SET
     definition_id=?, definition_revision=?, status=?,
@@ -215,36 +215,36 @@ WHERE id = ? AND version = ?""",
                         str(execution.id),
                         execution.version - 1,
                     ),
-                )
-                if cursor.rowcount == 0:
-                    probe = await self._db.execute(
-                        "SELECT version FROM workflow_executions WHERE id = ?",
-                        (str(execution.id),),
-                    )
-                    row = await probe.fetchone()
-                    await self._db.rollback()
-                    if row is None:
+                ) as cursor:
+                    if cursor.rowcount == 0:
+                        async with self._db.execute(
+                            "SELECT version FROM workflow_executions WHERE id = ?",
+                            (str(execution.id),),
+                        ) as probe:
+                            row = await probe.fetchone()
+                        await self._db.rollback()
+                        if row is None:
+                            msg = (
+                                f"Workflow execution {execution.id!r} not found"
+                                f" (deleted between read and update)"
+                            )
+                            logger.warning(
+                                PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                                execution_id=str(execution.id),
+                                error=msg,
+                            )
+                            raise RecordNotFoundError(msg)
                         msg = (
-                            f"Workflow execution {execution.id!r} not found"
-                            f" (deleted between read and update)"
+                            f"Version conflict saving workflow execution"
+                            f" {execution.id!r}: expected version"
+                            f" {execution.version - 1}, current is {row[0]}"
                         )
                         logger.warning(
                             PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
                             execution_id=str(execution.id),
                             error=msg,
                         )
-                        raise RecordNotFoundError(msg)
-                    msg = (
-                        f"Version conflict saving workflow execution"
-                        f" {execution.id!r}: expected version"
-                        f" {execution.version - 1}, current is {row[0]}"
-                    )
-                    logger.warning(
-                        PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                        execution_id=str(execution.id),
-                        error=msg,
-                    )
-                    raise PersistenceVersionConflictError(msg)
+                        raise PersistenceVersionConflictError(msg)
                 await self._db.commit()
             except sqlite3.Error as exc:
                 await self._db.rollback()
@@ -273,11 +273,11 @@ WHERE id = ? AND version = ?""",
             QueryError: If the database query or deserialization fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {WORKFLOW_EXECUTION_COLUMNS} FROM workflow_executions WHERE id = ?",  # noqa: S608, E501
                 (execution_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = f"Failed to fetch workflow execution {execution_id!r}"
             logger.warning(
@@ -328,12 +328,12 @@ WHERE id = ? AND version = ?""",
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {WORKFLOW_EXECUTION_COLUMNS} FROM workflow_executions"  # noqa: S608
                 " ORDER BY id ASC LIMIT ? OFFSET ?",
                 (effective_limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to list executions"
             logger.warning(
@@ -386,13 +386,13 @@ WHERE id = ? AND version = ?""",
         params.extend([effective_limit, offset])
 
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {WORKFLOW_EXECUTION_COLUMNS} FROM workflow_executions"  # noqa: S608
                 f" WHERE {where_clause}"
                 " ORDER BY updated_at DESC, id ASC LIMIT ? OFFSET ?",
                 params,
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to query executions"
             logger.warning(
@@ -432,12 +432,12 @@ WHERE id = ? AND version = ?""",
             filter_spec, placeholder="?"
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT COUNT(*) FROM workflow_executions"  # noqa: S608
                 f" WHERE {where_clause}",
                 params,
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
             return row[0] if row else 0
         except sqlite3.Error as exc:
             msg = "Failed to count executions"
@@ -470,7 +470,7 @@ WHERE id = ? AND version = ?""",
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {WORKFLOW_EXECUTION_COLUMNS} FROM workflow_executions"  # noqa: S608
                 " WHERE status = ?"
                 " AND EXISTS ("
@@ -479,8 +479,8 @@ WHERE id = ? AND version = ?""",
                 " )"
                 " LIMIT 1",
                 (WorkflowExecutionStatus.RUNNING.value, task_id),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = f"Failed to find execution by task_id {task_id!r}"
             logger.warning(
@@ -525,11 +525,12 @@ WHERE id = ? AND version = ?""",
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM workflow_executions WHERE id = ?",
                     (execution_id,),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except sqlite3.Error as exc:
                 await self._db.rollback()
                 msg = f"Failed to delete workflow execution {execution_id!r}"
@@ -541,7 +542,7 @@ WHERE id = ? AND version = ?""",
                 )
                 raise QueryError(msg) from exc
 
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
 
 __all__ = ["SQLiteWorkflowExecutionRepository"]

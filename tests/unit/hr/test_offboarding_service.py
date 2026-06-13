@@ -45,6 +45,10 @@ class FakeTaskRepository:
     async def save(self, entity: Task) -> None:
         self._tasks[str(entity.id)] = entity
 
+    async def save_many(self, entities: tuple[Task, ...]) -> None:
+        for entity in entities:
+            self._tasks[str(entity.id)] = entity
+
     async def get(self, entity_id: str) -> Task | None:
         return self._tasks.get(entity_id)
 

@@ -9,7 +9,7 @@ in their own table keyed by ``(subworkflow_id, semver)``.  See
 import json
 import sqlite3
 from collections.abc import Iterable
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal, cast
 from uuid import UUID
 
@@ -49,7 +49,10 @@ from synthorg.observability.events.persistence.subworkflow import (
     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared.datetime_marshaller import format_iso_utc
+from synthorg.persistence._shared.datetime_marshaller import (
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext
 
@@ -75,15 +78,15 @@ def _semver_sort_key(version: str) -> Version:
 
 
 def _parse_created_at(value: object) -> datetime:
-    """Parse an ISO timestamp, forcing UTC.
+    """Parse a stored ISO timestamp to a tz-aware UTC datetime.
 
     Returns:
         Result of type ``datetime``.
+
+    Raises:
+        ValueError: If a stored string is naive (no timezone offset).
     """
-    dt = datetime.fromisoformat(str(value))
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return dt
+    return coerce_row_timestamp(value)
 
 
 def _deserialize_row(
@@ -350,12 +353,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         """
         subworkflow_id, version = entity_id
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
                 "WHERE subworkflow_id = ? AND semver = ?",
                 (subworkflow_id, version),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = f"Failed to fetch subworkflow {subworkflow_id!r}@{version!r}"
             logger.warning(
@@ -410,12 +413,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
                 "ORDER BY subworkflow_id, semver LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to list subworkflows"
             logger.warning(
@@ -451,11 +454,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT semver FROM subworkflows WHERE subworkflow_id = ?",
                 (subworkflow_id,),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = f"Failed to list versions for subworkflow {subworkflow_id!r}"
             logger.warning(
@@ -494,15 +497,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
                 "WHERE subworkflow_id IN ("
                 "SELECT DISTINCT subworkflow_id FROM subworkflows "
                 "ORDER BY subworkflow_id LIMIT ?"
                 ") ORDER BY subworkflow_id, created_at DESC",
                 (limit,),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to list subworkflows"
             logger.warning(
@@ -550,17 +553,17 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         # cost and the rows materialised in memory to roughly
         # ``limit * versions_per_subworkflow``.
         try:
-            id_cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT subworkflow_id FROM subworkflows "
                 "WHERE name LIKE ? ESCAPE '\\' COLLATE NOCASE "
                 "OR description LIKE ? ESCAPE '\\' COLLATE NOCASE "
                 "GROUP BY subworkflow_id "
                 "ORDER BY subworkflow_id LIMIT ? OFFSET ?",
                 (pattern, pattern, limit, offset),
-            )
-            page_ids = [
-                str(row["subworkflow_id"]) for row in await id_cursor.fetchall()
-            ]
+            ) as id_cursor:
+                page_ids = [
+                    str(row["subworkflow_id"]) for row in await id_cursor.fetchall()
+                ]
         except sqlite3.Error as exc:
             msg = f"Failed to search subworkflows with query {query!r}"
             logger.warning(
@@ -575,12 +578,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             return ()
         placeholders = ", ".join("?" for _ in page_ids)
         try:
-            full_cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {_SUBWORKFLOW_SELECT} FROM subworkflows "  # noqa: S608
                 f"WHERE subworkflow_id IN ({placeholders})",
                 tuple(page_ids),
-            )
-            full_rows = await full_cursor.fetchall()
+            ) as full_cursor:
+                full_rows = await full_cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to load full versions for search results"
             logger.warning(
@@ -608,11 +611,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         subworkflow_id, version = entity_id
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM subworkflows WHERE subworkflow_id = ? AND semver = ?",
                     (subworkflow_id, version),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except sqlite3.Error as exc:
                 await self._db.rollback()
                 msg = f"Failed to delete subworkflow {subworkflow_id!r}@{version!r}"
@@ -625,7 +629,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 )
                 raise QueryError(msg) from exc
 
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
     async def delete_if_unreferenced(
         self,
@@ -664,12 +668,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 if parents:
                     await self._db.rollback()
                     return False, parents
-
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM subworkflows WHERE subworkflow_id = ? AND semver = ?",
                     (subworkflow_id, version),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except Exception as exc:
                 logger.warning(
                     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
@@ -693,7 +697,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     )
                 raise
 
-        deleted = cursor.rowcount > 0
+        deleted = _db_rowcount > 0
         return deleted, ()
 
     async def find_parents(
@@ -803,8 +807,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(query)
-            return await cursor.fetchall()
+            async with self._db.execute(query) as cursor:
+                return await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = f"Failed to find parents for subworkflow {subworkflow_id!r}"
             logger.warning(

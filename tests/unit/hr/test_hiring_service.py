@@ -253,11 +253,18 @@ class TestHiringServiceInstantiateAgent:
                 selected_candidate_id=None,
             )
 
-    async def test_instantiate_already_instantiated_raises(
+    async def test_reinstantiate_rejects_already_instantiated(
         self,
         hiring_service: HiringService,
     ) -> None:
-        """Re-instantiation of an already INSTANTIATED request raises HiringError."""
+        """Re-instantiating a request rejects (no double-instantiation).
+
+        The terminal INSTANTIATED request is retained in the in-memory cache
+        (this service has no persistence read path), so the second attempt
+        hits the already-instantiated status guard rather than a misleading
+        not-found lookup. The per-request lock still self-evicts once the
+        instantiate step releases it (no holders left).
+        """
         req = await hiring_service.create_request(
             requested_by="cto",
             department="engineering",
@@ -269,7 +276,10 @@ class TestHiringServiceInstantiateAgent:
         candidate_id = str(updated.candidates[0].id)
         approved = await hiring_service.submit_for_approval(updated, candidate_id)
         await hiring_service.instantiate_agent(approved)
-        # Fetch the now-INSTANTIATED request and try again.
+        # The terminal request stays cached as INSTANTIATED; only its lock
+        # auto-evicts once the instantiate step releases it (no holders left).
+        assert str(approved.id) in hiring_service._requests
+        assert len(hiring_service._request_locks) == 0
         with pytest.raises(HiringError, match="already instantiated"):
             await hiring_service.instantiate_agent(approved)
 

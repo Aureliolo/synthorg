@@ -134,11 +134,11 @@ class SQLiteFineTuneCheckpointRepository:
         """
         checkpoint_id = entity_id
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM fine_tune_checkpoints WHERE id = ?",
                 (checkpoint_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to get checkpoint {checkpoint_id}"
             logger.warning(
@@ -169,11 +169,11 @@ class SQLiteFineTuneCheckpointRepository:
         limit = min(max(limit, 1), _MAX_LIST_LIMIT)
         offset = max(offset, 0)
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM fine_tune_checkpoints ORDER BY id ASC LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list checkpoints"
             logger.warning(
@@ -201,18 +201,17 @@ class SQLiteFineTuneCheckpointRepository:
         limit = min(max(limit, 1), _MAX_LIST_LIMIT)
         offset = max(offset, 0)
         try:
-            count_cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT COUNT(*) FROM fine_tune_checkpoints",
-            )
-            count_row = await count_cursor.fetchone()
+            ) as count_cursor:
+                count_row = await count_cursor.fetchone()
             total = count_row[0] if count_row else 0
-
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM fine_tune_checkpoints "
                 "ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list checkpoints"
             logger.warning(
@@ -236,11 +235,11 @@ class SQLiteFineTuneCheckpointRepository:
                 await self._db.execute(
                     "UPDATE fine_tune_checkpoints SET is_active = 0",
                 )
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE fine_tune_checkpoints SET is_active = 1 WHERE id = ?",
                     (checkpoint_id,),
-                )
-                affected = cursor.rowcount
+                ) as cursor:
+                    affected = cursor.rowcount
                 if affected == 0:
                     await self._db.rollback()
                     msg = f"Checkpoint {checkpoint_id} not found"
@@ -299,11 +298,11 @@ class SQLiteFineTuneCheckpointRepository:
         checkpoint_id = entity_id
         async with self._write_context():
             try:
-                check = await self._db.execute(
+                async with self._db.execute(
                     "SELECT is_active FROM fine_tune_checkpoints WHERE id = ?",
                     (checkpoint_id,),
-                )
-                row = await check.fetchone()
+                ) as check:
+                    row = await check.fetchone()
                 if row is None:
                     return False
                 if bool(row["is_active"]):
@@ -314,20 +313,20 @@ class SQLiteFineTuneCheckpointRepository:
                         error=msg,
                     )
                     raise QueryError(msg)
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM fine_tune_checkpoints WHERE id = ? AND is_active = 0",
                     (checkpoint_id,),
-                )
-                if cursor.rowcount == 0:
-                    # Race: became active between SELECT and DELETE.
-                    await self._db.rollback()
-                    msg = f"Cannot delete active checkpoint {checkpoint_id}"
-                    logger.warning(
-                        MEMORY_FINE_TUNE_PERSIST_FAILED,
-                        checkpoint_id=checkpoint_id,
-                        error="checkpoint became active during delete",
-                    )
-                    raise QueryError(msg)
+                ) as cursor:
+                    if cursor.rowcount == 0:
+                        # Race: became active between SELECT and DELETE.
+                        await self._db.rollback()
+                        msg = f"Cannot delete active checkpoint {checkpoint_id}"
+                        logger.warning(
+                            MEMORY_FINE_TUNE_PERSIST_FAILED,
+                            checkpoint_id=checkpoint_id,
+                            error="checkpoint became active during delete",
+                        )
+                        raise QueryError(msg)
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete checkpoint {checkpoint_id}"
@@ -353,10 +352,10 @@ class SQLiteFineTuneCheckpointRepository:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM fine_tune_checkpoints WHERE is_active = 1 LIMIT 1",
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query active checkpoint"
             logger.warning(

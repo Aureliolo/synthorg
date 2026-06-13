@@ -47,6 +47,11 @@ class FakeKnowledgeSourceRepository:
     async def get(self, entity_id: NotBlankStr) -> KnowledgeSource | None:
         return self._rows.get(entity_id)
 
+    async def get_many(
+        self, source_ids: tuple[NotBlankStr, ...]
+    ) -> tuple[KnowledgeSource, ...]:
+        return tuple(self._rows[sid] for sid in source_ids if sid in self._rows)
+
     async def delete(self, entity_id: NotBlankStr) -> bool:
         if self._fail_on_delete:
             msg = f"injected delete failure for source {entity_id!r}"

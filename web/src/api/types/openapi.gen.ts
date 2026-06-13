@@ -6838,19 +6838,6 @@ export type components = {
              */
             readonly success: boolean;
         };
-        /** ApiResponse[tuple[ActiveAgentSummary, ...]] */
-        readonly "ApiResponse_tuple_ActiveAgentSummary_..._": {
-            readonly data: readonly components["schemas"]["ActiveAgentSummary"][] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
-            readonly success: boolean;
-        };
         /** ApiResponse[tuple[AgentConfig, ...]] */
         readonly "ApiResponse_tuple_AgentConfig_..._": {
             readonly data: readonly components["schemas"]["AgentConfig"][] | null;
@@ -6971,32 +6958,6 @@ export type components = {
         /** ApiResponse[tuple[DriftReportResponse, ...]] */
         readonly "ApiResponse_tuple_DriftReportResponse_..._": {
             readonly data: readonly components["schemas"]["DriftReportResponse"][] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
-            readonly success: boolean;
-        };
-        /** ApiResponse[tuple[ExperimentVariant, ...]] */
-        readonly "ApiResponse_tuple_ExperimentVariant_..._": {
-            readonly data: readonly components["schemas"]["ExperimentVariant"][] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
-            readonly success: boolean;
-        };
-        /** ApiResponse[tuple[InterruptResponse, ...]] */
-        readonly "ApiResponse_tuple_InterruptResponse_..._": {
-            readonly data: readonly components["schemas"]["InterruptResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -11487,6 +11448,26 @@ export type components = {
             readonly source: "builtin" | "user";
             readonly tags: readonly string[];
         };
+        /** PaginatedResponse[ActiveAgentSummary] */
+        readonly PaginatedResponse_ActiveAgentSummary_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["ActiveAgentSummary"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[ActivityEvent] */
         readonly PaginatedResponse_ActivityEvent_: {
             /** @default [] */
@@ -11971,6 +11952,26 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** PaginatedResponse[ExperimentVariant] */
+        readonly PaginatedResponse_ExperimentVariant_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["ExperimentVariant"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[FineTuneRun] */
         readonly PaginatedResponse_FineTuneRun_: {
             /** @default [] */
@@ -12035,6 +12036,26 @@ export type components = {
         readonly PaginatedResponse_InstalledEntry_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["InstalledEntry"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** PaginatedResponse[InterruptResponse] */
+        readonly PaginatedResponse_InterruptResponse_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["InterruptResponse"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -17931,7 +17952,12 @@ export interface operations {
     };
     readonly ApiV1AgentsActiveListActiveAgents: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
@@ -17944,9 +17970,10 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_ActiveAgentSummary_..._"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_ActiveAgentSummary_"];
                 };
             };
+            readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
@@ -20750,7 +20777,12 @@ export interface operations {
     };
     readonly ApiV1ExperimentsVariantsListVariants: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
             readonly header?: never;
             readonly path: {
                 /** @description Resource identifier */
@@ -20766,7 +20798,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_ExperimentVariant_..._"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_ExperimentVariant_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -21155,6 +21187,10 @@ export interface operations {
     readonly ApiV1InterruptsListInterrupts: {
         readonly parameters: {
             readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
                 /** @description Filter to interrupts for this session; omit to list all. */
                 readonly session_id?: string | null;
             };
@@ -21170,7 +21206,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_InterruptResponse_..._"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_InterruptResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -23264,7 +23300,10 @@ export interface operations {
     };
     readonly ApiV1ProjectsProjectIdBrainEntryIdHistoryGetHistory: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
             readonly header?: never;
             readonly path: {
                 /** @description Resource identifier */
@@ -23398,7 +23437,10 @@ export interface operations {
     };
     readonly ApiV1ProjectsProjectIdDocsSlugHistoryGetHistory: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
             readonly header?: never;
             readonly path: {
                 /** @description Resource identifier */

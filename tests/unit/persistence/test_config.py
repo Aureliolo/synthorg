@@ -89,6 +89,21 @@ class TestPostgresConfig:
         assert cfg.statement_timeout_ms == 30_000
         assert cfg.connect_timeout_seconds == 10.0
 
+    @pytest.mark.parametrize("field", ["host", "username", "database"])
+    @pytest.mark.parametrize("bad", ["db\nhost", "na\tme", "x\x00y", "a\x7fb"])
+    def test_control_chars_rejected(self, field: str, bad: str) -> None:
+        with pytest.raises(ValidationError, match="control characters"):
+            _minimal_postgres_config(**{field: bad})
+
+    @pytest.mark.parametrize("field", ["host", "username", "database"])
+    @pytest.mark.parametrize("ok", ["my db", "u@svc", "a/b"])
+    def test_printable_specials_accepted(self, field: str, ok: str) -> None:
+        # Spaces / ``@`` / ``/`` are URL-encoded by ``to_postgres_url`` and
+        # glued into a single ``--flag=value`` argv element, so they round-trip
+        # safely and must not be rejected at construction.
+        cfg = _minimal_postgres_config(**{field: ok})
+        assert getattr(cfg, field) == ok
+
     def test_custom_values(self) -> None:
         cfg = _minimal_postgres_config(
             host="db.internal",

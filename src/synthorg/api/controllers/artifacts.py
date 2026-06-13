@@ -508,7 +508,10 @@ class ArtifactController(Controller):
 
     @get(
         "/{artifact_id:str}/content",
-        guards=[require_read_access],
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("artifacts.download", key="user"),
+        ],
         media_type="application/octet-stream",
     )
     async def download_content(
@@ -534,7 +537,6 @@ class ArtifactController(Controller):
         Raises:
             NotFoundError: If the artifact metadata or content is
                 missing (HTTP 404).
-            Exception: Raised on the corresponding failure path.
         """
         artifact = require_resource_or_404(
             await _service(state).get(artifact_id),

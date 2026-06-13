@@ -11,6 +11,7 @@ expected colour. A violation becomes a HIGH-severity
 measured-vs-expected colours as evidence.
 """
 
+import asyncio
 from pathlib import Path
 from typing import Final
 
@@ -76,7 +77,9 @@ class HeuristicVisionVerifier:
         """
         target = review_input.screenshots[-1]
         path = resolve_screenshot(self._workspace, target.workspace_path)
-        measured = mean_rgb(path)
+        # Pillow decode + numpy averaging is blocking CPU/IO; keep it off
+        # the event loop so concurrent verifications are not serialised.
+        measured = await asyncio.to_thread(mean_rgb, path)
         findings = tuple(
             finding
             for expectation in review_input.expectations

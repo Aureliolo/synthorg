@@ -37,6 +37,10 @@ export interface MockTask {
   assignee_id: string | null
   created_at: string
   approved: boolean
+  // The Kanban ``TaskCard`` reads ``dependencies.length`` without a guard,
+  // so the board crashes when it is absent. Always seed an array.
+  dependencies: string[]
+  estimated_complexity: 'simple' | 'medium' | 'complex' | 'epic'
 }
 
 export function makeTask(overrides: Partial<MockTask> = {}): MockTask {
@@ -49,6 +53,8 @@ export function makeTask(overrides: Partial<MockTask> = {}): MockTask {
     assignee_id: 'agent-001',
     created_at: '2026-04-01T12:00:00Z',
     approved: true,
+    dependencies: [],
+    estimated_complexity: 'medium',
     ...overrides,
   }
 }

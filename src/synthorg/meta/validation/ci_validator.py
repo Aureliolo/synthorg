@@ -246,6 +246,12 @@ class LocalCIValidator:
                 with contextlib.suppress(ProcessLookupError):
                     proc.kill()
                 await proc.wait()
+            logger.warning(
+                META_CI_VALIDATION_FAILED,
+                step=step_name,
+                reason="timeout",
+                timeout_seconds=self._timeout,
+            )
             errors.append(
                 f"{step_name}: timed out after {self._timeout}s",
             )
@@ -257,6 +263,12 @@ class LocalCIValidator:
                 await proc.wait()
             raise
         except FileNotFoundError:
+            logger.warning(
+                META_CI_VALIDATION_FAILED,
+                step=step_name,
+                reason="command_not_found",
+                command=cmd[0],
+            )
             errors.append(
                 f"{step_name}: command not found: {cmd[0]}",
             )
@@ -266,6 +278,13 @@ class LocalCIValidator:
                 with contextlib.suppress(ProcessLookupError):
                     proc.kill()
                 await proc.wait()
+            logger.warning(
+                META_CI_VALIDATION_FAILED,
+                step=step_name,
+                reason="subprocess_os_error",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             errors.append(
                 f"{step_name}: subprocess error: {safe_error_description(exc)}"
             )
@@ -302,22 +321,60 @@ def _check_returncode(
     return True
 
 
+def _is_safe_ci_path(project_root: Path, rel: str) -> bool:
+    """Reject a path that could inject a flag or escape the project root.
+
+    ``changed_files`` originates from LLM-authored ``ImprovementProposal``
+    output and is forwarded verbatim into the ruff / mypy / pytest argv. A
+    value beginning with ``-`` would be parsed as an option (e.g.
+    ``--plugin=evil`` loading an arbitrary pytest plugin from the host), and a
+    path resolving outside ``project_root`` would reach arbitrary host files.
+
+    Args:
+        project_root: Absolute project root the path must stay within.
+        rel: Candidate relative path.
+
+    Returns:
+        ``True`` only for a ``.py`` path with no leading dash or control
+        characters that resolves inside ``project_root``.
+    """
+    if not rel.endswith(".py") or rel.startswith("-"):
+        return False
+    # Reject C0 controls (< space) and DEL (U+007F); both are non-printable
+    # and have no legitimate place in a source-file path.
+    if any(char < " " or char == "\x7f" for char in rel):
+        return False
+    try:
+        resolved = (project_root / rel).resolve()
+    except OSError, ValueError:
+        return False
+    return resolved.is_relative_to(project_root.resolve())
+
+
 def _existing_py_files(
     project_root: Path,
     changed_files: tuple[str, ...],
 ) -> list[str]:
-    """Filter changed files to existing Python files.
+    """Filter changed files to existing, injection-safe Python files.
 
     Args:
         project_root: Absolute path to the project root.
         changed_files: Relative paths of changed files.
 
     Returns:
-        List of changed .py files that exist on disk.
+        Resolved absolute paths of changed .py files that exist on disk
+        and pass :func:`_is_safe_ci_path`.
     """
-    return [
-        f for f in changed_files if f.endswith(".py") and (project_root / f).exists()
-    ]
+    safe: list[str] = []
+    for f in changed_files:
+        if not (_is_safe_ci_path(project_root, f) and (project_root / f).exists()):
+            continue
+        # Forward the validated, fully-resolved absolute path so the
+        # subprocess opens exactly the file the safety check approved,
+        # closing the window where a symlink swapped in after validation
+        # could redirect a relative name re-resolved at exec time (TOCTOU).
+        safe.append(str((project_root / f).resolve()))
+    return safe
 
 
 def _discover_test_files(
@@ -358,9 +415,11 @@ def _discover_test_files(
                 str(Path("tests/unit/meta") / sub / test_name),
             )
         for candidate in candidates:
-            if candidate not in seen:
+            if candidate not in seen and _is_safe_ci_path(project_root, candidate):
                 full = project_root / candidate
                 if full.exists():
-                    test_files.append(candidate)
+                    # Resolved absolute path, same TOCTOU rationale as
+                    # ``_existing_py_files``.
+                    test_files.append(str(full.resolve()))
                     seen.add(candidate)
     return test_files

@@ -105,8 +105,9 @@ class SQLiteProviderAuditRepo:
         )
         async with self._write_context():
             try:
-                cursor = await self._db.execute(_INSERT_SQL, params)
-                await self._db.commit()
+                async with self._db.execute(_INSERT_SQL, params) as cursor:
+                    await self._db.commit()
+                    _db_lastrowid = cursor.lastrowid
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 msg = "Failed to record provider audit event"
@@ -118,7 +119,7 @@ class SQLiteProviderAuditRepo:
                     event_type=event.event_type,
                 )
                 raise QueryError(msg) from exc
-            new_id = cursor.lastrowid
+            new_id = _db_lastrowid
         return event.model_copy(update={"id": new_id})
 
     async def list(
@@ -150,8 +151,8 @@ class SQLiteProviderAuditRepo:
         params.append(limit + 1)
 
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = list(await cursor.fetchall())
+            async with self._db.execute(sql, params) as cursor:
+                rows = list(await cursor.fetchall())
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query provider audit events"
             logger.warning(
@@ -235,8 +236,8 @@ class SQLiteProviderAuditRepo:
         sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
         params.extend([limit, effective_offset])
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = list(await cursor.fetchall())
+            async with self._db.execute(sql, params) as cursor:
+                rows = list(await cursor.fetchall())
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query provider audit events"
             logger.warning(
@@ -283,11 +284,12 @@ class SQLiteProviderAuditRepo:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM provider_audit_events WHERE occurred_at < ?",
                     (format_iso_utc(threshold),),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 msg = "Failed to purge provider audit events by timestamp"
@@ -297,7 +299,7 @@ class SQLiteProviderAuditRepo:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount
+        return _db_rowcount
 
     async def purge_before_id(self, *, before_id: int) -> int:
         """Delete events with ``id < before_id`` (bespoke D7).
@@ -310,11 +312,12 @@ class SQLiteProviderAuditRepo:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM provider_audit_events WHERE id < ?",
                     (before_id,),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 msg = "Failed to purge provider audit events"
@@ -325,7 +328,7 @@ class SQLiteProviderAuditRepo:
                     before_id=before_id,
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount
+        return _db_rowcount
 
     async def _safe_rollback(self) -> None:
         """Best-effort rollback on the shared connection."""

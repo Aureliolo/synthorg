@@ -25,7 +25,7 @@ test.describe('Provider list + notification intake', () => {
     // Catch-all FIRST so the specific stub below wins (Playwright
     // matches handlers LIFO).
     await mockApiRoutes(page)
-    await page.route('**/api/v1/providers', (route) =>
+    await page.route('**/api/v1/providers**', (route) =>
       route.fulfill({
         json: {
           success: true,

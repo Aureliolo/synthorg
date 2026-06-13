@@ -158,8 +158,8 @@ INSERT INTO checkpoints (
         )
 
         try:
-            cursor = await self._db.execute(query, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(query, params) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query latest checkpoint"
             logger.warning(
@@ -222,8 +222,8 @@ INSERT INTO checkpoints (
         )
         params.extend([limit, offset])
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query checkpoints"
             logger.warning(
@@ -256,11 +256,11 @@ INSERT INTO checkpoints (
             raise QueryError(msg)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM checkpoints WHERE created_at < ?",
                     (format_iso_utc(threshold),),
-                )
-                count = cursor.rowcount
+                ) as cursor:
+                    count = cursor.rowcount
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
@@ -285,11 +285,11 @@ INSERT INTO checkpoints (
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM checkpoints WHERE execution_id = ?",
                     (execution_id,),
-                )
-                count = cursor.rowcount
+                ) as cursor:
+                    count = cursor.rowcount
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):

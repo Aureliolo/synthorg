@@ -21,13 +21,17 @@ func TestMaskSecret(t *testing.T) {
 		{"x", "****"},
 	}
 	for _, tt := range tests {
-		if got := maskSecret(tt.input); got != tt.want {
-			t.Errorf("maskSecret(%q) = %q, want %q", tt.input, got, tt.want)
-		}
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			if got := maskSecret(tt.input); got != tt.want {
+				t.Errorf("maskSecret(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 
 func TestConfigShowNotInitialized(t *testing.T) {
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	var buf bytes.Buffer
 
@@ -45,6 +49,7 @@ func TestConfigShowNotInitialized(t *testing.T) {
 }
 
 func TestConfigShowDisplaysFields(t *testing.T) {
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.State{
 		DataDir:            dir,
@@ -116,6 +121,7 @@ func TestConfigShowDisplaysFields(t *testing.T) {
 }
 
 func TestConfigSetChannel(t *testing.T) {
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	// Create initial config.
 	state := config.DefaultState()
@@ -144,6 +150,7 @@ func TestConfigSetChannel(t *testing.T) {
 }
 
 func TestConfigSetImageTag_ClearsVerifiedDigestsAndImageTag(t *testing.T) {
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -182,6 +189,7 @@ func TestConfigSetImageTag_ClearsVerifiedDigestsAndImageTag(t *testing.T) {
 }
 
 func TestConfigSetRejectsInvalidChannel(t *testing.T) {
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -213,6 +221,7 @@ func TestConfigSetAutoCleanup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			sandboxRootCmd(t)
 			dir := t.TempDir()
 			state := config.DefaultState()
 			state.EncryptSecrets = false
@@ -250,6 +259,7 @@ func FuzzConfigSetAutoCleanup(f *testing.F) {
 	f.Add("")
 
 	f.Fuzz(func(t *testing.T, value string) {
+		sandboxRootCmd(t)
 		dir := t.TempDir()
 		state := config.DefaultState()
 		state.EncryptSecrets = false
@@ -275,27 +285,30 @@ func FuzzConfigSetAutoCleanup(f *testing.F) {
 }
 
 func TestConfigSetRejectsInvalidAutoCleanup(t *testing.T) {
-	dir := t.TempDir()
-	state := config.DefaultState()
-	state.EncryptSecrets = false
-	state.DataDir = dir
-	if err := config.Save(state); err != nil {
-		t.Fatal(err)
-	}
-
 	for _, value := range []string{"yes", "1", "YES", "True"} {
-		var buf bytes.Buffer
-		rootCmd.SetOut(&buf)
-		rootCmd.SetErr(&buf)
-		rootCmd.SetArgs([]string{"config", "set", "auto_cleanup", value, "--data-dir", dir})
-		err := rootCmd.Execute()
-		if err == nil {
-			t.Errorf("expected error for auto_cleanup=%q", value)
-		}
+		t.Run(value, func(t *testing.T) {
+			sandboxRootCmd(t)
+			dir := t.TempDir()
+			state := config.DefaultState()
+			state.EncryptSecrets = false
+			state.DataDir = dir
+			if err := config.Save(state); err != nil {
+				t.Fatal(err)
+			}
+
+			var buf bytes.Buffer
+			rootCmd.SetOut(&buf)
+			rootCmd.SetErr(&buf)
+			rootCmd.SetArgs([]string{"config", "set", "auto_cleanup", value, "--data-dir", dir})
+			if err := rootCmd.Execute(); err == nil {
+				t.Errorf("expected error for auto_cleanup=%q", value)
+			}
+		})
 	}
 }
 
 func TestConfigShowAutoCleanup(t *testing.T) {
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -342,6 +355,7 @@ func TestConfigSetLogLevel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			sandboxRootCmd(t)
 			dir := t.TempDir()
 			state := config.DefaultState()
 			state.EncryptSecrets = false
@@ -370,31 +384,33 @@ func TestConfigSetLogLevel(t *testing.T) {
 }
 
 func TestConfigSetRejectsInvalidLogLevel(t *testing.T) {
-	dir := t.TempDir()
-	state := config.DefaultState()
-	state.EncryptSecrets = false
-	state.DataDir = dir
-	if err := config.Save(state); err != nil {
-		t.Fatal(err)
-	}
-	orig := state.LogLevel
-
 	for _, value := range []string{"verbose", "trace", "INFO", "Debug", ""} {
-		var buf bytes.Buffer
-		rootCmd.SetOut(&buf)
-		rootCmd.SetErr(&buf)
-		rootCmd.SetArgs([]string{"config", "set", "log_level", value, "--data-dir", dir})
-		err := rootCmd.Execute()
-		if err == nil {
-			t.Errorf("expected error for log_level=%q", value)
-		}
-		loaded, loadErr := config.Load(dir)
-		if loadErr != nil {
-			t.Fatalf("Load after rejected %q: %v", value, loadErr)
-		}
-		if loaded.LogLevel != orig {
-			t.Errorf("rejected %q mutated LogLevel: got %q, want %q", value, loaded.LogLevel, orig)
-		}
+		t.Run(value, func(t *testing.T) {
+			sandboxRootCmd(t)
+			dir := t.TempDir()
+			state := config.DefaultState()
+			state.EncryptSecrets = false
+			state.DataDir = dir
+			if err := config.Save(state); err != nil {
+				t.Fatal(err)
+			}
+			orig := state.LogLevel
+
+			var buf bytes.Buffer
+			rootCmd.SetOut(&buf)
+			rootCmd.SetErr(&buf)
+			rootCmd.SetArgs([]string{"config", "set", "log_level", value, "--data-dir", dir})
+			if err := rootCmd.Execute(); err == nil {
+				t.Errorf("expected error for log_level=%q", value)
+			}
+			loaded, loadErr := config.Load(dir)
+			if loadErr != nil {
+				t.Fatalf("Load after rejected %q: %v", value, loadErr)
+			}
+			if loaded.LogLevel != orig {
+				t.Errorf("rejected %q mutated LogLevel: got %q, want %q", value, loaded.LogLevel, orig)
+			}
+		})
 	}
 }
 
@@ -409,6 +425,7 @@ func FuzzConfigSetLogLevel(f *testing.F) {
 	f.Add("INFO")
 
 	f.Fuzz(func(t *testing.T, value string) {
+		sandboxRootCmd(t)
 		dir := t.TempDir()
 		state := config.DefaultState()
 		state.EncryptSecrets = false
@@ -468,13 +485,7 @@ func TestConfigGet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
-			// Reset rootCmd output after each subtest to prevent
-			// cross-contamination of shared Cobra state.
-			t.Cleanup(func() {
-				rootCmd.SetOut(nil)
-				rootCmd.SetErr(nil)
-				rootCmd.SetArgs(nil)
-			})
+			sandboxRootCmd(t)
 			var buf bytes.Buffer
 			rootCmd.SetOut(&buf)
 			rootCmd.SetErr(&buf)
@@ -491,11 +502,7 @@ func TestConfigGet(t *testing.T) {
 }
 
 func TestConfigGetUnknownKey(t *testing.T) {
-	t.Cleanup(func() {
-		rootCmd.SetOut(nil)
-		rootCmd.SetErr(nil)
-		rootCmd.SetArgs(nil)
-	})
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -515,11 +522,6 @@ func TestConfigGetUnknownKey(t *testing.T) {
 }
 
 func TestConfigGetRejectsSecretKeys(t *testing.T) {
-	t.Cleanup(func() {
-		rootCmd.SetOut(nil)
-		rootCmd.SetErr(nil)
-		rootCmd.SetArgs(nil)
-	})
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -530,6 +532,7 @@ func TestConfigGetRejectsSecretKeys(t *testing.T) {
 
 	for _, key := range []string{"jwt_secret", "settings_key"} {
 		t.Run(key, func(t *testing.T) {
+			sandboxRootCmd(t)
 			var buf bytes.Buffer
 			rootCmd.SetOut(&buf)
 			rootCmd.SetErr(&buf)
@@ -543,11 +546,7 @@ func TestConfigGetRejectsSecretKeys(t *testing.T) {
 }
 
 func TestConfigGetDefaultChannel(t *testing.T) {
-	t.Cleanup(func() {
-		rootCmd.SetOut(nil)
-		rootCmd.SetErr(nil)
-		rootCmd.SetArgs(nil)
-	})
+	sandboxRootCmd(t)
 	// Seed a config file that omits "channel" so Load's unmarshal-onto-
 	// DefaultState fallback supplies the default "stable" value.
 	dir := t.TempDir()
@@ -584,6 +583,7 @@ func TestConfigGetDefaultChannel(t *testing.T) {
 }
 
 func TestConfigSetRejectsUnknownKey(t *testing.T) {
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false

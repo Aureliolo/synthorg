@@ -64,11 +64,11 @@ class FakeRawMessage:
 
     async def ack(self) -> None:
         self.ack_count += 1
-        self._queue._record_ack(self._claim, self._kind)
+        await self._queue._record_ack(self._claim, self._kind)
 
     async def nak(self, delay: float = 0.0) -> None:
         self.nak_count += 1
-        self._queue._record_nack(
+        await self._queue._record_nack(
             self._claim,
             self.metadata.num_delivered,
             self._kind,
@@ -77,6 +77,7 @@ class FakeRawMessage:
     async def in_progress(self) -> None:
         self.in_progress_count += 1
         self._queue.in_progress_total += 1
+        await self._queue._notify_changed()
 
 
 class _FakeNatsMsg:
@@ -119,6 +120,10 @@ class FakeJetStreamTaskQueue:
         # consumers count deliveries independently, as two real durable
         # consumers do.
         self._delivery_count: dict[tuple[str, str], int] = {}
+        # Notified after every observable state change (ack / nack-terminate /
+        # in-progress / core-publish) so tests await an exact handshake via
+        # ``wait_for`` instead of polling the inspection surfaces on a timer.
+        self._changed = asyncio.Condition()
         # Inspection surfaces for assertions.
         self.acked: list[TaskClaim] = []
         self.terminated: list[TaskClaim] = []
@@ -127,6 +132,28 @@ class FakeJetStreamTaskQueue:
         self.dead_letters: list[TaskClaim] = []
         self.core_published: list[tuple[str, bytes]] = []
         self.in_progress_total = 0
+
+    async def _notify_changed(self) -> None:
+        """Wake every ``wait_for`` waiter after a state mutation."""
+        async with self._changed:
+            self._changed.notify_all()
+
+    async def wait_for(
+        self,
+        predicate: Callable[[], bool],
+        timeout: float,  # noqa: ASYNC109 -- caller-supplied cap, applied via asyncio.timeout
+    ) -> None:
+        """Await *predicate* becoming true, bounded by *timeout* seconds.
+
+        Deterministic handshake on the queue's own state changes: the
+        predicate is re-evaluated each time a worker acks / nacks / extends /
+        publishes, never on a fixed polling interval. The *timeout* is the
+        load-bearing hard cap that converts a genuine stall into a fast
+        failure rather than a suite-level hang.
+        """
+        async with asyncio.timeout(timeout):
+            async with self._changed:
+                await self._changed.wait_for(predicate)
 
     @property
     def is_running(self) -> bool:
@@ -156,6 +183,7 @@ class FakeJetStreamTaskQueue:
     async def core_publish(self, subject: str, payload: bytes) -> None:
         """Record a core-NATS (at-most-once) publish, e.g. heartbeats."""
         self.core_published.append((subject, payload))
+        await self._notify_changed()
 
     async def core_subscribe(
         self,
@@ -193,13 +221,14 @@ class FakeJetStreamTaskQueue:
         target = self._dead_ready if kind == "dead" else self._ready
         target.put_nowait(raw)
 
-    def _record_ack(self, claim: TaskClaim, kind: str) -> None:
+    async def _record_ack(self, claim: TaskClaim, kind: str) -> None:
         if kind == "dead":
             self.dead_acked.append(claim)
         else:
             self.acked.append(claim)
+        await self._notify_changed()
 
-    def _record_nack(
+    async def _record_nack(
         self,
         claim: TaskClaim,
         num_delivered: int,
@@ -213,8 +242,10 @@ class FakeJetStreamTaskQueue:
                 self.dead_terminated.append(claim)
             else:
                 self.terminated.append(claim)
+            await self._notify_changed()
             return
         self._enqueue(claim, kind=kind)
+        await self._notify_changed()
 
     async def next_claim(
         self,

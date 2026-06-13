@@ -245,8 +245,8 @@ class SQLiteDynamicToolRepository:
         """
         sql = f"SELECT {_SELECT_COLS} FROM dynamic_tools WHERE id = ?"  # noqa: S608
         try:
-            cursor = await self._db.execute(sql, (entity_id,))
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, (entity_id,)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch dynamic_tool {entity_id!r}"
             logger.warning(
@@ -287,8 +287,8 @@ class SQLiteDynamicToolRepository:
             "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
         )
         try:
-            cursor = await self._db.execute(sql, (effective_limit, offset))
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, (effective_limit, offset)) as cursor:
+                rows = await cursor.fetchall()
             items = tuple(_row_to_blueprint(r) for r in rows)
         except QueryError:
             raise
@@ -355,8 +355,8 @@ class SQLiteDynamicToolRepository:
             "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
         )
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
             items = tuple(_row_to_blueprint(r) for r in rows)
         except QueryError:
             raise
@@ -382,8 +382,8 @@ class SQLiteDynamicToolRepository:
         where, params = self._build_where(filter_spec)
         sql = f"SELECT COUNT(*) FROM dynamic_tools WHERE {where}"  # noqa: S608
         try:
-            cursor = await self._db.execute(sql, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
             assert row is not None  # noqa: S101  -- COUNT always returns a row
             return int(row[0])
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -443,8 +443,9 @@ class SQLiteDynamicToolRepository:
         )
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, params)
-                await self._db.commit()
+                async with self._db.execute(sql, params) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback(
                     event=PERSISTENCE_DYNAMIC_TOOL_TRANSITION_FAILED,
@@ -458,7 +459,7 @@ class SQLiteDynamicToolRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a blueprint by id; ``True`` iff a row was removed.
@@ -472,8 +473,9 @@ class SQLiteDynamicToolRepository:
         sql = "DELETE FROM dynamic_tools WHERE id = ?"
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, (entity_id,))
-                await self._db.commit()
+                async with self._db.execute(sql, (entity_id,)) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback(
                     event=PERSISTENCE_DYNAMIC_TOOL_DELETE_FAILED,
@@ -487,7 +489,7 @@ class SQLiteDynamicToolRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
     async def _rollback(self, *, event: str, operation: str) -> None:
         """Roll back the current transaction, swallowing rollback errors.

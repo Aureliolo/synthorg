@@ -205,7 +205,7 @@ class SQLiteWebhookReceiptRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE webhook_receipts SET "
                     "status = ?, processed_at = ?, error = ? "
                     "WHERE id = ?",
@@ -215,8 +215,9 @@ class SQLiteWebhookReceiptRepository:
                         error,
                         str(receipt_id),
                     ),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -229,7 +230,7 @@ class SQLiteWebhookReceiptRepository:
                 )
                 raise QueryError(msg) from exc
             else:
-                return cursor.rowcount > 0
+                return _db_rowcount > 0
 
     async def update_status_if_current(
         self,
@@ -256,7 +257,7 @@ class SQLiteWebhookReceiptRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE webhook_receipts SET "
                     "status = ?, processed_at = ?, error = ? "
                     "WHERE id = ? AND status = ?",
@@ -267,8 +268,9 @@ class SQLiteWebhookReceiptRepository:
                         str(receipt_id),
                         expected_status,
                     ),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -281,7 +283,7 @@ class SQLiteWebhookReceiptRepository:
                 )
                 raise QueryError(msg) from exc
             else:
-                return cursor.rowcount > 0
+                return _db_rowcount > 0
 
     async def list_items(
         self,
@@ -332,11 +334,11 @@ class SQLiteWebhookReceiptRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM webhook_receipts WHERE id = ?",
                     (str(entity_id),),
-                )
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
@@ -417,12 +419,12 @@ class SQLiteWebhookReceiptRepository:
         cutoff_iso = format_iso_utc(cutoff)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM webhook_receipts "
                     "WHERE connection_name = ? AND received_at < ?",
                     (str(connection_name), cutoff_iso),
-                )
-                removed = cursor.rowcount
+                ) as cursor:
+                    removed = cursor.rowcount
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):

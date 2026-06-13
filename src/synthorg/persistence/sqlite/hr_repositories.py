@@ -178,8 +178,8 @@ FROM lifecycle_events"""
         params.append(limit)
 
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list lifecycle events"
             logger.warning(
@@ -323,8 +323,8 @@ FROM task_metrics"""
         params.append(limit)
 
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query task metrics"
             logger.warning(
@@ -464,8 +464,8 @@ FROM collaboration_metrics"""
         params.append(limit)
 
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query collaboration metrics"
             logger.warning(

@@ -18,7 +18,7 @@ test.describe('A2A federation critical flow', () => {
     await installWebSocketHarness(page)
     await mockApiRoutes(page)
     const peer = makeConnection({ name: 'a2a-peer-eu', connection_type: 'a2a_peer' })
-    await page.route('**/api/v1/connections', (route) =>
+    await page.route('**/api/v1/connections**', (route) =>
       route.fulfill({
         json: {
           success: true,
@@ -36,14 +36,14 @@ test.describe('A2A federation critical flow', () => {
     await expect(page.locator('main')).toBeVisible()
     await expect(page.getByText('a2a-peer-eu').first()).toBeVisible()
 
-    // Per-row "More actions" button opens the edit modal -- the
-    // closest thing the connections page has to a row-detail view
-    // (no /connections/:name route is mounted yet). Clicking it and
-    // asserting the dialog appears proves the row's action handler
-    // is wired, not just that the text renders.
-    const moreActions = page.getByRole('button', { name: /More actions for a2a-peer-eu/ })
-    await expect(moreActions).toBeVisible()
-    await moreActions.click()
+    // The per-row "Edit" button opens the edit modal -- the closest
+    // thing the connections page has to a row-detail view (no
+    // /connections/:name route is mounted yet). Clicking it and
+    // asserting the dialog appears proves the row's action handler is
+    // wired, not just that the text renders.
+    const editPeer = page.getByRole('button', { name: /Edit a2a-peer-eu/ })
+    await expect(editPeer).toBeVisible()
+    await editPeer.click()
     await expect(page.getByRole('dialog')).toBeVisible()
   })
 })

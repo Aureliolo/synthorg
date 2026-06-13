@@ -181,12 +181,12 @@ class SQLiteProjectBrainRepository:
         async with self._write_context():
             try:
                 await self._db.execute(insert_sql, params)
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "SELECT MAX(revision) AS rev FROM project_brain_entries "
                     "WHERE project_id = ? AND entry_id = ?",
                     (entry.project_id, entry.entry_id),
-                )
-                row = await cursor.fetchone()
+                ) as cursor:
+                    row = await cursor.fetchone()
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
                 await self._safe_rollback(event=BRAIN_PERSIST_SAVE_FAILED)
@@ -353,8 +353,8 @@ class SQLiteProjectBrainRepository:
         )
         params = (filter_spec.project_id, *params)
         try:
-            cursor = await self._db.execute(sql, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to count brain entries for {filter_spec.project_id!r}"
             logger.warning(
@@ -417,8 +417,8 @@ class SQLiteProjectBrainRepository:
             "WHERE project_id = ?"
         )
         try:
-            cursor = await self._db.execute(sql, (project_id,))
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, (project_id,)) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to read brain index state for {project_id!r}"
             logger.warning(
@@ -455,8 +455,11 @@ class SQLiteProjectBrainRepository:
         )
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, (format_iso_utc(threshold),))
-                await self._db.commit()
+                async with self._db.execute(
+                    sql, (format_iso_utc(threshold),)
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback(event=BRAIN_PERSIST_PURGE_FAILED)
                 msg = "Failed to purge brain entries"
@@ -466,7 +469,7 @@ class SQLiteProjectBrainRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return max(0, cursor.rowcount)
+            return max(0, _db_rowcount)
 
     async def _fetch_one(
         self, sql: str, params: tuple[object, ...]
@@ -480,8 +483,8 @@ class SQLiteProjectBrainRepository:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(sql, params)
-            return await cursor.fetchone()
+            async with self._db.execute(sql, params) as cursor:
+                return await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to fetch brain entry"
             logger.warning(
@@ -503,8 +506,8 @@ class SQLiteProjectBrainRepository:
             QueryError: If the database query or deserialisation fails.
         """
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query brain entries"
             logger.warning(

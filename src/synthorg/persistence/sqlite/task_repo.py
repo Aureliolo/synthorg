@@ -68,26 +68,7 @@ class SQLiteTaskRepository:
         self._db = db
         self._write_context = write_context
 
-    async def save(self, task: Task) -> None:
-        """Persist a task (upsert semantics).
-
-        Raises:
-            QueryError: If the database query fails.
-        """
-        async with self._write_context():
-            try:
-                params = task.model_dump(mode="json")
-                # Tuple fields must be stored as JSON strings.
-                params["reviewers"] = _json_list(task.reviewers)
-                params["dependencies"] = _json_list(task.dependencies)
-                params["artifacts_expected"] = _json_list(task.artifacts_expected)
-                params["acceptance_criteria"] = _json_list(
-                    task.acceptance_criteria,
-                )
-                params["delegation_chain"] = _json_list(task.delegation_chain)
-
-                await self._db.execute(
-                    """\
+    _UPSERT_SQL = """\
 INSERT INTO tasks (
     id, title, description, type, priority, project, created_by,
     assigned_to, status, estimated_complexity, budget_limit, deadline,
@@ -122,15 +103,64 @@ ON CONFLICT(id) DO UPDATE SET
     artifacts_expected=excluded.artifacts_expected,
     acceptance_criteria=excluded.acceptance_criteria,
     delegation_chain=excluded.delegation_chain
-""",
-                    params,
-                )
+"""
+
+    @staticmethod
+    def _upsert_params(task: Task) -> dict[str, object]:
+        """Build the named-parameter dict for one task upsert.
+
+        Returns:
+            The ``model_dump`` payload with tuple fields JSON-encoded.
+        """
+        params = task.model_dump(mode="json")
+        # Tuple fields must be stored as JSON strings.
+        params["reviewers"] = _json_list(task.reviewers)
+        params["dependencies"] = _json_list(task.dependencies)
+        params["artifacts_expected"] = _json_list(task.artifacts_expected)
+        params["acceptance_criteria"] = _json_list(task.acceptance_criteria)
+        params["delegation_chain"] = _json_list(task.delegation_chain)
+        return params
+
+    async def save(self, task: Task) -> None:
+        """Persist a task (upsert semantics).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        async with self._write_context():
+            try:
+                await self._db.execute(self._UPSERT_SQL, self._upsert_params(task))
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to save task {task.id!r}"
                 logger.warning(
                     PERSISTENCE_TASK_SAVE_FAILED,
                     task_id=str(task.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+
+    async def save_many(self, tasks: tuple[Task, ...]) -> None:
+        """Upsert many tasks in one transaction (ADR-0001 D7).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        if not tasks:
+            return
+        async with self._write_context():
+            try:
+                await self._db.executemany(
+                    self._UPSERT_SQL,
+                    [self._upsert_params(task) for task in tasks],
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                msg = f"Failed to save {len(tasks)} tasks"
+                logger.warning(
+                    PERSISTENCE_TASK_SAVE_FAILED,
+                    task_count=len(tasks),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -192,11 +222,11 @@ id, title, description, type, priority, project, created_by,
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {self._TASK_COLUMNS} FROM tasks WHERE id = ?",  # noqa: S608
                 (task_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch task {task_id!r}"
             logger.warning(
@@ -238,8 +268,8 @@ id, title, description, type, priority, project, created_by,
         params: list[object] = [limit, offset]
 
         try:
-            cursor = await self._db.execute(query, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list tasks"
             logger.warning(
@@ -292,8 +322,8 @@ id, title, description, type, priority, project, created_by,
         params.extend([limit, offset])
 
         try:
-            cursor = await self._db.execute(query, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list tasks"
             logger.warning(
@@ -332,8 +362,8 @@ id, title, description, type, priority, project, created_by,
             query += " WHERE " + " AND ".join(clauses)
 
         try:
-            cursor = await self._db.execute(query, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(query, params) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count tasks"
             logger.warning(
@@ -357,11 +387,11 @@ id, title, description, type, priority, project, created_by,
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM tasks WHERE id = ?", (task_id,)
-                )
-                await self._db.commit()
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    await self._db.commit()
+                    deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete task {task_id!r}"
                 logger.warning(

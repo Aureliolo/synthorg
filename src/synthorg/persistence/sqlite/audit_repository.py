@@ -163,8 +163,8 @@ class SQLiteAuditRepository:
         params.append(offset)
 
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query audit entries"
             logger.warning(
@@ -302,11 +302,12 @@ class SQLiteAuditRepository:
         utc_cutoff = cutoff.astimezone(UTC).isoformat()
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM audit_entries WHERE timestamp < ?",
                     (utc_cutoff,),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 msg = "Failed to purge audit entries"
@@ -317,7 +318,7 @@ class SQLiteAuditRepository:
                     cutoff=utc_cutoff,
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount
+        return _db_rowcount
 
     def _row_to_entry(self, row: dict[str, object]) -> AuditEntry:
         """Convert a database row to an ``AuditEntry`` model.

@@ -14,11 +14,18 @@ elsewhere.
 
 import asyncio
 import contextlib
+from typing import Final
 
 import pytest
 import structlog.testing
 
 from synthorg.api.lifecycle_builder import _cancel_with_timeout
+
+# Janitor-body sleep used by the stub tasks below. Deliberately far longer than
+# every ``_cancel_with_timeout`` cap exercised here (<= 2.0s): the task is
+# guaranteed still sleeping when the helper's timeout fires, so the tests
+# observe the bounded-cancel path rather than a task that happened to finish.
+_TASK_SLEEP_SECONDS: Final[float] = 60.0
 
 
 async def _absorb_one_cancel() -> None:
@@ -32,9 +39,9 @@ async def _absorb_one_cancel() -> None:
     completes cleanly after the helper returns.
     """
     with contextlib.suppress(asyncio.CancelledError):
-        await asyncio.sleep(60)
+        await asyncio.sleep(_TASK_SLEEP_SECONDS)
     # The second cancel arrives here and propagates up, ending the task.
-    await asyncio.sleep(60)
+    await asyncio.sleep(_TASK_SLEEP_SECONDS)
 
 
 @pytest.mark.unit
@@ -46,7 +53,7 @@ class TestCancelWithTimeout:
 
         async def cooperative() -> None:
             try:
-                await asyncio.sleep(60)
+                await asyncio.sleep(_TASK_SLEEP_SECONDS)
             except asyncio.CancelledError:
                 return
 

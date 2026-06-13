@@ -322,6 +322,10 @@ class DocMetadata(BaseModel):
         default=(),
         description="Classification tags",
     )
+    related_task_ids: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="IDs of tasks that produced or reference this doc",
+    )
     head_commit_sha: NotBlankStr = Field(
         description="Latest commit SHA on synthorg/docs that touched this doc",
     )

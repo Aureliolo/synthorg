@@ -64,8 +64,8 @@ class SQLitePresetOverrideRepo:
             "FROM preset_overrides WHERE preset_name = ?"
         )
         try:
-            cursor = await self._db.execute(sql, (preset_name,))
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, (preset_name,)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to read preset override"
             logger.warning(
@@ -188,8 +188,8 @@ class SQLitePresetOverrideRepo:
             "ORDER BY preset_name ASC LIMIT ? OFFSET ?"
         )
         try:
-            cursor = await self._db.execute(sql, (limit, offset))
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, (limit, offset)) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list preset overrides"
             logger.warning(
@@ -233,11 +233,12 @@ class SQLitePresetOverrideRepo:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM preset_overrides WHERE preset_name = ?",
                     (preset_name,),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 msg = "Failed to delete preset override"
@@ -248,7 +249,7 @@ class SQLitePresetOverrideRepo:
                     preset_name=preset_name,
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
     async def _safe_rollback(self) -> None:
         """Best-effort rollback on the shared connection."""

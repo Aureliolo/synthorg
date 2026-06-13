@@ -7,6 +7,7 @@ repo. Tests verify the swap is atomic, idempotent, and invalidates
 the cache so subsequent reads observe the new backend.
 """
 
+import asyncio
 from collections.abc import Iterator
 
 import pytest
@@ -84,6 +85,45 @@ def _make_catalog(initial_label: str) -> tuple[ConnectionCatalog, _StubRepo]:
         secret_backend=_StubSecretBackend(),  # type: ignore[arg-type]
     )
     return catalog, initial
+
+
+class TestNameLockEviction:
+    async def test_lock_evicted_when_idle(self) -> None:
+        catalog, _initial = _make_catalog("stub")
+        async with catalog._name_lock("conn-a"):
+            assert len(catalog._name_locks) == 1
+        # Last (only) holder exited: the lock entry is gone.
+        assert len(catalog._name_locks) == 0
+
+    async def test_same_name_serialises_then_evicts(self) -> None:
+        catalog, _initial = _make_catalog("stub")
+        order: list[str] = []
+        first_in = asyncio.Event()
+        release_first = asyncio.Event()
+
+        async def first() -> None:
+            async with catalog._name_lock("conn-a"):
+                order.append("first-in")
+                first_in.set()
+                await release_first.wait()
+                order.append("first-out")
+
+        async def second() -> None:
+            await first_in.wait()
+            async with catalog._name_lock("conn-a"):
+                order.append("second-in")
+
+        async with asyncio.TaskGroup() as tg:
+            _ = tg.create_task(first())
+            _ = tg.create_task(second())
+            await first_in.wait()
+            release_first.set()
+
+        # A second holder of the same name reuses the one lock (no identity
+        # race), so it runs strictly after the first releases; the entry
+        # then evicts once both have exited.
+        assert order == ["first-in", "first-out", "second-in"]
+        assert len(catalog._name_locks) == 0
 
 
 class TestRebindRepository:

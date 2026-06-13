@@ -10,13 +10,13 @@ same-source re-import re-scans in place (idempotent), while a *different*
 source onto an occupied project is refused.
 """
 
-import asyncio
 import re
 from pathlib import Path
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.codebase_structure_map import CodebaseStructureMap
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.brownfield.errors import BrownfieldWorkspaceNotEmptyError
@@ -87,21 +87,7 @@ class BrownfieldImportService:
         self._repo = structure_map_repo
         self._knowledge = knowledge_service
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._locks: dict[str, asyncio.Lock] = {}
-        self._locks_guard = asyncio.Lock()
-
-    async def _lock_for(self, project_id: str) -> asyncio.Lock:
-        """Return the per-project import lock, creating it on first use.
-
-        Args:
-            project_id: Project whose imports must be serialised.
-
-        Returns:
-            The :class:`asyncio.Lock` guarding imports for ``project_id``;
-            the same instance is returned on every subsequent call.
-        """
-        async with self._locks_guard:
-            return self._locks.setdefault(project_id, asyncio.Lock())
+        self._locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     async def import_codebase(
         self, submission: CodebaseImportSubmission
@@ -121,8 +107,7 @@ class BrownfieldImportService:
             GitBackendSeedError: The seed (clone/copy) failed.
         """
         project_id = submission.project_id
-        lock = await self._lock_for(project_id)
-        async with lock:
+        async with self._locks.acquire(project_id):
             logger.info(
                 BROWNFIELD_IMPORT_STARTED,
                 project_id=project_id,

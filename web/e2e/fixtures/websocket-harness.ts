@@ -104,13 +104,23 @@ export async function injectEvent(
   page: Page,
   event: Record<string, unknown>,
 ): Promise<void> {
+  // The SPA opens its WebSocket asynchronously (it first fetches an
+  // auth ws-ticket), so a goto() does not guarantee the stub exists by
+  // the time a test injects. Wait for the constructor to register the
+  // stub before pushing, so callers never race the connection.
+  await page.waitForFunction(() => {
+    const ws = (
+      window as unknown as { __synthorgWsLatest?: WebSocket | null }
+    ).__synthorgWsLatest
+    return ws !== undefined && ws !== null
+  })
   await page.evaluate((payload) => {
     interface SynthorgWindow {
-      __synthorgWsLatest: WebSocket | null
+      __synthorgWsLatest?: WebSocket | null
     }
     const win = window as unknown as SynthorgWindow
     const ws = win.__synthorgWsLatest
-    if (ws === null) {
+    if (ws == null) {
       throw new Error('No WebSocket stub registered; call installWebSocketHarness first')
     }
     const data = JSON.stringify(payload)

@@ -150,11 +150,11 @@ class SQLiteFineTuneRunRepository:
         """
         run_id = entity_id
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM fine_tune_runs WHERE id = ?",
                 (run_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to get fine-tune run {run_id}"
             logger.warning(
@@ -184,8 +184,8 @@ class SQLiteFineTuneRunRepository:
             "ORDER BY started_at DESC LIMIT 1"
         )
         try:
-            cursor = await self._db.execute(query, _ACTIVE_STAGES)
-            row = await cursor.fetchone()
+            async with self._db.execute(query, _ACTIVE_STAGES) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query active fine-tune run"
             logger.warning(
@@ -215,11 +215,11 @@ class SQLiteFineTuneRunRepository:
         limit = min(max(limit, 1), _MAX_LIST_LIMIT)
         offset = max(offset, 0)
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM fine_tune_runs ORDER BY id ASC LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list fine-tune runs"
             logger.warning(
@@ -247,18 +247,17 @@ class SQLiteFineTuneRunRepository:
         limit = min(max(limit, 1), _MAX_LIST_LIMIT)
         offset = max(offset, 0)
         try:
-            count_cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT COUNT(*) FROM fine_tune_runs",
-            )
-            count_row = await count_cursor.fetchone()
+            ) as count_cursor:
+                count_row = await count_cursor.fetchone()
             total = count_row[0] if count_row else 0
-
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM fine_tune_runs "
                 "ORDER BY started_at DESC LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list fine-tune runs"
             logger.warning(
@@ -281,11 +280,12 @@ class SQLiteFineTuneRunRepository:
         run_id = entity_id
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM fine_tune_runs WHERE id = ?",
                     (run_id,),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete fine-tune run {run_id}"
                 logger.warning(
@@ -296,7 +296,7 @@ class SQLiteFineTuneRunRepository:
                 )
                 raise QueryError(msg) from exc
             else:
-                return cursor.rowcount > 0
+                return _db_rowcount > 0
 
     async def update_run(self, run: FineTuneRun) -> None:
         """Update all mutable fields for a run.
@@ -357,7 +357,7 @@ class SQLiteFineTuneRunRepository:
         )
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     query,
                     (
                         FineTuneStage.FAILED.value,
@@ -366,9 +366,9 @@ class SQLiteFineTuneRunRepository:
                         now,
                         *_ACTIVE_STAGES,
                     ),
-                )
-                await self._db.commit()
-                count = cursor.rowcount
+                ) as cursor:
+                    await self._db.commit()
+                    count = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = "Failed to mark interrupted fine-tune runs"
                 logger.warning(

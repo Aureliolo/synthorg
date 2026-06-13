@@ -89,14 +89,14 @@ class SQLitePrincipleOverrideRepository:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """
                 SELECT scope, text, restored_from, created_at, updated_at
                 FROM principle_overrides WHERE scope = ?
                 """,
                 (str(scope),),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to load principle override for scope {scope!r}"
             logger.warning(
@@ -127,11 +127,11 @@ class SQLitePrincipleOverrideRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM principle_overrides WHERE scope = ?",
                     (str(scope),),
-                )
-                removed = cursor.rowcount > 0
+                ) as cursor:
+                    removed = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
@@ -164,7 +164,7 @@ class SQLitePrincipleOverrideRepository:
             limit, offset, event=PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """
                 SELECT scope, text, restored_from, created_at, updated_at
                 FROM principle_overrides
@@ -172,8 +172,8 @@ class SQLitePrincipleOverrideRepository:
                 LIMIT ? OFFSET ?
                 """,
                 (int(limit), int(offset)),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list principle overrides"
             logger.warning(

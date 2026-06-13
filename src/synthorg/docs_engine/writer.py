@@ -20,6 +20,7 @@ import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
@@ -65,7 +66,11 @@ class DocWriteResult:
 class DocWriter:
     """Serialises docs to disk and commits them on the docs branch."""
 
-    __slots__ = ("_git_backend", "_locks", "_locks_guard", "_workspace_service")
+    __slots__ = (
+        "_git_backend",
+        "_locks",
+        "_workspace_service",
+    )
 
     def __init__(
         self,
@@ -75,12 +80,7 @@ class DocWriter:
     ) -> None:
         self._workspace_service = workspace_service
         self._git_backend = git_backend
-        self._locks: dict[str, asyncio.Lock] = {}
-        self._locks_guard = asyncio.Lock()
-
-    async def _lock_for(self, project_id: str) -> asyncio.Lock:
-        async with self._locks_guard:
-            return self._locks.setdefault(project_id, asyncio.Lock())
+        self._locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     async def write(
         self,
@@ -102,8 +102,7 @@ class DocWriter:
             DocCommitError: Any phase (workspace resolution, file
                 write, git add/commit, or push) failed.
         """
-        lock = await self._lock_for(project_id)
-        async with lock:
+        async with self._locks.acquire(project_id):
             return await self._write_locked(project_id=project_id, doc=doc)
 
     async def _write_locked(
