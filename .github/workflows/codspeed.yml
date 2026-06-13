@@ -103,7 +103,7 @@ jobs:
       - uses: ./.github/actions/setup-python-uv
 
       - name: Run CodSpeed Python benchmarks
-        uses: CodSpeedHQ/action@9d332c4d90b43981c3e55ae8e38e68709996240f # v4.17.0
+        uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
         env:
           # Measure the real production code path, not test-harness overhead:
           # typeguard is a test-only instrument (never runs in production). This
@@ -151,7 +151,7 @@ jobs:
           npm-ci-args: --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
 
       - name: Run CodSpeed Web benchmarks
-        uses: CodSpeedHQ/action@9d332c4d90b43981c3e55ae8e38e68709996240f # v4.17.0
+        uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
         with:
           mode: simulation
           run: npm --prefix web run bench
