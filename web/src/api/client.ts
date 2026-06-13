@@ -12,9 +12,10 @@ import { createLogger } from '@/lib/logger'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { getCsrfToken } from '@/utils/csrf'
 import {
-  DO_NOT_RETRY,
-  MAX_RATE_LIMIT_RETRIES,
+  IDEMPOTENCY_KEY_HEADER,
+  isIdempotentMethod,
   parseRetryAfterMs,
+  retryAfterLoop,
 } from '@/utils/retry-after'
 import { notifyUnauthorized } from './unauthorized-handler'
 import type { ErrorDetail } from './types/errors'
@@ -29,23 +30,27 @@ const BASE_URL = RAW_BASE.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '')
 /** CSRF-protected HTTP methods that require the X-CSRF-Token header. */
 const CSRF_METHODS = new Set(['post', 'put', 'patch', 'delete'])
 
-/** Extra header we attach to retry requests so the interceptor can count. */
-const RETRY_COUNT_HEADER = 'X-SynthOrg-Retry-Count'
+/** HTTP status that triggers the transparent retry policy. */
+const HTTP_TOO_MANY_REQUESTS = 429
+
 /**
- * HTTP methods safe to auto-retry on 429.
+ * Extra header attached to each replay so the backend can observe the
+ * client-side retry count (the count itself is owned by {@link retryAfterLoop}).
  *
- * Idempotent reads (GET/HEAD/OPTIONS) can be replayed without risk.  Mutating
- * verbs (POST/PUT/PATCH/DELETE) are NOT replayed automatically: replaying a
- * decision submission or a cancellation after the server already accepted it
- * could double-apply the mutation.  Callers that need retry for a mutation
- * must attach an ``Idempotency-Key`` header; the interceptor then treats the
- * request as idempotent and retries it.
+ * Idempotent reads (GET/HEAD/OPTIONS) are replayed without risk. Mutating verbs
+ * are NOT replayed automatically -- replaying a decision submission after the
+ * server already accepted it could double-apply the mutation -- unless the
+ * caller attaches a non-blank ``Idempotency-Key`` header to opt in.
  */
-const IDEMPOTENT_METHODS = new Set(['get', 'head', 'options'])
-const IDEMPOTENCY_KEY_HEADER = 'idempotency-key'
+const RETRY_COUNT_HEADER = 'X-SynthOrg-Retry-Count'
 
 interface RetriableConfig extends InternalAxiosRequestConfig {
-  _rateLimitRetries?: number
+  /**
+   * Marks a request issued by {@link retryAfterLoop} so the response
+   * interceptor does not start a second, nested retry loop for it: the loop
+   * owns retries, the inner request just reports its 429 back up.
+   */
+  _retryDriven?: boolean
 }
 
 export const apiClient = axios.create({
@@ -123,66 +128,95 @@ function _normalizeHeaders(headers: unknown): Record<string, string> {
  * and must not license replaying an accepted mutation.
  */
 function _isReplayableRequest(config: RetriableConfig): boolean {
-  const method = (config.method ?? '').toLowerCase()
-  if (IDEMPOTENT_METHODS.has(method)) return true
+  if (isIdempotentMethod(config.method ?? '')) return true
   const normalized = _normalizeHeaders(config.headers)
   const key = normalized[IDEMPOTENCY_KEY_HEADER]
   return typeof key === 'string' && key.trim().length > 0
 }
 
-function _parseRetryAfter(error: ApiAxiosError): number {
-  // ``AxiosResponse.headers`` / ``.data`` are typed non-null, but coerced or
-  // faked error objects can omit them; keep the optional chains.
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- headers may be absent on non-standard error objects
-  const retryAfter = error.response?.headers?.['retry-after'] as string | undefined
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- data may be absent on non-standard error objects
-  const detail = error.response?.data?.error_detail ?? null
+/**
+ * Wait for *response* (an AxiosResponse, possibly a 429 captured from a
+ * rejected replay). ``AxiosResponse.headers`` / ``.data`` are typed non-null,
+ * but coerced or faked response objects can omit them; keep the optional
+ * chains so a non-standard 429 still parses.
+ */
+function _retryAfterMsFor(response: AxiosResponse): number {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- headers may be absent on non-standard response objects
+  const retryAfter = response.headers?.['retry-after'] as string | undefined
+  const data = response.data as { error_detail?: ErrorDetail | null } | undefined
+  const detail = data?.error_detail ?? null
   return parseRetryAfterMs(retryAfter, detail)
 }
 
-async function _performRateLimitRetry(
-  config: RetriableConfig,
-  waitMs: number,
-): Promise<AxiosResponse> {
-  const retryCount = (config._rateLimitRetries ?? 0) + 1
-  config._rateLimitRetries = retryCount
-  // Surfaces backend rate-limit pressure to dashboards / operators.
-  // ``log.warn`` (not ``info``) because the web logger ships only
-  // ``debug | warn | error`` levels; a silent absorbed 429 is a
-  // signal an SRE wants to see, not a debug-stripped trace.
-  log.warn('http.rate_limited', {
-    retry_count: retryCount,
-    method: (config.method ?? '').toLowerCase(),
-    status: 429,
-  })
-  const nextHeaders: Record<string, string> = {
-    ...(config.headers as Record<string, string>),
-  }
-  nextHeaders[RETRY_COUNT_HEADER] = String(retryCount)
-  const retryConfig: AxiosRequestConfig = { ...config, headers: nextHeaders }
-  if (waitMs > 0) await sleep(waitMs)
-  return apiClient.request(retryConfig)
-}
-
 /**
- * Attempt a single bounded 429 retry. Returns the replayed response
- * on success or ``null`` when the request is not eligible (non-
- * idempotent, retry budget exhausted, or the server's Retry-After
- * exceeds our budget). ``waitMs === DO_NOT_RETRY`` propagates the
- * 429 to the caller instead of hammering the backend with a
- * shortened retry that would just 429 again. ``waitMs === 0`` is a
- * real "retry immediately" signal (RFC 9110 ``Retry-After: 0`` or
- * no header) and still routes through the retry path.
+ * Transparent, bounded 429 retry for a replayable request. Drives the shared
+ * {@link retryAfterLoop}: each replay re-issues the original request marked
+ * ``_retryDriven`` (so this interceptor does not recurse on its own retries),
+ * captures the inner 429 response from the rejection, and feeds it back to the
+ * loop. Resolves with the first non-429 response, or rejects with the most
+ * recent error once the budget is exhausted or the wait exceeds the ceiling.
  */
 async function _retryRateLimit(
   error: ApiAxiosError,
   config: RetriableConfig,
-): Promise<AxiosResponse | null> {
-  if (!_isReplayableRequest(config)) return null
-  if ((config._rateLimitRetries ?? 0) >= MAX_RATE_LIMIT_RETRIES) return null
-  const waitMs = _parseRetryAfter(error)
-  if (waitMs === DO_NOT_RETRY) return null
-  return _performRateLimitRetry(config, waitMs)
+  firstResponse: AxiosResponse,
+): Promise<AxiosResponse> {
+  const method = (config.method ?? '').toLowerCase()
+  let lastError: ApiAxiosError = error
+  let retryCount = 0
+  const final = await retryAfterLoop<AxiosResponse>({
+    first: firstResponse,
+    send: async () => {
+      const headers: Record<string, string> = {
+        ...(config.headers as Record<string, string>),
+      }
+      headers[RETRY_COUNT_HEADER] = String(retryCount)
+      const retryConfig = {
+        ...config,
+        headers,
+        _retryDriven: true,
+      } as AxiosRequestConfig & { _retryDriven: boolean }
+      try {
+        return await apiClient.request(retryConfig)
+      } catch (e) {
+        lastError = e as ApiAxiosError
+        if (lastError.response) return lastError.response
+        throw e
+      }
+    },
+    getRetryAfterMs: _retryAfterMsFor,
+    retriable: true,
+    sleep,
+    onBeforeRetry: (attempt) => {
+      retryCount = attempt
+      // Surfaces backend rate-limit pressure to dashboards / operators.
+      // ``log.warn`` (not ``info``) because the web logger ships only
+      // ``debug | warn | error`` levels; a silent absorbed 429 is a
+      // signal an SRE wants to see, not a debug-stripped trace.
+      log.warn('http.rate_limited', {
+        retry_count: attempt,
+        method,
+        status: 429,
+      })
+    },
+  })
+  if (final.status !== HTTP_TOO_MANY_REQUESTS) return final
+  throw lastError
+}
+
+/**
+ * Whether a rejected request is an eligible 429 to retry: a 429 response on a
+ * replayable request that the loop did not itself issue (the ``_retryDriven``
+ * guard stops a replay from starting its own nested retry loop).
+ */
+function _isRetryable429(error: ApiAxiosError): boolean {
+  const config = error.config as RetriableConfig | undefined
+  return (
+    error.response?.status === HTTP_TOO_MANY_REQUESTS &&
+    config !== undefined &&
+    config._retryDriven !== true &&
+    _isReplayableRequest(config)
+  )
 }
 
 apiClient.interceptors.response.use(
@@ -199,9 +233,10 @@ apiClient.interceptors.response.use(
     // Retry-After. Bounded so a hostile or mis-tuned server can't hang
     // the UI; surfaces the error to the caller after retries exhaust
     // so per-endpoint UX (toasts, disabled buttons) can take over.
-    if (error.response?.status === 429 && error.config) {
-      const retryResponse = await _retryRateLimit(error, error.config as RetriableConfig)
-      if (retryResponse) return retryResponse
+    if (_isRetryable429(error)) {
+      const config = error.config as RetriableConfig
+      // error.response is non-null here: _isRetryable429 checked its status.
+      return _retryRateLimit(error, config, error.response as AxiosResponse)
     }
     return Promise.reject(error)
   },

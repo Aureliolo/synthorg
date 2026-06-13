@@ -23,6 +23,24 @@ const MAX_RETRY_AFTER_MS = 5_000
 /** Sentinel returned by {@link parseRetryAfterMs} when we must NOT auto-retry. */
 export const DO_NOT_RETRY = -1
 
+/** HTTP status that triggers the transparent retry policy. */
+const HTTP_TOO_MANY_REQUESTS = 429
+
+/** Lower-case header name carrying an explicit replay opt-in for mutations. */
+export const IDEMPOTENCY_KEY_HEADER = 'idempotency-key'
+
+/** HTTP verbs whose replay is inherently safe (no state mutation). */
+const IDEMPOTENT_METHODS = new Set(['get', 'head', 'options'])
+
+/**
+ * Whether *method* names an inherently-replayable verb. Case-insensitive
+ * so the axios (lower-case) and raw-``fetch`` (upper-case) call sites share
+ * one predicate instead of each maintaining a cased set.
+ */
+export function isIdempotentMethod(method: string): boolean {
+  return IDEMPOTENT_METHODS.has(method.toLowerCase())
+}
+
 /** Pick the raw header / envelope string to parse, or null when absent. */
 function _resolveRetryAfterRaw(
   headerValue: string | undefined,
@@ -77,4 +95,71 @@ export function parseRetryAfterMs(
   }
   if (ms > MAX_RETRY_AFTER_MS) return DO_NOT_RETRY
   return ms
+}
+
+/** A minimal HTTP response the retry loop can inspect across transports. */
+export interface RetryableResponse {
+  readonly status: number
+}
+
+/** Inputs to {@link retryAfterLoop}; transport-specifics arrive as callbacks. */
+export interface RetryAfterLoopParams<R extends RetryableResponse> {
+  /** The already-issued first response (axios: the 429 error's response). */
+  readonly first: R
+  /** Re-issue the request for a retry attempt; resolves to the response. */
+  readonly send: () => Promise<R>
+  /** Compute the wait for *response* (header source + envelope fallback vary). */
+  readonly getRetryAfterMs: (response: R) => number
+  /** Whether this request may be replayed at all (idempotency gate). */
+  readonly retriable: boolean
+  /** Sleep helper; tests inject a fake. Always invoked, even for a 0ms wait. */
+  readonly sleep: (ms: number) => Promise<void>
+  /** Cancellation probe (raw-fetch AbortSignal); axios omits it. */
+  readonly isAborted?: () => boolean
+  /** Side-effect before each retry (axios logs ``http.rate_limited``). */
+  readonly onBeforeRetry?: (attempt: number, waitMs: number) => void
+}
+
+/**
+ * The single 429 retry policy shared by the axios interceptor and the
+ * raw-``fetch`` helper. Re-issues *send* up to {@link MAX_RATE_LIMIT_RETRIES}
+ * times while the response is a 429 and the request is replayable, honouring
+ * ``Retry-After`` (via *getRetryAfterMs*), the {@link DO_NOT_RETRY} ceiling,
+ * and an optional abort signal.
+ *
+ * Returns the first non-429 response, or the most recent 429 once the budget
+ * is exhausted / the wait exceeds the ceiling / the caller aborts -- the
+ * consumer decides how to surface that terminal 429.
+ */
+/** Whether *response* still warrants a retry under the budget + replay gate. */
+function _canRetry(
+  response: RetryableResponse,
+  retriable: boolean,
+  attempt: number,
+): boolean {
+  return (
+    response.status === HTTP_TOO_MANY_REQUESTS &&
+    retriable &&
+    attempt < MAX_RATE_LIMIT_RETRIES
+  )
+}
+
+export async function retryAfterLoop<R extends RetryableResponse>(
+  params: RetryAfterLoopParams<R>,
+): Promise<R> {
+  const { first, send, getRetryAfterMs, retriable, sleep } = params
+  const aborted = params.isAborted ?? (() => false)
+  const beforeRetry = params.onBeforeRetry ?? (() => undefined)
+  let attempt = 0
+  let response = first
+  while (_canRetry(response, retriable, attempt)) {
+    const waitMs = getRetryAfterMs(response)
+    if (waitMs === DO_NOT_RETRY || aborted()) return response
+    attempt += 1
+    beforeRetry(attempt, waitMs)
+    await sleep(waitMs)
+    if (aborted()) return response
+    response = await send()
+  }
+  return response
 }

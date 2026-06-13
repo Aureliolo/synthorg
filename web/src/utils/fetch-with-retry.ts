@@ -21,14 +21,11 @@
  */
 
 import {
-  DO_NOT_RETRY,
-  MAX_RATE_LIMIT_RETRIES,
+  IDEMPOTENCY_KEY_HEADER,
+  isIdempotentMethod,
   parseRetryAfterMs,
+  retryAfterLoop,
 } from './retry-after'
-
-const HTTP_TOO_MANY_REQUESTS = 429
-const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
-const IDEMPOTENCY_KEY_HEADER = 'idempotency-key'
 
 export interface FetchWithRetryOptions {
   /**
@@ -104,7 +101,7 @@ function isRetriable(
   return (
     opts?.idempotent === true ||
     (opts?.idempotent !== false &&
-      (IDEMPOTENT_METHODS.has(methodOf(input, init)) ||
+      (isIdempotentMethod(methodOf(input, init)) ||
         hasIdempotencyKey(input, init)))
   )
 }
@@ -121,59 +118,6 @@ function _resolveSignal(
   return init?.signal ?? (input instanceof Request ? input.signal : undefined)
 }
 
-/** Does the current response warrant another retry attempt? */
-function _shouldKeepRetrying(
-  response: Response,
-  attempt: number,
-  retriable: boolean,
-): boolean {
-  return (
-    response.status === HTTP_TOO_MANY_REQUESTS
-    && retriable
-    && attempt < MAX_RATE_LIMIT_RETRIES
-  )
-}
-
-/**
- * Run one retry sleep, honouring the caller-supplied sleep helper when
- * provided. Tests inject a fake sleep to avoid real waits; production
- * uses `defaultSleep` which integrates with the abort signal.
- */
-async function _performRetrySleep(
-  waitMs: number,
-  signal: AbortSignal | undefined,
-  sleep: ((ms: number) => Promise<void>) | undefined,
-): Promise<void> {
-  if (sleep) {
-    await sleep(waitMs)
-    return
-  }
-  await defaultSleep(waitMs, signal)
-}
-
-interface RetryBail {
-  /** The helper should immediately return this response. */
-  readonly bail: Response
-}
-
-/**
- * Compute the wait + decide whether to bail before sleeping. Returns
- * `bail` when the server says "give up" (`DO_NOT_RETRY`) or the caller
- * has aborted. Returns the raw `waitMs` otherwise.
- */
-function _decideRetryWait(
-  response: Response,
-  signal: AbortSignal | undefined,
-): RetryBail | number {
-  const waitMs = parseRetryAfterMs(
-    response.headers.get('Retry-After') ?? undefined,
-    null,
-  )
-  if (waitMs === DO_NOT_RETRY) return { bail: response }
-  if (signal?.aborted) return { bail: response }
-  return waitMs
-}
-
 /**
  * `window.fetch`-compatible wrapper that retries 429s up to
  * {@link MAX_RATE_LIMIT_RETRIES} times, honouring `Retry-After`.
@@ -186,6 +130,11 @@ function _decideRetryWait(
  * circuits and returns the most recent 429 response immediately so the
  * caller's cancellation is observed without waiting out the full
  * Retry-After budget.
+ *
+ * The retry policy itself lives in {@link retryAfterLoop} (shared with the
+ * axios interceptor); this wrapper only supplies the fetch-specific concerns:
+ * `RequestInfo | URL` overloading, idempotency derivation, AbortSignal
+ * integration, and the default abort-aware sleep.
  */
 export async function fetchWithRetryAfter(
   input: RequestInfo | URL,
@@ -194,17 +143,14 @@ export async function fetchWithRetryAfter(
 ): Promise<Response> {
   const fetchImpl = opts?.fetchImpl ?? fetch
   const signal = _resolveSignal(input, init)
-  const sleep = opts?.sleep
-  const retriable = isRetriable(input, init, opts)
-  let attempt = 0
-  let response = await fetchImpl(input, init)
-  while (_shouldKeepRetrying(response, attempt, retriable)) {
-    const decision = _decideRetryWait(response, signal)
-    if (typeof decision !== 'number') return decision.bail
-    await _performRetrySleep(decision, signal, sleep)
-    if (signal?.aborted) return response
-    attempt += 1
-    response = await fetchImpl(input, init)
-  }
-  return response
+  const sleep = opts?.sleep ?? ((ms: number) => defaultSleep(ms, signal))
+  return retryAfterLoop<Response>({
+    first: await fetchImpl(input, init),
+    send: () => fetchImpl(input, init),
+    getRetryAfterMs: (response) =>
+      parseRetryAfterMs(response.headers.get('Retry-After') ?? undefined, null),
+    retriable: isRetriable(input, init, opts),
+    sleep,
+    isAborted: () => signal?.aborted ?? false,
+  })
 }
