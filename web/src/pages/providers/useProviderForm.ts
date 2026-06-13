@@ -206,7 +206,7 @@ interface SubmitArgs {
   provider: ProviderWithName | null | undefined
   preset: ProviderPreset | undefined
   selectedPreset: string | null
-  overrides?: ProviderFormOverrides
+  overrides?: ProviderFormOverrides | undefined
 }
 
 function useProviderSubmit(args: SubmitArgs): (values: ProviderFormValues) => Promise<boolean> {

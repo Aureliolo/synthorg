@@ -153,10 +153,10 @@ export const URGENCY_BADGE_CLASSES: Record<SemanticColor | 'text-secondary', str
 // ── Client-side filtering ───────────────────────────────────
 
 export interface ApprovalPageFilters {
-  status?: ApprovalStatus
-  riskLevel?: ApprovalRiskLevel
-  actionType?: string
-  search?: string
+  status?: ApprovalStatus | undefined
+  riskLevel?: ApprovalRiskLevel | undefined
+  actionType?: string | undefined
+  search?: string | undefined
 }
 
 export function filterApprovals(

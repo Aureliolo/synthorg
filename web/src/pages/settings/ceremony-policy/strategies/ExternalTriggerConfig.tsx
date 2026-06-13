@@ -5,7 +5,7 @@ import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
 export interface ExternalTriggerConfigProps {
   config: Record<string, unknown>
   onChange: (config: Record<string, unknown>) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTriggerConfigProps) {

@@ -1,4 +1,4 @@
-import { apiClient, unwrap } from '../client'
+import { apiClient, unwrap, withSignal } from '../client'
 import type { DeliverableReceipt, ReceiptValidationResult } from '@/api/types'
 import type { ApiResponse } from '@/api/types/http'
 
@@ -15,7 +15,7 @@ export async function getDeliverableReceipt(
 ): Promise<DeliverableReceipt> {
   const response = await apiClient.get<ApiResponse<DeliverableReceipt>>(
     `/projects/${encodeURIComponent(projectId)}/docs/${encodeURIComponent(slug)}/receipt`,
-    { signal },
+    withSignal(signal),
   )
   return unwrap(response)
 }
@@ -34,7 +34,7 @@ export async function validateDeliverableReceipt(
 ): Promise<ReceiptValidationResult> {
   const response = await apiClient.get<ApiResponse<ReceiptValidationResult>>(
     `/projects/${encodeURIComponent(projectId)}/docs/${encodeURIComponent(slug)}/receipt/validate`,
-    { signal },
+    withSignal(signal),
   )
   return unwrap(response)
 }

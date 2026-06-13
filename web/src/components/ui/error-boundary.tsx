@@ -17,12 +17,12 @@ export interface ErrorFallbackProps {
 export interface ErrorBoundaryProps {
   children: ReactNode
   /** Custom fallback component. Receives error and reset function. */
-  fallback?: React.ComponentType<ErrorFallbackProps>
+  fallback?: React.ComponentType<ErrorFallbackProps> | undefined
   /** Called when the error boundary resets (retry button clicked). */
-  onReset?: () => void
+  onReset?: (() => void) | undefined
   /** Visual size of the fallback (default: "section"). */
-  level?: ErrorLevel
-  className?: string
+  level?: ErrorLevel | undefined
+  className?: string | undefined
 }
 
 interface ErrorBoundaryState {

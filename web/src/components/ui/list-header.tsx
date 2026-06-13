@@ -6,10 +6,10 @@ import { formatNumber } from '@/utils/format'
 export interface ListHeaderProps {
   title: string
   /** Total item count shown in subtle muted text next to the title (e.g. "Tasks (42)"). */
-  count?: number
+  count?: number | undefined
   /** Override the count label when the default parenthesised format isn't right. */
-  countLabel?: string
-  description?: string
+  countLabel?: string | undefined
+  description?: string | undefined
   /** Primary action slot (typically a single `<Button>`), rendered top-right. */
   primaryAction?: ReactNode
   /** Secondary slot for search/filter/sort controls rendered below the title row on narrow viewports, inline on wide ones. */
@@ -21,8 +21,8 @@ export interface ListHeaderProps {
    * loading skeleton. The icon is decorative; an sr-only label gives
    * AT users the "Refreshing" cue.
    */
-  refreshing?: boolean
-  className?: string
+  refreshing?: boolean | undefined
+  className?: string | undefined
 }
 
 /**

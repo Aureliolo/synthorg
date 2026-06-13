@@ -80,7 +80,7 @@ export function TaskDetailPanel({
       try {
         await onTransition(task.id, {
           target_status: targetStatus,
-          expected_version: task.version,
+          expected_version: task.version ?? null,
         })
       } finally {
         setTransitioning(null)
@@ -197,7 +197,7 @@ function TaskDetailBody({
       <InlineEdit
         value={task.title}
         onSave={async (value) => {
-          await onUpdate(task.id, { title: value, expected_version: task.version })
+          await onUpdate(task.id, { title: value, expected_version: task.version ?? null })
         }}
         validate={(v) => (v.trim().length === 0 ? 'Title is required' : null)}
         className="text-lg font-semibold"

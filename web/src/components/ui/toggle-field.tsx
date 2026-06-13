@@ -3,11 +3,11 @@ import { cn, FOCUS_RING } from '@/lib/utils'
 
 export interface ToggleFieldProps {
   label: string
-  description?: string
+  description?: string | undefined
   checked: boolean
   onChange: (checked: boolean) => void
-  disabled?: boolean
-  className?: string
+  disabled?: boolean | undefined
+  className?: string | undefined
 }
 
 export function ToggleField({

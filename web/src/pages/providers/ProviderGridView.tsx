@@ -11,8 +11,8 @@ import type { ProviderWithName } from '@/utils/providers'
 interface ProviderGridItemProps {
   provider: ProviderWithName
   health: ProviderHealthSummary | null
-  selected?: boolean
-  onToggleSelect?: (name: string) => void
+  selected?: boolean | undefined
+  onToggleSelect?: ((name: string) => void) | undefined
 }
 
 const ProviderGridItem = memo(function ProviderGridItem({

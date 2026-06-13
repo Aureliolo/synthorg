@@ -6,7 +6,7 @@ import type {
   SupersedeMode,
 } from '@/api/types'
 
-import { apiClient, unwrap } from '../client'
+import { apiClient, unwrap, withSignal } from '../client'
 import type { ApiResponse } from '../types/http'
 
 /** Body for issuing a project-scoped steering directive. */
@@ -38,7 +38,7 @@ export async function listActiveSteering(
 ): Promise<readonly ActiveSteeringDirective[]> {
   const response = await apiClient.get<ApiResponse<readonly ActiveSteeringDirective[]>>(
     '/cockpit/steering',
-    { params: { project_id: projectId }, signal },
+    withSignal(signal, { params: { project_id: projectId } }),
   )
   return unwrap(response)
 }

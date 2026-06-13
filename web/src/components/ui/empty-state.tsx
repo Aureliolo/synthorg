@@ -12,11 +12,11 @@ const SAFE_HREF_PATTERN = /^(https?:|mailto:|tel:|\/|#)/i
 export interface EmptyStateAction {
   label: string
   onClick: () => void
-  variant?: 'default' | 'outline'
+  variant?: 'default' | 'outline' | undefined
 }
 
 export interface EmptyStateLearnMore {
-  label?: string
+  label?: string | undefined
   /**
    * Internal React Router path (starts with `/`) or external URL. Internal
    * paths route via React Router's `<Link>` when the EmptyState is rendered
@@ -25,23 +25,23 @@ export interface EmptyStateLearnMore {
    */
   href: string
   /** Set true when href points outside the app; adds `target=_blank` + `rel=noopener`. Default auto-detects based on protocol. */
-  external?: boolean
+  external?: boolean | undefined
 }
 
 export interface EmptyStateProps {
   /** Optional icon displayed above the title. */
-  icon?: LucideIcon
+  icon?: LucideIcon | undefined
   /** Primary message. */
   title: string
   /** Optional supporting text. */
-  description?: string
+  description?: string | undefined
   /** Optional action button. */
-  action?: EmptyStateAction
+  action?: EmptyStateAction | undefined
   /** Optional "Learn more" link rendered below the description. Use for contextual help. */
-  learnMore?: EmptyStateLearnMore
-  className?: string
+  learnMore?: EmptyStateLearnMore | undefined
+  className?: string | undefined
   /** Enable live-region announcements for dynamic state changes. Default: false. */
-  announce?: boolean
+  announce?: boolean | undefined
 }
 
 const EXTERNAL_HREF_PREFIXES = ['http://', 'https://', '//'] as const

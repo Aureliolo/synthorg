@@ -23,7 +23,7 @@ const log = createLogger('slot')
  */
 export interface SlotProps extends HTMLAttributes<HTMLElement> {
   children?: ReactNode
-  ref?: Ref<HTMLElement>
+  ref?: Ref<HTMLElement> | undefined
 }
 
 function composeRefs<T>(

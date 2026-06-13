@@ -12,7 +12,7 @@ import type { AgentConfig } from '@/api/types/agents'
 
 interface AgentGridViewProps {
   agents: readonly AgentConfig[]
-  className?: string
+  className?: string | undefined
   /**
    * Optional selection set keyed on the agent's stable UUID id. When
    * provided alongside ``onToggleSelect``, each card
@@ -20,8 +20,8 @@ interface AgentGridViewProps {
    * selection-unaware so unrelated callers (detail-page sidebars,
    * dashboard widgets) keep their existing layout.
    */
-  selectedIds?: ReadonlySet<string>
-  onToggleSelect?: (id: string) => void
+  selectedIds?: ReadonlySet<string> | undefined
+  onToggleSelect?: ((id: string) => void) | undefined
 }
 
 function agentKey(agent: AgentConfig): string {
@@ -30,8 +30,8 @@ function agentKey(agent: AgentConfig): string {
 
 interface AgentGridItemProps {
   agent: AgentConfig
-  selected?: boolean
-  onToggleSelect?: (id: string) => void
+  selected?: boolean | undefined
+  onToggleSelect?: ((id: string) => void) | undefined
 }
 
 function AgentGridItemComponent({ agent, selected, onToggleSelect }: AgentGridItemProps) {

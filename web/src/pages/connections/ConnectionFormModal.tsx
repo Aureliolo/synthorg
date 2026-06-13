@@ -24,8 +24,8 @@ import { type ConnectionForm, type Mode, useConnectionForm } from './useConnecti
 export interface ConnectionFormModalProps {
   open: boolean
   mode: Mode
-  initialType?: ConnectionType
-  connection?: Connection | null
+  initialType?: ConnectionType | undefined
+  connection?: Connection | null | undefined
   onClose: () => void
 }
 

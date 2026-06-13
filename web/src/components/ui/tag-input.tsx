@@ -6,10 +6,10 @@ export interface TagInputProps {
   value: string[]
   onChange: (value: string[]) => void
   /** Visible label; rendered and associated with the input for screen readers. */
-  label?: string
-  disabled?: boolean
-  placeholder?: string
-  className?: string
+  label?: string | undefined
+  disabled?: boolean | undefined
+  placeholder?: string | undefined
+  className?: string | undefined
 }
 
 interface TagInputHandlers {

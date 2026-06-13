@@ -108,7 +108,7 @@ function SortableDepartmentCard({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: dept.name,
     data: { dept },
-    disabled,
+    disabled: disabled ?? false,
   })
   const style = {
     transform: CSS.Transform.toString(transform),

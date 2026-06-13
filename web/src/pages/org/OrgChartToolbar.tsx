@@ -201,9 +201,9 @@ function ZoomControls({ onFitView, onZoomIn, onZoomOut }: ZoomControlsProps) {
 }
 
 interface ExportControlsProps {
-  onExportPng?: () => void
+  onExportPng?: (() => void) | undefined
   exporting: boolean
-  onPrint?: () => void
+  onPrint?: (() => void) | undefined
 }
 
 function ExportControls({ onExportPng, exporting, onPrint }: ExportControlsProps) {

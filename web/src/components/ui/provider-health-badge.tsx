@@ -20,9 +20,9 @@ const DOT_COLOR_CLASSES: Record<SemanticColor | 'muted', string> = {
 
 export interface ProviderHealthBadgeProps {
   status: ProviderHealthStatus
-  label?: boolean
-  pulse?: boolean
-  className?: string
+  label?: boolean | undefined
+  pulse?: boolean | undefined
+  className?: string | undefined
 }
 
 /**

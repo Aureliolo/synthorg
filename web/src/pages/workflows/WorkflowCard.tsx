@@ -17,9 +17,9 @@ interface WorkflowCardProps {
   /** Export the persisted definition as YAML. */
   onExport: (id: string) => void | Promise<void>
   /** When defined, renders a multi-select checkbox and marks the card as selectable. */
-  onToggleSelect?: (id: string) => void
+  onToggleSelect?: ((id: string) => void) | undefined
   /** Whether the row is currently included in a multi-select. */
-  selected?: boolean
+  selected?: boolean | undefined
 }
 
 export function WorkflowCard({

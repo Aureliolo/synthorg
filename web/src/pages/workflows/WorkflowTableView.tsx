@@ -110,7 +110,7 @@ interface WorkflowTableRowProps {
   workflow: WorkflowDefinition
   navigate: NavigateFunction
   isSelected: boolean
-  onToggleSelect?: (id: string) => void
+  onToggleSelect?: ((id: string) => void) | undefined
   onDuplicate: (id: string) => void
   onExport: () => void
   onRequestDelete: () => void

@@ -7,9 +7,9 @@ interface SidebarNavItemProps {
   icon: LucideIcon
   label: string
   collapsed: boolean
-  badge?: number
-  dotColor?: string
-  end?: boolean
+  badge?: number | undefined
+  dotColor?: string | undefined
+  end?: boolean | undefined
   /**
    * Routes that must NOT highlight this item even when NavLink's default
    * `isActive` prefix-match would normally treat them as active. Used when
@@ -122,8 +122,8 @@ export function SidebarNavItem({
   return (
     <NavLink
       to={to}
-      end={end}
-      title={collapsed ? label : undefined}
+      end={end ?? false}
+      {...(collapsed ? { title: label } : {})}
       className={({ isActive }) =>
         cn(baseClass, isActive && !forcedInactive && 'bg-card text-accent')
       }

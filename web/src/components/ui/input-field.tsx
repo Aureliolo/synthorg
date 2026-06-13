@@ -4,15 +4,15 @@ import { cn } from '@/lib/utils'
 
 interface BaseFieldProps {
   label: string
-  error?: string | null
-  hint?: string
+  error?: string | null | undefined
+  hint?: string | undefined
   /** Convenience callback that receives the value string directly. */
-  onValueChange?: (value: string) => void
+  onValueChange?: ((value: string) => void) | undefined
 }
 
 interface InputProps extends BaseFieldProps, Omit<React.ComponentProps<'input'>, 'id'> {
   multiline?: false
-  ref?: React.Ref<HTMLInputElement>
+  ref?: React.Ref<HTMLInputElement> | undefined
   /**
    * Decorative leading icon rendered inside the input. Positioned relative to
    * the input box (not the label), so it stays vertically centered on the
@@ -33,12 +33,12 @@ interface InputProps extends BaseFieldProps, Omit<React.ComponentProps<'input'>,
    * input MUST have a toggle; flip this only for the rare case where a
    * caller already supplies its own visibility affordance.
    */
-  hidePasswordToggle?: boolean
+  hidePasswordToggle?: boolean | undefined
 }
 
 interface TextareaProps extends BaseFieldProps, Omit<React.ComponentProps<'textarea'>, 'id'> {
   multiline: true
-  ref?: React.Ref<HTMLTextAreaElement>
+  ref?: React.Ref<HTMLTextAreaElement> | undefined
 }
 
 export type InputFieldProps = InputProps | TextareaProps

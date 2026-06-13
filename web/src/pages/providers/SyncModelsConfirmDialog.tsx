@@ -8,7 +8,7 @@ import type { SyncModelsResponse } from '@/api/types/providers'
 
 interface SyncModelsConfirmDialogProps {
   providerName: string | null
-  presetHint?: string
+  presetHint?: string | undefined
   open: boolean
   onClose: () => void
 }

@@ -17,11 +17,11 @@ export interface CodeMirrorEditorProps {
   /** Language mode for syntax highlighting. */
   language: 'json' | 'yaml'
   /** When true, the editor is non-editable. */
-  readOnly?: boolean
+  readOnly?: boolean | undefined
   /** Accessible label for the editor. */
-  'aria-label'?: string
+  'aria-label'?: string | undefined
   /** Additional CSS class on the outer container. */
-  className?: string
+  className?: string | undefined
   /**
    * Extra CodeMirror extensions appended after the built-in ones.
    * Useful for adding diff gutters, linters, or autocomplete from

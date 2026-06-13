@@ -4,7 +4,7 @@ import { CalendarConfig } from './CalendarConfig'
 export interface HybridConfigProps {
   config: Record<string, unknown>
   onChange: (config: Record<string, unknown>) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 export function HybridConfig({ config, onChange, disabled }: HybridConfigProps) {

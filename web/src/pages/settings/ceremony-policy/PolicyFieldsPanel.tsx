@@ -17,8 +17,8 @@ export interface PolicyFieldsPanelProps {
   onVelocityCalculatorChange: (calc: VelocityCalcType) => void
   onAutoTransitionChange: (value: boolean) => void
   onTransitionThresholdChange: (value: number) => void
-  resolvedPolicy?: ResolvedCeremonyPolicyResponse | null
-  disabled?: boolean
+  resolvedPolicy?: ResolvedCeremonyPolicyResponse | null | undefined
+  disabled?: boolean | undefined
 }
 
 export function PolicyFieldsPanel({

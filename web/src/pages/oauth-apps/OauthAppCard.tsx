@@ -17,8 +17,8 @@ export interface OauthAppCardProps {
   connection: Connection
   onEdit: () => void
   onDelete: () => void
-  onConnect?: () => void
-  className?: string
+  onConnect?: (() => void) | undefined
+  className?: string | undefined
 }
 
 interface OauthSecretReveal {
@@ -162,7 +162,7 @@ function OauthCardActions({
   onConnect,
   onDelete,
 }: {
-  onConnect?: () => void
+  onConnect?: (() => void) | undefined
   onDelete: () => void
 }) {
   return (

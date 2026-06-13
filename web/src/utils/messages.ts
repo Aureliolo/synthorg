@@ -217,9 +217,9 @@ export function groupMessagesByThread(messages: readonly Message[]): ThreadGroup
 // ── Client-side filtering ──────────────────────────────────
 
 export interface MessagePageFilters {
-  type?: MessageType
-  priority?: MessagePriority
-  search?: string
+  type?: MessageType | undefined
+  priority?: MessagePriority | undefined
+  search?: string | undefined
 }
 
 export function filterMessages(

@@ -9,7 +9,7 @@ const nonce = getCspNonce()
 export default function App() {
   return (
     <CSPProvider nonce={nonce}>
-      <MotionConfig nonce={nonce}>
+      <MotionConfig {...(nonce !== undefined ? { nonce } : {})}>
         <ShortcutRegistryProvider>
           <AppRouter />
         </ShortcutRegistryProvider>

@@ -12,13 +12,13 @@ export interface ConfirmDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
-  description?: string
+  description?: string | undefined
   /** Label for the confirm button (default: "Confirm"). */
-  confirmLabel?: string
+  confirmLabel?: string | undefined
   /** Label for the cancel button (default: "Cancel"). */
-  cancelLabel?: string
+  cancelLabel?: string | undefined
   /** Visual variant (default: "default"). "destructive" uses a red confirm button. */
-  variant?: 'default' | 'destructive'
+  variant?: 'default' | 'destructive' | undefined
   /**
    * Confirm handler. Resolving to ``false`` keeps the dialog open so
    * the caller can retry from the same surface (used by sentinel-
@@ -36,10 +36,10 @@ export interface ConfirmDialogProps {
    * Use this to distinguish "explicit reject" from "dismiss without
    * action" at the call site.
    */
-  onCancel?: () => void
+  onCancel?: (() => void) | undefined
   /** Whether the confirm action is in progress. */
-  loading?: boolean
-  className?: string
+  loading?: boolean | undefined
+  className?: string | undefined
   /** Optional content rendered between description and action buttons. */
   children?: React.ReactNode
 }
@@ -56,7 +56,7 @@ function ConfirmDialogActions({
   variant: 'default' | 'destructive'
   cancelLabel: string
   confirmLabel: string
-  onCancel?: () => void
+  onCancel?: (() => void) | undefined
   onConfirmClick: () => void
 }) {
   return (

@@ -28,7 +28,7 @@ const THRESHOLD_MAX = 1.0
 interface AutoTransitionRowProps {
   policy: CeremonyPolicyConfig | null | undefined
   onChange: (policy: CeremonyPolicyConfig | null) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 function AutoTransitionRow({ policy, onChange, disabled }: AutoTransitionRowProps) {
@@ -86,7 +86,7 @@ interface CeremonyPolicyFieldsProps {
   policy: CeremonyPolicyConfig | null | undefined
   onChange: (policy: CeremonyPolicyConfig | null) => void
   onStrategyChange: (s: CeremonyStrategyType) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 function CeremonyPolicyFields({ policy, onChange, onStrategyChange, disabled }: CeremonyPolicyFieldsProps) {
@@ -116,7 +116,7 @@ function CeremonyPolicyFields({ policy, onChange, onStrategyChange, disabled }: 
 export interface DepartmentCeremonyOverrideProps {
   policy: CeremonyPolicyConfig | null | undefined
   onChange: (policy: CeremonyPolicyConfig | null) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 export function DepartmentCeremonyOverride({

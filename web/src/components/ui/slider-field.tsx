@@ -7,11 +7,11 @@ export interface SliderFieldProps {
   onChange: (value: number) => void
   min: number
   max: number
-  step?: number
+  step?: number | undefined
   /** Display format for the current value. Defaults to showing the raw number. */
-  formatValue?: (value: number) => string
-  disabled?: boolean
-  className?: string
+  formatValue?: ((value: number) => string) | undefined
+  disabled?: boolean | undefined
+  className?: string | undefined
 }
 
 export function SliderField({

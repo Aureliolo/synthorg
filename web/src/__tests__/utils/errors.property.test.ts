@@ -7,6 +7,9 @@ import { getErrorMessage } from '@/utils/errors'
 // Unset, fast-check picks its own seed each run (the default).
 const parsedSeed = Number.parseInt(process.env['FC_SEED'] ?? '', 10)
 const FC_SEED = Number.isFinite(parsedSeed) ? parsedSeed : undefined
+// Omit ``seed`` entirely when unset so the assert options object never carries
+// an explicit ``undefined`` (rejected under exactOptionalPropertyTypes).
+const FC_OPTIONS = FC_SEED !== undefined ? { seed: FC_SEED } : {}
 
 // Mock axios so the helper's classification logic is tested in
 // isolation: this property-test file only cares about
@@ -38,7 +41,7 @@ describe('errors property tests', () => {
         const msg = getErrorMessage(input)
         expect(msg.length).toBeGreaterThan(0)
       }),
-      { seed: FC_SEED },
+      FC_OPTIONS,
     )
   })
 
@@ -53,7 +56,7 @@ describe('errors property tests', () => {
         const msg = getErrorMessage(error)
         expect(msg).not.toContain(body)
       }),
-      { seed: FC_SEED },
+      FC_OPTIONS,
     )
   })
 })

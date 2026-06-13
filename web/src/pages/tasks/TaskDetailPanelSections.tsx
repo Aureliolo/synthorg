@@ -57,7 +57,7 @@ export function DescriptionEdit({ task, onUpdate }: TaskUpdateProps) {
       <InlineEdit
         value={task.description}
         onSave={async (value) => {
-          await onUpdate(task.id, { description: value, expected_version: task.version })
+          await onUpdate(task.id, { description: value, expected_version: task.version ?? null })
         }}
         className="mt-1 text-sm text-text-secondary"
       />
@@ -78,7 +78,7 @@ export function PrioritySection({ task, onUpdate }: TaskUpdateProps) {
           onChange={(e) => {
             void onUpdate(task.id, {
               priority: e.target.value as Priority,
-              expected_version: task.version,
+              expected_version: task.version ?? null,
             })
           }}
           className="h-7 rounded border border-border bg-surface px-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
@@ -110,8 +110,8 @@ export function AssigneeSection({ task, onUpdate }: TaskUpdateProps) {
           value={task.assigned_to ?? ''}
           onSave={async (value) => {
             await onUpdate(task.id, {
-              assigned_to: value.trim() || undefined,
-              expected_version: task.version,
+              assigned_to: value.trim() || null,
+              expected_version: task.version ?? null,
             })
           }}
           className="text-sm"

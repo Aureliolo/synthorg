@@ -30,13 +30,13 @@ import { formatCurrency } from '@/utils/format'
 // ── Filter / Sort types ────────────────────────────────────
 
 export interface AgentFilters {
-  search?: string
+  search?: string | undefined
   // ``department`` is ``string`` (not ``DepartmentName``) so live-config
   // departments created via the setup wizard are accepted -- the static
   // enum only covers the built-in set.
-  department?: string
-  level?: SeniorityLevel
-  status?: AgentStatus
+  department?: string | undefined
+  level?: SeniorityLevel | undefined
+  status?: AgentStatus | undefined
 }
 
 export type AgentSortKey = 'name' | 'department' | 'level' | 'status' | 'hiring_date'

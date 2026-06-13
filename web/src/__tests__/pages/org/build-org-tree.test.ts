@@ -441,9 +441,16 @@ describe('buildOrgTree', () => {
 
 
   it('treats agent without status as active (not filtered out)', () => {
+    const { status: omitStatus, ...activeDefault } = makeAgent({
+      id: 'a1',
+      name: 'ActiveDefault',
+      department: 'engineering',
+      level: 'mid',
+    })
+    void omitStatus
     const agents = [
       makeAgent({ id: 'a0', name: 'Lead', department: 'engineering', level: 'lead' }),
-      makeAgent({ id: 'a1', name: 'ActiveDefault', department: 'engineering', level: 'mid', status: undefined }),
+      activeDefault,
       makeAgent({ id: 'a2', name: 'Terminated', department: 'engineering', level: 'mid', status: 'terminated' }),
     ]
     const result = buildTree(makeConfig(agents), {}, [])

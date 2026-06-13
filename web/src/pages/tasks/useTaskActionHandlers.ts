@@ -37,7 +37,7 @@ export function useTaskActionHandlers(task: DashboardTask | null | undefined): T
         // transition failed, so there's nothing page-level to unwind.
         await useTasksStore.getState().transitionTask(task.id, {
           target_status: targetStatus,
-          expected_version: task.version,
+          expected_version: task.version ?? null,
         })
       } finally {
         setTransitioning(null)

@@ -284,6 +284,20 @@ export class ApiRequestError extends Error {
 }
 
 /**
+ * Build an AxiosRequestConfig that carries ``signal`` only when it is
+ * defined. Under ``exactOptionalPropertyTypes`` an explicit
+ * ``signal: undefined`` is not assignable to axios's non-optional
+ * ``GenericAbortSignal``, so a forwarded optional ``AbortSignal`` must be
+ * omitted from the config rather than passed through as ``undefined``.
+ */
+export function withSignal(
+  signal: AbortSignal | undefined,
+  base?: Omit<AxiosRequestConfig, 'signal'>,
+): AxiosRequestConfig {
+  return signal === undefined ? { ...base } : { ...base, signal }
+}
+
+/**
  * Extract data from an ApiResponse envelope.
  * Throws if the response indicates an error.
  */

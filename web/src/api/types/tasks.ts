@@ -28,11 +28,11 @@ export type {
  * ``Omit<Wire, ...> & { ... }`` tightening overlay.
  */
 export type Task = WireTask & {
-  readonly source?: TaskSource | null
-  readonly cost?: number
-  readonly version?: number
-  readonly created_at?: string
-  readonly updated_at?: string
+  readonly source?: TaskSource | null | undefined
+  readonly cost?: number | undefined
+  readonly version?: number | undefined
+  readonly created_at?: string | undefined
+  readonly updated_at?: string | undefined
 }
 
 /**

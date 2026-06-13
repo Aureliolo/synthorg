@@ -129,9 +129,11 @@ export function OrgChartCanvas({
         onEdgeMouseEnter={onEdgeMouseEnter}
         onEdgeMouseLeave={onEdgeMouseLeave}
         onEdgeClick={onEdgeClick}
-        onNodeDragStart={dragEnabled ? handleNodeDragStart : undefined}
-        onNodeDrag={dragEnabled ? handleNodeDrag : undefined}
-        onNodeDragStop={dragEnabled ? handleNodeDragStop : undefined}
+        {...(dragEnabled && {
+          onNodeDragStart: handleNodeDragStart,
+          onNodeDrag: handleNodeDrag,
+          onNodeDragStop: handleNodeDragStop,
+        })}
         onPaneClick={selection.handlePaneClick}
         nodesConnectable={false}
         minZoom={0.1}

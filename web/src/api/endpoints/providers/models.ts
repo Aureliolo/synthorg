@@ -120,7 +120,7 @@ async function _openPullStream(
         ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
       },
       body: JSON.stringify({ model_name: modelName } satisfies PullModelRequest),
-      signal,
+      ...(signal !== undefined && { signal }),
     },
     { idempotent: true },
   )

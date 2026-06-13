@@ -29,11 +29,11 @@ function subscriptionKey(
 const channelHandlers = new Map<string, Set<WsEventHandler>>()
 let pendingSubscriptions: {
   channels: WsChannel[]
-  filters?: Record<string, string>
+  filters?: Record<string, string> | undefined
 }[] = []
 const activeSubscriptions: {
   channels: WsChannel[]
-  filters?: Record<string, string>
+  filters?: Record<string, string> | undefined
 }[] = []
 
 /**

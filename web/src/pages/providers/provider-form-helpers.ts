@@ -64,48 +64,57 @@ export interface ProviderFormModalProps {
   overrides?: ProviderFormOverrides
 }
 
+/** Trim an optional string, coercing empty / whitespace-only input to null. */
+function normaliseOptional(value: string): string | null {
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
 export function buildCreateFromPresetRequest(
   presetName: string,
   v: ProviderFormValues,
 ): CreateFromPresetRequest {
+  const apiKey = normaliseOptional(v.apiKey)
+  const subscriptionToken = normaliseOptional(v.subscriptionToken)
   return {
     preset_name: presetName,
     name: v.name.trim(),
     auth_type: v.authType,
-    api_key: v.authType === 'api_key' && v.apiKey ? v.apiKey : undefined,
-    subscription_token:
-      v.authType === 'subscription' && v.subscriptionToken ? v.subscriptionToken : undefined,
+    api_key: v.authType === 'api_key' ? apiKey : null,
+    subscription_token: v.authType === 'subscription' ? subscriptionToken : null,
     tos_accepted: v.authType === 'subscription' && v.tosAccepted,
-    base_url: v.baseUrl.trim() || undefined,
+    base_url: normaliseOptional(v.baseUrl),
   }
 }
 
 export function buildCreateProviderRequest(v: ProviderFormValues): CreateProviderRequest {
+  const apiKey = normaliseOptional(v.apiKey)
+  const subscriptionToken = normaliseOptional(v.subscriptionToken)
   return {
     name: v.name.trim(),
     driver: 'litellm',
-    litellm_provider: v.litellmProvider || undefined,
+    litellm_provider: normaliseOptional(v.litellmProvider),
     auth_type: v.authType,
-    api_key: v.authType === 'api_key' && v.apiKey ? v.apiKey : undefined,
-    subscription_token:
-      v.authType === 'subscription' && v.subscriptionToken ? v.subscriptionToken : undefined,
+    api_key: v.authType === 'api_key' ? apiKey : null,
+    subscription_token: v.authType === 'subscription' ? subscriptionToken : null,
     tos_accepted: v.authType === 'subscription' && v.tosAccepted,
-    base_url: v.baseUrl.trim() || undefined,
+    base_url: normaliseOptional(v.baseUrl),
     models: [],
   }
 }
 
 export function buildUpdateProviderRequest(v: ProviderFormValues): UpdateProviderRequest {
+  const apiKey = normaliseOptional(v.apiKey)
+  const subscriptionToken = normaliseOptional(v.subscriptionToken)
   return {
-    litellm_provider: v.litellmProvider || undefined,
+    litellm_provider: normaliseOptional(v.litellmProvider),
     auth_type: v.authType,
-    api_key: v.authType === 'api_key' && v.apiKey ? v.apiKey : undefined,
+    api_key: v.authType === 'api_key' ? apiKey : null,
     clear_api_key: v.authType !== 'api_key',
-    subscription_token:
-      v.authType === 'subscription' && v.subscriptionToken ? v.subscriptionToken : undefined,
+    subscription_token: v.authType === 'subscription' ? subscriptionToken : null,
     clear_subscription_token: v.authType !== 'subscription',
     tos_accepted: v.authType === 'subscription' && v.tosAccepted,
-    base_url: v.baseUrl.trim() || undefined,
+    base_url: normaliseOptional(v.baseUrl),
   }
 }
 

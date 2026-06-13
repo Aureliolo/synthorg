@@ -9,8 +9,8 @@ interface NodeContextMenuProps {
   nodeType: 'agent' | 'ceo' | 'department'
   position: { x: number; y: number }
   onClose: () => void
-  onViewDetails?: (nodeId: string) => void
-  onDelete?: (nodeId: string) => void
+  onViewDetails?: ((nodeId: string) => void) | undefined
+  onDelete?: ((nodeId: string) => void) | undefined
 }
 
 interface MenuItem {
@@ -29,8 +29,8 @@ interface MenuItemContext {
   nodeId: string
   onClose: () => void
   stubAction: (action: string) => void
-  onViewDetails?: (nodeId: string) => void
-  onDelete?: (nodeId: string) => void
+  onViewDetails?: ((nodeId: string) => void) | undefined
+  onDelete?: ((nodeId: string) => void) | undefined
 }
 
 /** Build the action list for a node type (agent / ceo / department). */

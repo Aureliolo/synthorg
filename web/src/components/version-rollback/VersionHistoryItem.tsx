@@ -13,7 +13,7 @@ export interface VersionHistoryItemProps<T extends TimelineItem> {
    * Used by surfaces with neither diff nor rollback (e.g. role
    * versions, whose backend exposes list + get only).
    */
-  selectable?: boolean
+  selectable?: boolean | undefined
 }
 
 function VersionItemContent({ item }: { item: TimelineItem }) {

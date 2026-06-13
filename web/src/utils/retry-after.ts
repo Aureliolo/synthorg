@@ -121,9 +121,9 @@ export interface RetryAfterLoopParams<R extends RetryableResponse> {
   /** Sleep helper; tests inject a fake. Always invoked, even for a 0ms wait. */
   readonly sleep: (ms: number) => Promise<void>
   /** Cancellation probe (raw-fetch AbortSignal); axios omits it. */
-  readonly isAborted?: () => boolean
+  readonly isAborted?: (() => boolean) | undefined
   /** Side-effect before each retry (axios logs ``http.rate_limited``). */
-  readonly onBeforeRetry?: (attempt: number, waitMs: number) => void
+  readonly onBeforeRetry?: ((attempt: number, waitMs: number) => void) | undefined
 }
 
 /** Whether *response* still warrants a retry under the budget + replay gate. */

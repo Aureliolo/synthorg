@@ -87,7 +87,11 @@ function _buildForceView(
   commLinks: CommunicationLink[],
 ): { nodes: Node[]; edges: Edge[] } {
   const agentNodes = tree.nodes.filter((n) => n.type === 'agent' || n.type === 'ceo')
-  const freeNodes = agentNodes.map((n) => ({ ...n, parentId: undefined }))
+  const freeNodes = agentNodes.map((n) => {
+    const { parentId, ...rest } = n
+    void parentId
+    return rest
+  })
   const visibleIds = new Set(freeNodes.map((n) => n.id))
   const filteredLinks = commLinks.filter(
     (l) => visibleIds.has(l.source) && visibleIds.has(l.target),
@@ -107,7 +111,7 @@ interface DagrePrefs {
 interface DeriveViewArgs {
   readonly tree: OrgTree
   readonly viewMode: ViewMode
-  readonly collapsedDeptIds?: ReadonlySet<string>
+  readonly collapsedDeptIds?: ReadonlySet<string> | undefined
   readonly commLinks: CommunicationLink[]
   readonly prefs: DagrePrefs
 }

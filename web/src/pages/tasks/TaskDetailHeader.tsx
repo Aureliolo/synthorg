@@ -28,7 +28,7 @@ export function TaskDetailHeader({ task }: TaskDetailHeaderProps) {
             // task's priority on every title rename.
             const updated = await useTasksStore.getState().updateTask(task.id, {
               title: value,
-              expected_version: task.version,
+              expected_version: task.version ?? null,
             })
             if (!updated) {
               throw new Error('Failed to save title')

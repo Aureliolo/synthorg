@@ -16,13 +16,13 @@ export interface ToastItem {
   id: string
   variant: ToastVariant
   title: string
-  description?: string
+  description?: string | undefined
   /** Auto-dismiss duration in ms (default: 5000). */
-  duration?: number
+  duration?: number | undefined
   /** Whether the toast can be manually dismissed (default: true). */
-  dismissible?: boolean
+  dismissible?: boolean | undefined
   /** Optional inline action (e.g. Retry, Undo). */
-  action?: ToastAction
+  action?: ToastAction | undefined
 }
 
 interface ToastState {

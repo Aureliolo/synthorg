@@ -11,8 +11,8 @@ export interface ApprovalTimelineProps {
 interface StepDef {
   label: string
   state: 'complete' | 'active' | 'future'
-  timestamp?: string | null
-  outcomeLabel?: string
+  timestamp?: string | null | undefined
+  outcomeLabel?: string | undefined
 }
 
 function getSteps(approval: ApprovalResponse): StepDef[] {

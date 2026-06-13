@@ -23,10 +23,10 @@ export interface VersionTimelineProps<T extends TimelineItem> {
   selectedVersion: number | null
   onSelect: (item: T) => void
   onLoadMore: () => void
-  emptyTitle?: string
-  emptyDescription?: string
+  emptyTitle?: string | undefined
+  emptyDescription?: string | undefined
   /** When false, rows render as static text (no select / compare). */
-  selectable?: boolean
+  selectable?: boolean | undefined
 }
 
 export function VersionTimeline<T extends TimelineItem>({

@@ -152,13 +152,13 @@ export function groupTasksByColumn(tasks: readonly Task[]): Record<KanbanColumnI
 // ── Client-side filtering ───────────────────────────────────
 
 export interface TaskBoardFilters {
-  status?: TaskStatus
-  priority?: Priority
-  assignee?: string
-  taskType?: TaskType
-  search?: string
-  dateFrom?: string
-  dateTo?: string
+  status?: TaskStatus | undefined
+  priority?: Priority | undefined
+  assignee?: string | undefined
+  taskType?: TaskType | undefined
+  search?: string | undefined
+  dateFrom?: string | undefined
+  dateTo?: string | undefined
 }
 
 type TaskPredicate = (task: Task) => boolean

@@ -109,8 +109,8 @@ function useBeforeUnloadGuard({ when }: UseBeforeUnloadGuardArgs): void {
 
 interface UseDraftPersistenceArgs {
   readonly when: boolean
-  readonly draftKey?: string
-  readonly draftData?: () => unknown
+  readonly draftKey?: string | undefined
+  readonly draftData?: (() => unknown) | undefined
   readonly draftTrigger?: unknown
   readonly draftDebounceMs: number
 }

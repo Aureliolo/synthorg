@@ -19,7 +19,7 @@ interface RulePreviewPanelProps {
   metricPath: string | null
   comparator: Comparator | null
   threshold: number
-  metricLabel?: string
+  metricLabel?: string | undefined
 }
 
 export function RulePreviewPanel({

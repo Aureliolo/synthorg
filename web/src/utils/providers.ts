@@ -19,8 +19,8 @@ export interface ProviderWithName extends ProviderConfig {
 export type ProviderSortKey = 'name' | 'health' | 'model_count'
 
 export interface ProviderFilters {
-  search?: string
-  health?: ProviderHealthStatus
+  search?: string | undefined
+  health?: ProviderHealthStatus | undefined
 }
 
 // ── Normalization ─────────────────────────────────────────────

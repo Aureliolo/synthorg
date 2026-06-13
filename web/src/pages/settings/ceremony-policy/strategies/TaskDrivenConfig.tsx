@@ -13,7 +13,7 @@ const TRIGGER_OPTIONS = [
 export interface TaskDrivenConfigProps {
   config: Record<string, unknown>
   onChange: (config: Record<string, unknown>) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 export function TaskDrivenConfig({ config, onChange, disabled }: TaskDrivenConfigProps) {

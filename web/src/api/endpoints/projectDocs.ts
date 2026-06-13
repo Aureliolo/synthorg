@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import { apiClient, unwrap, unwrapPaginated, withSignal, type PaginatedResult } from '../client'
 import type {
   DocSearchHit,
   DocSummary,
@@ -22,7 +22,7 @@ export async function listProjectDocs(
 ): Promise<PaginatedResult<DocSummary>> {
   const response = await apiClient.get<PaginatedResponse<DocSummary>>(
     `/projects/${encodeURIComponent(projectId)}/docs`,
-    { params, signal },
+    withSignal(signal, { params }),
   )
   return unwrapPaginated<DocSummary>(response)
 }
@@ -34,7 +34,7 @@ export async function getProjectDoc(
 ): Promise<LivingDocument> {
   const response = await apiClient.get<ApiResponse<LivingDocument>>(
     `/projects/${encodeURIComponent(projectId)}/docs/${encodeURIComponent(slug)}`,
-    { signal },
+    withSignal(signal),
   )
   return unwrap(response)
 }

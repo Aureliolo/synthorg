@@ -141,7 +141,7 @@ async function submitWorkflow(
     return useWorkflowsStore.getState().createFromBlueprint({
       blueprint_name: selectedBlueprint!,
       name: form.name.trim(),
-      description: form.description.trim() || undefined,
+      ...(form.description.trim() ? { description: form.description.trim() } : {}),
     })
   }
   // `isWorkflowType` was checked by the caller before we reached the store call.

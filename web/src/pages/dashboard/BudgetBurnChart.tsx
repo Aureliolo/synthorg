@@ -25,14 +25,14 @@ interface BudgetBurnChartProps {
   trendData: readonly TrendDataPoint[]
   forecast: ForecastResponse | null
   budgetTotal: number
-  budgetRemaining?: number
-  currency?: string
+  budgetRemaining?: number | undefined
+  currency?: string | undefined
 }
 
 interface ChartDataPoint {
   label: string
-  actual?: number
-  projected?: number
+  actual?: number | undefined
+  projected?: number | undefined
 }
 
 // Recharts margin requires numeric values. These mirror --so-space-5 (20px)
@@ -82,10 +82,10 @@ function getTodayLabel(): string {
 }
 
 function ChartTooltipContent({ active, payload, label, currency }: {
-  active?: boolean
-  payload?: Array<{ value: number; dataKey: string }>
-  label?: string
-  currency?: string
+  active?: boolean | undefined
+  payload?: Array<{ value: number; dataKey: string }> | undefined
+  label?: string | undefined
+  currency?: string | undefined
 }) {
   if (!active || !payload?.length) return null
   return (
@@ -107,8 +107,8 @@ function BurnChartActions({
   currency,
 }: {
   forecast: ForecastResponse | null
-  budgetRemaining?: number
-  currency?: string
+  budgetRemaining?: number | undefined
+  currency?: string | undefined
 }) {
   return (
     <div className="flex gap-2">
@@ -131,7 +131,7 @@ interface BurnChartBodyProps {
   chartData: readonly ChartDataPoint[]
   forecast: ForecastResponse | null
   budgetTotal: number
-  currency?: string
+  currency?: string | undefined
   todayLabel: string
 }
 

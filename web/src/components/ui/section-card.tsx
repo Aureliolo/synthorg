@@ -2,12 +2,12 @@ import type { LucideIcon } from 'lucide-react'
 import { useId, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
-interface SectionCardProps {
+export interface SectionCardProps {
   title: string
-  icon?: LucideIcon
-  action?: ReactNode
+  icon?: LucideIcon | undefined
+  action?: ReactNode | undefined
   children: ReactNode
-  className?: string
+  className?: string | undefined
 }
 
 export function SectionCard({

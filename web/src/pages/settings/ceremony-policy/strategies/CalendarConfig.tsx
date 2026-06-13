@@ -13,7 +13,7 @@ const FREQUENCY_OPTIONS = [
 export interface CalendarConfigProps {
   config: Record<string, unknown>
   onChange: (config: Record<string, unknown>) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 export function CalendarConfig({ config, onChange, disabled }: CalendarConfigProps) {

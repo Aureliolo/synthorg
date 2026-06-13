@@ -8,11 +8,11 @@ import { KeyboardShortcutHint } from './keyboard-shortcut-hint'
 
 export interface CommandCheatsheetProps {
   /** Controlled open state. When omitted, the component self-manages via `?` shortcut. */
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
+  open?: boolean | undefined
+  onOpenChange?: ((open: boolean) => void) | undefined
   /** Disable the global `?` shortcut (e.g. when a modal is already open). */
-  disableShortcut?: boolean
-  className?: string
+  disableShortcut?: boolean | undefined
+  className?: string | undefined
 }
 
 type IdentifiedShortcut = { id: string } & RegisteredShortcut

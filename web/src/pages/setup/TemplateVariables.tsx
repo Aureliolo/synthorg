@@ -6,9 +6,9 @@ export interface TemplateVariablesProps {
   variables: readonly TemplateVariable[]
   values: Readonly<Record<string, string | number | boolean>>
   onChange: (key: string, value: string | number | boolean) => void
-  currency?: string
+  currency?: string | undefined
   /** Lock every variable control (e.g. after the template is applied). */
-  disabled?: boolean
+  disabled?: boolean | undefined
 }
 
 /** Replace "USD" in a variable description with the selected currency code. */
@@ -33,7 +33,7 @@ function TemplateNumberField({
   label: string
   value: string | number | boolean | null
   onChange: (value: number) => void
-  disabled?: boolean
+  disabled?: boolean | undefined
 }) {
   const numValue = typeof value === 'number' ? value : Number(value) || 0
   const { min, max, step } = NUMERIC_BOUNDS[varType]
@@ -61,8 +61,8 @@ function TemplateVariableField({
   variable: TemplateVariable
   values: Readonly<Record<string, string | number | boolean>>
   onChange: (key: string, value: string | number | boolean) => void
-  currency?: string
-  disabled?: boolean
+  currency?: string | undefined
+  disabled?: boolean | undefined
 }) {
   const currentValue = values[variable.name] ?? variable.default
   const label = localizeCurrencyLabel(variable.description || variable.name, currency)

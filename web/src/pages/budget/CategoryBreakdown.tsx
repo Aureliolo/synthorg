@@ -6,7 +6,7 @@ import type { CategoryBucket, CategoryRatio } from '@/utils/budget'
 
 export interface CategoryBreakdownProps {
   ratio: CategoryRatio
-  currency?: string
+  currency?: string | undefined
 }
 
 const CATEGORIES: {
@@ -34,7 +34,7 @@ function CategoryLegendRow({ label, dotClass, bucket, currency }: {
   label: string
   dotClass: string
   bucket: CategoryBucket
-  currency?: string
+  currency?: string | undefined
 }) {
   return (
     <div className="flex items-center gap-2">

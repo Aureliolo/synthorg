@@ -57,11 +57,11 @@ export interface NotificationItem {
   readonly category: NotificationCategory
   readonly severity: NotificationSeverity
   readonly title: string
-  readonly description?: string
+  readonly description?: string | undefined
   readonly timestamp: string
   readonly read: boolean
-  readonly href?: string
-  readonly entityId?: string
+  readonly href?: string | undefined
+  readonly entityId?: string | undefined
   readonly dispatchedTo: readonly NotificationRoute[]
 }
 

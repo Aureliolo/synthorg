@@ -22,9 +22,9 @@ export interface WizardNavigationProps {
 
 interface WizardNextButtonProps {
   onNext: () => void
-  nextDisabled?: boolean
-  loading?: boolean
-  nextLabel?: string
+  nextDisabled?: boolean | undefined
+  loading?: boolean | undefined
+  nextLabel?: string | undefined
   reasonId: string
   showReason: boolean
 }

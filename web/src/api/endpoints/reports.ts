@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated } from '../client'
+import { apiClient, unwrap, unwrapPaginated, withSignal } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 const REPORT_PERIOD_VALUES = ['daily', 'weekly', 'monthly'] as const satisfies readonly string[]
@@ -41,7 +41,7 @@ export async function listReportPeriods(
   // downstream.
   const response = await apiClient.get<PaginatedResponse<string>>(
     '/reports/periods',
-    { signal: options.signal },
+    withSignal(options.signal),
   )
   const periods = unwrapPaginated<string>(response).data
   if (!periods.every(isReportPeriod)) {
