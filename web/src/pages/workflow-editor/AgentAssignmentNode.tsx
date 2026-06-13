@@ -13,8 +13,14 @@ export interface AgentAssignmentNodeData extends Record<string, unknown> {
 export type AgentAssignmentNodeType = Node<AgentAssignmentNodeData, 'agent_assignment'>
 
 function AgentAssignmentNodeComponent({ data, selected }: NodeProps<AgentAssignmentNodeType>) {
-  const strategy = (data.config['routing_strategy'] as string) || 'auto'
-  const role = data.config['role_filter'] as string | undefined
+  // ``config`` is ``Record<string, unknown>`` (persisted node config copied in
+  // without per-key validation), so narrow at runtime: a non-string value must
+  // not slip past the fallback and render as "[object Object]" in the label.
+  const rawStrategy = data.config['routing_strategy']
+  const strategy =
+    typeof rawStrategy === 'string' && rawStrategy.trim() ? rawStrategy : 'auto'
+  const rawRole = data.config['role_filter']
+  const role = typeof rawRole === 'string' && rawRole.trim() ? rawRole : undefined
 
   return (
     <div

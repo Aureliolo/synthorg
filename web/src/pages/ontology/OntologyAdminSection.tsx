@@ -28,7 +28,7 @@ export function OntologyAdminSection() {
         useToastStore.getState().add({
           variant: 'success',
           title: 'Ontology derived',
-          description: `Derived ${String(result['derived_count'] ?? 0)} entity definitions.`,
+          description: `Derived ${String(result.derived_count)} entity definitions.`,
         })
       })
       .catch((err: unknown) => {
@@ -49,7 +49,7 @@ export function OntologyAdminSection() {
         // The backend returns HTTP 200 with this status (not an error)
         // when no org-memory backend is wired; a "Published 0" success
         // toast would misrepresent that as a completed no-op sync.
-        if (result['status'] === 'sync_service_not_configured') {
+        if (result.status === 'sync_service_not_configured') {
           useToastStore.getState().add({
             variant: 'warning',
             title: 'Sync unavailable',
@@ -60,7 +60,7 @@ export function OntologyAdminSection() {
         useToastStore.getState().add({
           variant: 'success',
           title: 'Org memory synced',
-          description: `Published ${String(result['published_count'] ?? 0)} entity definitions.`,
+          description: `Published ${String(result.published_count ?? 0)} entity definitions.`,
         })
       })
       .catch((err: unknown) => {

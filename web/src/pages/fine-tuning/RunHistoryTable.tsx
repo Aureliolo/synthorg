@@ -19,13 +19,19 @@ const STAGE_STATUS_MAP: Record<FineTuneStage, 'active' | 'idle' | 'error' | 'off
   deploying: 'active',
 }
 
-/** Count completed stages that belong to the active-pipeline set. */
+/**
+ * Count DISTINCT completed stages that belong to the active-pipeline set.
+ * Deduplicating guards against a repeated stage name in ``stages_completed``
+ * inflating the count beyond ``ACTIVE_STAGES.size`` (e.g. rendering "9/7").
+ */
 function countActiveStagesCompleted(stages: readonly string[]): number {
-  let n = 0
+  const unique = new Set<FineTuneStage>()
   for (const s of stages) {
-    if (ACTIVE_STAGES.has(s as FineTuneStage)) n++
+    if (ACTIVE_STAGES.has(s as FineTuneStage)) {
+      unique.add(s as FineTuneStage)
+    }
   }
-  return n
+  return unique.size
 }
 
 // Memoised so a single run's WS-driven progress update does not re-render

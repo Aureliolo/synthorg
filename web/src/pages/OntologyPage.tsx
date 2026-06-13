@@ -49,6 +49,11 @@ export default function OntologyPage() {
           title="No entities registered"
           description="Your ontology is empty. Entities appear once your agents register them or you define them via the API."
         />
+        {/* Keep the admin actions reachable here: derive / sync-org-memory are
+            exactly what an operator uses to bootstrap an empty ontology. */}
+        <ErrorBoundary level="section">
+          <OntologyAdminSection />
+        </ErrorBoundary>
       </div>
     )
   }

@@ -19,7 +19,7 @@ import type {
   CreateProviderRequest,
   ProbePresetResponse,
 } from '@/api/types'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { useToastStore } from '@/stores/toast'
 import type {
@@ -290,7 +290,7 @@ async function createProviderFromPresetFullImpl(
     set({ providersError: msg })
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to create provider',
+      ...getCrudErrorTitle(err, 'Failed to create provider'),
       description: msg,
     })
     return null
@@ -314,7 +314,7 @@ async function createProviderCustomImpl(
     set({ providersError: msg })
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to create provider',
+      ...getCrudErrorTitle(err, 'Failed to create provider'),
       description: msg,
     })
     return null

@@ -55,10 +55,18 @@ export function useProjectsData(): UseProjectsDataReturn {
       PROJECT_CHANNELS.map((channel) => ({
         channel,
         handler: () => {
-          markFresh()
           if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
+          // Mark fresh only AFTER the debounced fetch actually runs: marking
+          // up-front lets a stream of WS events keep sliding the debounce while
+          // skipIfFresh stays true, starving both the debounced fetch and the
+          // periodic poll.
           wsDebounceRef.current = setTimeout(() => {
-            void useProjectsStore.getState().fetchProjects()
+            void useProjectsStore
+              .getState()
+              .fetchProjects()
+              .then(() => {
+                markFresh()
+              })
           }, WS_DEBOUNCE_MS)
         },
       })),

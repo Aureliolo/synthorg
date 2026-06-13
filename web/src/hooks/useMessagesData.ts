@@ -103,10 +103,15 @@ export function useMessagesData(activeChannel: string | null): UseMessagesDataRe
       MESSAGES_WS_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
-          markFresh()
-          useMessagesStore
+          // Only mark fresh when the event actually mutated the ACTIVE
+          // channel; a frame for some other channel must not suppress the
+          // active channel's poll, which would leave its thread stale.
+          const didAffectActiveChannel = useMessagesStore
             .getState()
             .handleWsEvent(event, activeChannelRef.current)
+          if (didAffectActiveChannel) {
+            markFresh()
+          }
         },
       })),
     [markFresh],

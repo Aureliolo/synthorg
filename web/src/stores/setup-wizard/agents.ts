@@ -8,7 +8,7 @@ import {
 } from '@/api/endpoints/setup'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import type { AgentsSlice, SliceCreator } from './types'
 
 const log = createLogger('setup-wizard:agents')
@@ -26,7 +26,7 @@ function reportAgentUpdateError(set: WizSet, action: string, err: unknown): void
   set({ agentsError: msg })
   useToastStore.getState().add({
     variant: 'error',
-    title: 'Could not update agent',
+    ...getCrudErrorTitle(err, 'Could not update agent'),
     description: msg,
   })
 }

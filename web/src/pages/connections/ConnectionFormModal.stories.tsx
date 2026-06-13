@@ -39,20 +39,30 @@ export const TypePicker: Story = {
   },
 }
 
-// One story per connection type -- covers the full form matrix.
+// One story per connection type -- covers the full form matrix. Keying on the
+// ``Create_${ConnectionType}`` template type makes a renamed connection type a
+// compile error at the require sites below rather than a silent undefined.
 const typeStories = Object.fromEntries(
   CONNECTION_TYPE_VALUES.map((type) => [
     `Create_${type}`,
     makeTypeStory(type),
   ]),
-) as Record<string, Story>
+) as Partial<Record<`Create_${ConnectionType}`, Story>>
 
-export const CreateGithub = typeStories['Create_github']!
-export const CreateSlack = typeStories['Create_slack']!
-export const CreateSmtp = typeStories['Create_smtp']!
-export const CreateDatabase = typeStories['Create_database']!
-export const CreateGenericHttp = typeStories['Create_generic_http']!
-export const CreateOauthApp = typeStories['Create_oauth_app']!
+function requireTypeStory(storyKey: `Create_${ConnectionType}`): Story {
+  const story = typeStories[storyKey]
+  if (!story) {
+    throw new Error(`Missing story variant: ${storyKey}`)
+  }
+  return story
+}
+
+export const CreateGithub = requireTypeStory('Create_github')
+export const CreateSlack = requireTypeStory('Create_slack')
+export const CreateSmtp = requireTypeStory('Create_smtp')
+export const CreateDatabase = requireTypeStory('Create_database')
+export const CreateGenericHttp = requireTypeStory('Create_generic_http')
+export const CreateOauthApp = requireTypeStory('Create_oauth_app')
 
 export const EditMode: Story = {
   args: {

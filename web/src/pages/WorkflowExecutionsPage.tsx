@@ -27,11 +27,12 @@ import type { WorkflowExecution } from '@/api/endpoints/workflow-executions'
 
 import { useWorkflowExecutionsController } from './workflows/useWorkflowExecutionsController'
 
-type ExecStatusFilter = 'all' | 'running' | 'completed' | 'failed' | 'cancelled'
+type ExecStatusFilter = 'all' | 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 type ExecSortDir = 'asc' | 'desc'
 
 const STATUS_FILTER_OPTIONS: ReadonlyArray<{ value: ExecStatusFilter; label: string }> = [
   { value: 'all', label: 'All' },
+  { value: 'pending', label: 'Pending' },
   { value: 'running', label: 'Running' },
   { value: 'completed', label: 'Completed' },
   { value: 'failed', label: 'Failed' },
@@ -151,6 +152,7 @@ export default function WorkflowExecutionsPage() {
         loading={ctrl.loading}
         error={ctrl.error}
         workflowId={id}
+        hasAnyExecutions={ctrl.executions.length > 0}
         executions={view.paginatedItems}
         onCancelClick={ctrl.setPendingCancel}
       />
@@ -222,6 +224,7 @@ interface ExecutionsListBodyProps {
   loading: boolean
   error: string | null
   workflowId: string
+  hasAnyExecutions: boolean
   executions: readonly WorkflowExecution[]
   onCancelClick: (executionId: string) => void
 }
@@ -230,6 +233,7 @@ function ExecutionsListBody({
   loading,
   error,
   workflowId,
+  hasAnyExecutions,
   executions,
   onCancelClick,
 }: ExecutionsListBodyProps) {
@@ -243,10 +247,16 @@ function ExecutionsListBody({
     )
   }
   if (!error && executions.length === 0) {
+    // Distinguish a filter that matched nothing ("runs exist, none match")
+    // from a workflow that has never run, so the empty copy is not misleading.
     return (
       <EmptyState
-        title="No executions yet"
-        description="Trigger this workflow to see its run history here."
+        title={hasAnyExecutions ? 'No matching executions' : 'No executions yet'}
+        description={
+          hasAnyExecutions
+            ? 'Try changing the status filter or sort.'
+            : 'Trigger this workflow to see its run history here.'
+        }
       />
     )
   }

@@ -91,7 +91,11 @@ export function activateSseFallback(set: WsSet): void {
     },
     onExhausted: () => {
       log.error('SSE fallback exhausted; no live transport remains')
-      set({ sseFallbackExhausted: true })
+      // Clear the client ref and active flag so the line-77 guard does not
+      // strand re-activation: an exhausted client delivers nothing, so a
+      // later handshake-failure path must be able to open a fresh fallback.
+      sseClient = null
+      set({ sseFallbackActive: false, sseFallbackExhausted: true })
     },
   })
   set({ sseFallbackActive: true, sseFallbackExhausted: false })

@@ -327,6 +327,24 @@ describe('messagesStore', () => {
       expect(useMessagesStore.getState().messages).toHaveLength(0)
     })
 
+    it('reports active-channel mutation via the return value', () => {
+      // The active-channel message returns true so the caller can suppress
+      // the next redundant poll; an inactive-channel message and a skipped
+      // payload return false so they do not falsely mark the thread fresh.
+      const activeMsg = makeMessage('a', { channel: '#engineering' })
+      const otherMsg = makeMessage('b', { channel: '#product' })
+
+      expect(
+        useMessagesStore.getState().handleWsEvent(makeWsEvent(activeMsg), '#engineering'),
+      ).toBe(true)
+      expect(
+        useMessagesStore.getState().handleWsEvent(makeWsEvent(otherMsg), '#engineering'),
+      ).toBe(false)
+      expect(
+        useMessagesStore.getState().handleWsEvent(makeWsEvent({ bad: true }), '#engineering'),
+      ).toBe(false)
+    })
+
     it('skips malformed payloads', () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       try {

@@ -7,7 +7,7 @@
  * registration and assignment are backend-/agent-only writes and are not
  * surfaced here; see the experiments controller docstring.
  */
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { FlaskConical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -125,13 +125,19 @@ function ExperimentResults({ data }: { data: ExperimentData }) {
 export function ExperimentExplorer() {
   const [key, setKey] = useState('')
   const [data, setData] = useState<ExperimentData>(EMPTY)
+  // Monotonic request token: a slow earlier load must not overwrite the
+  // display once a newer load has been issued for a different key.
+  const requestSeq = useRef(0)
 
   const load = useCallback((experiment: string) => {
     const trimmed = experiment.trim()
     if (trimmed === '') return
+    const seq = requestSeq.current + 1
+    requestSeq.current = seq
     setData({ ...EMPTY, loading: true })
     void Promise.allSettled([listVariants(trimmed), listAssignments(trimmed)]).then(
       ([variantsResult, assignmentsResult]) => {
+        if (seq !== requestSeq.current) return
         const variants = variantsResult.status === 'fulfilled' ? variantsResult.value : []
         const assignments =
           assignmentsResult.status === 'fulfilled' ? assignmentsResult.value : []

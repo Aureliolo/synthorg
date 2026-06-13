@@ -29,6 +29,12 @@ export function isSupportedWireVersion(
   set: WsSet,
 ): boolean {
   if (version === WS_PROTOCOL_VERSION) {
+    // A prior transient mismatch may have set the sticky store flag; clear it
+    // so the UI unblocks once a supported frame lands. Guard the store write
+    // on the counter so the common steady-state frame does not write per-event.
+    if (protocolMismatchCount > 0) {
+      set({ protocolVersionMismatch: false })
+    }
     protocolMismatchCount = 0
     return true
   }

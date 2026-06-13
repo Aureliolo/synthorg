@@ -151,17 +151,33 @@ export async function triggerDriftCheck(): Promise<Record<string, string>> {
 
 // ── Admin operations ──────────────────────────────────────────
 
+export interface DeriveOntologyResponse {
+  derived_count: number
+}
+
+export type SyncOrgMemoryStatus = 'sync_completed' | 'sync_service_not_configured'
+
+export interface SyncOrgMemoryResponse {
+  status: SyncOrgMemoryStatus
+  /**
+   * Count of definitions published to OrgMemory. Present only on a
+   * completed sync; the backend omits it on the
+   * ``sync_service_not_configured`` branch.
+   */
+  published_count?: number
+}
+
 /** Re-run auto-derivation of entity definitions from decorated models. */
-export async function deriveOntology(): Promise<Record<string, number>> {
-  const response = await apiClient.post<ApiResponse<Record<string, number>>>(
+export async function deriveOntology(): Promise<DeriveOntologyResponse> {
+  const response = await apiClient.post<ApiResponse<DeriveOntologyResponse>>(
     '/ontology/admin/derive',
   )
   return unwrap(response)
 }
 
 /** Force a re-sync of all entity definitions into OrgMemory. */
-export async function syncOrgMemory(): Promise<Record<string, number | string>> {
-  const response = await apiClient.post<ApiResponse<Record<string, number | string>>>(
+export async function syncOrgMemory(): Promise<SyncOrgMemoryResponse> {
+  const response = await apiClient.post<ApiResponse<SyncOrgMemoryResponse>>(
     '/ontology/admin/sync-org-memory',
   )
   return unwrap(response)

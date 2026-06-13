@@ -58,10 +58,17 @@ export function useArtifactsData(): UseArtifactsDataReturn {
       ARTIFACT_CHANNELS.map((channel) => ({
         channel,
         handler: () => {
-          markFresh()
           if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
+          // Mark fresh only AFTER the debounced fetch runs: marking up-front lets
+          // a stream of WS events keep sliding the debounce while skipIfFresh
+          // stays true, starving both the debounced fetch and the periodic poll.
           wsDebounceRef.current = setTimeout(() => {
-            void useArtifactsStore.getState().fetchArtifacts()
+            void useArtifactsStore
+              .getState()
+              .fetchArtifacts()
+              .then(() => {
+                markFresh()
+              })
           }, WS_DEBOUNCE_MS)
         },
       })),
