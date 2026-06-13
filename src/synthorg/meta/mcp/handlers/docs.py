@@ -15,9 +15,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
-    DOCS_HISTORY_DEFAULT_LIMIT,
     DOCS_LIST_DEFAULT_LIMIT,
-    DOCS_SEARCH_DEFAULT_LIMIT,
 )
 from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.errors import (
@@ -28,10 +26,16 @@ from synthorg.docs_engine.errors import (
 )
 from synthorg.docs_engine.service import DocsService
 from synthorg.docs_engine.state import DocsStateSlice
+from synthorg.meta.mcp.domains._docs_args import (
+    DocsHistoryArgs,
+    DocsReadArgs,
+    DocsSearchArgs,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_args import require_arg
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -66,9 +70,6 @@ _ARG_BODY = "body"
 _ARG_TAGS = "tags"
 _ARG_TAG = "tag"
 _ARG_RELATED = "related_task_ids"
-_ARG_VERSION = "version"
-_ARG_QUERY = "query"
-_ARG_DOC_TYPES = "doc_types"
 _ARG_LIMIT = "limit"
 _ARG_OFFSET = "offset"
 
@@ -100,23 +101,6 @@ def _parse_doc_type(arguments: dict[str, object], key: str) -> DocType:
         ArgumentValidationError: Raised on the corresponding failure path.
     """
     raw = require_arg(arguments, key, str)
-    try:
-        return DocType(raw)
-    except ValueError as exc:
-        raise ArgumentValidationError(key, _TY_DOC_TYPE) from exc
-
-
-def _parse_opt_doc_type(arguments: dict[str, object], key: str) -> DocType | None:
-    """Return parse opt doc type.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key)
-    if raw is None or raw == "":
-        return None
-    if not isinstance(raw, str):
-        raise ArgumentValidationError(key, _TY_DOC_TYPE)
     try:
         return DocType(raw)
     except ValueError as exc:
@@ -164,6 +148,23 @@ def _parse_block_list(
         except ValueError as exc:
             raise ArgumentValidationError(_ARG_BODY, _TY_BLOCK_LIST) from exc
     return tuple(parsed)
+
+
+def _parse_opt_doc_type(arguments: dict[str, object], key: str) -> DocType | None:
+    """Return parse opt doc type.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
+    raw = arguments.get(key)
+    if raw is None or raw == "":
+        return None
+    if not isinstance(raw, str):
+        raise ArgumentValidationError(key, _TY_DOC_TYPE)
+    try:
+        return DocType(raw)
+    except ValueError as exc:
+        raise ArgumentValidationError(key, _TY_DOC_TYPE) from exc
 
 
 def _parse_positive_int(
@@ -229,30 +230,9 @@ def _parse_opt_nonblank_str(
     return NotBlankStr(raw)
 
 
-def _parse_doc_type_filter(
-    arguments: dict[str, object],
-) -> frozenset[DocType] | None:
-    """Return parse doc type filter.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(_ARG_DOC_TYPES)
-    if raw is None:
-        return None
-    if not isinstance(raw, (list, tuple)) or len(raw) == 0:
-        raise ArgumentValidationError(_ARG_DOC_TYPES, _TY_DOC_TYPE)
-    parsed: list[DocType] = []
-    for value in raw:
-        if not isinstance(value, str):
-            raise ArgumentValidationError(_ARG_DOC_TYPES, _TY_DOC_TYPE)
-        try:
-            parsed.append(DocType(value))
-        except ValueError as exc:
-            raise ArgumentValidationError(_ARG_DOC_TYPES, _TY_DOC_TYPE) from exc
-    return frozenset(parsed)
-
-
+# lint-allow: handler-arguments-get -- cataloged mismatch: docs:write is admin-gated
+# (reads confirm/reason via require_admin_guardrails) but DocsWriteArgs (extra="forbid")
+# declares no AdminGuardrailFields, so typed_args rejects the guardrail keys.
 async def _docs_write(
     *,
     app_state: AppState,
@@ -305,13 +285,11 @@ async def _docs_get(
     """Return docs get."""
     try:
         svc = _require_docs_service(app_state)
-        project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
-        slug = NotBlankStr(require_arg(arguments, _ARG_SLUG, str))
-        version = _parse_opt_nonblank_str(arguments, _ARG_VERSION)
+        read_args = typed_args(arguments, DocsReadArgs)
         doc = await svc.read_doc(
-            project_id=project_id,
-            slug=slug,
-            version=version,
+            project_id=read_args.project_id,
+            slug=read_args.slug,
+            version=read_args.version,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_DOCS_GET)
         return ok(doc.model_dump(mode="json"))
@@ -327,6 +305,8 @@ async def _docs_get(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler defaults limit
+# to DOCS_LIST_DEFAULT_LIMIT (100) but DocsListArgs declares limit default 50.
 async def _docs_list(
     *,
     app_state: AppState,
@@ -370,17 +350,17 @@ async def _docs_search(
     """Return docs search."""
     try:
         svc = _require_docs_service(app_state)
-        project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
-        query = NotBlankStr(require_arg(arguments, _ARG_QUERY, str))
-        doc_types = _parse_doc_type_filter(arguments)
-        limit = _parse_positive_int(
-            arguments, _ARG_LIMIT, default=DOCS_SEARCH_DEFAULT_LIMIT
+        search_args = typed_args(arguments, DocsSearchArgs)
+        doc_types = (
+            frozenset(search_args.doc_types)
+            if search_args.doc_types is not None
+            else None
         )
         hits = await svc.search(
-            project_id=project_id,
-            query=query,
+            project_id=search_args.project_id,
+            query=search_args.query,
             doc_types=doc_types,
-            limit=limit,
+            limit=search_args.limit,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_DOCS_SEARCH)
         return ok([h.model_dump(mode="json") for h in hits])
@@ -402,15 +382,11 @@ async def _docs_history(
     """Return docs history."""
     try:
         svc = _require_docs_service(app_state)
-        project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
-        slug = NotBlankStr(require_arg(arguments, _ARG_SLUG, str))
-        limit = _parse_positive_int(
-            arguments, _ARG_LIMIT, default=DOCS_HISTORY_DEFAULT_LIMIT
-        )
+        history_args = typed_args(arguments, DocsHistoryArgs)
         versions = await svc.history(
-            project_id=project_id,
-            slug=slug,
-            limit=limit,
+            project_id=history_args.project_id,
+            slug=history_args.slug,
+            limit=history_args.limit,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_DOCS_HISTORY)
         return ok([v.model_dump(mode="json") for v in versions])
