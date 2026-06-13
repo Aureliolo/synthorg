@@ -12,6 +12,7 @@ from collections.abc import (
     Iterator,
     Mapping,
 )
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -126,6 +127,24 @@ def _docker_available() -> bool:
     return shutil.which("docker") is not None
 
 
+def _ensure_template_blocking(proxy: PostgresContainerProxy, shared_dir: Path) -> None:
+    """Build the migrated template, tolerating an already-running loop.
+
+    ``postgres_container`` is session-scoped and *sync*, but pytest can
+    first instantiate it while resolving an async test's dependencies, when
+    a plain ``asyncio.run`` raises ``cannot be called from a running event
+    loop``. Detect that case and run the ensure on a dedicated thread with
+    its own loop so the call works however the fixture is first reached.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(ensure_pg_template(proxy, shared_dir))
+        return
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(lambda: asyncio.run(ensure_pg_template(proxy, shared_dir))).result()
+
+
 @pytest.fixture(scope="session")
 def postgres_container(
     tmp_path_factory: pytest.TempPathFactory,
@@ -148,7 +167,7 @@ def postgres_container(
     """
     env_proxy = _proxy_from_env()
     if env_proxy is not None:
-        asyncio.run(ensure_pg_template(env_proxy, xdist_shared_dir(tmp_path_factory)))
+        _ensure_template_blocking(env_proxy, xdist_shared_dir(tmp_path_factory))
         yield env_proxy
         return
 
@@ -161,7 +180,7 @@ def postgres_container(
     container.start()
     try:
         proxy = _proxy_from_testcontainer(container)
-        asyncio.run(ensure_pg_template(proxy, xdist_shared_dir(tmp_path_factory)))
+        _ensure_template_blocking(proxy, xdist_shared_dir(tmp_path_factory))
         yield proxy
     finally:
         container.stop()
