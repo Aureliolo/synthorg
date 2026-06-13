@@ -70,6 +70,9 @@ async def test_hard_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None:
     registry = ToolRegistry([write_tool])
     cost_tracker = CostTracker()
     enforcer = BudgetEnforcer(
+        # The per-run ceiling under test comes from ``Task.hard_ceiling``
+        # (set below via model_copy); ``run_hard_ceiling`` is only the
+        # fallback used when the task carries none, so it stays 0.0 (unused).
         budget_config=_budget_config(run_hard_ceiling=0.0),
         cost_tracker=cost_tracker,
     )
@@ -114,7 +117,12 @@ async def test_hard_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None:
         tool_registry=registry,
         budget_enforcer=BudgetEnforcer(
             budget_config=_budget_config(run_hard_ceiling=0.0),
-            cost_tracker=CostTracker(),
+            # Reuse the leg-1 tracker so the resume enforces the raised
+            # ceiling against the CUMULATIVE spend carried over from the
+            # parked run, not a fresh zero -- otherwise the COMPLETED
+            # assertion would hold regardless of whether the raise took
+            # effect.
+            cost_tracker=cost_tracker,
         ),
         approval_gate=_approval_gate(),
     )
