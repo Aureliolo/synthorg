@@ -203,7 +203,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The Postgres drift arm pulls postgres:18-alpine via testcontainers
+    # (cold on this runner, since no start-postgres precedes it), applies
+    # every revision, then runs pg_dump -- heavier than the git-state +
+    # SQLite-drift steps this budget was originally sized for.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
