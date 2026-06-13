@@ -468,13 +468,7 @@ func TestConfigGet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
-			// Reset rootCmd output after each subtest to prevent
-			// cross-contamination of shared Cobra state.
-			t.Cleanup(func() {
-				rootCmd.SetOut(nil)
-				rootCmd.SetErr(nil)
-				rootCmd.SetArgs(nil)
-			})
+			sandboxRootCmd(t)
 			var buf bytes.Buffer
 			rootCmd.SetOut(&buf)
 			rootCmd.SetErr(&buf)
@@ -491,11 +485,7 @@ func TestConfigGet(t *testing.T) {
 }
 
 func TestConfigGetUnknownKey(t *testing.T) {
-	t.Cleanup(func() {
-		rootCmd.SetOut(nil)
-		rootCmd.SetErr(nil)
-		rootCmd.SetArgs(nil)
-	})
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -515,11 +505,7 @@ func TestConfigGetUnknownKey(t *testing.T) {
 }
 
 func TestConfigGetRejectsSecretKeys(t *testing.T) {
-	t.Cleanup(func() {
-		rootCmd.SetOut(nil)
-		rootCmd.SetErr(nil)
-		rootCmd.SetArgs(nil)
-	})
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -543,11 +529,7 @@ func TestConfigGetRejectsSecretKeys(t *testing.T) {
 }
 
 func TestConfigGetDefaultChannel(t *testing.T) {
-	t.Cleanup(func() {
-		rootCmd.SetOut(nil)
-		rootCmd.SetErr(nil)
-		rootCmd.SetArgs(nil)
-	})
+	sandboxRootCmd(t)
 	// Seed a config file that omits "channel" so Load's unmarshal-onto-
 	// DefaultState fallback supplies the default "stable" value.
 	dir := t.TempDir()

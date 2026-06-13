@@ -10,16 +10,6 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
 
-// resetRootCmd restores rootCmd state to prevent cross-test leakage.
-func resetRootCmd(t testing.TB) {
-	t.Helper()
-	t.Cleanup(func() {
-		rootCmd.SetOut(nil)
-		rootCmd.SetErr(nil)
-		rootCmd.SetArgs(nil)
-	})
-}
-
 func TestConfigSetBackendPort(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
@@ -29,7 +19,7 @@ func TestConfigSetBackendPort(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(&buf)
@@ -48,7 +38,7 @@ func TestConfigSetBackendPort(t *testing.T) {
 }
 
 func TestConfigSetBackendPortRejectsInvalid(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -69,7 +59,7 @@ func TestConfigSetBackendPortRejectsInvalid(t *testing.T) {
 }
 
 func TestConfigSetPortUniqueness(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -98,7 +88,7 @@ func TestConfigSetPortUniqueness(t *testing.T) {
 }
 
 func TestConfigSetWebPort(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -125,7 +115,7 @@ func TestConfigSetWebPort(t *testing.T) {
 }
 
 func TestConfigSetSandbox(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -153,7 +143,7 @@ func TestConfigSetSandbox(t *testing.T) {
 }
 
 func TestConfigSetImageTag(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -180,7 +170,7 @@ func TestConfigSetImageTag(t *testing.T) {
 }
 
 func TestConfigSetColor(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	for _, value := range []string{"always", "auto", "never"} {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
@@ -211,7 +201,7 @@ func TestConfigSetColor(t *testing.T) {
 }
 
 func TestConfigSetColorRejectsInvalid(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -232,7 +222,7 @@ func TestConfigSetColorRejectsInvalid(t *testing.T) {
 }
 
 func TestConfigSetOutput(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	for _, value := range []string{"text", "json"} {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
@@ -263,7 +253,7 @@ func TestConfigSetOutput(t *testing.T) {
 }
 
 func TestConfigSetTimestamps(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	for _, value := range []string{"relative", "iso8601"} {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
@@ -294,7 +284,7 @@ func TestConfigSetTimestamps(t *testing.T) {
 }
 
 func TestConfigSetHints(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	for _, value := range []string{"always", "auto", "never"} {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
@@ -355,7 +345,7 @@ func seedConfig(t *testing.T) (string, config.State) {
 }
 
 func TestConfigSetAutoBehaviorKeys(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	tests := []struct {
 		key   string
 		field func(config.State) bool
@@ -382,7 +372,7 @@ func TestConfigSetAutoBehaviorKeys(t *testing.T) {
 }
 
 func TestConfigUnsetChannel(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -410,7 +400,7 @@ func TestConfigUnsetChannel(t *testing.T) {
 }
 
 func TestConfigUnsetBackendPort(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -438,7 +428,7 @@ func TestConfigUnsetBackendPort(t *testing.T) {
 }
 
 func TestConfigUnsetRejectsUnknownKey(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -457,7 +447,7 @@ func TestConfigUnsetRejectsUnknownKey(t *testing.T) {
 }
 
 func TestConfigListShowsAllKeys(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -483,7 +473,7 @@ func TestConfigListShowsAllKeys(t *testing.T) {
 }
 
 func TestConfigListSourceDefault(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -507,7 +497,7 @@ func TestConfigListSourceDefault(t *testing.T) {
 }
 
 func TestConfigPathPrintsPath(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 
 	var buf bytes.Buffer
@@ -532,7 +522,7 @@ func TestConfigPathPrintsPath(t *testing.T) {
 }
 
 func TestConfigGetNewKeys(t *testing.T) {
-	resetRootCmd(t)
+	sandboxRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -593,7 +583,7 @@ func FuzzConfigSetBackendPort(f *testing.F) {
 	f.Add("-1")
 
 	f.Fuzz(func(t *testing.T, value string) {
-		resetRootCmd(t)
+		sandboxRootCmd(t)
 		dir := t.TempDir()
 		state := config.DefaultState()
 		state.EncryptSecrets = false
@@ -628,7 +618,7 @@ func FuzzConfigSetColor(f *testing.F) {
 	f.Add("NEVER")
 
 	f.Fuzz(func(t *testing.T, value string) {
-		resetRootCmd(t)
+		sandboxRootCmd(t)
 		dir := t.TempDir()
 		state := config.DefaultState()
 		state.EncryptSecrets = false
