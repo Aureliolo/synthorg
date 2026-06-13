@@ -6,13 +6,12 @@ assignment endpoint is the runtime path agents call when they want to
 discover which experiment branch they belong to.
 """
 
-from typing import Final
-
 from litestar import Controller, get, post
 from litestar.datastructures import State
 
 from synthorg.api.cursor import decode_cursor, encode_cursor
 from synthorg.api.dto import (
+    DEFAULT_LIMIT,
     ApiResponse,
     AssignExperimentRequest,
     PaginatedResponse,
@@ -39,8 +38,6 @@ from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
 
-_DEFAULT_LIMIT: Final[int] = 50
-
 
 class ExperimentsController(Controller):
     """REST surface for the experiment registry."""
@@ -54,7 +51,7 @@ class ExperimentsController(Controller):
         self,
         state: State,
         experiment: PathId,
-        limit: CursorLimit = _DEFAULT_LIMIT,
+        limit: CursorLimit = DEFAULT_LIMIT,
         cursor: CursorParam = None,
     ) -> PaginatedResponse[ExperimentVariant]:
         """List registered variants for an experiment (cursor-paginated).
@@ -144,7 +141,7 @@ class ExperimentsController(Controller):
         self,
         state: State,
         experiment: PathId,
-        limit: CursorLimit = _DEFAULT_LIMIT,
+        limit: CursorLimit = DEFAULT_LIMIT,
         cursor: CursorParam = None,
     ) -> PaginatedResponse[ExperimentAssignment]:
         """List recorded assignments for an experiment (newest first).

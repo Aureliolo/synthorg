@@ -1552,9 +1552,10 @@ CREATE TABLE conversational_proposals (
 CREATE UNIQUE INDEX idx_cp_approval_id
 ON conversational_proposals (approval_id);
 -- Serves the "list proposals for a conversation" query (filter conversation_id,
--- ORDER BY created_at DESC); composite avoids the post-filter sort.
+-- ORDER BY created_at DESC, id DESC); composite incl. the id tiebreaker
+-- fully covers the sort so the planner skips a post-filter sort pass.
 CREATE INDEX idx_cp_conversation_id
-ON conversational_proposals (conversation_id, created_at DESC);
+ON conversational_proposals (conversation_id, created_at DESC, id DESC);
 
 CREATE TABLE conversation_participants (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),

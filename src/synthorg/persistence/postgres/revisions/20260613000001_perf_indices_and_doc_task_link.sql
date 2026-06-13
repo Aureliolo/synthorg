@@ -7,9 +7,11 @@
 CREATE INDEX idx_conversations_created_id
 ON conversations (created_at DESC, id DESC);
 
--- "List proposals for a conversation" (filter conversation_id, sort created_at).
+-- "List proposals for a conversation" (filter conversation_id,
+-- ORDER BY created_at DESC, id DESC -- include the id tiebreaker so the
+-- index fully covers the sort and the planner skips a post-sort pass).
 CREATE INDEX idx_cp_conversation_id
-ON conversational_proposals (conversation_id, created_at DESC);
+ON conversational_proposals (conversation_id, created_at DESC, id DESC);
 
 -- "All invites for agent X across conversations" (filter target_agent_id alone).
 CREATE INDEX idx_cinv_target_agent_id

@@ -1,7 +1,7 @@
 # module-kind: controller
 """Polling fallback controller for interrupt management at /interrupts."""
 
-from typing import Annotated, Final
+from typing import Annotated
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State
@@ -15,7 +15,7 @@ from synthorg.api.controllers.events._shared import (
     _require_interrupt_store,
     _resolve_interrupt,
 )
-from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_approval_roles, require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
@@ -27,8 +27,6 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
-
-_DEFAULT_LIMIT: Final[int] = 50
 
 
 class InterruptController(Controller):
@@ -49,7 +47,7 @@ class InterruptController(Controller):
                 description="Filter to interrupts for this session; omit to list all.",
             ),
         ] = None,
-        limit: CursorLimit = _DEFAULT_LIMIT,
+        limit: CursorLimit = DEFAULT_LIMIT,
         cursor: CursorParam = None,
     ) -> PaginatedResponse[InterruptResponse]:
         """List pending interrupts (cursor-paginated).

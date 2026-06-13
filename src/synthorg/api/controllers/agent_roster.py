@@ -16,13 +16,11 @@ controller; both mount under ``/agents`` and the literal ``/active``
 route resolves ahead of ``/{agent_id}``.
 """
 
-from typing import Final
-
 from litestar import Controller, get
 from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.api.dto import PaginatedResponse
+from synthorg.api.dto import DEFAULT_LIMIT, PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
@@ -32,8 +30,6 @@ from synthorg.api.pagination import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import agent_registry_of
-
-_DEFAULT_LIMIT: Final[int] = 50
 
 
 class ActiveAgentSummary(BaseModel):
@@ -67,7 +63,7 @@ class AgentRosterController(Controller):
     async def list_active_agents(
         self,
         state: State,
-        limit: CursorLimit = _DEFAULT_LIMIT,
+        limit: CursorLimit = DEFAULT_LIMIT,
         cursor: CursorParam = None,
     ) -> PaginatedResponse[ActiveAgentSummary]:
         """List active registered agents with their runtime UUIDs.
