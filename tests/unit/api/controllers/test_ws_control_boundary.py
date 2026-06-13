@@ -13,7 +13,6 @@ import pytest
 import structlog
 from pydantic import ValidationError
 
-from synthorg.api.boundary import parse_typed
 from synthorg.api.controllers.ws_protocol import handle_message
 from synthorg.api.ws_control_models import (
     WS_CONTROL_MESSAGE_ADAPTER,
@@ -24,6 +23,7 @@ from synthorg.api.ws_control_models import (
 )
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.boundary import parse_typed
 
 _USER = AuthenticatedUser(
     user_id="boundary-user",

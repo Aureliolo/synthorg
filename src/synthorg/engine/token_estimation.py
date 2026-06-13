@@ -8,6 +8,7 @@ counting and a ``DefaultTokenEstimator`` using the common
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.text_estimation import approx_tokens
 from synthorg.providers.models import ChatMessage
 
 
@@ -56,15 +57,16 @@ class DefaultTokenEstimator:
     """Overhead tokens per message for role tags and structure."""
 
     def estimate_tokens(self, text: str) -> int:
-        """Estimate tokens as approximately 1 token per 4 characters.
+        """Estimate tokens via the shared chars-per-token heuristic.
 
         Args:
             text: The text to estimate tokens for.
 
         Returns:
-            Estimated token count (minimum 0).
+            Estimated token count: ``0`` for empty text, otherwise at
+            least ``1``.
         """
-        return len(text) // 4
+        return approx_tokens(text)
 
     def estimate_conversation_tokens(
         self,

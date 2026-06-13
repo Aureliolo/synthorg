@@ -17,7 +17,7 @@ from typing import ClassVar, Final, override
 
 from pydantic import BaseModel, ValidationError
 
-from synthorg.api.boundary import parse_typed
+from synthorg.core.boundary import parse_typed
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_FINDING_FILED,

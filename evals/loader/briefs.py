@@ -15,7 +15,7 @@ from evals.errors import (
     BriefSuitePathTraversalError,
 )
 from evals.models.brief import Brief
-from synthorg.api.boundary import parse_typed
+from synthorg.core.boundary import parse_typed
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:

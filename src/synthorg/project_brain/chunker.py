@@ -16,9 +16,9 @@ budgets live in :mod:`synthorg.project_brain.constants`.
 
 import re
 
+from synthorg.core.text_estimation import DEFAULT_CHAR_PER_TOKEN, approx_tokens
 from synthorg.core.types import NotBlankStr
 from synthorg.project_brain.constants import (
-    BRAIN_CHAR_PER_TOKEN_PROXY,
     BRAIN_CHUNK_MAX_TOKENS,
     BRAIN_CHUNK_TARGET_TOKENS,
     BRAIN_ENTRY_TAG_PREFIX,
@@ -104,15 +104,12 @@ class BrainChunker:
         )
 
     def _token_count(self, text: str) -> int:
-        """Approximate token count via the chars-per-token proxy.
+        """Approximate token count via the shared chars-per-token heuristic.
 
         Returns:
-            ``0`` for empty text, otherwise at least ``1`` token scaled by the
-            chars-per-token proxy.
+            ``0`` for empty text, otherwise at least ``1`` token.
         """
-        if not text:
-            return 0
-        return max(1, len(text) // BRAIN_CHAR_PER_TOKEN_PROXY)
+        return approx_tokens(text)
 
     def _split_to_max(self, text: str) -> list[str]:
         """Split *text* into pieces each within the hard ``max_tokens`` bound.
@@ -125,7 +122,7 @@ class BrainChunker:
         """
         if self._token_count(text) <= self._max_tokens:
             return [text]
-        max_chars = self._max_tokens * BRAIN_CHAR_PER_TOKEN_PROXY
+        max_chars = self._max_tokens * DEFAULT_CHAR_PER_TOKEN
         pieces: list[str] = []
         for sentence in _SENTENCE_BOUNDARY.split(text):
             if not sentence:

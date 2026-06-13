@@ -757,7 +757,7 @@ settings (defined but never read at startup) fail the gate.
 
 Every external dict ingestion at a system boundary (HTTP body, MCP
 tool args, WebSocket control frame, CLI argument bag) parses through
-`parse_typed()` (defined in `synthorg.api.boundary`). Direct
+`parse_typed()` (defined in `synthorg.core.boundary`). Direct
 `Model.model_validate(payload)` at a boundary is blocked by
 `scripts/check_boundary_typed.py`.
 

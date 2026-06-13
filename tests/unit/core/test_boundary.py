@@ -1,4 +1,4 @@
-"""Tests for ``synthorg.api.boundary.parse_typed``."""
+"""Tests for ``synthorg.core.boundary.parse_typed``."""
 
 from typing import Annotated, Literal
 
@@ -6,7 +6,7 @@ import pytest
 import structlog
 from pydantic import BaseModel, ConfigDict, Discriminator, TypeAdapter, ValidationError
 
-from synthorg.api.boundary import parse_typed
+from synthorg.core.boundary import parse_typed
 
 
 class _Sample(BaseModel):

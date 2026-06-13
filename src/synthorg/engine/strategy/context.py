@@ -10,7 +10,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from synthorg.api.boundary import parse_typed
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
@@ -40,7 +40,7 @@ class _StrategicContextOverridesArgs(
 
     The memory backend yields untrusted JSON; this args model is the
     boundary contract that turns that payload into typed overrides.
-    Validated via :func:`synthorg.api.boundary.parse_typed` under the
+    Validated via :func:`synthorg.core.boundary.parse_typed` under the
     ``memory.strategic_context`` boundary label so failures emit the
     standard ``API_BOUNDARY_VALIDATION_FAILED`` log alongside the
     provider's own ``STRATEGY_CONTEXT_PROVIDER_FAILED`` log.

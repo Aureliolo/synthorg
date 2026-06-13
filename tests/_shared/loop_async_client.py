@@ -61,7 +61,7 @@ class LoopAsyncClient(httpx.AsyncClient):
         self.app = app
         super().__init__(
             transport=httpx.ASGITransport(
-                app=app,  # type: ignore[arg-type] -- Litestar is ASGI-callable; httpx types scope as a broad MutableMapping
+                app=app,  # type: ignore[arg-type]  # Litestar is ASGI-callable; httpx types scope as a broad MutableMapping
                 raise_app_exceptions=True,
                 client=_TEST_CLIENT_ADDR,
             ),

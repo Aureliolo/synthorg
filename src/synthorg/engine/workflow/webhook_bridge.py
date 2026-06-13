@@ -12,9 +12,9 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from synthorg.api.boundary import parse_typed
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.message import DataPart
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler

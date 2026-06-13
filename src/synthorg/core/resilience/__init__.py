@@ -8,5 +8,15 @@ they need bounded retry without a provider-error contract.
 """
 
 from synthorg.core.resilience.general_retry import GeneralRetryHandler
+from synthorg.core.resilience.retry_after import coerce_finite_nonneg_seconds
+from synthorg.core.resilience.sliding_window import (
+    SlidingWindowEventLimiter,
+    build_revalidation_limiter,
+)
 
-__all__ = ["GeneralRetryHandler"]
+__all__ = [
+    "GeneralRetryHandler",
+    "SlidingWindowEventLimiter",
+    "build_revalidation_limiter",
+    "coerce_finite_nonneg_seconds",
+]

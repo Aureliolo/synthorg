@@ -13,7 +13,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from synthorg.api.auth import token_size
+from synthorg.core.auth import token_size
 
 pytestmark = pytest.mark.unit
 

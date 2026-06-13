@@ -15,9 +15,9 @@ deterministic line-window split.
 import functools
 from typing import TYPE_CHECKING
 
+from synthorg.core.text_estimation import DEFAULT_CHAR_PER_TOKEN
 from synthorg.knowledge.chunking.protocol import ChunkPiece
 from synthorg.knowledge.constants import (
-    KNOWLEDGE_CHAR_PER_TOKEN_PROXY,
     KNOWLEDGE_CHUNK_MAX_TOKENS,
     KNOWLEDGE_CHUNK_TARGET_TOKENS,
 )
@@ -67,8 +67,8 @@ _DEFINITION_MARKERS: tuple[str, ...] = (
     "enum",
 )
 
-_MAX_CHARS: int = KNOWLEDGE_CHUNK_MAX_TOKENS * KNOWLEDGE_CHAR_PER_TOKEN_PROXY
-_TARGET_CHARS: int = KNOWLEDGE_CHUNK_TARGET_TOKENS * KNOWLEDGE_CHAR_PER_TOKEN_PROXY
+_MAX_CHARS: int = KNOWLEDGE_CHUNK_MAX_TOKENS * DEFAULT_CHAR_PER_TOKEN
+_TARGET_CHARS: int = KNOWLEDGE_CHUNK_TARGET_TOKENS * DEFAULT_CHAR_PER_TOKEN
 
 
 def _language_for(path: str) -> str | None:

@@ -13,7 +13,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from evals.errors import JudgeAnchorSetTooSmallError
-from synthorg.api.boundary import parse_typed
+from synthorg.core.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 

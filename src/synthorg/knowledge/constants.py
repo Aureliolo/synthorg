@@ -51,10 +51,6 @@ KNOWLEDGE_CHUNK_MAX_TOKENS: Final[int] = 768
 """Hard upper bound on a single chunk's text length (token-proxy units).
 Oversized units are split at the nearest structural boundary."""
 
-KNOWLEDGE_CHAR_PER_TOKEN_PROXY: Final[int] = 4
-"""Characters-per-token proxy used when no tokenizer is wired. The
-4-char-per-token average is the rough rule of thumb for English prose."""
-
 KNOWLEDGE_SEARCH_DEFAULT_LIMIT: Final[int] = 8
 """Default ``limit`` for a knowledge search."""
 

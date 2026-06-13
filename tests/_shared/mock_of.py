@@ -107,7 +107,7 @@ class mock_of(metaclass=_MockOfMeta):  # noqa: N801 -- intentional lowercase fac
     Calling without the subscript (``mock_of(Service)``) raises
     ``TypeError`` because ``mock_of`` is a class with no
     constructor arguments. The generic-subscript form mirrors
-    ``parse_typed[T]`` from ``synthorg.api.boundary`` so the
+    ``parse_typed[T]`` from ``synthorg.core.boundary`` so the
     typed-boundary metaphor is consistent across production and test
     code.
     """

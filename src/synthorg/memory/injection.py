@@ -17,6 +17,7 @@ satisfies it automatically.
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.text_estimation import approx_tokens
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.models import ChatMessage, ToolDefinition
 
@@ -87,9 +88,7 @@ class DefaultTokenEstimator:
         Returns:
             Estimated token count (non-negative).
         """
-        if not text:
-            return 0
-        return max(1, len(text) // 4)
+        return approx_tokens(text)
 
 
 @runtime_checkable

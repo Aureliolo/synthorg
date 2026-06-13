@@ -262,7 +262,7 @@ API_SETTINGS_VALIDATION_FAILED: Final[str] = "api.settings.validation_failed"
 
 # Boundary typed-parse helper for stringly-typed entry-point migration.
 API_BOUNDARY_VALIDATION_FAILED: Final[str] = "api.boundary.validation_failed"
-"""Emitted when ``synthorg.api.boundary.parse_typed`` rejects a payload
+"""Emitted when ``synthorg.core.boundary.parse_typed`` rejects a payload
 at a registered API boundary (MCP handler args, JWT decode, WebSocket
 control message, audit-chain payload, A2A JSON-RPC params, settings
 export). Carries the boundary name, error count, the redacted error

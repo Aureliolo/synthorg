@@ -33,7 +33,7 @@ from uuid import uuid4
 from pydantic import BaseModel, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 
-from synthorg.api.boundary import parse_typed
+from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description

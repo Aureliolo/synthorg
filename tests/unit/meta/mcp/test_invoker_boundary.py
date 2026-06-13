@@ -1,7 +1,7 @@
 """Boundary tests for the MCP invoker dispatch surface.
 
 The invoker validates the inbound ``arguments`` dict through
-:func:`synthorg.api.boundary.parse_typed` against the tool's
+:func:`synthorg.core.boundary.parse_typed` against the tool's
 declared ``args_model``, so a malformed call emits
 ``api.boundary.validation_failed`` before reaching the handler. The
 ``ArgumentValidationError`` envelope translation is preserved -- the

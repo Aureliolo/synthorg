@@ -8,7 +8,6 @@ from litestar import Controller, Request, post
 from litestar.datastructures import State
 
 from synthorg._core.features import require_service
-from synthorg.api.boundary import parse_typed
 from synthorg.api.controllers._webhooks_wiring import WebhookEventPayload
 from synthorg.api.controllers.webhooks._shared import (
     _check_replay_or_freshness,
@@ -22,6 +21,7 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.path_params import PathEventType, PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.communication.state import CommunicationStateSlice
+from synthorg.core.boundary import parse_typed
 from synthorg.core.domain_errors import ValidationError
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger

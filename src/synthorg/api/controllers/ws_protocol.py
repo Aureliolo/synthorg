@@ -12,7 +12,6 @@ import json
 
 from pydantic import ValidationError
 
-from synthorg.api.boundary import parse_typed
 from synthorg.api.channels import (
     ALL_CHANNELS,
     BUDGET_CHANNELS,
@@ -28,6 +27,7 @@ from synthorg.api.ws_control_models import (
 )
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.boundary import parse_typed
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_WS_INVALID_MESSAGE,
@@ -201,7 +201,7 @@ def handle_message(
     """Parse, validate, and dispatch a single client message.
 
     The raw JSON is parsed, then routed through
-    :func:`synthorg.api.boundary.parse_typed` against
+    :func:`synthorg.core.boundary.parse_typed` against
     :data:`WS_CONTROL_MESSAGE_ADAPTER` so the typed variant
     (:class:`WsSubscribeMessage`, :class:`WsUnsubscribeMessage`,
     :class:`WsPingMessage`, :class:`WsAuthMessage`) drives dispatch.

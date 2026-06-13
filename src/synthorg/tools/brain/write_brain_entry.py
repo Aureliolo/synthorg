@@ -11,7 +11,7 @@ from typing import ClassVar, override
 
 from pydantic import BaseModel
 
-from synthorg.api.boundary import parse_typed
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import (

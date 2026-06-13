@@ -24,7 +24,7 @@ from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
+from synthorg.core.resilience import build_revalidation_limiter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_WS_REVALIDATION_BUDGET_EXHAUSTED,
@@ -111,23 +111,15 @@ async def _periodic_revalidate(
         if failure_max is not None
         else app_state.ws_auth_limits.auth_revalidate_max_failures
     )
-    # The loop performs one persistence check per ``interval_seconds``.
-    # A sliding window measured in wall-clock seconds is meaningless
-    # unless it spans several ticks: with the default 60s window and
-    # the 10-minute revalidation cadence, each failed tick ages out of
-    # the window long before the next one, so the limiter could never
-    # saturate and a prolonged persistence outage would keep stale-auth
-    # sockets open indefinitely (fail-open). Clamp the effective window
-    # so ``max_failures`` consecutive failed ticks fall inside it while
-    # still letting isolated old failures age out (the non-streak
-    # property the sliding model exists to preserve).
-    effective_window = max(
-        float(window),
-        float(interval_seconds) * max_failures,
-    )
-    failure_limiter = _SlidingWindowRateLimiter(
-        max_events=max_failures,
-        window_seconds=effective_window,
+    # The loop performs one persistence check per ``interval_seconds``;
+    # the shared builder clamps the window so ``max_failures`` consecutive
+    # failed ticks fall inside it (fail-closed) while isolated old failures
+    # still age out. The SSE ``_build_revalidation_limiter`` path uses the
+    # same builder so the two stay in lockstep.
+    failure_limiter = build_revalidation_limiter(
+        max_failures=max_failures,
+        window_seconds=window,
+        interval_seconds=interval_seconds,
     )
     # lint-allow: long-running-loop-kill-switch -- per-connection revalidate.
     while True:

@@ -15,10 +15,10 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
-from synthorg.api.boundary import parse_typed
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.effective_autonomy import EffectiveAutonomy

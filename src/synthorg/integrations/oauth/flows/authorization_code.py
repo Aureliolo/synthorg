@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from synthorg.api.auth.token_size import get_auth_token_bytes
+from synthorg.core.auth.token_size import get_auth_token_bytes
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr

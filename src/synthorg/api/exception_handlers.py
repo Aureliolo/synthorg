@@ -63,6 +63,7 @@ from synthorg.core.persistence_errors import (
     PersistenceError,
     RecordNotFoundError,
 )
+from synthorg.core.resilience import coerce_finite_nonneg_seconds
 from synthorg.engine.errors import EngineError
 from synthorg.integrations.errors import IntegrationError
 from synthorg.observability import get_logger, safe_error_description
@@ -677,12 +678,8 @@ def _parse_retry_after(raw: object) -> int | None:
     Returns:
         The ``int`` value when present, ``None`` otherwise.
     """
-    if raw is None or isinstance(raw, bool):
-        return None
-    if not isinstance(raw, (int, float)):
-        return None
-    value = float(raw)
-    if not math.isfinite(value) or value < 0:
+    value = coerce_finite_nonneg_seconds(raw)
+    if value is None:
         return None
     return math.ceil(value)
 

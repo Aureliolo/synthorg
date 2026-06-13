@@ -16,9 +16,9 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
-from synthorg.api.boundary import parse_typed
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr

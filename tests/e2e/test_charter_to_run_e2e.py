@@ -22,7 +22,6 @@ from uuid import uuid4, uuid5
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.services.project_service import ProjectService
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
@@ -468,7 +467,7 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
     dispatcher = CharterDispatcher(
         charter_repo=charter_repo,
         forecast_repo=forecast_repo,
-        project_service=ProjectService(repo=persistence.projects),
+        project_repo=persistence.projects,
         work_pipeline=pipeline,
         conversation_repo=conversation_repo,
         budget_currency=lambda: _CURRENCY,

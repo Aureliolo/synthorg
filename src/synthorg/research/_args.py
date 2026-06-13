@@ -1,7 +1,7 @@
 """Typed args models for ingesting LLM structured output.
 
 Each LLM-backed strategy emits JSON that is validated against one of these
-frozen models via :func:`synthorg.api.boundary.parse_typed` at the model
+frozen models via :func:`synthorg.core.boundary.parse_typed` at the model
 boundary, so malformed or hallucinated shapes are rejected with a logged,
 safe error rather than propagating into the pipeline.
 """

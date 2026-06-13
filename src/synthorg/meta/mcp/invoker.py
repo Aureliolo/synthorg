@@ -12,9 +12,9 @@ from typing import cast
 
 from pydantic import ValidationError as PydanticValidationError
 
-from synthorg.api.boundary import parse_typed
 from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.registry import ToolDefReader

@@ -1,7 +1,7 @@
 """Boundary tests for the audit-chain typed payload.
 
 The sink.emit() pipeline validates the assembled payload through
-:func:`synthorg.api.boundary.parse_typed` against
+:func:`synthorg.core.boundary.parse_typed` against
 :class:`AuditChainEventPayload`. The single most important test in
 this file pins a known-good payload to a hard-coded ``json.dumps``
 byte string so future changes cannot silently break the chain hash
@@ -15,7 +15,7 @@ import pytest
 import structlog
 from pydantic import ValidationError
 
-from synthorg.api.boundary import parse_typed
+from synthorg.core.boundary import parse_typed
 from synthorg.observability.audit_chain.payloads import AuditChainEventPayload
 
 # Frozen reference payload -- every field exercised so the byte-stable
