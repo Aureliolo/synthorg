@@ -139,7 +139,7 @@ export function CompanyProfileSection() {
             multiline
             rows={3}
             value={description}
-            disabled={loading}
+            disabled={loading || saving}
             onChange={(e) => {
               setDescription(e.target.value)
               setDirty(true)
@@ -149,7 +149,7 @@ export function CompanyProfileSection() {
           <InputField
             label="Name Locales"
             value={locales}
-            disabled={loading}
+            disabled={loading || saving}
             onChange={(e) => {
               setLocales(e.target.value)
               setDirty(true)

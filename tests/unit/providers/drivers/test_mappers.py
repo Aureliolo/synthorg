@@ -438,3 +438,16 @@ class TestExtractRetryAfter:
     def test_non_string_header_value_returns_none(self) -> None:
         """A non-string, non-float-parseable header value yields ``None``."""
         assert extract_retry_after(_HeaderError({"Retry-After": ["120"]})) is None
+
+    def test_naive_http_date_assumed_utc(self) -> None:
+        """A tz-less HTTP-date is interpreted as UTC.
+
+        ``format_datetime`` without ``usegmt`` emits the obsolete
+        ``-0000`` zone, which ``parsedate_to_datetime`` yields as a naive
+        datetime; the parser assumes UTC for it. Uses the injectable
+        ``now`` seam so the delta is exact and wall-clock-independent.
+        """
+        now = datetime.now(UTC).replace(microsecond=0)
+        future_naive = (now + timedelta(hours=1)).replace(tzinfo=None)
+        result = _parse_retry_after_seconds(format_datetime(future_naive), now=now)
+        assert result == pytest.approx(3600.0)
