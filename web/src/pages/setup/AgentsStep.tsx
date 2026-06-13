@@ -5,6 +5,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
+import type { WizardMode } from '@/stores/setup-wizard'
 import { resolveAgentModels } from '@/utils/setup-validation'
 import { useClearStepRevalidationOnMount, useStepCompletionSync } from './_hooks'
 import { MiniOrgChart } from './MiniOrgChart'
@@ -65,10 +66,12 @@ function UnresolvedAgentsBanner({
 function AgentsStepFallback({
   agentsLoading,
   agentsError,
+  wizardMode,
   onRetry,
 }: {
   agentsLoading: boolean
   agentsError: string | null
+  wizardMode: WizardMode
   onRetry: () => void
 }) {
   if (agentsLoading) {
@@ -92,11 +95,19 @@ function AgentsStepFallback({
     )
   }
 
+  // Quick mode skips the template-selection Company step entirely, so
+  // "go back and apply a template" would point at a step the operator
+  // never sees. Direct each mode at the action that actually generates
+  // agents in its flow.
   return (
     <EmptyState
       icon={Users}
       title="No agents configured"
-      description="Go back to the Company step and apply a template to generate agents."
+      description={
+        wizardMode === 'quick'
+          ? 'Agents are generated from the default company template once the Company step is applied. Return to the Company step to apply it.'
+          : 'Go back to the Company step and apply a template to generate agents.'
+      }
     />
   )
 }
@@ -105,6 +116,7 @@ interface AgentsStepController {
   agents: readonly SetupAgentSummary[]
   agentsLoading: boolean
   agentsError: string | null
+  wizardMode: WizardMode
   providers: ReturnType<typeof useSetupWizardStore.getState>['providers']
   personalityPresets: ReturnType<typeof useSetupWizardStore.getState>['personalityPresets']
   personalityPresetsError: string | null
@@ -122,6 +134,7 @@ function useAgentsStepController(): AgentsStepController {
   const agents = useSetupWizardStore((s) => s.agents)
   const agentsLoading = useSetupWizardStore((s) => s.agentsLoading)
   const agentsError = useSetupWizardStore((s) => s.agentsError)
+  const wizardMode = useSetupWizardStore((s) => s.wizardMode)
   const providers = useSetupWizardStore((s) => s.providers)
   const personalityPresets = useSetupWizardStore((s) => s.personalityPresets)
   const personalityPresetsLoading = useSetupWizardStore((s) => s.personalityPresetsLoading)
@@ -193,9 +206,10 @@ function useAgentsStepController(): AgentsStepController {
   useClearStepRevalidationOnMount('agents')
 
   return {
-    agents, agentsLoading, agentsError, providers, personalityPresets, personalityPresetsError,
-    unresolvedAgents, fetchAgents, fetchPersonalityPresets, handleNameChange, handleModelChange,
-    handleRandomizeName, handlePersonalityChange, goToProvidersStep,
+    agents, agentsLoading, agentsError, wizardMode, providers, personalityPresets,
+    personalityPresetsError, unresolvedAgents, fetchAgents, fetchPersonalityPresets,
+    handleNameChange, handleModelChange, handleRandomizeName, handlePersonalityChange,
+    goToProvidersStep,
   }
 }
 
@@ -204,6 +218,7 @@ export function AgentsStep() {
     agents,
     agentsLoading,
     agentsError,
+    wizardMode,
     providers,
     personalityPresets,
     personalityPresetsError,
@@ -222,6 +237,7 @@ export function AgentsStep() {
       <AgentsStepFallback
         agentsLoading={agentsLoading}
         agentsError={agentsError}
+        wizardMode={wizardMode}
         onRetry={() => void fetchAgents()}
       />
     )

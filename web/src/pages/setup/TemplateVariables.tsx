@@ -7,6 +7,8 @@ export interface TemplateVariablesProps {
   values: Readonly<Record<string, string | number | boolean>>
   onChange: (key: string, value: string | number | boolean) => void
   currency?: string
+  /** Lock every variable control (e.g. after the template is applied). */
+  disabled?: boolean
 }
 
 /** Replace "USD" in a variable description with the selected currency code. */
@@ -25,11 +27,13 @@ function TemplateNumberField({
   label,
   value,
   onChange,
+  disabled,
 }: {
   varType: 'int' | 'float'
   label: string
   value: string | number | boolean | null
   onChange: (value: number) => void
+  disabled?: boolean
 }) {
   const numValue = typeof value === 'number' ? value : Number(value) || 0
   const { min, max, step } = NUMERIC_BOUNDS[varType]
@@ -42,6 +46,7 @@ function TemplateNumberField({
       step={step}
       formatValue={undefined}
       onChange={onChange}
+      disabled={disabled}
     />
   )
 }
@@ -51,11 +56,13 @@ function TemplateVariableField({
   values,
   onChange,
   currency,
+  disabled,
 }: {
   variable: TemplateVariable
   values: Readonly<Record<string, string | number | boolean>>
   onChange: (key: string, value: string | number | boolean) => void
   currency?: string
+  disabled?: boolean
 }) {
   const currentValue = values[variable.name] ?? variable.default
   const label = localizeCurrencyLabel(variable.description || variable.name, currency)
@@ -65,6 +72,7 @@ function TemplateVariableField({
         label={label}
         checked={currentValue === true}
         onChange={(checked) => onChange(variable.name, checked)}
+        disabled={disabled}
       />
     )
   }
@@ -75,6 +83,7 @@ function TemplateVariableField({
         label={label}
         value={currentValue}
         onChange={(val) => onChange(variable.name, val)}
+        disabled={disabled}
       />
     )
   }
@@ -82,7 +91,13 @@ function TemplateVariableField({
   return null
 }
 
-export function TemplateVariables({ variables, values, onChange, currency }: TemplateVariablesProps) {
+export function TemplateVariables({
+  variables,
+  values,
+  onChange,
+  currency,
+  disabled,
+}: TemplateVariablesProps) {
   if (variables.length === 0) return null
 
   return (
@@ -100,6 +115,7 @@ export function TemplateVariables({ variables, values, onChange, currency }: Tem
           values={values}
           onChange={onChange}
           currency={currency}
+          disabled={disabled}
         />
       ))}
     </div>
