@@ -1,5 +1,8 @@
 """Unit tests for provider driver mapping functions."""
 
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
+
 import pytest
 
 from synthorg.core.completion_enums import FinishReason
@@ -405,3 +408,23 @@ class TestExtractRetryAfter:
     def test_negative_value_returns_none(self) -> None:
         """A negative retry-after delay is rejected."""
         assert extract_retry_after(_HeaderError({"Retry-After": "-5"})) is None
+
+    def test_future_http_date_parsed_to_delay(self) -> None:
+        """An RFC 9110 HTTP-date in the future yields the delay in seconds."""
+        future = datetime.now(UTC) + timedelta(hours=1)
+        result = extract_retry_after(
+            _HeaderError({"Retry-After": format_datetime(future, usegmt=True)})
+        )
+        assert result is not None
+        # ~3600s minus a small execution delta; bound generously.
+        assert 3500 < result <= 3600
+
+    def test_past_http_date_returns_none(self) -> None:
+        """A past HTTP-date is a negative delay and is rejected."""
+        past = datetime.now(UTC) - timedelta(hours=1)
+        assert (
+            extract_retry_after(
+                _HeaderError({"Retry-After": format_datetime(past, usegmt=True)})
+            )
+            is None
+        )

@@ -732,10 +732,37 @@ func httpGetWithClient(ctx context.Context, client *http.Client, rawURL string, 
 		return nil, fmt.Errorf("download redirected to unexpected host %q", finalHost)
 	}
 
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, fmt.Errorf(
+			"rate-limited (HTTP 429) fetching %s -- %s",
+			rawURL,
+			retryAfterMessage(resp.Header.Get("Retry-After")),
+		)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("http %d from %s", resp.StatusCode, rawURL)
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, maxBytes))
+}
+
+// retryAfterMessage renders the HTTP Retry-After header (RFC 9110
+// delta-seconds or HTTP-date form) as a human-readable hint. Returns a
+// generic "try again later" when the header is absent or unparseable, or
+// when an HTTP-date is already in the past.
+func retryAfterMessage(header string) string {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return "try again later"
+	}
+	if secs, err := strconv.Atoi(header); err == nil && secs >= 0 {
+		return fmt.Sprintf("retry after %d seconds", secs)
+	}
+	if t, err := http.ParseTime(header); err == nil {
+		if d := time.Until(t); d > 0 {
+			return fmt.Sprintf("retry after %d seconds", int(d.Seconds()))
+		}
+	}
+	return "try again later"
 }
 
 func verifyChecksum(archiveData, checksumData []byte, assetName string) error {
