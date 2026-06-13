@@ -12,10 +12,12 @@ from collections.abc import (
     Iterator,
     Mapping,
 )
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import psycopg
+import psycopg.conninfo
 import pytest
 from psycopg import sql
 from pydantic import SecretStr
@@ -27,6 +29,12 @@ from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from tests._shared.postgres_proxy import PostgresContainerProxy
 from tests._shared.postgres_proxy import from_env as _proxy_from_env
 from tests._shared.postgres_proxy import from_testcontainer as _proxy_from_testcontainer
+from tests._shared.postgres_template import (
+    clone_from_template,
+    drop_test_database,
+    ensure_pg_template,
+    xdist_shared_dir,
+)
 
 if TYPE_CHECKING:
     from testcontainers.postgres import PostgresContainer
@@ -119,8 +127,28 @@ def _docker_available() -> bool:
     return shutil.which("docker") is not None
 
 
+def _ensure_template_blocking(proxy: PostgresContainerProxy, shared_dir: Path) -> None:
+    """Build the migrated template, tolerating an already-running loop.
+
+    ``postgres_container`` is session-scoped and *sync*, but pytest can
+    first instantiate it while resolving an async test's dependencies, when
+    a plain ``asyncio.run`` raises ``cannot be called from a running event
+    loop``. Detect that case and run the ensure on a dedicated thread with
+    its own loop so the call works however the fixture is first reached.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(ensure_pg_template(proxy, shared_dir))
+        return
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(lambda: asyncio.run(ensure_pg_template(proxy, shared_dir))).result()
+
+
 @pytest.fixture(scope="session")
-def postgres_container() -> Iterator[PostgresContainerProxy]:
+def postgres_container(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[PostgresContainerProxy]:
     """Start one shared Postgres 18 container per pytest session.
 
     In CI ``services: postgres`` exposes a server-managed instance via
@@ -128,10 +156,18 @@ def postgres_container() -> Iterator[PostgresContainerProxy]:
     / ``DB``; when those env vars are set the testcontainers start-up
     is skipped entirely and a proxy built directly from env is yielded.
     Per-test database isolation still works because ``postgres_backend``
-    creates a unique ``test_<uuid>`` DB on the shared server.
+    clones a unique ``test_<uuid>`` DB on the shared server.
+
+    The migrated template DB is ensured here (idempotent, cross-worker
+    coordinated) so every consumer -- ``postgres_backend`` and the
+    ``test_wp1_restart_safety`` factory -- clones it instead of
+    replaying the migration chain. In CI the conformance suite's
+    ``pytest_sessionstart`` has usually already built it on the same
+    shared server, so this call hits the sentinel and returns instantly.
     """
     env_proxy = _proxy_from_env()
     if env_proxy is not None:
+        _ensure_template_blocking(env_proxy, xdist_shared_dir(tmp_path_factory))
         yield env_proxy
         return
 
@@ -143,7 +179,9 @@ def postgres_container() -> Iterator[PostgresContainerProxy]:
     container = PostgresContainer("postgres:18-alpine")
     container.start()
     try:
-        yield _proxy_from_testcontainer(container)
+        proxy = _proxy_from_testcontainer(container)
+        _ensure_template_blocking(proxy, xdist_shared_dir(tmp_path_factory))
+        yield proxy
     finally:
         container.stop()
 
@@ -152,57 +190,25 @@ def postgres_container() -> Iterator[PostgresContainerProxy]:
 async def postgres_backend(
     postgres_container: PostgresContainerProxy,
 ) -> AsyncIterator[PostgresPersistenceBackend]:
-    """Yield a connected, migrated PostgresPersistenceBackend.
+    """Yield a connected PostgresPersistenceBackend on a fresh cloned DB.
 
-    Creates a unique database on the shared container so tests stay
-    isolated, migrates it via yoyo, hands the backend to the test,
-    then drops the database on teardown.
+    Clones the migrated template (ensured by the ``postgres_container``
+    fixture) into a unique ``test_<uuid>`` database -- a near-instant
+    file copy instead of a per-test ``migrate()`` -- then drops it on
+    teardown. Per-test isolation is unchanged: each test still gets its
+    own database.
     """
     db_name = f"test_{uuid.uuid4().hex}"
-    admin_conninfo = psycopg.conninfo.make_conninfo(
-        host=postgres_container.get_container_host_ip(),
-        port=int(postgres_container.get_exposed_port(5432)),
-        user=postgres_container.username,
-        password=postgres_container.password,
-        dbname=postgres_container.dbname,
-    )
-    async with await psycopg.AsyncConnection.connect(
-        admin_conninfo, autocommit=True
-    ) as admin:
-        await admin.execute(
-            sql.SQL("CREATE DATABASE {}").format(sql.Identifier(db_name))
-        )
-
-    config = PostgresConfig(
-        host=postgres_container.get_container_host_ip(),
-        port=int(postgres_container.get_exposed_port(5432)),
-        database=db_name,
-        username=postgres_container.username,
-        password=SecretStr(postgres_container.password),
-        ssl_mode="disable",
-        pool_min_size=1,
-        pool_max_size=4,
-        pool_timeout_seconds=10.0,
-        connect_timeout_seconds=5.0,
-    )
-    backend = PostgresPersistenceBackend(config)
-    await backend.connect()
+    backend = await clone_from_template(postgres_container, db_name)
     try:
-        await backend.migrate()
         yield backend
     finally:
-        await backend.disconnect()
-        async with await psycopg.AsyncConnection.connect(
-            admin_conninfo, autocommit=True
-        ) as admin:
-            await admin.execute(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                "WHERE datname = %s AND pid != pg_backend_pid()",
-                (db_name,),
-            )
-            await admin.execute(
-                sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(db_name))
-            )
+        # Drop even if disconnect raises, else a failed disconnect leaks
+        # the per-test database onto the shared server for the session.
+        try:
+            await backend.disconnect()
+        finally:
+            await drop_test_database(postgres_container, db_name)
 
 
 _TIMESCALEDB_IMAGE = "timescale/timescaledb:2.26.2-pg18-oss"
