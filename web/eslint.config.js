@@ -179,6 +179,12 @@ export default tseslint.config(
       // call sites and matches the pattern this plugin's other
       // no-leaked-* rules cover.
       '@eslint-react/web-api-no-leaked-fetch': 'error',
+      // Detect IntersectionObserver / ResizeObserver created in effects
+      // without a disconnect()/unobserve() cleanup. Direct siblings of
+      // web-api-no-leaked-fetch; no observer call sites exist today, so
+      // these are forward-looking ratchets that guard future additions.
+      '@eslint-react/web-api-no-leaked-intersection-observer': 'error',
+      '@eslint-react/web-api-no-leaked-resize-observer': 'error',
       // Catch the {count && <Foo />} bug where a falsy 0 gets rendered
       // verbatim instead of nothing. Type-aware -- requires projectService.
       '@eslint-react/no-leaked-conditional-rendering': 'error',
