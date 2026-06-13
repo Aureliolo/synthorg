@@ -69,6 +69,20 @@ class CoordinationSectionConfig(BaseModel):
             namespace=SettingNamespace.COORDINATION,
             key="decomposition_model",
         ),
+        MirrorField(
+            field="max_stall_count",
+            namespace=SettingNamespace.COORDINATION,
+            key="max_stall_count",
+            parse=parse_int,
+            only_if_env_set=True,
+        ),
+        MirrorField(
+            field="max_reset_count",
+            namespace=SettingNamespace.COORDINATION,
+            key="max_reset_count",
+            parse=parse_int,
+            only_if_env_set=True,
+        ),
     )
 
     topology: CoordinationTopology = Field(
@@ -107,6 +121,16 @@ class CoordinationSectionConfig(BaseModel):
             "applied on the next coordinator rebuild."
         ),
     )
+    max_stall_count: int = Field(
+        default=3,
+        ge=1,
+        description="Max consecutive stalls before the coordinator escalates",
+    )
+    max_reset_count: int = Field(
+        default=2,
+        ge=1,
+        description="Max replan cycles before the coordinator escalates",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -139,4 +163,6 @@ class CoordinationSectionConfig(BaseModel):
             fail_fast=fail_fast if fail_fast is not None else self.fail_fast,
             enable_workspace_isolation=self.enable_workspace_isolation,
             base_branch=self.base_branch,
+            max_stall_count=self.max_stall_count,
+            max_reset_count=self.max_reset_count,
         )

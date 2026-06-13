@@ -755,6 +755,12 @@ class ConfigResolver:
                     self.get_bool("coordination", "enable_workspace_isolation")
                 )
                 t_branch = tg.create_task(self.get_str("coordination", "base_branch"))
+                t_stall = tg.create_task(
+                    self.get_int("coordination", "max_stall_count")
+                )
+                t_reset = tg.create_task(
+                    self.get_int("coordination", "max_reset_count")
+                )
         except ExceptionGroup as eg:
             first_failure = eg.exceptions[0]
             logger.warning(
@@ -776,6 +782,8 @@ class ConfigResolver:
             fail_fast=(fail_fast if fail_fast is not None else t_ff.result()),
             enable_workspace_isolation=t_iso.result(),
             base_branch=t_branch.result(),
+            max_stall_count=t_stall.result(),
+            max_reset_count=t_reset.result(),
         )
 
     # ── Config-bridge composed reads (delegation + event-stream) ────

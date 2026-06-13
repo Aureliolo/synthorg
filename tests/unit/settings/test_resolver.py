@@ -447,6 +447,8 @@ def _coordination_get_side_effect(
         ("coordination", "fail_fast"): "false",
         ("coordination", "enable_workspace_isolation"): "true",
         ("coordination", "base_branch"): "main",
+        ("coordination", "max_stall_count"): "3",
+        ("coordination", "max_reset_count"): "2",
     }
     merged = {**defaults, **(overrides or {})}
 
@@ -474,6 +476,22 @@ class TestGetCoordinationConfig:
         assert result.fail_fast is False
         assert result.enable_workspace_isolation is True
         assert result.base_branch == "main"
+        assert result.max_stall_count == 3
+        assert result.max_reset_count == 2
+
+    async def test_db_overrides_escalation_caps(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        """The escalation caps resolve through DB > env > code default."""
+        mock_settings.get = _coordination_get_side_effect(
+            {
+                ("coordination", "max_stall_count"): "7",
+                ("coordination", "max_reset_count"): "4",
+            }
+        )
+        result = await resolver.get_coordination_config()
+        assert result.max_stall_count == 7
+        assert result.max_reset_count == 4
 
     async def test_request_overrides_take_precedence(
         self, resolver: ConfigResolver, mock_settings: AsyncMock
