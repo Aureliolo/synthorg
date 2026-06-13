@@ -20,21 +20,23 @@ from synthorg.core.agent import (
     AgentIdentity,
 )
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.mcp.domains._simple_args import (
+    BudgetGetAgentSpendingArgs,
+    BudgetListRecordsArgs,
+    BudgetVersionsGetArgs,
+    BudgetVersionsListArgs,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     dump_many,
     err,
     ok,
     paginate_sequence,
-)
-from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
-    require_arg,
-    require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -49,13 +51,6 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
-
-
-_TY_NON_BLANK = "non-blank string"
-_TY_POS_INT = "positive int"
-_ARG_AGENT_ID = "agent_id"
-_ARG_TASK_ID = "task_id"
-_ARG_VERSION = "version_num"
 
 
 def _versions_service(app_state: AppState) -> BudgetConfigVersionsService:
@@ -128,26 +123,17 @@ async def _budget_list_records(
     """
     tool = "synthorg_budget_list_records"
     try:
-        agent_id = arguments.get("agent_id")
-        task_id = arguments.get("task_id")
-        if agent_id is not None and (
-            not isinstance(agent_id, str) or not agent_id.strip()
-        ):
-            raise ArgumentValidationError(_ARG_AGENT_ID, _TY_NON_BLANK)
-        if task_id is not None and (
-            not isinstance(task_id, str) or not task_id.strip()
-        ):
-            raise ArgumentValidationError(_ARG_TASK_ID, _TY_NON_BLANK)
-        offset, limit = coerce_pagination(arguments)
+        args = typed_args(arguments, BudgetListRecordsArgs)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     try:
         records = await cost_tracker_of(app_state).get_records(
-            agent_id=agent_id,
-            task_id=task_id,
+            agent_id=args.agent_id,
+            task_id=args.task_id,
         )
+        offset, limit = args.offset, args.limit
         page, meta = paginate_sequence(records, offset=offset, limit=limit)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
@@ -170,7 +156,7 @@ async def _budget_get_agent_spending(
     """
     tool = "synthorg_budget_get_agent_spending"
     try:
-        agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
+        agent_id = typed_args(arguments, BudgetGetAgentSpendingArgs).agent_id
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -205,7 +191,8 @@ async def _budget_versions_list(
     """
     tool = "synthorg_budget_versions_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page = typed_args(arguments, BudgetVersionsListArgs)
+        offset, limit = page.offset, page.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -242,9 +229,7 @@ async def _budget_versions_get(
     """
     tool = "synthorg_budget_versions_get"
     try:
-        version_num = require_arg(arguments, _ARG_VERSION, int)
-        if version_num < 1:
-            raise ArgumentValidationError(_ARG_VERSION, _TY_POS_INT)
+        version_num = typed_args(arguments, BudgetVersionsGetArgs).version_num
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)

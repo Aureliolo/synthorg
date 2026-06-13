@@ -104,6 +104,8 @@ def _parse_proposal(arguments: dict[str, object]) -> ImprovementProposal:
         raise ArgumentValidationError(_ARG_PROPOSAL, _TY_PROPOSAL_SCHEMA) from exc
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
+# since/until time window but SignalsGetOrgSnapshotArgs declares window_days.
 async def _snapshot(
     *,
     app_state: AppState,
@@ -161,6 +163,9 @@ def _make_window_handler(
     return handler
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler paginates and
+# coerces status to ApprovalStatus, but SignalsGetProposalsArgs has no pagination
+# and types status as the divergent ProposalStatus enum.
 async def _list_proposals(
     *,
     app_state: AppState,
@@ -187,6 +192,9 @@ async def _list_proposals(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: admin op reading
+# guardrails + a full ImprovementProposal dict, but SignalsSubmitProposalArgs
+# declares only `trigger` and no AdminGuardrailFields.
 async def _submit_proposal(
     *,
     app_state: AppState,
