@@ -1,8 +1,51 @@
-"""Prompt eval: safety classifier temperature contract."""
+"""Prompt eval: safety classifier temperature contract + verdict behaviour."""
 
 import inspect
 
 import pytest
+
+from synthorg.core.completion_enums import FinishReason
+from synthorg.providers.models import CompletionResponse, TokenUsage, ToolCall
+from synthorg.providers.registry import ProviderRegistry
+from synthorg.security.config import SafetyClassifierConfig
+from synthorg.security.safety_classifier import (
+    SafetyClassification,
+    SafetyClassifier,
+)
+from tests._shared import FakeClock
+from tests.evals.prompt._harness import (
+    LabelledExample,
+    assert_accuracy_at_least,
+    run_grader,
+)
+
+
+def _verdict_response(*, classification: str) -> CompletionResponse:
+    """A completion whose verdict tool call carries ``classification``."""
+    return CompletionResponse(
+        content=None,
+        tool_calls=(
+            ToolCall(
+                id="tc-1",
+                name="safety_classification_verdict",
+                arguments={"classification": classification, "reason": "eval"},
+            ),
+        ),
+        finish_reason=FinishReason.TOOL_USE,
+        usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.0),
+        model="test-small-001",
+    )
+
+
+def _no_verdict_response() -> CompletionResponse:
+    """A completion that answers in prose without calling the verdict tool."""
+    return CompletionResponse(
+        content="This looks fine to me.",
+        tool_calls=(),
+        finish_reason=FinishReason.STOP,
+        usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.0),
+        model="test-small-001",
+    )
 
 
 @pytest.mark.unit
@@ -77,3 +120,62 @@ class TestSafetyClassifierPromptContract:
             "``temperature=0.0`` inside ``_classify_via_llm``. No such "
             "call was found in that function's AST."
         )
+
+
+@pytest.mark.unit
+class TestSafetyClassifierVerdictBehaviour:
+    """Labelled eval for the verdict-parse contract.
+
+    The prompt asks the LLM to call ``safety_classification_verdict``; this
+    grades that the surface maps each valid verdict to the right
+    ``SafetyClassification`` and fails SAFE-SIDE (``SUSPICIOUS``) when the
+    verdict is missing or invalid -- the security-critical behaviour that
+    fingerprint + temperature checks alone do not cover.
+    """
+
+    EXAMPLES: tuple[LabelledExample, ...] = (
+        LabelledExample(
+            name="safe_verdict_maps_safe",
+            inp=_verdict_response(classification="safe"),
+            expected=SafetyClassification.SAFE,
+        ),
+        LabelledExample(
+            name="suspicious_verdict_maps_suspicious",
+            inp=_verdict_response(classification="suspicious"),
+            expected=SafetyClassification.SUSPICIOUS,
+        ),
+        LabelledExample(
+            name="blocked_verdict_maps_blocked",
+            inp=_verdict_response(classification="blocked"),
+            expected=SafetyClassification.BLOCKED,
+        ),
+        LabelledExample(
+            name="invalid_verdict_fails_safe_side",
+            inp=_verdict_response(classification="dangerous"),
+            expected=SafetyClassification.SUSPICIOUS,
+        ),
+        LabelledExample(
+            name="missing_verdict_fails_safe_side",
+            inp=_no_verdict_response(),
+            expected=SafetyClassification.SUSPICIOUS,
+        ),
+    )
+
+    def test_parse_response_matches_labelled_verdicts(self) -> None:
+        """Every labelled (response, expected classification) pair grades."""
+        classifier = SafetyClassifier(
+            provider_registry=ProviderRegistry(drivers={}),
+            provider_configs={},
+            config=SafetyClassifierConfig(enabled=True),
+            clock=FakeClock(),
+        )
+
+        def _grade(actual_input: object, expected: object) -> bool:
+            assert isinstance(actual_input, CompletionResponse)
+            # Grade the verdict-parse seam directly: it is the deterministic
+            # contract the prompt's tool schema is written against.
+            result = classifier._parse_response(actual_input, "stripped", 0.0)
+            return result.classification == expected
+
+        outcome = run_grader(self.EXAMPLES, _grade)
+        assert_accuracy_at_least(outcome, 1.0)

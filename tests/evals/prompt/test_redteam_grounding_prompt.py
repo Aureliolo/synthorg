@@ -6,8 +6,69 @@ prompts are fingerprinted against silent drift.
 """
 
 import pytest
+from pydantic import JsonValue
 
-from tests.evals.prompt._harness import fingerprint_prompt
+from synthorg.core.completion_enums import FinishReason
+from synthorg.providers.models import CompletionResponse, TokenUsage, ToolCall
+from synthorg.security.redteam.grounding._llm import (
+    EXTRACT_CLAIMS_TOOL_NAME,
+    GROUNDING_VERDICT_TOOL_NAME,
+    parse_extracted_claims,
+    parse_grounding_verdict,
+)
+from tests.evals.prompt._harness import (
+    LabelledExample,
+    assert_accuracy_at_least,
+    fingerprint_prompt,
+    run_grader,
+)
+
+
+def _verdict_response(
+    *, verdict: JsonValue, confidence: JsonValue
+) -> CompletionResponse:
+    """A completion whose ``grounding_verdict`` tool call carries the args."""
+    return CompletionResponse(
+        content=None,
+        tool_calls=(
+            ToolCall(
+                id="tc-1",
+                name=GROUNDING_VERDICT_TOOL_NAME,
+                arguments={"verdict": verdict, "confidence": confidence},
+            ),
+        ),
+        finish_reason=FinishReason.TOOL_USE,
+        usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.0),
+        model="test-small-001",
+    )
+
+
+def _claims_response(claims: JsonValue) -> CompletionResponse:
+    """A completion whose ``extract_claims`` tool call carries *claims*."""
+    return CompletionResponse(
+        content=None,
+        tool_calls=(
+            ToolCall(
+                id="tc-1",
+                name=EXTRACT_CLAIMS_TOOL_NAME,
+                arguments={"claims": claims},
+            ),
+        ),
+        finish_reason=FinishReason.TOOL_USE,
+        usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.0),
+        model="test-small-001",
+    )
+
+
+def _no_tool_response() -> CompletionResponse:
+    """A completion that answers in prose without calling any tool."""
+    return CompletionResponse(
+        content="I cannot decide.",
+        tool_calls=(),
+        finish_reason=FinishReason.STOP,
+        usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.0),
+        model="test-small-001",
+    )
 
 
 @pytest.mark.unit
@@ -48,3 +109,97 @@ class TestRedTeamGroundingPromptContract:
             f"grounding entailment prompt drifted: {fp!r} != "
             f"{self.PINNED_ENTAILMENT_FP!r}. Update the pin if intentional."
         )
+
+
+@pytest.mark.unit
+class TestGroundingVerdictBehaviour:
+    """Labelled eval for the grounding-verdict parse contract.
+
+    Only an ``unsupported`` verdict produces an ungrounded claim, so the
+    parser must map each valid verdict + clamp confidence, and reject a
+    missing/invalid verdict to ``None`` (the caller then treats the claim as
+    not-disproven) -- a prompt edit must preserve this.
+    """
+
+    EXAMPLES: tuple[LabelledExample, ...] = (
+        LabelledExample(
+            name="supported_verdict",
+            inp=_verdict_response(verdict="supported", confidence=0.8),
+            expected=("supported", 0.8),
+        ),
+        LabelledExample(
+            name="unsupported_verdict",
+            inp=_verdict_response(verdict="unsupported", confidence=0.95),
+            expected=("unsupported", 0.95),
+        ),
+        LabelledExample(
+            name="uncertain_verdict",
+            inp=_verdict_response(verdict="uncertain", confidence=0.5),
+            expected=("uncertain", 0.5),
+        ),
+        LabelledExample(
+            name="confidence_clamped_to_ceiling",
+            inp=_verdict_response(verdict="supported", confidence=1.5),
+            expected=("supported", 1.0),
+        ),
+        LabelledExample(
+            name="invalid_verdict_rejected",
+            inp=_verdict_response(verdict="maybe", confidence=0.9),
+            expected=None,
+        ),
+        LabelledExample(
+            name="missing_tool_call_rejected",
+            inp=_no_tool_response(),
+            expected=None,
+        ),
+    )
+
+    def test_parse_verdict_matches_labelled_examples(self) -> None:
+        """Every labelled (response, expected verdict tuple) pair grades."""
+
+        def _grade(actual_input: object, expected: object) -> bool:
+            assert isinstance(actual_input, CompletionResponse)
+            return parse_grounding_verdict(actual_input) == expected
+
+        outcome = run_grader(self.EXAMPLES, _grade)
+        assert_accuracy_at_least(outcome, 1.0)
+
+
+@pytest.mark.unit
+class TestExtractedClaimsBehaviour:
+    """Labelled eval for the claim-extraction parse contract.
+
+    Grades that the parser returns the cleaned claim tuple, deduplicates
+    repeats, and yields an empty tuple when the model returned no claims or
+    did not call the extraction tool.
+    """
+
+    EXAMPLES: tuple[LabelledExample, ...] = (
+        LabelledExample(
+            name="two_distinct_claims",
+            inp=_claims_response(
+                ["The agent deleted prod data.", "It bypassed review."]
+            ),
+            expected=("The agent deleted prod data.", "It bypassed review."),
+        ),
+        LabelledExample(
+            name="duplicate_claims_deduplicated",
+            inp=_claims_response(["same claim", "same claim"]),
+            expected=("same claim",),
+        ),
+        LabelledExample(
+            name="missing_tool_call_yields_empty",
+            inp=_no_tool_response(),
+            expected=(),
+        ),
+    )
+
+    def test_parse_claims_matches_labelled_examples(self) -> None:
+        """Every labelled (response, expected claim tuple) pair grades."""
+
+        def _grade(actual_input: object, expected: object) -> bool:
+            assert isinstance(actual_input, CompletionResponse)
+            return parse_extracted_claims(actual_input) == expected
+
+        outcome = run_grader(self.EXAMPLES, _grade)
+        assert_accuracy_at_least(outcome, 1.0)
