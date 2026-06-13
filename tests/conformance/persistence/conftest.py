@@ -25,7 +25,6 @@ Postgres arm:
 """
 
 import asyncio
-import contextlib
 import json
 import os
 import sys
@@ -34,21 +33,24 @@ from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any, Final
 
-import psycopg
 import pytest
 from filelock import FileLock
-from psycopg import sql
-from pydantic import SecretStr
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.persistence import migrations
-from synthorg.persistence.config import PostgresConfig, SQLiteConfig
+from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from tests._shared import JsonDict
 from tests._shared.postgres_proxy import PostgresContainerProxy
 from tests._shared.postgres_proxy import from_env as _proxy_from_env
+from tests._shared.postgres_template import (
+    clone_from_template,
+    drop_test_database,
+    ensure_pg_template,
+    xdist_shared_dir,
+)
 
 logger = get_logger(__name__)
 
@@ -247,6 +249,11 @@ def _release_shared_postgres(state_file: Path) -> None:
 _POSTGRES_CONTAINER_STATE: JsonDict = {}
 
 
+def _xdist_shared_dir(session: pytest.Session) -> Path:
+    """Run-wide xdist temp dir; delegates to the shared helper."""
+    return xdist_shared_dir(session.config._tmp_path_factory)  # type: ignore[attr-defined]
+
+
 def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
     """Pre-acquire the shared Postgres container BEFORE any per-test timer.
 
@@ -297,7 +304,12 @@ def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
         f"(worker={_worker}, state_id={id(_POSTGRES_CONTAINER_STATE)})\n"
     )
     sys.stderr.flush()
-    if _proxy_from_env() is not None:
+    env_proxy = _proxy_from_env()
+    if env_proxy is not None:
+        # Build the migrated template once on the shared CI server here
+        # (sessionstart, NOT covered by pytest-timeout) so per-test
+        # setup clones it instead of replaying the migration chain.
+        asyncio.run(ensure_pg_template(env_proxy, _xdist_shared_dir(session)))
         _POSTGRES_CONTAINER_STATE["mode"] = "env"
         return
 
@@ -308,12 +320,7 @@ def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
         )
         return
 
-    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "master")
-    tmp_path_factory = session.config._tmp_path_factory  # type: ignore[attr-defined]
-    if worker_id == "master":
-        shared_dir = tmp_path_factory.getbasetemp()
-    else:
-        shared_dir = tmp_path_factory.getbasetemp().parent
+    shared_dir = _xdist_shared_dir(session)
     state_file = shared_dir / "postgres_container_state.json"
     lock_path = str(shared_dir / "postgres_container.lock")
     # Catastrophe ceiling, aligned with ``tests/conftest.py``'s
@@ -337,6 +344,17 @@ def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
     _POSTGRES_CONTAINER_STATE["state_file"] = state_file
     _POSTGRES_CONTAINER_STATE["lock_path"] = lock_path
     _POSTGRES_CONTAINER_STATE["lock_timeout"] = lock_timeout
+    # Build the migrated template on the now-running container (outside
+    # the container FileLock; ensure_pg_template holds its own) so the
+    # per-test backend fixture clones it instead of re-migrating.
+    container_proxy = PostgresContainerProxy(
+        host=data["host"],
+        port=int(data["port"]),
+        username=data["username"],
+        password=data["password"],
+        dbname=data["dbname"],
+    )
+    asyncio.run(ensure_pg_template(container_proxy, shared_dir))
 
 
 @pytest.fixture(scope="session")
@@ -432,79 +450,31 @@ async def _create_postgres_backend(
     container: PostgresContainerProxy,
     db_name: str,
 ) -> PostgresPersistenceBackend:
-    """Create a test database on *container* and return a migrated backend.
+    """Create *db_name* by cloning the session-built migrated template.
 
-    On any failure after ``CREATE DATABASE`` (backend construct,
-    ``connect()``, ``migrate()``) the partially-created database is
-    dropped and the backend is disconnected so the session does not
-    accumulate orphaned databases and dangling pools.  The
-    ``finally``/cleanup in the outer ``backend`` fixture only runs
-    once this helper has returned a successfully-created backend.
+    Clones the template database (built once at session start by
+    :func:`_pre_acquire_postgres_container_state`) instead of replaying
+    the migration chain, so per-test setup is a near-instant file copy
+    rather than a 7-10s ``migrate()``. On a failed connect the
+    half-created database is dropped before re-raising. Kept as a thin
+    wrapper around the shared helper because
+    ``tests/integration/persistence/test_wp1_restart_safety.py`` imports
+    this name directly.
     """
-    host = _container_host_ipv4(container)
-    port = int(container.get_exposed_port(5432))
-    admin_conninfo = psycopg.conninfo.make_conninfo(
-        host=host,
-        port=port,
-        user=container.username,
-        password=container.password,
-        dbname=container.dbname,
-    )
-    async with await psycopg.AsyncConnection.connect(
-        admin_conninfo, autocommit=True
-    ) as admin:
-        await admin.execute(
-            sql.SQL("CREATE DATABASE {}").format(sql.Identifier(db_name))
-        )
-
-    config = PostgresConfig(
-        host=host,
-        port=port,
-        database=db_name,
-        username=container.username,
-        password=SecretStr(container.password),
-        ssl_mode="disable",
-        pool_min_size=1,
-        pool_max_size=4,
-        pool_timeout_seconds=10.0,
-        connect_timeout_seconds=5.0,
-    )
-    backend = PostgresPersistenceBackend(config)
-    try:
-        await backend.connect()
-        await backend.migrate()
-    except BaseException:
-        with contextlib.suppress(Exception):
-            await backend.disconnect()
-        with contextlib.suppress(Exception):
-            await _drop_postgres_database(container, db_name)
-        raise
-    return backend
+    return await clone_from_template(container, db_name)
 
 
 async def _drop_postgres_database(
     container: PostgresContainerProxy,
     db_name: str,
 ) -> None:
-    """Terminate remaining sessions on *db_name* and drop it."""
-    admin_conninfo = psycopg.conninfo.make_conninfo(
-        host=_container_host_ipv4(container),
-        port=int(container.get_exposed_port(5432)),
-        user=container.username,
-        password=container.password,
-        dbname=container.dbname,
-    )
-    async with await psycopg.AsyncConnection.connect(
-        admin_conninfo, autocommit=True
-    ) as admin:
-        await admin.execute(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-            "WHERE datname = %s AND pid != pg_backend_pid()",
-            (db_name,),
-        )
-        await admin.execute(
-            sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(db_name))
-        )
+    """Terminate remaining sessions on *db_name* and drop it.
+
+    Thin wrapper around the shared helper; kept because
+    ``tests/integration/persistence/test_wp1_restart_safety.py`` imports
+    this name directly.
+    """
+    await drop_test_database(container, db_name)
 
 
 @pytest.fixture(params=["sqlite", "postgres"], ids=["sqlite", "postgres"])
