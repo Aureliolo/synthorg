@@ -9,6 +9,7 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { EntityCatalog } from './ontology/EntityCatalog'
 import { DriftMonitor } from './ontology/DriftMonitor'
+import { OntologyAdminSection } from './ontology/OntologyAdminSection'
 import { OntologySkeleton } from './ontology/OntologySkeleton'
 
 export default function OntologyPage() {
@@ -73,6 +74,11 @@ export default function OntologyPage() {
           loading={driftLoading}
           error={driftError}
         />
+      </ErrorBoundary>
+
+      {/* Admin actions */}
+      <ErrorBoundary level="section">
+        <OntologyAdminSection />
       </ErrorBoundary>
     </div>
   )

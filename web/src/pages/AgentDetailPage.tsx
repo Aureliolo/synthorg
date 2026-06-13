@@ -17,6 +17,7 @@ import { ActivityLog } from './agents/ActivityLog'
 import { QualityScoreOverride } from './agents/QualityScoreOverride'
 import { CollaborationPanel } from './agents/CollaborationPanel'
 import { TrainingSection } from './agents/TrainingSection'
+import { AgentMemoryAdmin } from './agents/AgentMemoryAdmin'
 import {
   useAgentDetailPageController,
   type AgentDetailPageController,
@@ -132,6 +133,9 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
       </ErrorBoundary>
       <ErrorBoundary level="section">
         <TrainingSection agentId={agent.id} />
+      </ErrorBoundary>
+      <ErrorBoundary level="section">
+        <AgentMemoryAdmin agentId={agent.id} />
       </ErrorBoundary>
       <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
         <ErrorBoundary level="section">

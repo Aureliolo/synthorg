@@ -19,6 +19,7 @@ import { WsConnectionBanner } from '@/components/ui/ws-connection-banner'
 import { SkeletonCard, SkeletonMetric } from '@/components/ui/skeleton'
 import { useMetaData } from '@/hooks/useMetaData'
 
+import { ExperimentExplorer } from './meta/ExperimentExplorer'
 import { MetaABTestView } from './meta/MetaABTestView'
 import { MetaAct } from './meta/MetaAct'
 import { MetaChat } from './meta/MetaChat'
@@ -99,6 +100,9 @@ function MetaPageReady({ data }: MetaPageReadyProps) {
         </div>
         <SectionCard title="A/B Tests" icon={FlaskConical}>
           <MetaABTestView tests={abTests} />
+        </SectionCard>
+        <SectionCard title="Experiment Registry" icon={FlaskConical}>
+          <ExperimentExplorer />
         </SectionCard>
         <SectionCard title="Improvement Proposals" icon={Brain}>
           <MetaProposalList proposals={proposals} />

@@ -7,6 +7,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { useSteeringData } from '@/hooks/useSteeringData'
 import { useSteeringStore } from '@/stores/steering'
 
+import { InterruptsFallbackPanel } from './InterruptsFallbackPanel'
 import { SteeringDirectiveList } from './SteeringDirectiveList'
 import { SteeringIssueForm } from './SteeringIssueForm'
 import { SteeringProposalReview } from './SteeringProposalReview'
@@ -63,6 +64,8 @@ export function Steering({ initialProjectId }: SteeringProps) {
           <SteeringDirectiveList directives={directives} loading={loading} />
         </SectionCard>
       )}
+
+      <InterruptsFallbackPanel />
     </div>
   )
 }

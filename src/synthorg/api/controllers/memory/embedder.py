@@ -56,6 +56,9 @@ class MemoryEmbedderController(Controller):
     ) -> ApiResponse[ActiveEmbedderResponse]:
         """Get the active embedder configuration.
 
+        API-only: the active embedder is read by operational tooling and
+        diagnostics; it has no dedicated dashboard surface.
+
         Returns:
             ``ApiResponse[ActiveEmbedderResponse]`` instance.
 

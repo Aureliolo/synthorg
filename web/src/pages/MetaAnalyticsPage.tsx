@@ -17,6 +17,7 @@ import { SkeletonCard } from '@/components/ui/skeleton'
 import type { ProposalSummary, SignalsResponse } from '@/api/endpoints/meta'
 import { formatNumber } from '@/utils/format'
 
+import { CrossDeploymentSection } from './meta/CrossDeploymentSection'
 import { useMetaAnalyticsData } from './meta/useMetaAnalyticsData'
 
 interface MetaAnalyticsDisplayState {
@@ -108,6 +109,9 @@ function MetaAnalyticsBody({ data, display }: MetaAnalyticsBodyProps) {
           <ActiveProposalsSection proposals={data.proposals} />
         </ErrorBoundary>
       )}
+      <ErrorBoundary level="section">
+        <CrossDeploymentSection />
+      </ErrorBoundary>
     </>
   )
 }

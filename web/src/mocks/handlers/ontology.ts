@@ -1,12 +1,14 @@
 import { http, HttpResponse } from 'msw'
 import type {
   createEntity,
+  deriveOntology,
   EntityResponse,
   getEntity,
   getVersionManifest,
   listDriftReports,
   listEntities,
   listEntityVersions,
+  syncOrgMemory,
   triggerDriftCheck,
   updateEntity,
 } from '@/api/endpoints/ontology'
@@ -72,6 +74,14 @@ export const ontologyHandlers = [
   http.post('/api/v1/ontology/drift/check', () =>
     HttpResponse.json(
       successFor<typeof triggerDriftCheck>({ status: 'drift_check_completed' }),
+    ),
+  ),
+  http.post('/api/v1/ontology/admin/derive', () =>
+    HttpResponse.json(successFor<typeof deriveOntology>({ derived_count: 0 })),
+  ),
+  http.post('/api/v1/ontology/admin/sync-org-memory', () =>
+    HttpResponse.json(
+      successFor<typeof syncOrgMemory>({ status: 'sync_completed', published_count: 0 }),
     ),
   ),
 ]

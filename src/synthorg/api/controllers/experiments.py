@@ -81,6 +81,10 @@ class ExperimentsController(Controller):
     ) -> ApiResponse[ExperimentVariant]:
         """Register or replace a variant on an experiment.
 
+        API-only: variant registration is a deployment / scripting
+        operation and is intentionally not surfaced in the dashboard,
+        which exposes only the read views (variants + assignments).
+
         Returns:
             ``ApiResponse[ExperimentVariant]`` instance.
         """
@@ -111,6 +115,10 @@ class ExperimentsController(Controller):
         On first call for ``(experiment, subject_id)`` the service
         computes the assignment and persists it; subsequent calls
         return the recorded assignment unchanged.
+
+        API-only: this is the runtime path agents call to discover their
+        branch; it is not surfaced in the dashboard (the dashboard only
+        reads recorded assignments).
 
         Returns:
             ``ApiResponse[ExperimentAssignment]`` instance.

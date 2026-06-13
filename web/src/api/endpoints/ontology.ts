@@ -148,3 +148,21 @@ export async function triggerDriftCheck(): Promise<Record<string, string>> {
   )
   return unwrap(response)
 }
+
+// ── Admin operations ──────────────────────────────────────────
+
+/** Re-run auto-derivation of entity definitions from decorated models. */
+export async function deriveOntology(): Promise<Record<string, number>> {
+  const response = await apiClient.post<ApiResponse<Record<string, number>>>(
+    '/ontology/admin/derive',
+  )
+  return unwrap(response)
+}
+
+/** Force a re-sync of all entity definitions into OrgMemory. */
+export async function syncOrgMemory(): Promise<Record<string, number | string>> {
+  const response = await apiClient.post<ApiResponse<Record<string, number | string>>>(
+    '/ontology/admin/sync-org-memory',
+  )
+  return unwrap(response)
+}

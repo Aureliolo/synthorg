@@ -248,6 +248,14 @@ export const SETTING_DEPENDENCIES: Readonly<Record<string, readonly string[]>> =
 /** Polling interval for settings page (ms). */
 export const SETTINGS_POLL_INTERVAL = 60_000
 
+/**
+ * Polling interval (ms) for the interrupts fallback. Only active while
+ * the live WebSocket transport is down, so a tighter cadence than the
+ * settings poll is acceptable: pending interrupts block agents and the
+ * operator needs them surfaced promptly.
+ */
+export const INTERRUPTS_POLL_INTERVAL = 10_000
+
 // ── Ceremony Policy ─────────────────────────────────────────
 
 export const CEREMONY_STRATEGY_LABELS: Readonly<Record<CeremonyStrategyType, string>> = {
