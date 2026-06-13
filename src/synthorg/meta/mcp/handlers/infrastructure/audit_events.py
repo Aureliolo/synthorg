@@ -11,10 +11,11 @@ from synthorg.infrastructure.state import (
     audit_read_service_of,
     events_read_service_of,
 )
+from synthorg.meta.mcp.domains._remaining_args import AuditListArgs, EventsListArgs
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import PaginationMeta, err, ok
-from synthorg.meta.mcp.handlers.common_args import coerce_pagination
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_invoke_failed,
@@ -44,7 +45,8 @@ async def _audit_list(
     """
     tool = "synthorg_audit_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, AuditListArgs)
+        offset, limit = page_args.offset, page_args.limit
         page, total = await audit_read_service_of(app_state).list_entries(
             offset=offset,
             limit=limit,
@@ -75,7 +77,8 @@ async def _events_list(
     """
     tool = "synthorg_events_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, EventsListArgs)
+        offset, limit = page_args.offset, page_args.limit
         page, total = await events_read_service_of(app_state).list_events(
             offset=offset,
             limit=limit,

@@ -8,11 +8,13 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import provider_read_service_of
+from synthorg.meta.mcp.domains._remaining_args import ProvidersTestConnectionArgs
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_args import get_optional_str, require_actor_id
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -60,6 +62,8 @@ async def _providers_list(
     return ok([_to_jsonable(p) for p in providers])
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# `provider_id` but ProvidersGetArgs declares `provider_name`.
 async def _providers_get(
     *,
     app_state: AppState,
@@ -92,6 +96,9 @@ async def _providers_get(
     return ok(_to_jsonable(provider))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads an
+# optional `provider_id`, but ProvidersGetHealthArgs declares a required
+# `provider_name`.
 async def _providers_get_health(
     *,
     app_state: AppState,
@@ -133,7 +140,7 @@ async def _providers_test_connection(
     tool = "synthorg_providers_test_connection"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        provider_name = _require_str(arguments, "provider_name")
+        provider_name = typed_args(arguments, ProvidersTestConnectionArgs).provider_name
         provider_read = provider_read_service_of(app_state)
         result = await provider_read.test_connection(provider_name)
         logger.info(

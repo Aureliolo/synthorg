@@ -3,15 +3,22 @@
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import project_facade_service_of
+from synthorg.meta.mcp.domains._remaining_args import (
+    ProjectsDeleteArgs,
+    ProjectsGetArgs,
+    ProjectsListArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     err,
@@ -19,7 +26,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
     get_optional_str,
     require_actor_id,
 )
@@ -41,6 +47,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_ARG_PROJECT_ID = "project_id"
+_TY_UUID = "UUID string"
+
 
 async def _projects_list(
     *,
@@ -55,7 +64,8 @@ async def _projects_list(
     """
     tool = "synthorg_projects_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, ProjectsListArgs)
+        offset, limit = page_args.offset, page_args.limit
         page, total = await project_facade_service_of(app_state).list_projects(
             offset=offset,
             limit=limit,
@@ -81,10 +91,17 @@ async def _projects_get(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``project_id`` is not a UUID string.
     """
     tool = "synthorg_projects_get"
     try:
-        project_id = _require_uuid(arguments, "project_id")
+        project_id = typed_args(arguments, ProjectsGetArgs).project_id
+        try:
+            UUID(project_id)
+        except ValueError as uuid_exc:
+            raise ArgumentValidationError(_ARG_PROJECT_ID, _TY_UUID) from uuid_exc
         project = await project_facade_service_of(app_state).get_project(project_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -101,6 +118,8 @@ async def _projects_get(
     return ok(project.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# `metadata`, but ProjectsCreateArgs declares only name + description.
 async def _projects_create(
     *,
     app_state: AppState,
@@ -133,6 +152,9 @@ async def _projects_create(
     return ok(project.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# name/description/metadata, but ProjectsUpdateArgs declares an opaque `updates`
+# dict.
 async def _projects_update(
     *,
     app_state: AppState,
@@ -182,11 +204,18 @@ async def _projects_delete(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``project_id`` is not a UUID string.
     """
     tool = "synthorg_projects_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        project_id = _require_uuid(arguments, "project_id")
+        project_id = typed_args(arguments, ProjectsDeleteArgs).project_id
+        try:
+            UUID(project_id)
+        except ValueError as uuid_exc:
+            raise ArgumentValidationError(_ARG_PROJECT_ID, _TY_UUID) from uuid_exc
         actor_id = require_actor_id(resolved_actor)
         removed = await project_facade_service_of(app_state).delete_project(
             project_id=project_id,

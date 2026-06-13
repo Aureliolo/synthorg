@@ -3,30 +3,34 @@
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import template_pack_facade_service_of
+from synthorg.meta.mcp.domains._remaining_args import (
+    TemplatePacksGetArgs,
+    TemplatePacksInstallArgs,
+    TemplatePacksListArgs,
+    TemplatePacksUninstallArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     err,
     ok,
     require_admin_guardrails,
 )
-from synthorg.meta.mcp.handlers.common_args import coerce_pagination, require_actor_id
+from synthorg.meta.mcp.handlers.common_args import require_actor_id
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
     log_handler_invoke_failed,
-)
-from synthorg.meta.mcp.handlers.infrastructure._shared import (
-    _require_str,
-    _require_uuid,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
@@ -35,6 +39,9 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
+
+_ARG_PACK_ID = "pack_id"
+_TY_UUID = "UUID string"
 
 
 async def _template_packs_list(
@@ -50,7 +57,8 @@ async def _template_packs_list(
     """
     tool = "synthorg_template_packs_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, TemplatePacksListArgs)
+        offset, limit = page_args.offset, page_args.limit
         page, total = await template_pack_facade_service_of(app_state).list_packs(
             offset=offset,
             limit=limit,
@@ -76,10 +84,17 @@ async def _template_packs_get(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``pack_id`` is not a UUID string.
     """
     tool = "synthorg_template_packs_get"
     try:
-        pack_id = _require_uuid(arguments, "pack_id")
+        pack_id = typed_args(arguments, TemplatePacksGetArgs).pack_id
+        try:
+            UUID(pack_id)
+        except ValueError as uuid_exc:
+            raise ArgumentValidationError(_ARG_PACK_ID, _TY_UUID) from uuid_exc
         pack = await template_pack_facade_service_of(app_state).get_pack(pack_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -110,8 +125,9 @@ async def _template_packs_install(
     tool = "synthorg_template_packs_install"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        name = _require_str(arguments, "name")
-        version = _require_str(arguments, "version")
+        install_args = typed_args(arguments, TemplatePacksInstallArgs)
+        name = install_args.name
+        version = install_args.version
         actor_id = require_actor_id(resolved_actor)
         pack = await template_pack_facade_service_of(app_state).install_pack(
             name=name,
@@ -149,11 +165,18 @@ async def _template_packs_uninstall(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``pack_id`` is not a UUID string.
     """
     tool = "synthorg_template_packs_uninstall"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        pack_id = _require_uuid(arguments, "pack_id")
+        pack_id = typed_args(arguments, TemplatePacksUninstallArgs).pack_id
+        try:
+            UUID(pack_id)
+        except ValueError as uuid_exc:
+            raise ArgumentValidationError(_ARG_PACK_ID, _TY_UUID) from uuid_exc
         actor_id = require_actor_id(resolved_actor)
         removed = await template_pack_facade_service_of(app_state).uninstall_pack(
             pack_id=pack_id,
