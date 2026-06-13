@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 export interface SectionCardProps {
   title: string
   icon?: LucideIcon | undefined
-  action?: ReactNode
+  action?: ReactNode | undefined
   children: ReactNode
   className?: string | undefined
 }
