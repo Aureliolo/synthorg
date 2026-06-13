@@ -151,7 +151,7 @@ Once the wizard completes, the dashboard loads and you will see:
 With a configured provider the agent runtime picks the task up and executes it
 (LLM + sandboxed tools under the safety spine), exercised today by deterministic
 e2e harnesses with a scripted provider. Without a real provider an empty company
-cleanly holds the task at its lifecycle states. See the
+cleanly rejects task submission. See the
 [Roadmap](../roadmap/index.md) for current status.
 
 ---

@@ -35,7 +35,7 @@ provider, zero LLM spend, unless noted):
   sensitive actions). An empty company (no provider) cleanly rejects task
   submission.
 - **Multi-agent coordinator and work pipeline spine**: `/coordinate` runs
-  decompose, route, parallel execution, then rollup end to end behind the
+  decompose, route, parallel execution, then roll up end-to-end behind the
   provider-present switch. The shared work pipeline (intake to projects to
   decompose to solo/team to execute to coordination metrics) is the single
   integration point every entry adapter feeds, with solo-vs-team decided

@@ -77,6 +77,23 @@ def test_collect_nav_md_ignores_none_and_collects_md() -> None:
     assert out == {"index.md", "guides/a.md"}
 
 
+def test_collect_nav_md_excludes_external_urls() -> None:
+    out: set[str] = set()
+    # External links that happen to end in ``.md`` (e.g. a raw GitHub file)
+    # are not local docs pages and must not be treated as on-disk paths,
+    # else the gate fails with a false positive for a path that never
+    # existed locally.
+    gate._collect_nav_md(
+        [
+            {"Local": "guides/a.md"},
+            {"GitHub": "https://github.com/org/repo/blob/main/README.md"},
+            {"Insecure": "http://example.com/page.md"},
+        ],
+        out,
+    )
+    assert out == {"guides/a.md"}
+
+
 def test_clean_tree_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     docs_dir, mkdocs = _build_docs(tmp_path, ("index.md", "guides/a.md"))
     _write_nav(mkdocs, "nav:\n  - Home: index.md\n  - Guides:\n      - guides/a.md\n")

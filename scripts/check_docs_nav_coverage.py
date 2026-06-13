@@ -74,7 +74,7 @@ _NavLoader.add_constructor("!ENV", _ignore_env)
 def _collect_nav_md(node: object, out: set[str]) -> None:
     """Recursively collect every ``.md`` reference in the nav tree."""
     if isinstance(node, str):
-        if node.endswith(".md"):
+        if node.endswith(".md") and not node.startswith(("http://", "https://")):
             out.add(node)
     elif isinstance(node, list):
         for item in node:
