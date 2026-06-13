@@ -418,11 +418,13 @@ domain-specific codes set via the `domain_code` kwarg on `err(...)`.
 **Registry Immutability.** Each domain handler module exports an
 `XXX_HANDLERS: Mapping[str, ToolHandler]` constant wrapped in
 `MappingProxyType` to enforce read-only access. Each feature manifest
-pairs its domain via `mcp_descriptor(...)` with a deferred
-`handlers_factory` that returns that constant;
-`build_handler_map()` in `src/synthorg/meta/mcp/handlers/__init__.py`
-walks `discover_features()`, merges every feature's `handlers_factory()`
-map, and raises on a duplicate key across features.
+calls `mcp_descriptor(..., handlers=<loader>)` (the public keyword) to
+pair its domain with a deferred zero-arg loader returning that constant;
+`mcp_descriptor` stores it as the descriptor's internal `handlers_factory`
+field. `build_handler_map()` in
+`src/synthorg/meta/mcp/handlers/__init__.py` walks `discover_features()`,
+invokes each feature's `handlers_factory()`, merges the maps, and raises
+on a duplicate key across features.
 
 **Schema-Level Validation.** Admin-op schemas in
 `src/synthorg/meta/mcp/domains/*.py` enforce the `reason` field as a

@@ -35,4 +35,4 @@ sources:
   convention_gates: glob scripts/check_*.py
   mcp_tools: tool builders in src/synthorg/meta/mcp/domains/*.py
   mcp_domains: non-underscore modules in src/synthorg/meta/mcp/domains/
-  settings_namespaces: SettingNamespace members in settings/enums.py
+  settings_namespaces: SettingNamespace members in src/synthorg/settings/enums.py

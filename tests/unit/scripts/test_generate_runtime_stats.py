@@ -127,9 +127,12 @@ class TestMainHappyPath:
         assert stats["mcp_domains"]["display"] == "21"
         assert stats["settings_namespaces"]["display"] == "28"
         assert "sources" in loaded
-        # Sources mapping is informational; ensure every stat has a source.
+        # Sources mapping is informational; ensure every stat has the
+        # expected source string, so a stale source value (not just a
+        # missing key) is caught.
         for stat_name in stats:
             assert stat_name in loaded["sources"]
+            assert loaded["sources"][stat_name] == gen._SOURCES[stat_name]
 
         out = capsys.readouterr().out
         assert "wrote" in out.lower()

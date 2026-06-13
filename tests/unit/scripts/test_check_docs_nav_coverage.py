@@ -94,6 +94,22 @@ def test_collect_nav_md_excludes_external_urls() -> None:
     assert out == {"guides/a.md"}
 
 
+def test_collect_nav_md_normalises_paths() -> None:
+    out: set[str] = set()
+    # ``./`` prefixes and backslash separators are normalised to the
+    # canonical disk form (``relative_to(DOCS_DIR).as_posix()``) so the set
+    # comparison in main() does not raise a false "missing from nav".
+    gate._collect_nav_md(
+        [
+            {"Dotted": "./index.md"},
+            {"Backslash": "guides\\a.md"},
+            {"Plain": "reference/b.md"},
+        ],
+        out,
+    )
+    assert out == {"index.md", "guides/a.md", "reference/b.md"}
+
+
 def test_clean_tree_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     docs_dir, mkdocs = _build_docs(tmp_path, ("index.md", "guides/a.md"))
     _write_nav(mkdocs, "nav:\n  - Home: index.md\n  - Guides:\n      - guides/a.md\n")

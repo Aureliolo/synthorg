@@ -21,6 +21,7 @@ Exit codes:
 import sys
 from pathlib import Path
 from typing import Final
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -72,10 +73,23 @@ _NavLoader.add_constructor("!ENV", _ignore_env)
 
 
 def _collect_nav_md(node: object, out: set[str]) -> None:
-    """Recursively collect every ``.md`` reference in the nav tree."""
+    """Recursively collect every local ``.md`` reference in the nav tree.
+
+    Nav strings are normalised to the canonical disk form (forward
+    slashes, no leading ``./``) so the set comparison in ``main`` does not
+    raise a false ``missing from nav`` on a ``./``-prefixed entry or a
+    Windows-style backslash-separated path. External links (anything with
+    a URL scheme or host, e.g. ``https://...``) are skipped -- they are
+    not local pages.
+    """
     if isinstance(node, str):
-        if node.endswith(".md") and not node.startswith(("http://", "https://")):
-            out.add(node)
+        parsed = urlsplit(node)
+        if parsed.scheme or parsed.netloc:
+            return
+        rel = node.replace("\\", "/")
+        rel = rel.removeprefix("./")
+        if rel.endswith(".md"):
+            out.add(rel)
     elif isinstance(node, list):
         for item in node:
             _collect_nav_md(item, out)
