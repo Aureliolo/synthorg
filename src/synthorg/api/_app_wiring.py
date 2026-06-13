@@ -37,6 +37,9 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     cannot race the boot wiring.
     """
     from synthorg.budget.config import BudgetConfig  # noqa: PLC0415
+    from synthorg.budget.forecast_service import (  # noqa: PLC0415
+        BudgetForecastService,
+    )
     from synthorg.budget.forecaster import CostForecaster  # noqa: PLC0415
     from synthorg.budget.model_tier import ModelTierMap  # noqa: PLC0415
     from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
@@ -115,6 +118,12 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         assignment_lookup=assignment_lookup,
         model_tier_map=model_tier_map,
     )
+    forecast_service = BudgetForecastService(
+        repo=forecast_repo,
+        forecaster=forecaster,
+        budget_config=budget_config,
+        clock=app_state.clock.now,
+    )
     app_state.wire(
         BudgetStateSlice,
         budget_config=budget_config,
@@ -123,6 +132,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         cost_forecast_repo=forecast_repo,
         cost_forecaster=forecaster,
         pareto_analyzer=analyzer,
+        forecast_service=forecast_service,
     )
 
 

@@ -48,7 +48,11 @@ from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_REGISTERED,
     SUBWORKFLOW_RESOLVED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
+from synthorg.persistence._shared import (
+    DEFAULT_LIST_LIMIT,
+    MAX_LIST_LIMIT,
+    collect_all,
+)
 from synthorg.persistence.subworkflow_protocol import (
     SubworkflowRepository,
 )
@@ -305,6 +309,23 @@ class SubworkflowRegistry:
         """
         return await self._repo.search(query, limit=limit, offset=offset)
 
+    async def search_all(self, query: NotBlankStr) -> tuple[SubworkflowSummary, ...]:
+        """Drain every bounded search page into the complete match set.
+
+        The API-boundary search endpoint applies its own opaque-cursor
+        pagination over the full match set, so it needs every match (a
+        truncated set would break the cursor walk and under-report
+        matches). Draining stays inside the engine layer so the
+        controller never reaches across the persistence boundary.
+
+        Returns:
+            Every matching :class:`SubworkflowSummary`, in the
+            repository's canonical order.
+        """
+        return await collect_all(
+            lambda limit, offset: self._repo.search(query, limit=limit, offset=offset),
+        )
+
     async def delete(
         self,
         subworkflow_id: NotBlankStr,
@@ -382,4 +403,30 @@ class SubworkflowRegistry:
             version,
             limit=limit,
             offset=offset,
+        )
+
+    async def find_parents_all(
+        self,
+        subworkflow_id: NotBlankStr,
+        version: NotBlankStr | None = None,
+    ) -> tuple[ParentReference, ...]:
+        """Drain every bounded parent page into the complete reference set.
+
+        The API-boundary parents endpoint applies its own opaque-cursor
+        pagination over the full parent set, so it needs every parent (a
+        truncated set would break the cursor walk and, worse,
+        under-report references). Draining stays inside the engine layer
+        so the controller never reaches across the persistence boundary.
+
+        Returns:
+            Every :class:`ParentReference` pinning the coordinate, in the
+            repository's canonical order.
+        """
+        return await collect_all(
+            lambda limit, offset: self._repo.find_parents(
+                subworkflow_id,
+                version,
+                limit=limit,
+                offset=offset,
+            ),
         )
