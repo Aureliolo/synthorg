@@ -211,8 +211,8 @@ ORDER BY timestamp DESC"""
             params.append(limit)
 
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch message history for channel {channel!r}"
             logger.warning(
@@ -254,8 +254,8 @@ SELECT id, timestamp, sender, "to", type, priority,
 FROM messages
 WHERE id = ? AND channel = ?"""
         try:
-            cursor = await self._db.execute(sql, [message_id, channel])
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, [message_id, channel]) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch message {message_id!r}"
             logger.warning(
@@ -305,8 +305,8 @@ FROM messages"""
         sql += " ORDER BY timestamp DESC, id ASC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query messages"
             logger.warning(
@@ -342,11 +342,12 @@ FROM messages"""
         aware_threshold = normalize_utc(threshold)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM messages WHERE timestamp < ?",
                     (format_iso_utc(aware_threshold),),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = "Failed to purge messages by threshold"
                 logger.warning(
@@ -355,7 +356,7 @@ FROM messages"""
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return cursor.rowcount
+            return _db_rowcount
 
     async def delete(self, message_id: NotBlankStr) -> bool:
         """Delete a single message by id (bespoke per ADR D7, moderation).
@@ -375,11 +376,12 @@ FROM messages"""
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM messages WHERE id = ?",
                     (message_id,),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete message {message_id!r}"
                 logger.warning(
@@ -389,4 +391,4 @@ FROM messages"""
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return cursor.rowcount > 0
+            return _db_rowcount > 0

@@ -202,11 +202,11 @@ class SQLiteOAuthStateRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM oauth_states WHERE state_token = ?",
                     (str(state_token),),
-                )
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
@@ -287,7 +287,7 @@ class SQLiteOAuthStateRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE oauth_states "
                     "SET consumed_at = ?, connection_name_returned = ? "
                     "WHERE state_token = ? AND consumed_at IS NULL",
@@ -296,8 +296,8 @@ class SQLiteOAuthStateRepository:
                         str(connection_name),
                         str(state_token),
                     ),
-                )
-                updated = cursor.rowcount > 0
+                ) as cursor:
+                    updated = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
@@ -338,13 +338,13 @@ class SQLiteOAuthStateRepository:
         )
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM oauth_states "
                     "WHERE expires_at <= ? "
                     "OR (consumed_at IS NOT NULL AND consumed_at <= ?)",
                     (cutoff_iso, consumed_cutoff_iso),
-                )
-                removed = cursor.rowcount
+                ) as cursor:
+                    removed = cursor.rowcount
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):

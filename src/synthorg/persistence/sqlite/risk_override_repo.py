@@ -140,12 +140,12 @@ class SQLiteRiskOverrideRepository:
             PersistenceError: If the persistence layer rejects the operation.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {_COLS} FROM risk_overrides "  # noqa: S608
                 "WHERE id = ?",
                 (override_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to get risk override"
             logger.warning(
@@ -177,12 +177,12 @@ class SQLiteRiskOverrideRepository:
             limit, offset, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {_COLS} FROM risk_overrides "  # noqa: S608
                 "ORDER BY id LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list risk overrides"
             logger.warning(
@@ -218,11 +218,11 @@ class SQLiteRiskOverrideRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM risk_overrides WHERE id = ?",
                     (override_id,),
-                )
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback_quietly()
@@ -258,13 +258,13 @@ class SQLiteRiskOverrideRepository:
         )
         now_utc = format_iso_utc(datetime.now(UTC))
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {_COLS} FROM risk_overrides "  # noqa: S608
                 "WHERE revoked_at IS NULL AND expires_at > ? "
                 "ORDER BY created_at DESC LIMIT ?",
                 (now_utc, limit),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list active overrides"
             logger.warning(
@@ -313,13 +313,14 @@ class SQLiteRiskOverrideRepository:
         revoked_at_utc = format_iso_utc(revoked_at)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE risk_overrides "
                     "SET revoked_at = ?, revoked_by = ? "
                     "WHERE id = ? AND revoked_at IS NULL",
                     (revoked_at_utc, revoked_by, override_id),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback_quietly()
                 msg = "Failed to revoke risk override"
@@ -330,7 +331,7 @@ class SQLiteRiskOverrideRepository:
                 )
                 raise PersistenceError(msg) from exc
 
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
 
 def _row_to_override(row: aiosqlite.Row) -> RiskTierOverride:

@@ -250,10 +250,10 @@ ON CONFLICT(id) DO UPDATE SET
             QueryError: If the database query or deserialization fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM users WHERE id = ?", (user_id,)
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch user {user_id!r}"
             logger.warning(
@@ -293,10 +293,10 @@ ON CONFLICT(id) DO UPDATE SET
             QueryError: If the database query or deserialization fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM users WHERE username = ?", (username,)
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch user by username {username!r}"
             logger.warning(
@@ -342,11 +342,11 @@ ON CONFLICT(id) DO UPDATE SET
             limit, offset, event=PERSISTENCE_USER_LIST_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM users WHERE role != ? ORDER BY id LIMIT ? OFFSET ?",
                 (HumanRole.SYSTEM.value, limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list users"
             logger.warning(
@@ -391,8 +391,8 @@ ON CONFLICT(id) DO UPDATE SET
         sql += " ORDER BY id LIMIT ?"
         params.append(limit)
         try:
-            cursor = await self._db.execute(sql, tuple(params))
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, tuple(params)) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list users"
             logger.warning(
@@ -445,8 +445,8 @@ ON CONFLICT(id) DO UPDATE SET
         sql += " ORDER BY id LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         try:
-            cursor = await self._db.execute(sql, tuple(params))
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, tuple(params)) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query users"
             logger.warning(
@@ -486,8 +486,8 @@ ON CONFLICT(id) DO UPDATE SET
             sql += " AND role = ?"
             params.append(filter_spec.role.value)
         try:
-            cursor = await self._db.execute(sql, tuple(params))
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, tuple(params)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count users"
             logger.warning(
@@ -513,11 +513,11 @@ ON CONFLICT(id) DO UPDATE SET
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT COUNT(*) FROM users WHERE role = ?",
                 (role.value,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count users by role"
             logger.warning(
@@ -562,11 +562,11 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM users WHERE id = ?", (user_id,)
-                )
-                await self._db.commit()
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    await self._db.commit()
+                    deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -686,10 +686,10 @@ ON CONFLICT(id) DO UPDATE SET
             QueryError: If the database query or deserialization fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM api_keys WHERE id = ?", (key_id,)
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch API key {key_id!r}"
             logger.warning(
@@ -729,11 +729,11 @@ ON CONFLICT(id) DO UPDATE SET
             QueryError: If the database query or deserialization fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM api_keys WHERE key_hash = ?",
                 (key_hash,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to fetch API key by hash"
             logger.warning(
@@ -777,11 +777,11 @@ ON CONFLICT(id) DO UPDATE SET
             limit, offset, event=PERSISTENCE_API_KEY_LIST_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM api_keys ORDER BY id LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list API keys"
             logger.warning(
@@ -837,8 +837,8 @@ ON CONFLICT(id) DO UPDATE SET
         sql += " ORDER BY id LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         try:
-            cursor = await self._db.execute(sql, tuple(params))
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, tuple(params)) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query API keys"
             logger.warning(
@@ -881,8 +881,8 @@ ON CONFLICT(id) DO UPDATE SET
             sql += " AND revoked = ?"
             params.append(1)
         try:
-            cursor = await self._db.execute(sql, tuple(params))
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, tuple(params)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count API keys"
             logger.warning(
@@ -909,11 +909,11 @@ ON CONFLICT(id) DO UPDATE SET
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM api_keys WHERE id = ?", (key_id,)
-                )
-                await self._db.commit()
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    await self._db.commit()
+                    deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()

@@ -56,11 +56,11 @@ class SQLiteSeenClaimsRepository:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT 1 FROM seen_claims WHERE idempotency_key = ? LIMIT 1",
                 (str(idempotency_key),),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to look up seen claim {idempotency_key!r}"
             logger.warning(
@@ -104,7 +104,7 @@ class SQLiteSeenClaimsRepository:
         expires_at: datetime = seen_at + timedelta(seconds=ttl_seconds)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     """
                     INSERT INTO seen_claims (
                         idempotency_key, claim_id, seen_at, expires_at
@@ -117,8 +117,8 @@ class SQLiteSeenClaimsRepository:
                         format_iso_utc(seen_at),
                         format_iso_utc(expires_at),
                     ),
-                )
-                inserted = cursor.rowcount > 0
+                ) as cursor:
+                    inserted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
@@ -146,11 +146,11 @@ class SQLiteSeenClaimsRepository:
         cutoff_iso = format_iso_utc(normalize_utc(now))
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM seen_claims WHERE expires_at < ?",
                     (cutoff_iso,),
-                )
-                removed = cursor.rowcount
+                ) as cursor:
+                    removed = cursor.rowcount
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):

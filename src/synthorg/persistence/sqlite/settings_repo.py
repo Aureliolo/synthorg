@@ -99,12 +99,12 @@ INSERT OR REPLACE INTO settings (
         """
         namespace, key = entity_id
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT namespace, key, value, updated_at FROM settings "
                 "WHERE namespace = ? AND key = ?",
                 (namespace, key),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to get setting {namespace}/{key}"
             logger.warning(
@@ -145,12 +145,12 @@ INSERT OR REPLACE INTO settings (
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT namespace, key, value, updated_at FROM settings "
                 "WHERE namespace = ? ORDER BY key",
                 (namespace,),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to get settings for namespace {namespace}"
             logger.warning(
@@ -199,12 +199,12 @@ INSERT OR REPLACE INTO settings (
             limit, offset, event=SETTINGS_FETCH_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT namespace, key, value, updated_at FROM settings "
                 "ORDER BY namespace, key LIMIT ? OFFSET ?",
                 (effective_limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list settings"
             logger.warning(
@@ -256,7 +256,7 @@ INSERT OR REPLACE INTO settings (
         async with self._write_context():
             try:
                 if expected_updated_at is not None:
-                    cursor = await self._db.execute(
+                    async with self._db.execute(
                         "UPDATE settings SET value = ?, updated_at = ? "
                         "WHERE namespace = ? AND key = ? "
                         "AND updated_at = ?",
@@ -267,11 +267,12 @@ INSERT OR REPLACE INTO settings (
                             entity.key,
                             expected_updated_at,
                         ),
-                    )
-                    await self._db.commit()
-                    if cursor.rowcount == 0:
+                    ) as update_cursor:
+                        await self._db.commit()
+                        update_missed = update_cursor.rowcount == 0
+                    if update_missed:
                         if expected_updated_at == "":
-                            cursor = await self._db.execute(
+                            async with self._db.execute(
                                 "INSERT OR IGNORE INTO settings "
                                 "(namespace, key, value, updated_at) "
                                 "VALUES (?, ?, ?, ?)",
@@ -281,10 +282,10 @@ INSERT OR REPLACE INTO settings (
                                     entity.value,
                                     entity.updated_at,
                                 ),
-                            )
-                            await self._db.commit()
-                            if cursor.rowcount == 0:
-                                return False
+                            ) as insert_cursor:
+                                await self._db.commit()
+                                if insert_cursor.rowcount == 0:
+                                    return False
                         else:
                             return False
                 else:
@@ -387,20 +388,20 @@ INSERT OR REPLACE INTO settings (
             )
             return True
         if expected == "":
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "INSERT OR IGNORE INTO settings "
                 "(namespace, key, value, updated_at) "
                 "VALUES (?, ?, ?, ?)",
                 (entity.namespace, entity.key, entity.value, entity.updated_at),
-            )
-            return cursor.rowcount != 0
-        cursor = await self._db.execute(
+            ) as cursor:
+                return cursor.rowcount != 0
+        async with self._db.execute(
             "UPDATE settings SET value = ?, updated_at = ? "
             "WHERE namespace = ? AND key = ? "
             "AND updated_at = ?",
             (entity.value, entity.updated_at, entity.namespace, entity.key, expected),
-        )
-        return cursor.rowcount != 0
+        ) as cursor:
+            return cursor.rowcount != 0
 
     async def delete(self, entity_id: SettingRowKey) -> bool:
         """Delete a setting by composite key.
@@ -414,12 +415,12 @@ INSERT OR REPLACE INTO settings (
         namespace, key = entity_id
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM settings WHERE namespace = ? AND key = ?",
                     (namespace, key),
-                )
-                await self._db.commit()
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    await self._db.commit()
+                    deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete setting {namespace}/{key}"
                 logger.warning(
@@ -443,12 +444,12 @@ INSERT OR REPLACE INTO settings (
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM settings WHERE namespace = ?",
                     (namespace,),
-                )
-                await self._db.commit()
-                rowcount = cursor.rowcount
+                ) as cursor:
+                    await self._db.commit()
+                    rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete namespace {namespace}"
                 logger.warning(
@@ -479,11 +480,11 @@ INSERT OR REPLACE INTO settings (
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM settings WHERE namespace = ? RETURNING key",
                     (namespace,),
-                )
-                rows = await cursor.fetchall()
+                ) as cursor:
+                    rows = await cursor.fetchall()
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete namespace {namespace}"

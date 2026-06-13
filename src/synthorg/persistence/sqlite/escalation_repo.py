@@ -205,8 +205,8 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         """
         sql = f"SELECT {_SELECT_COLS} FROM conflict_escalations WHERE id = ?"  # noqa: S608
         try:
-            cursor = await self._db.execute(sql, (escalation_id,))
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, (escalation_id,)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch escalation {escalation_id!r}: {safe_error_description(exc)}"  # noqa: E501
             logger.warning(
@@ -254,11 +254,13 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             f"WHERE {where} ORDER BY created_at ASC LIMIT ? OFFSET ?"
         )
         try:
-            count_cursor = await self._db.execute(count_sql, params)
-            count_row = await count_cursor.fetchone()
+            async with self._db.execute(count_sql, params) as count_cursor:
+                count_row = await count_cursor.fetchone()
             total = int(count_row["total"]) if count_row is not None else 0
-            page_cursor = await self._db.execute(page_sql, (*params, limit, offset))
-            rows = await page_cursor.fetchall()
+            async with self._db.execute(
+                page_sql, (*params, limit, offset)
+            ) as page_cursor:
+                rows = await page_cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list escalations: {safe_error_description(exc)}"
             logger.warning(
@@ -350,8 +352,8 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         )
         async with self._write_context():
             try:
-                cursor = await self._db.execute(update_sql, (now_iso, now_iso))
-                rows = await cursor.fetchall()
+                async with self._db.execute(update_sql, (now_iso, now_iso)) as cursor:
+                    rows = await cursor.fetchall()
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = "Failed to mark escalations expired"
@@ -456,8 +458,9 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         )
         async with self._write_context():
             try:
-                cursor = await self._db.execute(update_sql, params)
-                await self._db.commit()
+                async with self._db.execute(update_sql, params) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to update escalation {escalation_id!r}: {safe_error_description(exc)}"  # noqa: E501
                 logger.warning(
@@ -469,7 +472,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 )
                 await self._db.rollback()
                 raise QueryError(msg) from exc
-        if cursor.rowcount == 0:
+        if _db_rowcount == 0:
             # Recovery lookup runs on a fresh cursor so a crashed row
             # doesn't poison the failure signal back to the caller.
             try:

@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -492,7 +492,7 @@ class TestSQLiteAuditRepository:
             patch.object(
                 migrated_db,
                 "execute",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
                 side_effect=sqlite3.OperationalError("disk I/O error"),
             ),
             pytest.raises(QueryError, match="Failed to save"),
@@ -513,7 +513,7 @@ class TestSQLiteAuditRepository:
             patch.object(
                 migrated_db,
                 "execute",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
                 side_effect=sqlite3.OperationalError("disk I/O error"),
             ),
             pytest.raises(QueryError, match="Failed to query"),

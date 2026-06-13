@@ -153,13 +153,15 @@ class TestSQLitePersistenceBackend:
 
     async def test_health_check_returns_false_on_error(self) -> None:
         """health_check returns False (not raises) when the db errors."""
-        from unittest.mock import AsyncMock
+        from unittest.mock import MagicMock
 
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
         await backend.connect()
-        # Patch execute to simulate a database error
+        # Patch execute to simulate a database error: the ``async with
+        # self._db.execute(...)`` form evaluates the call first, so a
+        # synchronous raise lands inside the guarded block.
         assert backend._db is not None
-        backend._db.execute = AsyncMock(  # type: ignore[method-assign]
+        backend._db.execute = MagicMock(  # type: ignore[method-assign]
             side_effect=sqlite3.OperationalError("disk I/O error")
         )
         result = await backend.health_check()
@@ -184,7 +186,7 @@ class TestSQLitePersistenceBackend:
 
     async def test_connect_pragma_failure_cleans_up(self) -> None:
         """If PRAGMA fails after connect, backend cleans up and raises."""
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import MagicMock, patch
 
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:", wal_mode=True))
 
@@ -192,7 +194,7 @@ class TestSQLitePersistenceBackend:
 
         async def patched_connect(*args: object, **kwargs: object) -> object:
             conn = await real_connect(":memory:")
-            conn.execute = AsyncMock(  # type: ignore[method-assign]
+            conn.execute = MagicMock(  # type: ignore[method-assign]
                 side_effect=sqlite3.OperationalError("PRAGMA failed")
             )
             return conn

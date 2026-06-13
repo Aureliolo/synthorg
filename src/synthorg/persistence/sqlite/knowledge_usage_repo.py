@@ -119,8 +119,8 @@ class SQLiteKnowledgeUsageRecordRepository:
         )
         params.extend([limit, offset])
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query knowledge usage records"
             logger.warning(
@@ -151,11 +151,11 @@ class SQLiteKnowledgeUsageRecordRepository:
         threshold = normalize_utc(threshold)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM knowledge_usage_record WHERE recorded_at < ?",
                     (format_iso_utc(threshold),),
-                )
-                count = cursor.rowcount
+                ) as cursor:
+                    count = cursor.rowcount
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):

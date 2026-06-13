@@ -92,12 +92,12 @@ class SQLiteTrackedContainerRepository:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT container_id, sidecar_id, created_at "
                 "FROM tracked_containers WHERE container_id = ?",
                 (container_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to load tracked container {container_id!r}"
             logger.warning(
@@ -122,11 +122,11 @@ class SQLiteTrackedContainerRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM tracked_containers WHERE container_id = ?",
                     (container_id,),
-                )
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback_quietly(
@@ -152,10 +152,10 @@ class SQLiteTrackedContainerRepository:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT container_id, sidecar_id, created_at FROM tracked_containers"
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to load tracked container rows"
             logger.warning(
@@ -186,13 +186,13 @@ class SQLiteTrackedContainerRepository:
             limit, offset, event=PERSISTENCE_TRACKED_CONTAINER_LOAD_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT container_id, sidecar_id, created_at "
                 "FROM tracked_containers "
                 "ORDER BY container_id ASC LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list tracked container rows"
             logger.warning(

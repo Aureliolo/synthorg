@@ -133,11 +133,11 @@ class SQLiteConversationTurnRepository:
                     )
                     if sequence_race:
                         try:
-                            cursor = await self._db.execute(
+                            async with self._db.execute(
                                 _TURN_NEXT_SEQUENCE_SQL,
                                 (current.conversation_id,),
-                            )
-                            row = await cursor.fetchone()
+                            ) as cursor:
+                                row = await cursor.fetchone()
                             next_sequence = int(row[0]) if row is not None else 0
                         except (sqlite3.Error, aiosqlite.Error) as resequence_exc:
                             msg = (
@@ -229,8 +229,8 @@ class SQLiteConversationTurnRepository:
             LIMIT ? OFFSET ?
         """  # noqa: S608  -- ``where`` + columns are closed sets
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
             items = tuple(row_to_turn(r) for r in rows)
         except QueryError:
             raise
@@ -261,8 +261,11 @@ class SQLiteConversationTurnRepository:
         sql = "DELETE FROM conversation_turns WHERE created_at < ?"
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, (format_iso_utc(threshold),))
-                await self._db.commit()
+                async with self._db.execute(
+                    sql, (format_iso_utc(threshold),)
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db,
@@ -277,7 +280,7 @@ class SQLiteConversationTurnRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return max(0, cursor.rowcount)
+        return max(0, _db_rowcount)
 
 
 __all__ = ["SQLiteConversationTurnRepository"]

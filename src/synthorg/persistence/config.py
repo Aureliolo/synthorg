@@ -239,25 +239,27 @@ class PostgresConfig(BaseModel):
     @field_validator("host", "username", "database")
     @classmethod
     def _reject_unsafe_connection_chars(cls, value: NotBlankStr) -> NotBlankStr:
-        """Reject whitespace / control chars that could reach the pg-tool argv.
+        """Reject control characters that could reach the pg-tool argv.
 
         ``host`` / ``username`` / ``database`` are interpolated into the
-        ``pg_dump`` / ``pg_restore`` argv. None has a legitimate reason to
-        carry whitespace or control characters; rejecting them at
-        construction is a defence-in-depth guard against a newline-injected
-        config (DB-precedence settings path) smuggling an extra option past
-        the ``--flag=value`` framing.
+        ``pg_dump`` / ``pg_restore`` argv as glued ``--flag=value`` elements
+        (no shell), and URL-encoded into the libpq DSN by ``to_postgres_url``,
+        so printable specials (spaces, ``@``, ``/`` in a quoted identifier or
+        service account) round-trip safely. Control characters do not: a
+        newline- or NUL-injected config (DB-precedence settings path) is a
+        smuggling vector and has no legitimate place in these fields, so it is
+        rejected at construction as defence-in-depth.
 
         Returns:
             The validated value, unchanged.
 
         Raises:
-            ValueError: If the value carries whitespace or a control char.
+            ValueError: If the value carries a control character.
         """
-        if any(char.isspace() or char < " " for char in value):
+        if any(char < " " or char == "\x7f" for char in value):
             msg = (
-                "host, username, and database must not contain whitespace "
-                f"or control characters: {value!r}"
+                "host, username, and database must not contain control "
+                f"characters: {value!r}"
             )
             raise ValueError(msg)
         return value

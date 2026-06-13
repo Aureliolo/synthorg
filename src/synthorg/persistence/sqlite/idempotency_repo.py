@@ -135,12 +135,12 @@ class SQLiteIdempotencyRepository:
         Returns:
             The matching value, or ``None`` when absent.
         """
-        cursor = await self._db.execute(
+        async with self._db.execute(
             "SELECT status, response_body, expires_at "
             "FROM idempotency_keys WHERE scope = ? AND key = ?",
             (scope, key),
-        )
-        return await cursor.fetchone()
+        ) as cursor:
+            return await cursor.fetchone()
 
     async def _claim_under_lock(
         self,
@@ -270,21 +270,16 @@ class SQLiteIdempotencyRepository:
         """
         async with self._write_context():
             try:
-                # Gate on status = 'in_flight' so a stale worker cannot
-                # flip an already-completed row -- completed rows MUST
-                # remain immutable. Token CAS alone would let a slow
-                # callback whose lease coincidentally re-issued the
-                # same token overwrite the new lease's response.
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE idempotency_keys "
                     "SET status = 'completed', response_body = ?, "
                     "response_hash = ? "
                     "WHERE scope = ? AND key = ? AND claim_token = ? "
                     "AND status = 'in_flight'",
                     (response_body, response_hash, scope, key, claim_token),
-                )
-                await self._db.commit()
-                rowcount = cursor.rowcount
+                ) as cursor:
+                    await self._db.commit()
+                    rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -317,17 +312,14 @@ class SQLiteIdempotencyRepository:
         """
         async with self._write_context():
             try:
-                # Same status gate as ``complete``: only an in-flight
-                # row owned by the matching lease can transition to
-                # failed.
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE idempotency_keys SET status = 'failed' "
                     "WHERE scope = ? AND key = ? AND claim_token = ? "
                     "AND status = 'in_flight'",
                     (scope, key, claim_token),
-                )
-                await self._db.commit()
-                rowcount = cursor.rowcount
+                ) as cursor:
+                    await self._db.commit()
+                    rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -357,13 +349,13 @@ class SQLiteIdempotencyRepository:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT scope, key, status, response_hash, response_body, "
                 "created_at, expires_at FROM idempotency_keys "
                 "WHERE scope = ? AND key = ?",
                 (scope, key),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             logger.warning(
                 IDEMPOTENCY_PERSISTENCE_ERROR,
@@ -416,12 +408,12 @@ class SQLiteIdempotencyRepository:
         now = normalize_utc(now)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM idempotency_keys WHERE expires_at <= ?",
                     (format_iso_utc(now),),
-                )
-                await self._db.commit()
-                return int(cursor.rowcount or 0)
+                ) as cursor:
+                    await self._db.commit()
+                    return int(cursor.rowcount or 0)
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()

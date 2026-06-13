@@ -155,12 +155,12 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         """
         project_id, slug = entity_id
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """SELECT * FROM project_docs
                    WHERE project_id = ? AND slug = ?""",
                 (project_id, slug),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch living doc {project_id!r}/{slug!r}"
             logger.warning(
@@ -218,13 +218,13 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """SELECT * FROM project_docs
                    ORDER BY updated_at DESC, project_id ASC, slug ASC
                    LIMIT ? OFFSET ?""",
                 (effective_limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list living docs"
             logger.warning(
@@ -247,11 +247,12 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         project_id, slug = entity_id
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM project_docs WHERE project_id = ? AND slug = ?",
                     (project_id, slug),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback(event=PERSISTENCE_PROJECT_DOC_DELETE_FAILED)
                 msg = f"Failed to delete living doc {project_id!r}/{slug!r}"
@@ -263,7 +264,7 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return cursor.rowcount > 0
+            return _db_rowcount > 0
 
     async def query(
         self,
@@ -290,8 +291,8 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         )
         params = (*params, effective_limit, offset)
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to query living docs for project {filter_spec.project_id!r}"
             logger.warning(
@@ -323,8 +324,8 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         where_sql, params = _build_query_sql(filter_spec)
         sql = f"SELECT COUNT(*) AS n {where_sql}"
         try:
-            cursor = await self._db.execute(sql, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to count living docs for {filter_spec.project_id!r}"
             logger.warning(

@@ -148,12 +148,12 @@ class SQLiteSsrfViolationRepository:
             PersistenceError: If the persistence layer rejects the operation.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
                 "WHERE id = ?",
                 (violation_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to get SSRF violation"
             logger.warning(
@@ -195,12 +195,12 @@ class SQLiteSsrfViolationRepository:
             limit, offset, event=PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
                 "ORDER BY id LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list SSRF violations"
             logger.warning(
@@ -235,11 +235,11 @@ class SQLiteSsrfViolationRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM ssrf_violations WHERE id = ?",
                     (violation_id,),
-                )
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
@@ -287,8 +287,8 @@ class SQLiteSsrfViolationRepository:
             params = (limit,)
 
         try:
-            cursor = await self._db.execute(query, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list SSRF violations"
             logger.warning(
@@ -358,7 +358,7 @@ class SQLiteSsrfViolationRepository:
         resolved_at_utc = format_iso_utc(resolved_at)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE ssrf_violations "
                     "SET status = ?, resolved_by = ?, resolved_at = ? "
                     "WHERE id = ? AND status = 'pending'",
@@ -368,8 +368,9 @@ class SQLiteSsrfViolationRepository:
                         resolved_at_utc,
                         violation_id,
                     ),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback_quietly()
                 msg = "Failed to update SSRF violation status"
@@ -380,7 +381,7 @@ class SQLiteSsrfViolationRepository:
                 )
                 raise PersistenceError(msg) from exc
 
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
 
 def _row_to_violation(row: aiosqlite.Row) -> SsrfViolation:

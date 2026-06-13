@@ -154,11 +154,11 @@ ON CONFLICT(chunk_id) DO UPDATE SET
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM knowledge_chunk_provenance WHERE chunk_id = ?",
                 (entity_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch chunk provenance {entity_id!r}"
             logger.warning(
@@ -193,12 +193,12 @@ ON CONFLICT(chunk_id) DO UPDATE SET
             return ()
         placeholders = ",".join("?" for _ in chunk_ids)
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT * FROM knowledge_chunk_provenance "  # noqa: S608 -- placeholders are bound params, not interpolated values
                 f"WHERE chunk_id IN ({placeholders})",
                 tuple(chunk_ids),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to fetch chunk provenance batch"
             logger.warning(
@@ -229,13 +229,13 @@ ON CONFLICT(chunk_id) DO UPDATE SET
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """SELECT * FROM knowledge_chunk_provenance
                    ORDER BY source_id ASC, chunk_index ASC
                    LIMIT ? OFFSET ?""",
                 (effective_limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list chunk provenance"
             logger.warning(
@@ -257,11 +257,12 @@ ON CONFLICT(chunk_id) DO UPDATE SET
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM knowledge_chunk_provenance WHERE chunk_id = ?",
                     (entity_id,),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback(
                     event=PERSISTENCE_KNOWLEDGE_PROVENANCE_DELETE_FAILED
@@ -274,7 +275,7 @@ ON CONFLICT(chunk_id) DO UPDATE SET
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return cursor.rowcount > 0
+            return _db_rowcount > 0
 
     async def delete_by_source(self, source_id: NotBlankStr) -> int:
         """Delete every provenance row for a source (ADR-0001 D7).
@@ -287,11 +288,12 @@ ON CONFLICT(chunk_id) DO UPDATE SET
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM knowledge_chunk_provenance WHERE source_id = ?",
                     (source_id,),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback(
                     event=PERSISTENCE_KNOWLEDGE_PROVENANCE_DELETE_FAILED
@@ -304,7 +306,7 @@ ON CONFLICT(chunk_id) DO UPDATE SET
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return cursor.rowcount
+            return _db_rowcount
 
     async def query(
         self,
@@ -326,14 +328,14 @@ ON CONFLICT(chunk_id) DO UPDATE SET
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """SELECT * FROM knowledge_chunk_provenance
                    WHERE source_id = ?
                    ORDER BY chunk_index ASC
                    LIMIT ? OFFSET ?""",
                 (filter_spec.source_id, effective_limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Provenance query failed for source {filter_spec.source_id!r}"
             logger.warning(
@@ -361,12 +363,12 @@ ON CONFLICT(chunk_id) DO UPDATE SET
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT COUNT(*) AS n FROM knowledge_chunk_provenance "
                 "WHERE source_id = ?",
                 (filter_spec.source_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Provenance count failed for source {filter_spec.source_id!r}"
             logger.warning(

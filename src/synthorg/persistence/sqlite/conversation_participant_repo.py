@@ -169,8 +169,8 @@ class SQLiteConversationParticipantRepository:
             FROM conversation_participants WHERE id = ?
         """  # noqa: S608 -- _PARTICIPANT_COLUMNS is a fixed column list
         try:
-            cursor = await self._db.execute(sql, (entity_id,))
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, (entity_id,)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch participant {entity_id!r}"
             logger.warning(
@@ -227,8 +227,9 @@ class SQLiteConversationParticipantRepository:
         params = (to_state.value, entity_id, from_state.value)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, params)
-                await self._db.commit()
+                async with self._db.execute(sql, params) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(self._db, operation="transition_if")
                 msg = f"Failed to transition participant {entity_id!r}"
@@ -239,7 +240,7 @@ class SQLiteConversationParticipantRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a participant by id. ``True`` iff a row existed.
@@ -253,8 +254,9 @@ class SQLiteConversationParticipantRepository:
         sql = "DELETE FROM conversation_participants WHERE id = ?"
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, (entity_id,))
-                await self._db.commit()
+                async with self._db.execute(sql, (entity_id,)) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(self._db, operation="delete")
                 msg = f"Failed to delete participant {entity_id!r}"
@@ -265,7 +267,7 @@ class SQLiteConversationParticipantRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
     def _filter_clauses(
         self, filter_spec: ConversationParticipantFilterSpec
@@ -318,8 +320,8 @@ class SQLiteConversationParticipantRepository:
             LIMIT ? OFFSET ?
         """  # noqa: S608 -- columns + predicates are closed sets
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
             items = tuple(row_to_participant(r) for r in rows)
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query conversation participants"
@@ -347,8 +349,8 @@ class SQLiteConversationParticipantRepository:
             SELECT COUNT(*) FROM conversation_participants WHERE {where}
         """  # noqa: S608 -- predicates are a closed set
         try:
-            cursor = await self._db.execute(sql, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count conversation participants"
             logger.warning(

@@ -139,13 +139,13 @@ ON CONFLICT(project_id) DO UPDATE SET
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT project_id, environment_type, declaration_hash, "
                 "image_ref, provisioned_at, updated_at "
                 "FROM project_environments WHERE project_id = ?",
                 (entity_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch project environment {entity_id!r}"
             logger.warning(
@@ -199,14 +199,14 @@ ON CONFLICT(project_id) DO UPDATE SET
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT project_id, environment_type, declaration_hash, "
                 "image_ref, provisioned_at, updated_at "
                 "FROM project_environments "
                 "ORDER BY project_id LIMIT ? OFFSET ?",
                 (effective_limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list project environments"
             logger.warning(
@@ -239,11 +239,12 @@ ON CONFLICT(project_id) DO UPDATE SET
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM project_environments WHERE project_id = ?",
                     (entity_id,),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback(
                     event=PERSISTENCE_PROJECT_ENVIRONMENT_DELETE_FAILED
@@ -256,4 +257,4 @@ ON CONFLICT(project_id) DO UPDATE SET
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return cursor.rowcount > 0
+            return _db_rowcount > 0

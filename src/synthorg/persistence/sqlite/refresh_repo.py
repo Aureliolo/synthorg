@@ -129,14 +129,14 @@ class SQLiteRefreshTokenRepository:
         revoked = False
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE refresh_tokens SET used = 1 "
                     "WHERE token_hash = ? AND used = 0 AND expires_at > ? "
                     "RETURNING token_hash, session_id, user_id, "
                     "expires_at, used, created_at",
                     (token_hash, now),
-                )
-                row = await cursor.fetchone()
+                ) as cursor:
+                    row = await cursor.fetchone()
                 if row is not None and is_session_revoked is not None:
                     revoked = is_session_revoked(row["session_id"])
                 if revoked:
@@ -182,14 +182,11 @@ class SQLiteRefreshTokenRepository:
                     created_at=parse_iso_utc(row["created_at"]),
                 ),
             )
-
-        # No row consumed -- determine why so the caller can emit
-        # SECURITY_AUTH_REFRESH_REJECTED with the right reason.
-        check = await self._db.execute(
+        async with self._db.execute(
             "SELECT used FROM refresh_tokens WHERE token_hash = ?",
             (token_hash,),
-        )
-        replay_row = await check.fetchone()
+        ) as check:
+            replay_row = await check.fetchone()
         if replay_row is not None and replay_row["used"]:
             return RefreshConsumeOutcome(
                 reject_reason=RefreshRejectReason.REPLAY_DETECTED,
@@ -209,13 +206,13 @@ class SQLiteRefreshTokenRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE refresh_tokens SET used = 1 "
                     "WHERE session_id = ? AND used = 0",
                     (session_id,),
-                )
-                await self._db.commit()
-                count = cursor.rowcount
+                ) as cursor:
+                    await self._db.commit()
+                    count = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -243,12 +240,12 @@ class SQLiteRefreshTokenRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE refresh_tokens SET used = 1 WHERE user_id = ? AND used = 0",
                     (user_id,),
-                )
-                await self._db.commit()
-                count = cursor.rowcount
+                ) as cursor:
+                    await self._db.commit()
+                    count = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -283,12 +280,12 @@ class SQLiteRefreshTokenRepository:
         now = format_iso_utc(datetime.now(UTC))
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM refresh_tokens WHERE expires_at <= ?",
                     (now,),
-                )
-                await self._db.commit()
-                rowcount = cursor.rowcount
+                ) as cursor:
+                    await self._db.commit()
+                    rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()

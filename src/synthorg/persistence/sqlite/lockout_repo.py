@@ -113,13 +113,13 @@ class SQLiteLockoutRepository:
         """
         scan_now = self._clock.now()
         scan_start = format_iso_utc(scan_now - (self._window + self._duration))
-        cursor = await self._db.execute(
+        async with self._db.execute(
             "SELECT username, attempted_at FROM login_attempts "
             "WHERE attempted_at >= ? "
             "ORDER BY username ASC, attempted_at DESC",
             (scan_start,),
-        )
-        rows = await cursor.fetchall()
+        ) as cursor:
+            rows = await cursor.fetchall()
         per_user: dict[str, list[datetime]] = {}
         for row in rows:
             uname = row["username"].lower()
@@ -185,12 +185,12 @@ class SQLiteLockoutRepository:
                     "VALUES (?, ?, ?)",
                     (username, format_iso_utc(now), ip_address),
                 )
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "SELECT COUNT(*) AS cnt FROM login_attempts "
                     "WHERE username = ? AND attempted_at >= ?",
                     (username, window_start),
-                )
-                row = await cursor.fetchone()
+                ) as cursor:
+                    row = await cursor.fetchone()
                 count = row["cnt"] if row else 0
                 now_locked = count >= self._threshold
                 await self._db.commit()
@@ -266,11 +266,11 @@ class SQLiteLockoutRepository:
         async with self._write_context():
             await self._db.execute("BEGIN IMMEDIATE")
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM login_attempts WHERE attempted_at < ?",
                     (cutoff,),
-                )
-                count = cursor.rowcount
+                ) as cursor:
+                    count = cursor.rowcount
                 await self._db.commit()
             except Exception as exc:
                 reraise_critical(exc)

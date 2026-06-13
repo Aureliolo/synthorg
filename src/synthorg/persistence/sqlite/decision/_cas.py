@@ -220,11 +220,11 @@ class _CasMixin(_DecisionRepoBase):
         """
         try:
             await self._db.execute(_INSERT_SQL, params)
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT version FROM decision_records WHERE id = :id",
                 {"id": record_id},
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except sqlite3.IntegrityError as exc:
             await self._rollback_quietly()
             if is_unique_constraint_error(exc):

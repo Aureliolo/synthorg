@@ -120,8 +120,8 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
         Must only be called when ``self._db`` is not ``None``.
         """
         assert self._db is not None  # noqa: S101
-        cursor = await self._db.execute("PRAGMA journal_mode=WAL")
-        row = await cursor.fetchone()
+        async with self._db.execute("PRAGMA journal_mode=WAL") as cursor:
+            row = await cursor.fetchone()
         actual_mode = row[0] if row else "unknown"
         if actual_mode != "wal" and self._config.path != ":memory:":
             logger.warning(
@@ -221,8 +221,8 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
         if self._db is None:
             return False
         try:
-            cursor = await self._db.execute("SELECT 1")
-            row = await cursor.fetchone()
+            async with self._db.execute("SELECT 1") as cursor:
+                row = await cursor.fetchone()
             healthy = row is not None
         except (sqlite3.Error, aiosqlite.Error) as exc:
             logger.warning(

@@ -207,8 +207,8 @@ class SQLiteCostForecastRepository:
             "WHERE forecast_id = ?"
         )
         try:
-            cursor = await self._db.execute(sql, (str(entity_id),))
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, (str(entity_id),)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch forecast {entity_id!r}"
             logger.warning(
@@ -251,8 +251,8 @@ class SQLiteCostForecastRepository:
             "ORDER BY created_at DESC, forecast_id DESC LIMIT ? OFFSET ?"
         )
         try:
-            cursor = await self._db.execute(sql, (effective_limit, offset))
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, (effective_limit, offset)) as cursor:
+                rows = await cursor.fetchall()
             items = tuple(row_to_forecast(r) for r in rows)
         except QueryError:
             raise
@@ -296,8 +296,8 @@ class SQLiteCostForecastRepository:
             LIMIT ? OFFSET ?
         """  # noqa: S608 -- ``where`` is a closed set of column predicates
         try:
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
             items = tuple(row_to_forecast(r) for r in rows)
         except QueryError:
             raise
@@ -328,8 +328,8 @@ class SQLiteCostForecastRepository:
             f"WHERE {where}"
         )
         try:
-            cursor = await self._db.execute(sql, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
             assert row is not None  # noqa: S101 -- COUNT always returns a row
             return int(row[0])
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -399,8 +399,9 @@ class SQLiteCostForecastRepository:
         )
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, params)
-                await self._db.commit()
+                async with self._db.execute(sql, params) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db,
@@ -416,7 +417,7 @@ class SQLiteCostForecastRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
     async def delete(self, entity_id: UUID) -> bool:
         """Delete a forecast by id.
@@ -430,8 +431,9 @@ class SQLiteCostForecastRepository:
         sql = "DELETE FROM cost_forecasts WHERE forecast_id = ?"
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, (str(entity_id),))
-                await self._db.commit()
+                async with self._db.execute(sql, (str(entity_id),)) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db, operation="delete", forecast_id=str(entity_id)
@@ -445,7 +447,7 @@ class SQLiteCostForecastRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
 
 __all__ = ["SQLiteCostForecastRepository"]

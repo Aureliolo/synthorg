@@ -96,12 +96,12 @@ INSERT OR REPLACE INTO heartbeats (
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT execution_id, agent_id, task_id, last_heartbeat_at "
                 "FROM heartbeats WHERE execution_id = ?",
                 (execution_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to query heartbeat {execution_id!r}"
             logger.warning(
@@ -154,14 +154,14 @@ INSERT OR REPLACE INTO heartbeats (
         )
         threshold_iso = threshold.astimezone(UTC).isoformat()
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT execution_id, agent_id, task_id, last_heartbeat_at "
                 "FROM heartbeats WHERE last_heartbeat_at < ? "
                 "ORDER BY last_heartbeat_at, execution_id "
                 "LIMIT ? OFFSET ?",
                 (threshold_iso, limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query stale heartbeats"
             logger.warning(
@@ -191,11 +191,11 @@ INSERT OR REPLACE INTO heartbeats (
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM heartbeats WHERE execution_id = ?",
                     (execution_id,),
-                )
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):

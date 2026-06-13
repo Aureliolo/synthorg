@@ -176,8 +176,10 @@ class TestGetWrapsCorruptionAsQueryError:
         bad_row = _make_row(updated_by=None)
         cursor = MagicMock()
         cursor.fetchone = AsyncMock(return_value=bad_row)
+        cursor.__aenter__ = AsyncMock(return_value=cursor)
+        cursor.__aexit__ = AsyncMock(return_value=False)
         db = MagicMock(spec=Connection)
-        db.execute = AsyncMock(return_value=cursor)
+        db.execute = MagicMock(return_value=cursor)
 
         repo = SQLitePresetOverrideRepo(
             db=db, write_context=make_private_write_context()

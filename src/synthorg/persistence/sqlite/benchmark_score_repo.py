@@ -198,8 +198,8 @@ class SQLiteBenchmarkScoreRepository:
             "WHERE model_id = ?"
         )
         try:
-            cursor = await self._db.execute(sql, (entity_id,))
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, (entity_id,)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch benchmark score {entity_id!r}"
             logger.warning(
@@ -239,8 +239,8 @@ class SQLiteBenchmarkScoreRepository:
             "ORDER BY model_id ASC LIMIT ? OFFSET ?"
         )
         try:
-            cursor = await self._db.execute(sql, (effective_limit, offset))
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, (effective_limit, offset)) as cursor:
+                rows = await cursor.fetchall()
             items = tuple(_row_to_record(r) for r in rows)
         except QueryError:
             raise
@@ -268,8 +268,9 @@ class SQLiteBenchmarkScoreRepository:
         sql = "DELETE FROM benchmark_scores WHERE model_id = ?"
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, (entity_id,))
-                await self._db.commit()
+                async with self._db.execute(sql, (entity_id,)) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(self._db, operation="delete", model_id=entity_id)
                 msg = f"Failed to delete benchmark score {entity_id!r}"
@@ -281,7 +282,7 @@ class SQLiteBenchmarkScoreRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
 
 __all__ = ["SQLiteBenchmarkScoreRepository"]

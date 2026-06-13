@@ -237,11 +237,11 @@ class SQLiteTrainingPlanRepository:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM training_plans WHERE id = ?",
                 (str(plan_id),),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch training plan {plan_id!r}"
             logger.warning(
@@ -272,11 +272,12 @@ class SQLiteTrainingPlanRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM training_plans WHERE id = ?",
                     (str(plan_id),),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -289,7 +290,7 @@ class SQLiteTrainingPlanRepository:
                 )
                 raise QueryError(msg) from exc
             else:
-                return cursor.rowcount > 0
+                return _db_rowcount > 0
 
     async def list_items(
         self,
@@ -313,11 +314,11 @@ class SQLiteTrainingPlanRepository:
             limit, offset, event=HR_TRAINING_PERSISTENCE_ERROR
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM training_plans ORDER BY id ASC LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list training plans"
             logger.warning(
@@ -367,9 +368,8 @@ class SQLiteTrainingPlanRepository:
                 "ORDER BY id ASC LIMIT ? OFFSET ?"
             )
             params.extend([limit, offset])
-
-            cursor = await self._db.execute(sql, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query training plans"
             logger.warning(
@@ -404,9 +404,8 @@ class SQLiteTrainingPlanRepository:
 
             where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
             sql = f"SELECT COUNT(*) as cnt FROM training_plans WHERE {where_clause}"  # noqa: S608
-
-            cursor = await self._db.execute(sql, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, params) as cursor:
+                row = await cursor.fetchone()
             return int(row["cnt"]) if row else 0
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count training plans"
@@ -433,15 +432,15 @@ class SQLiteTrainingPlanRepository:
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """\
 SELECT * FROM training_plans
 WHERE new_agent_id = ? AND status = 'pending'
 ORDER BY created_at DESC
 LIMIT 1""",
                 (str(agent_id),),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch latest pending plan for {agent_id!r}"
             logger.warning(
@@ -472,7 +471,7 @@ LIMIT 1""",
             QueryError: If the underlying SQLite query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 # ``id DESC`` breaks ties deterministically when two
                 # plans share ``created_at`` -- plan IDs are UUIDs so
                 # the ordering is arbitrary but stable.
@@ -482,8 +481,8 @@ WHERE new_agent_id = ?
 ORDER BY created_at DESC, id DESC
 LIMIT 1""",
                 (str(agent_id),),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch latest plan for {agent_id!r}"
             logger.warning(
@@ -518,14 +517,14 @@ LIMIT 1""",
         """
         limit = validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 """\
 SELECT * FROM training_plans
 WHERE new_agent_id = ?
 ORDER BY created_at DESC, id DESC LIMIT ?""",
                 (str(agent_id), limit),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list plans for {agent_id!r}"
             logger.warning(

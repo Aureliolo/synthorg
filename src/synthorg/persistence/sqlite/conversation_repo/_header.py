@@ -128,8 +128,8 @@ class SQLiteConversationRepository:
             FROM conversations WHERE id = ?
         """  # noqa: S608 -- _CONVERSATION_COLUMNS is a fixed column list
         try:
-            cursor = await self._db.execute(sql, (entity_id,))
-            row = await cursor.fetchone()
+            async with self._db.execute(sql, (entity_id,)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch conversation {entity_id!r}"
             logger.warning(
@@ -172,8 +172,8 @@ class SQLiteConversationRepository:
             LIMIT ? OFFSET ?
         """  # noqa: S608 -- _CONVERSATION_COLUMNS is a fixed column list
         try:
-            cursor = await self._db.execute(sql, (effective_limit, offset))
-            rows = await cursor.fetchall()
+            async with self._db.execute(sql, (effective_limit, offset)) as cursor:
+                rows = await cursor.fetchall()
             items = tuple(row_to_conversation(r) for r in rows)
         except QueryError:
             raise
@@ -237,8 +237,9 @@ class SQLiteConversationRepository:
             params = (to_state.value, entity_id, from_state.value)
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, params)
-                await self._db.commit()
+                async with self._db.execute(sql, params) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db,
@@ -255,7 +256,7 @@ class SQLiteConversationRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a conversation by id. ``True`` iff a row existed.
@@ -269,8 +270,9 @@ class SQLiteConversationRepository:
         sql = "DELETE FROM conversations WHERE id = ?"
         async with self._write_context():
             try:
-                cursor = await self._db.execute(sql, (entity_id,))
-                await self._db.commit()
+                async with self._db.execute(sql, (entity_id,)) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db,
@@ -287,7 +289,7 @@ class SQLiteConversationRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        return cursor.rowcount > 0
+        return _db_rowcount > 0
 
 
 __all__ = ["SQLiteConversationRepository"]

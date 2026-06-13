@@ -171,7 +171,7 @@ class SQLiteArtifactRepository:
         )
         async with self._write_context():
             try:
-                insert_cursor = await self._db.execute(
+                async with self._db.execute(
                     """\
 INSERT INTO artifacts (id, type, path, task_id, created_by,
                        description, content_type, size_bytes,
@@ -179,8 +179,8 @@ INSERT INTO artifacts (id, type, path, task_id, created_by,
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO NOTHING""",
                     params,
-                )
-                inserted = insert_cursor.rowcount > 0
+                ) as insert_cursor:
+                    inserted = insert_cursor.rowcount > 0
                 if not inserted:
                     await self._db.execute(
                         """\
@@ -235,10 +235,10 @@ WHERE id=?""",
         """
         artifact_id = entity_id
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT * FROM artifacts WHERE id = ?", (artifact_id,)
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch artifact {artifact_id!r}"
             logger.warning(
@@ -347,8 +347,8 @@ WHERE id=?""",
         params.extend([effective_limit, offset])
 
         try:
-            cursor = await self._db.execute(query, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list artifacts"
             logger.warning(
@@ -397,8 +397,8 @@ WHERE id=?""",
             query += " WHERE " + " AND ".join(conditions)
 
         try:
-            cursor = await self._db.execute(query, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(query, params) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count artifacts"
             logger.warning(
@@ -424,11 +424,11 @@ WHERE id=?""",
         artifact_id = entity_id
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM artifacts WHERE id = ?", (artifact_id,)
-                )
-                await self._db.commit()
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    await self._db.commit()
+                    deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback(PERSISTENCE_ARTIFACT_DELETE_FAILED)
                 msg = f"Failed to delete artifact {artifact_id!r}"

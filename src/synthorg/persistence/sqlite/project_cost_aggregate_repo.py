@@ -193,8 +193,8 @@ class SQLiteProjectCostAggregateRepository:
             QueryError: If the database operation fails.
         """
         try:
-            cursor = await self._db.execute(_SELECT_SQL, (project_id,))
-            row = await cursor.fetchone()
+            async with self._db.execute(_SELECT_SQL, (project_id,)) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             logger.warning(
                 PERSISTENCE_PROJECT_COST_AGG_FETCH_FAILED,
@@ -354,11 +354,11 @@ class SQLiteProjectCostAggregateRepository:
                 # operator can no longer enforce in memory.
                 try:
                     async with self._write_context():
-                        cursor = await self._db.execute(
+                        async with self._db.execute(
                             _UPSERT_SQL,
                             (project_id, cost, input_tokens, output_tokens, now),
-                        )
-                        row = await cursor.fetchone()
+                        ) as cursor:
+                            row = await cursor.fetchone()
                         if row is None:  # pragma: no cover -- defensive
                             await self._db.rollback()
                             msg = f"Aggregate for {project_id!r} missing after upsert"

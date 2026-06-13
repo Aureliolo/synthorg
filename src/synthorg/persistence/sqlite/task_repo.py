@@ -222,11 +222,11 @@ id, title, description, type, priority, project, created_by,
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 f"SELECT {self._TASK_COLUMNS} FROM tasks WHERE id = ?",  # noqa: S608
                 (task_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch task {task_id!r}"
             logger.warning(
@@ -268,8 +268,8 @@ id, title, description, type, priority, project, created_by,
         params: list[object] = [limit, offset]
 
         try:
-            cursor = await self._db.execute(query, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list tasks"
             logger.warning(
@@ -322,8 +322,8 @@ id, title, description, type, priority, project, created_by,
         params.extend([limit, offset])
 
         try:
-            cursor = await self._db.execute(query, params)
-            rows = await cursor.fetchall()
+            async with self._db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list tasks"
             logger.warning(
@@ -362,8 +362,8 @@ id, title, description, type, priority, project, created_by,
             query += " WHERE " + " AND ".join(clauses)
 
         try:
-            cursor = await self._db.execute(query, params)
-            row = await cursor.fetchone()
+            async with self._db.execute(query, params) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count tasks"
             logger.warning(
@@ -387,11 +387,11 @@ id, title, description, type, priority, project, created_by,
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM tasks WHERE id = ?", (task_id,)
-                )
-                await self._db.commit()
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    await self._db.commit()
+                    deleted = cursor.rowcount > 0
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to delete task {task_id!r}"
                 logger.warning(

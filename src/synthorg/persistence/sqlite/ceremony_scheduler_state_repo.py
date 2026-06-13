@@ -118,15 +118,15 @@ INSERT OR REPLACE INTO ceremony_scheduler_state (
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT sprint_id, completion_counters_json, "
                 "fired_once_triggers_json, total_completions, "
                 "velocity_history_json, updated_at "
                 "FROM ceremony_scheduler_state "
                 "WHERE sprint_id = ?",
                 (sprint_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to load ceremony scheduler state for sprint {sprint_id!r}"
             logger.warning(
@@ -165,11 +165,11 @@ INSERT OR REPLACE INTO ceremony_scheduler_state (
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM ceremony_scheduler_state WHERE sprint_id = ?",
                     (sprint_id,),
-                )
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback_quietly(PERSISTENCE_CEREMONY_STATE_DELETE_FAILED)
@@ -204,15 +204,15 @@ INSERT OR REPLACE INTO ceremony_scheduler_state (
             limit, offset, event=PERSISTENCE_CEREMONY_STATE_LOAD_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT sprint_id, completion_counters_json, "
                 "fired_once_triggers_json, total_completions, "
                 "velocity_history_json, updated_at "
                 "FROM ceremony_scheduler_state "
                 "ORDER BY sprint_id ASC LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list ceremony scheduler state snapshots"
             logger.warning(

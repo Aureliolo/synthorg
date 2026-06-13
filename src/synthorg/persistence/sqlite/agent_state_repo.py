@@ -94,14 +94,14 @@ INSERT OR REPLACE INTO agent_states (
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT agent_id, execution_id, task_id, status, "
                 "turn_count, accumulated_cost, currency, "
                 "last_activity_at, started_at "
                 "FROM agent_states WHERE agent_id = ?",
                 (agent_id,),
-            )
-            row = await cursor.fetchone()
+            ) as cursor:
+                row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch agent state for {agent_id!r}"
             logger.warning(
@@ -145,14 +145,14 @@ INSERT OR REPLACE INTO agent_states (
             limit, offset, event=PERSISTENCE_AGENT_STATE_LIST_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT agent_id, execution_id, task_id, status, "
                 "turn_count, accumulated_cost, currency, "
                 "last_activity_at, started_at "
                 "FROM agent_states ORDER BY agent_id LIMIT ? OFFSET ?",
                 (limit, offset),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list agent states"
             logger.warning(
@@ -189,7 +189,7 @@ INSERT OR REPLACE INTO agent_states (
             limit, offset, event=PERSISTENCE_AGENT_STATE_ACTIVE_QUERY_FAILED
         )
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "SELECT agent_id, execution_id, task_id, status, "
                 "turn_count, accumulated_cost, currency, "
                 "last_activity_at, started_at "
@@ -202,8 +202,8 @@ INSERT OR REPLACE INTO agent_states (
                     limit,
                     offset,
                 ),
-            )
-            rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query active agent states"
             logger.warning(
@@ -231,11 +231,11 @@ INSERT OR REPLACE INTO agent_states (
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM agent_states WHERE agent_id = ?",
                     (agent_id,),
-                )
-                deleted = cursor.rowcount > 0
+                ) as cursor:
+                    deleted = cursor.rowcount > 0
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):

@@ -98,11 +98,11 @@ class SQLiteSessionRepository:
         rejected by the decoder regardless of revocation.
         """
         now = format_iso_utc(datetime.now(UTC))
-        cursor = await self._db.execute(
+        async with self._db.execute(
             "SELECT session_id FROM sessions WHERE revoked = 1 AND expires_at > ?",
             (now,),
-        )
-        rows = await cursor.fetchall()
+        ) as cursor:
+            rows = await cursor.fetchall()
         self._revoked = {row["session_id"] for row in rows}
 
     async def save(self, entity: Session) -> None:
@@ -168,11 +168,11 @@ class SQLiteSessionRepository:
         Returns:
             The matching entity, or ``None`` when no row matches.
         """
-        cursor = await self._db.execute(
+        async with self._db.execute(
             "SELECT * FROM sessions WHERE session_id = ?",
             (entity_id,),
-        )
-        row = await cursor.fetchone()
+        ) as cursor:
+            row = await cursor.fetchone()
         return _row_to_session(row) if row else None
 
     async def list_items(
@@ -193,8 +193,8 @@ class SQLiteSessionRepository:
         params: tuple[object, ...] = ()
         sql += " LIMIT ? OFFSET ?"
         params = (*params, limit, offset)
-        cursor = await self._db.execute(sql, params)
-        rows = await cursor.fetchall()
+        async with self._db.execute(sql, params) as cursor:
+            rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)
 
     async def query(
@@ -223,8 +223,8 @@ class SQLiteSessionRepository:
         sql += " ORDER BY session_id ASC"
         sql += " LIMIT ? OFFSET ?"
         params = [*params, limit, offset]
-        cursor = await self._db.execute(sql, tuple(params))
-        rows = await cursor.fetchall()
+        async with self._db.execute(sql, tuple(params)) as cursor:
+            rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)
 
     async def count(self, filter_spec: SessionFilterSpec) -> int:
@@ -241,8 +241,8 @@ class SQLiteSessionRepository:
         if filter_spec.revoked is not None:
             sql += " AND revoked = ?"
             params.append(int(filter_spec.revoked))
-        cursor = await self._db.execute(sql, tuple(params))
-        row = await cursor.fetchone()
+        async with self._db.execute(sql, tuple(params)) as cursor:
+            row = await cursor.fetchone()
         return row["cnt"] if row else 0
 
     async def list_by_user(
@@ -268,8 +268,8 @@ class SQLiteSessionRepository:
         effective_offset = max(0, int(offset))
         sql += " LIMIT ? OFFSET ?"
         params = (*params, int(limit), effective_offset)
-        cursor = await self._db.execute(sql, params)
-        rows = await cursor.fetchall()
+        async with self._db.execute(sql, params) as cursor:
+            rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)
 
     async def list_all(
@@ -293,8 +293,8 @@ class SQLiteSessionRepository:
         effective_offset = max(0, int(offset))
         sql += " LIMIT ? OFFSET ?"
         params = (*params, int(limit), effective_offset)
-        cursor = await self._db.execute(sql, params)
-        rows = await cursor.fetchall()
+        async with self._db.execute(sql, params) as cursor:
+            rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)
 
     async def delete(self, entity_id: str) -> bool:
@@ -308,11 +308,12 @@ class SQLiteSessionRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "DELETE FROM sessions WHERE session_id = ?",
                     (entity_id,),
-                )
-                await self._db.commit()
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -325,7 +326,7 @@ class SQLiteSessionRepository:
                 )
                 raise QueryError(msg) from exc
             else:
-                if cursor.rowcount > 0:
+                if _db_rowcount > 0:
                     # Otherwise ``is_revoked`` keeps reporting a
                     # deleted session as revoked until the next
                     # ``load_revoked``.
@@ -344,13 +345,13 @@ class SQLiteSessionRepository:
         """
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE sessions SET revoked = 1 "
                     "WHERE session_id = ? AND revoked = 0",
                     (session_id,),
-                )
-                await self._db.commit()
-                rowcount = cursor.rowcount
+                ) as cursor:
+                    await self._db.commit()
+                    rowcount = cursor.rowcount
                 if rowcount > 0:
                     self._revoked.add(session_id)
             except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -388,23 +389,20 @@ class SQLiteSessionRepository:
         now = format_iso_utc(datetime.now(UTC))
         async with self._write_context():
             try:
-                # SELECT first: capture the ids that WILL be revoked
-                # while they are still pending.  If this read fails we
-                # have not yet committed any change.
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "SELECT session_id FROM sessions "
                     "WHERE user_id = ? AND revoked = 0 AND expires_at > ?",
                     (user_id, now),
-                )
-                rows = await cursor.fetchall()
+                ) as cursor:
+                    rows = await cursor.fetchall()
                 if not rows:
                     return 0
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "UPDATE sessions SET revoked = 1 "
                     "WHERE user_id = ? AND revoked = 0 AND expires_at > ?",
                     (user_id, now),
-                )
-                count = cursor.rowcount
+                ) as cursor:
+                    count = cursor.rowcount
                 # Commit only after both the SELECT snapshot and the
                 # UPDATE succeeded; in-memory mutation only happens
                 # after a successful commit.
@@ -473,11 +471,11 @@ class SQLiteSessionRepository:
         now = format_iso_utc(datetime.now(UTC))
         async with self._write_context():
             try:
-                cursor = await self._db.execute(
+                async with self._db.execute(
                     "SELECT session_id FROM sessions WHERE expires_at <= ?",
                     (now,),
-                )
-                rows = await cursor.fetchall()
+                ) as cursor:
+                    rows = await cursor.fetchall()
                 ids = {row["session_id"] for row in rows}
                 if not ids:
                     return 0
