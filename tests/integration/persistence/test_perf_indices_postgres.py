@@ -203,6 +203,12 @@ async def _seed_conversation_family(backend: PostgresPersistenceBackend) -> None
                     _BASE + timedelta(seconds=i),
                 ),
             )
+        # One invite per conversation: the partial unique index
+        # idx_cinv_one_pending_per_target forbids two pending invites with
+        # the same (conversation_id, target_agent_id), and new invites
+        # default to pending. Spreading across conversations keeps each pair
+        # distinct and mirrors what idx_cinv_target_agent_id serves -- one
+        # agent's invites across many conversations.
         for i in range(10):
             await conn.execute(
                 "INSERT INTO conversation_invites "
@@ -211,7 +217,7 @@ async def _seed_conversation_family(backend: PostgresPersistenceBackend) -> None
                 "VALUES (%s, %s, %s, %s, %s, %s, %s)",
                 (
                     sid(f"inv-{i:03d}"),
-                    conv,
+                    sid(f"conv-{i:03d}"),
                     sid(f"iappr-{i:03d}"),
                     _AGENTS[0],
                     _AGENTS[i % len(_AGENTS)],

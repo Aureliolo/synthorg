@@ -162,27 +162,32 @@ class SQLiteWorkflowDefinitionRepository:
                         definition.revision - 1,
                     ),
                 ) as cursor:
-                    if cursor.rowcount == 0:
-                        async with self._db.execute(
-                            "SELECT revision FROM workflow_definitions WHERE id = ?",
-                            (str(definition.id),),
-                        ) as probe:
-                            existing = await probe.fetchone()
-                        await self._db.rollback()
-                        if existing is None:
-                            return False
-                        current = existing["revision"]
-                        msg = (
-                            f"Version conflict updating workflow definition"
-                            f" {definition.id!r}: current revision is {current},"
-                            f" incoming revision is {definition.revision}"
-                        )
-                        logger.warning(
-                            PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                            definition_id=str(definition.id),
-                            error=msg,
-                        )
-                        raise PersistenceVersionConflictError(msg)
+                    rowcount = cursor.rowcount
+                # Read rowcount, then close the write cursor before the probe
+                # SELECT and any rollback: nesting a second cursor and issuing
+                # transaction control inside an open cursor context can lock
+                # the shared aiosqlite connection.
+                if rowcount == 0:
+                    async with self._db.execute(
+                        "SELECT revision FROM workflow_definitions WHERE id = ?",
+                        (str(definition.id),),
+                    ) as probe:
+                        existing = await probe.fetchone()
+                    await self._db.rollback()
+                    if existing is None:
+                        return False
+                    current = existing["revision"]
+                    msg = (
+                        f"Version conflict updating workflow definition"
+                        f" {definition.id!r}: current revision is {current},"
+                        f" incoming revision is {definition.revision}"
+                    )
+                    logger.warning(
+                        PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                        definition_id=str(definition.id),
+                        error=msg,
+                    )
+                    raise PersistenceVersionConflictError(msg)
                 await self._db.commit()
             except sqlite3.Error as exc:
                 # Roll back the aiosqlite transaction so the shared
@@ -289,26 +294,31 @@ class SQLiteWorkflowDefinitionRepository:
                         entity.revision,
                     ),
                 ) as cursor:
-                    if cursor.rowcount == 0:
-                        async with self._db.execute(
-                            "SELECT revision FROM workflow_definitions WHERE id = ?",
-                            (str(entity.id),),
-                        ) as check:
-                            existing = await check.fetchone()
-                        await self._db.rollback()
-                        current = existing["revision"] if existing else "N/A"
-                        msg = (
-                            f"Version conflict saving workflow definition"
-                            f" {entity.id!r}: current revision is"
-                            f" {current}, incoming revision is"
-                            f" {entity.revision}"
-                        )
-                        logger.warning(
-                            PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                            definition_id=str(entity.id),
-                            error=msg,
-                        )
-                        raise PersistenceVersionConflictError(msg)
+                    rowcount = cursor.rowcount
+                # Read rowcount, then close the write cursor before the probe
+                # SELECT and any rollback: nesting a second cursor and issuing
+                # transaction control inside an open cursor context can lock
+                # the shared aiosqlite connection.
+                if rowcount == 0:
+                    async with self._db.execute(
+                        "SELECT revision FROM workflow_definitions WHERE id = ?",
+                        (str(entity.id),),
+                    ) as check:
+                        existing = await check.fetchone()
+                    await self._db.rollback()
+                    current = existing["revision"] if existing else "N/A"
+                    msg = (
+                        f"Version conflict saving workflow definition"
+                        f" {entity.id!r}: current revision is"
+                        f" {current}, incoming revision is"
+                        f" {entity.revision}"
+                    )
+                    logger.warning(
+                        PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                        definition_id=str(entity.id),
+                        error=msg,
+                    )
+                    raise PersistenceVersionConflictError(msg)
                 await self._db.commit()
             except sqlite3.Error as exc:
                 await _rollback_quietly(self._db)

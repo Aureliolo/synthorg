@@ -403,13 +403,21 @@ def _build_query_sql(filter_spec: DocsFilterSpec) -> tuple[str, tuple[object, ..
         sql += " AND doc_type = %s"
         params.append(filter_spec.doc_type.value)
     if filter_spec.tag is not None:
+        # ``json.dumps`` quotes and JSON-escapes the needle so a tag holding
+        # a double quote or backslash still matches the stored JSON array
+        # text (parity with the SQLite repo, which builds the needle the
+        # same way).
         sql += " AND tags LIKE %s ESCAPE '\\'"
-        params.append(f'%"{_escape_like(filter_spec.tag)}"%')
+        needle = json.dumps(filter_spec.tag)
+        params.append(f"%{_escape_like(needle)}%")
     if filter_spec.related_task_id is not None:
-        # Membership against the JSON-array column; quoted needle prevents a
-        # partial-id false match (mirrors the ``tag`` technique above).
+        # Membership against the JSON-array column; the ``json.dumps`` needle
+        # quotes the id (preventing a partial-id false match) and escapes any
+        # embedded quote/backslash so it matches the stored JSON text
+        # (parity with the SQLite repo).
         sql += " AND related_task_ids LIKE %s ESCAPE '\\'"
-        params.append(f'%"{_escape_like(filter_spec.related_task_id)}"%')
+        task_needle = json.dumps(filter_spec.related_task_id)
+        params.append(f"%{_escape_like(task_needle)}%")
     if filter_spec.updated_since is not None:
         sql += " AND updated_at >= %s"
         params.append(filter_spec.updated_since)

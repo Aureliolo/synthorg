@@ -278,8 +278,10 @@ class SQLiteIdempotencyRepository:
                     "AND status = 'in_flight'",
                     (response_body, response_hash, scope, key, claim_token),
                 ) as cursor:
-                    await self._db.commit()
+                    # Read rowcount before committing: a commit can invalidate
+                    # an open cursor, so capture the affected-row count first.
                     rowcount = cursor.rowcount
+                await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -318,8 +320,10 @@ class SQLiteIdempotencyRepository:
                     "AND status = 'in_flight'",
                     (scope, key, claim_token),
                 ) as cursor:
-                    await self._db.commit()
+                    # Read rowcount before committing: a commit can invalidate
+                    # an open cursor, so capture the affected-row count first.
                     rowcount = cursor.rowcount
+                await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()

@@ -271,7 +271,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             user = _row_to_user(row)
-        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, IndexError, ValidationError) as exc:
             msg = f"Failed to deserialize user {user_id!r}"
             logger.warning(
                 PERSISTENCE_USER_FETCH_FAILED,
@@ -313,7 +313,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             return _row_to_user(row)
-        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, IndexError, ValidationError) as exc:
             msg = f"Failed to deserialize user {username!r}"
             logger.warning(
                 PERSISTENCE_USER_FETCH_FAILED,
@@ -360,7 +360,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             users = tuple(_row_to_user(row) for row in rows)
-        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, IndexError, ValidationError) as exc:
             msg = "Failed to deserialize users"
             logger.warning(
                 PERSISTENCE_USER_LIST_FAILED,
@@ -406,7 +406,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             users = tuple(_row_to_user(row) for row in rows)
-        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, IndexError, ValidationError) as exc:
             msg = "Failed to deserialize users"
             logger.warning(
                 PERSISTENCE_USER_LIST_FAILED,
@@ -460,7 +460,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             users = tuple(_row_to_user(row) for row in rows)
-        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, IndexError, ValidationError) as exc:
             msg = "Failed to deserialize users"
             logger.warning(
                 PERSISTENCE_USER_LIST_FAILED,
@@ -703,7 +703,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             key = _row_to_api_key(row)
-        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, IndexError, ValidationError) as exc:
             msg = f"Failed to deserialize API key {key_id!r}"
             logger.warning(
                 PERSISTENCE_API_KEY_FETCH_FAILED,
@@ -745,7 +745,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             return _row_to_api_key(row)
-        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, IndexError, ValidationError) as exc:
             msg = "Failed to deserialize API key by hash"
             logger.warning(
                 PERSISTENCE_API_KEY_FETCH_FAILED,
@@ -791,7 +791,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             keys = tuple(_row_to_api_key(row) for row in rows)
-        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, IndexError, ValidationError) as exc:
             msg = "Failed to deserialize API keys"
             logger.warning(
                 PERSISTENCE_API_KEY_LIST_FAILED,
@@ -848,7 +848,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             keys = tuple(_row_to_api_key(row) for row in rows)
-        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+        except (ValueError, TypeError, KeyError, IndexError, ValidationError) as exc:
             msg = "Failed to deserialize API keys"
             logger.warning(
                 PERSISTENCE_API_KEY_LIST_FAILED,

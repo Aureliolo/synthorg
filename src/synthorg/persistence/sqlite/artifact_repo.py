@@ -254,7 +254,7 @@ WHERE id=?""",
             return None
         try:
             artifact = _row_to_artifact(row)
-        except (ValueError, ValidationError, KeyError) as exc:
+        except (ValueError, TypeError, KeyError, IndexError, ValidationError) as exc:
             msg = f"Failed to deserialize artifact {artifact_id!r}"
             logger.warning(
                 PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
@@ -358,7 +358,7 @@ WHERE id=?""",
             raise QueryError(msg) from exc
         try:
             artifacts = tuple(_row_to_artifact(row) for row in rows)
-        except (ValueError, ValidationError, KeyError) as exc:
+        except (ValueError, TypeError, KeyError, IndexError, ValidationError) as exc:
             msg = "Failed to deserialize artifacts"
             logger.warning(
                 PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
