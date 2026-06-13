@@ -4202,7 +4202,7 @@
     },
     {
       "kind": "code",
-      "loc": 61,
+      "loc": 60,
       "loc_cap": 500,
       "module": "src/synthorg/core/concurrency/refcounted_lock_map.py",
       "owning_feature": null
@@ -15577,7 +15577,7 @@
     },
     {
       "kind": "code",
-      "loc": 373,
+      "loc": 375,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/docs_repo.py",
       "owning_feature": "persistence"
@@ -16711,7 +16711,7 @@
     },
     {
       "kind": "repository",
-      "loc": 474,
+      "loc": 476,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/workflow_definition_repo.py",
       "owning_feature": "persistence"
