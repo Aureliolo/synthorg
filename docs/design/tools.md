@@ -420,8 +420,8 @@ domain-specific codes set via the `domain_code` kwarg on `err(...)`.
 `MappingProxyType` to enforce read-only access. Each feature manifest
 calls `mcp_descriptor(..., handlers=<loader>)` (the public keyword) to
 pair its domain with a deferred zero-arg loader returning that constant;
-`mcp_descriptor` stores it as the descriptor's internal `handlers_factory`
-field. `build_handler_map()` in
+`mcp_descriptor` stores it as the internal `handlers_factory` field on the
+descriptor it returns. `build_handler_map()` in
 `src/synthorg/meta/mcp/handlers/__init__.py` walks `discover_features()`,
 invokes each feature's `handlers_factory()`, merges the maps, and raises
 on a duplicate key across features.
