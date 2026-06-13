@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import psycopg
+import psycopg.conninfo
 import pytest
 from psycopg import sql
 from pydantic import SecretStr

@@ -245,7 +245,7 @@ async def clone_from_template(
     except BaseException:
 
         async def _cleanup() -> None:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(BaseException):
                 await backend.disconnect()
             await _drop_database(proxy, db_name)
 
