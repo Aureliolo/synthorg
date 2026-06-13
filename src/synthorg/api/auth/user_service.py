@@ -11,8 +11,10 @@ listing or save failures stay under ``api.user.*`` and do not enter the
 chain.
 """
 
+from synthorg.api.auth.user_constraints import raise_for_user_constraint
 from synthorg.core.auth.models import User
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -156,8 +158,15 @@ class UserService:
 
         Returns:
             ``User`` instance.
+
+        Raises:
+            DuplicateUsernameError: When the username is already taken.
+            SingleCeoConstraintError: When a second CEO would be created.
         """
-        await self._repo.save(user)
+        try:
+            await self._repo.save(user)
+        except ConstraintViolationError as exc:
+            raise_for_user_constraint(exc)
         logger.info(
             SECURITY_USER_CREATED,
             user_id=user.id,
@@ -180,8 +189,16 @@ class UserService:
 
         Returns:
             ``User`` instance.
+
+        Raises:
+            SingleCeoConstraintError: When a second CEO would be created.
+            LastCeoConstraintError: When the only CEO would be demoted.
+            LastOwnerConstraintError: When the last owner would be removed.
         """
-        await self._repo.save(user)
+        try:
+            await self._repo.save(user)
+        except ConstraintViolationError as exc:
+            raise_for_user_constraint(exc)
         logger.info(
             SECURITY_USER_UPDATED,
             user_id=user.id,
@@ -248,7 +265,10 @@ class UserService:
                     revoked=revoked_refresh_tokens,
                     note="cascade_during_user_delete",
                 )
-        deleted = await self._repo.delete(user_id)
+        try:
+            deleted = await self._repo.delete(user_id)
+        except ConstraintViolationError as exc:
+            raise_for_user_constraint(exc)
         if deleted:
             logger.info(
                 SECURITY_USER_DELETED,

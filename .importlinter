@@ -92,3 +92,16 @@ forbidden_modules =
     synthorg.api.auth
     synthorg.api.dto
 allow_indirect_imports = true
+
+[importlinter:contract:controllers-no-persistence-internals]
+name = controllers reach persistence through services / protocols, never backend internals
+type = forbidden
+source_modules =
+    synthorg.api.controllers
+forbidden_modules =
+    synthorg.persistence._shared
+    synthorg.persistence.sqlite
+    synthorg.persistence.postgres
+    synthorg.persistence.constraint_tokens
+    synthorg.persistence.jsonb_capability
+allow_indirect_imports = true
