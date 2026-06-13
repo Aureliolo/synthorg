@@ -11,6 +11,7 @@ fence responsibility lives upstream of the loop (see
 :mod:`synthorg.engine.loop_helpers` for the full wrap-ownership note).
 """
 
+from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.context import AgentContext
@@ -103,11 +104,24 @@ def check_budget(
 
     Returns:
         ``ExecutionResult`` with BUDGET_EXHAUSTED reason, or ``None``.
+
+    Raises:
+        BudgetExhaustedError: Propagated unchanged when the checker raises
+            a budget-policy stop (e.g. the per-run hard ceiling) so the
+            engine can route it (a ceiling crossing parks for resume).
     """
     if budget_checker is None:
         return None
     try:
         exhausted = budget_checker(ctx)
+    except BudgetExhaustedError:
+        # A budget-policy stop (e.g. the per-run hard ceiling) is not a
+        # checker bug: let it propagate so the engine's
+        # ``except BudgetExhaustedError`` handler can route it
+        # (``_handle_budget_error`` parks a ceiling crossing for operator
+        # resume rather than failing the task). Swallowing it here as a
+        # generic ERROR would make the entire PARKED path unreachable.
+        raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         error_msg = f"Budget checker failed: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
