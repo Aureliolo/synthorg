@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.mcp.domains._workflows_org_args import DepartmentsListArgs
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -18,6 +19,7 @@ from synthorg.meta.mcp.errors import (
 from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _require_str,
     _require_uuid,
+    typed_args,
 )
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
@@ -26,7 +28,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
     get_optional_str,
     require_actor_id,
 )
@@ -58,7 +59,8 @@ async def _departments_list(
     """
     tool = "synthorg_departments_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, DepartmentsListArgs)
+        offset, limit = page_args.offset, page_args.limit
         page, total = await department_service_of(app_state).list_departments(
             offset=offset,
             limit=limit,
@@ -74,6 +76,8 @@ async def _departments_list(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler keys by UUID
+# `department_id` but DepartmentsGetArgs declares `name`.
 async def _departments_get(
     *,
     app_state: AppState,
@@ -104,6 +108,9 @@ async def _departments_get(
     return ok(record.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler requires a
+# non-blank `description` but DepartmentsCreateArgs makes description optional
+# (default "").
 async def _departments_create(
     *,
     app_state: AppState,
@@ -134,6 +141,9 @@ async def _departments_create(
     return ok(record.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# department_id + optional name/description, but DepartmentsUpdateArgs declares
+# name + an opaque `updates` dict.
 async def _departments_update(
     *,
     app_state: AppState,
@@ -171,6 +181,9 @@ async def _departments_update(
     return ok(record.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler enforces
+# require_admin_guardrails and keys by UUID department_id, but DepartmentsDeleteArgs
+# declares only `name` and no AdminGuardrailFields.
 async def _departments_delete(
     *,
     app_state: AppState,
@@ -214,6 +227,8 @@ async def _departments_delete(
     return ok({"removed": removed})
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler keys by UUID
+# `department_id` but DepartmentsGetHealthArgs declares `name`.
 async def _departments_get_health(
     *,
     app_state: AppState,

@@ -56,6 +56,8 @@ async def _company_get(
     return ok(_to_jsonable(company))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
+# `payload` dict but CompanyUpdateArgs declares the field `updates`.
 async def _company_update(
     *,
     app_state: AppState,
@@ -112,6 +114,9 @@ async def _company_list_departments(
     return ok([_to_jsonable(d) for d in departments])
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
+# `department_ids` UUID list but CompanyReorderDepartmentsArgs declares `order`
+# (a tuple of department names).
 async def _company_reorder_departments(
     *,
     app_state: AppState,
@@ -168,6 +173,8 @@ async def _company_versions_list(
     return ok([_to_jsonable(v) for v in versions])
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
+# string `version_id` but CompanyVersionsGetArgs declares an int `version_num`.
 async def _company_versions_get(
     *,
     app_state: AppState,

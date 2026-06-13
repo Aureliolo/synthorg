@@ -8,11 +8,13 @@ actor), emitting ``MCP_ADMIN_OP_EXECUTED`` on success.
 """
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.mcp.domains._workflows_org_args import TeamsGetArgs, TeamsListArgs
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -22,6 +24,7 @@ from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _require_str,
     _require_uuid,
     _to_jsonable,
+    typed_args,
 )
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
@@ -30,7 +33,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
     get_optional_str,
     require_actor_id,
 )
@@ -49,6 +51,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_ARG_TEAM_ID = "team_id"
+_TY_UUID = "UUID string"
+
 
 async def _teams_list(
     *,
@@ -63,7 +68,8 @@ async def _teams_list(
     """
     tool = "synthorg_teams_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, TeamsListArgs)
+        offset, limit = page_args.offset, page_args.limit
         page, total = await team_service_of(app_state).list_teams(
             offset=offset,
             limit=limit,
@@ -89,10 +95,17 @@ async def _teams_get(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``team_id`` is not a UUID string.
     """
     tool = "synthorg_teams_get"
     try:
-        team_id = _require_uuid(arguments, "team_id")
+        team_id = typed_args(arguments, TeamsGetArgs).team_id
+        try:
+            UUID(team_id)
+        except ValueError as uuid_exc:
+            raise ArgumentValidationError(_ARG_TEAM_ID, _TY_UUID) from uuid_exc
         record = await team_service_of(app_state).get_team(team_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -109,6 +122,8 @@ async def _teams_get(
     return ok(record.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads an
+# optional `department_id`, but TeamsCreateArgs declares a required `department`.
 async def _teams_create(
     *,
     app_state: AppState,
@@ -139,6 +154,9 @@ async def _teams_create(
     return ok(record.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# name/department_id (with an UNSET sentinel), but TeamsUpdateArgs declares an
+# opaque `updates` dict.
 async def _teams_update(
     *,
     app_state: AppState,
@@ -182,6 +200,9 @@ async def _teams_update(
     return ok(record.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler enforces
+# require_admin_guardrails but TeamsDeleteArgs (write_tool, not admin_tool)
+# declares no AdminGuardrailFields.
 async def _teams_delete(
     *,
     app_state: AppState,
@@ -225,6 +246,9 @@ async def _teams_delete(
     return ok({"removed": removed})
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads an
+# optional `role_name` and no pagination, but RoleVersionsListArgs declares a
+# required `role_name` plus PaginationFields the handler never forwards.
 async def _role_versions_list(
     *,
     app_state: AppState,
@@ -254,6 +278,8 @@ async def _role_versions_list(
     return ok([_to_jsonable(v) for v in versions])
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
+# string `version_id`, but RoleVersionsGetArgs declares role_name + int version_num.
 async def _role_versions_get(
     *,
     app_state: AppState,
