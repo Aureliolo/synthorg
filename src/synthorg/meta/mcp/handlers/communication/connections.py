@@ -8,11 +8,17 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.state import connection_service_of
+from synthorg.meta.mcp.domains._remaining_args import (
+    ConnectionsCheckHealthArgs,
+    ConnectionsDeleteArgs,
+    ConnectionsGetArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     dump_many,
@@ -63,6 +69,8 @@ def _parse_connection_type(arguments: dict[str, object]) -> ConnectionType:
         raise err from exc
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler paginates
+# (coerce_pagination) but ConnectionsListArgs declares no PaginationFields.
 async def _connections_list(
     *,
     app_state: AppState,
@@ -103,7 +111,7 @@ async def _connections_get(
         Resulting string.
     """
     try:
-        name = _require_str(arguments, _ARG_NAME)
+        name = typed_args(arguments, ConnectionsGetArgs).name
         connection = await connection_service_of(app_state).get_connection(name)
         if connection is None:
             return err(
@@ -120,6 +128,9 @@ async def _connections_get(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# auth_method/base_url/metadata, but ConnectionsCreateArgs declares only
+# name/connection_type/credentials.
 async def _connections_create(
     *,
     app_state: AppState,
@@ -184,7 +195,7 @@ async def _connections_delete(
     tool = "synthorg_connections_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        name = _require_str(arguments, _ARG_NAME)
+        name = typed_args(arguments, ConnectionsDeleteArgs).name
         actor_id = require_actor_id(resolved_actor)
         await connection_service_of(app_state).delete_connection(
             name=name,
@@ -223,7 +234,7 @@ async def _connections_check_health(
         Resulting string.
     """
     try:
-        name = _require_str(arguments, _ARG_NAME)
+        name = typed_args(arguments, ConnectionsCheckHealthArgs).name
         connection = await connection_service_of(app_state).check_health(name=name)
         if connection is None:
             return err(

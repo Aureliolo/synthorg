@@ -11,11 +11,16 @@ from synthorg.communication.message import Message
 from synthorg.communication.state import message_service_of
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.mcp.domains._remaining_args import (
+    MessagesDeleteArgs,
+    MessagesListArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     dump_many,
@@ -24,8 +29,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
-    get_optional_str,
     require_actor_id,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -81,10 +84,10 @@ async def _messages_list(
         Resulting string.
     """
     try:
-        channel = get_optional_str(arguments, _ARG_CHANNEL)
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, MessagesListArgs)
+        offset, limit = page_args.offset, page_args.limit
         messages, total = await message_service_of(app_state).list_messages(
-            channel=channel,
+            channel=page_args.channel,
             offset=offset,
             limit=limit,
         )
@@ -99,6 +102,8 @@ async def _messages_list(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
+# `channel` (in addition to message_id), but MessagesGetArgs declares only message_id.
 async def _messages_get(
     *,
     app_state: AppState,
@@ -132,6 +137,9 @@ async def _messages_get(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
+# `message` dict and builds a Message, but MessagesSendArgs declares flat
+# channel/content/sender.
 async def _messages_send(
     *,
     app_state: AppState,
@@ -178,7 +186,7 @@ async def _messages_delete(
     tool = "synthorg_messages_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        message_id = _require_str(arguments, _ARG_MESSAGE_ID)
+        message_id = typed_args(arguments, MessagesDeleteArgs).message_id
         actor_id = require_actor_id(resolved_actor)
         try:
             removed = await message_service_of(app_state).delete_message(
