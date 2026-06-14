@@ -63,7 +63,7 @@ class BackupConfig(BaseModel):
         description="Retention policy configuration",
     )
     on_shutdown: bool = Field(
-        default=True,
+        default=False,
         description="Create a backup on graceful shutdown",
     )
     on_startup: bool = Field(

@@ -33,7 +33,7 @@ Sanctioned exceptions cover three categories. The authoritative list lives in `_
 - `custom_rule.py`: shared custom-rule deserialisation (`row_to_custom_rule`, `serialize_altitudes`).
 - `rows.py`: the `RowLike` `@runtime_checkable` protocol (a string-key `__getitem__`). Both `aiosqlite.Row` and psycopg `dict_row` mappings satisfy it, so a single `RowLike`-typed marshalling module serves both backends without importing a driver.
 - `pagination.py`: shared pagination-argument validation (`validate_pagination_args`).
-- Per-entity row<->model marshalling modules, one per aggregate, each shared by the SQLite and Postgres repositories: `charter_marshalling.py`, `cost_forecast_marshalling.py`, `org_fact_marshalling.py`, `workflow_definition_marshalling.py`, `workflow_execution_marshalling.py`. Each exposes the column list, a `row_to_*` deserialisation function (consuming `RowLike`, normalising the JSONB-vs-TEXT and `TIMESTAMPTZ`-vs-ISO divergence), and a `build_*_where` clause builder taking the backend's placeholder token. JSON wrapping on the write path (`json.dumps` vs psycopg `Jsonb`) stays in the backend repos so these modules never import a driver.
+- Per-entity row<->model marshalling modules, one per aggregate, each shared by the SQLite and Postgres repositories: `charter_marshalling.py`, `cost_forecast_marshalling.py`, `org_fact_marshalling.py`, `workflow_definition_marshalling.py`, `workflow_execution_marshalling.py`. Each exposes a `row_to_*` deserialisation function (consuming `RowLike`, normalising the JSONB-vs-TEXT and `TIMESTAMPTZ`-vs-ISO divergence); most also expose the column list and a `build_*_where` clause builder taking the backend's placeholder token (`org_fact_marshalling.py` exposes only the deserialisers, as its MVCC SQL stays in the backend modules). JSON wrapping on the write path (`json.dumps` vs psycopg `Jsonb`) stays in the backend repos so these modules never import a driver.
 
 When to use which: the strict pair (`parse_iso_utc` / `format_iso_utc`) sits at the boundary where ISO strings cross the persistence layer (settings DTOs, JSON envelopes, SQLite TEXT writes); `coerce_row_timestamp` sits inside `_row_to_*` deserializers where the driver shape is uncertain; `normalize_utc` is the lowest-level primitive and is rarely called directly by repository code.
 
@@ -52,13 +52,15 @@ These mirror the shared `row_to_*` functions in `_shared/` (same direction, same
 
 ## Rollback discipline
 
-Repositories that open a write transaction expose a single private coroutine for the failure path:
+Repositories that open a write transaction expose a private coroutine for the failure path. The recommended form for new code is:
 
 ```python
 async def _safe_rollback(self, *, event: str) -> None:
 ```
 
-It rolls back the active transaction and swallows-then-logs any rollback-time driver error (a failed rollback must never mask the original write failure being handled), logging under the supplied `event` constant with `error_type` + `safe_error_description`. The `event` argument is keyword-only so every call site names the operation whose rollback failed. Call it from the `except` arm of a write before re-raising the domain error; never inline a bare `await conn.rollback()` (which would let a rollback-time exception escape and shadow the real cause).
+It rolls back the active transaction and swallows-then-logs any rollback-time driver error (a failed rollback must never mask the original write failure being handled), logging under the supplied `event` constant with `error_type` + `safe_error_description`. Call it from the `except` arm of a write before re-raising the domain error; never inline a bare `await conn.rollback()` (which would let a rollback-time exception escape and shadow the real cause).
+
+Existing repositories carry several historical shapes (instance vs module-level helper, `event` vs `operation`/`failure_event` parameter name, positional vs keyword-only, some taking the connection explicitly); these predate the recommended form and are not yet normalised. New repositories should follow the keyword-only `event` signature above.
 
 ## In-memory invariant pins (interim, schema-deferred)
 

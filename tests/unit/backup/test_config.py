@@ -87,7 +87,7 @@ class TestBackupConfigDefaults:
 
     def test_default_on_shutdown(self) -> None:
         cfg = BackupConfig()
-        assert cfg.on_shutdown is True
+        assert cfg.on_shutdown is False
 
     def test_default_on_startup(self) -> None:
         # CFG-1 audit flipped the default to False; scheduled backups

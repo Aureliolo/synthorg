@@ -1246,7 +1246,7 @@ CREATE INDEX idx_oauth_states_consumed ON oauth_states (consumed_at);
 CREATE TABLE webhook_receipts (
     id TEXT NOT NULL PRIMARY KEY,
     connection_name TEXT NOT NULL REFERENCES connections (name) ON DELETE CASCADE,
-    event_type TEXT NOT NULL DEFAULT '',
+    event_type TEXT NOT NULL CHECK (LENGTH(TRIM(event_type)) > 0),
     status TEXT NOT NULL DEFAULT 'received',
     received_at TEXT NOT NULL,
     processed_at TEXT,

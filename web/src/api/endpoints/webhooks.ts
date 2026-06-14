@@ -20,7 +20,7 @@ export interface WebhookReceipt {
   id: string
   /** Source connection name. */
   connection_name: string
-  /** Provider-specific event type (free-form string; ``""`` if not provided). */
+  /** Provider-specific event type (non-blank; always set by the backend). */
   event_type: string
   /** Processing status (``"received"`` / ``"processing"`` / ``"completed"`` / ``"failed"``). */
   status: string
