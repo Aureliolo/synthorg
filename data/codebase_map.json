@@ -15997,7 +15997,7 @@
     },
     {
       "kind": "code",
-      "loc": 407,
+      "loc": 408,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/webhook_receipt_repo.py",
       "owning_feature": "persistence"
@@ -16774,7 +16774,7 @@
     },
     {
       "kind": "code",
-      "loc": 407,
+      "loc": 408,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/webhook_receipt_repo.py",
       "owning_feature": "persistence"
@@ -17103,7 +17103,7 @@
     },
     {
       "kind": "code",
-      "loc": 376,
+      "loc": 377,
       "loc_cap": 500,
       "module": "src/synthorg/providers/cost_recording.py",
       "owning_feature": "providers"
@@ -18832,7 +18832,7 @@
     },
     {
       "kind": "code",
-      "loc": 190,
+      "loc": 196,
       "loc_cap": 500,
       "module": "src/synthorg/settings/definitions/research.py",
       "owning_feature": "settings"
@@ -19084,7 +19084,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 1002,
+      "loc": 1008,
       "loc_cap": 1100,
       "module": "src/synthorg/telemetry/collector.py",
       "owning_feature": "telemetry"
