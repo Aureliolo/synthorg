@@ -191,7 +191,13 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
     read_tool(
         "memory",
         "get_fine_tune_status",
-        "Get the current fine-tune pipeline status.",
+        "Get fine-tune pipeline status (a specific run, or the active run).",
+        {
+            "run_id": {
+                "type": "string",
+                "description": "Run ID to fetch status for (omit for the active run)",
+            },
+        },
         args_model=MemoryGetFineTuneStatusArgs,
     ),
     admin_tool(

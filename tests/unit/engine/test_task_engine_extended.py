@@ -1,6 +1,6 @@
 """Extended coverage tests for TaskEngine.
 
-Covers test gaps identified during PR #325 review:
+Covers the less-trodden TaskEngine branches:
 - FIFO ordering guarantee
 - Default reason generation in transition_task
 - Delete snapshot publishes new_status=None

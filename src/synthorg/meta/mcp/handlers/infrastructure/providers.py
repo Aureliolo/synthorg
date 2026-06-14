@@ -7,8 +7,13 @@ from typing import TYPE_CHECKING
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.infrastructure.state import provider_read_service_of
-from synthorg.meta.mcp.domains._remaining_args import ProvidersTestConnectionArgs
+from synthorg.meta.mcp.domains._remaining_args import (
+    ProvidersGetArgs,
+    ProvidersGetHealthArgs,
+    ProvidersTestConnectionArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -16,7 +21,7 @@ from synthorg.meta.mcp.errors import (
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
-from synthorg.meta.mcp.handlers.common_args import get_optional_str, require_actor_id
+from synthorg.meta.mcp.handlers.common_args import require_actor_id
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
@@ -24,11 +29,13 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _map_capability,
-    _require_str,
     _to_jsonable,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -59,11 +66,10 @@ async def _providers_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(p) for p in providers])
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# `provider_id` but ProvidersGetArgs declares `provider_name`.
 async def _providers_get(
     *,
     app_state: AppState,
@@ -77,7 +83,7 @@ async def _providers_get(
     """
     tool = "synthorg_providers_get"
     try:
-        provider_id = _require_str(arguments, "provider_id")
+        provider_id = typed_args(arguments, ProvidersGetArgs).provider_id
         provider = await provider_read_service_of(app_state).get_provider(provider_id)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -89,16 +95,13 @@ async def _providers_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if provider is None:
-        return err(
-            LookupError(f"Provider {provider_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Provider {provider_id} not found")
+        log_handler_invoke_failed(tool, missing, provider_id=provider_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(provider))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads an
-# optional `provider_id`, but ProvidersGetHealthArgs declares a required
-# `provider_name`.
 async def _providers_get_health(
     *,
     app_state: AppState,
@@ -112,7 +115,7 @@ async def _providers_get_health(
     """
     tool = "synthorg_providers_get_health"
     try:
-        provider_id = get_optional_str(arguments, "provider_id")
+        provider_id = typed_args(arguments, ProvidersGetHealthArgs).provider_id
         result = await provider_read_service_of(app_state).get_health(provider_id)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -123,6 +126,7 @@ async def _providers_get_health(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok({k: _to_jsonable(v) for k, v in dict(result).items()})
 
 
@@ -162,6 +166,7 @@ async def _providers_test_connection(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok({k: _to_jsonable(v) for k, v in dict(result).items()})
 
 

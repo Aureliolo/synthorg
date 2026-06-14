@@ -258,8 +258,8 @@ class TestUpdateAutonomy:
     async def test_no_approval_for_same_or_lower_level(self) -> None:
         """Demotion requests still go through approval -- this is policy.
 
-        For META-MCP-3 we mirror the REST endpoint's "everything pends"
-        behavior; future work may distinguish demotions, but pinning the
+        The MCP path mirrors the REST endpoint's "everything pends"
+        behaviour; future work may distinguish demotions, but pinning the
         invariant here prevents silent regressions.
         """
         identity = _make_identity(autonomy_level=AutonomyLevel.SEMI)

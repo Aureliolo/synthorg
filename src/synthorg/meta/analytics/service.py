@@ -1,7 +1,7 @@
 """AnalyticsService -- read-only view over :class:`SignalsService`.
 
-Per the META-MCP-2 plan's analytics-scope decision (D3), this facade
-is a thin projection on top of the org signal snapshot; it does not
+This facade is deliberately a thin projection on top of the org signal
+snapshot; it does not
 own its own aggregation pipeline or caching layer.  That keeps the
 numeric truth in exactly one place (SignalsService) and removes any
 drift risk between ``synthorg_signals_*`` and ``synthorg_analytics_*``

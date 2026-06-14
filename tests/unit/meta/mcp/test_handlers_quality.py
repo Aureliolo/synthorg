@@ -77,7 +77,9 @@ class TestQuality:
     async def test_list_scores(self, fake_app_state: AppState) -> None:
         handler = QUALITY_HANDLERS["synthorg_quality_list_scores"]
         response = await handler(app_state=fake_app_state, arguments={})
-        assert json.loads(response)["status"] == "ok"
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        assert payload["data"] == []
 
     async def test_summary_capability_gap(
         self,
@@ -112,7 +114,9 @@ class TestReviews:
     async def test_list(self, fake_app_state: AppState) -> None:
         handler = QUALITY_HANDLERS["synthorg_reviews_list"]
         response = await handler(app_state=fake_app_state, arguments={})
-        assert json.loads(response)["status"] == "ok"
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        assert payload["data"] == []
 
     async def test_update_not_found(self, fake_app_state: AppState) -> None:
         handler = QUALITY_HANDLERS["synthorg_reviews_update"]
@@ -128,7 +132,9 @@ class TestEvaluationVersions:
     async def test_list(self, fake_app_state: AppState) -> None:
         handler = QUALITY_HANDLERS["synthorg_evaluation_versions_list"]
         response = await handler(app_state=fake_app_state, arguments={})
-        assert json.loads(response)["status"] == "ok"
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        assert payload["data"] == []
 
     async def test_get_not_found(self, fake_app_state: AppState) -> None:
         handler = QUALITY_HANDLERS["synthorg_evaluation_versions_get"]

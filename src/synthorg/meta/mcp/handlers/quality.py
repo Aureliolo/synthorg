@@ -14,13 +14,21 @@ from uuid import UUID
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.engine.state import evaluation_version_service_of
 from synthorg.infrastructure.state import (
     quality_facade_service_of,
     review_facade_service_of,
 )
-from synthorg.meta.mcp.domains._simple_args import ReviewsGetArgs, ReviewsListArgs
+from synthorg.meta.mcp.domains._simple_args import (
+    EvaluationVersionsGetArgs,
+    QualityGetAgentQualityArgs,
+    QualityListScoresArgs,
+    ReviewsCreateArgs,
+    ReviewsGetArgs,
+    ReviewsListArgs,
+    ReviewsUpdateArgs,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
@@ -32,10 +40,7 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
-    get_optional_str,
     require_actor_id,
-    require_arg,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -49,34 +54,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_TY_STRING = "non-blank string"
 _TY_UUID = "UUID string"
-_TY_OPTIONAL_STRING = "string or null"
 _ARG_REVIEW_ID = "review_id"
-
-
-def _get_optional_str(arguments: dict[str, object], key: str) -> str | None:
-    """Return ``arguments[key]`` as ``str`` / ``None``, rejecting other types.
-
-    An absent key and an explicit ``null`` are both returned as ``None``.
-    A value of any other non-string type raises ``ArgumentValidationError``
-    so invalid ``comments`` payloads surface as typed ``invalid_argument``
-    envelopes instead of being silently dropped.
-
-    Returns:
-        The ``str`` value when present, ``None`` otherwise.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    if key not in arguments:
-        return None
-    raw = arguments[key]
-    if raw is None:
-        return None
-    if not isinstance(raw, str):
-        raise ArgumentValidationError(key, _TY_OPTIONAL_STRING)
-    return raw
 
 
 def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
@@ -94,38 +73,6 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
         capability=exc.capability,
     )
     return err(exc, domain_code=exc.domain_code)
-
-
-def _require_str(arguments: dict[str, object], key: str) -> NotBlankStr:
-    """Extract a required non-blank string or raise ``ArgumentValidationError``.
-
-    Returns:
-        ``NotBlankStr`` instance.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    value = get_optional_str(arguments, key)
-    if value is None:
-        raise ArgumentValidationError(key, _TY_STRING)
-    return value
-
-
-def _require_uuid(arguments: dict[str, object], key: str) -> NotBlankStr:
-    """Extract a required UUID-shaped string or raise ``ArgumentValidationError``.
-
-    Returns:
-        ``NotBlankStr`` instance.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    value = require_arg(arguments, key, str)
-    try:
-        UUID(value)
-    except ValueError as exc:
-        raise ArgumentValidationError(key, _TY_UUID) from exc
-    return NotBlankStr(value)
 
 
 def _to_jsonable(value: object) -> object:
@@ -172,8 +119,6 @@ async def _quality_get_summary(
     return ok(dict(summary))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# `agent_id` but QualityGetAgentQualityArgs declares `agent_name`.
 async def _quality_get_agent_quality(
     *,
     app_state: AppState,
@@ -187,7 +132,7 @@ async def _quality_get_agent_quality(
     """
     tool = "synthorg_quality_get_agent_quality"
     try:
-        agent_id = _require_str(arguments, "agent_id")
+        agent_id = typed_args(arguments, QualityGetAgentQualityArgs).agent_id
         result = await quality_facade_service_of(app_state).get_agent_quality(
             agent_id,
         )
@@ -203,8 +148,6 @@ async def _quality_get_agent_quality(
     return ok(dict(result))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler filters by
-# `agent_id` but QualityListScoresArgs declares the filter field `agent_name`.
 async def _quality_list_scores(
     *,
     app_state: AppState,
@@ -218,10 +161,10 @@ async def _quality_list_scores(
     """
     tool = "synthorg_quality_list_scores"
     try:
-        offset, limit = coerce_pagination(arguments)
-        agent_id = get_optional_str(arguments, "agent_id")
+        args = typed_args(arguments, QualityListScoresArgs)
+        offset, limit = args.offset, args.limit
         page, total = await quality_facade_service_of(app_state).list_scores(
-            agent_id=agent_id,
+            agent_id=args.agent_id,
             offset=offset,
             limit=limit,
         )
@@ -301,15 +244,12 @@ async def _reviews_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
-        return err(
-            LookupError(f"Review {review_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Review {review_id} not found")
+        log_handler_invoke_failed(tool, missing, review_id=review_id)
+        return err(missing, domain_code="not_found")
     return ok(record.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# task_id/verdict/comments, but ReviewsCreateArgs declares task_id/score/feedback.
 async def _reviews_create(
     *,
     app_state: AppState,
@@ -323,14 +263,12 @@ async def _reviews_create(
     """
     tool = "synthorg_reviews_create"
     try:
-        task_id = _require_str(arguments, "task_id")
-        verdict = _require_str(arguments, "verdict")
-        comments = _get_optional_str(arguments, "comments")
+        args = typed_args(arguments, ReviewsCreateArgs)
         record = await review_facade_service_of(app_state).create_review(
-            task_id=task_id,
+            task_id=args.task_id,
             reviewer_id=require_actor_id(actor),
-            verdict=verdict,
-            comments=comments,
+            verdict=args.verdict,
+            comments=args.comments,
         )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -342,8 +280,6 @@ async def _reviews_create(
     return ok(record.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# verdict/comments, but ReviewsUpdateArgs declares an opaque `updates` dict.
 async def _reviews_update(
     *,
     app_state: AppState,
@@ -354,16 +290,21 @@ async def _reviews_update(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``review_id`` is not a UUID string.
     """
     tool = "synthorg_reviews_update"
     try:
-        review_id = _require_uuid(arguments, "review_id")
-        verdict = get_optional_str(arguments, "verdict")
-        comments = _get_optional_str(arguments, "comments")
+        args = typed_args(arguments, ReviewsUpdateArgs)
+        try:
+            UUID(args.review_id)
+        except ValueError as uuid_exc:
+            raise ArgumentValidationError(_ARG_REVIEW_ID, _TY_UUID) from uuid_exc
         record = await review_facade_service_of(app_state).update_review(
-            review_id=review_id,
-            verdict=verdict,
-            comments=comments,
+            review_id=args.review_id,
+            verdict=args.verdict,
+            comments=args.comments,
             actor_id=require_actor_id(actor),
         )
     except ArgumentValidationError as exc:
@@ -374,10 +315,9 @@ async def _reviews_update(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
-        return err(
-            LookupError(f"Review {review_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Review {args.review_id} not found")
+        log_handler_invoke_failed(tool, missing, review_id=args.review_id)
+        return err(missing, domain_code="not_found")
     return ok(record.to_dict())
 
 
@@ -408,8 +348,6 @@ async def _evaluation_versions_list(
     return ok([_to_jsonable(v) for v in versions])
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
-# string `version_id`, but EvaluationVersionsGetArgs declares an int `version_num`.
 async def _evaluation_versions_get(
     *,
     app_state: AppState,
@@ -423,7 +361,7 @@ async def _evaluation_versions_get(
     """
     tool = "synthorg_evaluation_versions_get"
     try:
-        version_id = _require_str(arguments, "version_id")
+        version_id = typed_args(arguments, EvaluationVersionsGetArgs).version_id
         version = await evaluation_version_service_of(app_state).get_version(
             version_id,
         )
@@ -435,10 +373,9 @@ async def _evaluation_versions_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if version is None:
-        return err(
-            LookupError(f"Evaluation version {version_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Evaluation version {version_id} not found")
+        log_handler_invoke_failed(tool, missing, version_id=version_id)
+        return err(missing, domain_code="not_found")
     return ok(_to_jsonable(version))
 
 

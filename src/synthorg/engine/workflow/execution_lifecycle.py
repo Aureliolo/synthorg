@@ -103,17 +103,18 @@ async def get_execution(
 
 async def list_executions(
     repo: WorkflowExecutionRepository,
-    definition_id: str,
+    definition_id: str | None = None,
     *,
+    status: WorkflowExecutionStatus | None = None,
     limit: int = DEFAULT_LIST_LIMIT,
 ) -> tuple[WorkflowExecution, ...]:
-    """List executions for a workflow definition (bounded by *limit*).
+    """List executions filtered by definition and/or status (bounded by *limit*).
 
     Returns:
-        Executions matching the definition filter (up to ``limit``).
+        Executions matching the supplied filters (up to ``limit``).
     """
     return await repo.query(
-        WorkflowExecutionFilterSpec(definition_id=definition_id),
+        WorkflowExecutionFilterSpec(definition_id=definition_id, status=status),
         limit=limit,
     )
 
@@ -127,9 +128,8 @@ async def cancel_execution(
     """Cancel a workflow execution.
 
     Returns:
-        The cancelled :class:`WorkflowExecution` with status
-        ``CANCELLED``, the completion timestamp set, and the version
-        bumped.
+        The cancelled :class:`WorkflowExecution` (status ``CANCELLED``,
+        completion timestamp set, version bumped).
 
     Raises:
         WorkflowExecutionNotFoundError: If not found.
@@ -195,10 +195,9 @@ async def cancel_execution(
         except PersistenceVersionConflictError as exc:
             # Optimistic-concurrency race: another writer mutated the
             # execution between the read above and this save. Re-fetch
-            # so the audit signal records the *winner's* status, not
-            # the stale pre-save snapshot which would usually still
-            # report 'running' even after another writer moved the row
-            # to a terminal state.
+            # so the audit signal records the *winner's* status, not the
+            # stale pre-save snapshot (still 'running' even after another
+            # writer moved the row to a terminal state).
             refreshed = await repo.get(execution_id)
             logger.warning(
                 WORKFLOW_EXEC_CANCEL_CONFLICT,

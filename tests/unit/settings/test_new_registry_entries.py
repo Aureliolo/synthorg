@@ -1,4 +1,4 @@
-"""Coverage for the 4 new registry entries added by #1613.
+"""Coverage for four settings-registry entries.
 
 These entries exist for /settings UI discoverability but their
 runtime semantics differ:

@@ -5,6 +5,7 @@ Covers tasks and activities controllers.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.task_enums import TaskStatus
 from synthorg.meta.mcp.domains._tasks_args import (
     ActivitiesListArgs,
     TasksCancelArgs,
@@ -34,7 +35,11 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         "list",
         "List tasks with optional filtering.",
         {
-            "status": {"type": "string", "description": "Filter by task status"},
+            "status": {
+                "type": "string",
+                "description": "Filter by task status",
+                "enum": [s.value for s in TaskStatus],
+            },
             "assigned_to": {
                 "type": "string",
                 "description": "Filter by assigned agent",
@@ -59,12 +64,12 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         "create",
         "Create a new task.",
         {
-            "title": {"type": "string", "description": "Task title"},
-            "description": {"type": "string", "description": "Task description"},
-            "assigned_to": {"type": "string", "description": "Agent to assign"},
-            "project": {"type": "string", "description": "Project name"},
+            "task_data": {
+                "type": "object",
+                "description": "CreateTaskData payload (title/description/etc.)",
+            },
         },
-        required=("title",),
+        required=("task_data",),
         args_model=TasksCreateArgs,
     ),
     write_tool(
@@ -95,7 +100,11 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         "Transition a task to a new state.",
         {
             "task_id": {"type": "string", "description": "Task UUID"},
-            "target_status": {"type": "string", "description": "Target status"},
+            "target_status": {
+                "type": "string",
+                "description": "Target status",
+                "enum": [s.value for s in TaskStatus],
+            },
         },
         required=("task_id", "target_status"),
         args_model=TasksTransitionArgs,
@@ -117,12 +126,12 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         "list",
         "List recent activity events.",
         {
-            "type": {"type": "string", "description": "Activity type filter"},
-            "agent_id": {"type": "string", "description": "Filter by agent"},
-            "last_n_hours": {
+            "project": {"type": "string", "description": "Filter by project"},
+            "task_id": {"type": "string", "description": "Filter by task"},
+            "window_hours": {
                 "type": "integer",
-                "description": "Lookback hours (24/48/168)",
-                "enum": [24, 48, 168],
+                "description": "Lookback window in hours",
+                "minimum": 1,
             },
             **PAGINATION_PROPERTIES,
         },

@@ -16,6 +16,7 @@ services in the application bootstrap.
 """
 
 from collections.abc import Mapping
+from datetime import datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -32,10 +33,12 @@ from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import HrStateSlice, scaling_decision_service_of
 from synthorg.meta.mcp.domains._simple_args import (
+    CeremonyPolicyGetResolvedArgs,
     CoordinationGetTaskMetricsArgs,
     CoordinationMetricsListArgs,
     ScalingGetDecisionArgs,
     ScalingListDecisionsArgs,
+    ScalingTriggerArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -51,9 +54,6 @@ from synthorg.meta.mcp.handlers.common import (
     err,
     ok,
 )
-from synthorg.meta.mcp.handlers.common_args import (
-    require_non_blank_value,
-)
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_invoke_failed,
@@ -66,8 +66,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-
-_TY_NON_BLANK = "non-blank string"
 
 _WHY_COORDINATION_NOT_WIRED = (
     "coordination_service is not attached to app_state; wire it in "
@@ -140,6 +138,10 @@ async def _coordination_metrics_list(
     try:
         page = typed_args(arguments, CoordinationMetricsListArgs)
         offset, limit = page.offset, page.limit
+        # ``since`` / ``until`` are validated as tz-aware ISO 8601 by the
+        # ``IsoDatetimeStr`` boundary, so ``fromisoformat`` is total here.
+        since = datetime.fromisoformat(page.since) if page.since else None
+        until = datetime.fromisoformat(page.until) if page.until else None
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -147,6 +149,10 @@ async def _coordination_metrics_list(
         records, total = await coordination_service_of(app_state).list_metrics(
             offset=offset,
             limit=limit,
+            task_id=page.task_id,
+            agent_id=page.agent_id,
+            since=since,
+            until=until,
         )
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
@@ -253,8 +259,6 @@ async def _scaling_get_config(
     return ok(data=config.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads an
-# `agent_ids` list but ScalingTriggerArgs declares a single required `reason`.
 async def _scaling_trigger(
     *,
     app_state: AppState,
@@ -267,24 +271,13 @@ async def _scaling_trigger(
         JSON-encoded MCP envelope string.
     """
     tool = "synthorg_scaling_trigger"
-    raw_ids = arguments.get("agent_ids")
-    if raw_ids is None or not isinstance(raw_ids, (list, tuple)):
-        bad = ArgumentValidationError("agent_ids", "list of non-blank strings")
-        log_handler_argument_invalid(tool, bad)
-        return err(bad)
+    if app_state.slice(HrStateSlice).scaling_decision_service is None:
+        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
-        agent_ids = tuple(
-            NotBlankStr(require_non_blank_value(v, "agent_ids")) for v in raw_ids
-        )
+        agent_ids = typed_args(arguments, ScalingTriggerArgs).agent_ids
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not agent_ids:
-        empty = ArgumentValidationError("agent_ids", "non-empty list")
-        log_handler_argument_invalid(tool, empty)
-        return err(empty)
-    if app_state.slice(HrStateSlice).scaling_decision_service is None:
-        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
         decisions = await scaling_decision_service_of(app_state).trigger(agent_ids)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
@@ -322,9 +315,6 @@ async def _ceremony_policy_get(
     return ok(data=policy.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler rejects an
-# explicit `department: null` but CeremonyPolicyGetResolvedArgs maps null and
-# absent both to None (no filter), losing the explicit-null rejection.
 async def _ceremony_policy_get_resolved(
     *,
     app_state: AppState,
@@ -339,22 +329,11 @@ async def _ceremony_policy_get_resolved(
     tool = "synthorg_ceremony_policy_get_resolved"
     if app_state.slice(CoordinationStateSlice).ceremony_policy_service is None:
         return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
-    department: NotBlankStr | None = None
-    if "department" in arguments:
-        department_raw = arguments["department"]
-        # Reject null AND empty / non-string. ``.get`` used to
-        # conflate "key absent" with "key present but null" and that
-        # silently mapped a malformed request to the "no filter"
-        # path.
-        if department_raw is None:
-            exc = ArgumentValidationError("department", _TY_NON_BLANK)
-            log_handler_argument_invalid(tool, exc)
-            return err(exc)
-        if not isinstance(department_raw, str) or not department_raw.strip():
-            exc = ArgumentValidationError("department", _TY_NON_BLANK)
-            log_handler_argument_invalid(tool, exc)
-            return err(exc)
-        department = NotBlankStr(department_raw.strip())
+    try:
+        department = typed_args(arguments, CeremonyPolicyGetResolvedArgs).department
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
     try:
         resolved = await ceremony_policy_service_of(app_state).get_resolved_policy(
             department=department,

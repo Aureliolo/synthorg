@@ -302,9 +302,9 @@ class TestStreamingBypassesChokepoint:
     ``response.usage`` synchronously.  Instead of half-implementing
     cost recording for streams (which would require consuming the
     iterator inside the chokepoint and conflating recording with the
-    stream-consumption contract), we explicitly leave streaming
-    out-of-scope for #1598.  This test pins the contract so a future
-    PR that adds streaming-aware recording must update the assertion.
+    stream-consumption contract), streaming is explicitly out of scope
+    for cost recording.  This test pins that contract so any later
+    streaming-aware recording must update the assertion.
 
     No call site in the current codebase uses ``stream()`` for paid
     LLM work; all 23 cost-attributable LLM call sites use ``complete()``.

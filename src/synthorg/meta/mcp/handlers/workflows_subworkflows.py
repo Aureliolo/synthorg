@@ -13,7 +13,6 @@ from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     SubworkflowIOError,
     SubworkflowNotFoundError,
@@ -26,10 +25,17 @@ from synthorg.engine.workflow.subworkflow_service import (
     SubworkflowHasParentsError,
     SubworkflowService,
 )
+from synthorg.meta.mcp.domains._workflows_org_args import (
+    SubworkflowsCreateArgs,
+    SubworkflowsDeleteArgs,
+    SubworkflowsGetArgs,
+    SubworkflowsListArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
@@ -40,9 +46,6 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
-    coerce_pagination,
-    require_arg,
-    require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -59,10 +62,6 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
-
-_TY_NON_BLANK = "non-blank string"
-_ARG_SUB_ID = "subworkflow_id"
-_ARG_VERSION = "version"
 
 _WHY_SUBWORKFLOW_SERVICE = (
     "subworkflow_service is not wired on app_state in this deployment"
@@ -86,8 +85,6 @@ def _subworkflow_service(app_state: AppState) -> SubworkflowService | None:
     return subworkflow_service_of(app_state)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler filters by a
-# free-text `query`, but SubworkflowsListArgs declares a required `workflow_id`.
 async def _subworkflows_list(
     *,
     app_state: AppState,
@@ -107,11 +104,8 @@ async def _subworkflows_list(
     if service is None:
         return capability_gap(tool, _WHY_SUBWORKFLOW_SERVICE)
     try:
-        offset, limit = coerce_pagination(arguments)
-        arg_query = "query"
-        query_raw = arguments.get(arg_query)
-        if query_raw is not None and not isinstance(query_raw, str):
-            raise ArgumentValidationError(arg_query, _TY_NON_BLANK)
+        args = typed_args(arguments, SubworkflowsListArgs)
+        offset, limit = args.offset, args.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -119,7 +113,7 @@ async def _subworkflows_list(
         page, total = await service.list_summaries(
             offset=offset,
             limit=limit,
-            query=query_raw,
+            query=args.query,
         )
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
@@ -130,8 +124,6 @@ async def _subworkflows_list(
     return ok(data=dump_many(page), pagination=meta)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads an
-# optional `version`, but SubworkflowsGetArgs declares only subworkflow_id.
 async def _subworkflows_get(
     *,
     app_state: AppState,
@@ -151,18 +143,12 @@ async def _subworkflows_get(
     if service is None:
         return capability_gap(tool, _WHY_SUBWORKFLOW_SERVICE)
     try:
-        sub_id = require_non_blank(arguments, _ARG_SUB_ID)
-        version_raw = arguments.get(_ARG_VERSION)
-        if version_raw is not None and (
-            not isinstance(version_raw, str) or not version_raw.strip()
-        ):
-            raise ArgumentValidationError(_ARG_VERSION, _TY_NON_BLANK)
-        version = NotBlankStr(version_raw.strip()) if version_raw is not None else None
+        args = typed_args(arguments, SubworkflowsGetArgs)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
-        defn = await service.get(NotBlankStr(sub_id), version)
+        defn = await service.get(args.subworkflow_id, args.version)
     except SubworkflowNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
@@ -174,8 +160,6 @@ async def _subworkflows_get(
     return ok(data=defn.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
-# `definition` dict, but SubworkflowsCreateArgs declares workflow_id + name + steps.
 async def _subworkflows_create(
     *,
     app_state: AppState,
@@ -192,7 +176,7 @@ async def _subworkflows_create(
     if service is None:
         return capability_gap(tool, _WHY_SUBWORKFLOW_SERVICE)
     try:
-        definition_dict = require_arg(arguments, "definition", dict)
+        definition_dict = typed_args(arguments, SubworkflowsCreateArgs).definition
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -221,9 +205,6 @@ async def _subworkflows_create(
     return ok(data=created.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
-# required `version`, but SubworkflowsDeleteArgs declares only subworkflow_id
-# (plus the guardrail fields).
 async def _subworkflows_delete(
     *,
     app_state: AppState,
@@ -246,19 +227,20 @@ async def _subworkflows_delete(
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
     try:
-        sub_id = require_non_blank(arguments, _ARG_SUB_ID)
-        version = require_non_blank(arguments, _ARG_VERSION)
+        args = typed_args(arguments, SubworkflowsDeleteArgs)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
+    sub_id = args.subworkflow_id
+    version = args.version
     service = _subworkflow_service(app_state)
     if service is None:
         return capability_gap(tool, _WHY_SUBWORKFLOW_SERVICE)
     deleted_by = actor_id(resolved_actor) or "mcp"
     try:
         await service.delete(
-            NotBlankStr(sub_id),
-            NotBlankStr(version),
+            sub_id,
+            version,
             reason=reason,
             actor_id=deleted_by,
         )

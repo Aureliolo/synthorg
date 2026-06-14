@@ -20,9 +20,12 @@ from synthorg.engine.workflow.service import (
     WorkflowService,
 )
 from synthorg.meta.mcp.domains._workflows_org_args import (
+    WorkflowsCreateArgs,
     WorkflowsDeleteArgs,
     WorkflowsGetArgs,
     WorkflowsListArgs,
+    WorkflowsUpdateArgs,
+    WorkflowsValidateArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -39,7 +42,6 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
-    require_arg,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -159,9 +161,6 @@ async def _workflows_get(
     return ok(data=defn.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
-# `definition` dict and builds a WorkflowDefinition, but WorkflowsCreateArgs
-# declares name + steps.
 async def _workflows_create(
     *,
     app_state: AppState,
@@ -175,7 +174,7 @@ async def _workflows_create(
     """
     tool = "synthorg_workflows_create"
     try:
-        definition_dict = require_arg(arguments, "definition", dict)
+        definition_dict = typed_args(arguments, WorkflowsCreateArgs).definition
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -207,8 +206,6 @@ async def _workflows_create(
     return ok(data=created.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
-# `definition` dict, but WorkflowsUpdateArgs declares workflow_id + updates.
 async def _workflows_update(
     *,
     app_state: AppState,
@@ -222,7 +219,7 @@ async def _workflows_update(
     """
     tool = "synthorg_workflows_update"
     try:
-        definition_dict = require_arg(arguments, "definition", dict)
+        definition_dict = typed_args(arguments, WorkflowsUpdateArgs).definition
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -301,8 +298,6 @@ async def _workflows_delete(
     return ok()
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
-# `definition` dict to validate, but WorkflowsValidateArgs declares workflow_id.
 async def _workflows_validate(
     *,
     app_state: AppState,
@@ -316,7 +311,7 @@ async def _workflows_validate(
     """
     tool = "synthorg_workflows_validate"
     try:
-        definition_dict = require_arg(arguments, "definition", dict)
+        definition_dict = typed_args(arguments, WorkflowsValidateArgs).definition
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)

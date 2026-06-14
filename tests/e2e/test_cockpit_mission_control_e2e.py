@@ -3,7 +3,7 @@
 Exercises the mission-control cockpit end-to-end through the real
 services it wires (live-activity aggregation, steering service,
 flight-recorder replay) over recorded per-turn frames. This is the
-operator flow #1981 requires: during a run the operator can see
+core operator flow: during a run the operator can see
 progress, identify a stuck agent and intervene (steer the project),
 and afterwards replay the run step-by-step with content.
 """

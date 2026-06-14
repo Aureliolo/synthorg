@@ -38,7 +38,7 @@ class _ProjectRecord:
         *,
         id: UUID,  # noqa: A002
         name: str,
-        description: str,
+        description: str | None,
         created_at: datetime,
         metadata: Mapping[str, str] | None = None,
     ) -> None:
@@ -128,7 +128,7 @@ class ProjectFacadeService:
         self,
         *,
         name: NotBlankStr,
-        description: NotBlankStr,
+        description: NotBlankStr | None = None,
         actor_id: NotBlankStr,
         metadata: Mapping[str, str] | None = None,
     ) -> _ProjectRecord:

@@ -5,6 +5,7 @@ Covers messages, meetings, connections, webhooks, and tunnel.
 
 from typing import TYPE_CHECKING
 
+from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.meta.mcp.domains._remaining_args import (
     ConnectionsCheckHealthArgs,
     ConnectionsCreateArgs,
@@ -48,7 +49,6 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "List messages with optional filtering.",
         {
             "channel": {"type": "string", "description": "Filter by channel"},
-            "sender": {"type": "string", "description": "Filter by sender"},
             **PAGINATION_PROPERTIES,
         },
         args_model=MessagesListArgs,
@@ -56,11 +56,15 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
     read_tool(
         "messages",
         "get",
-        "Get a message by ID.",
+        "Get a message by channel + ID.",
         {
+            "channel": {
+                "type": "string",
+                "description": "Channel containing the message",
+            },
             "message_id": {"type": "string", "description": "Message UUID"},
         },
-        required=("message_id",),
+        required=("channel", "message_id"),
         args_model=MessagesGetArgs,
     ),
     write_tool(
@@ -68,11 +72,9 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "send",
         "Send a new message.",
         {
-            "channel": {"type": "string", "description": "Target channel"},
-            "content": {"type": "string", "description": "Message content"},
-            "sender": {"type": "string", "description": "Sender name"},
+            "message": {"type": "object", "description": "Message payload"},
         },
-        required=("channel", "content"),
+        required=("message",),
         args_model=MessagesSendArgs,
     ),
     admin_tool(
@@ -95,7 +97,18 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "meetings",
         "list",
         "List meeting records.",
-        PAGINATION_PROPERTIES,
+        {
+            "status": {
+                "type": "string",
+                "description": "Filter by status",
+                "enum": [s.value for s in MeetingStatus],
+            },
+            "meeting_type": {
+                "type": "string",
+                "description": "Filter by meeting type",
+            },
+            **PAGINATION_PROPERTIES,
+        },
         args_model=MeetingsListArgs,
     ),
     read_tool(
@@ -154,6 +167,7 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "connections",
         "list",
         "List external connections.",
+        PAGINATION_PROPERTIES,
         args_model=ConnectionsListArgs,
     ),
     read_tool(
@@ -173,10 +187,26 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         {
             "name": {"type": "string", "description": "Connection name"},
             "connection_type": {"type": "string", "description": "Connection type"},
-            "credentials": {"type": "object", "description": "Connection credentials"},
+            "auth_method": {"type": "string", "description": "Authentication method"},
+            "credentials": {
+                "type": "object",
+                "description": "Connection credentials (string values)",
+                "additionalProperties": {"type": "string"},
+            },
+            "base_url": {"type": "string", "description": "Base URL"},
+            "metadata": {
+                "type": "object",
+                "description": "Free-form connection metadata (string values)",
+                "additionalProperties": {"type": "string"},
+            },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("name", "connection_type", *ADMIN_GUARDRAIL_REQUIRED),
+        required=(
+            "name",
+            "connection_type",
+            "auth_method",
+            *ADMIN_GUARDRAIL_REQUIRED,
+        ),
         args_model=ConnectionsCreateArgs,
     ),
     admin_tool(
@@ -223,15 +253,13 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "create",
         "Create a new webhook (admin; requires confirm).",
         {
-            "url": {"type": "string", "description": "Webhook URL"},
-            "events": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Event types to subscribe",
+            "definition": {
+                "type": "object",
+                "description": "WebhookDefinition payload",
             },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("url", "events", *ADMIN_GUARDRAIL_REQUIRED),
+        required=("definition", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=WebhooksCreateArgs,
     ),
     admin_tool(
@@ -239,11 +267,13 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "update",
         "Update a webhook configuration (admin; requires confirm).",
         {
-            "webhook_id": {"type": "string", "description": "Webhook UUID"},
-            "updates": {"type": "object", "description": "Fields to update"},
+            "definition": {
+                "type": "object",
+                "description": "WebhookDefinition payload (including id)",
+            },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("webhook_id", "updates", *ADMIN_GUARDRAIL_REQUIRED),
+        required=("definition", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=WebhooksUpdateArgs,
     ),
     admin_tool(

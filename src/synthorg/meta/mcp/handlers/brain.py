@@ -25,12 +25,16 @@ from synthorg.meta.mcp.domains._brain_args import (
     BrainResolveArgs,
     BrainSupersedeArgs,
 )
-from synthorg.meta.mcp.errors import ArgumentValidationError
+from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
+    GuardrailViolationError,
+)
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
+    log_handler_guardrail_violated,
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
@@ -140,6 +144,9 @@ async def _brain_append(
         entry = await _append_entry(svc, args)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_APPEND)
         return ok(entry.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(_TOOL_APPEND, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_APPEND, exc)
         return err(exc)
@@ -174,6 +181,9 @@ async def _brain_resolve(
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_RESOLVE)
         return ok(entry.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(_TOOL_RESOLVE, exc)
+        return err(exc)
     except BrainEntryValidationError as exc:
         log_handler_invoke_failed(_TOOL_RESOLVE, exc)
         return err(exc)
@@ -205,6 +215,9 @@ async def _brain_supersede(
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_SUPERSEDE)
         return ok(entry.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(_TOOL_SUPERSEDE, exc)
+        return err(exc)
     except BrainEntryValidationError as exc:
         log_handler_invoke_failed(_TOOL_SUPERSEDE, exc)
         return err(exc)
@@ -236,6 +249,9 @@ async def _brain_clear_blocker(
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_CLEAR_BLOCKER)
         return ok(entry.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(_TOOL_CLEAR_BLOCKER, exc)
+        return err(exc)
     except BrainEntryValidationError as exc:
         log_handler_invoke_failed(_TOOL_CLEAR_BLOCKER, exc)
         return err(exc)

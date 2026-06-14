@@ -12,12 +12,40 @@ error before ever reaching the handler-side parse.
 import pytest
 from pydantic import ValidationError
 
+from synthorg.memory.embedding.fine_tune_models import FineTuneDataSourceType
+from synthorg.memory.fine_tune_plan import FineTunePlan
 from synthorg.meta.mcp.domains._remaining_args._memory_finetune import (
     MemoryRunPreflightArgs,
     MemoryStartFineTuneArgs,
 )
+from synthorg.meta.mcp.errors import ArgumentValidationError
 
 pytestmark = pytest.mark.unit
+
+
+class TestToPlan:
+    """The ``to_plan`` adapter bridges wire fields to ``FineTunePlan``."""
+
+    def test_valid_directory_plan(self) -> None:
+        args = MemoryRunPreflightArgs(source_dir="/data/org-docs")
+        plan = args.to_plan()
+        assert isinstance(plan, FineTunePlan)
+        assert plan.data_source is FineTuneDataSourceType.DIRECTORY
+        assert plan.source_dir == "/data/org-docs"
+
+    def test_valid_trajectory_plan(self) -> None:
+        args = MemoryRunPreflightArgs(data_source="trajectory")
+        plan = args.to_plan()
+        assert plan.data_source is FineTuneDataSourceType.TRAJECTORY
+        assert plan.source_dir is None
+
+    def test_path_traversal_wrapped_as_argument_error(self) -> None:
+        # The wire model accepts any non-blank ``source_dir``; the
+        # canonical ``FineTunePlan`` rejects parent-directory traversal,
+        # and the adapter must surface that as a typed argument error.
+        args = MemoryRunPreflightArgs(source_dir="../escape")
+        with pytest.raises(ArgumentValidationError):
+            args.to_plan()
 
 
 class TestMemoryRunPreflightArgs:

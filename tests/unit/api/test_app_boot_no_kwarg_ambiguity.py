@@ -3,9 +3,9 @@
 Litestar 2.22 tightened kwarg resolution so PATH-bound handler params
 declared with bare ``Parameter(...)`` raise
 ``ImproperlyConfiguredException: Kwarg resolution ambiguity detected``
-at ``create_app`` time. PR #2091 migrated every PATH-bound site to
-``PathParameter(...)`` and every deprecated ``Parameter(query=...)``
-to ``QueryParameter(name=...)``.
+at ``create_app`` time. Every PATH-bound site uses
+``PathParameter(...)`` and every query param uses
+``QueryParameter(name=...)`` to stay clear of that ambiguity.
 
 This guard does the smallest possible thing that catches a regression:
 build the app and assert no ``ImproperlyConfiguredException`` surfaces.

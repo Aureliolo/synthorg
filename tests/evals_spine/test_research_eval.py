@@ -1,7 +1,8 @@
 """Research eval lane: run a research brief, replay it, and grade it.
 
-This is the #1989 acceptance under the eval harness: given a research
-brief the org produces a synthesised, citation-backed report whose claims
+This is the research-lane acceptance under the eval harness: given a
+research brief the org produces a synthesised, citation-backed report whose
+claims
 resolve to retrievable sources, and the run is replayable. The lane drives
 :class:`ResearchService` with a scripted provider (standing in for the
 cassette), records the run, replays it from the persisted items, asserts

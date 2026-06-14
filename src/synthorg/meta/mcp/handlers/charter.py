@@ -28,7 +28,10 @@ from synthorg.meta.mcp.domains._charter_args import (
     CharterInterviewArgs,
     CharterListArgs,
 )
-from synthorg.meta.mcp.errors import ArgumentValidationError
+from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
+    GuardrailViolationError,
+)
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
@@ -36,6 +39,7 @@ from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
+    log_handler_guardrail_violated,
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
@@ -199,6 +203,9 @@ async def _charter_cancel(
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_CANCEL)
         return ok(cancelled.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(_TOOL_CANCEL, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_CANCEL, exc)
         return err(exc)
@@ -222,6 +229,9 @@ async def _charter_approve(
         result = await dispatcher.approve(charter_id, approved_by=_actor_id(actor))
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_APPROVE)
         return ok(result.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(_TOOL_APPROVE, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_APPROVE, exc)
         return err(exc)

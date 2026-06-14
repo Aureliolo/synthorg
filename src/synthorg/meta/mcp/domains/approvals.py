@@ -79,7 +79,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
             },
             "title": {
                 "type": "string",
-                "description": "Short summary of the approval",
+                "description": "Short summary (defaults to description prefix)",
                 "minLength": 1,
                 "pattern": r".*\S.*",
             },
@@ -96,7 +96,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
                 "default": RISK_LEVEL_DEFAULT,
             },
         },
-        required=("action_type", "title", "description"),
+        required=("action_type", "description"),
         args_model=ApprovalsCreateArgs,
     ),
     write_tool(

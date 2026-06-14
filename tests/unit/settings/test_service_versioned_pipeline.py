@@ -1,9 +1,8 @@
 """Tests for the shared ``_resolve_db`` pipeline between get() and get_versioned().
 
-PR #1239 deferred the ``get()``/``get_versioned()`` unification as a
-follow-up. These tests lock the new behaviour: both public methods now
-route DB reads through the shared ``_resolve_db`` helper, so sensitive
-values are decrypted consistently.
+These tests lock the ``get()``/``get_versioned()`` unification: both
+public methods route DB reads through the shared ``_resolve_db`` helper,
+so sensitive values are decrypted consistently.
 """
 
 from unittest.mock import AsyncMock

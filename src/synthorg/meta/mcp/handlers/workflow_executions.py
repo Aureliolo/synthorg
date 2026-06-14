@@ -27,6 +27,8 @@ from synthorg.engine.workflow.execution_service import (
 from synthorg.meta.mcp.domains._workflows_org_args import (
     WorkflowExecutionsCancelArgs,
     WorkflowExecutionsGetArgs,
+    WorkflowExecutionsListArgs,
+    WorkflowExecutionsStartArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -43,8 +45,6 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
-    coerce_pagination,
-    require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -63,8 +63,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-_TY_NON_BLANK = "non-blank string"
-_ARG_DEF_ID = "workflow_id"
 _WHY_EXECUTION_SERVICE = (
     "workflow_execution_service is not wired on app_state in this deployment"
 )
@@ -83,57 +81,13 @@ def _execution_service(app_state: AppState) -> WorkflowExecutionService | None:
     return workflow_execution_service_of(app_state)
 
 
-def _parse_start_args(
-    arguments: dict[str, object],
-) -> tuple[str, str, dict[str, object]]:
-    """Validate and extract args for ``synthorg_workflow_executions_start``.
-
-    Extracted so :func:`workflow_executions_start` itself stays under the
-    50-line ceiling -- the original inline parsing pushed it slightly
-    over.
-
-    Returns:
-        Tuple of the declared element types.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    arg_project = "project"
-    arg_context = "context"
-    ty_object = "object"
-    def_id = require_non_blank(arguments, _ARG_DEF_ID)
-    # Treat ``project`` as missing only when the caller omits it (or
-    # passes ``None``); a blank or whitespace-only value is explicitly
-    # invalid input, not a request for the default project.
-    project_raw = arguments.get(arg_project, "default")
-    if project_raw is None:
-        project_raw = "default"
-    if not isinstance(project_raw, str):
-        raise ArgumentValidationError(arg_project, _TY_NON_BLANK)
-    project = project_raw.strip()
-    if not project:
-        raise ArgumentValidationError(arg_project, _TY_NON_BLANK)
-    context_raw = arguments.get(arg_context, {})
-    if not isinstance(context_raw, dict):
-        raise ArgumentValidationError(arg_context, ty_object)
-    # Deep-copy ``context`` at the handler boundary so downstream code
-    # cannot mutate caller-owned request state in place. The MCP
-    # transport hands us a parsed JSON dict; without this copy any
-    # service-layer code that scrubs / annotates / sorts the context
-    # would leak back into the caller's view of its own request.
-    return def_id, project, copy.deepcopy(context_raw)
-
-
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler requires
-# workflow_id and ignores status, but WorkflowExecutionsListArgs makes workflow_id
-# optional and declares a status filter the handler never forwards.
 async def workflow_executions_list(
     *,
     app_state: AppState,
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List executions for a workflow definition.
+    """List executions, optionally filtered by workflow definition and status.
 
     Returns:
         Resulting string.
@@ -143,8 +97,8 @@ async def workflow_executions_list(
     if service is None:
         return capability_gap(tool, _WHY_EXECUTION_SERVICE)
     try:
-        def_id = require_non_blank(arguments, _ARG_DEF_ID)
-        offset, limit = coerce_pagination(arguments)
+        args = typed_args(arguments, WorkflowExecutionsListArgs)
+        offset, limit = args.offset, args.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -152,7 +106,11 @@ async def workflow_executions_list(
         # MCP list handlers paginate in-memory; fetch one page-worth
         # at the repository layer so unbounded scans cannot be
         # triggered from MCP.
-        executions = await service.list_executions(def_id, limit=limit + offset)
+        executions = await service.list_executions(
+            args.workflow_id,
+            status=args.status,
+            limit=limit + offset,
+        )
         page, meta = paginate_sequence(executions, offset=offset, limit=limit)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
@@ -198,9 +156,6 @@ async def workflow_executions_get(
     return ok(data=execution.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# project + context, but WorkflowExecutionsStartArgs declares workflow_id +
-# parameters.
 async def workflow_executions_start(
     *,
     app_state: AppState,
@@ -217,17 +172,20 @@ async def workflow_executions_start(
     if service is None:
         return capability_gap(tool, _WHY_EXECUTION_SERVICE)
     try:
-        def_id, project, context_raw = _parse_start_args(arguments)
+        args = typed_args(arguments, WorkflowExecutionsStartArgs)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     activated_by = actor_id(actor) or "mcp"
+    # Deep-copy ``context`` at the handler boundary so downstream service
+    # code that scrubs / annotates / sorts the context cannot leak back
+    # into the caller-owned request state.
     try:
         execution = await service.activate(
-            def_id,
-            project=project,
+            args.workflow_id,
+            project=args.project,
             activated_by=activated_by,
-            context=context_raw,
+            context=copy.deepcopy(args.context),
         )
     except WorkflowExecutionNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)

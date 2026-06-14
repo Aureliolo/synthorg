@@ -9,12 +9,15 @@ from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.integrations.state import webhook_service_of
 from synthorg.integrations.webhooks.models import WebhookDefinition
 from synthorg.meta.mcp.domains._remaining_args import (
+    WebhooksCreateArgs,
     WebhooksDeleteArgs,
     WebhooksGetArgs,
     WebhooksListArgs,
+    WebhooksUpdateArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -36,7 +39,10 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -47,19 +53,19 @@ _ARG_DEFINITION = "definition"
 _TY_WEBHOOK_OBJ = "WebhookDefinition object"
 
 
-def _parse_webhook_definition(
-    arguments: dict[str, object],
+def _build_webhook_definition(
+    raw: dict[str, object],
     *,
     require_id: bool,
 ) -> WebhookDefinition:
-    """Return parse webhook definition.
+    """Validate a webhook ``definition`` payload into a model.
+
+    Returns:
+        ``WebhookDefinition`` instance.
 
     Raises:
         ArgumentValidationError: Raised on the corresponding failure path.
     """
-    raw = arguments.get(_ARG_DEFINITION)
-    if not isinstance(raw, dict):
-        raise ArgumentValidationError(_ARG_DEFINITION, _TY_WEBHOOK_OBJ)
     payload = dict(raw)
     if not require_id and "id" not in payload:
         payload["id"] = str(uuid4())
@@ -80,6 +86,7 @@ async def _webhooks_list(
     Returns:
         Resulting string.
     """
+    tool = "synthorg_webhooks_list"
     try:
         page = typed_args(arguments, WebhooksListArgs)
         offset, limit = page.offset, page.limit
@@ -88,14 +95,16 @@ async def _webhooks_list(
             limit=limit,
         )
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
-        return ok(dump_many(definitions), pagination=pagination)
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_webhooks_list", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_webhooks_list", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    response = ok(dump_many(definitions), pagination=pagination)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return response
 
 
 async def _webhooks_get(
@@ -109,26 +118,26 @@ async def _webhooks_get(
     Returns:
         Resulting string.
     """
+    tool = "synthorg_webhooks_get"
     try:
         webhook_id = typed_args(arguments, WebhooksGetArgs).webhook_id
         definition = await webhook_service_of(app_state).get_webhook(webhook_id)
-        if definition is None:
-            return err(
-                LookupError(f"Webhook {webhook_id} not found"),
-                domain_code="not_found",
-            )
-        return ok(definition.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_webhooks_get", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_webhooks_get", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    if definition is None:
+        missing = NotFoundError(f"Webhook {webhook_id} not found")
+        log_handler_invoke_failed(tool, missing, webhook_id=webhook_id)
+        return err(missing, domain_code="not_found")
+    response = ok(definition.model_dump(mode="json"))
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return response
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
-# `definition` dict, but WebhooksCreateArgs declares url + events.
 async def _webhooks_create(
     *,
     app_state: AppState,
@@ -143,20 +152,13 @@ async def _webhooks_create(
     tool = "synthorg_webhooks_create"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        definition = _parse_webhook_definition(arguments, require_id=False)
+        raw = typed_args(arguments, WebhooksCreateArgs).definition
+        definition = _build_webhook_definition(raw, require_id=False)
         actor_id = require_actor_id(resolved_actor)
         stored = await webhook_service_of(app_state).create_webhook(
             definition=definition,
             actor_id=actor_id,
         )
-        logger.info(
-            MCP_ADMIN_OP_EXECUTED,
-            tool_name=tool,
-            actor_agent_id=actor_id,
-            reason=reason,
-            webhook_id=stored.id,
-        )
-        return ok(stored.model_dump(mode="json"))
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
@@ -173,10 +175,18 @@ async def _webhooks_create(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    response = ok(stored.model_dump(mode="json"))
+    logger.info(
+        MCP_ADMIN_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_id,
+        reason=reason,
+        webhook_id=stored.id,
+    )
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return response
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
-# `definition` dict, but WebhooksUpdateArgs declares webhook_id + updates.
 async def _webhooks_update(
     *,
     app_state: AppState,
@@ -191,7 +201,8 @@ async def _webhooks_update(
     tool = "synthorg_webhooks_update"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        definition = _parse_webhook_definition(arguments, require_id=True)
+        raw = typed_args(arguments, WebhooksUpdateArgs).definition
+        definition = _build_webhook_definition(raw, require_id=True)
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
@@ -229,9 +240,9 @@ async def _apply_webhook_update(
             definition=definition,
             actor_id=actor_id,
         )
-    except KeyError as exc:
-        missing = LookupError(f"Webhook {definition.id} not found")
-        log_handler_invoke_failed(tool, exc)
+    except KeyError:
+        missing = NotFoundError(f"Webhook {definition.id} not found")
+        log_handler_invoke_failed(tool, missing, webhook_id=definition.id)
         return err(missing, domain_code="not_found")
     except ValueError as exc:
         log_handler_invoke_failed(tool, exc)
@@ -240,6 +251,7 @@ async def _apply_webhook_update(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    response = ok(stored.model_dump(mode="json"))
     logger.info(
         MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
@@ -247,7 +259,8 @@ async def _apply_webhook_update(
         reason=reason,
         webhook_id=stored.id,
     )
-    return ok(stored.model_dump(mode="json"))
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return response
 
 
 async def _webhooks_delete(
@@ -271,20 +284,6 @@ async def _webhooks_delete(
             actor_id=actor_id,
             reason=reason,
         )
-        if not removed:
-            return err(
-                LookupError(f"Webhook {webhook_id} not found"),
-                domain_code="not_found",
-            )
-        logger.info(
-            MCP_ADMIN_OP_EXECUTED,
-            tool_name=tool,
-            actor_agent_id=actor_id,
-            reason=reason,
-            webhook_id=webhook_id,
-            removed=removed,
-        )
-        return ok({"removed": removed})
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
@@ -295,6 +294,21 @@ async def _webhooks_delete(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    if not removed:
+        missing = NotFoundError(f"Webhook {webhook_id} not found")
+        log_handler_invoke_failed(tool, missing, webhook_id=webhook_id)
+        return err(missing, domain_code="not_found")
+    response = ok({"removed": removed})
+    logger.info(
+        MCP_ADMIN_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_id,
+        reason=reason,
+        webhook_id=webhook_id,
+        removed=removed,
+    )
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return response
 
 
 WEBHOOKS_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

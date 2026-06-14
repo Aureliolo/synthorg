@@ -65,11 +65,12 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "create",
         "Create a new agent in the organization.",
         {
-            "name": {"type": "string", "description": "Agent name"},
-            "role": {"type": "string", "description": "Agent role"},
-            "department": {"type": "string", "description": "Department name"},
+            "identity": {
+                "type": "object",
+                "description": "AgentIdentity payload",
+            },
         },
-        required=("name", "role", "department"),
+        required=("identity",),
         args_model=AgentsCreateArgs,
     ),
     write_tool(
@@ -77,10 +78,10 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "update",
         "Update an existing agent.",
         {
-            "agent_name": {"type": "string", "description": "Agent name"},
+            "agent_id": {"type": "string", "description": "Agent ID"},
             "updates": {"type": "object", "description": "Fields to update"},
         },
-        required=("agent_name", "updates"),
+        required=("agent_id", "updates"),
         args_model=AgentsUpdateArgs,
     ),
     admin_tool(
@@ -115,7 +116,10 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "agents",
         "get_history",
         "Get agent career history.",
-        _AGENT_NAME,
+        {
+            **_AGENT_NAME,
+            **PAGINATION_PROPERTIES,
+        },
         required=("agent_name",),
         args_model=AgentsGetHistoryArgs,
     ),

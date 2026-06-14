@@ -19,19 +19,20 @@ from synthorg.infrastructure.state import (
     ontology_facade_service_of,
 )
 from synthorg.meta.mcp.domains._remaining_args import (
+    ArtifactsCreateArgs,
     ArtifactsDeleteArgs,
     ArtifactsGetArgs,
     ArtifactsListArgs,
+    OntologyGetEntityArgs,
+    OntologyGetRelationshipsArgs,
     OntologySearchArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
-from synthorg.meta.mcp.handlers._integrations_helpers import _require_int
 from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _map_capability,
-    _require_str,
     _to_jsonable,
     typed_args,
 )
@@ -130,9 +131,6 @@ async def _artifacts_get(
     return ok(artifact.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# name/content_type/size_bytes/storage_ref, but ArtifactsCreateArgs declares
-# type/content/task_id.
 async def _artifacts_create(
     *,
     app_state: AppState,
@@ -146,15 +144,12 @@ async def _artifacts_create(
     """
     tool = "synthorg_artifacts_create"
     try:
-        name = _require_str(arguments, "name")
-        content_type = _require_str(arguments, "content_type")
-        size_bytes = _require_int(arguments, "size_bytes")
-        storage_ref = _require_str(arguments, "storage_ref")
+        args = typed_args(arguments, ArtifactsCreateArgs)
         artifact = await artifact_facade_service_of(app_state).create_artifact(
-            name=name,
-            content_type=content_type,
-            size_bytes=size_bytes,
-            storage_ref=storage_ref,
+            name=args.name,
+            content_type=args.content_type,
+            size_bytes=args.size_bytes,
+            storage_ref=args.storage_ref,
             actor_id=require_actor_id(actor),
         )
     except ArgumentValidationError as exc:
@@ -247,8 +242,6 @@ async def _ontology_list_entities(
     return ok([_to_jsonable(e) for e in entities])
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# `entity_id` but OntologyGetEntityArgs declares `entity_name`.
 async def _ontology_get_entity(
     *,
     app_state: AppState,
@@ -262,7 +255,7 @@ async def _ontology_get_entity(
     """
     tool = "synthorg_ontology_get_entity"
     try:
-        entity_id = _require_str(arguments, "entity_id")
+        entity_id = typed_args(arguments, OntologyGetEntityArgs).entity_id
         entity = await ontology_facade_service_of(app_state).get_entity(entity_id)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -281,8 +274,6 @@ async def _ontology_get_entity(
     return ok(_to_jsonable(entity))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# `entity_id` but OntologyGetRelationshipsArgs declares `entity_name`.
 async def _ontology_get_relationships(
     *,
     app_state: AppState,
@@ -296,7 +287,7 @@ async def _ontology_get_relationships(
     """
     tool = "synthorg_ontology_get_relationships"
     try:
-        entity_id = _require_str(arguments, "entity_id")
+        entity_id = typed_args(arguments, OntologyGetRelationshipsArgs).entity_id
         result = await ontology_facade_service_of(app_state).get_relationships(
             entity_id,
         )

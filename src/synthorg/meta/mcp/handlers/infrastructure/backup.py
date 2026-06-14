@@ -13,6 +13,7 @@ from synthorg.meta.mcp.domains._remaining_args import (
     BackupCreateArgs,
     BackupDeleteArgs,
     BackupGetArgs,
+    BackupListArgs,
     BackupRestoreArgs,
 )
 from synthorg.meta.mcp.errors import (
@@ -28,7 +29,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
     require_actor_id,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -43,7 +43,10 @@ from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _to_jsonable,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -51,8 +54,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler paginates
-# (coerce_pagination) but BackupListArgs declares no PaginationFields.
 async def _backup_list(
     *,
     app_state: AppState,
@@ -66,13 +67,13 @@ async def _backup_list(
     """
     tool = "synthorg_backup_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, BackupListArgs)
+        offset, limit = page_args.offset, page_args.limit
         page, total = await backup_facade_service_of(app_state).list_backups(
             offset=offset,
             limit=limit,
         )
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
-        return ok([_to_jsonable(b) for b in page], pagination=pagination)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -82,6 +83,8 @@ async def _backup_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok([_to_jsonable(b) for b in page], pagination=pagination)
 
 
 async def _backup_get(
@@ -110,6 +113,7 @@ async def _backup_get(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(manifest))
 
 
@@ -157,6 +161,7 @@ async def _backup_create(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(manifest))
 
 
@@ -200,6 +205,7 @@ async def _backup_delete(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 
@@ -243,6 +249,7 @@ async def _backup_restore(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(dict(result))
 
 

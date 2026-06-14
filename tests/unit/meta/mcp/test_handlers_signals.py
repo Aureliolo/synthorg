@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
@@ -27,6 +28,7 @@ from synthorg.meta.signal_models import (
     OrgTelemetrySummary,
 )
 from synthorg.meta.state import MetaStateSlice
+from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 from tests._shared import as_uuid, make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
@@ -351,15 +353,16 @@ class TestSubmitProposalGuardrails:
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_submit_proposal"]
         actor = make_test_actor()
-        response = await handler(
-            app_state=fake_app_state,
-            arguments={
-                "proposal": self._minimal_proposal(),
-                "confirm": True,
-                "reason": "ship this change",
-            },
-            actor=actor,
-        )
+        with structlog.testing.capture_logs() as events:
+            response = await handler(
+                app_state=fake_app_state,
+                arguments={
+                    "proposal": self._minimal_proposal(),
+                    "confirm": True,
+                    "reason": "ship this change",
+                },
+                actor=actor,
+            )
         payload = json.loads(response)
         assert payload["status"] == "ok"
         fake_signals_service.submit_proposal.assert_awaited_once()
@@ -367,6 +370,11 @@ class TestSubmitProposalGuardrails:
         assert call_kwargs["actor"] is actor
         assert call_kwargs["reason"] == "ship this change"
         assert call_kwargs["proposal"].title == "test"
+        assert any(
+            e.get("event") == MCP_ADMIN_OP_EXECUTED
+            and e.get("tool_name") == "synthorg_signals_submit_proposal"
+            for e in events
+        )
 
     async def test_invalid_proposal_rejected(
         self,

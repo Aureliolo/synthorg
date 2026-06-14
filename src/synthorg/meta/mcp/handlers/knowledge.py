@@ -14,27 +14,31 @@ from typing import TYPE_CHECKING
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY, wrap_untrusted
-from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.errors import KnowledgeSourceNotFoundError
 from synthorg.knowledge.models import KnowledgeHit
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.meta.mcp.domains._knowledge_args import (
+    KnowledgeDeleteArgs,
     KnowledgeGetArgs,
+    KnowledgeIngestArgs,
     KnowledgeListArgs,
+    KnowledgeReindexArgs,
     KnowledgeSearchArgs,
 )
-from synthorg.meta.mcp.errors import ArgumentValidationError
+from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
+    GuardrailViolationError,
+)
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
-from synthorg.meta.mcp.handlers.common_args import require_arg
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
+    log_handler_guardrail_violated,
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
@@ -52,15 +56,6 @@ _TOOL_LIST = "synthorg_knowledge_list"
 _TOOL_GET = "synthorg_knowledge_get"
 _TOOL_DELETE = "synthorg_knowledge_delete"
 
-_ARG_PROJECT_ID = "project_id"
-_ARG_SOURCE_TYPE = "source_type"
-_ARG_URI = "uri"
-_ARG_TITLE = "title"
-_ARG_SOURCE_ID = "source_id"
-
-_TY_SOURCE_TYPE = "source_type enum value"
-_TY_OPT_STR = "string or null"
-
 
 def _require_service(app_state: AppState) -> KnowledgeService:
     """Return the service or raise when unavailable.
@@ -73,33 +68,6 @@ def _require_service(app_state: AppState) -> KnowledgeService:
         msg = "knowledge service is not wired on app_state in this deployment"
         raise ServiceUnavailableError(msg)
     return svc
-
-
-def _opt_project_id(arguments: dict[str, object]) -> NotBlankStr | None:
-    """Return opt project id.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(_ARG_PROJECT_ID)
-    if raw is None:
-        return None
-    if not isinstance(raw, str) or not raw.strip():
-        raise ArgumentValidationError(_ARG_PROJECT_ID, _TY_OPT_STR)
-    return NotBlankStr(raw)
-
-
-def _source_type(arguments: dict[str, object]) -> SourceType:
-    """Return source type.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = require_arg(arguments, _ARG_SOURCE_TYPE, str)
-    try:
-        return SourceType(raw)
-    except ValueError as exc:
-        raise ArgumentValidationError(_ARG_SOURCE_TYPE, _TY_SOURCE_TYPE) from exc
 
 
 def _hit_dict(hit: KnowledgeHit) -> dict[str, object]:
@@ -141,12 +109,6 @@ async def _knowledge_search(
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: knowledge:ingest is
-# admin-gated (reads confirm/reason via require_admin_guardrails) but
-# KnowledgeIngestArgs (extra="forbid") declares no AdminGuardrailFields, so
-# typed_args rejects the guardrail keys; the schema also omits source_type/uri/title
-# guardrail fields. Needs a batched contract decision (add AdminGuardrailFields +
-# schema guardrails, or de-admin the tool).
 async def _knowledge_ingest(
     *,
     app_state: AppState,
@@ -157,18 +119,18 @@ async def _knowledge_ingest(
     try:
         require_admin_guardrails(arguments, actor)
         svc = _require_service(app_state)
-        project_id = _opt_project_id(arguments)
-        source_type = _source_type(arguments)
-        uri = NotBlankStr(require_arg(arguments, _ARG_URI, str))
-        title = NotBlankStr(require_arg(arguments, _ARG_TITLE, str))
+        args = typed_args(arguments, KnowledgeIngestArgs)
         source = await svc.ingest(
-            source_type=source_type,
-            uri=uri,
-            title=title,
-            project_id=project_id,
+            source_type=args.source_type,
+            uri=args.uri,
+            title=args.title,
+            project_id=args.project_id,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_INGEST)
         return ok(source.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(_TOOL_INGEST, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_INGEST, exc)
         return err(exc)
@@ -178,10 +140,6 @@ async def _knowledge_ingest(
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: knowledge:reindex is
-# admin-gated (reads confirm/reason via require_admin_guardrails) but
-# KnowledgeReindexArgs (extra="forbid") declares no AdminGuardrailFields, so
-# typed_args rejects the guardrail keys. Needs a batched contract decision.
 async def _knowledge_reindex(
     *,
     app_state: AppState,
@@ -192,10 +150,13 @@ async def _knowledge_reindex(
     try:
         require_admin_guardrails(arguments, actor)
         svc = _require_service(app_state)
-        source_id = NotBlankStr(require_arg(arguments, _ARG_SOURCE_ID, str))
+        source_id = typed_args(arguments, KnowledgeReindexArgs).source_id
         source = await svc.reindex(source_id)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_REINDEX)
         return ok(source.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(_TOOL_REINDEX, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_REINDEX, exc)
         return err(exc)
@@ -261,10 +222,6 @@ async def _knowledge_get(
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: knowledge:delete is
-# admin-gated (reads confirm/reason via require_admin_guardrails) but
-# KnowledgeDeleteArgs (extra="forbid") declares no AdminGuardrailFields, so
-# typed_args rejects the guardrail keys. Needs a batched contract decision.
 async def _knowledge_delete(
     *,
     app_state: AppState,
@@ -275,10 +232,13 @@ async def _knowledge_delete(
     try:
         require_admin_guardrails(arguments, actor)
         svc = _require_service(app_state)
-        source_id = NotBlankStr(require_arg(arguments, _ARG_SOURCE_ID, str))
+        source_id = typed_args(arguments, KnowledgeDeleteArgs).source_id
         deleted = await svc.delete_source(source_id)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_DELETE)
         return ok({"source_id": source_id, "deleted": deleted})
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(_TOOL_DELETE, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_DELETE, exc)
         return err(exc)

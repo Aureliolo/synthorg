@@ -34,9 +34,9 @@ QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
         "get_agent_quality",
         "Get quality metrics for a specific agent.",
         {
-            "agent_name": {"type": "string", "description": "Agent name"},
+            "agent_id": {"type": "string", "description": "Agent ID"},
         },
-        required=("agent_name",),
+        required=("agent_id",),
         args_model=QualityGetAgentQualityArgs,
     ),
     read_tool(
@@ -44,7 +44,7 @@ QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
         "list_scores",
         "List quality score records.",
         {
-            "agent_name": {"type": "string", "description": "Filter by agent"},
+            "agent_id": {"type": "string", "description": "Filter by agent"},
             **PAGINATION_PROPERTIES,
         },
         args_model=QualityListScoresArgs,
@@ -77,15 +77,10 @@ QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
         "Create a task review.",
         {
             "task_id": {"type": "string", "description": "Task being reviewed"},
-            "score": {
-                "type": "number",
-                "description": "Review score (0-1)",
-                "minimum": 0,
-                "maximum": 1,
-            },
-            "feedback": {"type": "string", "description": "Review feedback"},
+            "verdict": {"type": "string", "description": "Review verdict"},
+            "comments": {"type": "string", "description": "Review comments"},
         },
-        required=("task_id", "score"),
+        required=("task_id", "verdict"),
         args_model=ReviewsCreateArgs,
     ),
     write_tool(
@@ -94,9 +89,10 @@ QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
         "Update a review.",
         {
             "review_id": {"type": "string", "description": "Review UUID"},
-            "updates": {"type": "object", "description": "Fields to update"},
+            "verdict": {"type": "string", "description": "Updated verdict"},
+            "comments": {"type": "string", "description": "Updated comments"},
         },
-        required=("review_id", "updates"),
+        required=("review_id",),
         args_model=ReviewsUpdateArgs,
     ),
     # --- Evaluation config versions ---
@@ -112,13 +108,9 @@ QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
         "get",
         "Get a specific evaluation config version.",
         {
-            "version_num": {
-                "type": "integer",
-                "description": "Version number",
-                "minimum": 1,
-            },
+            "version_id": {"type": "string", "description": "Evaluation version ID"},
         },
-        required=("version_num",),
+        required=("version_id",),
         args_model=EvaluationVersionsGetArgs,
     ),
 )

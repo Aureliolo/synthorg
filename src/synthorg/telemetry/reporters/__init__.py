@@ -73,7 +73,7 @@ def create_reporter(config: TelemetryConfig) -> TelemetryReporter:
             # operator-facing ``TELEMETRY_TOKEN_MISSING`` ERROR. Logging
             # here too would emit two startup records for a single
             # missing-token condition and break the "exactly one
-            # startup signal" contract this PR is enforcing.
+            # startup signal" contract.
             return NoopReporter()
 
         try:

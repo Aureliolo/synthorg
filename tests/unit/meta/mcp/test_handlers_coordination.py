@@ -15,6 +15,7 @@ the broader integration sweep.
 """
 
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -242,6 +243,40 @@ class TestMetricsList:
             "limit": 3,
         }
 
+    async def test_filters_forwarded_to_service(
+        self,
+        actor: AgentIdentity,
+    ) -> None:
+        service = AsyncMock()
+        service.list_metrics.return_value = ((), 0)
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"coordination_service": service}},
+        )
+        handler = COORDINATION_HANDLERS["synthorg_coordination_metrics_list"]
+
+        raw = await handler(
+            app_state=state,
+            arguments={
+                "task_id": "t-9",
+                "agent_id": "a-7",
+                "since": "2026-01-01T00:00:00+00:00",
+                "until": "2026-02-01T00:00:00+00:00",
+                "offset": 2,
+                "limit": 5,
+            },
+            actor=actor,
+        )
+
+        body = _parse(raw)
+        assert body["status"] == "ok"
+        call = service.list_metrics.await_args
+        assert call.kwargs["task_id"] == "t-9"
+        assert call.kwargs["agent_id"] == "a-7"
+        assert call.kwargs["since"] == datetime(2026, 1, 1, tzinfo=UTC)
+        assert call.kwargs["until"] == datetime(2026, 2, 1, tzinfo=UTC)
+        assert call.kwargs["offset"] == 2
+        assert call.kwargs["limit"] == 5
+
     async def test_service_raises_maps_to_err(
         self,
         actor: AgentIdentity,
@@ -382,12 +417,12 @@ class TestScalingTrigger:
         assert body["data"] == [{"id": "d-new"}]
 
     @pytest.mark.parametrize(
-        ("arguments", "expected_match"),
+        "arguments",
         [
-            ({}, "list of non-blank strings"),
-            ({"agent_ids": "not-a-list"}, "list of non-blank strings"),
-            ({"agent_ids": []}, "non-empty list"),
-            ({"agent_ids": ["", "valid"]}, "non-blank string"),
+            {},
+            {"agent_ids": "not-a-list"},
+            {"agent_ids": []},
+            {"agent_ids": ["", "valid"]},
         ],
         ids=[
             "missing_agent_ids",
@@ -400,7 +435,6 @@ class TestScalingTrigger:
         self,
         actor: AgentIdentity,
         arguments: JsonDict,
-        expected_match: str,
     ) -> None:
         state = make_app_state(
             slices={HrStateSlice: {"scaling_decision_service": AsyncMock()}},
@@ -416,7 +450,7 @@ class TestScalingTrigger:
         body = _parse(raw)
         assert body["status"] == "error"
         assert body["domain_code"] == "invalid_argument"
-        assert expected_match in body.get("message", "")
+        assert "ScalingTriggerArgs" in body.get("message", "")
 
 
 # ── Ceremony policy ──────────────────────────────────────────────
@@ -500,10 +534,10 @@ class TestCeremonyPolicyGetResolved:
 
     @pytest.mark.parametrize(
         "bad_value",
-        [None, "", "   "],
-        ids=["null", "empty_string", "whitespace"],
+        ["", "   "],
+        ids=["empty_string", "whitespace"],
     )
-    async def test_rejects_null_or_blank_department(
+    async def test_rejects_blank_department(
         self,
         actor: AgentIdentity,
         bad_value: object,
@@ -524,6 +558,28 @@ class TestCeremonyPolicyGetResolved:
         assert body["status"] == "error"
         assert body["domain_code"] == "invalid_argument"
         service.get_resolved_policy.assert_not_awaited()
+
+    async def test_null_department_treated_as_no_filter(
+        self,
+        actor: AgentIdentity,
+    ) -> None:
+        resolved = SimpleNamespace(model_dump=lambda mode="json": {"strategy": "x"})
+        service = AsyncMock()
+        service.get_resolved_policy.return_value = resolved
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
+        )
+        handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get_resolved"]
+
+        raw = await handler(
+            app_state=state,
+            arguments={"department": None},
+            actor=actor,
+        )
+
+        body = _parse(raw)
+        assert body["status"] == "ok"
+        service.get_resolved_policy.assert_awaited_once_with(department=None)
 
     async def test_service_raises_not_found_propagates(
         self,

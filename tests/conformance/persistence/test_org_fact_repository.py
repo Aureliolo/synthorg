@@ -1,11 +1,9 @@
 """Conformance tests for ``OrgFactRepository``.
 
 Covers the MVCC publish/retract model plus the append-only operation
-log against both SQLite and Postgres.  Replaces the
-``tests/unit/memory/org/test_store.py`` file deleted during issue
-#1457's consolidation -- that file exercised the SQLite-only store
-directly; this one runs the same behaviour against every backend
-behind the shared ``backend`` fixture.
+log against both SQLite and Postgres.  Runs the org-fact store behaviour
+against every backend behind the shared ``backend`` fixture (the prior
+SQLite-only store test exercised a single backend directly).
 """
 
 from datetime import UTC, datetime, timedelta

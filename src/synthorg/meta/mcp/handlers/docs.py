@@ -6,18 +6,13 @@ write handler is admin-gated at the registry layer (``docs:write`` uses
 ``docs:search``, ``docs:history``) need only the standard read scope.
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.types import NotBlankStr
-from synthorg.docs_engine.constants import (
-    DOCS_LIST_DEFAULT_LIMIT,
-)
-from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.errors import (
     DocCommitError,
     DocIndexError,
@@ -28,26 +23,27 @@ from synthorg.docs_engine.service import DocsService
 from synthorg.docs_engine.state import DocsStateSlice
 from synthorg.meta.mcp.domains._docs_args import (
     DocsHistoryArgs,
+    DocsListArgs,
     DocsReadArgs,
     DocsSearchArgs,
+    DocsWriteArgs,
 )
-from synthorg.meta.mcp.errors import ArgumentValidationError
+from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
+    GuardrailViolationError,
+)
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
-from synthorg.meta.mcp.handlers.common_args import require_arg
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
+    log_handler_guardrail_violated,
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
-from synthorg.tools.docs._args import (
-    WriteLivingDocBlockArg,
-    parse_block_arg,
-)
 from synthorg.tools.docs.write_living_doc import _materialise_body
 
 if TYPE_CHECKING:
@@ -60,25 +56,6 @@ _TOOL_DOCS_GET = "synthorg_docs_get"
 _TOOL_DOCS_LIST = "synthorg_docs_list"
 _TOOL_DOCS_SEARCH = "synthorg_docs_search"
 _TOOL_DOCS_HISTORY = "synthorg_docs_history"
-
-_ARG_PROJECT_ID = "project_id"
-_ARG_SLUG = "slug"
-_ARG_TITLE = "title"
-_ARG_DOC_TYPE = "doc_type"
-_ARG_AUTHOR = "author_agent_id"
-_ARG_BODY = "body"
-_ARG_TAGS = "tags"
-_ARG_TAG = "tag"
-_ARG_RELATED = "related_task_ids"
-_ARG_LIMIT = "limit"
-_ARG_OFFSET = "offset"
-
-_TY_DOC_TYPE = "doc_type enum value"
-_TY_STR_SEQ = "sequence of strings"
-_TY_BLOCK_LIST = "non-empty list of block dicts"
-_TY_POS_INT = "positive int"
-_TY_NONNEG_INT = "non-negative int"
-_TY_OPT_STR = "string or null"
 
 
 def _require_docs_service(app_state: AppState) -> DocsService:
@@ -94,145 +71,6 @@ def _require_docs_service(app_state: AppState) -> DocsService:
     return svc
 
 
-def _parse_doc_type(arguments: dict[str, object], key: str) -> DocType:
-    """Return parse doc type.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = require_arg(arguments, key, str)
-    try:
-        return DocType(raw)
-    except ValueError as exc:
-        raise ArgumentValidationError(key, _TY_DOC_TYPE) from exc
-
-
-def _parse_str_tuple(arguments: dict[str, object], key: str) -> tuple[NotBlankStr, ...]:
-    """Return parse str tuple.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key, ())
-    if isinstance(raw, str):
-        raise ArgumentValidationError(key, _TY_STR_SEQ)
-    try:
-        items = tuple(cast("Iterable[object]", raw))
-    except TypeError as exc:
-        raise ArgumentValidationError(key, _TY_STR_SEQ) from exc
-    out: list[NotBlankStr] = []
-    for item in items:
-        if not isinstance(item, str) or not item.strip():
-            raise ArgumentValidationError(key, _TY_STR_SEQ)
-        out.append(NotBlankStr(item))
-    return tuple(out)
-
-
-def _parse_block_list(
-    arguments: dict[str, object],
-) -> tuple[WriteLivingDocBlockArg, ...]:
-    """Return parse block list.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(_ARG_BODY)
-    if not isinstance(raw, (list, tuple)) or len(raw) == 0:
-        raise ArgumentValidationError(_ARG_BODY, _TY_BLOCK_LIST)
-    parsed: list[WriteLivingDocBlockArg] = []
-    for block in raw:
-        if not isinstance(block, dict):
-            raise ArgumentValidationError(_ARG_BODY, _TY_BLOCK_LIST)
-        try:
-            parsed.append(parse_block_arg(block))
-        except ValueError as exc:
-            raise ArgumentValidationError(_ARG_BODY, _TY_BLOCK_LIST) from exc
-    return tuple(parsed)
-
-
-def _parse_opt_doc_type(arguments: dict[str, object], key: str) -> DocType | None:
-    """Return parse opt doc type.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key)
-    if raw is None or raw == "":
-        return None
-    if not isinstance(raw, str):
-        raise ArgumentValidationError(key, _TY_DOC_TYPE)
-    try:
-        return DocType(raw)
-    except ValueError as exc:
-        raise ArgumentValidationError(key, _TY_DOC_TYPE) from exc
-
-
-def _parse_positive_int(
-    arguments: dict[str, object],
-    key: str,
-    *,
-    default: int,
-) -> int:
-    """Return parse positive int.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key)
-    if raw in (None, ""):
-        return default
-    if not isinstance(raw, int) or isinstance(raw, bool) or raw < 1:
-        raise ArgumentValidationError(key, _TY_POS_INT)
-    return raw
-
-
-def _parse_nonneg_int(
-    arguments: dict[str, object],
-    key: str,
-    *,
-    default: int,
-) -> int:
-    """Return parse nonneg int.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key)
-    if raw in (None, ""):
-        return default
-    if not isinstance(raw, int) or isinstance(raw, bool) or raw < 0:
-        raise ArgumentValidationError(key, _TY_NONNEG_INT)
-    return raw
-
-
-def _parse_opt_nonblank_str(
-    arguments: dict[str, object],
-    key: str,
-) -> NotBlankStr | None:
-    """Return a ``NotBlankStr`` for *key*, or ``None`` for null / blank.
-
-    A present-but-non-string value is a caller bug, so it raises
-    ``ArgumentValidationError`` rather than being silently coerced to ``None``.
-
-    Returns:
-        The ``NotBlankStr`` value when present, ``None`` otherwise.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key)
-    if raw is None:
-        return None
-    if not isinstance(raw, str):
-        raise ArgumentValidationError(key, _TY_OPT_STR)
-    if not raw.strip():
-        return None
-    return NotBlankStr(raw)
-
-
-# lint-allow: handler-arguments-get -- cataloged mismatch: docs:write is admin-gated
-# (reads confirm/reason via require_admin_guardrails) but DocsWriteArgs (extra="forbid")
-# declares no AdminGuardrailFields, so typed_args rejects the guardrail keys.
 async def _docs_write(
     *,
     app_state: AppState,
@@ -243,27 +81,23 @@ async def _docs_write(
     try:
         require_admin_guardrails(arguments, actor)
         svc = _require_docs_service(app_state)
-        project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
-        title = NotBlankStr(require_arg(arguments, _ARG_TITLE, str))
-        doc_type = _parse_doc_type(arguments, _ARG_DOC_TYPE)
-        author = NotBlankStr(require_arg(arguments, _ARG_AUTHOR, str))
-        block_args = _parse_block_list(arguments)
-        body = _materialise_body(block_args)
-        tags = _parse_str_tuple(arguments, _ARG_TAGS)
-        related = _parse_str_tuple(arguments, _ARG_RELATED)
-        slug = _parse_opt_nonblank_str(arguments, _ARG_SLUG)
+        args = typed_args(arguments, DocsWriteArgs)
+        body = _materialise_body(args.body)
         metadata = await svc.write_doc(
-            project_id=project_id,
-            title=title,
-            doc_type=doc_type,
-            author_agent_id=author,
+            project_id=args.project_id,
+            title=args.title,
+            doc_type=args.doc_type,
+            author_agent_id=args.author_agent_id,
             body=body,
-            tags=tags,
-            related_task_ids=related,
-            slug=slug,
+            tags=args.tags,
+            related_task_ids=args.related_task_ids,
+            slug=args.slug,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_DOCS_WRITE)
         return ok(metadata.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(_TOOL_DOCS_WRITE, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_DOCS_WRITE, exc)
         return err(exc)
@@ -305,8 +139,6 @@ async def _docs_get(
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler defaults limit
-# to DOCS_LIST_DEFAULT_LIMIT (100) but DocsListArgs declares limit default 50.
 async def _docs_list(
     *,
     app_state: AppState,
@@ -316,19 +148,13 @@ async def _docs_list(
     """Return docs list."""
     try:
         svc = _require_docs_service(app_state)
-        project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
-        doc_type = _parse_opt_doc_type(arguments, _ARG_DOC_TYPE)
-        tag = _parse_opt_nonblank_str(arguments, _ARG_TAG)
-        limit = _parse_positive_int(
-            arguments, _ARG_LIMIT, default=DOCS_LIST_DEFAULT_LIMIT
-        )
-        offset = _parse_nonneg_int(arguments, _ARG_OFFSET, default=0)
+        args = typed_args(arguments, DocsListArgs)
         summaries = await svc.list_docs(
-            project_id=project_id,
-            doc_type=doc_type,
-            tag=tag,
-            limit=limit,
-            offset=offset,
+            project_id=args.project_id,
+            doc_type=args.doc_type,
+            tag=args.tag,
+            limit=args.limit,
+            offset=args.offset,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_DOCS_LIST)
         return ok([s.model_dump(mode="json") for s in summaries])

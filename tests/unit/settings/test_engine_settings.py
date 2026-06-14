@@ -48,8 +48,8 @@ class TestEngineSettingDefinitions:
 
         Uses set containment (``>=``) rather than an exact count so the test
         remains green when unrelated engine settings are added in future
-        work.  The three keys below are the contract for this PR and must
-        always be present.
+        work.  The three keys below are part of the engine settings
+        contract and must always be present.
         """
         registry = get_registry()
         engine_keys = {

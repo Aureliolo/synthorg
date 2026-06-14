@@ -8,6 +8,7 @@ Covers ``workflows`` / ``subworkflows`` / ``workflow_executions`` /
 from pydantic import Field
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.enums import WorkflowExecutionStatus
 from synthorg.meta.mcp.domains._common_args import (
     AdminGuardrailFields,
     PaginationFields,
@@ -30,17 +31,17 @@ class WorkflowsGetArgs(_ArgsBase):
 class WorkflowsCreateArgs(_ArgsBase):
     """Args for ``workflows.create``."""
 
-    name: NotBlankStr = Field(description="Workflow name")
-    steps: tuple[dict[str, object], ...] = Field(
-        description="Workflow step definitions",
+    definition: dict[str, object] = Field(
+        description="WorkflowDefinition payload",
     )
 
 
 class WorkflowsUpdateArgs(_ArgsBase):
     """Args for ``workflows.update``."""
 
-    workflow_id: NotBlankStr = Field(description="Workflow UUID")
-    updates: dict[str, object] = Field(description="Fields to update")
+    definition: dict[str, object] = Field(
+        description="WorkflowDefinition payload (including id)",
+    )
 
 
 class WorkflowsDeleteArgs(AdminGuardrailFields):
@@ -52,7 +53,9 @@ class WorkflowsDeleteArgs(AdminGuardrailFields):
 class WorkflowsValidateArgs(_ArgsBase):
     """Args for ``workflows.validate``."""
 
-    workflow_id: NotBlankStr = Field(description="Workflow UUID")
+    definition: dict[str, object] = Field(
+        description="WorkflowDefinition payload to validate",
+    )
 
 
 # ── Subworkflows ────────────────────────────────────────────────────
@@ -61,23 +64,27 @@ class WorkflowsValidateArgs(_ArgsBase):
 class SubworkflowsListArgs(PaginationFields):
     """Args for ``subworkflows.list``."""
 
-    workflow_id: NotBlankStr = Field(description="Parent workflow UUID")
+    query: NotBlankStr | None = Field(
+        default=None,
+        description="Free-text search filter",
+    )
 
 
 class SubworkflowsGetArgs(_ArgsBase):
     """Args for ``subworkflows.get``."""
 
     subworkflow_id: NotBlankStr = Field(description="Subworkflow UUID")
+    version: NotBlankStr | None = Field(
+        default=None,
+        description="Optional version label",
+    )
 
 
 class SubworkflowsCreateArgs(_ArgsBase):
     """Args for ``subworkflows.create``."""
 
-    workflow_id: NotBlankStr = Field(description="Parent workflow UUID")
-    name: NotBlankStr = Field(description="Subworkflow name")
-    steps: tuple[dict[str, object], ...] = Field(
-        default=(),
-        description="Step definitions",
+    definition: dict[str, object] = Field(
+        description="WorkflowDefinition payload",
     )
 
 
@@ -85,6 +92,7 @@ class SubworkflowsDeleteArgs(AdminGuardrailFields):
     """Args for ``subworkflows.delete`` (destructive)."""
 
     subworkflow_id: NotBlankStr = Field(description="Subworkflow UUID")
+    version: NotBlankStr = Field(description="Version label to delete")
 
 
 # ── Workflow executions ────────────────────────────────────────────
@@ -97,7 +105,7 @@ class WorkflowExecutionsListArgs(PaginationFields):
         default=None,
         description="Filter by workflow",
     )
-    status: NotBlankStr | None = Field(
+    status: WorkflowExecutionStatus | None = Field(
         default=None,
         description="Filter by execution status",
     )
@@ -113,9 +121,13 @@ class WorkflowExecutionsStartArgs(_ArgsBase):
     """Args for ``workflow_executions.start``."""
 
     workflow_id: NotBlankStr = Field(description="Workflow to execute")
-    parameters: dict[str, object] = Field(
+    project: NotBlankStr = Field(
+        default=NotBlankStr("default"),
+        description="Target project",
+    )
+    context: dict[str, object] = Field(
         default_factory=dict,
-        description="Execution parameters",
+        description="Execution context",
     )
 
 
@@ -138,7 +150,7 @@ class WorkflowVersionsGetArgs(_ArgsBase):
     """Args for ``workflow_versions.get``."""
 
     workflow_id: NotBlankStr = Field(description="Workflow UUID")
-    version_num: int = Field(ge=1, description="Version number")
+    revision: int = Field(ge=1, description="Revision number")
 
 
 # ── Company ─────────────────────────────────────────────────────────
@@ -151,7 +163,7 @@ class CompanyGetArgs(_ArgsBase):
 class CompanyUpdateArgs(_ArgsBase):
     """Args for ``company.update``."""
 
-    updates: dict[str, object] = Field(description="Fields to update")
+    payload: dict[str, object] = Field(description="Company-record patch payload")
 
 
 class CompanyListDepartmentsArgs(_ArgsBase):
@@ -161,7 +173,10 @@ class CompanyListDepartmentsArgs(_ArgsBase):
 class CompanyReorderDepartmentsArgs(_ArgsBase):
     """Args for ``company.reorder_departments``."""
 
-    order: tuple[NotBlankStr, ...] = Field(description="Department names in order")
+    department_ids: tuple[NotBlankStr, ...] = Field(
+        min_length=1,
+        description="Department IDs in display order",
+    )
 
 
 # ── Company versions ───────────────────────────────────────────────
@@ -174,7 +189,7 @@ class CompanyVersionsListArgs(PaginationFields):
 class CompanyVersionsGetArgs(_ArgsBase):
     """Args for ``company_versions.get``."""
 
-    version_num: int = Field(ge=1, description="Version number")
+    version_id: NotBlankStr = Field(description="Company version ID")
 
 
 # ── Departments ────────────────────────────────────────────────────
@@ -190,33 +205,37 @@ class _DepartmentNameArgs(_ArgsBase):
     name: NotBlankStr = Field(description="Department name")
 
 
-class DepartmentsGetArgs(_DepartmentNameArgs):
+class _DepartmentIdArgs(_ArgsBase):
+    """Mixin for tools keyed by department UUID ``department_id``."""
+
+    department_id: NotBlankStr = Field(description="Department ID")
+
+
+class DepartmentsGetArgs(_DepartmentIdArgs):
     """Args for ``departments.get``."""
 
 
 class DepartmentsCreateArgs(_DepartmentNameArgs):
     """Args for ``departments.create``."""
 
-    description: str = Field(default="", description="Department description")
+    description: NotBlankStr = Field(description="Department description")
 
 
-class DepartmentsUpdateArgs(_DepartmentNameArgs):
+class DepartmentsUpdateArgs(_DepartmentIdArgs):
     """Args for ``departments.update``."""
 
-    updates: dict[str, object] = Field(description="Fields to update")
+    name: NotBlankStr | None = Field(default=None, description="New name")
+    description: NotBlankStr | None = Field(
+        default=None,
+        description="New description",
+    )
 
 
-class DepartmentsDeleteArgs(_DepartmentNameArgs):
-    """Args for ``departments.delete``.
-
-    The legacy schema didn't include destructive guardrails on this
-    endpoint; we mirror that to avoid changing the wire contract.
-    Operators that want guardrails should call the higher-level
-    ``admin_tool`` flow instead.
-    """
+class DepartmentsDeleteArgs(_DepartmentIdArgs, AdminGuardrailFields):
+    """Args for ``departments.delete`` (destructive admin op)."""
 
 
-class DepartmentsGetHealthArgs(_DepartmentNameArgs):
+class DepartmentsGetHealthArgs(_DepartmentIdArgs):
     """Args for ``departments.get_health``."""
 
 
@@ -237,26 +256,25 @@ class TeamsCreateArgs(_ArgsBase):
     """Args for ``teams.create``."""
 
     name: NotBlankStr = Field(description="Team name")
-    department: NotBlankStr = Field(description="Parent department")
+    department_id: NotBlankStr | None = Field(
+        default=None,
+        description="Parent department ID",
+    )
 
 
 class TeamsUpdateArgs(_ArgsBase):
     """Args for ``teams.update``."""
 
     team_id: NotBlankStr = Field(description="Team UUID")
-    updates: dict[str, object] = Field(description="Fields to update")
+    name: NotBlankStr | None = Field(default=None, description="New name")
+    department_id: NotBlankStr | None = Field(
+        default=None,
+        description="New parent department ID",
+    )
 
 
-class TeamsDeleteArgs(_ArgsBase):
-    """Args for ``teams.delete``.
-
-    Mirrors :class:`DepartmentsDeleteArgs`: this endpoint is registered
-    via ``write_tool`` (not ``admin_tool``) in ``organization.py`` so
-    team deletion follows the same destructive-non-admin contract as
-    department deletion (no ``AdminGuardrailFields``). See
-    ``docs/reference/mcp-handler-contract.md`` for the capability tier
-    semantics.
-    """
+class TeamsDeleteArgs(AdminGuardrailFields):
+    """Args for ``teams.delete`` (destructive admin op)."""
 
     team_id: NotBlankStr = Field(description="Team UUID")
 
@@ -267,14 +285,16 @@ class TeamsDeleteArgs(_ArgsBase):
 class RoleVersionsListArgs(PaginationFields):
     """Args for ``role_versions.list``."""
 
-    role_name: NotBlankStr = Field(description="Role name")
+    role_name: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by role name",
+    )
 
 
 class RoleVersionsGetArgs(_ArgsBase):
     """Args for ``role_versions.get``."""
 
-    role_name: NotBlankStr = Field(description="Role name")
-    version_num: int = Field(ge=1, description="Version number")
+    version_id: NotBlankStr = Field(description="Role version ID")
 
 
 __all__ = [

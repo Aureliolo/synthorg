@@ -6,8 +6,8 @@ JetStream container (testcontainers), reusing the pattern from
 exercise the JetStream timing/state behaviours a fake queue cannot
 model: real ``ack_wait`` redelivery under long execution, real
 ``max_deliver`` termination, and real multi-consumer work-queue
-distribution. This is the proof for the #1966 acceptance criterion
-("multi-worker run under synthetic load, NO loss or duplication").
+distribution. This is the proof for the distributed-path acceptance
+criterion ("multi-worker run under synthetic load, NO loss or duplication").
 
 Short ``QueueConfig`` timings keep each test to a few seconds; the
 shipped defaults (300 / 3 / 30) would make these hang.

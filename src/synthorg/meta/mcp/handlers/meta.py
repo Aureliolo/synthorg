@@ -1,6 +1,6 @@
 """Meta (self-improvement) domain MCP handlers.
 
-5 tools, all live as of META-MCP-3:
+Six tools:
 
 - ``list_mcp_tools`` reflects the tool registry.
 - ``get_mcp_server_config`` returns the MCP server metadata.
@@ -9,6 +9,8 @@
   with secrets redacted.
 - ``trigger_cycle`` runs an improvement cycle in-process and returns
   the produced proposals.
+- ``query_feature_map`` returns the discovered :class:`FeatureIndex`,
+  optionally filtered to a single feature by ``name``.
 
 The two new live handlers fall back to ``capability_gap`` only when
 ``self_improvement_service`` is not wired on AppState, matching the
@@ -16,7 +18,6 @@ optional-service pattern other handlers (activity feed, agent health,
 etc.) already use.
 """
 
-import copy
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -29,7 +30,10 @@ if TYPE_CHECKING:
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.errors import SelfImprovementTriggerError
-from synthorg.meta.mcp.domains._simple_args import MetaQueryFeatureMapArgs
+from synthorg.meta.mcp.domains._simple_args import (
+    MetaListRulesArgs,
+    MetaQueryFeatureMapArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -45,7 +49,7 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
     require_admin_guardrails,
 )
-from synthorg.meta.mcp.handlers.common_args import actor_id, coerce_pagination
+from synthorg.meta.mcp.handlers.common_args import actor_id
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
@@ -122,8 +126,6 @@ async def _meta_get_config(
     return ok(data=config_dump)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler paginates
-# (coerce_pagination) but MetaListRulesArgs declares no PaginationFields.
 async def _meta_list_rules(
     *,
     app_state: AppState,
@@ -137,7 +139,8 @@ async def _meta_list_rules(
     """
     tool = "synthorg_meta_list_rules"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, MetaListRulesArgs)
+        offset, limit = page_args.offset, page_args.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -212,9 +215,6 @@ async def _meta_get_mcp_server_config(
     return response
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: admin op reading
-# require_admin_guardrails (confirm/reason) but MetaTriggerCycleArgs declares
-# no AdminGuardrailFields.
 async def _meta_trigger_cycle(
     *,
     app_state: AppState,
@@ -314,14 +314,12 @@ async def _meta_query_feature_map(
 
 
 META_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_meta_get_config": _meta_get_config,
-            "synthorg_meta_list_rules": _meta_list_rules,
-            "synthorg_meta_list_mcp_tools": _meta_list_mcp_tools,
-            "synthorg_meta_get_mcp_server_config": _meta_get_mcp_server_config,
-            "synthorg_meta_trigger_cycle": _meta_trigger_cycle,
-            "synthorg_meta_query_feature_map": _meta_query_feature_map,
-        },
-    ),
+    {
+        "synthorg_meta_get_config": _meta_get_config,
+        "synthorg_meta_list_rules": _meta_list_rules,
+        "synthorg_meta_list_mcp_tools": _meta_list_mcp_tools,
+        "synthorg_meta_get_mcp_server_config": _meta_get_mcp_server_config,
+        "synthorg_meta_trigger_cycle": _meta_trigger_cycle,
+        "synthorg_meta_query_feature_map": _meta_query_feature_map,
+    },
 )

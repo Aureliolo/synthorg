@@ -38,9 +38,9 @@ class TestFreshInstallPostgresLifecycle:
     ) -> None:
         """Every auth store must instantiate against AsyncConnectionPool.
 
-        Before #1443, ``LockoutStore`` and ``RefreshStore`` were hardcoded
-        to ``aiosqlite.Connection`` and crashed at construction when
-        ``PersistenceBackend.get_db()`` returned the Postgres pool.  The
+        ``LockoutStore`` and ``RefreshStore`` must not hardcode
+        ``aiosqlite.Connection`` (which crashes at construction when
+        ``PersistenceBackend.get_db()`` returns the Postgres pool).  The
         dispatchers in ``synthorg.api.lifecycle`` now pick the concrete
         ``Postgres*`` variant via type dispatch; this test proves the
         happy path end-to-end.
@@ -102,9 +102,9 @@ class TestFreshInstallPostgresLifecycle:
         self,
         postgres_backend: PostgresPersistenceBackend,
     ) -> None:
-        """approvals and custom_rules existed only in SQLite before #1443.
+        """approvals and custom_rules must exist on Postgres too.
 
-        The new Postgres migration adds them with translated types.  This
+        The Postgres migration adds them with translated types.  This
         test confirms both tables are present after a fresh migration so
         controllers that query them do not 42P01 on first boot.
         """

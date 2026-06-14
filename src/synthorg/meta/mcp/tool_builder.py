@@ -27,7 +27,7 @@ PAGINATION_PROPERTIES: dict[str, JsonValue] = {
         "description": "Page size",
         "default": 50,
         "minimum": 1,
-        "maximum": 1000,
+        "maximum": 500,
     },
 }
 """Shared pagination schema with bounds for all domain list tools."""

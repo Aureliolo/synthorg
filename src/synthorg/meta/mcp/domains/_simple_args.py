@@ -23,6 +23,7 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
+from synthorg.approval.enums import ApprovalStatus as ApprovalStatusEnum
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.domains._common_args import (
     AdminGuardrailFields,
@@ -33,13 +34,16 @@ from synthorg.meta.mcp.domains._common_args import (
 
 
 def _check_time_window_ordering(since: str | None, until: str | None) -> None:
-    """Reject ``since > until`` on time-window filter args.
+    """Reject ``since >= until`` on time-window filter args.
 
     Used by ``MetricsGetHistoryArgs`` and ``CoordinationMetricsListArgs``
     where both ``since`` and ``until`` are optional ``IsoDatetimeStr``
-    values (already validated as timezone-aware ISO 8601).  Returns
-    ``None`` on success; callers should ``return self`` after invoking
-    this helper from their ``model_validator(mode="after")``.
+    values (already validated as timezone-aware ISO 8601).  Rejects a
+    zero-width or reversed window so the model boundary matches the
+    handler-side :func:`resolve_time_window`, which also rejects
+    ``since >= until``.  Returns ``None`` on success; callers should
+    ``return self`` after invoking this helper from their
+    ``model_validator(mode="after")``.
 
     Raises:
         ValueError: Raised on the corresponding failure path.
@@ -48,8 +52,10 @@ def _check_time_window_ordering(since: str | None, until: str | None) -> None:
         return
     start = datetime.fromisoformat(since)
     end = datetime.fromisoformat(until)
-    if start > end:
-        msg = f"since must be on or before until; got since={since!r}, until={until!r}"
+    if start >= end:
+        msg = (
+            f"since must be strictly before until; got since={since!r}, until={until!r}"
+        )
         raise ValueError(msg)
 
 
@@ -60,8 +66,8 @@ class MetaGetConfigArgs(_ArgsBase):
     """Args for ``meta.get_config``: no fields."""
 
 
-class MetaListRulesArgs(_ArgsBase):
-    """Args for ``meta.list_rules``: no fields."""
+class MetaListRulesArgs(PaginationFields):
+    """Args for ``meta.list_rules``."""
 
 
 class MetaListMcpToolsArgs(_ArgsBase):
@@ -72,8 +78,8 @@ class MetaGetMcpServerConfigArgs(_ArgsBase):
     """Args for ``meta.get_mcp_server_config``: no fields."""
 
 
-class MetaTriggerCycleArgs(_ArgsBase):
-    """Args for ``meta.trigger_cycle``: no fields (admin op, no guardrails)."""
+class MetaTriggerCycleArgs(AdminGuardrailFields):
+    """Args for ``meta.trigger_cycle`` (admin op with guardrails)."""
 
 
 class MetaQueryFeatureMapArgs(_ArgsBase):
@@ -123,45 +129,39 @@ class BudgetVersionsGetArgs(_ArgsBase):
 # ── analytics / metrics / reports ───────────────────────────────────
 
 
-AnalyticsTrendPeriod = Literal["daily", "weekly", "monthly"]
+class _SinceOptionalUntilArgs(_ArgsBase):
+    """Time-window mixin: ``since`` required, ``until`` optional.
 
+    Handlers resolve a missing ``until`` to ``now`` via
+    :func:`synthorg.meta.mcp.handlers.common_args.resolve_time_window`.
+    """
 
-class AnalyticsGetOverviewArgs(_ArgsBase):
-    """Args for ``analytics.get_overview``: no fields."""
-
-
-class AnalyticsGetTrendsArgs(_ArgsBase):
-    """Args for ``analytics.get_trends``."""
-
-    period: AnalyticsTrendPeriod | None = Field(default=None, description="Time period")
-    metric: NotBlankStr | None = Field(default=None, description="Metric to analyze")
-
-
-class AnalyticsGetForecastArgs(_ArgsBase):
-    """Args for ``analytics.get_forecast``."""
-
-    horizon_days: int = Field(
-        default=30,
-        ge=1,
-        le=90,
-        description="Forecast horizon in days",
-    )
-
-
-class MetricsGetCurrentArgs(_ArgsBase):
-    """Args for ``metrics.get_current``: no fields."""
-
-
-class MetricsGetHistoryArgs(_ArgsBase):
-    """Args for ``metrics.get_history``."""
-
-    metric_name: NotBlankStr | None = Field(default=None, description="Metric name")
-    since: IsoDatetimeStr | None = Field(
-        default=None,
+    since: IsoDatetimeStr = Field(
         description="Start datetime (ISO 8601, timezone-aware)",
     )
     until: IsoDatetimeStr | None = Field(
         default=None,
+        description="End datetime (ISO 8601, timezone-aware); defaults to now",
+    )
+
+    @model_validator(mode="after")
+    def _since_before_until(self) -> Self:
+        """Reject reversed time windows when both bounds are present.
+
+        Returns:
+            ``Self`` instance.
+        """
+        _check_time_window_ordering(self.since, self.until)
+        return self
+
+
+class _SinceRequiredUntilArgs(_ArgsBase):
+    """Time-window mixin: both ``since`` and ``until`` required."""
+
+    since: IsoDatetimeStr = Field(
+        description="Start datetime (ISO 8601, timezone-aware)",
+    )
+    until: IsoDatetimeStr = Field(
         description="End datetime (ISO 8601, timezone-aware)",
     )
 
@@ -174,6 +174,54 @@ class MetricsGetHistoryArgs(_ArgsBase):
         """
         _check_time_window_ordering(self.since, self.until)
         return self
+
+
+class AnalyticsGetOverviewArgs(_SinceOptionalUntilArgs):
+    """Args for ``analytics.get_overview``."""
+
+
+class AnalyticsGetTrendsArgs(_SinceRequiredUntilArgs):
+    """Args for ``analytics.get_trends``."""
+
+    metric_names: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="Metrics to analyse (omit for all)",
+    )
+
+
+class AnalyticsGetForecastArgs(_SinceRequiredUntilArgs):
+    """Args for ``analytics.get_forecast``."""
+
+    horizon_days: int = Field(
+        default=30,
+        ge=1,
+        le=90,
+        description="Forecast horizon in days",
+    )
+
+
+class MetricsGetCurrentArgs(_SinceOptionalUntilArgs):
+    """Args for ``metrics.get_current``."""
+
+    metric_names: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="Metrics to return (omit for all)",
+    )
+
+
+class MetricsGetHistoryArgs(_SinceRequiredUntilArgs):
+    """Args for ``metrics.get_history``."""
+
+    metric_names: tuple[NotBlankStr, ...] = Field(
+        min_length=1,
+        description="Metrics to sample (non-empty)",
+    )
+    sample_count: int = Field(
+        default=8,
+        ge=1,
+        le=100,
+        description="Number of evenly-spaced samples",
+    )
 
 
 class ReportsListArgs(PaginationFields):
@@ -189,10 +237,10 @@ class ReportsGetArgs(_ArgsBase):
 class ReportsGenerateArgs(_ArgsBase):
     """Args for ``reports.generate``."""
 
-    report_type: NotBlankStr = Field(description="Type of report to generate")
-    parameters: dict[str, object] = Field(
-        default_factory=dict,
-        description="Report parameters",
+    template: NotBlankStr = Field(description="Report template name")
+    options: dict[str, str] | None = Field(
+        default=None,
+        description="Template rendering options",
     )
 
 
@@ -245,7 +293,10 @@ class ScalingGetConfigArgs(_ArgsBase):
 class ScalingTriggerArgs(_ArgsBase):
     """Args for ``scaling.trigger``."""
 
-    reason: NotBlankStr = Field(description="Reason for triggering scaling")
+    agent_ids: tuple[NotBlankStr, ...] = Field(
+        min_length=1,
+        description="Agents to evaluate for scaling (non-empty)",
+    )
 
 
 class CeremonyPolicyGetArgs(_ArgsBase):
@@ -275,13 +326,13 @@ class QualityGetSummaryArgs(_ArgsBase):
 class QualityGetAgentQualityArgs(_ArgsBase):
     """Args for ``quality.get_agent_quality``."""
 
-    agent_name: NotBlankStr = Field(description="Agent name")
+    agent_id: NotBlankStr = Field(description="Agent ID")
 
 
 class QualityListScoresArgs(PaginationFields):
     """Args for ``quality.list_scores``."""
 
-    agent_name: NotBlankStr | None = Field(default=None, description="Filter by agent")
+    agent_id: NotBlankStr | None = Field(default=None, description="Filter by agent")
 
 
 class ReviewsListArgs(PaginationFields):
@@ -301,15 +352,16 @@ class ReviewsCreateArgs(_ArgsBase):
     """Args for ``reviews.create``."""
 
     task_id: NotBlankStr = Field(description="Task being reviewed")
-    score: float = Field(ge=0, le=1, description="Review score (0-1)")
-    feedback: str = Field(default="", description="Review feedback")
+    verdict: NotBlankStr = Field(description="Review verdict")
+    comments: str | None = Field(default=None, description="Review comments")
 
 
 class ReviewsUpdateArgs(_ArgsBase):
     """Args for ``reviews.update``."""
 
     review_id: NotBlankStr = Field(description="Review UUID")
-    updates: dict[str, object] = Field(description="Fields to update")
+    verdict: NotBlankStr | None = Field(default=None, description="Updated verdict")
+    comments: str | None = Field(default=None, description="Updated comments")
 
 
 class EvaluationVersionsListArgs(PaginationFields):
@@ -319,66 +371,53 @@ class EvaluationVersionsListArgs(PaginationFields):
 class EvaluationVersionsGetArgs(_ArgsBase):
     """Args for ``evaluation_versions.get``."""
 
-    version_num: int = Field(ge=1, description="Version number")
+    version_id: NotBlankStr = Field(description="Evaluation version ID")
 
 
 # ── signals ─────────────────────────────────────────────────────────
 
 
-ProposalStatus = Literal["pending", "approved", "applied", "rolled_back", "regressed"]
-ProposalTrigger = Literal["manual", "scheduled", "inflection"]
-
-
-class SignalsWindowDaysArgs(_ArgsBase):
-    """Args for signals tools that take a lookback window."""
-
-    window_days: int = Field(default=7, ge=1, description="Lookback window in days")
-
-
-class SignalsGetOrgSnapshotArgs(SignalsWindowDaysArgs):
+class SignalsGetOrgSnapshotArgs(_SinceOptionalUntilArgs):
     """Args for ``signals.get_org_snapshot``."""
 
 
-class SignalsGetPerformanceArgs(SignalsWindowDaysArgs):
+class SignalsGetPerformanceArgs(_SinceOptionalUntilArgs):
     """Args for ``signals.get_performance``."""
 
 
-class SignalsGetBudgetArgs(_ArgsBase):
-    """Args for ``signals.get_budget``: no fields."""
+class SignalsGetBudgetArgs(_SinceOptionalUntilArgs):
+    """Args for ``signals.get_budget``."""
 
 
-class SignalsGetCoordinationArgs(_ArgsBase):
-    """Args for ``signals.get_coordination``: no fields."""
+class SignalsGetCoordinationArgs(_SinceOptionalUntilArgs):
+    """Args for ``signals.get_coordination``."""
 
 
-class SignalsGetScalingHistoryArgs(_ArgsBase):
-    """Args for ``signals.get_scaling_history``: no fields."""
+class SignalsGetScalingHistoryArgs(_SinceOptionalUntilArgs):
+    """Args for ``signals.get_scaling_history``."""
 
 
-class SignalsGetErrorPatternsArgs(_ArgsBase):
-    """Args for ``signals.get_error_patterns``: no fields."""
+class SignalsGetErrorPatternsArgs(_SinceOptionalUntilArgs):
+    """Args for ``signals.get_error_patterns``."""
 
 
-class SignalsGetEvolutionOutcomesArgs(_ArgsBase):
-    """Args for ``signals.get_evolution_outcomes``: no fields."""
+class SignalsGetEvolutionOutcomesArgs(_SinceOptionalUntilArgs):
+    """Args for ``signals.get_evolution_outcomes``."""
 
 
-class SignalsGetProposalsArgs(_ArgsBase):
+class SignalsGetProposalsArgs(PaginationFields):
     """Args for ``signals.get_proposals``."""
 
-    status: ProposalStatus | None = Field(
+    status: ApprovalStatusEnum | None = Field(
         default=None,
-        description="Filter by proposal status",
+        description="Filter by approval status",
     )
 
 
-class SignalsSubmitProposalArgs(_ArgsBase):
-    """Args for ``signals.submit_proposal``."""
+class SignalsSubmitProposalArgs(AdminGuardrailFields):
+    """Args for ``signals.submit_proposal`` (privileged; requires confirm)."""
 
-    trigger: ProposalTrigger = Field(
-        default="manual",
-        description="What triggered this submission",
-    )
+    proposal: dict[str, object] = Field(description="ImprovementProposal payload")
 
 
 # ── approvals ───────────────────────────────────────────────────────
@@ -420,10 +459,17 @@ class ApprovalsGetArgs(_ArgsBase):
 
 
 class ApprovalsCreateArgs(_ArgsBase):
-    """Args for ``approvals.create``."""
+    """Args for ``approvals.create``.
+
+    ``title`` is optional; when omitted the handler derives it from the
+    first 80 characters of ``description``.
+    """
 
     action_type: NotBlankStr = Field(description="Type of action requiring approval")
-    title: NotBlankStr = Field(description="Short summary of the approval")
+    title: NotBlankStr | None = Field(
+        default=None,
+        description="Short summary (defaults to description prefix)",
+    )
     description: NotBlankStr = Field(description="Description of the proposed action")
     risk_level: RiskLevel = Field(
         default=RISK_LEVEL_DEFAULT,
@@ -435,7 +481,7 @@ class ApprovalsApproveArgs(_ArgsBase):
     """Args for ``approvals.approve``."""
 
     approval_id: NotBlankStr = Field(description="Approval UUID")
-    comment: str = Field(default="", description="Approval comment")
+    comment: str | None = Field(default=None, description="Approval comment")
 
 
 class ApprovalsRejectArgs(AdminGuardrailFields):
@@ -448,7 +494,6 @@ __all__ = [
     "AnalyticsGetForecastArgs",
     "AnalyticsGetOverviewArgs",
     "AnalyticsGetTrendsArgs",
-    "AnalyticsTrendPeriod",
     "ApprovalStatus",
     "ApprovalsApproveArgs",
     "ApprovalsCreateArgs",
@@ -475,8 +520,6 @@ __all__ = [
     "MetaTriggerCycleArgs",
     "MetricsGetCurrentArgs",
     "MetricsGetHistoryArgs",
-    "ProposalStatus",
-    "ProposalTrigger",
     "QualityGetAgentQualityArgs",
     "QualityGetSummaryArgs",
     "QualityListScoresArgs",
@@ -501,5 +544,4 @@ __all__ = [
     "SignalsGetProposalsArgs",
     "SignalsGetScalingHistoryArgs",
     "SignalsSubmitProposalArgs",
-    "SignalsWindowDaysArgs",
 ]

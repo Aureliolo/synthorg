@@ -1,6 +1,6 @@
 """Tests for :mod:`synthorg.communication.conflict_resolution.escalation.notify`.
 
-Focuses on lifecycle branches added in the #1683 reliability bundle:
+Focuses on the notifier's reliability lifecycle branches:
 
 * The ``_stop_failed`` unrestartable guard refuses a fresh ``start()``
   after a ``stop()`` drain that exceeded the hard deadline.

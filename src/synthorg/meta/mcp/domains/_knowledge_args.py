@@ -1,6 +1,6 @@
 """Pydantic args models for knowledge-substrate MCP tools."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.constants import (
@@ -10,12 +10,11 @@ from synthorg.knowledge.constants import (
     KNOWLEDGE_SEARCH_MAX_LIMIT,
 )
 from synthorg.knowledge.enums import SourceType
+from synthorg.meta.mcp.domains._common_args import AdminGuardrailFields, _ArgsBase
 
 
-class KnowledgeSearchArgs(BaseModel):
+class KnowledgeSearchArgs(_ArgsBase):
     """Args for ``knowledge:search``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     project_id: NotBlankStr | None = Field(
         default=None, description="Scope to a project (null searches global only)"
@@ -26,10 +25,8 @@ class KnowledgeSearchArgs(BaseModel):
     )
 
 
-class KnowledgeIngestArgs(BaseModel):
-    """Args for ``knowledge:ingest``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+class KnowledgeIngestArgs(AdminGuardrailFields):
+    """Args for ``knowledge:ingest`` (destructive admin op)."""
 
     project_id: NotBlankStr | None = Field(
         default=None, description="Owning project (null ingests a global source)"
@@ -39,15 +36,13 @@ class KnowledgeIngestArgs(BaseModel):
     title: NotBlankStr = Field(description="Human-readable source title")
 
 
-class KnowledgeReindexArgs(BaseModel):
-    """Args for ``knowledge:reindex``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+class KnowledgeReindexArgs(AdminGuardrailFields):
+    """Args for ``knowledge:reindex`` (destructive admin op)."""
 
     source_id: NotBlankStr = Field(description="Source to force-reindex")
 
 
-class KnowledgeListArgs(BaseModel):
+class KnowledgeListArgs(_ArgsBase):
     """Args for ``knowledge:list``.
 
     The list cap (``KNOWLEDGE_LIST_MAX_LIMIT``) is larger than the search
@@ -55,8 +50,6 @@ class KnowledgeListArgs(BaseModel):
     :class:`KnowledgeSource` summary rows, whereas search returns
     embedded chunk text + citation which is far heavier per row.
     """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     project_id: NotBlankStr | None = Field(default=None)
     include_global: bool = Field(default=False)
@@ -67,17 +60,13 @@ class KnowledgeListArgs(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
-class KnowledgeGetArgs(BaseModel):
+class KnowledgeGetArgs(_ArgsBase):
     """Args for ``knowledge:get``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     source_id: NotBlankStr = Field(description="Source identifier")
 
 
-class KnowledgeDeleteArgs(BaseModel):
-    """Args for ``knowledge:delete``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+class KnowledgeDeleteArgs(AdminGuardrailFields):
+    """Args for ``knowledge:delete`` (destructive admin op)."""
 
     source_id: NotBlankStr = Field(description="Source to delete + purge")

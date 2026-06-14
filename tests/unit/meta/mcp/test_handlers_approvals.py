@@ -1,7 +1,7 @@
 """Unit tests for the approvals MCP handlers.
 
-The pilot domain for PR1.  Exercises every branch a real service-shim
-handler ever takes: read (list with filters + pagination), get with
+Exercises every branch a real service-shim handler ever takes: read
+(list with filters + pagination), get with
 not-found, write (create), write (approve with conflict), destructive
 write (reject with all guardrail branches).
 """

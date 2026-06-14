@@ -26,12 +26,15 @@ from synthorg.hr.state import (
     performance_tracker_of,
 )
 from synthorg.meta.mcp.domains._agents_args import (
+    AgentsCreateArgs,
     AgentsDeleteArgs,
     AgentsGetActivityArgs,
     AgentsGetArgs,
     AgentsGetHealthArgs,
+    AgentsGetHistoryArgs,
     AgentsGetPerformanceArgs,
     AgentsListArgs,
+    AgentsUpdateArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -49,9 +52,6 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
-    coerce_pagination,
-    require_arg,
-    require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -68,9 +68,6 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
-
-_ARG_AGENT_NAME = "agent_name"
-_ARG_AGENT_ID = "agent_id"
 
 _WHY_ACTIVITY = (
     "activity feed derivation lives in hr.activity module; no "
@@ -142,8 +139,6 @@ async def _agents_get(
     return ok(data=identity.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: create schema is
-# name/role/department but the handler builds a full AgentIdentity. See follow-up.
 async def _agents_create(
     *,
     app_state: AppState,
@@ -157,7 +152,7 @@ async def _agents_create(
     """
     tool = "synthorg_agents_create"
     try:
-        identity_dict = require_arg(arguments, "identity", dict)
+        identity_dict = typed_args(arguments, AgentsCreateArgs).identity
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -182,8 +177,6 @@ async def _agents_create(
     return ok(data=identity.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged contract mismatch (handler reads
-# agent_id but the schema/model declare agent_name); resolve in follow-up.
 async def _agents_update(
     *,
     app_state: AppState,
@@ -197,8 +190,9 @@ async def _agents_update(
     """
     tool = "synthorg_agents_update"
     try:
-        agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
-        updates = require_arg(arguments, "updates", dict)
+        update_args = typed_args(arguments, AgentsUpdateArgs)
+        agent_id = update_args.agent_id
+        updates = update_args.updates
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -349,8 +343,6 @@ async def _agents_get_activity(
     return ok(data=dump_many(events), pagination=meta)
 
 
-# lint-allow: handler-arguments-get -- cataloged contract mismatch (handler paginates
-# but AgentsGetHistoryArgs has no pagination fields); resolve in follow-up.
 async def _agents_get_history(
     *,
     app_state: AppState,
@@ -364,8 +356,9 @@ async def _agents_get_history(
     """
     tool = "synthorg_agents_get_history"
     try:
-        agent_name = require_non_blank(arguments, _ARG_AGENT_NAME)
-        offset, limit = coerce_pagination(arguments)
+        history_args = typed_args(arguments, AgentsGetHistoryArgs)
+        agent_name = history_args.agent_name
+        offset, limit = history_args.offset, history_args.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)

@@ -129,7 +129,10 @@ class CoordinationMetricsStore:
             raise ValueError(msg)
         results: list[CoordinationMetricsRecord] = []
         total_matches = 0
-        for rec in reversed(self._records):
+        # Snapshot the deque before iterating: a concurrent ``record()`` /
+        # ``clear()`` (e.g. from a thread-pool collector) must not mutate the
+        # buffer mid-iteration. ``tuple(...)`` copies in one atomic step.
+        for rec in reversed(tuple(self._records)):
             if task_id is not None and rec.task_id != task_id:
                 continue
             if agent_id is not None and rec.agent_id != agent_id:

@@ -7,11 +7,13 @@ from typing import TYPE_CHECKING
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.infrastructure.state import user_facade_service_of
 from synthorg.meta.mcp.domains._remaining_args import (
     UsersCreateArgs,
     UsersDeleteArgs,
     UsersGetArgs,
+    UsersUpdateArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -20,7 +22,7 @@ from synthorg.meta.mcp.errors import (
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
-from synthorg.meta.mcp.handlers.common_args import require_actor_id, require_dict
+from synthorg.meta.mcp.handlers.common_args import require_actor_id
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
@@ -28,11 +30,13 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _map_capability,
-    _require_str,
     _to_jsonable,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -63,6 +67,7 @@ async def _users_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(u) for u in users])
 
 
@@ -91,10 +96,10 @@ async def _users_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if user is None:
-        return err(
-            LookupError(f"User {user_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"User {user_id} not found")
+        log_handler_invoke_failed(tool, missing, user_id=user_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(user))
 
 
@@ -141,12 +146,10 @@ async def _users_create(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads `updates`
-# as a raw dict, but UsersUpdateArgs declares a typed `updates: UsersUpdateFields`
-# (role / must_change_password only) that would reject other keys.
 async def _users_update(
     *,
     app_state: AppState,
@@ -161,8 +164,9 @@ async def _users_update(
     tool = "synthorg_users_update"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        user_id = _require_str(arguments, "user_id")
-        updates = require_dict(arguments, "updates")
+        update_args = typed_args(arguments, UsersUpdateArgs)
+        user_id = update_args.user_id
+        updates = update_args.updates.model_dump(exclude_unset=True)
         actor_id = require_actor_id(resolved_actor)
         await user_facade_service_of(app_state).update_user(
             user_id=user_id,
@@ -189,6 +193,7 @@ async def _users_update(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 
@@ -232,6 +237,7 @@ async def _users_delete(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 

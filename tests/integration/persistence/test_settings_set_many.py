@@ -1,9 +1,9 @@
 """Integration tests for ``SettingsRepository.set_many`` on both backends.
 
-PR #1239 introduced single-key CAS on the settings repo.  This follow-up
-adds a transactional ``set_many`` that writes multiple rows under CAS
-in one shot, so mutations like ``delete_department`` can pin several
-keys at once and avoid TOCTOU races.
+On top of single-key CAS, the settings repo offers a transactional
+``set_many`` that writes multiple rows under CAS in one shot, so
+mutations like ``delete_department`` can pin several keys at once and
+avoid TOCTOU races.
 
 The tests are duplicated across SQLite and Postgres rather than
 parameterised with ``request.getfixturevalue``, because the latter

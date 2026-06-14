@@ -333,14 +333,48 @@ def parse_time_window(
             unparseable ``since`` or ``until``; naive datetime; missing
             ``until`` while required; ``since >= until``.
     """
-    since = _parse_iso_datetime(arguments.get(_ARG_SINCE), _ARG_SINCE)
-    raw_until = arguments.get(_ARG_UNTIL)
-    if raw_until in (None, ""):
+    return resolve_time_window(
+        arguments.get(_ARG_SINCE),
+        arguments.get(_ARG_UNTIL),
+        until_required=until_required,
+    )
+
+
+def resolve_time_window(
+    since_raw: object,
+    until_raw: object,
+    *,
+    until_required: bool = True,
+) -> tuple[datetime, datetime]:
+    """Resolve an already-extracted ``since`` / ``until`` pair to datetimes.
+
+    The typed-args boundary (``IsoDatetimeStr``) validates the ISO 8601 +
+    timezone-aware shape up front; this applies the same ``until`` default
+    and strict ordering the dict-path :func:`parse_time_window` enforces, so
+    handlers that read the window through ``typed_args`` keep identical
+    semantics without touching the raw ``arguments`` dict.
+
+    Args:
+        since_raw: The ``since`` value (typically a validated ISO string).
+        until_raw: The ``until`` value, or ``None`` / ``""`` when absent.
+        until_required: When ``True``, a missing ``until`` raises; when
+            ``False`` it defaults to ``datetime.now(UTC)``.
+
+    Returns:
+        ``(since, until)`` -- both timezone-aware datetimes.
+
+    Raises:
+        ArgumentValidationError: On missing/unparseable/naive ``since``;
+            unparseable ``until``; missing ``until`` while required; or
+            ``since >= until``.
+    """
+    since = _parse_iso_datetime(since_raw, _ARG_SINCE)
+    if until_raw in (None, ""):
         if until_required:
             raise ArgumentValidationError(_ARG_UNTIL, _TY_ISO_DT)
         until = _now_utc()
     else:
-        until = _parse_iso_datetime(raw_until, _ARG_UNTIL)
+        until = _parse_iso_datetime(until_raw, _ARG_UNTIL)
     if since >= until:
         raise ArgumentValidationError(_ARG_SINCE, _TY_WINDOW_ORDER)
     return since, until

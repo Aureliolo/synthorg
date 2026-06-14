@@ -26,19 +26,23 @@ class McpCatalogSearchArgs(_ArgsBase):
 class McpCatalogGetArgs(_ArgsBase):
     """Args for ``mcp_catalog.get``."""
 
-    catalog_id: NotBlankStr = Field(description="Catalog entry ID")
+    entry_id: NotBlankStr = Field(description="Catalog entry ID")
 
 
 class McpCatalogInstallArgs(_ArgsBase):
     """Args for ``mcp_catalog.install``."""
 
-    catalog_id: NotBlankStr = Field(description="Catalog entry to install")
+    entry_id: NotBlankStr = Field(description="Catalog entry to install")
 
 
-class McpCatalogUninstallArgs(_ArgsBase):
-    """Args for ``mcp_catalog.uninstall``."""
+class McpCatalogUninstallArgs(AdminGuardrailFields):
+    """Args for ``mcp_catalog.uninstall``.
 
-    install_id: NotBlankStr = Field(description="Installation ID")
+    Destructive admin op: callers supply ``confirm=True`` and a non-blank
+    ``reason`` (mixin) alongside the installation UUID.
+    """
+
+    installation_id: NotBlankStr = Field(description="Installation ID")
 
 
 class OauthListProvidersArgs(_ArgsBase):
@@ -48,14 +52,20 @@ class OauthListProvidersArgs(_ArgsBase):
 class OauthConfigureProviderArgs(_ArgsBase):
     """Args for ``oauth.configure_provider``."""
 
-    provider: NotBlankStr = Field(description="Provider name")
-    config: dict[str, object] = Field(description="OAuth configuration")
+    name: NotBlankStr = Field(description="Provider name")
+    client_id: NotBlankStr = Field(description="OAuth client ID")
+    authorize_url: NotBlankStr = Field(description="Authorization endpoint URL")
+    token_url: NotBlankStr = Field(description="Token endpoint URL")
+    scopes: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Requested OAuth scopes",
+    )
 
 
-class OauthRemoveProviderArgs(_ArgsBase):
-    """Args for ``oauth.remove_provider``."""
+class OauthRemoveProviderArgs(AdminGuardrailFields):
+    """Args for ``oauth.remove_provider`` (destructive admin op)."""
 
-    provider: NotBlankStr = Field(description="Provider name")
+    name: NotBlankStr = Field(description="Provider name")
 
 
 class ClientsListArgs(PaginationFields):
@@ -76,10 +86,18 @@ class ClientsCreateArgs(_ArgsBase):
     """Args for ``clients.create``."""
 
     name: NotBlankStr = Field(description="Client name")
+    contact_email: NotBlankStr | None = Field(
+        default=None,
+        description="Primary contact email",
+    )
+    notes: NotBlankStr | None = Field(
+        default=None,
+        description="Free-form notes",
+    )
 
 
-class ClientsDeactivateArgs(_ClientIdArgs):
-    """Args for ``clients.deactivate``."""
+class ClientsDeactivateArgs(_ClientIdArgs, AdminGuardrailFields):
+    """Args for ``clients.deactivate`` (destructive admin op)."""
 
 
 class ClientsGetSatisfactionArgs(_ClientIdArgs):
@@ -109,9 +127,10 @@ class ArtifactsGetArgs(_ArgsBase):
 class ArtifactsCreateArgs(_ArgsBase):
     """Args for ``artifacts.create``."""
 
-    type: NotBlankStr = Field(description="Artifact type")
-    content: str = Field(description="Artifact content")
-    task_id: NotBlankStr | None = Field(default=None, description="Associated task")
+    name: NotBlankStr = Field(description="Artifact name")
+    content_type: NotBlankStr = Field(description="MIME content type")
+    size_bytes: int = Field(ge=0, description="Artifact size in bytes")
+    storage_ref: NotBlankStr = Field(description="Storage backend reference")
 
 
 class ArtifactsDeleteArgs(AdminGuardrailFields):
@@ -128,17 +147,17 @@ class OntologyListEntitiesArgs(PaginationFields):
     """Args for ``ontology.list_entities``."""
 
 
-class _EntityNameArgs(_ArgsBase):
-    """Mixin for tools keyed by ``entity_name``."""
+class _EntityIdArgs(_ArgsBase):
+    """Mixin for tools keyed by ``entity_id``."""
 
-    entity_name: NotBlankStr = Field(description="Entity name")
+    entity_id: NotBlankStr = Field(description="Entity ID")
 
 
-class OntologyGetEntityArgs(_EntityNameArgs):
+class OntologyGetEntityArgs(_EntityIdArgs):
     """Args for ``ontology.get_entity``."""
 
 
-class OntologyGetRelationshipsArgs(_EntityNameArgs):
+class OntologyGetRelationshipsArgs(_EntityIdArgs):
     """Args for ``ontology.get_relationships``."""
 
 

@@ -13,8 +13,11 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import mcp_catalog_facade_service_of
 from synthorg.meta.mcp.domains._remaining_args import (
+    McpCatalogGetArgs,
+    McpCatalogInstallArgs,
     McpCatalogListArgs,
     McpCatalogSearchArgs,
+    McpCatalogUninstallArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -22,7 +25,6 @@ from synthorg.meta.mcp.errors import (
 )
 from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _map_capability,
-    _require_str,
     _to_jsonable,
     typed_args,
 )
@@ -111,8 +113,6 @@ async def _mcp_catalog_search(
     return ok([_to_jsonable(e) for e in entries])
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# `entry_id` but McpCatalogGetArgs declares the field `catalog_id`.
 async def _mcp_catalog_get(
     *,
     app_state: AppState,
@@ -126,7 +126,7 @@ async def _mcp_catalog_get(
     """
     tool = "synthorg_mcp_catalog_get"
     try:
-        entry_id = _require_str(arguments, "entry_id")
+        entry_id = typed_args(arguments, McpCatalogGetArgs).entry_id
         entry = await mcp_catalog_facade_service_of(app_state).get_catalog_entry(
             entry_id,
         )
@@ -147,8 +147,6 @@ async def _mcp_catalog_get(
     return ok(_to_jsonable(entry))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# `entry_id` but McpCatalogInstallArgs declares the field `catalog_id`.
 async def _mcp_catalog_install(
     *,
     app_state: AppState,
@@ -163,7 +161,7 @@ async def _mcp_catalog_install(
     """
     tool = "synthorg_mcp_catalog_install"
     try:
-        entry_id = _require_str(arguments, "entry_id")
+        entry_id = typed_args(arguments, McpCatalogInstallArgs).entry_id
         result = await mcp_catalog_facade_service_of(app_state).install_catalog_entry(
             entry_id=entry_id,
             actor_id=require_actor_id(actor),
@@ -180,9 +178,6 @@ async def _mcp_catalog_install(
     return ok(_to_jsonable(result))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# `installation_id` + enforces guardrails, but McpCatalogUninstallArgs declares
-# `install_id` and no AdminGuardrailFields.
 async def _mcp_catalog_uninstall(
     *,
     app_state: AppState,
@@ -197,7 +192,7 @@ async def _mcp_catalog_uninstall(
     tool = "synthorg_mcp_catalog_uninstall"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        installation_id = _require_str(arguments, "installation_id")
+        installation_id = typed_args(arguments, McpCatalogUninstallArgs).installation_id
         actor_id = require_actor_id(resolved_actor)
         mcp_catalog = mcp_catalog_facade_service_of(app_state)
         removed = await mcp_catalog.uninstall_catalog_entry(

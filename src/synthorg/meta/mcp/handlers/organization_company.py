@@ -11,23 +11,32 @@ from typing import TYPE_CHECKING
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
+from synthorg.meta.mcp.domains._workflows_org_args import (
+    CompanyReorderDepartmentsArgs,
+    CompanyUpdateArgs,
+    CompanyVersionsGetArgs,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _map_capability,
-    _require_str,
     _to_jsonable,
+    typed_args,
 )
-from synthorg.meta.mcp.handlers._organization_helpers import _require_uuid_list
 from synthorg.meta.mcp.handlers.common import err, ok
-from synthorg.meta.mcp.handlers.common_args import require_actor_id, require_dict
+from synthorg.meta.mcp.handlers.common_args import require_actor_id
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_invoke_failed,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 from synthorg.organization.state import company_read_service_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+
+logger = get_logger(__name__)
 
 
 async def _company_get(
@@ -53,11 +62,10 @@ async def _company_get(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(company))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
-# `payload` dict but CompanyUpdateArgs declares the field `updates`.
 async def _company_update(
     *,
     app_state: AppState,
@@ -71,7 +79,7 @@ async def _company_update(
     """
     tool = "synthorg_company_update"
     try:
-        payload = require_dict(arguments, "payload")
+        payload = typed_args(arguments, CompanyUpdateArgs).payload
         result = await company_read_service_of(app_state).update_company(
             payload=payload,
             actor_id=require_actor_id(actor),
@@ -85,6 +93,7 @@ async def _company_update(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(result))
 
 
@@ -111,12 +120,10 @@ async def _company_list_departments(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(d) for d in departments])
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
-# `department_ids` UUID list but CompanyReorderDepartmentsArgs declares `order`
-# (a tuple of department names).
 async def _company_reorder_departments(
     *,
     app_state: AppState,
@@ -130,7 +137,7 @@ async def _company_reorder_departments(
     """
     tool = "synthorg_company_reorder_departments"
     try:
-        ids = _require_uuid_list(arguments, "department_ids")
+        ids = typed_args(arguments, CompanyReorderDepartmentsArgs).department_ids
         await company_read_service_of(app_state).reorder_departments(
             department_ids=ids,
             actor_id=require_actor_id(actor),
@@ -144,6 +151,7 @@ async def _company_reorder_departments(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 
@@ -170,11 +178,10 @@ async def _company_versions_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(v) for v in versions])
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
-# string `version_id` but CompanyVersionsGetArgs declares an int `version_num`.
 async def _company_versions_get(
     *,
     app_state: AppState,
@@ -188,7 +195,7 @@ async def _company_versions_get(
     """
     tool = "synthorg_company_versions_get"
     try:
-        version_id = _require_str(arguments, "version_id")
+        version_id = typed_args(arguments, CompanyVersionsGetArgs).version_id
         version = await company_read_service_of(app_state).get_version(version_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -200,8 +207,8 @@ async def _company_versions_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if version is None:
-        return err(
-            LookupError(f"Version {version_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Version {version_id} not found")
+        log_handler_invoke_failed(tool, missing, version_id=version_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(version))

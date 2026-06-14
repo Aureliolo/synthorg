@@ -4,10 +4,9 @@ Each model corresponds to one tool registered in
 ``synthorg.meta.mcp.domains.tasks.TASK_TOOLS``.
 """
 
-from typing import Literal
-
 from pydantic import Field
 
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.domains._common_args import (
     AdminGuardrailFields,
@@ -21,7 +20,7 @@ from synthorg.meta.mcp.domains._common_args import (
 class TasksListArgs(PaginationFields):
     """Args for ``tasks.list``."""
 
-    status: NotBlankStr | None = Field(default=None, description="Filter by status")
+    status: TaskStatus | None = Field(default=None, description="Filter by status")
     assigned_to: NotBlankStr | None = Field(
         default=None,
         description="Filter by assigned agent",
@@ -36,15 +35,15 @@ class TasksGetArgs(_ArgsBase):
 
 
 class TasksCreateArgs(_ArgsBase):
-    """Args for ``tasks.create``."""
+    """Args for ``tasks.create``.
 
-    title: NotBlankStr = Field(description="Task title")
-    description: str = Field(default="", description="Task description")
-    assigned_to: NotBlankStr | None = Field(
-        default=None,
-        description="Agent to assign",
-    )
-    project: NotBlankStr | None = Field(default=None, description="Project name")
+    ``task_data`` is the full :class:`CreateTaskData` payload (validated
+    by the handler against that engine model); it is a polymorphic
+    ``dict[str, object]`` here because its closed shape lives in the
+    engine layer, not the MCP boundary.
+    """
+
+    task_data: dict[str, object] = Field(description="CreateTaskData payload")
 
 
 class TasksUpdateArgs(_ArgsBase):
@@ -64,7 +63,7 @@ class TasksTransitionArgs(_ArgsBase):
     """Args for ``tasks.transition``."""
 
     task_id: NotBlankStr = Field(description="Task UUID")
-    target_status: NotBlankStr = Field(description="Target status")
+    target_status: TaskStatus = Field(description="Target status")
 
 
 class TasksCancelArgs(AdminGuardrailFields):
@@ -76,29 +75,20 @@ class TasksCancelArgs(AdminGuardrailFields):
 # ── Activities ──────────────────────────────────────────────────────
 
 
-ActivityLookbackHours = Literal[24, 48, 168]
-
-
 class ActivitiesListArgs(PaginationFields):
     """Args for ``activities.list``."""
 
-    type: NotBlankStr | None = Field(
+    project: NotBlankStr | None = Field(default=None, description="Filter by project")
+    task_id: NotBlankStr | None = Field(default=None, description="Filter by task")
+    window_hours: int | None = Field(
         default=None,
-        description="Activity type filter",
-    )
-    agent_id: NotBlankStr | None = Field(
-        default=None,
-        description="Filter by agent",
-    )
-    last_n_hours: ActivityLookbackHours | None = Field(
-        default=None,
-        description="Lookback hours",
+        ge=1,
+        description="Lookback window in hours (omit for service default)",
     )
 
 
 __all__ = [
     "ActivitiesListArgs",
-    "ActivityLookbackHours",
     "TasksCancelArgs",
     "TasksCreateArgs",
     "TasksDeleteArgs",

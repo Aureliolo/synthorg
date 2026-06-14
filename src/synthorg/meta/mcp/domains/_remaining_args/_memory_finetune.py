@@ -8,11 +8,19 @@ from typing import Literal, Self
 from pydantic import Field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.embedding.fine_tune_models import (
+    FineTuneDataSourceType,
+)
+from synthorg.memory.embedding.fine_tune_models import (
+    FineTuneExecutionConfig as _PlanExecutionConfig,
+)
+from synthorg.memory.fine_tune_plan import FineTunePlan
 from synthorg.meta.mcp.domains._common_args import (
     AdminGuardrailFields,
     PaginationFields,
     _ArgsBase,
 )
+from synthorg.meta.mcp.errors import ArgumentValidationError
 
 FineTuneBackend = Literal["in-process", "docker"]
 FineTuneDataSource = Literal["directory", "trajectory"]
@@ -154,6 +162,51 @@ class _FineTunePlanFields(_ArgsBase):
             raise ValueError(msg)
         return self
 
+    def to_plan(self) -> FineTunePlan:
+        """Build the canonical :class:`FineTunePlan` from the wire fields.
+
+        The wire ``execution`` sub-model mirrors the canonical
+        ``FineTuneExecutionConfig`` field-for-field, so it round-trips
+        through ``model_dump``; the remaining tuning fields map directly.
+
+        Returns:
+            The validated ``FineTunePlan``.
+
+        Raises:
+            ArgumentValidationError: When the wire fields satisfy this
+                model but violate a canonical ``FineTunePlan`` invariant.
+            MemoryError: Re-raised unwrapped; a system error must not be masked.
+            RecursionError: Re-raised unwrapped; a system error must not be masked.
+        """
+        execution = (
+            _PlanExecutionConfig(**self.execution.model_dump())
+            if self.execution is not None
+            else None
+        )
+        try:
+            return FineTunePlan(
+                data_source=FineTuneDataSourceType(self.data_source),
+                source_dir=self.source_dir,
+                base_model=self.base_model,
+                output_dir=self.output_dir,
+                resume_run_id=self.resume_run_id,
+                epochs=self.epochs,
+                learning_rate=self.learning_rate,
+                temperature=self.temperature,
+                top_k=self.top_k,
+                batch_size=self.batch_size,
+                validation_split=self.validation_split,
+                execution=execution,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Surface any cross-model invariant the wire fields satisfy but
+            # the canonical FineTunePlan rejects (e.g. path-traversal guard)
+            # as a typed argument error, not a raw ValidationError.
+            arg, expected = "plan", "valid FineTunePlan shape"
+            raise ArgumentValidationError(arg, expected) from exc
+
 
 class MemoryStartFineTuneArgs(_FineTunePlanFields, AdminGuardrailFields):
     """Args for ``memory.start_fine_tune`` (privileged; requires confirm).
@@ -172,7 +225,12 @@ class MemoryResumeFineTuneArgs(AdminGuardrailFields):
 
 
 class MemoryGetFineTuneStatusArgs(_ArgsBase):
-    """Args for ``memory.get_fine_tune_status``: no fields."""
+    """Args for ``memory.get_fine_tune_status``."""
+
+    run_id: NotBlankStr | None = Field(
+        default=None,
+        description="Run ID to fetch status for (None = active run)",
+    )
 
 
 class MemoryCancelFineTuneArgs(AdminGuardrailFields):

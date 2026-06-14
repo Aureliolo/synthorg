@@ -8,7 +8,7 @@ a low-stakes subtask and a critical-stakes subtask; the same brief is run
 twice, once with the ``stakes_aware`` routing strategy and once with the
 ``flat`` control arm.
 
-The acceptance for #1998 is that, on a mixed brief, cheap models handle
+The acceptance is that, on a mixed brief, cheap models handle
 low-stakes subtasks and strong models handle high/critical ones, so total
 cost drops versus flat routing at no quality-floor regression. The
 scripted driver prices each completion by the model tier it is called
