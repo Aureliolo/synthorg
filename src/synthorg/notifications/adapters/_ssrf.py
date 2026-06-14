@@ -98,12 +98,18 @@ async def resolve_outbound_target(
         # rejection is a value error, not a TypeError.
         msg = f"{field} rejected by SSRF policy: {result}"
         raise ValueError(msg)  # noqa: TRY004 -- value rejection, not a type mismatch
-    if not result.resolved_ips and not _is_literal_ip(result.hostname):
+    if (
+        policy.block_private_ips
+        and not result.resolved_ips
+        and not _is_literal_ip(result.hostname)
+    ):
         # An allowlisted hostname whose DNS failed carries no pinned IP, so
         # the live connect would re-resolve at request time and reopen the
         # rebinding window. Fail closed rather than fall back to an unpinned
         # transport. Literal-IP targets legitimately have no resolved IPs and
-        # need no pin, so they are exempt from this check.
+        # need no pin, so they are exempt; when ``block_private_ips`` is off
+        # the operator has disabled SSRF protection entirely, so pinning is
+        # not expected and an empty result is allowed through.
         logger.warning(
             NOTIFICATION_SINK_CONFIG_INVALID,
             field=field,
