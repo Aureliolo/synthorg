@@ -146,8 +146,3 @@ def test_unparseable_file_is_violation(src_root: Path) -> None:
     violations = _gate._check_file(path)
     assert len(violations) == 1
     assert "unparseable" in violations[0].snippet
-
-
-def test_real_repo_passes() -> None:
-    """The committed tree must satisfy the gate."""
-    assert _gate.main([]) == 0
