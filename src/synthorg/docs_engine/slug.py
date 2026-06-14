@@ -7,14 +7,13 @@ project + doc_type bucket. Slugs are bounded to keep filesystem and
 URL paths short.
 """
 
-import re
 from collections.abc import Container
 
+from synthorg.core.slug import kebab_slug
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import DOCS_SLUG_MAX_LENGTH
 from synthorg.docs_engine.errors import DocValidationError
 
-_KEEP_PATTERN = re.compile(r"[^a-z0-9]+")
 _FALLBACK_SLUG: NotBlankStr = NotBlankStr("doc")
 _MAX_SUFFIX: int = 10_000
 
@@ -63,11 +62,9 @@ def _slugify(title: str) -> NotBlankStr:
         The kebab-cased slug, or ``_FALLBACK_SLUG`` when the reduction is
         empty.
     """
-    lowered = title.lower()
-    safe = _KEEP_PATTERN.sub("-", lowered).strip("-")
-    if not safe:
-        return _FALLBACK_SLUG
-    return NotBlankStr(safe[:DOCS_SLUG_MAX_LENGTH].rstrip("-") or _FALLBACK_SLUG)
+    return NotBlankStr(
+        kebab_slug(title, max_length=DOCS_SLUG_MAX_LENGTH, fallback=_FALLBACK_SLUG)
+    )
 
 
 def _truncate_with_suffix(base: str, suffix: int) -> str:

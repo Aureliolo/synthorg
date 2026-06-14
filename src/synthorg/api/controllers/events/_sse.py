@@ -24,7 +24,10 @@ from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.clock import SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
-from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
+from synthorg.core.resilience import (
+    SlidingWindowEventLimiter,
+    build_revalidation_limiter,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.event_stream import (
     EVENT_STREAM_CLIENT_CONNECTED,
@@ -90,7 +93,7 @@ async def _resolve_sse_keepalive_seconds(app_state: AppState | None) -> float:
 
 def _build_revalidation_limiter(
     app_state: AppState | None,
-) -> _SlidingWindowRateLimiter:
+) -> SlidingWindowEventLimiter:
     """Build a per-connection sliding-window limiter for SSE revalidation.
 
     "Shared" with WS means the same *model + settings*, not a shared
@@ -107,7 +110,7 @@ def _build_revalidation_limiter(
     at startup), shared with the WS loop.
 
     Returns:
-        ``_SlidingWindowRateLimiter`` instance.
+        ``SlidingWindowEventLimiter`` instance.
     """
     if app_state is not None:
         window = float(app_state.ws_auth_limits.auth_revalidate_window_seconds)
@@ -116,21 +119,15 @@ def _build_revalidation_limiter(
         window = _AUTH_REVALIDATE_WINDOW_FALLBACK_SECONDS
         max_failures = _AUTH_REVALIDATE_MAX_FAILURES_FALLBACK
     # The SSE loop runs one revalidation tick per
-    # ``AUTH_REVALIDATE_INTERVAL_SECONDS`` (10 min). A window measured
-    # in wall-clock seconds shorter than ``max_failures`` ticks can
-    # never saturate -- each failed tick ages out before the next one
-    # -- so a prolonged persistence outage would keep a stale-auth
-    # stream open indefinitely (fail-open). Clamp so ``max_failures``
-    # consecutive failed ticks fall inside the window while isolated
-    # old failures still age out (mirrors the WS ``_periodic_revalidate``
-    # clamp; the two paths must stay in lockstep).
-    effective_window = max(
-        window,
-        float(AUTH_REVALIDATE_INTERVAL_SECONDS) * max_failures,
-    )
-    return _SlidingWindowRateLimiter(
-        max_events=max_failures,
-        window_seconds=effective_window,
+    # ``AUTH_REVALIDATE_INTERVAL_SECONDS`` (10 min); the shared builder
+    # clamps the window so ``max_failures`` consecutive failed ticks fall
+    # inside it (fail-closed) while isolated old failures still age out.
+    # The WS ``_periodic_revalidate`` path uses the same builder so the
+    # two stay in lockstep.
+    return build_revalidation_limiter(
+        max_failures=max_failures,
+        window_seconds=window,
+        interval_seconds=AUTH_REVALIDATE_INTERVAL_SECONDS,
     )
 
 
@@ -238,7 +235,7 @@ async def _run_revalidation_tick(
     *,
     app_state: AppState,
     user: AuthenticatedUser,
-    failure_limiter: _SlidingWindowRateLimiter,
+    failure_limiter: SlidingWindowEventLimiter,
 ) -> dict[str, str] | None:
     """Execute one revalidation check; return a ``revoked`` frame or None.
 

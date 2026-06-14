@@ -22,11 +22,6 @@ BRAIN_CHUNK_MAX_TOKENS: Final[int] = 512
 character-proxy units when no tokenizer is wired). Oversized fields are split at
 sentence boundaries."""
 
-BRAIN_CHAR_PER_TOKEN_PROXY: Final[int] = 4
-"""When no tokenizer is available the chunker approximates token count by
-characters divided by this proxy. A 4-char-per-token average is the rough rule
-of thumb for English prose."""
-
 BRAIN_SEARCH_DEFAULT_LIMIT: Final[int] = 8
 """Default ``limit`` argument for :meth:`ProjectBrainService.query`."""
 

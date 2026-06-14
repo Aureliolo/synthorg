@@ -13,20 +13,20 @@ from litestar import Controller, post
 from litestar.datastructures import State
 
 from synthorg._core.features import require_service
-from synthorg.api.controllers.setup.agent_helpers import (
-    COMPLETE_LOCK as _COMPLETE_LOCK,
-)
-from synthorg.api.controllers.setup.agent_helpers import (
+from synthorg.api.controllers.setup._embedder_setup import (
     auto_select_embedder,
 )
-from synthorg.api.controllers.setup.agent_helpers import (
-    check_has_agents as _check_has_agents,
-)
-from synthorg.api.controllers.setup.agent_helpers import (
+from synthorg.api.controllers.setup._embedder_setup import (
     collect_model_ids as _collect_model_ids,
 )
-from synthorg.api.controllers.setup.agent_helpers import (
+from synthorg.api.controllers.setup._runtime_wiring import (
+    COMPLETE_LOCK as _COMPLETE_LOCK,
+)
+from synthorg.api.controllers.setup._runtime_wiring import (
     post_setup_reinit as _post_setup_reinit,
+)
+from synthorg.api.controllers.setup._status_checks import (
+    check_has_agents as _check_has_agents,
 )
 from synthorg.api.controllers.setup.company_helpers import (
     check_has_company as _check_has_company,

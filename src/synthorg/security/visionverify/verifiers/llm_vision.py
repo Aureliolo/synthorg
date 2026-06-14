@@ -12,9 +12,9 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
-from synthorg.api.boundary import parse_typed
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.vision_verify import (

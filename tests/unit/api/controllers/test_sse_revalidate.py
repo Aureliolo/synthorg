@@ -26,7 +26,7 @@ from synthorg.api.state import AppState
 from synthorg.communication.event_stream.types import AgUiEventType, StreamEvent
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.core.auth.roles import HumanRole
-from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
+from synthorg.core.resilience import SlidingWindowEventLimiter
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
 from tests._shared import make_app_state, mock_of
@@ -222,7 +222,7 @@ async def test_revalidation_tick_tolerates_failures_within_window() -> None:
     """``max_failures`` transient errors inside the window are absorbed
     (tick returns ``None``); the stream keeps running."""
     state = _make_app_state(persisted_user=None, raise_on_get=True)
-    limiter = _SlidingWindowRateLimiter(max_events=3, window_seconds=60.0)
+    limiter = SlidingWindowEventLimiter(max_events=3, window_seconds=60.0)
     user = _make_auth_user()
 
     for _ in range(3):
@@ -239,7 +239,7 @@ async def test_revalidation_tick_revokes_when_window_saturates() -> None:
     down with a backend-unavailable frame -- and, unlike a streak
     counter, an interleaved success does NOT reset the budget."""
     state = _make_app_state(persisted_user=None, raise_on_get=True)
-    limiter = _SlidingWindowRateLimiter(max_events=3, window_seconds=60.0)
+    limiter = SlidingWindowEventLimiter(max_events=3, window_seconds=60.0)
     user = _make_auth_user()
 
     for _ in range(3):
@@ -281,7 +281,7 @@ async def test_interleaved_success_does_not_reset_failure_budget() -> None:
         RuntimeError("blip"),
         RuntimeError("blip"),
     ]
-    limiter = _SlidingWindowRateLimiter(max_events=3, window_seconds=60.0)
+    limiter = SlidingWindowEventLimiter(max_events=3, window_seconds=60.0)
     user = _make_auth_user()
 
     # F, ok, F, ok, F  -> 3 admitted failures, never revoked.

@@ -12,7 +12,7 @@ import {
   WS_RECONNECT_JITTER_MAX,
   WS_RECONNECT_JITTER_MIN,
   WS_RECONNECT_MAX_DELAY,
-} from '@/utils/constants'
+} from '@/utils/ws-constants'
 import { sanitizeForLog } from '@/utils/logging'
 import { asObjectRecord } from '@/utils/parse'
 import { createLogger } from '@/lib/logger'

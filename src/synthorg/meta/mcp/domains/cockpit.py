@@ -12,6 +12,10 @@ from typing import TYPE_CHECKING
 from pydantic import JsonValue
 
 from synthorg.meta.mcp.domains._cockpit_args import (
+    FramesArgs,
+    InterveneArgs,
+    LiveActivityArgs,
+    SeekArgs,
     SteerArgs,
     SteerListArgs,
     SteerSupersedeArgs,
@@ -80,6 +84,7 @@ COCKPIT_TOOLS: tuple[MCPToolDef, ...] = (
         "cockpit",
         "get_live_activity",
         "Get the live org-activity snapshot (who/what + stuck/runaway flags).",
+        args_model=LiveActivityArgs,
     ),
     read_tool(
         "cockpit",
@@ -87,6 +92,7 @@ COCKPIT_TOOLS: tuple[MCPToolDef, ...] = (
         "Get the flight-recorder timeline (newest-first) for an execution.",
         {**_EXECUTION_ID_PROP, **PAGINATION_PROPERTIES},
         required=("execution_id",),
+        args_model=FramesArgs,
     ),
     read_tool(
         "cockpit",
@@ -101,6 +107,7 @@ COCKPIT_TOOLS: tuple[MCPToolDef, ...] = (
             },
         },
         required=("execution_id", "turn_index"),
+        args_model=SeekArgs,
     ),
     admin_tool(
         "cockpit",
@@ -108,6 +115,7 @@ COCKPIT_TOOLS: tuple[MCPToolDef, ...] = (
         "Pause a running task (transition to INTERRUPTED).",
         {**_TASK_PROP, **ADMIN_GUARDRAIL_PROPERTIES},
         required=("task_id", *ADMIN_GUARDRAIL_REQUIRED),
+        args_model=InterveneArgs,
     ),
     admin_tool(
         "cockpit",
@@ -115,6 +123,7 @@ COCKPIT_TOOLS: tuple[MCPToolDef, ...] = (
         "Kill a running task (cancel it).",
         {**_TASK_PROP, **ADMIN_GUARDRAIL_PROPERTIES},
         required=("task_id", *ADMIN_GUARDRAIL_REQUIRED),
+        args_model=InterveneArgs,
     ),
     admin_tool(
         "cockpit",

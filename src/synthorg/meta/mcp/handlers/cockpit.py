@@ -9,7 +9,7 @@ the ``/cockpit`` REST controller.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
 from synthorg._core.features import require_service
 from synthorg.core.agent import AgentIdentity
@@ -17,14 +17,21 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
-from synthorg.engine.intervention import SupersedeMode
-from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import STEERABLE_KINDS
 from synthorg.engine.state import task_engine_of
+from synthorg.meta.mcp.domains._cockpit_args import (
+    FramesArgs,
+    InterveneArgs,
+    SeekArgs,
+    SteerArgs,
+    SteerListArgs,
+    SteerSupersedeArgs,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     dump_many,
     err,
@@ -32,9 +39,7 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
     require_actor_id,
-    require_arg,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -50,67 +55,12 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _COCKPIT_NS: Final[str] = "cockpit"
-_ARG_EXECUTION_ID = "execution_id"
-_ARG_TASK_ID = "task_id"
-_ARG_TEXT = "text"
-_ARG_TURN_INDEX = "turn_index"
-_ARG_PROJECT_ID = "project_id"
 _ARG_KIND = "kind"
-_ARG_DIRECTIVE_ID = "directive_id"
 _ARG_TASK_IDS = "task_ids"
-_ARG_NARROW_TASK_IDS = "narrow_task_ids"
-_ARG_NARROW_AGENT_IDS = "narrow_agent_ids"
-_ARG_SUPERSEDE_TASK_IDS = "supersede_task_ids"
-_ARG_SUPERSEDE_MODE = "supersede_mode"
-_TY_POS_INT = "positive int"
 _TY_STR_ARRAY = "array of non-empty strings"
 _EXPECTED_KIND: Final[str] = (
     f"one of {'/'.join(sorted(k.value for k in STEERABLE_KINDS))}"
 )
-_EXPECTED_SUPERSEDE_MODE: Final[str] = (
-    f"one of {'/'.join(m.value for m in SupersedeMode)}"
-)
-
-
-def _str_tuple(arguments: dict[str, object], key: str) -> tuple[NotBlankStr, ...]:
-    """Parse an optional array-of-strings argument into a tuple.
-
-    Returns:
-        The non-empty string ids; an empty tuple when the key is absent.
-
-    Raises:
-        ArgumentValidationError: When the value is not an array of
-            non-empty strings.
-    """
-    raw = arguments.get(key)
-    if raw is None:
-        return ()
-    if not isinstance(raw, (list, tuple)):
-        raise ArgumentValidationError(key, _TY_STR_ARRAY)
-    out: list[NotBlankStr] = []
-    for item in raw:
-        if not isinstance(item, str) or not item.strip():
-            raise ArgumentValidationError(key, _TY_STR_ARRAY)
-        out.append(NotBlankStr(item))
-    return tuple(out)
-
-
-def _parse_turn_index(arguments: dict[str, object]) -> int:
-    """Return parse turn index.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(_ARG_TURN_INDEX)
-    if isinstance(raw, bool) or not isinstance(raw, (int, str)):
-        raise ArgumentValidationError(_ARG_TURN_INDEX, _TY_POS_INT)
-    try:
-        value = int(raw)
-    except (TypeError, ValueError) as exc:
-        raise ArgumentValidationError(_ARG_TURN_INDEX, _TY_POS_INT) from exc
-    if value < 1:
-        raise ArgumentValidationError(_ARG_TURN_INDEX, _TY_POS_INT)
-    return value
 
 
 async def _get_live_activity(
@@ -152,16 +102,15 @@ async def _get_frames(
 ) -> str:
     """Return the frames."""
     try:
-        execution_id = require_arg(arguments, _ARG_EXECUTION_ID, str)
-        offset, limit = coerce_pagination(arguments)
+        frames_args = typed_args(arguments, FramesArgs)
         recorder = require_service(
             app_state.slice(CockpitStateSlice).flight_recorder_service,
             "Flight Recorder Service",
         )
         frames = await recorder.get_frames(
-            execution_id,
-            limit=limit,
-            offset=offset,
+            frames_args.execution_id,
+            limit=frames_args.limit,
+            offset=frames_args.offset,
         )
         logger.info(
             MCP_HANDLER_INVOKE_SUCCESS,
@@ -185,13 +134,12 @@ async def _seek(
 ) -> str:
     """Return seek."""
     try:
-        execution_id = require_arg(arguments, _ARG_EXECUTION_ID, str)
-        turn_index = _parse_turn_index(arguments)
+        seek_args = typed_args(arguments, SeekArgs)
         recorder = require_service(
             app_state.slice(CockpitStateSlice).flight_recorder_service,
             "Flight Recorder Service",
         )
-        view = await recorder.seek(execution_id, turn_index)
+        view = await recorder.seek(seek_args.execution_id, seek_args.turn_index)
         logger.info(
             MCP_HANDLER_INVOKE_SUCCESS,
             tool_name="synthorg_cockpit_seek_flight_recorder",
@@ -215,9 +163,9 @@ async def _intervene_pause(
     """Return intervene pause."""
     try:
         reason, _actor = require_admin_guardrails(arguments, actor)
-        task_id = require_arg(arguments, _ARG_TASK_ID, str)
+        pause_args = typed_args(arguments, InterveneArgs)
         task, _from = await task_engine_of(app_state).transition_task(
-            task_id,
+            pause_args.task_id,
             TaskStatus.INTERRUPTED,
             requested_by=require_actor_id(actor),
             reason=reason,
@@ -245,9 +193,9 @@ async def _intervene_kill(
     """Return intervene kill."""
     try:
         reason, _actor = require_admin_guardrails(arguments, actor)
-        task_id = require_arg(arguments, _ARG_TASK_ID, str)
+        kill_args = typed_args(arguments, InterveneArgs)
         task, _prior = await task_engine_of(app_state).cancel_task(
-            task_id,
+            kill_args.task_id,
             requested_by=require_actor_id(actor),
             reason=reason,
         )
@@ -278,35 +226,25 @@ async def _steer(
     """  # noqa: DOC501 -- ArgumentValidationError raised + caught in-handler
     tool_name = "synthorg_cockpit_steer"
     try:
-        _reason, _actor = require_admin_guardrails(arguments, actor)
-        project_id = require_arg(arguments, _ARG_PROJECT_ID, str)
-        raw_kind = require_arg(arguments, _ARG_KIND, str)
-        try:
-            kind = InterventionKind(raw_kind)
-        except ValueError as exc:
-            raise ArgumentValidationError(_ARG_KIND, _EXPECTED_KIND) from exc
-        if kind not in STEERABLE_KINDS:
+        require_admin_guardrails(arguments, actor)
+        steer_args = typed_args(arguments, SteerArgs)
+        # The args model validates ``kind`` to the full ``InterventionKind``
+        # enum; the steering surface only accepts the steerable subset, so
+        # a valid-but-non-steerable kind (e.g. ``pause``) is rejected here.
+        if steer_args.kind not in STEERABLE_KINDS:
             raise ArgumentValidationError(_ARG_KIND, _EXPECTED_KIND)
-        text = require_arg(arguments, _ARG_TEXT, str)
-        raw_mode = arguments.get(_ARG_SUPERSEDE_MODE, SupersedeMode.NONE.value)
-        try:
-            mode = SupersedeMode(cast("str", raw_mode))
-        except ValueError as exc:
-            raise ArgumentValidationError(
-                _ARG_SUPERSEDE_MODE, _EXPECTED_SUPERSEDE_MODE
-            ) from exc
         steering = require_service(
             app_state.slice(CockpitStateSlice).steering_service, "Steering Service"
         )
         result = await steering.issue(
-            project_id=NotBlankStr(project_id),
-            kind=kind,
-            text=NotBlankStr(text),
+            project_id=steer_args.project_id,
+            kind=steer_args.kind,
+            text=steer_args.text,
             author=NotBlankStr(require_actor_id(actor)),
-            narrow_task_ids=_str_tuple(arguments, _ARG_NARROW_TASK_IDS),
-            narrow_agent_ids=_str_tuple(arguments, _ARG_NARROW_AGENT_IDS),
-            supersede_task_ids=_str_tuple(arguments, _ARG_SUPERSEDE_TASK_IDS),
-            supersede_mode=mode,
+            narrow_task_ids=steer_args.narrow_task_ids,
+            narrow_agent_ids=steer_args.narrow_agent_ids,
+            supersede_task_ids=steer_args.supersede_task_ids,
+            supersede_mode=steer_args.supersede_mode,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
         return ok(result.model_dump(mode="json"))
@@ -332,27 +270,25 @@ async def _steer_supersede(
     """  # noqa: DOC501 -- ArgumentValidationError raised + caught in-handler
     tool_name = "synthorg_cockpit_steer_supersede"
     try:
-        _reason, _actor = require_admin_guardrails(arguments, actor)
-        project_id = require_arg(arguments, _ARG_PROJECT_ID, str)
-        directive_id = require_arg(arguments, _ARG_DIRECTIVE_ID, str)
-        task_ids = _str_tuple(arguments, _ARG_TASK_IDS)
-        if not task_ids:
-            # task_ids is required: an empty/absent set would silently
+        require_admin_guardrails(arguments, actor)
+        supersede_args = typed_args(arguments, SteerSupersedeArgs)
+        if not supersede_args.task_ids:
+            # task_ids is required: an empty set would silently
             # "supersede" zero tasks, never surfaced to the operator.
             raise ArgumentValidationError(_ARG_TASK_IDS, _TY_STR_ARRAY)
         steering = require_service(
             app_state.slice(CockpitStateSlice).steering_service, "Steering Service"
         )
         cancelled = await steering.confirm_supersession(
-            project_id=NotBlankStr(project_id),
-            directive_id=NotBlankStr(directive_id),
-            task_ids=task_ids,
+            project_id=supersede_args.project_id,
+            directive_id=supersede_args.directive_id,
+            task_ids=supersede_args.task_ids,
             author=NotBlankStr(require_actor_id(actor)),
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
         return ok(
             {
-                "directive_id": directive_id,
+                "directive_id": supersede_args.directive_id,
                 "cancelled_task_ids": [str(t) for t in cancelled],
             }
         )
@@ -378,11 +314,11 @@ async def _steer_list(
     """
     tool_name = "synthorg_cockpit_steer_list"
     try:
-        project_id = require_arg(arguments, _ARG_PROJECT_ID, str)
+        list_args = typed_args(arguments, SteerListArgs)
         steering = require_service(
             app_state.slice(CockpitStateSlice).steering_service, "Steering Service"
         )
-        directives = await steering.list_active(project_id=NotBlankStr(project_id))
+        directives = await steering.list_active(project_id=list_args.project_id)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
         return ok(dump_many(directives))
     except ArgumentValidationError as exc:

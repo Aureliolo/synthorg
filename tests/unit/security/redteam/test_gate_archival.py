@@ -159,7 +159,7 @@ def _gate(
         agent_runner=runner,
         report_repo=repo,
         grounding_checker=HeuristicGroundingChecker(),
-        report_archive=archive,  # type: ignore[arg-type] -- structural double
+        report_archive=archive,  # type: ignore[arg-type]  # structural double
         clock=FakeClock(),
     )
 

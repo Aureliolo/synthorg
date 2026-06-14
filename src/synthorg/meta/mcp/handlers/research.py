@@ -10,8 +10,6 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ValidationError
-
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -26,6 +24,7 @@ from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -49,26 +48,6 @@ _TOOL_GET = "synthorg_research_get"
 _TOOL_LIST = "synthorg_research_list"
 
 _OPERATOR = NotBlankStr("operator")
-_ARG_ARGUMENTS = "arguments"
-
-
-def _typed_args[ArgsT: BaseModel](
-    arguments: dict[str, object],
-    model: type[ArgsT],
-) -> ArgsT:
-    """Validate a raw MCP argument dict into its typed args model.
-
-    Returns:
-        ``ArgsT`` instance.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    try:
-        return model.model_validate(arguments)
-    except ValidationError as exc:
-        expected = f"valid {model.__name__}"
-        raise ArgumentValidationError(_ARG_ARGUMENTS, expected) from exc
 
 
 def _require_service(app_state: AppState) -> ResearchService:
@@ -111,7 +90,7 @@ async def _research_run(
     """Return research run."""
     try:
         svc = _require_service(app_state)
-        args = _typed_args(arguments, ResearchRunArgs)
+        args = typed_args(arguments, ResearchRunArgs)
         brief_id, run_id = derive_research_ids(args, project_id=args.project_id)
         brief = build_research_brief(
             args,
@@ -140,7 +119,7 @@ async def _research_get(
     """Return research get."""
     try:
         svc = _require_service(app_state)
-        args = _typed_args(arguments, ResearchGetArgs)
+        args = typed_args(arguments, ResearchGetArgs)
         run = await svc.get_run(args.run_id)
         if run is None:
             msg = f"Research run {args.run_id!r} not found"
@@ -167,7 +146,7 @@ async def _research_list(
     """Return research list."""
     try:
         svc = _require_service(app_state)
-        args = _typed_args(arguments, ResearchListArgs)
+        args = typed_args(arguments, ResearchListArgs)
         runs = await svc.list_runs(
             ResearchRunFilter(
                 brief_id=args.brief_id,

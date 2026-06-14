@@ -42,6 +42,20 @@ aspirational layering. The current contracts are:
   models) and are not forbidden.
 - **observability-below-api** -- `synthorg.observability` does not
   *directly* import `api`.
+- **no-business-logic-upward-into-api** -- `tools`, `engine`, `meta`,
+  `security`, and `integrations` do not import `api.services`, `api.auth`,
+  or `api.dto`. The cross-layer-shared validators and utilities that used
+  to live under `api` (`parse_typed`, the auth-token-size helpers, the
+  sliding-window limiter, retry-after parsing) moved into `core.*` leaves,
+  so business logic names them from `core` and never reaches up into the
+  HTTP layer. See [ADR-0013](../decisions/0013-layering-dependency-inversion.md).
+- **controllers-no-persistence-internals** -- `synthorg.api.controllers`
+  does not import `persistence._shared`, `persistence.sqlite`,
+  `persistence.postgres`, `persistence.constraint_tokens`, or
+  `persistence.jsonb_capability`. Controllers reach persistence through a
+  service or the repository protocols; backend internals, raw-SQL helpers,
+  and constraint-token strings stay behind the boundary. See
+  [ADR-0013](../decisions/0013-layering-dependency-inversion.md).
 
 ### Why direct-only, and the ignore lists
 

@@ -8,8 +8,8 @@ the original text so callers can attach precise offset locators.
 
 import re
 
+from synthorg.core.text_estimation import DEFAULT_CHAR_PER_TOKEN
 from synthorg.knowledge.constants import (
-    KNOWLEDGE_CHAR_PER_TOKEN_PROXY,
     KNOWLEDGE_CHUNK_MAX_TOKENS,
     KNOWLEDGE_CHUNK_TARGET_TOKENS,
 )
@@ -17,24 +17,12 @@ from synthorg.knowledge.constants import (
 _PARAGRAPH_RE = re.compile(r"\n\s*\n")
 
 
-def approx_tokens(text: str) -> int:
-    """Approximate token count via the chars-per-token proxy.
-
-    Returns:
-        ``0`` for empty text, otherwise at least ``1`` token scaled by the
-        chars-per-token proxy.
-    """
-    if not text:
-        return 0
-    return max(1, len(text) // KNOWLEDGE_CHAR_PER_TOKEN_PROXY)
-
-
 def _max_chars() -> int:
-    return KNOWLEDGE_CHUNK_MAX_TOKENS * KNOWLEDGE_CHAR_PER_TOKEN_PROXY
+    return KNOWLEDGE_CHUNK_MAX_TOKENS * DEFAULT_CHAR_PER_TOKEN
 
 
 def _target_chars() -> int:
-    return KNOWLEDGE_CHUNK_TARGET_TOKENS * KNOWLEDGE_CHAR_PER_TOKEN_PROXY
+    return KNOWLEDGE_CHUNK_TARGET_TOKENS * DEFAULT_CHAR_PER_TOKEN
 
 
 def _paragraph_spans(text: str) -> list[tuple[int, int]]:

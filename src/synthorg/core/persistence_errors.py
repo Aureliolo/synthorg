@@ -186,3 +186,22 @@ class ArtifactStorageFullError(PersistenceError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     error_code: ClassVar[ErrorCode] = ErrorCode.ARTIFACT_STORAGE_FULL
     status_code: ClassVar[int] = 507
+
+
+class JsonbQueryUnsupportedError(PersistenceError):
+    """Raised when a JSONB-native query hits a backend that lacks the capability.
+
+    JSONB containment / key-existence queries rely on Postgres-native
+    operators (``@>`` / ``?``) that SQLite does not provide. Backends
+    without the capability raise this typed error so the API surfaces a
+    stable 422 instead of the controller branching on an
+    ``isinstance(repo, JsonbQueryCapability)`` capability probe.
+
+    Non-retryable: the backend will not gain the capability on a retry.
+    """
+
+    is_retryable: bool = False
+    default_message: ClassVar[str] = "JSONB queries require the Postgres backend"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 422

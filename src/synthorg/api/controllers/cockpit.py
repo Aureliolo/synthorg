@@ -15,7 +15,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
 from synthorg.api.cursor import decode_cursor
-from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
+from synthorg.api.dto import (
+    DEFAULT_LIMIT,
+    ApiResponse,
+    FlightRecorderFrameResponse,
+    PaginatedResponse,
+)
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
@@ -37,9 +42,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.cockpit import (
     COCKPIT_INTERVENTION_APPLIED,
     COCKPIT_INTERVENTION_INITIATED,
-)
-from synthorg.persistence.flight_recorder_protocol import (
-    FlightRecorderFrame,
 )
 from synthorg.security.redteam.models import RedTeamReportRecord
 from synthorg.settings.state import config_resolver_of
@@ -115,17 +117,19 @@ class CockpitController(Controller):
         execution_id: PathId,
         cursor: CursorParam = None,
         limit: CursorLimit = DEFAULT_LIMIT,
-    ) -> PaginatedResponse[FlightRecorderFrame]:
+    ) -> PaginatedResponse[FlightRecorderFrameResponse]:
         """Return the flight-recorder scrubber timeline (newest-first, paginated).
 
         Uses opaque cursor pagination (``cursor`` + ``limit``) per the
         web dashboard's MANDATORY pagination contract; offset-based
         paging is gone. The underlying repo still slices on offset
         internally, but the cursor is HMAC-signed so the client treats
-        it as opaque.
+        it as opaque. Each persistence-layer frame is projected to its
+        :class:`FlightRecorderFrameResponse` so the persistence model
+        stays behind the boundary.
 
         Returns:
-            ``PaginatedResponse[FlightRecorderFrame]`` instance.
+            ``PaginatedResponse[FlightRecorderFrameResponse]`` instance.
         """
         app_state: AppState = state.app_state
         offset = (
@@ -150,8 +154,12 @@ class CockpitController(Controller):
             limit=limit,
             secret=cursor_secret_of(app_state),
         )
-        window = tuple(frames[:limit])
-        return PaginatedResponse[FlightRecorderFrame](data=window, pagination=meta)
+        window = tuple(
+            FlightRecorderFrameResponse.from_frame(f) for f in frames[:limit]
+        )
+        return PaginatedResponse[FlightRecorderFrameResponse](
+            data=window, pagination=meta
+        )
 
     @get("/flight-recorder/{execution_id:str}/seek/{turn_index:int}")
     async def seek_frame(

@@ -2,7 +2,7 @@
 
 ``decode_token`` returns a typed
 :class:`synthorg.api.auth.claims.JwtClaims` and routes through
-:func:`synthorg.api.boundary.parse_typed`, so a malformed claim set
+:func:`synthorg.core.boundary.parse_typed`, so a malformed claim set
 emits ``api.boundary.validation_failed`` and re-raises
 ``ValidationError`` for the auth middleware to translate into the
 standard 401 path.

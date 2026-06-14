@@ -1,6 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
 import type { CeremonyStrategyType } from '@/api/types/ceremony-policy'
-import { CEREMONY_STRATEGY_LABELS } from '@/utils/constants'
+import { CEREMONY_STRATEGY_LABELS } from '@/stores/ceremony-policy-constants'
 
 export interface StrategyChangeWarningProps {
   currentStrategy: CeremonyStrategyType

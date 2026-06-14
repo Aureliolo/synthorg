@@ -4,7 +4,7 @@ Every URL-safe secret minted across the auth surface (WebSocket
 tickets, password-reset tokens, refresh tokens, OAuth state tokens)
 shares the same entropy budget so an operator cannot accidentally
 weaken one path while hardening another.  The shared budget resolves
-through the standard precedence chain at process startup -- the
+through the standard precedence chain at process startup: the
 :data:`security.auth_token_bytes` setting is ``restart_required=True``
 **and** ``read_only_post_init=True``: operators cannot change it
 through the /settings API at runtime; updates require an env / YAML
@@ -13,7 +13,10 @@ changing token byte length mid-run would silently invalidate existing
 tokens (a 32-byte token decoded under a 64-byte expectation fails
 verification).
 
-The startup hook in :mod:`synthorg.api.lifecycle_helpers` calls
+This module lives in ``core`` so any layer that mints auth-surface
+secrets (the API auth helpers, the integrations OAuth flows) can read
+the shared budget without importing upward into the API package. The
+startup hook in :mod:`synthorg.api.lifecycle_helpers` calls
 :func:`set_auth_token_bytes` once with the resolved value before the
 first request is served.  Tests that need a different value can call
 the same setter directly.
@@ -30,7 +33,7 @@ base64 characters per :func:`secrets.token_urlsafe`.
 _MIN_AUTH_TOKEN_BYTES: int = 16
 """Lower bound enforced by :func:`set_auth_token_bytes`.
 
-Sixteen bytes is 128 bits of entropy -- the minimum for a session
+Sixteen bytes is 128 bits of entropy: the minimum for a session
 token where birthday-collision resistance still meets the 2^64
 attacker bound. Anything weaker is rejected at boot.
 """

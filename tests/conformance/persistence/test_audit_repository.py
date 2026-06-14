@@ -19,7 +19,11 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.approval.enums import ApprovalRiskLevel
-from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    JsonbQueryUnsupportedError,
+    QueryError,
+)
 from synthorg.persistence.audit_protocol import AuditFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.autonomy.enums import ToolCategory
@@ -264,12 +268,29 @@ class TestAuditRepositoryConformance:
             pytest.skip("JSONB containment query is Postgres-only")
         naive = datetime(2026, 1, 1)  # noqa: DTZ001 -- naive on purpose
         with pytest.raises(QueryError):
-            await backend.audit_entries.query_jsonb_key_exists(  # type: ignore[attr-defined]
+            await backend.audit_entries.query_jsonb_key_exists(
                 "matched_rules", "rule-allowlist", since=naive
             )
         with pytest.raises(QueryError):
-            await backend.audit_entries.query_jsonb_key_exists(  # type: ignore[attr-defined]
+            await backend.audit_entries.query_jsonb_key_exists(
                 "matched_rules", "rule-allowlist", until=naive
+            )
+
+    async def test_jsonb_query_unsupported_on_sqlite(
+        self, backend: PersistenceBackend
+    ) -> None:  # lint-allow: dual-backend-parity -- JSONB is Postgres-only
+        # The JSONB methods are part of the AuditRepository contract, so
+        # the SQLite backend implements them by raising the typed
+        # capability error rather than the controller probing isinstance.
+        if backend.backend_name != "sqlite":
+            pytest.skip("Asserts the SQLite no-JSONB-capability path")
+        with pytest.raises(JsonbQueryUnsupportedError):
+            await backend.audit_entries.query_jsonb_contains(
+                "matched_rules", ["rule-x"]
+            )
+        with pytest.raises(JsonbQueryUnsupportedError):
+            await backend.audit_entries.query_jsonb_key_exists(
+                "matched_rules", "rule-x"
             )
 
     async def test_matched_rules_order_preserved(
@@ -303,7 +324,7 @@ class TestAuditRepositoryConformance:
             _entry("e2", matched_rules=("rule-y",)),
         )
 
-        rows, total = await backend.audit_entries.query_jsonb_contains(  # type: ignore[attr-defined]
+        rows, total = await backend.audit_entries.query_jsonb_contains(
             "matched_rules",
             ["rule-x"],
         )

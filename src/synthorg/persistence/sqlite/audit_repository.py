@@ -7,7 +7,10 @@ from datetime import UTC, datetime
 import aiosqlite
 
 from synthorg.approval.enums import ApprovalRiskLevel
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import (
+    JsonbQueryUnsupportedError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.audit_entry import (
@@ -319,6 +322,44 @@ class SQLiteAuditRepository:
                 )
                 raise QueryError(msg) from exc
         return _db_rowcount
+
+    async def query_jsonb_contains(  # noqa: PLR0913
+        self,
+        column: str,
+        value: dict[str, object] | list[object],
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[tuple[AuditEntry, ...], int]:
+        """Reject JSONB containment queries: SQLite lacks the ``@>`` operator.
+
+        Raises:
+            JsonbQueryUnsupportedError: Always; SQLite has no JSONB-native
+                containment query.
+        """
+        del column, value, since, until, limit, offset
+        raise JsonbQueryUnsupportedError
+
+    async def query_jsonb_key_exists(  # noqa: PLR0913
+        self,
+        column: str,
+        key: str,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[tuple[AuditEntry, ...], int]:
+        """Reject JSONB key-existence queries: SQLite lacks the ``?`` operator.
+
+        Raises:
+            JsonbQueryUnsupportedError: Always; SQLite has no JSONB-native
+                key-existence query.
+        """
+        del column, key, since, until, limit, offset
+        raise JsonbQueryUnsupportedError
 
     def _row_to_entry(self, row: dict[str, object]) -> AuditEntry:
         """Convert a database row to an ``AuditEntry`` model.

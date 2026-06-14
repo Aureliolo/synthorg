@@ -31,12 +31,19 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import HrStateSlice, scaling_decision_service_of
+from synthorg.meta.mcp.domains._simple_args import (
+    CoordinationGetTaskMetricsArgs,
+    CoordinationMetricsListArgs,
+    ScalingGetDecisionArgs,
+    ScalingListDecisionsArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
 )
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
@@ -45,8 +52,6 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
-    require_non_blank,
     require_non_blank_value,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -93,13 +98,13 @@ async def _coordination_get_task_metrics(
         JSON-encoded MCP envelope string.
     """
     tool = "synthorg_coordination_get_task_metrics"
+    if app_state.slice(CoordinationStateSlice).coordination_service is None:
+        return capability_gap(tool, _WHY_COORDINATION_NOT_WIRED)
     try:
-        task_id = require_non_blank(arguments, "task_id")
+        task_id = typed_args(arguments, CoordinationGetTaskMetricsArgs).task_id
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if app_state.slice(CoordinationStateSlice).coordination_service is None:
-        return capability_gap(tool, _WHY_COORDINATION_NOT_WIRED)
     try:
         record = await coordination_service_of(app_state).get_task_metrics(
             NotBlankStr(task_id),
@@ -130,13 +135,14 @@ async def _coordination_metrics_list(
         JSON-encoded MCP envelope string.
     """
     tool = "synthorg_coordination_metrics_list"
+    if app_state.slice(CoordinationStateSlice).coordination_service is None:
+        return capability_gap(tool, _WHY_COORDINATION_NOT_WIRED)
     try:
-        offset, limit = coerce_pagination(arguments)
+        page = typed_args(arguments, CoordinationMetricsListArgs)
+        offset, limit = page.offset, page.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if app_state.slice(CoordinationStateSlice).coordination_service is None:
-        return capability_gap(tool, _WHY_COORDINATION_NOT_WIRED)
     try:
         records, total = await coordination_service_of(app_state).list_metrics(
             offset=offset,
@@ -166,13 +172,14 @@ async def _scaling_list_decisions(
         JSON-encoded MCP envelope string.
     """
     tool = "synthorg_scaling_list_decisions"
+    if app_state.slice(HrStateSlice).scaling_decision_service is None:
+        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
-        offset, limit = coerce_pagination(arguments)
+        page = typed_args(arguments, ScalingListDecisionsArgs)
+        offset, limit = page.offset, page.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if app_state.slice(HrStateSlice).scaling_decision_service is None:
-        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
         decisions, total = await scaling_decision_service_of(app_state).list_decisions(
             offset=offset,
@@ -199,13 +206,13 @@ async def _scaling_get_decision(
         JSON-encoded MCP envelope string.
     """
     tool = "synthorg_scaling_get_decision"
+    if app_state.slice(HrStateSlice).scaling_decision_service is None:
+        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
-        decision_id = require_non_blank(arguments, "decision_id")
+        decision_id = typed_args(arguments, ScalingGetDecisionArgs).decision_id
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if app_state.slice(HrStateSlice).scaling_decision_service is None:
-        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
         decision = await scaling_decision_service_of(app_state).get_decision(
             NotBlankStr(decision_id),
@@ -246,6 +253,8 @@ async def _scaling_get_config(
     return ok(data=config.model_dump(mode="json"))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads an
+# `agent_ids` list but ScalingTriggerArgs declares a single required `reason`.
 async def _scaling_trigger(
     *,
     app_state: AppState,
@@ -313,6 +322,9 @@ async def _ceremony_policy_get(
     return ok(data=policy.model_dump(mode="json"))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler rejects an
+# explicit `department: null` but CeremonyPolicyGetResolvedArgs maps null and
+# absent both to None (no filter), losing the explicit-null rejection.
 async def _ceremony_policy_get_resolved(
     *,
     app_state: AppState,

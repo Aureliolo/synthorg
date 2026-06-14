@@ -50,6 +50,10 @@ async def _integration_health_get_all(
     return ok({k: _to_jsonable(v) for k, v in dict(snapshot).items()})
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: the wire schema +
+# IntegrationHealthGetArgs declare `integration_name`, but the handler reads
+# `integration_id` and forwards it to facade.get_one(integration_id). Needs a
+# batched contract decision (lookup by id or by name) before migrating.
 async def _integration_health_get(
     *,
     app_state: AppState,

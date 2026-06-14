@@ -17,6 +17,7 @@ from synthorg.core.auth.models import ApiKey
 from synthorg.core.codebase_structure_map import CodebaseStructureMap
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
+    JsonbQueryUnsupportedError,
     QueryError,
     RecordNotFoundError,
 )
@@ -435,6 +436,34 @@ class FakeAuditRepository:
             k: e for k, e in self._entries.items() if e.timestamp >= cutoff
         }
         return before - len(self._entries)
+
+    async def query_jsonb_contains(  # noqa: PLR0913
+        self,
+        column: str,
+        value: dict[str, object] | list[object],
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[tuple[AuditEntry, ...], int]:
+        # Mirrors the non-Postgres backends: no JSONB-native containment.
+        del column, value, since, until, limit, offset
+        raise JsonbQueryUnsupportedError
+
+    async def query_jsonb_key_exists(  # noqa: PLR0913
+        self,
+        column: str,
+        key: str,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[tuple[AuditEntry, ...], int]:
+        # Mirrors the non-Postgres backends: no JSONB-native key existence.
+        del column, key, since, until, limit, offset
+        raise JsonbQueryUnsupportedError
 
 
 # FakeDecisionRepository lives in a sibling module to keep this file

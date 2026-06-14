@@ -25,10 +25,12 @@ from pydantic import TypeAdapter, ValidationError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.mcp.domains._simple_args import ReportsGetArgs, ReportsListArgs
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     dump_many,
@@ -36,7 +38,6 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
     parse_str_sequence,
     parse_time_window,
     require_actor_id,
@@ -153,13 +154,15 @@ def _parse_str_dict(
     return out
 
 
-def _parse_report_id(arguments: dict[str, object]) -> UUID:
-    """Return parse report id.
+def _parse_report_id(raw: str) -> UUID:
+    """Coerce a validated ``report_id`` string into a :class:`UUID`.
+
+    Returns:
+        The parsed ``UUID``.
 
     Raises:
         ArgumentValidationError: Raised on the corresponding failure path.
     """
-    raw = require_arg(arguments, _ARG_REPORT_ID, str)
     try:
         return UUID(raw)
     except ValueError as exc:
@@ -169,6 +172,8 @@ def _parse_report_id(arguments: dict[str, object]) -> UUID:
 # ── Analytics handlers ────────────────────────────────────────────────
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
+# since/until time window but AnalyticsGetOverviewArgs declares no fields.
 async def _analytics_overview(
     *,
     app_state: AppState,
@@ -196,6 +201,8 @@ async def _analytics_overview(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# since/until + metric_names, but AnalyticsGetTrendsArgs declares period/metric.
 async def _analytics_trends(
     *,
     app_state: AppState,
@@ -225,6 +232,9 @@ async def _analytics_trends(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# since/until (+ horizon_days), but AnalyticsGetForecastArgs declares only
+# horizon_days and no time window.
 async def _analytics_forecast(
     *,
     app_state: AppState,
@@ -258,6 +268,8 @@ async def _analytics_forecast(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# since/until + metric_names, but MetricsGetCurrentArgs declares no fields.
 async def _metrics_current(
     *,
     app_state: AppState,
@@ -287,6 +299,9 @@ async def _metrics_current(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# since/until + metric_names (plural) + sample_count, but MetricsGetHistoryArgs
+# declares metric_name (singular) + since/until and no sample_count.
 async def _metrics_history(
     *,
     app_state: AppState,
@@ -337,7 +352,8 @@ async def _reports_list(
 ) -> str:
     """Return reports list."""
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, ReportsListArgs)
+        offset, limit = page_args.offset, page_args.limit
         reports, total = await reports_service_of(app_state).list_reports(
             offset=offset,
             limit=limit,
@@ -371,7 +387,7 @@ async def _reports_get(
 ) -> str:
     """Return reports get."""
     try:
-        report_id = _parse_report_id(arguments)
+        report_id = _parse_report_id(typed_args(arguments, ReportsGetArgs).report_id)
         report = await reports_service_of(app_state).get_report(report_id)
         if report is None:
             missing = LookupError(f"Report {report_id} not found")
@@ -401,6 +417,8 @@ async def _reports_get(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# template + options, but ReportsGenerateArgs declares report_type + parameters.
 async def _reports_generate(
     *,
     app_state: AppState,

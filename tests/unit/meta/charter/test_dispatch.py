@@ -236,8 +236,6 @@ def _dispatcher(
     *,
     project_repo: _FakeProjectRepo | None = None,
 ) -> tuple[CharterDispatcher, _FakeForecastRepo, _FakeWorkPipeline, _FakeProjectRepo]:
-    from synthorg.api.services.project_service import ProjectService
-
     charter_repo = _FakeCharterRepo(charter)
     forecast_repo = _FakeForecastRepo()
     proj_repo = project_repo or _FakeProjectRepo()
@@ -245,7 +243,7 @@ def _dispatcher(
     dispatcher = CharterDispatcher(
         charter_repo=cast(CharterRepository, charter_repo),
         forecast_repo=cast(CostForecastRepository, forecast_repo),
-        project_service=ProjectService(repo=cast(ProjectRepository, proj_repo)),
+        project_repo=cast(ProjectRepository, proj_repo),
         work_pipeline=cast(WorkPipeline, pipeline),
         conversation_repo=cast(ConversationRepository, _FakeConversationRepo()),
         budget_currency=lambda: _CURRENCY,
@@ -402,12 +400,10 @@ class TestApprove:
         charter_repo = _FakeCharterRepo(_charter())
         forecast_repo = _FakeForecastRepo()
         proj_repo = _FakeProjectRepo()
-        from synthorg.api.services.project_service import ProjectService
-
         dispatcher = CharterDispatcher(
             charter_repo=cast(CharterRepository, charter_repo),
             forecast_repo=cast(CostForecastRepository, forecast_repo),
-            project_service=ProjectService(repo=cast(ProjectRepository, proj_repo)),
+            project_repo=cast(ProjectRepository, proj_repo),
             work_pipeline=cast(WorkPipeline, _BoomPipeline()),
             conversation_repo=cast(ConversationRepository, _FakeConversationRepo()),
             budget_currency=lambda: _CURRENCY,
@@ -442,8 +438,6 @@ class TestApprove:
                 msg = "duplicate"
                 raise DuplicateRecordError(msg)
 
-        from synthorg.api.services.project_service import ProjectService
-
         charter_repo = _FakeCharterRepo(_charter())
         forecast_repo = _FakeForecastRepo()
         proj_repo = _DupProjectRepo()
@@ -451,7 +445,7 @@ class TestApprove:
         dispatcher = CharterDispatcher(
             charter_repo=cast(CharterRepository, charter_repo),
             forecast_repo=cast(CostForecastRepository, forecast_repo),
-            project_service=ProjectService(repo=cast(ProjectRepository, proj_repo)),
+            project_repo=cast(ProjectRepository, proj_repo),
             work_pipeline=cast(WorkPipeline, pipeline),
             conversation_repo=cast(ConversationRepository, _FakeConversationRepo()),
             budget_currency=lambda: _CURRENCY,
@@ -480,8 +474,6 @@ class TestApprove:
                 self.closed.append(entity_id)
                 return False
 
-        from synthorg.api.services.project_service import ProjectService
-
         charter_repo = _FakeCharterRepo(_charter())
         forecast_repo = _FakeForecastRepo()
         proj_repo = _FakeProjectRepo()
@@ -489,7 +481,7 @@ class TestApprove:
         dispatcher = CharterDispatcher(
             charter_repo=cast(CharterRepository, charter_repo),
             forecast_repo=cast(CostForecastRepository, forecast_repo),
-            project_service=ProjectService(repo=cast(ProjectRepository, proj_repo)),
+            project_repo=cast(ProjectRepository, proj_repo),
             work_pipeline=cast(WorkPipeline, pipeline),
             conversation_repo=cast(ConversationRepository, _ClosedConvRepo()),
             budget_currency=lambda: _CURRENCY,

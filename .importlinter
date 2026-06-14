@@ -77,3 +77,31 @@ ignore_imports =
     synthorg.observability.prometheus_collector -> synthorg.api.state
     synthorg.observability._prometheus_label_fetchers -> synthorg.api.state
     synthorg.observability.startup_wiring -> synthorg.api.state
+
+[importlinter:contract:no-business-logic-upward-into-api]
+name = domain/tool/engine/security/integrations layers do not import api business logic
+type = forbidden
+source_modules =
+    synthorg.tools
+    synthorg.engine
+    synthorg.meta
+    synthorg.security
+    synthorg.integrations
+forbidden_modules =
+    synthorg.api.services
+    synthorg.api.auth
+    synthorg.api.dto
+allow_indirect_imports = true
+
+[importlinter:contract:controllers-no-persistence-internals]
+name = controllers reach persistence through services / protocols, never backend internals
+type = forbidden
+source_modules =
+    synthorg.api.controllers
+forbidden_modules =
+    synthorg.persistence._shared
+    synthorg.persistence.sqlite
+    synthorg.persistence.postgres
+    synthorg.persistence.constraint_tokens
+    synthorg.persistence.jsonb_capability
+allow_indirect_imports = true

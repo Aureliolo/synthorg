@@ -99,7 +99,7 @@ def _make_expire_callback(
     return _on_expire
 
 
-def _resolve_artifact_dir_env() -> str:
+def _resolve_artifact_dir_env(raw: str | None = None) -> str:
     """Resolve the postgres-mode artifact directory from the environment.
 
     Reads ``SYNTHORG_ARTIFACT_DIR`` and falls back to ``/data`` (the
@@ -108,13 +108,21 @@ def _resolve_artifact_dir_env() -> str:
     at the env boundary so artifacts cannot end up in the process
     working directory or outside the mounted volume.
 
+    Args:
+        raw: Pre-read ``SYNTHORG_ARTIFACT_DIR`` value (already stripped).
+            Pass it from a caller that has already read the env var to
+            avoid a redundant second read; ``None`` reads the env var
+            here.
+
     Returns:
         Resulting string.
 
     Raises:
         ValueError: Raised on the corresponding failure path.
     """
-    artifact_dir_str = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
+    artifact_dir_str = (
+        raw if raw is not None else os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
+    )
     if not artifact_dir_str:
         return _POSTGRES_VOLUME_DATA_DIR
     artifact_path = Path(artifact_dir_str)
@@ -158,7 +166,7 @@ def resolve_agent_workspace_root_env() -> Path | None:
     """
     artifact_dir = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
     if artifact_dir:
-        return Path(_resolve_artifact_dir_env()) / _AGENT_WORKSPACES_SUBDIR
+        return Path(_resolve_artifact_dir_env(artifact_dir)) / _AGENT_WORKSPACES_SUBDIR
     db_path = os.environ.get("SYNTHORG_DB_PATH", "").strip()
     if db_path:
         db_path_obj = Path(db_path)

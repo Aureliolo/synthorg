@@ -26,7 +26,7 @@ from pydantic import (
 )
 
 from synthorg.a2a.models import A2AMessage, JsonRpcRequest
-from synthorg.api.boundary import parse_typed
+from synthorg.core.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
 
 

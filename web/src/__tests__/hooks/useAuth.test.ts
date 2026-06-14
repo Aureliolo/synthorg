@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/auth'
 import type { UserInfoResponse } from '@/api/types/auth'
 import type { HumanRole } from '@/api/types/enums'
-import { WRITE_ROLES } from '@/utils/constants'
+import { WRITE_ROLES } from '@/utils/tasks'
 
 function resetStore() {
   useAuthStore.setState({

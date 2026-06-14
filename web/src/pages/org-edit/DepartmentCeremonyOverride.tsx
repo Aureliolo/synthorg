@@ -10,7 +10,7 @@ import {
   STRATEGY_DEFAULT_VELOCITY_CALC,
   VELOCITY_CALC_LABELS,
   VELOCITY_CALC_TYPES,
-} from '@/utils/constants'
+} from '@/stores/ceremony-policy-constants'
 
 const STRATEGY_OPTIONS = CEREMONY_STRATEGY_TYPES.map((s) => ({
   value: s,

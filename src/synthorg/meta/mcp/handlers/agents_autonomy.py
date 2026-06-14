@@ -17,12 +17,19 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.hr.state import agent_registry_of, performance_tracker_of
+from synthorg.meta.mcp.domains._agents_args import (
+    AutonomyGetArgs,
+    AutonomyUpdateArgs,
+    CollaborationGetCalibrationArgs,
+    CollaborationGetScoreArgs,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     err,
     ok,
 )
-from synthorg.meta.mcp.handlers.common_args import actor_id, require_non_blank
+from synthorg.meta.mcp.handlers.common_args import actor_id
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_invoke_failed,
@@ -34,8 +41,6 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
-
-_ARG_AGENT_ID = "agent_id"
 
 
 async def autonomy_get(
@@ -51,7 +56,7 @@ async def autonomy_get(
     """
     tool = "synthorg_autonomy_get"
     try:
-        agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
+        agent_id = typed_args(arguments, AutonomyGetArgs).agent_id
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -77,24 +82,6 @@ async def autonomy_get(
     )
 
 
-def _parse_autonomy_update_args(
-    arguments: dict[str, object],
-) -> tuple[str, str, str]:
-    """Validate the autonomy_update args and return ``(agent_id, level, reason)``.
-
-    Extracted so the handler stays small enough to keep the agents.py
-    file under its line budget.
-
-    Returns:
-        Tuple of the declared element types.
-    """
-    arg_reason = "reason"
-    agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
-    level_raw = require_non_blank(arguments, "level")
-    reason = require_non_blank(arguments, arg_reason)
-    return agent_id, level_raw, reason
-
-
 async def autonomy_update(
     *,
     app_state: AppState,
@@ -109,7 +96,10 @@ async def autonomy_update(
     """
     tool = "synthorg_autonomy_update"
     try:
-        agent_id, level_raw, reason = _parse_autonomy_update_args(arguments)
+        update_args = typed_args(arguments, AutonomyUpdateArgs)
+        agent_id = update_args.agent_id
+        level_raw = update_args.level
+        reason = update_args.reason
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -170,7 +160,7 @@ async def collaboration_get_score(
     """
     tool = "synthorg_collaboration_get_score"
     try:
-        agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
+        agent_id = typed_args(arguments, CollaborationGetScoreArgs).agent_id
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -207,7 +197,7 @@ async def collaboration_get_calibration(
     """
     tool = "synthorg_collaboration_get_calibration"
     try:
-        agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
+        agent_id = typed_args(arguments, CollaborationGetCalibrationArgs).agent_id
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)

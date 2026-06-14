@@ -8,13 +8,15 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import setup_facade_service_of
+from synthorg.meta.mcp.domains._remaining_args import SetupInitializeArgs
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
-from synthorg.meta.mcp.handlers.common_args import require_actor_id, require_dict
+from synthorg.meta.mcp.handlers.common_args import require_actor_id
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
@@ -68,7 +70,7 @@ async def _setup_initialize(
     tool = "synthorg_setup_initialize"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        config = require_dict(arguments, "config")
+        config = typed_args(arguments, SetupInitializeArgs).config
         await setup_facade_service_of(app_state).initialize(config=config)
         logger.info(
             MCP_ADMIN_OP_EXECUTED,

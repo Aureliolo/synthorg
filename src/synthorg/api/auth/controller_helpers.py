@@ -28,11 +28,11 @@ from synthorg.api.auth.cookies import (
     make_session_cookie,
 )
 from synthorg.api.auth.service import AuthService
-from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.api.state import AppState
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import AuthenticatedUser, User
 from synthorg.core.auth.session import Session
+from synthorg.core.auth.token_size import get_auth_token_bytes
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (

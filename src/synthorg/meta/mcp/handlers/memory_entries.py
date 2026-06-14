@@ -47,6 +47,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
+# required `memory_id`, but MemoryDeleteEntryArgs declares only agent_id (plus
+# the guardrail fields).
 async def _memory_delete_entry(
     *,
     app_state: AppState,

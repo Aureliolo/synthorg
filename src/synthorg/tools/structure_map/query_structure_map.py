@@ -12,7 +12,7 @@ from typing import ClassVar, override
 
 from pydantic import BaseModel
 
-from synthorg.api.boundary import parse_typed
+from synthorg.core.boundary import parse_typed
 from synthorg.core.codebase_structure_map import CodebaseStructureMap
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr

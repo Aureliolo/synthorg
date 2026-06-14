@@ -9,11 +9,16 @@ from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.communication.state import meeting_service_of
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.mcp.domains._remaining_args import (
+    MeetingsDeleteArgs,
+    MeetingsGetArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     dump_many,
@@ -33,7 +38,6 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.meta.mcp.handlers.communication._shared import (
     _map_capability_not_supported,
-    _require_str,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
@@ -45,7 +49,6 @@ logger = get_logger(__name__)
 
 _ARG_STATUS = "status"
 _ARG_MEETING_TYPE = "meeting_type"
-_ARG_MEETING_ID = "meeting_id"
 _TY_STATUS = "MeetingStatus string"
 
 
@@ -66,6 +69,8 @@ def _parse_meeting_status(arguments: dict[str, object]) -> MeetingStatus | None:
         raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS) from exc
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler filters by
+# status + meeting_type, but MeetingsListArgs declares only PaginationFields.
 async def _meetings_list(
     *,
     app_state: AppState,
@@ -110,7 +115,7 @@ async def _meetings_get(
         Resulting string.
     """
     try:
-        meeting_id = _require_str(arguments, _ARG_MEETING_ID)
+        meeting_id = typed_args(arguments, MeetingsGetArgs).meeting_id
         record = await meeting_service_of(app_state).get_meeting(meeting_id)
         if record is None:
             return err(
@@ -187,7 +192,7 @@ async def _meetings_delete(
     tool = "synthorg_meetings_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        meeting_id = _require_str(arguments, _ARG_MEETING_ID)
+        meeting_id = typed_args(arguments, MeetingsDeleteArgs).meeting_id
         actor_id = require_actor_id(resolved_actor)
         try:
             removed = await meeting_service_of(app_state).delete_meeting(

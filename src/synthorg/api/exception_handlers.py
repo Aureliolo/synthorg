@@ -60,9 +60,11 @@ from synthorg.core.error_taxonomy import (
 from synthorg.core.persistence_errors import (
     ConstraintViolationError,
     DuplicateRecordError,
+    JsonbQueryUnsupportedError,
     PersistenceError,
     RecordNotFoundError,
 )
+from synthorg.core.resilience import coerce_finite_nonneg_seconds
 from synthorg.engine.errors import EngineError
 from synthorg.integrations.errors import IntegrationError
 from synthorg.observability import get_logger, safe_error_description
@@ -677,12 +679,8 @@ def _parse_retry_after(raw: object) -> int | None:
     Returns:
         The ``int`` value when present, ``None`` otherwise.
     """
-    if raw is None or isinstance(raw, bool):
-        return None
-    if not isinstance(raw, (int, float)):
-        return None
-    value = float(raw)
-    if not math.isfinite(value) or value < 0:
+    value = coerce_finite_nonneg_seconds(raw)
+    if value is None:
         return None
     return math.ceil(value)
 
@@ -964,6 +962,10 @@ _HANDLER_ENTRIES: tuple[tuple[type[Exception], object], ...] = (
     (RecordNotFoundError, handle_record_not_found),
     (DuplicateRecordError, handle_duplicate_record),
     (ConstraintViolationError, handle_persistence_integrity_error),
+    # A capability mismatch (SQLite asked for a Postgres-only JSONB query)
+    # is a client-facing 422, not an internal 500: register it above the
+    # generic ``PersistenceError`` 500 handler so its narrower mapping wins.
+    (JsonbQueryUnsupportedError, handle_domain_error),
     (PersistenceError, handle_persistence_error),
     (NotAuthorizedException, handle_not_authorized),
     (PermissionDeniedException, handle_permission_denied),

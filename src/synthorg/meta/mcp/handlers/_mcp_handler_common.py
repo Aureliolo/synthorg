@@ -9,6 +9,8 @@ int variants) stay in their respective ``_*_helpers`` modules.
 
 from uuid import UUID
 
+from pydantic import BaseModel, ValidationError
+
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError
@@ -21,6 +23,32 @@ logger = get_logger(__name__)
 
 _TY_STRING = "non-blank string"
 _TY_UUID = "UUID string"
+_ARG_ARGUMENTS = "arguments"
+
+
+def typed_args[ArgsT: BaseModel](
+    arguments: dict[str, object],
+    model: type[ArgsT],
+) -> ArgsT:
+    """Validate a raw MCP argument dict into its typed args model.
+
+    The MCP invoker has already validated the raw dict against the wired
+    ``args_model`` and dumped it back to a plain dict; this is the no-op
+    re-build documented by the ``ToolHandler`` protocol that restores
+    mypy-strict typed field access inside the handler body.
+
+    Returns:
+        ``ArgsT`` instance.
+
+    Raises:
+        ArgumentValidationError: When the dict does not validate (only
+            reachable if a handler is called outside the invoker).
+    """
+    try:
+        return model.model_validate(arguments)
+    except ValidationError as exc:
+        expected = f"valid {model.__name__}"
+        raise ArgumentValidationError(_ARG_ARGUMENTS, expected) from exc
 
 
 def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:

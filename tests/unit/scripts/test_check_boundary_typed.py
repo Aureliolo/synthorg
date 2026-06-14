@@ -31,7 +31,7 @@ def _load_script_module() -> types.ModuleType:
     return mod
 
 
-_IMPORT_PARSE_TYPED = "from synthorg.api.boundary import parse_typed\n"
+_IMPORT_PARSE_TYPED = "from synthorg.core.boundary import parse_typed\n"
 
 
 _FIXTURE_DIR = _REPO_ROOT / "src" / "synthorg" / "_lint_boundary_fixtures"
@@ -231,7 +231,7 @@ class TestBoundaryTypedGate:
 
     def test_unimported_parse_typed_name_rejected(self) -> None:
         # ``parse_typed(...)`` without the canonical import is a stray
-        # token, not a route through ``synthorg.api.boundary``. The
+        # token, not a route through ``synthorg.core.boundary``. The
         # gate must reject it even when the boundary label matches.
         sample = _plant_fixture(
             "def emit(payload):\n    return parse_typed('test', payload, object)\n",
@@ -251,10 +251,10 @@ class TestBoundaryTypedGate:
     def test_qualified_boundary_parse_typed_accepted(self) -> None:
         # ``boundary.parse_typed(...)`` is a legitimate qualified call
         # path through the canonical module; the resolver follows the
-        # ``from synthorg.api import boundary`` import to the FQN and
+        # ``from synthorg.core import boundary`` import to the FQN and
         # accepts it.
         sample = _plant_fixture(
-            "from synthorg.api import boundary\n"
+            "from synthorg.core import boundary\n"
             "def emit(payload):\n"
             "    return boundary.parse_typed('test', payload, object)\n",
         )
@@ -270,11 +270,11 @@ class TestBoundaryTypedGate:
             sample.unlink(missing_ok=True)
 
     def test_aliased_import_resolves_to_canonical_helper(self) -> None:
-        # ``from synthorg.api.boundary import parse_typed as pt`` keeps
+        # ``from synthorg.core.boundary import parse_typed as pt`` keeps
         # the binding pointed at the canonical FQN under a local
         # alias; the gate must follow the alias and accept the call.
         sample = _plant_fixture(
-            "from synthorg.api.boundary import parse_typed as pt\n"
+            "from synthorg.core.boundary import parse_typed as pt\n"
             "def emit(payload):\n    return pt('test', payload, object)\n",
         )
         try:

@@ -17,14 +17,18 @@ from synthorg.memory.service import (
     CheckpointRollbackCorruptError,
     CheckpointRollbackUnavailableError,
 )
+from synthorg.meta.mcp.domains._remaining_args import (
+    MemoryDeleteCheckpointArgs,
+    MemoryDeployCheckpointArgs,
+    MemoryListCheckpointsArgs,
+    MemoryRollbackCheckpointArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
-from synthorg.meta.mcp.handlers._memory_service_helpers import (
-    _ARG_CHECKPOINT_ID,
-    _service,
-)
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
+from synthorg.meta.mcp.handlers._memory_service_helpers import _service
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     dump_many,
@@ -35,8 +39,6 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
-    coerce_pagination,
-    require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -68,7 +70,8 @@ async def _memory_list_checkpoints(
     """
     tool = "synthorg_memory_list_checkpoints"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page = typed_args(arguments, MemoryListCheckpointsArgs)
+        offset, limit = page.offset, page.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -104,7 +107,7 @@ async def _memory_deploy_checkpoint(
     tool = "synthorg_memory_deploy_checkpoint"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        checkpoint_id = require_non_blank(arguments, _ARG_CHECKPOINT_ID)
+        checkpoint_id = typed_args(arguments, MemoryDeployCheckpointArgs).checkpoint_id
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
@@ -155,7 +158,9 @@ async def _memory_rollback_checkpoint(
     tool = "synthorg_memory_rollback_checkpoint"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        checkpoint_id = require_non_blank(arguments, _ARG_CHECKPOINT_ID)
+        checkpoint_id = typed_args(
+            arguments, MemoryRollbackCheckpointArgs
+        ).checkpoint_id
         service = _service(app_state)
         cp = await service.rollback_checkpoint(checkpoint_id)
     except GuardrailViolationError as exc:
@@ -204,7 +209,7 @@ async def _memory_delete_checkpoint(
     tool = "synthorg_memory_delete_checkpoint"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        checkpoint_id = require_non_blank(arguments, _ARG_CHECKPOINT_ID)
+        checkpoint_id = typed_args(arguments, MemoryDeleteCheckpointArgs).checkpoint_id
         service = _service(app_state)
         await service.delete_checkpoint(checkpoint_id)
     except GuardrailViolationError as exc:

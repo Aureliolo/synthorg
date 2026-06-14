@@ -11,6 +11,7 @@ from synthorg.api.dto import (
     CoordinationResultResponse,
     CreateApprovalRequest,
     ErrorDetail,
+    FlightRecorderFrameResponse,
     PaginatedResponse,
     PaginationMeta,
 )
@@ -21,9 +22,53 @@ from synthorg.core.error_taxonomy import (
     category_title,
     category_type_uri,
 )
+from synthorg.core.task_enums import TaskStatus
+from synthorg.engine.intervention.enums import InterventionKind
+from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame
 from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
+
+
+class TestFlightRecorderFrameResponse:
+    def test_from_frame_mirrors_every_field(self) -> None:
+        from datetime import UTC, datetime
+
+        frame = FlightRecorderFrame(
+            id="frame-1",
+            execution_id="exec-1",
+            task_id="task-1",
+            agent_id="agent-1",
+            turn_index=3,
+            timestamp=datetime(2026, 5, 20, 12, 0, tzinfo=UTC),
+            prompt_summary="redacted prompt",
+            response_summary="redacted response",
+            decision="tool_call",
+            tool_calls=("search", "write"),
+            input_tokens=10,
+            output_tokens=20,
+            cost=0.5,
+            status=TaskStatus.IN_PROGRESS,
+            intervention_kind=InterventionKind.HINT,
+        )
+        response = FlightRecorderFrameResponse.from_frame(frame)
+        assert response.model_dump() == frame.model_dump()
+
+    def test_from_frame_preserves_optional_nulls(self) -> None:
+        from datetime import UTC, datetime
+
+        frame = FlightRecorderFrame(
+            id="frame-2",
+            execution_id="exec-2",
+            agent_id="agent-2",
+            turn_index=1,
+            timestamp=datetime(2026, 5, 20, 12, 0, tzinfo=UTC),
+            status=TaskStatus.COMPLETED,
+        )
+        response = FlightRecorderFrameResponse.from_frame(frame)
+        assert response.task_id is None
+        assert response.intervention_kind is None
+        assert response.tool_calls == ()
 
 
 def _make_error_detail(

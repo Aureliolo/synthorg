@@ -34,7 +34,7 @@ from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import AuthenticatedUser, User
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -42,12 +42,6 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_USER_SAVE_FAILED,
     API_VALIDATION_FAILED,
-)
-from synthorg.persistence.constraint_tokens import (
-    IDX_SINGLE_CEO,
-    LAST_CEO_TRIGGER,
-    LAST_OWNER_TRIGGER,
-    USERS_USERNAME_UNIQUE,
 )
 
 logger = get_logger(__name__)
@@ -126,7 +120,6 @@ class UserController(Controller):
             ConflictError: If username is taken or a second CEO is
                 requested.
             QueryError: Raised on the corresponding failure path.
-            ConstraintViolationError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
 
@@ -155,21 +148,6 @@ class UserController(Controller):
         )
         try:
             await _service(state).create(user)
-        except ConstraintViolationError as exc:
-            if exc.constraint == USERS_USERNAME_UNIQUE:
-                msg = f"Username already taken: {data.username}"
-            elif exc.constraint == IDX_SINGLE_CEO:
-                msg = "A CEO user already exists"
-            else:
-                logger.error(
-                    API_USER_SAVE_FAILED,
-                    user_id=user.id,
-                    intent="create_user",
-                    constraint=exc.constraint,
-                )
-                raise
-            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-            raise ConflictError(msg) from exc
         except QueryError:
             logger.error(
                 API_USER_SAVE_FAILED,
@@ -282,7 +260,6 @@ class UserController(Controller):
                 changing the only CEO's role, or assigning a
                 second CEO.
             QueryError: Raised on the corresponding failure path.
-            ConstraintViolationError: Raised on the corresponding failure path.
         """
         service = _service(state)
 
@@ -305,21 +282,6 @@ class UserController(Controller):
                 old_role=user.role.value,
                 new_role=data.role.value,
             )
-        except ConstraintViolationError as exc:
-            if exc.constraint == LAST_CEO_TRIGGER:
-                msg = "Cannot change the only CEO's role"
-            elif exc.constraint == IDX_SINGLE_CEO:
-                msg = "A CEO user already exists"
-            else:
-                logger.error(
-                    API_USER_SAVE_FAILED,
-                    user_id=user.id,
-                    intent="update_user_role",
-                    constraint=exc.constraint,
-                )
-                raise
-            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-            raise ConflictError(msg) from exc
         except QueryError:
             logger.error(
                 API_USER_SAVE_FAILED,
@@ -355,7 +317,6 @@ class UserController(Controller):
             ConflictError: If attempting to delete your own account,
                 the system user, or the CEO.
             QueryError: Raised on the corresponding failure path.
-            ConstraintViolationError: Raised on the corresponding failure path.
         """
         service = _service(state)
         auth_user: AuthenticatedUser = request.scope["user"]
@@ -382,21 +343,6 @@ class UserController(Controller):
                 NotBlankStr(user_id),
                 deleted_by_user_id=NotBlankStr(auth_user.user_id),
             )
-        except ConstraintViolationError as exc:
-            if exc.constraint == LAST_OWNER_TRIGGER:
-                msg = "Cannot delete the last owner"
-            elif exc.constraint == LAST_CEO_TRIGGER:
-                msg = "Cannot delete the last CEO"
-            else:
-                logger.error(
-                    API_USER_SAVE_FAILED,
-                    user_id=user_id,
-                    intent="delete_user",
-                    constraint=exc.constraint,
-                )
-                raise
-            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-            raise ConflictError(msg) from exc
         except QueryError:
             logger.error(
                 API_USER_SAVE_FAILED,

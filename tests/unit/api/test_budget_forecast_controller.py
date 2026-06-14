@@ -5,6 +5,7 @@ handler logic (503 when unwired, the raise-ceiling guard, the happy
 path) is covered without standing up a full TestClient.
 """
 
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -18,10 +19,15 @@ from synthorg.api.controllers.budget_forecast import (
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.errors import RunHardCeilingTooLowError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision, HaltContext
+from synthorg.budget.forecast_service import BudgetForecastService
+from synthorg.budget.forecaster import CostForecaster
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.domain_errors import ConflictError, ServiceUnavailableError
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
+from synthorg.persistence.cost_forecast_protocol import (
+    CostForecastFilterSpec,
+    CostForecastRepository,
+)
 from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
@@ -109,10 +115,23 @@ def _state(
     pareto_analyzer: object | None = None,
 ) -> State:
     state = State()
+    forecast_service: BudgetForecastService | None = None
+    if repo is not None and budget_config is not None:
+        typed_config = cast("BudgetConfig", budget_config)
+        forecast_service = BudgetForecastService(
+            repo=cast("CostForecastRepository", repo),
+            forecaster=CostForecaster(budget_config=typed_config),
+            budget_config=typed_config,
+        )
     state.app_state = make_app_state(
         cost_forecast_repo=repo,
         budget_config=budget_config,
-        slices={BudgetStateSlice: {"pareto_analyzer": pareto_analyzer}},
+        slices={
+            BudgetStateSlice: {
+                "pareto_analyzer": pareto_analyzer,
+                "forecast_service": forecast_service,
+            },
+        },
     )
     return state
 

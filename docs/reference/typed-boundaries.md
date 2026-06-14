@@ -4,7 +4,7 @@ The security-sensitive API entry points listed below split into two
 groups. The **parse_typed-enforced** boundaries (`jwt`,
 `settings.security`, `ws.control`, `audit_chain`, `a2a.jsonrpc`,
 `mcp.tool`: the original six) validate inbound payloads through a
-single helper, `synthorg.api.boundary.parse_typed`. The
+single helper, `synthorg.core.boundary.parse_typed`. The
 **informational/lenient** entries (`provider.tool_call`,
 `webhook.payload`, `mcp.tool.dual_path`) are documented in the same
 table for discoverability but are NOT gated by `parse_typed`; the
@@ -17,7 +17,7 @@ and settings surfaces.
 ## The helper
 
 ```python
-from synthorg.api.boundary import parse_typed
+from synthorg.core.boundary import parse_typed
 
 claims = parse_typed("jwt", raw_payload, JwtClaims)
 user_id = claims.sub

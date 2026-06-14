@@ -324,6 +324,32 @@ class _FakeAuditRepository:
         del cutoff
         return 0
 
+    async def query_jsonb_contains(  # noqa: PLR0913
+        self,
+        column: str,
+        value: dict[str, object] | list[object],
+        *,
+        since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[tuple[AuditEntry, ...], int]:
+        del column, value, since, until, limit, offset
+        return ((), 0)
+
+    async def query_jsonb_key_exists(  # noqa: PLR0913
+        self,
+        column: str,
+        key: str,
+        *,
+        since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[tuple[AuditEntry, ...], int]:
+        del column, key, since, until, limit, offset
+        return ((), 0)
+
 
 class _FakeProviderAuditRepo:
     """Stub conforming to the ``ProviderAuditRepo`` protocol."""

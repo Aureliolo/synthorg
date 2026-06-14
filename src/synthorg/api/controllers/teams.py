@@ -18,7 +18,7 @@ from synthorg.api.controllers._team_helpers import (
     _teams_of,
     _validate_team_model,
 )
-from synthorg.api.controllers.setup.agent_helpers import AGENT_LOCK as _AGENT_LOCK
+from synthorg.api.controllers.setup._runtime_wiring import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.controllers.template_packs import _read_setting_list
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access

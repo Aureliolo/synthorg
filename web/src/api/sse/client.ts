@@ -22,7 +22,7 @@
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { sanitizeWsString } from '@/utils/ws-sanitize'
-import { SSE_MAX_RECONNECT_ATTEMPTS } from '@/utils/constants'
+import { SSE_MAX_RECONNECT_ATTEMPTS } from '@/utils/ws-constants'
 import type { WsChannel, WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('sse-client')

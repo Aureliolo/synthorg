@@ -5,13 +5,13 @@ invokes the proposer, stores the resulting procedural memory entry,
 and optionally materializes a SKILL.md file.
 """
 
-import re
 from pathlib import Path
 
 import yaml
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.slug import kebab_slug
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.engine.recovery import RecoveryResult
@@ -37,8 +37,6 @@ from synthorg.observability.events.procedural_memory import (
 )
 
 logger = get_logger(__name__)
-
-_SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
 def _build_payload(
@@ -118,7 +116,7 @@ def _slugify(text: str) -> str:
     Returns:
         Result of type ``str``.
     """
-    return _SLUG_RE.sub("-", text.lower()).strip("-")[:80]
+    return kebab_slug(text, max_length=80)
 
 
 def materialize_skill_md(

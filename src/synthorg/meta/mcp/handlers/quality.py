@@ -20,10 +20,12 @@ from synthorg.infrastructure.state import (
     quality_facade_service_of,
     review_facade_service_of,
 )
+from synthorg.meta.mcp.domains._simple_args import ReviewsGetArgs, ReviewsListArgs
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     err,
@@ -50,6 +52,7 @@ logger = get_logger(__name__)
 _TY_STRING = "non-blank string"
 _TY_UUID = "UUID string"
 _TY_OPTIONAL_STRING = "string or null"
+_ARG_REVIEW_ID = "review_id"
 
 
 def _get_optional_str(arguments: dict[str, object], key: str) -> str | None:
@@ -169,6 +172,8 @@ async def _quality_get_summary(
     return ok(dict(summary))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# `agent_id` but QualityGetAgentQualityArgs declares `agent_name`.
 async def _quality_get_agent_quality(
     *,
     app_state: AppState,
@@ -198,6 +203,8 @@ async def _quality_get_agent_quality(
     return ok(dict(result))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler filters by
+# `agent_id` but QualityListScoresArgs declares the filter field `agent_name`.
 async def _quality_list_scores(
     *,
     app_state: AppState,
@@ -247,7 +254,8 @@ async def _reviews_list(
     """
     tool = "synthorg_reviews_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, ReviewsListArgs)
+        offset, limit = page_args.offset, page_args.limit
         page, total = await review_facade_service_of(app_state).list_reviews(
             offset=offset,
             limit=limit,
@@ -273,10 +281,17 @@ async def _reviews_get(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``review_id`` is not a UUID string.
     """
     tool = "synthorg_reviews_get"
     try:
-        review_id = _require_uuid(arguments, "review_id")
+        review_id = typed_args(arguments, ReviewsGetArgs).review_id
+        try:
+            UUID(review_id)
+        except ValueError as uuid_exc:
+            raise ArgumentValidationError(_ARG_REVIEW_ID, _TY_UUID) from uuid_exc
         record = await review_facade_service_of(app_state).get_review(review_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -293,6 +308,8 @@ async def _reviews_get(
     return ok(record.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# task_id/verdict/comments, but ReviewsCreateArgs declares task_id/score/feedback.
 async def _reviews_create(
     *,
     app_state: AppState,
@@ -325,6 +342,8 @@ async def _reviews_create(
     return ok(record.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# verdict/comments, but ReviewsUpdateArgs declares an opaque `updates` dict.
 async def _reviews_update(
     *,
     app_state: AppState,
@@ -389,6 +408,8 @@ async def _evaluation_versions_list(
     return ok([_to_jsonable(v) for v in versions])
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
+# string `version_id`, but EvaluationVersionsGetArgs declares an int `version_num`.
 async def _evaluation_versions_get(
     *,
     app_state: AppState,

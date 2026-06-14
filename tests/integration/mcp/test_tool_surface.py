@@ -356,10 +356,16 @@ class TestNoServiceFallbackEvents:
         # WARN-level runtime checker rejects this lightweight stub before its
         # MemoryBackendUnsupportedError can reach the handler's catch. Suppress
         # the structural check so the genuine error-routing path is exercised.
+        # Pass empty args: every parametrized tool's args model has no
+        # required fields, so ``{}`` validates cleanly and the handler
+        # reaches its service call. The kitchen-sink ``_BLAST_ARGS`` would
+        # trip the typed_args ``extra="forbid"`` narrowing on
+        # ``list_runs`` and short-circuit to ``invalid_argument`` before
+        # the BackendUnsupported routing this test pins is ever exercised.
         with structlog.testing.capture_logs() as events, suppress_type_checks():
             raw = await handler(
                 app_state=fake_app_state,
-                arguments=dict(_BLAST_ARGS),
+                arguments={},
                 actor=actor,
             )
         body = json.loads(raw)

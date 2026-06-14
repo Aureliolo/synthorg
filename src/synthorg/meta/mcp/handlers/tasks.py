@@ -26,6 +26,12 @@ from synthorg.engine.errors import (
 )
 from synthorg.engine.state import task_engine_of
 from synthorg.hr.state import HrStateSlice, activity_feed_service_of
+from synthorg.meta.mcp.domains._tasks_args import (
+    TasksCancelArgs,
+    TasksDeleteArgs,
+    TasksGetArgs,
+    TasksUpdateArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -33,6 +39,7 @@ from synthorg.meta.mcp.errors import (
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
@@ -71,7 +78,6 @@ _TY_AGENT = "identified agent"
 _TY_TASK_STATUS = "TaskStatus"
 _ARG_TASK_ID = "task_id"
 _ARG_TARGET = "target_status"
-_ARG_UPDATES = "updates"
 _ARG_STATUS = "status"
 _ARG_ASSIGNED_TO = "assigned_to"
 _ARG_PROJECT = "project"
@@ -108,6 +114,8 @@ def _coerce_status(
 # --- handlers -------------------------------------------------------------
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler coerces status to a
+# TaskStatus enum but TasksListArgs.status is a raw NotBlankStr. See follow-up.
 async def _tasks_list(
     *,
     app_state: AppState,
@@ -169,7 +177,7 @@ async def _tasks_get(
     """
     tool = "synthorg_tasks_get"
     try:
-        task_id = require_non_blank(arguments, _ARG_TASK_ID)
+        task_id = typed_args(arguments, TasksGetArgs).task_id
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -187,6 +195,8 @@ async def _tasks_get(
     return ok(data=task.model_dump(mode="json"))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a task_data
+# dict (CreateTaskData) but TasksCreateArgs declares title/description/etc.
 async def _tasks_create(
     *,
     app_state: AppState,
@@ -255,8 +265,9 @@ async def _tasks_update(
         requested_by = actor_id(actor)
         if requested_by is None:
             raise ArgumentValidationError(_ARG_ACTOR, _TY_AGENT)
-        task_id = require_non_blank(arguments, _ARG_TASK_ID)
-        updates = require_arg(arguments, _ARG_UPDATES, dict)
+        update_args = typed_args(arguments, TasksUpdateArgs)
+        task_id = update_args.task_id
+        updates = update_args.updates
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -295,7 +306,7 @@ async def _tasks_delete(
     tool = "synthorg_tasks_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        task_id = require_non_blank(arguments, _ARG_TASK_ID)
+        task_id = typed_args(arguments, TasksDeleteArgs).task_id
         requested_by = require_actor_id(resolved_actor)
         await task_engine_of(app_state).delete_task(
             task_id,
@@ -329,6 +340,8 @@ async def _tasks_delete(
     return ok()
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler coerces
+# target_status to a TaskStatus enum but TasksTransitionArgs types it NotBlankStr.
 async def _tasks_transition(
     *,
     app_state: AppState,
@@ -391,7 +404,7 @@ async def _tasks_cancel(
     tool = "synthorg_tasks_cancel"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        task_id = require_non_blank(arguments, _ARG_TASK_ID)
+        task_id = typed_args(arguments, TasksCancelArgs).task_id
         requested_by = require_actor_id(resolved_actor)
         task, _prior_status = await task_engine_of(app_state).cancel_task(
             task_id,
@@ -477,6 +490,10 @@ def _parse_activities_args(
     return offset, limit, project, task_id, window_hours
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# project/task_id/window_hours via _parse_activities_args, but ActivitiesListArgs
+# declares type/agent_id/last_n_hours -- divergent field sets + service call.
+# Needs a batched contract decision before migrating.
 async def _activities_list(
     *,
     app_state: AppState,

@@ -9,11 +9,18 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import backup_facade_service_of
+from synthorg.meta.mcp.domains._remaining_args import (
+    BackupCreateArgs,
+    BackupDeleteArgs,
+    BackupGetArgs,
+    BackupRestoreArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     err,
@@ -23,7 +30,6 @@ from synthorg.meta.mcp.handlers.common import (
 from synthorg.meta.mcp.handlers.common_args import (
     coerce_pagination,
     require_actor_id,
-    require_arg,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -34,7 +40,6 @@ from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _ARG_TRIGGER,
     _TY_BACKUP_TRIGGER,
     _map_capability,
-    _require_str,
     _to_jsonable,
 )
 from synthorg.observability import get_logger
@@ -46,6 +51,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler paginates
+# (coerce_pagination) but BackupListArgs declares no PaginationFields.
 async def _backup_list(
     *,
     app_state: AppState,
@@ -90,7 +97,7 @@ async def _backup_get(
     """
     tool = "synthorg_backup_get"
     try:
-        backup_id = _require_str(arguments, "backup_id")
+        backup_id = typed_args(arguments, BackupGetArgs).backup_id
         manifest = await backup_facade_service_of(app_state).get_backup(backup_id)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -123,7 +130,7 @@ async def _backup_create(
     tool = "synthorg_backup_create"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        trigger_raw = require_arg(arguments, _ARG_TRIGGER, str)
+        trigger_raw = typed_args(arguments, BackupCreateArgs).trigger
         try:
             trigger = BackupTrigger(trigger_raw)
         except ValueError as exc:
@@ -167,7 +174,7 @@ async def _backup_delete(
     tool = "synthorg_backup_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        backup_id = _require_str(arguments, "backup_id")
+        backup_id = typed_args(arguments, BackupDeleteArgs).backup_id
         actor_id = require_actor_id(resolved_actor)
         await backup_facade_service_of(app_state).delete_backup(
             backup_id=backup_id,
@@ -210,7 +217,7 @@ async def _backup_restore(
     tool = "synthorg_backup_restore"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        backup_id = _require_str(arguments, "backup_id")
+        backup_id = typed_args(arguments, BackupRestoreArgs).backup_id
         actor_id = require_actor_id(resolved_actor)
         result = await backup_facade_service_of(app_state).restore_backup(
             backup_id=backup_id,

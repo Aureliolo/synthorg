@@ -237,7 +237,7 @@ class DelegationService:
         self._audit_trail.append(record)
         if self._record_store is not None:
             try:
-                self._record_store.record_sync(record)
+                self._record_store.append(record)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(

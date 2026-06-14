@@ -2,7 +2,7 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import type { SelectOption } from '@/components/ui/select-field'
 import { useWorkflowsStore } from '@/stores/workflows'
-import { WORKFLOW_TYPES } from '@/utils/constants'
+import { WORKFLOW_TYPES } from '@/pages/workflows/workflow-constants'
 import { formatLabel } from '@/utils/format'
 
 const WORKFLOW_TYPE_OPTIONS: readonly SelectOption[] = [

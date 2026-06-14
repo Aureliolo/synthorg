@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { formatDateTime } from '@/utils/format'
 import { sanitizeWsString } from '@/utils/ws-sanitize'
-import { LOG_SANITIZE_MAX_LENGTH } from '@/utils/constants'
+import { LOG_SANITIZE_MAX_LENGTH } from '@/utils/ws-constants'
 import type { SessionInfo } from '@/api/types/auth'
 
 /**

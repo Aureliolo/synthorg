@@ -17,7 +17,7 @@ from synthorg.integrations.rate_limiting import shared_state as shared_state_mod
 from synthorg.integrations.rate_limiting.shared_state import (
     SharedRateLimitCoordinator,
     get_coordinator,
-    set_coordinator_factory_sync,
+    register_coordinator_factory,
 )
 
 
@@ -113,7 +113,7 @@ class TestCoordinatorFactory:
         try:
             shared_state_module._coordinators.clear()
             bus = mock_of[MessageBus]()
-            set_coordinator_factory_sync(
+            register_coordinator_factory(
                 lambda name: SharedRateLimitCoordinator(
                     bus=bus,
                     connection_name=name,

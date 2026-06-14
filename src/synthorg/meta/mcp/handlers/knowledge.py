@@ -16,19 +16,21 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY, wrap_untrusted
-from synthorg.knowledge.constants import (
-    KNOWLEDGE_LIST_DEFAULT_LIMIT,
-    KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
-)
 from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.errors import KnowledgeSourceNotFoundError
 from synthorg.knowledge.models import KnowledgeHit
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.state import KnowledgeStateSlice
+from synthorg.meta.mcp.domains._knowledge_args import (
+    KnowledgeGetArgs,
+    KnowledgeListArgs,
+    KnowledgeSearchArgs,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_args import require_arg
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -51,20 +53,12 @@ _TOOL_GET = "synthorg_knowledge_get"
 _TOOL_DELETE = "synthorg_knowledge_delete"
 
 _ARG_PROJECT_ID = "project_id"
-_ARG_QUERY = "query"
-_ARG_LIMIT = "limit"
-_ARG_OFFSET = "offset"
 _ARG_SOURCE_TYPE = "source_type"
 _ARG_URI = "uri"
 _ARG_TITLE = "title"
 _ARG_SOURCE_ID = "source_id"
-_ARG_INCLUDE_GLOBAL = "include_global"
-_ARG_STALE_ONLY = "stale_only"
 
 _TY_SOURCE_TYPE = "source_type enum value"
-_TY_POS_INT = "positive int"
-_TY_NONNEG_INT = "non-negative int"
-_TY_BOOL = "boolean"
 _TY_OPT_STR = "string or null"
 
 
@@ -108,46 +102,6 @@ def _source_type(arguments: dict[str, object]) -> SourceType:
         raise ArgumentValidationError(_ARG_SOURCE_TYPE, _TY_SOURCE_TYPE) from exc
 
 
-def _positive_int(arguments: dict[str, object], key: str, *, default: int) -> int:
-    """Return positive int.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key)
-    if raw in (None, ""):
-        return default
-    if not isinstance(raw, int) or isinstance(raw, bool) or raw < 1:
-        raise ArgumentValidationError(key, _TY_POS_INT)
-    return raw
-
-
-def _nonneg_int(arguments: dict[str, object], key: str, *, default: int) -> int:
-    """Return nonneg int.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key)
-    if raw in (None, ""):
-        return default
-    if not isinstance(raw, int) or isinstance(raw, bool) or raw < 0:
-        raise ArgumentValidationError(key, _TY_NONNEG_INT)
-    return raw
-
-
-def _flag(arguments: dict[str, object], key: str) -> bool:
-    """Return flag.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key, False)
-    if not isinstance(raw, bool):
-        raise ArgumentValidationError(key, _TY_BOOL)
-    return raw
-
-
 def _hit_dict(hit: KnowledgeHit) -> dict[str, object]:
     """Serialise a hit, wrapping the untrusted chunk text.
 
@@ -170,12 +124,12 @@ async def _knowledge_search(
     """Return knowledge search."""
     try:
         svc = _require_service(app_state)
-        project_id = _opt_project_id(arguments)
-        query = NotBlankStr(require_arg(arguments, _ARG_QUERY, str))
-        limit = _positive_int(
-            arguments, _ARG_LIMIT, default=KNOWLEDGE_SEARCH_DEFAULT_LIMIT
+        search_args = typed_args(arguments, KnowledgeSearchArgs)
+        hits = await svc.search(
+            query=search_args.query,
+            project_id=search_args.project_id,
+            limit=search_args.limit,
         )
-        hits = await svc.search(query=query, project_id=project_id, limit=limit)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_SEARCH)
         return ok([_hit_dict(h) for h in hits])
     except ArgumentValidationError as exc:
@@ -187,6 +141,12 @@ async def _knowledge_search(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: knowledge:ingest is
+# admin-gated (reads confirm/reason via require_admin_guardrails) but
+# KnowledgeIngestArgs (extra="forbid") declares no AdminGuardrailFields, so
+# typed_args rejects the guardrail keys; the schema also omits source_type/uri/title
+# guardrail fields. Needs a batched contract decision (add AdminGuardrailFields +
+# schema guardrails, or de-admin the tool).
 async def _knowledge_ingest(
     *,
     app_state: AppState,
@@ -218,6 +178,10 @@ async def _knowledge_ingest(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: knowledge:reindex is
+# admin-gated (reads confirm/reason via require_admin_guardrails) but
+# KnowledgeReindexArgs (extra="forbid") declares no AdminGuardrailFields, so
+# typed_args rejects the guardrail keys. Needs a batched contract decision.
 async def _knowledge_reindex(
     *,
     app_state: AppState,
@@ -253,19 +217,13 @@ async def _knowledge_list(
     """Return knowledge list."""
     try:
         svc = _require_service(app_state)
-        project_id = _opt_project_id(arguments)
-        include_global = _flag(arguments, _ARG_INCLUDE_GLOBAL)
-        stale_only = _flag(arguments, _ARG_STALE_ONLY)
-        limit = _positive_int(
-            arguments, _ARG_LIMIT, default=KNOWLEDGE_LIST_DEFAULT_LIMIT
-        )
-        offset = _nonneg_int(arguments, _ARG_OFFSET, default=0)
+        list_args = typed_args(arguments, KnowledgeListArgs)
         sources = await svc.list_sources(
-            project_id=project_id,
-            include_global=include_global,
-            stale_only=stale_only,
-            limit=limit,
-            offset=offset,
+            project_id=list_args.project_id,
+            include_global=list_args.include_global,
+            stale_only=list_args.stale_only,
+            limit=list_args.limit,
+            offset=list_args.offset,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_LIST)
         return ok([s.model_dump(mode="json") for s in sources])
@@ -287,7 +245,7 @@ async def _knowledge_get(
     """Return knowledge get."""
     try:
         svc = _require_service(app_state)
-        source_id = NotBlankStr(require_arg(arguments, _ARG_SOURCE_ID, str))
+        source_id = typed_args(arguments, KnowledgeGetArgs).source_id
         source = await svc.get_source(source_id)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_GET)
         return ok(source.model_dump(mode="json"))
@@ -303,6 +261,10 @@ async def _knowledge_get(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: knowledge:delete is
+# admin-gated (reads confirm/reason via require_admin_guardrails) but
+# KnowledgeDeleteArgs (extra="forbid") declares no AdminGuardrailFields, so
+# typed_args rejects the guardrail keys. Needs a batched contract decision.
 async def _knowledge_delete(
     *,
     app_state: AppState,

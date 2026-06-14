@@ -8,17 +8,20 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import simulation_facade_service_of
+from synthorg.meta.mcp.domains._remaining_args import (
+    SimulationsGetArgs,
+    SimulationsListArgs,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import PaginationMeta, err, ok
-from synthorg.meta.mcp.handlers.common_args import coerce_pagination
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_invoke_failed,
 )
 from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _map_capability,
-    _require_str,
     _to_jsonable,
 )
 from synthorg.observability import get_logger
@@ -42,7 +45,8 @@ async def _simulations_list(
     """
     tool = "synthorg_simulations_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, SimulationsListArgs)
+        offset, limit = page_args.offset, page_args.limit
         page, total = await simulation_facade_service_of(app_state).list_simulations(
             offset=offset,
             limit=limit,
@@ -71,7 +75,7 @@ async def _simulations_get(
     """
     tool = "synthorg_simulations_get"
     try:
-        sim_id = _require_str(arguments, "simulation_id")
+        sim_id = typed_args(arguments, SimulationsGetArgs).simulation_id
         sim = await simulation_facade_service_of(app_state).get_simulation(sim_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)

@@ -15,11 +15,11 @@ from pydantic import BaseModel, ConfigDict
 
 from synthorg.api.auth.claims import JwtClaims
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
-from synthorg.api.auth.token_size import get_auth_token_bytes
-from synthorg.api.boundary import parse_typed
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import User
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.auth.token_size import get_auth_token_bytes
+from synthorg.core.boundary import parse_typed
 from synthorg.core.domain_errors import (
     RefreshTokenInvalidError,
     ServiceUnavailableError,
@@ -298,7 +298,7 @@ class AuthService:
 
         After PyJWT validates the signature and required claims, the
         raw payload is routed through
-        :func:`synthorg.api.boundary.parse_typed` so a malformed claim
+        :func:`synthorg.core.boundary.parse_typed` so a malformed claim
         set (extra keys, type mismatch, ``iat >= exp``) is rejected at
         the boundary with a structured ``api.boundary.validation_failed``
         log instead of slipping through and surprising a downstream

@@ -17,7 +17,6 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime
 
-from synthorg.api.services.project_service import ProjectService
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.forecaster import BriefSignal, compute_brief_hash
@@ -55,6 +54,7 @@ from synthorg.observability.events.charter import (
 from synthorg.persistence.charter_protocol import CharterRepository
 from synthorg.persistence.conversation_protocol import ConversationRepository
 from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
+from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
 
@@ -122,7 +122,7 @@ class CharterDispatcher:
     Args:
         charter_repo: Project charter store.
         forecast_repo: Cost forecast store (budget record of truth).
-        project_service: Project admin service (resolve / create).
+        project_repo: Project repository (resolve / create).
         work_pipeline: The work pipeline spine entry (``run`` per item).
         conversation_repo: Conversation store (for closing the interview).
         budget_currency: Callable returning the live ``budget.currency``;
@@ -135,7 +135,7 @@ class CharterDispatcher:
         *,
         charter_repo: CharterRepository,
         forecast_repo: CostForecastRepository,
-        project_service: ProjectService,
+        project_repo: ProjectRepository,
         work_pipeline: WorkPipeline,
         conversation_repo: ConversationRepository,
         budget_currency: Callable[[], str],
@@ -143,7 +143,7 @@ class CharterDispatcher:
     ) -> None:
         self._charter_repo = charter_repo
         self._forecast_repo = forecast_repo
-        self._project_service = project_service
+        self._project_repo = project_repo
         self._work_pipeline = work_pipeline
         self._conversation_repo = conversation_repo
         self._budget_currency = budget_currency
@@ -279,7 +279,7 @@ class CharterDispatcher:
             WorkProjectNotFoundError: Raised on the corresponding failure path.
         """
         if charter.project_id is not None:
-            existing = await self._project_service.get(charter.project_id)
+            existing = await self._project_repo.get(charter.project_id)
             if existing is None:
                 raise WorkProjectNotFoundError
             return charter.project_id
@@ -299,7 +299,7 @@ class CharterDispatcher:
             status=ProjectStatus.PLANNING,
         )
         try:
-            await self._project_service.create(project)
+            await self._project_repo.create(project)
         except DuplicateRecordError:
             # Idempotent retry: the project from a prior attempt stands.
             # No charter state changed here, so the transition-event

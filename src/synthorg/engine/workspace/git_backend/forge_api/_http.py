@@ -13,6 +13,7 @@ from typing import Final
 
 import httpx
 
+from synthorg.core.resilience import coerce_finite_nonneg_seconds
 from synthorg.engine.errors import (
     GitBackendForgeApiError,
     GitBackendForgeAuthError,
@@ -77,7 +78,8 @@ def parse_retry_after(headers: httpx.Headers) -> float | None:
         # exponential backoff handles the wait when we cannot parse a
         # delta-seconds value.
         return None
-    return value if value >= 0 else None
+    # Shared validator rejects inf / nan / negative deltas.
+    return coerce_finite_nonneg_seconds(value)
 
 
 def _is_rate_limited(resp: httpx.Response) -> bool:

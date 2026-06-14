@@ -70,11 +70,6 @@ SYSTEM_DOCS_AGENT_ID: Final[NotBlankStr] = NotBlankStr("_system:docs")
 stored. The leading underscore + colon disambiguates from any real
 agent identifier (real agents use UUID strings)."""
 
-CHUNK_CHAR_PER_TOKEN_PROXY: Final[int] = 4
-"""When no tokenizer is available the chunker approximates token count
-by characters divided by this proxy. A 4-char-per-token average is the
-rough rule of thumb for English prose."""
-
 DOCS_SLUG_MAX_LENGTH: Final[int] = 128
 """Cap on derived slugs to keep filesystem and URL paths bounded."""
 

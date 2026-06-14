@@ -345,9 +345,6 @@ async def _wire_charter_engine(
     ):
         return
     try:
-        from synthorg.api.services.project_service import (  # noqa: PLC0415
-            ProjectService,
-        )
         from synthorg.meta.charter.dispatch import CharterDispatcher  # noqa: PLC0415
         from synthorg.meta.charter.factory import (  # noqa: PLC0415
             build_charter_interview_strategy,
@@ -409,7 +406,7 @@ async def _wire_charter_engine(
         dispatcher = CharterDispatcher(
             charter_repo=charter_repo,
             forecast_repo=forecast_repo,
-            project_service=ProjectService(repo=persistence.projects),
+            project_repo=persistence.projects,
             work_pipeline=work_pipeline_of(app_state),
             conversation_repo=conv_repos.conversation_repo,
             budget_currency=lambda: resolved_budget.currency,

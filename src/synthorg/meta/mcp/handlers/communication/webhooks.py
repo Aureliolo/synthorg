@@ -11,11 +11,17 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.state import webhook_service_of
 from synthorg.integrations.webhooks.models import WebhookDefinition
+from synthorg.meta.mcp.domains._remaining_args import (
+    WebhooksDeleteArgs,
+    WebhooksGetArgs,
+    WebhooksListArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     dump_many,
@@ -23,13 +29,12 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
     require_admin_guardrails,
 )
-from synthorg.meta.mcp.handlers.common_args import coerce_pagination, require_actor_id
+from synthorg.meta.mcp.handlers.common_args import require_actor_id
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
     log_handler_invoke_failed,
 )
-from synthorg.meta.mcp.handlers.communication._shared import _require_str
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
@@ -38,7 +43,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_ARG_WEBHOOK_ID = "webhook_id"
 _ARG_DEFINITION = "definition"
 _TY_WEBHOOK_OBJ = "WebhookDefinition object"
 
@@ -77,7 +81,8 @@ async def _webhooks_list(
         Resulting string.
     """
     try:
-        offset, limit = coerce_pagination(arguments)
+        page = typed_args(arguments, WebhooksListArgs)
+        offset, limit = page.offset, page.limit
         definitions, total = await webhook_service_of(app_state).list_webhooks(
             offset=offset,
             limit=limit,
@@ -105,7 +110,7 @@ async def _webhooks_get(
         Resulting string.
     """
     try:
-        webhook_id = _require_str(arguments, _ARG_WEBHOOK_ID)
+        webhook_id = typed_args(arguments, WebhooksGetArgs).webhook_id
         definition = await webhook_service_of(app_state).get_webhook(webhook_id)
         if definition is None:
             return err(
@@ -122,6 +127,8 @@ async def _webhooks_get(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
+# `definition` dict, but WebhooksCreateArgs declares url + events.
 async def _webhooks_create(
     *,
     app_state: AppState,
@@ -168,6 +175,8 @@ async def _webhooks_create(
         return err(exc)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
+# `definition` dict, but WebhooksUpdateArgs declares webhook_id + updates.
 async def _webhooks_update(
     *,
     app_state: AppState,
@@ -255,7 +264,7 @@ async def _webhooks_delete(
     tool = "synthorg_webhooks_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        webhook_id = _require_str(arguments, _ARG_WEBHOOK_ID)
+        webhook_id = typed_args(arguments, WebhooksDeleteArgs).webhook_id
         actor_id = require_actor_id(resolved_actor)
         removed = await webhook_service_of(app_state).delete_webhook(
             definition_id=webhook_id,

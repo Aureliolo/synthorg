@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react'
-import { FRESHNESS_WINDOW_MS } from '@/utils/constants'
+import { FRESHNESS_WINDOW_MS } from '@/utils/ws-constants'
 
 export interface FreshnessGate {
   /**

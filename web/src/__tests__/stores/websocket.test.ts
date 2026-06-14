@@ -11,7 +11,7 @@ import {
   WS_PONG_TIMEOUT_MS,
   WS_PROTOCOL_VERSION,
   WS_RECONNECT_BASE_DELAY,
-} from '@/utils/constants'
+} from '@/utils/ws-constants'
 
 // The heartbeat scheduler arms its timer at a jittered delay in
 // ``WS_HEARTBEAT_INTERVAL_MS * [JITTER_MIN, JITTER_MAX]``. A test that

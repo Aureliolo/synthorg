@@ -8,11 +8,17 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import user_facade_service_of
+from synthorg.meta.mcp.domains._remaining_args import (
+    UsersCreateArgs,
+    UsersDeleteArgs,
+    UsersGetArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_args import require_actor_id, require_dict
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -73,7 +79,7 @@ async def _users_get(
     """
     tool = "synthorg_users_get"
     try:
-        user_id = _require_str(arguments, "user_id")
+        user_id = typed_args(arguments, UsersGetArgs).user_id
         user = await user_facade_service_of(app_state).get_user(user_id)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -106,8 +112,9 @@ async def _users_create(
     tool = "synthorg_users_create"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        username = _require_str(arguments, "username")
-        role = _require_str(arguments, "role")
+        create_args = typed_args(arguments, UsersCreateArgs)
+        username = create_args.username
+        role = create_args.role
         actor_id = require_actor_id(resolved_actor)
         await user_facade_service_of(app_state).create_user(
             username=username,
@@ -137,6 +144,9 @@ async def _users_create(
     return ok(None)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads `updates`
+# as a raw dict, but UsersUpdateArgs declares a typed `updates: UsersUpdateFields`
+# (role / must_change_password only) that would reject other keys.
 async def _users_update(
     *,
     app_state: AppState,
@@ -196,7 +206,7 @@ async def _users_delete(
     tool = "synthorg_users_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        user_id = _require_str(arguments, "user_id")
+        user_id = typed_args(arguments, UsersDeleteArgs).user_id
         actor_id = require_actor_id(resolved_actor)
         await user_facade_service_of(app_state).delete_user(
             user_id=user_id,

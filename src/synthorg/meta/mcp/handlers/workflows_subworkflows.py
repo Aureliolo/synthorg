@@ -86,6 +86,8 @@ def _subworkflow_service(app_state: AppState) -> SubworkflowService | None:
     return subworkflow_service_of(app_state)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler filters by a
+# free-text `query`, but SubworkflowsListArgs declares a required `workflow_id`.
 async def _subworkflows_list(
     *,
     app_state: AppState,
@@ -128,6 +130,8 @@ async def _subworkflows_list(
     return ok(data=dump_many(page), pagination=meta)
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads an
+# optional `version`, but SubworkflowsGetArgs declares only subworkflow_id.
 async def _subworkflows_get(
     *,
     app_state: AppState,
@@ -170,6 +174,8 @@ async def _subworkflows_get(
     return ok(data=defn.model_dump(mode="json"))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
+# `definition` dict, but SubworkflowsCreateArgs declares workflow_id + name + steps.
 async def _subworkflows_create(
     *,
     app_state: AppState,
@@ -215,6 +221,9 @@ async def _subworkflows_create(
     return ok(data=created.model_dump(mode="json"))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
+# required `version`, but SubworkflowsDeleteArgs declares only subworkflow_id
+# (plus the guardrail fields).
 async def _subworkflows_delete(
     *,
     app_state: AppState,

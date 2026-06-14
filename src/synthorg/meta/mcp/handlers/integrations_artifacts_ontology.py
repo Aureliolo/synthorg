@@ -9,6 +9,7 @@ path enforces the admin guardrail triple and emits
 """
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
@@ -16,6 +17,12 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import (
     artifact_facade_service_of,
     ontology_facade_service_of,
+)
+from synthorg.meta.mcp.domains._remaining_args import (
+    ArtifactsDeleteArgs,
+    ArtifactsGetArgs,
+    ArtifactsListArgs,
+    OntologySearchArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -25,8 +32,8 @@ from synthorg.meta.mcp.handlers._integrations_helpers import _require_int
 from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _map_capability,
     _require_str,
-    _require_uuid,
     _to_jsonable,
+    typed_args,
 )
 from synthorg.meta.mcp.handlers.common import (
     err,
@@ -35,7 +42,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
     require_actor_id,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -51,6 +57,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_ARG_ARTIFACT_ID = "artifact_id"
+_TY_UUID = "UUID string"
+
 
 async def _artifacts_list(
     *,
@@ -65,7 +74,8 @@ async def _artifacts_list(
     """
     tool = "synthorg_artifacts_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, ArtifactsListArgs)
+        offset, limit = page_args.offset, page_args.limit
         artifacts = await artifact_facade_service_of(app_state).list_artifacts()
         page, pagination = paginate_sequence(
             artifacts,
@@ -93,10 +103,17 @@ async def _artifacts_get(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``artifact_id`` is not a UUID string.
     """
     tool = "synthorg_artifacts_get"
     try:
-        artifact_id = _require_uuid(arguments, "artifact_id")
+        artifact_id = typed_args(arguments, ArtifactsGetArgs).artifact_id
+        try:
+            UUID(artifact_id)
+        except ValueError as uuid_exc:
+            raise ArgumentValidationError(_ARG_ARTIFACT_ID, _TY_UUID) from uuid_exc
         artifact = await artifact_facade_service_of(app_state).get_artifact(artifact_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -113,6 +130,9 @@ async def _artifacts_get(
     return ok(artifact.to_dict())
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# name/content_type/size_bytes/storage_ref, but ArtifactsCreateArgs declares
+# type/content/task_id.
 async def _artifacts_create(
     *,
     app_state: AppState,
@@ -159,11 +179,18 @@ async def _artifacts_delete(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``artifact_id`` is not a UUID string.
     """
     tool = "synthorg_artifacts_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        artifact_id = _require_uuid(arguments, "artifact_id")
+        artifact_id = typed_args(arguments, ArtifactsDeleteArgs).artifact_id
+        try:
+            UUID(artifact_id)
+        except ValueError as uuid_exc:
+            raise ArgumentValidationError(_ARG_ARTIFACT_ID, _TY_UUID) from uuid_exc
         actor_id = require_actor_id(resolved_actor)
         removed = await artifact_facade_service_of(app_state).delete_artifact(
             artifact_id=artifact_id,
@@ -220,6 +247,8 @@ async def _ontology_list_entities(
     return ok([_to_jsonable(e) for e in entities])
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# `entity_id` but OntologyGetEntityArgs declares `entity_name`.
 async def _ontology_get_entity(
     *,
     app_state: AppState,
@@ -252,6 +281,8 @@ async def _ontology_get_entity(
     return ok(_to_jsonable(entity))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# `entity_id` but OntologyGetRelationshipsArgs declares `entity_name`.
 async def _ontology_get_relationships(
     *,
     app_state: AppState,
@@ -294,7 +325,7 @@ async def _ontology_search(
     """
     tool = "synthorg_ontology_search"
     try:
-        query = _require_str(arguments, "query")
+        query = typed_args(arguments, OntologySearchArgs).query
         result = await ontology_facade_service_of(app_state).search(query)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)

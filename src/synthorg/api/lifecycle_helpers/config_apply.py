@@ -406,7 +406,7 @@ async def _apply_auth_token_bytes(app_state: AppState) -> None:
     Raises:
         CancelledError: Raised on the corresponding failure path.
     """
-    from synthorg.api.auth.token_size import (  # noqa: PLC0415
+    from synthorg.core.auth.token_size import (  # noqa: PLC0415
         _DEFAULT_AUTH_TOKEN_BYTES,
         set_auth_token_bytes,
     )

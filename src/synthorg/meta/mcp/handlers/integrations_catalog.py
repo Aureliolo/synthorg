@@ -12,6 +12,10 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import mcp_catalog_facade_service_of
+from synthorg.meta.mcp.domains._remaining_args import (
+    McpCatalogListArgs,
+    McpCatalogSearchArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -20,6 +24,7 @@ from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _map_capability,
     _require_str,
     _to_jsonable,
+    typed_args,
 )
 from synthorg.meta.mcp.handlers.common import (
     err,
@@ -28,7 +33,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
     require_actor_id,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -58,7 +62,8 @@ async def _mcp_catalog_list(
     """
     tool = "synthorg_mcp_catalog_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, McpCatalogListArgs)
+        offset, limit = page_args.offset, page_args.limit
         entries = await mcp_catalog_facade_service_of(app_state).list_catalog()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -92,7 +97,7 @@ async def _mcp_catalog_search(
     """
     tool = "synthorg_mcp_catalog_search"
     try:
-        query = _require_str(arguments, "query")
+        query = typed_args(arguments, McpCatalogSearchArgs).query
         entries = await mcp_catalog_facade_service_of(app_state).search_catalog(query)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -106,6 +111,8 @@ async def _mcp_catalog_search(
     return ok([_to_jsonable(e) for e in entries])
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# `entry_id` but McpCatalogGetArgs declares the field `catalog_id`.
 async def _mcp_catalog_get(
     *,
     app_state: AppState,
@@ -140,6 +147,8 @@ async def _mcp_catalog_get(
     return ok(_to_jsonable(entry))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# `entry_id` but McpCatalogInstallArgs declares the field `catalog_id`.
 async def _mcp_catalog_install(
     *,
     app_state: AppState,
@@ -171,6 +180,9 @@ async def _mcp_catalog_install(
     return ok(_to_jsonable(result))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
+# `installation_id` + enforces guardrails, but McpCatalogUninstallArgs declares
+# `install_id` and no AdminGuardrailFields.
 async def _mcp_catalog_uninstall(
     *,
     app_state: AppState,

@@ -190,7 +190,7 @@ def _wire_rate_limit_coordinator_factory(
     """Wire the shared rate-limit coordinator factory."""
     from synthorg.integrations.rate_limiting.shared_state import (  # noqa: PLC0415
         SharedRateLimitCoordinator,
-        set_coordinator_factory_sync,
+        register_coordinator_factory,
     )
 
     _bus = message_bus
@@ -224,7 +224,7 @@ def _wire_rate_limit_coordinator_factory(
             max_rpm=max_rpm,
         )
 
-    set_coordinator_factory_sync(_make_coordinator)
+    register_coordinator_factory(_make_coordinator)
     logger.info(
         API_SERVICE_AUTO_WIRED,
         service="rate_limit_coordinator_factory",
@@ -349,6 +349,15 @@ def auto_wire_integrations(  # noqa: PLR0913
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="health_prober_service")
 
+        # Eagerly validate the PKCE master key at wiring time so a corrupt
+        # or rotated SYNTHORG_MASTER_KEY fails loudly here instead of
+        # mid-flight on the first OAuth code exchange. No-op when the key
+        # is absent (OAuth stays optional).
+        from synthorg.integrations.oauth.pkce import (  # noqa: PLC0415
+            init_pkce_cipher,
+        )
+
+        init_pkce_cipher()
         bundle.oauth_token_manager = OAuthTokenManager(
             catalog=bundle.connection_catalog,
             refresh_threshold_seconds=effective_config.integrations.oauth.auto_refresh_threshold_seconds,

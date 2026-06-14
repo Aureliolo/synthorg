@@ -10,7 +10,7 @@ from typing import ClassVar, override
 
 from pydantic import BaseModel, JsonValue
 
-from synthorg.api.boundary import parse_typed
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_BRAIN_STATE, wrap_untrusted

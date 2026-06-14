@@ -9,7 +9,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useSettingsData } from '@/hooks/useSettingsData'
 import { useCeremonyPolicyStore } from '@/stores/ceremony-policy'
 import { useToastStore } from '@/stores/toast'
-import { STRATEGY_DEFAULT_VELOCITY_CALC } from '@/utils/constants'
+import { STRATEGY_DEFAULT_VELOCITY_CALC } from '@/stores/ceremony-policy-constants'
 import {
   type CeremonySnapshot,
   buildCeremonySnapshot,

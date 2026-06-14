@@ -25,10 +25,19 @@ from synthorg.hr.state import (
     agent_version_service_of,
     performance_tracker_of,
 )
+from synthorg.meta.mcp.domains._agents_args import (
+    AgentsDeleteArgs,
+    AgentsGetActivityArgs,
+    AgentsGetArgs,
+    AgentsGetHealthArgs,
+    AgentsGetPerformanceArgs,
+    AgentsListArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
@@ -87,13 +96,13 @@ async def _agents_list(
     """
     tool = "synthorg_agents_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        args = typed_args(arguments, AgentsListArgs)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         agents = await agent_registry_of(app_state).list_active()
-        page, meta = paginate_sequence(agents, offset=offset, limit=limit)
+        page, meta = paginate_sequence(agents, offset=args.offset, limit=args.limit)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
@@ -115,7 +124,7 @@ async def _agents_get(
     """
     tool = "synthorg_agents_get"
     try:
-        name = require_non_blank(arguments, _ARG_AGENT_NAME)
+        name = typed_args(arguments, AgentsGetArgs).agent_name
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -133,6 +142,8 @@ async def _agents_get(
     return ok(data=identity.model_dump(mode="json"))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: create schema is
+# name/role/department but the handler builds a full AgentIdentity. See follow-up.
 async def _agents_create(
     *,
     app_state: AppState,
@@ -171,6 +182,8 @@ async def _agents_create(
     return ok(data=identity.model_dump(mode="json"))
 
 
+# lint-allow: handler-arguments-get -- cataloged contract mismatch (handler reads
+# agent_id but the schema/model declare agent_name); resolve in follow-up.
 async def _agents_update(
     *,
     app_state: AppState,
@@ -225,8 +238,11 @@ async def _agents_delete(
     """
     tool = "synthorg_agents_delete"
     try:
+        # Guardrails first: a missing/invalid confirm must surface as
+        # ``guardrail_violated`` before the typed-args boundary reports it
+        # as a plain ``invalid_argument``.
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        agent_name = require_non_blank(arguments, _ARG_AGENT_NAME)
+        agent_name = typed_args(arguments, AgentsDeleteArgs).agent_name
         identity = await agent_registry_of(app_state).get_by_name(agent_name)
         if identity is None:
             missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
@@ -271,7 +287,7 @@ async def _agents_get_performance(
     """
     tool = "synthorg_agents_get_performance"
     try:
-        agent_name = require_non_blank(arguments, _ARG_AGENT_NAME)
+        agent_name = typed_args(arguments, AgentsGetPerformanceArgs).agent_name
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -305,8 +321,9 @@ async def _agents_get_activity(
     """
     tool = "synthorg_agents_get_activity"
     try:
-        agent_name = require_non_blank(arguments, _ARG_AGENT_NAME)
-        offset, limit = coerce_pagination(arguments)
+        activity_args = typed_args(arguments, AgentsGetActivityArgs)
+        agent_name = activity_args.agent_name
+        offset, limit = activity_args.offset, activity_args.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -332,6 +349,8 @@ async def _agents_get_activity(
     return ok(data=dump_many(events), pagination=meta)
 
 
+# lint-allow: handler-arguments-get -- cataloged contract mismatch (handler paginates
+# but AgentsGetHistoryArgs has no pagination fields); resolve in follow-up.
 async def _agents_get_history(
     *,
     app_state: AppState,
@@ -385,7 +404,7 @@ async def _agents_get_health(
     """
     tool = "synthorg_agents_get_health"
     try:
-        agent_name = require_non_blank(arguments, _ARG_AGENT_NAME)
+        agent_name = typed_args(arguments, AgentsGetHealthArgs).agent_name
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)

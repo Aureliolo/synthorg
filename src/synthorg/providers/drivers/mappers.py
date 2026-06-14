@@ -7,7 +7,6 @@ consume.  Reusable by future native SDK drivers.
 
 import copy
 import json
-import math
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -16,6 +15,7 @@ from pydantic import JsonValue
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.normalization import compare_ci
+from synthorg.core.resilience import coerce_finite_nonneg_seconds
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_FINISH_REASON_UNKNOWN,
@@ -92,17 +92,16 @@ def extract_retry_after(exc: Exception) -> float | None:
     if raw is None:
         return None
     parsed = _parse_retry_after_seconds(raw)
-    # ``float`` accepts ``"inf"`` / ``"nan"`` and signed values, and a
-    # past HTTP-date yields a negative delay; a retry-after must be a
-    # finite, non-negative number of seconds. A past date is a benign
-    # "retry now" the backoff handler treats as no hint.
-    if parsed is None or not math.isfinite(parsed) or parsed < 0:
+    # The shared validator rejects inf / nan and negative deltas (a past
+    # HTTP-date yields a negative delay, a benign "retry now" with no hint).
+    value = coerce_finite_nonneg_seconds(parsed)
+    if value is None:
         logger.debug(
             PROVIDER_RETRY_AFTER_PARSE_FAILED,
             raw_value=repr(raw),
         )
         return None
-    return parsed
+    return value
 
 
 def messages_to_dicts(messages: list[ChatMessage]) -> list[dict[str, object]]:

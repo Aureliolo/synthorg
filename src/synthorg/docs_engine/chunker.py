@@ -13,9 +13,9 @@ defined in :mod:`synthorg.docs_engine.constants`.
 
 from collections.abc import Sequence
 
+from synthorg.core.text_estimation import approx_tokens
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
-    CHUNK_CHAR_PER_TOKEN_PROXY,
     DOCS_CHUNK_MAX_TOKENS,
     DOCS_CHUNK_TARGET_TOKENS,
     DOCS_PROJECT_TAG_PREFIX,
@@ -150,15 +150,12 @@ class DocChunker:
         return tuple(chunks)
 
     def _token_count(self, text: str) -> int:
-        """Approximate token count via the chars-per-token proxy.
+        """Approximate token count via the shared chars-per-token heuristic.
 
         Returns:
-            ``0`` for empty text, otherwise at least ``1`` token scaled by
-            the chars-per-token proxy.
+            ``0`` for empty text, otherwise at least ``1`` token.
         """
-        if not text:
-            return 0
-        return max(1, len(text) // CHUNK_CHAR_PER_TOKEN_PROXY)
+        return approx_tokens(text)
 
     @staticmethod
     def _base_tags(

@@ -19,11 +19,17 @@ from synthorg.engine.workflow.service import (
     WorkflowDefinitionRevisionMismatchError,
     WorkflowService,
 )
+from synthorg.meta.mcp.domains._workflows_org_args import (
+    WorkflowsDeleteArgs,
+    WorkflowsGetArgs,
+    WorkflowsListArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
     HandlerServiceNotWiredError,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     dump_many,
     err,
@@ -33,9 +39,7 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
-    coerce_pagination,
     require_arg,
-    require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -53,8 +57,6 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
-
-_ARG_DEF_ID = "workflow_id"
 
 
 def _service(app_state: AppState) -> WorkflowService:
@@ -104,7 +106,8 @@ async def _workflows_list(
     """
     tool = "synthorg_workflows_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, WorkflowsListArgs)
+        offset, limit = page_args.offset, page_args.limit
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -136,7 +139,7 @@ async def _workflows_get(
     """
     tool = "synthorg_workflows_get"
     try:
-        def_id = require_non_blank(arguments, _ARG_DEF_ID)
+        def_id = typed_args(arguments, WorkflowsGetArgs).workflow_id
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -156,6 +159,9 @@ async def _workflows_get(
     return ok(data=defn.model_dump(mode="json"))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
+# `definition` dict and builds a WorkflowDefinition, but WorkflowsCreateArgs
+# declares name + steps.
 async def _workflows_create(
     *,
     app_state: AppState,
@@ -201,6 +207,8 @@ async def _workflows_create(
     return ok(data=created.model_dump(mode="json"))
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
+# `definition` dict, but WorkflowsUpdateArgs declares workflow_id + updates.
 async def _workflows_update(
     *,
     app_state: AppState,
@@ -263,7 +271,7 @@ async def _workflows_delete(
     tool = "synthorg_workflows_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        def_id = require_non_blank(arguments, _ARG_DEF_ID)
+        def_id = typed_args(arguments, WorkflowsDeleteArgs).workflow_id
         deleted = await _service(app_state).delete_definition(def_id)
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
@@ -293,6 +301,8 @@ async def _workflows_delete(
     return ok()
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
+# `definition` dict to validate, but WorkflowsValidateArgs declares workflow_id.
 async def _workflows_validate(
     *,
     app_state: AppState,

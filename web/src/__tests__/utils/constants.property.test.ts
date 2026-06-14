@@ -1,5 +1,5 @@
 import fc from 'fast-check'
-import { TASK_STATUS_ORDER, VALID_TRANSITIONS, TERMINAL_STATUSES } from '@/utils/constants'
+import { TASK_STATUS_ORDER, VALID_TRANSITIONS, TERMINAL_STATUSES } from '@/utils/tasks'
 
 describe('constants property tests', () => {
   const allStatuses = TASK_STATUS_ORDER

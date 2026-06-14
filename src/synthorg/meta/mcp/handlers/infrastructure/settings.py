@@ -7,11 +7,16 @@ from typing import TYPE_CHECKING
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.mcp.domains._remaining_args import (
+    SettingsDeleteArgs,
+    SettingsGetArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_args import require_actor_id
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -72,7 +77,7 @@ async def _settings_get(
     """
     tool = "synthorg_settings_get"
     try:
-        key = _require_str(arguments, "key")
+        key = typed_args(arguments, SettingsGetArgs).key
         result = await settings_read_service_of(app_state).get_setting(key)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -86,6 +91,9 @@ async def _settings_get(
     return ok({"key": key, "value": result})
 
 
+# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads `value`
+# via arguments.get as any-type/optional, but SettingsUpdateArgs declares a
+# required `value: str`.
 async def _settings_update(
     *,
     app_state: AppState,
@@ -144,7 +152,7 @@ async def _settings_delete(
     tool = "synthorg_settings_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        key = _require_str(arguments, "key")
+        key = typed_args(arguments, SettingsDeleteArgs).key
         actor_id = require_actor_id(resolved_actor)
         await settings_read_service_of(app_state).delete_setting(
             key=key,

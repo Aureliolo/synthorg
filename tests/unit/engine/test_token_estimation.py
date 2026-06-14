@@ -20,14 +20,18 @@ class TestProtocolCompliance:
 
 
 class TestEstimateTokens:
-    """Tests for estimate_tokens (len(text) // 4 heuristic)."""
+    """Tests for estimate_tokens (shared chars-per-token heuristic).
+
+    Empty text estimates to 0; any non-empty text floors to at least 1
+    token (``max(1, len(text) // 4)`` via ``core.text_estimation``).
+    """
 
     @pytest.mark.parametrize(
         ("text", "expected"),
         [
             ("", 0),
-            ("ab", 0),
-            ("abc", 0),
+            ("ab", 1),
+            ("abc", 1),
             ("abcd", 1),
             ("abcde", 1),
             ("a" * 100, 25),

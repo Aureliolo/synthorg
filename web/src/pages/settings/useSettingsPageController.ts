@@ -10,7 +10,7 @@ import {
   NAMESPACE_ORDER,
   SETTINGS_ADVANCED_KEY,
   SETTINGS_ADVANCED_WARNED_KEY,
-} from '@/utils/constants'
+} from '@/pages/settings/settings-constants'
 import { buildControllerDisabledMap, saveSettingsBatch } from './utils'
 import {
   buildCodeEntries,

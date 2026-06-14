@@ -9,7 +9,7 @@ import {
   CEREMONY_STRATEGY_TYPES,
   STRATEGY_DEFAULT_VELOCITY_CALC,
   VELOCITY_CALC_TYPES,
-} from '@/utils/constants'
+} from '@/stores/ceremony-policy-constants'
 
 const THRESHOLD_MIN = 0.01
 const THRESHOLD_MAX = 1.0

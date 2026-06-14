@@ -2,7 +2,7 @@
 """Phase 3 of RFC #1711: lint guard for the typed-boundary contract.
 
 The six security-sensitive entry points enumerated below MUST validate
-inbound payloads through :func:`synthorg.api.boundary.parse_typed`. A
+inbound payloads through :func:`synthorg.core.boundary.parse_typed`. A
 regression here re-introduces a ``dict[str, Any]`` shaped boundary --
 exactly the surface that caused the audit finding behind this RFC.
 
@@ -86,8 +86,8 @@ def _function_node(
     return matches[0] if matches else None
 
 
-_PARSE_TYPED_FQN = "synthorg.api.boundary.parse_typed"
-_BOUNDARY_MODULE_FQN = "synthorg.api.boundary"
+_PARSE_TYPED_FQN = "synthorg.core.boundary.parse_typed"
+_BOUNDARY_MODULE_FQN = "synthorg.core.boundary"
 
 
 def _build_import_map(tree: ast.Module) -> dict[str, str]:
@@ -100,14 +100,14 @@ def _build_import_map(tree: ast.Module) -> dict[str, str]:
 
     Examples::
 
-        from synthorg.api.boundary import parse_typed
-        # -> {"parse_typed": "synthorg.api.boundary.parse_typed"}
+        from synthorg.core.boundary import parse_typed
+        # -> {"parse_typed": "synthorg.core.boundary.parse_typed"}
 
-        from synthorg.api import boundary as bnd
-        # -> {"bnd": "synthorg.api.boundary"}
+        from synthorg.core import boundary as bnd
+        # -> {"bnd": "synthorg.core.boundary"}
 
-        import synthorg.api.boundary as bm
-        # -> {"bm": "synthorg.api.boundary"}
+        import synthorg.core.boundary as bm
+        # -> {"bm": "synthorg.core.boundary"}
 
     The map is the only authority the gate uses to decide whether a
     call site references the canonical helper, so a local shim like
@@ -139,7 +139,7 @@ def _resolves_to_parse_typed(
       shadowing has overridden it inside the boundary function.
     * ``ast.Attribute(value=ast.Name("X"), attr="parse_typed")`` where
       ``X`` resolves via the import map to the canonical
-      ``synthorg.api.boundary`` module (covers
+      ``synthorg.core.boundary`` module (covers
       ``boundary.parse_typed(...)`` qualified usage).
 
     Token-only matches are deliberately NOT accepted: a Pythonic
@@ -279,7 +279,7 @@ def _check_boundary(
         f"{rel_path}:{func.lineno}: function {function_name!r} no longer "
         f"calls parse_typed; the {boundary_label!r} boundary contract is "
         "broken. Either route the inbound payload through "
-        "synthorg.api.boundary.parse_typed, or add a "
+        "synthorg.core.boundary.parse_typed, or add a "
         f'"# {_OPT_OUT_MARKER} -- <reason>" marker on the def line.'
     ]
 
@@ -317,7 +317,7 @@ def main() -> int:
         print(f"  {line}", file=sys.stderr)
     print(
         "\nRFC #1711 requires every registered API boundary to validate "
-        "via synthorg.api.boundary.parse_typed; raw dict access at "
+        "via synthorg.core.boundary.parse_typed; raw dict access at "
         "these surfaces is the exact regression this gate prevents.",
         file=sys.stderr,
     )

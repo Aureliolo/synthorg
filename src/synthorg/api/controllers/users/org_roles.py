@@ -22,7 +22,7 @@ from synthorg.core.auth.models import OrgRole
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -35,7 +35,6 @@ from synthorg.observability.events.security import (
     SECURITY_PERMISSION_GRANTED,
     SECURITY_PERMISSION_REVOKED,
 )
-from synthorg.persistence.constraint_tokens import LAST_OWNER_TRIGGER
 
 logger = get_logger(__name__)
 
@@ -86,7 +85,6 @@ class UserOrgRolesController(Controller):
             NotFoundError: If the user is not found.
             ConflictError: If the user already has the role.
             ValidationError: If department_admin without departments.
-            ConstraintViolationError: Raised on the corresponding failure path.
             QueryError: Raised on the corresponding failure path.
         """
         service = _service(state)
@@ -138,19 +136,6 @@ class UserOrgRolesController(Controller):
                 intent="grant_org_role",
                 granted_org_role=data.role.value,
             )
-        except ConstraintViolationError as exc:
-            if exc.constraint == LAST_OWNER_TRIGGER:
-                msg = "Cannot modify the last owner"
-                logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-                raise ConflictError(msg) from exc
-            logger.error(
-                API_USER_SAVE_FAILED,
-                user_id=user.id,
-                intent="grant_org_role",
-                role=data.role.value,
-                constraint=exc.constraint,
-            )
-            raise
         except QueryError:
             logger.error(
                 API_USER_SAVE_FAILED,
@@ -190,8 +175,6 @@ class UserOrgRolesController(Controller):
         Raises:
             NotFoundError: If the user is not found.
             ValidationError: If the role value is invalid.
-            ConflictError: If revoking the last owner.
-            ConstraintViolationError: Raised on the corresponding failure path.
             QueryError: Raised on the corresponding failure path.
         """
         service = _service(state)
@@ -226,19 +209,6 @@ class UserOrgRolesController(Controller):
                 intent="revoke_org_role",
                 revoked_org_role=role,
             )
-        except ConstraintViolationError as exc:
-            if exc.constraint == LAST_OWNER_TRIGGER:
-                msg = "Cannot revoke the last owner role"
-                logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-                raise ConflictError(msg) from exc
-            logger.error(
-                API_USER_SAVE_FAILED,
-                user_id=user.id,
-                intent="revoke_org_role",
-                role=role,
-                constraint=exc.constraint,
-            )
-            raise
         except QueryError:
             logger.error(
                 API_USER_SAVE_FAILED,

@@ -47,7 +47,6 @@ from synthorg.engine.workflow.subworkflow_registry import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_CURSOR_INVALID
-from synthorg.persistence._shared import collect_all
 from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
@@ -228,26 +227,19 @@ class SubworkflowController(Controller):
         """Substring search across name and description (cursor-paginated).
 
         Applies opaque-cursor pagination at the API boundary over the
-        complete match set: the handler drains every bounded repository
-        page via ``collect_all`` first (a truncated set would break the
-        cursor walk and under-report matches), then slices the
-        requested cursor page for the response.
+        complete match set: the registry drains every bounded repository
+        page via ``search_all`` first (a truncated set would break the
+        cursor walk and under-report matches), then the handler slices
+        the requested cursor page for the response.
 
         Returns:
             Result matching the declared return annotation.
         """
         registry = _registry(state)
-        # This endpoint applies its own opaque-cursor pagination over
-        # the full match set, so drain every bounded repo page; a
-        # truncated set would break the cursor walk and under-report
-        # matches.
-        matches = await collect_all(
-            lambda page_limit, offset: registry.search(
-                NotBlankStr(q),
-                limit=page_limit,
-                offset=offset,
-            ),
-        )
+        # This endpoint applies its own opaque-cursor pagination over the
+        # full match set; the registry drains every bounded repo page so
+        # the controller never reaches across the persistence boundary.
+        matches = await registry.search_all(NotBlankStr(q))
         page, meta = paginate_cursor(
             matches,
             limit=limit,
@@ -337,26 +329,21 @@ class SubworkflowController(Controller):
         """List parent workflow definitions pinning this version.
 
         Applies opaque-cursor pagination at the API boundary over the
-        complete parent set: the handler drains every bounded
-        repository page via ``collect_all`` first (a truncated set
+        complete parent set: the registry drains every bounded
+        repository page via ``find_parents_all`` first (a truncated set
         would break the cursor walk and under-report references), then
-        slices the requested cursor page for the response.
+        the handler slices the requested cursor page for the response.
 
         Returns:
             Result matching the declared return annotation.
         """
         registry = _registry(state)
-        # This endpoint applies its own opaque-cursor pagination over
-        # the full parent set, so drain every bounded repo page; a
-        # truncated set would break the cursor walk and (worse)
-        # under-report references.
-        parents = await collect_all(
-            lambda page_limit, offset: registry.find_parents(
-                NotBlankStr(subworkflow_id),
-                NotBlankStr(version),
-                limit=page_limit,
-                offset=offset,
-            ),
+        # This endpoint applies its own opaque-cursor pagination over the
+        # full parent set; the registry drains every bounded repo page so
+        # the controller never reaches across the persistence boundary.
+        parents = await registry.find_parents_all(
+            NotBlankStr(subworkflow_id),
+            NotBlankStr(version),
         )
         page, meta = paginate_cursor(
             parents,

@@ -2,13 +2,18 @@
 
 import pytest
 
-from synthorg.integrations.errors import PKCEValidationError
+from synthorg.integrations.errors import MasterKeyError, PKCEValidationError
 from synthorg.integrations.oauth.pkce import (
+    OAuthPKCECipher,
+    _reset_cipher_for_tests,
     generate_code_challenge,
     generate_code_verifier,
+    init_pkce_cipher,
     validate_code_challenge,
     validate_code_verifier,
 )
+
+_VALID_FERNET_KEY = "lKzZcMznksIF8A_2HFFUnKxhxhz9_bxTvVJoZ6mvZrk="
 
 
 @pytest.mark.unit
@@ -70,3 +75,66 @@ class TestCodeChallenge:
         verifier = generate_code_verifier()
         with pytest.raises(PKCEValidationError, match="does not match"):
             validate_code_challenge(verifier, "wrong")
+
+
+@pytest.mark.unit
+class TestOAuthPKCECipher:
+    """Tests for the eager-validating PKCE verifier cipher."""
+
+    def test_roundtrip(self) -> None:
+        cipher = OAuthPKCECipher(_VALID_FERNET_KEY)
+        verifier = generate_code_verifier()
+        assert cipher.decrypt(cipher.encrypt(verifier)) == verifier
+
+    def test_blank_key_raises_at_construction(self) -> None:
+        with pytest.raises(MasterKeyError, match="must be set"):
+            OAuthPKCECipher("   ")
+
+    def test_invalid_key_raises_at_construction(self) -> None:
+        with pytest.raises(MasterKeyError, match="Invalid Fernet key"):
+            OAuthPKCECipher("not-a-valid-fernet-key")
+
+    def test_from_env_reads_master_key(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_MASTER_KEY", _VALID_FERNET_KEY)
+        cipher = OAuthPKCECipher.from_env()
+        verifier = generate_code_verifier()
+        assert cipher.decrypt(cipher.encrypt(verifier)) == verifier
+
+
+@pytest.mark.unit
+class TestInitPkceCipher:
+    """Tests for the best-effort boot initialiser."""
+
+    def test_noop_when_key_absent(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("SYNTHORG_MASTER_KEY", raising=False)
+        _reset_cipher_for_tests()
+        # Absent key must not raise at boot (OAuth stays optional).
+        init_pkce_cipher()
+        _reset_cipher_for_tests()
+
+    def test_raises_when_present_key_invalid(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_MASTER_KEY", "corrupt-key")
+        _reset_cipher_for_tests()
+        with pytest.raises(MasterKeyError):
+            init_pkce_cipher()
+        _reset_cipher_for_tests()
+
+    def test_validates_present_key(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_MASTER_KEY", _VALID_FERNET_KEY)
+        _reset_cipher_for_tests()
+        init_pkce_cipher()
+        # Second call is idempotent.
+        init_pkce_cipher()
+        _reset_cipher_for_tests()

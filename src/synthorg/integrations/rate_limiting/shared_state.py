@@ -355,10 +355,10 @@ async def set_coordinator_factory(
             )
 
 
-def set_coordinator_factory_sync(
+def register_coordinator_factory(
     factory: Callable[[str], SharedRateLimitCoordinator] | None,
 ) -> None:
-    """Synchronous factory setter that does NOT tear down old coordinators.
+    """Register the coordinator factory without tearing down old coordinators.
 
     Use only in startup paths where no coordinators have been
     created yet. The async ``set_coordinator_factory`` should be
@@ -375,7 +375,7 @@ def get_coordinator(connection_name: str) -> SharedRateLimitCoordinator | None:
     The check-then-set on ``_coordinators`` and the read of
     ``_coordinator_factory`` are both protected by the lock so a
     concurrent factory swap (via :func:`set_coordinator_factory` or
-    :func:`set_coordinator_factory_sync`) cannot leave us calling a
+    :func:`register_coordinator_factory`) cannot leave us calling a
     stale or ``None`` factory between the existence check and the
     invocation.
 

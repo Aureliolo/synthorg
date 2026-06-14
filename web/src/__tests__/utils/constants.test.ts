@@ -1,21 +1,24 @@
 import type { TaskStatus } from '@/api/types/enums'
+import { NAMESPACE_DISPLAY_NAMES, NAMESPACE_ORDER } from '@/pages/settings/settings-constants'
+import {
+  DEFAULT_PAGE_SIZE,
+  LOGIN_LOCKOUT_MS,
+  LOGIN_MAX_ATTEMPTS,
+  MAX_PAGE_SIZE,
+  MIN_PASSWORD_LENGTH,
+} from '@/utils/constants'
 import {
   TASK_STATUS_ORDER,
   TERMINAL_STATUSES,
   VALID_TRANSITIONS,
   WRITE_ROLES,
+} from '@/utils/tasks'
+import {
+  WS_MAX_MESSAGE_SIZE,
+  WS_MAX_RECONNECT_ATTEMPTS,
   WS_RECONNECT_BASE_DELAY,
   WS_RECONNECT_MAX_DELAY,
-  WS_MAX_RECONNECT_ATTEMPTS,
-  WS_MAX_MESSAGE_SIZE,
-  DEFAULT_PAGE_SIZE,
-  MAX_PAGE_SIZE,
-  MIN_PASSWORD_LENGTH,
-  LOGIN_MAX_ATTEMPTS,
-  LOGIN_LOCKOUT_MS,
-  NAMESPACE_ORDER,
-  NAMESPACE_DISPLAY_NAMES,
-} from '@/utils/constants'
+} from '@/utils/ws-constants'
 
 describe('constants', () => {
   describe('WebSocket constants', () => {
@@ -40,7 +43,7 @@ describe('constants', () => {
      */
     it('locks heartbeat + protocol version constants', async () => {
       const { WS_HEARTBEAT_INTERVAL_MS, WS_PONG_TIMEOUT_MS, WS_PROTOCOL_VERSION } =
-        await import('@/utils/constants')
+        await import('@/utils/ws-constants')
       expect(WS_HEARTBEAT_INTERVAL_MS).toBe(20_000)
       expect(WS_PONG_TIMEOUT_MS).toBe(10_000)
       expect(WS_PROTOCOL_VERSION).toBe(1)
