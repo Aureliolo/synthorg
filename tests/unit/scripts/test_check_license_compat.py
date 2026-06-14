@@ -8,6 +8,7 @@ present via the postgres extra).
 """
 
 import importlib.util
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any, cast
@@ -201,7 +202,7 @@ class _FakeMeta:
 
 def _fake_distribution_factory(
     classifier: dict[str, str],
-) -> Any:  # type: ignore[explicit-any]  # dynamically loaded gate boundary
+) -> Callable[[str], object]:
     """Build a ``metadata.distribution`` replacement keyed by name substring.
 
     ``classifier`` maps a name substring to the SPDX licence expression the
@@ -210,10 +211,10 @@ def _fake_distribution_factory(
     exercised deterministically.
     """
 
-    def _distribution(name: str) -> Any:  # type: ignore[explicit-any]
+    def _distribution(name: str) -> object:
         for needle, expression in classifier.items():
             if needle in name:
-                return cast("Any", SimpleNamespace(metadata=_FakeMeta(expression)))
+                return SimpleNamespace(metadata=_FakeMeta(expression))
         raise _MODULE.metadata.PackageNotFoundError(name)
 
     return _distribution
