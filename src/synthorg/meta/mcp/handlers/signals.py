@@ -101,8 +101,9 @@ async def _snapshot(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    response = ok(snapshot.model_dump(mode="json"))
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(snapshot.model_dump(mode="json"))
+    return response
 
 
 def _make_window_handler(
@@ -138,8 +139,9 @@ def _make_window_handler(
             reraise_critical(exc)
             log_handler_invoke_failed(tool_name, exc)
             return err(exc)
+        response = ok(result.model_dump(mode="json"))
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
-        return ok(result.model_dump(mode="json"))
+        return response
 
     return handler
 
@@ -173,8 +175,9 @@ async def _list_proposals(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    response = ok(dump_many(page), pagination=pagination_meta)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(dump_many(page), pagination=pagination_meta)
+    return response
 
 
 async def _submit_proposal(
@@ -205,15 +208,6 @@ async def _submit_proposal(
             actor=resolved_actor,
             reason=reason,
         )
-        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
-        logger.info(
-            MCP_ADMIN_OP_EXECUTED,
-            tool_name=tool_name,
-            actor_agent_id=actor_id(resolved_actor),
-            reason=reason,
-            target_id=str(item.id),
-        )
-        return ok(item.model_dump(mode="json"))
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool_name, exc)
         return err(exc)
@@ -224,6 +218,16 @@ async def _submit_proposal(
         reraise_critical(exc)
         log_handler_invoke_failed(tool_name, exc)
         return err(exc)
+    response = ok(item.model_dump(mode="json"))
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
+    logger.info(
+        MCP_ADMIN_OP_EXECUTED,
+        tool_name=tool_name,
+        actor_agent_id=actor_id(resolved_actor),
+        reason=reason,
+        target_id=str(item.id),
+    )
+    return response
 
 
 SIGNAL_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

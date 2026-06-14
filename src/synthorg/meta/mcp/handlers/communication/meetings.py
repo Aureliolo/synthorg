@@ -5,7 +5,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
-from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.communication.state import meeting_service_of
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
@@ -50,9 +49,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_ARG_STATUS = "status"
-_TY_STATUS = "MeetingStatus string"
-
 
 async def _meetings_list(
     *,
@@ -72,16 +68,8 @@ async def _meetings_list(
     tool = "synthorg_meetings_list"
     try:
         args = typed_args(arguments, MeetingsListArgs)
-        if args.status is not None:
-            try:
-                status = MeetingStatus(args.status)
-            except ValueError as exc:
-                bad = ArgumentValidationError(_ARG_STATUS, _TY_STATUS)
-                raise bad from exc
-        else:
-            status = None
         records, total = await meeting_service_of(app_state).list_meetings(
-            status=status,
+            status=args.status,
             meeting_type=args.meeting_type,
             offset=args.offset,
             limit=args.limit,

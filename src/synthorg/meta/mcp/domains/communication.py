@@ -5,6 +5,7 @@ Covers messages, meetings, connections, webhooks, and tunnel.
 
 from typing import TYPE_CHECKING
 
+from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.meta.mcp.domains._remaining_args import (
     ConnectionsCheckHealthArgs,
     ConnectionsCreateArgs,
@@ -48,7 +49,6 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "List messages with optional filtering.",
         {
             "channel": {"type": "string", "description": "Filter by channel"},
-            "sender": {"type": "string", "description": "Filter by sender"},
             **PAGINATION_PROPERTIES,
         },
         args_model=MessagesListArgs,
@@ -98,7 +98,11 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "list",
         "List meeting records.",
         {
-            "status": {"type": "string", "description": "Filter by status"},
+            "status": {
+                "type": "string",
+                "description": "Filter by status",
+                "enum": [s.value for s in MeetingStatus],
+            },
             "meeting_type": {
                 "type": "string",
                 "description": "Filter by meeting type",

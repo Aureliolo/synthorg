@@ -237,9 +237,9 @@ async def _apply_webhook_update(
             definition=definition,
             actor_id=actor_id,
         )
-    except KeyError as exc:
+    except KeyError:
         missing = NotFoundError(f"Webhook {definition.id} not found")
-        log_handler_invoke_failed(tool, exc)
+        log_handler_invoke_failed(tool, missing, webhook_id=definition.id)
         return err(missing, domain_code="not_found")
     except ValueError as exc:
         log_handler_invoke_failed(tool, exc)

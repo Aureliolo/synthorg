@@ -11685,7 +11685,7 @@
     },
     {
       "kind": "code",
-      "loc": 291,
+      "loc": 295,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/communication.py",
       "owning_feature": "meta"
@@ -11951,7 +11951,7 @@
     },
     {
       "kind": "code",
-      "loc": 210,
+      "loc": 199,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/communication/meetings.py",
       "owning_feature": "meta"
@@ -12154,7 +12154,7 @@
     },
     {
       "kind": "code",
-      "loc": 275,
+      "loc": 277,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/meta.py",
       "owning_feature": "meta"
@@ -12189,7 +12189,7 @@
     },
     {
       "kind": "code",
-      "loc": 343,
+      "loc": 341,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/quality.py",
       "owning_feature": "meta"
@@ -12203,7 +12203,7 @@
     },
     {
       "kind": "code",
-      "loc": 233,
+      "loc": 237,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/signals.py",
       "owning_feature": "meta"

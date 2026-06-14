@@ -5,6 +5,7 @@ Covers messages, meetings, connections, webhooks, tunnel.
 
 from pydantic import Field
 
+from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.domains._common_args import (
     AdminGuardrailFields,
@@ -17,7 +18,6 @@ class MessagesListArgs(PaginationFields):
     """Args for ``messages.list``."""
 
     channel: NotBlankStr | None = Field(default=None, description="Filter by channel")
-    sender: NotBlankStr | None = Field(default=None, description="Filter by sender")
 
 
 class MessagesGetArgs(_ArgsBase):
@@ -47,7 +47,7 @@ class MessagesDeleteArgs(AdminGuardrailFields):
 class MeetingsListArgs(PaginationFields):
     """Args for ``meetings.list``."""
 
-    status: NotBlankStr | None = Field(default=None, description="Filter by status")
+    status: MeetingStatus | None = Field(default=None, description="Filter by status")
     meeting_type: NotBlankStr | None = Field(
         default=None,
         description="Filter by meeting type",

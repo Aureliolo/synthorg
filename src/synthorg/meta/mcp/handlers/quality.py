@@ -14,6 +14,7 @@ from uuid import UUID
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.engine.state import evaluation_version_service_of
 from synthorg.infrastructure.state import (
     quality_facade_service_of,
@@ -243,10 +244,9 @@ async def _reviews_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
-        return err(
-            LookupError(f"Review {review_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Review {review_id} not found")
+        log_handler_invoke_failed(tool, missing, review_id=review_id)
+        return err(missing, domain_code="not_found")
     return ok(record.to_dict())
 
 
@@ -315,10 +315,9 @@ async def _reviews_update(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
-        return err(
-            LookupError(f"Review {args.review_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Review {args.review_id} not found")
+        log_handler_invoke_failed(tool, missing, review_id=args.review_id)
+        return err(missing, domain_code="not_found")
     return ok(record.to_dict())
 
 
@@ -374,10 +373,9 @@ async def _evaluation_versions_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if version is None:
-        return err(
-            LookupError(f"Evaluation version {version_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Evaluation version {version_id} not found")
+        log_handler_invoke_failed(tool, missing, version_id=version_id)
+        return err(missing, domain_code="not_found")
     return ok(_to_jsonable(version))
 
 

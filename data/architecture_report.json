@@ -1211,7 +1211,7 @@
     "synthorg.core.boundary": 27,
     "synthorg.core.clock": 161,
     "synthorg.core.critical_errors": 510,
-    "synthorg.core.domain_errors": 199,
+    "synthorg.core.domain_errors": 200,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 48,

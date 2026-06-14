@@ -1,6 +1,6 @@
 """Meta (self-improvement) domain MCP handlers.
 
-Five tools:
+Six tools:
 
 - ``list_mcp_tools`` reflects the tool registry.
 - ``get_mcp_server_config`` returns the MCP server metadata.
@@ -9,6 +9,8 @@ Five tools:
   with secrets redacted.
 - ``trigger_cycle`` runs an improvement cycle in-process and returns
   the produced proposals.
+- ``query_feature_map`` returns the discovered :class:`FeatureIndex`,
+  optionally filtered to a single feature by ``name``.
 
 The two new live handlers fall back to ``capability_gap`` only when
 ``self_improvement_service`` is not wired on AppState, matching the
