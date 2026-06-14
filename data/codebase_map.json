@@ -7282,7 +7282,7 @@
     },
     {
       "kind": "adapter",
-      "loc": 701,
+      "loc": 700,
       "loc_cap": 700,
       "module": "src/synthorg/engine/workflow/execution_lifecycle.py",
       "owning_feature": "engine"

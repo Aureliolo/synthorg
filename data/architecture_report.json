@@ -470,8 +470,8 @@
     },
     "src/synthorg/engine/workflow/execution_lifecycle.py": {
       "cap": 700,
-      "loc": 701,
-      "ratio": 1.001,
+      "loc": 700,
+      "ratio": 1.0,
       "tier": "adapter"
     },
     "src/synthorg/engine/workflow/execution_service.py": {
