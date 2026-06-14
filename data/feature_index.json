@@ -143,6 +143,7 @@
         "cost_tracker",
         "cost_forecaster",
         "cost_forecast_repo",
+        "forecast_service",
         "benchmark_score_repo",
         "pareto_analyzer",
         "benchmark_provider",
@@ -1208,6 +1209,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-13T17:10:24.114787Z",
+  "generated_at": "2026-06-14T07:13:04.168421Z",
   "schema_version": 1
 }
