@@ -14,7 +14,7 @@ injection.
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 
 
 @runtime_checkable
@@ -35,7 +35,7 @@ class JsonbQueryCapability[RowT](Protocol):
         *,
         since: datetime | None = None,
         until: datetime | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[tuple[RowT, ...], int]:
         """Query rows where a JSONB column contains the given value.
@@ -63,7 +63,7 @@ class JsonbQueryCapability[RowT](Protocol):
         *,
         since: datetime | None = None,
         until: datetime | None = None,
-        limit: int = DEFAULT_LIST_LIMIT,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[tuple[RowT, ...], int]:
         """Query rows where a JSONB column has the given top-level key.
