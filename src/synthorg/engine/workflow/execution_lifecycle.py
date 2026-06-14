@@ -128,9 +128,8 @@ async def cancel_execution(
     """Cancel a workflow execution.
 
     Returns:
-        The cancelled :class:`WorkflowExecution` with status
-        ``CANCELLED``, the completion timestamp set, and the version
-        bumped.
+        The cancelled :class:`WorkflowExecution` (status ``CANCELLED``,
+        completion timestamp set, version bumped).
 
     Raises:
         WorkflowExecutionNotFoundError: If not found.
@@ -196,10 +195,9 @@ async def cancel_execution(
         except PersistenceVersionConflictError as exc:
             # Optimistic-concurrency race: another writer mutated the
             # execution between the read above and this save. Re-fetch
-            # so the audit signal records the *winner's* status, not
-            # the stale pre-save snapshot which would usually still
-            # report 'running' even after another writer moved the row
-            # to a terminal state.
+            # so the audit signal records the *winner's* status, not the
+            # stale pre-save snapshot (still 'running' even after another
+            # writer moved the row to a terminal state).
             refreshed = await repo.get(execution_id)
             logger.warning(
                 WORKFLOW_EXEC_CANCEL_CONFLICT,
