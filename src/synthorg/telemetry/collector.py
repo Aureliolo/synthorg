@@ -804,11 +804,20 @@ class TelemetryCollector:
                 "docker_info_available": False,
                 "docker_info_unavailable_reason": "daemon_unreachable",
             }
-        params = (
-            self._heartbeat_snapshot_provider()
-            if self._heartbeat_snapshot_provider is not None
-            else _HeartbeatParams()
-        )
+        params = _HeartbeatParams()
+        if self._heartbeat_snapshot_provider is not None:
+            try:
+                params = self._heartbeat_snapshot_provider()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                # A provider fault must not abort start() and leak the
+                # heartbeat task slot; fall back to empty params and
+                # surface the failure as a categorical warning.
+                logger.warning(
+                    TELEMETRY_REPORT_FAILED,
+                    detail="startup_snapshot_failed",
+                    error_type=type(exc).__name__,
+                )
         event = self._build_event(
             TELEMETRY_EVENT_DEPLOYMENT_STARTUP,
             agent_count=params.agent_count,

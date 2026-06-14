@@ -238,9 +238,15 @@ async def _seed_webhook_receipts(backend: PostgresPersistenceBackend) -> None:
         )
         for i in range(10):
             await conn.execute(
-                "INSERT INTO webhook_receipts (id, connection_name, received_at) "
-                "VALUES (%s, %s, %s)",
-                (sid(f"wh-{i:03d}"), "conn-perf", _BASE + timedelta(seconds=i)),
+                "INSERT INTO webhook_receipts "
+                "(id, connection_name, event_type, received_at) "
+                "VALUES (%s, %s, %s, %s)",
+                (
+                    sid(f"wh-{i:03d}"),
+                    "conn-perf",
+                    "push",
+                    _BASE + timedelta(seconds=i),
+                ),
             )
 
 

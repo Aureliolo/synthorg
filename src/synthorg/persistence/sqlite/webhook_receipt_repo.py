@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import aiosqlite
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.core.types import NotBlankStr
@@ -65,15 +66,15 @@ def _row_to_receipt(row: aiosqlite.Row) -> WebhookReceipt:
         ) = row
         return WebhookReceipt(
             id=UUID(str(receipt_id)),
-            connection_name=NotBlankStr(connection_name),
-            event_type=NotBlankStr(event_type),
-            status=NotBlankStr(status or "received"),
+            connection_name=connection_name,
+            event_type=event_type,
+            status=status or "received",
             received_at=coerce_row_timestamp(received_at),
             processed_at=(coerce_row_timestamp(processed_at) if processed_at else None),
             payload_json=payload_json or "",
             error=error,
         )
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, ValidationError) as exc:
         try:
             row_id = str(row["id"])
         except KeyError, IndexError, TypeError:

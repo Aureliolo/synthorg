@@ -267,9 +267,10 @@ async def _seed_webhook_receipts(backend: SQLitePersistenceBackend) -> None:
     )
     for i in range(10):
         await db.execute(
-            "INSERT INTO webhook_receipts (id, connection_name, received_at) "
-            "VALUES (?, ?, ?)",
-            (sid(f"wh-{i:03d}"), "conn-perf", _iso(i)),
+            "INSERT INTO webhook_receipts "
+            "(id, connection_name, event_type, received_at) "
+            "VALUES (?, ?, ?, ?)",
+            (sid(f"wh-{i:03d}"), "conn-perf", "push", _iso(i)),
         )
     await db.commit()
 

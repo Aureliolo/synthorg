@@ -159,7 +159,7 @@ Providers can be managed at runtime through the API without restarting:
 
 ## Model Routing Strategy
 
-Model routing determines which LLM handles a given request. Six strategies are available,
+Model routing determines which LLM handles a given request. Five strategies are available,
 selectable via configuration:
 
 | Strategy | Behaviour |

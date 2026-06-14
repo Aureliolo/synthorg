@@ -6,6 +6,12 @@ discriminators. Strategy values are validated against
 :class:`~synthorg.research.config.ResearchConfig` at wiring time.
 """
 
+from synthorg.research.constants import (
+    RESEARCH_DEDUP_JACCARD_THRESHOLD,
+    RESEARCH_DEFAULT_PER_QUERY_LIMIT,
+    RESEARCH_HYBRID_PREFILTER_FACTOR,
+    RESEARCH_TRIAGE_BATCH_SIZE,
+)
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
@@ -129,7 +135,7 @@ _r.register(
         namespace=SettingNamespace.RESEARCH,
         key="triage_batch_size",
         type=SettingType.INTEGER,
-        default="10",
+        default=str(RESEARCH_TRIAGE_BATCH_SIZE),
         description=(
             "Number of retrieved items grouped into each LLM"
             " credibility-triage call. Higher cuts provider round-trips"
@@ -149,7 +155,7 @@ _r.register(
         namespace=SettingNamespace.RESEARCH,
         key="hybrid_prefilter_factor",
         type=SettingType.FLOAT,
-        default="0.6",
+        default=str(RESEARCH_HYBRID_PREFILTER_FACTOR),
         description=(
             "Fraction of a brief's min_credibility a source's heuristic"
             " score must reach before the hybrid strategy escalates it to"
@@ -169,7 +175,7 @@ _r.register(
         namespace=SettingNamespace.RESEARCH,
         key="dedup_similarity_threshold",
         type=SettingType.FLOAT,
-        default="0.85",
+        default=str(RESEARCH_DEDUP_JACCARD_THRESHOLD),
         description=(
             "Similarity at or above which two retrieved items are collapsed"
             " as near-duplicates (token-shingle Jaccard for the lexical"
@@ -189,7 +195,7 @@ _r.register(
         namespace=SettingNamespace.RESEARCH,
         key="per_query_limit",
         type=SettingType.INTEGER,
-        default="10",
+        default=str(RESEARCH_DEFAULT_PER_QUERY_LIMIT),
         description=(
             "Default number of candidate items each retrieval source"
             " returns per sub-query. The deployment-level floor applied"

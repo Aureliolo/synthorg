@@ -58,7 +58,8 @@ class CostRecordingContext(BaseModel):
     Construction is via :func:`cost_recording_scope` rather than direct
     instantiation.  ``cost_tracker`` is a :class:`CostTracker` (a
     non-Pydantic class), permitted by ``arbitrary_types_allowed``; the
-    field validator keeps the explicit ``TypeError`` on a bad instance.
+    field validator raises ``ValueError`` on a bad instance so Pydantic
+    surfaces it as a ``ValidationError``.
     """
 
     model_config = ConfigDict(
