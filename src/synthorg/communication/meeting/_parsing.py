@@ -6,12 +6,19 @@ calls.
 """
 
 import re
+from typing import Final
 
 from synthorg.communication.meeting.models import ActionItem
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import MEETING_PARSING_NO_SECTION
 
 logger = get_logger(__name__)
+
+# Hard cap on a section before list parsing. ``summary_text`` is derived
+# from LLM output over agent-controlled (indirectly attacker-controllable)
+# content; capping bounds both the line-classification work and any
+# pathological single line, mirroring ``sanitize_message``'s pre-cap.
+_MAX_SECTION_CHARS: Final[int] = 32_768
 
 # Patterns for section headers
 _DECISIONS_HEADER_RE = re.compile(
@@ -27,12 +34,57 @@ _ANY_HEADER_RE = re.compile(
     re.MULTILINE,
 )
 
-# List item patterns (numbered or bulleted), capturing continuation lines
-_LIST_ITEM_RE = re.compile(
-    r"^[^\S\n]*(?:\d+[\.\)][^\S\n]*|-[^\S\n]*|\*[^\S\n]*|\u2022[^\S\n]*)"
-    r"(.+(?:\n(?![^\S\n]*(?:\d+[\.\)]\s|-\s|\*\s|\u2022\s)|#+\s|\S.*:\s*$).+)*)",
-    re.MULTILINE,
+# A single list-item lead line (numbered or bulleted). Anchored,
+# per-line, no nested repetition -- replaces the former multiline
+# ``_LIST_ITEM_RE`` whose nested continuation group backtracked
+# catastrophically on a long single line. The continuation join is now
+# done by ``_extract_list_items`` line-by-line.
+_LIST_LEAD_RE = re.compile(
+    r"^[^\S\n]*(?:\d+[\.\)]|[-*\u2022])[^\S\n]*(.*)$",
 )
+# A line that terminates an item's continuation run: a markdown header
+# or a ``key:`` line. Both anchored, no nested quantifiers.
+_HEADER_LINE_RE = re.compile(r"^#+\s")
+_KEY_LINE_RE = re.compile(r"^\S.*:\s*$")
+
+
+def _extract_list_items(section: str) -> list[str]:
+    """Extract bulleted / numbered list items with continuation joins.
+
+    Linear single pass over the (capped) section: a bullet / numbered
+    line starts an item; a following non-blank line that is neither a
+    new bullet, a header, nor a ``key:`` line is folded in as a
+    continuation. Eliminates the backtracking surface of the old
+    nested-repetition regex.
+
+    Returns:
+        The list of joined item strings (whitespace-normalised).
+    """
+    items: list[str] = []
+    current: list[str] | None = None
+
+    def _flush() -> None:
+        if current is not None:
+            joined = " ".join(" ".join(current).split())
+            if joined:
+                items.append(joined)
+
+    for line in section[:_MAX_SECTION_CHARS].split("\n"):
+        lead = _LIST_LEAD_RE.match(line)
+        if lead is not None:
+            _flush()
+            current = [lead.group(1)]
+            continue
+        if current is None:
+            continue
+        if not line.strip() or _HEADER_LINE_RE.match(line) or _KEY_LINE_RE.match(line):
+            _flush()
+            current = None
+            continue
+        current.append(line)
+    _flush()
+    return items
+
 
 # Pattern for "assignee: <name>" or "(assigned to <name>)" at end of line
 _ASSIGNEE_RE = re.compile(
@@ -90,14 +142,7 @@ def parse_decisions(summary_text: str) -> tuple[str, ...]:
         )
         return ()
 
-    decisions: list[str] = []
-    for match in _LIST_ITEM_RE.finditer(section):
-        # Join continuation lines into a single string
-        text = " ".join(match.group(1).split())
-        if text:
-            decisions.append(text)
-
-    return tuple(decisions)
+    return tuple(_extract_list_items(section))
 
 
 def _parse_assignee(text: str) -> tuple[str, str | None]:
@@ -149,12 +194,7 @@ def parse_action_items(
         return ()
 
     items: list[ActionItem] = []
-    for match in _LIST_ITEM_RE.finditer(section):
-        # Join continuation lines into a single string
-        raw_text = " ".join(match.group(1).split())
-        if not raw_text:
-            continue
-
+    for raw_text in _extract_list_items(section):
         description, assignee_id = _parse_assignee(raw_text)
         if not description:
             continue

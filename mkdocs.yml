@@ -247,6 +247,7 @@ nav:
           - CLI Persistence Backends: reference/cli-persistence-backends.md
       - Conventions & Architecture:
           - Convention Gates: reference/convention-gates.md
+          - License Policy: reference/license-policy.md
           - Import Layering: reference/import-layering.md
           - Lifecycle Sync: reference/lifecycle-sync.md
           - Persistence Boundary: reference/persistence-boundary.md

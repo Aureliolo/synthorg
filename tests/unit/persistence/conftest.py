@@ -31,6 +31,7 @@ def make_task(  # noqa: PLR0913
     priority: Priority = Priority.MEDIUM,
     project: str = "test-project",
     created_by: str = "alice",
+    requested_by_user_id: str | None = None,
     assigned_to: str | None = None,
     status: TaskStatus = TaskStatus.CREATED,
 ) -> Task:
@@ -50,6 +51,7 @@ def make_task(  # noqa: PLR0913
         priority=priority,
         project=project,
         created_by=created_by,
+        requested_by_user_id=requested_by_user_id,
         assigned_to=effective_assigned_to,
         status=status,
     )

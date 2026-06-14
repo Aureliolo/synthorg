@@ -289,8 +289,10 @@ class TestVerifyPeerCredentials:
         assert result is True
 
     @pytest.mark.unit
-    async def test_empty_credentials_returns_true(self) -> None:
-        """Peer has no stored credentials: pass-through."""
+    async def test_empty_credentials_fails_closed(self) -> None:
+        """A configured catalog with no credentials for an allowlisted peer
+        FAILS CLOSED: an operator who adds a peer but forgets its
+        credentials must not silently grant access."""
         from unittest.mock import AsyncMock, MagicMock
 
         from synthorg.a2a.gateway import _verify_peer_credentials
@@ -305,7 +307,7 @@ class TestVerifyPeerCredentials:
             request,
             "peer-a",
         )
-        assert result is True
+        assert result is False
 
     @pytest.mark.unit
     async def test_api_key_match_returns_true(self) -> None:

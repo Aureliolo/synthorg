@@ -12,6 +12,7 @@ handler. The composition root mounts these from this manifest.
 from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api._construction import wire_construction
 from synthorg.api.api_core_state import ApiCoreStateSlice
+from synthorg.api.auth.controllers.api_keys import AuthApiKeysController
 from synthorg.api.auth.controllers.bootstrap import AuthBootstrapController
 from synthorg.api.auth.controllers.credentials import AuthCredentialsController
 from synthorg.api.auth.controllers.identity import AuthIdentityController
@@ -19,6 +20,7 @@ from synthorg.api.auth.controllers.session import AuthSessionController
 from synthorg.api.auth.controllers.sessions_mgmt import AuthSessionsController
 from synthorg.api.controllers.capabilities import CapabilitiesController
 from synthorg.api.controllers.health import (
+    HealthController,
     LivenessController,
     ReadinessController,
 )
@@ -40,12 +42,14 @@ FEATURE: FeatureModule = FeatureManifest(
     controllers=(
         LivenessController,
         ReadinessController,
+        HealthController,
         CapabilitiesController,
         AuthBootstrapController,
         AuthSessionController,
         AuthCredentialsController,
         AuthIdentityController,
         AuthSessionsController,
+        AuthApiKeysController,
         UserController,
         UserOrgRolesController,
         SetupStatusController,

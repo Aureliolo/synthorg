@@ -385,6 +385,22 @@ class TestWsTicketAuth:
             f"invalid_ticket, got {exc_info.value.code}"
         )
 
+    def test_ws_rejects_oversized_query_ticket(
+        self,
+        ws_test_client: TestClient[Litestar],
+    ) -> None:
+        """An oversized ``?ticket=`` value is rejected before it ever reaches
+        the ticket store."""
+        from litestar.exceptions import WebSocketDisconnect
+
+        oversized = "x" * 500
+        with (
+            pytest.raises(WebSocketDisconnect) as exc_info,
+            ws_test_client.websocket_connect(f"/api/v1/ws?ticket={oversized}"),
+        ):
+            pass
+        assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED
+
     def test_ws_rejects_bad_first_message_ticket(
         self,
         ws_test_client: TestClient[Litestar],

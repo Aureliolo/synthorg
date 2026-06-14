@@ -15,6 +15,7 @@ from synthorg.api.auth.controller_dtos import (
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.auth.ticket_store import TicketLimitExceededError
 from synthorg.api.dto import ApiResponse
+from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.core.domain_errors import ConflictError, UnauthorizedError
@@ -29,6 +30,10 @@ class AuthIdentityController(Controller):
 
     path = "/auth"
     tags = ("auth",)
+    # Declarative role gate so the security posture is visible to tooling
+    # / OpenAPI; the inline system-user and JWT-only checks remain as
+    # domain logic on the individual handlers.
+    guards = [require_read_access]  # noqa: RUF012
 
     @get(
         "/me",

@@ -6,14 +6,13 @@ knowledge from the successful approach. Similar to ProceduralMemoryProposer
 but optimized for success outcomes with a lighter system prompt.
 """
 
-import json
-import re
 from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.engine.prompt_safety import (
@@ -60,42 +59,28 @@ _SYSTEM_PROMPT = (
     + untrusted_content_directive((TAG_TASK_DATA,))
 )
 
-_JSON_FENCE_PATTERN = re.compile(
-    r"```(?:json)?\s*\n?(.*?)\n?\s*```",
-    re.DOTALL,
-)
-
 
 def _extract_json(text: str) -> dict[str, object] | None:
-    """Extract a JSON object from LLM response text.
+    """Extract a JSON object from LLM response text via the shared helper.
 
-    Handles plain JSON and markdown-fenced JSON blocks.
-    Returns ``None`` on parse failure.
+    Delegates to ``extract_json_from_llm_response`` so a parse failure
+    logs a fixed literal detail, never ``str(exc)``: a ``JSONDecodeError``
+    carries ``exc.doc`` (the raw LLM output), which could embed
+    credentials from the executed task and leak them into the log sink.
 
     Returns:
-        The resulting ``dict[str, Any]``, or ``None`` when unavailable.
+        The resulting ``dict[str, object]``, or ``None`` when unavailable.
     """
-    stripped = text.strip()
-    if not stripped:
-        return None
 
-    # Try stripping markdown fences first.
-    match = _JSON_FENCE_PATTERN.search(stripped)
-    candidate = match.group(1).strip() if match else stripped
-
-    try:
-        parsed = json.loads(candidate)
-    except json.JSONDecodeError as exc:
+    def _log_parse_failure(detail: str) -> None:
+        """Log parse failure with the helper's fixed literal detail."""
         logger.debug(
             PROCEDURAL_MEMORY_SKIPPED,
             reason="json_parse_error",
-            detail=str(exc),
+            detail=detail,
         )
-        return None
 
-    if not isinstance(parsed, dict):
-        return None
-    return parsed
+    return extract_json_from_llm_response(text, logger_callback=_log_parse_failure)
 
 
 def _build_user_message(execution_result: ExecutionResult) -> str:

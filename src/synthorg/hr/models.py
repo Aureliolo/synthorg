@@ -18,7 +18,7 @@ from pydantic import (
 )
 
 from synthorg.core.role import Skill
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, PersonaLabelStr
 from synthorg.hr.enums import (
     FiringReason,
     HiringRequestStatus,
@@ -49,9 +49,9 @@ class CandidateCard(BaseModel):
         default_factory=uuid4,
         description="Unique candidate identifier",
     )
-    name: NotBlankStr = Field(description="Proposed agent name")
-    role: NotBlankStr = Field(description="Proposed role")
-    department: NotBlankStr = Field(description="Target department")
+    name: PersonaLabelStr = Field(description="Proposed agent name")
+    role: PersonaLabelStr = Field(description="Proposed role")
+    department: PersonaLabelStr = Field(description="Target department")
     level: SeniorityLevel = Field(description="Proposed seniority level")
     skills: tuple[Skill, ...] = Field(
         default=(),
@@ -96,8 +96,8 @@ class HiringRequest(BaseModel):
         description="Unique request identifier",
     )
     requested_by: NotBlankStr = Field(description="Request initiator")
-    department: NotBlankStr = Field(description="Target department")
-    role: NotBlankStr = Field(description="Desired role")
+    department: PersonaLabelStr = Field(description="Target department")
+    role: PersonaLabelStr = Field(description="Desired role")
     level: SeniorityLevel = Field(description="Desired seniority level")
     required_skills: tuple[NotBlankStr, ...] = Field(
         default=(),

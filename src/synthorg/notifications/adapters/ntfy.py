@@ -1,17 +1,20 @@
 """ntfy notification sink -- HTTP POST to an ntfy server."""
 
 import asyncio
-import ipaddress
 import math
 import re
 from types import TracebackType
 from typing import Final, Self
-from urllib.parse import urlparse
 
 import httpx
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
+from synthorg.notifications.adapters._ssrf import (
+    build_pinned_transport,
+    resolve_outbound_target,
+    validate_outbound_url_scheme,
+)
 from synthorg.notifications.models import (
     Notification,
     NotificationSeverity,
@@ -21,6 +24,7 @@ from synthorg.observability.events.notification import (
     NOTIFICATION_NTFY_DELIVERED,
     NOTIFICATION_NTFY_FAILED,
 )
+from synthorg.tools.network_validator import NetworkPolicy
 
 logger = get_logger(__name__)
 _DEFAULT_WEBHOOK_TIMEOUT_SECONDS: Final[float] = 10.0
@@ -33,36 +37,6 @@ _SEVERITY_TO_PRIORITY: dict[NotificationSeverity, str] = {
 }
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
-_ALLOWED_SCHEMES = frozenset({"http", "https"})
-_BLOCKED_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-
-
-def _validate_outbound_url(url: str, field: str) -> None:
-    """Reject URLs that target internal/loopback hosts or non-HTTP schemes.
-
-    Raises:
-        ValueError: When ``url`` uses a non-HTTP(S) scheme, targets an
-            exact loopback hostname, or is a literal private /
-            link-local / loopback IP. Hostnames are not DNS-resolved,
-            so names that resolve to internal addresses are not blocked.
-    """
-    parsed = urlparse(url)
-    if parsed.scheme not in _ALLOWED_SCHEMES:
-        msg = f"{field} must use http or https scheme, got {parsed.scheme!r}"
-        raise ValueError(msg)
-    host = parsed.hostname or ""
-    if host in _BLOCKED_HOSTS:
-        msg = f"{field} must not target loopback address"
-        raise ValueError(msg)
-    try:
-        addr = ipaddress.ip_address(host)
-    except ValueError:
-        # Not a literal IP -- hostname like "ntfy.example.com".
-        # Already checked against _BLOCKED_HOSTS above.
-        return
-    if addr.is_private or addr.is_link_local or addr.is_loopback:
-        msg = f"{field} must not target private/internal IP"
-        raise ValueError(msg)
 
 
 class NtfyNotificationSink:
@@ -85,15 +59,23 @@ class NtfyNotificationSink:
             the notification factory threads the resolved value in at
             construction so operator tuning takes effect on restart.
             Must be positive.
+        network_policy: SSRF policy applied to *server_url* at
+            ``start()`` (async DNS resolution + blocked-range check +
+            connect pinning). ``None`` selects the fail-closed default
+            (private/internal IPs blocked, empty allowlist); a
+            self-hosted ntfy on an internal address requires a policy
+            whose ``hostname_allowlist`` covers its host.
 
     Raises:
-        ValueError: If *server_url* targets a private/loopback host,
-            or if *webhook_timeout_seconds* is not positive.
+        ValueError: If *server_url* uses a non-HTTP scheme or is a
+            literal private/loopback host, or if
+            *webhook_timeout_seconds* is not positive.
     """
 
     __slots__ = (
         "_client",
         "_lifecycle_lock",
+        "_network_policy",
         "_server_url",
         "_token",
         "_topic",
@@ -107,8 +89,9 @@ class NtfyNotificationSink:
         topic: str,
         token: str | None = None,
         webhook_timeout_seconds: float = _DEFAULT_WEBHOOK_TIMEOUT_SECONDS,
+        network_policy: NetworkPolicy | None = None,
     ) -> None:
-        _validate_outbound_url(server_url, "server_url")
+        validate_outbound_url_scheme(server_url, "server_url")
         if not math.isfinite(webhook_timeout_seconds) or webhook_timeout_seconds <= 0:
             msg = (
                 "webhook_timeout_seconds must be a finite number > 0, got "
@@ -119,6 +102,9 @@ class NtfyNotificationSink:
         self._topic = topic
         self._token = token
         self._webhook_timeout_seconds = webhook_timeout_seconds
+        self._network_policy = (
+            network_policy if network_policy is not None else NetworkPolicy()
+        )
         self._client: httpx.AsyncClient | None = None
         # Eager init: stop() must be safe before any start() call,
         # so the lock is created here rather than lazily in start().
@@ -130,13 +116,34 @@ class NtfyNotificationSink:
         return "ntfy"
 
     async def start(self) -> None:
-        """Create the underlying HTTP client (idempotent)."""
+        """Create the underlying HTTP client (idempotent).
+
+        Runs the async SSRF pre-flight against ``server_url`` (DNS
+        resolution + blocked-range check) and pins the client's TCP
+        connect to the validated IP, so a DNS name resolving to an
+        internal address is rejected and rebinding cannot redirect the
+        live connect. The pin lasts the sink's lifetime: ntfy targets a
+        single fixed host, so re-resolving per send buys nothing.
+
+        ``follow_redirects=False`` is kept explicit: the pre-flight only
+        validates ``server_url``, so a 3xx to an internal host would
+        otherwise bypass the gate.
+
+        Raises:
+            ValueError: If ``server_url`` is rejected by the SSRF policy.
+        """
         async with self._lifecycle_lock:
             if self._client is not None:
                 return
+            validation = await resolve_outbound_target(
+                self._server_url,
+                field="server_url",
+                policy=self._network_policy,
+            )
             self._client = httpx.AsyncClient(
                 timeout=self._webhook_timeout_seconds,
                 follow_redirects=False,
+                transport=build_pinned_transport(validation),
             )
 
     async def close(self) -> None:

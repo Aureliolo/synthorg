@@ -8,6 +8,7 @@ from synthorg.api.api_core_state import session_store_of
 from synthorg.api.auth.controller_dtos import SessionResponse
 from synthorg.api.auth.controller_helpers import extract_jti
 from synthorg.api.dto import ApiResponse
+from synthorg.api.guards import require_read_access
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.auth.models import AuthenticatedUser
@@ -37,6 +38,10 @@ class AuthSessionsController(Controller):
 
     path = "/auth"
     tags = ("auth",)
+    # Declarative role gate so the security posture is visible to tooling
+    # / OpenAPI and survives any future broadening of auth.exclude_paths.
+    # The inline owner-or-CEO checks remain as domain logic.
+    guards = [require_read_access]  # noqa: RUF012
 
     @get(
         "/sessions",

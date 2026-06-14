@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from litestar import Controller
 
+from synthorg.api.auth.controllers.api_keys import AuthApiKeysController
 from synthorg.api.auth.controllers.bootstrap import AuthBootstrapController
 from synthorg.api.auth.controllers.credentials import AuthCredentialsController
 from synthorg.api.auth.controllers.identity import AuthIdentityController
@@ -64,6 +65,7 @@ from synthorg.api.controllers.events.interrupts import InterruptController
 from synthorg.api.controllers.events.stream import EventStreamController
 from synthorg.api.controllers.experiments import ExperimentsController
 from synthorg.api.controllers.health import (
+    HealthController,
     LivenessController,
     ReadinessController,
 )
@@ -176,6 +178,7 @@ from synthorg.deliverable_receipts.api_controller import (
 BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     LivenessController,
     ReadinessController,
+    HealthController,
     MetricsController,
     CapabilitiesController,
     CompanyController,
@@ -216,6 +219,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ApprovalsDecisionsController,
     EscalationsController,
     AutonomyController,
+    AuthApiKeysController,
     AuthBootstrapController,
     AuthSessionController,
     AuthCredentialsController,
@@ -356,6 +360,7 @@ __all__ = [
     "ApprovalsQueryController",
     "ArtifactController",
     "AuditController",
+    "AuthApiKeysController",
     "AuthBootstrapController",
     "AuthCredentialsController",
     "AuthIdentityController",
@@ -388,6 +393,7 @@ __all__ = [
     "ExperimentsController",
     "ForecastBudgetController",
     "GlobalKnowledgeController",
+    "HealthController",
     "IntegrationHealthController",
     "InterruptController",
     "LearningController",

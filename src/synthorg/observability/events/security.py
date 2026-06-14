@@ -130,11 +130,13 @@ SECURITY_ALLOWLIST_UPDATED: Final[str] = "security.allowlist.updated"
 SECURITY_ALLOWLIST_UPDATE_FAILED: Final[str] = "security.allowlist.update_failed"
 
 # ── Authentication events (signed by the audit chain) ──────────
-# These represent security decisions: who logged in (or didn't), who
+# These represent security decisions: who failed to log in, who
 # changed their password, when an account was locked, when a refresh
 # token was minted/consumed/rejected. Operational events (cleanup,
-# fallback, listing) stay under api.* and are not signed.
-SECURITY_AUTH_SUCCESS: Final[str] = "security.auth.success"
+# fallback, listing) stay under api.* and are not signed. A successful
+# per-request authentication is NOT signed: it fires on every request,
+# so it lives at api.auth.success (API_AUTH_SUCCESS); the audited grant
+# is the credential exchange (SECURITY_AUTH_TOKEN_ISSUED).
 SECURITY_AUTH_FAILED: Final[str] = "security.auth.failed"
 SECURITY_AUTH_TOKEN_ISSUED: Final[str] = "security.auth.token_issued"  # noqa: S105
 SECURITY_AUTH_PASSWORD_CHANGED: Final[str] = "security.auth.password_changed"  # noqa: S105
@@ -145,6 +147,14 @@ SECURITY_AUTH_REFRESH_CREATED: Final[str] = "security.auth.refresh_created"
 SECURITY_AUTH_REFRESH_CONSUMED: Final[str] = "security.auth.refresh_consumed"
 SECURITY_AUTH_REFRESH_REJECTED: Final[str] = "security.auth.refresh_rejected"
 SECURITY_AUTH_REFRESH_REVOKED: Final[str] = "security.auth.refresh_revoked"
+
+# ── API-key lifecycle (signed) ─────────────────────────────────
+# Issuance / revocation of long-lived API keys. Signed so the audit
+# chain records who minted or revoked a credential and when. Emitted by
+# the ApiKeyService AFTER the persistence write, never inside the repo
+# (the persistence boundary forbids repos emitting security.* events).
+SECURITY_API_KEY_ISSUED: Final[str] = "security.api_key.issued"
+SECURITY_API_KEY_REVOKED: Final[str] = "security.api_key.revoked"
 
 # ── Session events (signed) ────────────────────────────────────
 SECURITY_SESSION_CREATED: Final[str] = "security.session.created"
@@ -214,6 +224,13 @@ SECURITY_PROVIDER_DELETED: Final[str] = "security.provider.deleted"
 # Emitted by SettingsService.set when the namespace is in the
 # sensitive set (auth, security, autonomy, encryption, rbac).
 SECURITY_SETTINGS_CHANGED: Final[str] = "security.settings.changed"
+
+# Audit envelope for a bulk security-config import: one signed entry
+# correlating the whole batch to its actor, grouping the per-key
+# SECURITY_SETTINGS_CHANGED emissions that set_many produces. The
+# operational counterpart (API_SECURITY_CONFIG_IMPORTED, api.*) stays an
+# unsigned operational log.
+SECURITY_SETTINGS_IMPORTED: Final[str] = "security.settings.imported"
 
 # ── Connection / external-integration credentials (signed) ─────
 # Connection records carry API keys and OAuth tokens; every CRUD

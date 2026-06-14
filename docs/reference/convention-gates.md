@@ -43,6 +43,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_frozen_model_extra_forbid.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
 | `check_handler_arguments_get.py` | push | `meta/mcp/` | full | no | none | add |
 | `check_image_signatures.py` | CI (`docker.yml`) | published image digests | n/a | n/a | none | keep |
+| `check_license_compat.py` | push | `pyproject.toml` + `uv.lock` + `cli/go.{mod,sum}` + `NOTICE` | full | no | none | keep |
 | `check_list_pagination.py` | commit+push | `persistence/` | full | no | `list_pagination_baseline.txt` | keep |
 | `check_local_ci_parity.py` | commit+push | `.pre-commit-config.yaml` + `ci.yml` | full | no | none | **add** (keystone) |
 | `check_logger_exception_str_exc.py` | commit+push | `src/synthorg/` | staged | yes | none | keep |
@@ -99,7 +100,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->77<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->78<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

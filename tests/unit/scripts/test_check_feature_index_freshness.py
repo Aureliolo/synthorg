@@ -1,8 +1,10 @@
 """Tests for the feature-index freshness gate.
 
-The gate regenerates the AI-navigation artefacts to a scratch path and
-asserts the committed files match byte-for-byte. Missing or stale
-artefacts fail the gate, so the commit must include both files.
+The gate byte-compares the committed ``feature_index.json`` against a
+fresh regeneration. ``codebase_map.json`` is no longer committed (a
+gitignored navigation artefact), so the gate validates the regenerated
+map's structure and its cross-consistency with the index instead of
+byte-comparing a committed file.
 """
 
 import importlib.util
@@ -70,13 +72,12 @@ def test_gate_fails_on_stale_feature_index(tmp_path: Path) -> None:
         json.dumps({"schema_version": 1, "features": [], "generated_at": "stale"}),
         encoding="utf-8",
     )
-    (fake / "data" / "codebase_map.json").write_text(
-        json.dumps({"modules": []}), encoding="utf-8"
-    )
     (fake / "scripts").mkdir(parents=True)
     (fake / "scripts" / "generate_feature_index.py").write_text(
         # Stub generator returns a feature list that does NOT match the
         # committed empty-features artefact, so the diff branch must fire.
+        # The map entry's owning_feature matches the index feature so the
+        # cross-consistency check stays silent and only "stale" surfaces.
         """
 class _StubIndex:
     @staticmethod
@@ -93,7 +94,13 @@ def build_feature_index():
 
 
 def build_codebase_map():
-    return []
+    return [{
+        "module": "src/synthorg/x.py",
+        "kind": "code",
+        "loc_cap": 500,
+        "loc": 1,
+        "owning_feature": "drift",
+    }]
 """,
         encoding="utf-8",
     )
@@ -113,9 +120,6 @@ def test_gate_fails_when_committed_index_is_not_a_json_object(tmp_path: Path) ->
     fake = tmp_path / "fake_repo"
     (fake / "data").mkdir(parents=True)
     (fake / "data" / "feature_index.json").write_text("[]", encoding="utf-8")
-    (fake / "data" / "codebase_map.json").write_text(
-        json.dumps({"modules": []}), encoding="utf-8"
-    )
     (fake / "scripts").mkdir(parents=True)
     (fake / "scripts" / "generate_feature_index.py").write_text(
         # Minimal stand-in: matches the generator's public surface but
@@ -138,3 +142,92 @@ def build_codebase_map():
     )
     findings = _GATE.check(repo_root=fake)
     assert any("corrupt" in finding for finding in findings)
+
+
+def _write_stub_repo(
+    fake: Path,
+    *,
+    features: list[dict[str, object]],
+    modules: list[dict[str, object]],
+) -> None:
+    """Write a fake repo whose generator returns the given index + map.
+
+    The committed ``feature_index.json`` is written to match the stub's
+    index dump (modulo ``generated_at``) so the index byte-compare passes
+    and the test isolates the codebase-map validation branch.
+    """
+    (fake / "data").mkdir(parents=True)
+    (fake / "data" / "feature_index.json").write_text(
+        json.dumps(
+            {"schema_version": 1, "features": features, "generated_at": "committed"}
+        ),
+        encoding="utf-8",
+    )
+    (fake / "scripts").mkdir(parents=True)
+    (fake / "scripts" / "generate_feature_index.py").write_text(
+        f"""
+import json
+
+_FEATURES = {features!r}
+_MODULES = {modules!r}
+
+
+class _StubIndex:
+    @staticmethod
+    def model_dump(mode="json"):
+        return {{
+            "schema_version": 1,
+            "features": _FEATURES,
+            "generated_at": "x",
+        }}
+
+
+def build_feature_index():
+    return _StubIndex()
+
+
+def build_codebase_map():
+    return _MODULES
+""",
+        encoding="utf-8",
+    )
+
+
+def test_gate_flags_codebase_map_owning_feature_not_in_index(tmp_path: Path) -> None:
+    """A map entry naming an unknown owning_feature is a cross-consistency fail."""
+    fake = tmp_path / "fake_repo"
+    _write_stub_repo(
+        fake,
+        features=[{"name": "known"}],
+        modules=[
+            {
+                "module": "src/synthorg/x.py",
+                "kind": "code",
+                "loc_cap": 500,
+                "loc": 1,
+                "owning_feature": "ghost",
+            }
+        ],
+    )
+    findings = _GATE.check(repo_root=fake)
+    assert any("absent from" in finding for finding in findings), findings
+
+
+def test_gate_flags_malformed_codebase_map_entry(tmp_path: Path) -> None:
+    """A map entry missing required keys fails the structure check."""
+    fake = tmp_path / "fake_repo"
+    _write_stub_repo(
+        fake,
+        features=[],
+        modules=[{"module": "src/synthorg/x.py"}],
+    )
+    findings = _GATE.check(repo_root=fake)
+    assert any("missing keys" in finding for finding in findings), findings
+
+
+def test_gate_flags_empty_codebase_map(tmp_path: Path) -> None:
+    """An empty regenerated map is treated as corrupt."""
+    fake = tmp_path / "fake_repo"
+    _write_stub_repo(fake, features=[], modules=[])
+    findings = _GATE.check(repo_root=fake)
+    assert any("empty" in finding for finding in findings), findings

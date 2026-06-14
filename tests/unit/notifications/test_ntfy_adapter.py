@@ -11,6 +11,12 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
+from synthorg.tools.network_validator import NetworkPolicy
+
+# These tests exercise lifecycle / delivery, not the SSRF gate, so they
+# run with the private-IP block disabled: ``start()`` then skips live DNS
+# resolution entirely (no network), letting ``respx`` mock the POST.
+_DEV_POLICY = NetworkPolicy(block_private_ips=False)
 
 
 @pytest.mark.unit
@@ -30,6 +36,7 @@ class TestNtfyNotificationSink:
         sink = NtfyNotificationSink(
             server_url="https://ntfy.example.com",
             topic="alerts",
+            network_policy=_DEV_POLICY,
         )
         async with sink:
             n = Notification(
@@ -53,6 +60,7 @@ class TestNtfyNotificationSink:
             server_url="https://ntfy.example.com/",
             topic="t",
             token="tk_secret",
+            network_policy=_DEV_POLICY,
         )
         async with sink:
             n = Notification(
@@ -75,6 +83,7 @@ class TestNtfyNotificationSink:
         sink = NtfyNotificationSink(
             server_url="https://ntfy.example.com",
             topic="t",
+            network_policy=_DEV_POLICY,
         )
         async with sink:
             n = Notification(
@@ -103,6 +112,7 @@ class TestNtfyNotificationSink:
         sink = NtfyNotificationSink(
             server_url="https://ntfy.example.com",
             topic="t",
+            network_policy=_DEV_POLICY,
         )
         await sink.start()
         try:

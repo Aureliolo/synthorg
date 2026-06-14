@@ -116,7 +116,7 @@ LABEL org.opencontainers.image.title="synthorg-backend" \
       org.opencontainers.image.description="SynthOrg orchestration backend" \
       org.opencontainers.image.url="https://github.com/Aureliolo/synthorg" \
       org.opencontainers.image.source="https://github.com/Aureliolo/synthorg" \
-      org.opencontainers.image.licenses="BUSL-1.1" \
+      org.opencontainers.image.licenses="BUSL-1.1 AND LGPL-3.0-only" \
       org.opencontainers.image.vendor="Aureliolo"
 
 WORKDIR /app

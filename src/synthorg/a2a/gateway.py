@@ -637,9 +637,12 @@ async def _verify_peer_credentials(
 
     Looks up the peer's stored API key and compares it to the
     ``Authorization`` or ``X-API-Key`` header from the request.
-    Returns ``True`` when credentials match or when no connection
-    catalog is available (graceful degradation -- allowlist is
-    still enforced).
+    Returns ``True`` only when the catalog is entirely absent (a
+    dev-only no-catalog deployment where the allowlist is the sole
+    gate). A configured catalog that has no credential record for a
+    peer FAILS CLOSED: an operator who adds a peer to ``allowed_peers``
+    but forgets its credentials must not silently grant unauthenticated
+    access to task creation / cancellation.
 
     Args:
         app_state: Application state container.
@@ -647,15 +650,26 @@ async def _verify_peer_credentials(
         peer_name: Declared peer name from header.
 
     Returns:
-        ``True`` if credentials are valid or catalog unavailable.
+        ``True`` if credentials are valid, or when no catalog is
+        configured at all (dev-only). ``False`` when a configured
+        catalog lacks credentials for the peer.
     """
     try:
         catalog = app_state.slice(IntegrationsStateSlice).connection_catalog
         if catalog is None:
+            # No catalog configured at all: dev-only path, allowlist is
+            # the sole gate. This is the ONLY fail-open branch.
             return True
         credentials = await catalog.get_credentials(peer_name)
         if not credentials:
-            return True
+            # Catalog IS configured but has no credential record for this
+            # allowlisted peer: fail closed rather than granting access.
+            logger.warning(
+                A2A_INBOUND_AUTH_FAILED,
+                peer_name=peer_name,
+                reason="no credentials configured for allowlisted peer",
+            )
+            return False
 
         scheme = credentials.get("auth_scheme", "api_key")
         if scheme == "api_key":

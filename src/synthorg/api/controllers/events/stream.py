@@ -21,7 +21,11 @@ from synthorg.api.controllers.events._shared import (
     _require_interrupt_store,
     _resolve_interrupt,
 )
-from synthorg.api.controllers.events._sse import _require_hub, _sse_event_stream
+from synthorg.api.controllers.events._sse import (
+    _require_hub,
+    _sse_event_stream,
+    assert_sse_session_access,
+)
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_approval_roles, require_read_access
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
@@ -31,6 +35,7 @@ from synthorg.api.rate_limits import (
 )
 from synthorg.api.state import AppState
 from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 
 
@@ -74,16 +79,28 @@ class EventStreamController(Controller):
 
         Returns:
             SSE stream of projected events.
+
+        Raises:
+            NotFoundError: When the caller is neither the session-owning
+                task's requester nor a CEO (404, never 403, so session
+                ids cannot be enumerated by status code).
         """
         app_state: AppState = state.app_state
         hub = _require_hub(app_state)
         user = getattr(request, "user", None)
+        # ``require_read_access`` guarantees an authenticated user; assert it
+        # so a misconfigured guard chain fails closed rather than streaming
+        # a session to an anonymous caller.
+        if not isinstance(user, AuthenticatedUser):
+            msg = "Session not found"
+            raise NotFoundError(msg)
+        await assert_sse_session_access(app_state, session_id, user)
         return ServerSentEvent(
             content=_sse_event_stream(
                 hub,
                 session_id,
                 app_state=app_state,
-                user=user if isinstance(user, AuthenticatedUser) else None,
+                user=user,
             ),
         )
 

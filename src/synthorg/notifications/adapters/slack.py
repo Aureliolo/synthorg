@@ -8,13 +8,18 @@ from typing import Final, Self
 import httpx
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.notifications.adapters.ntfy import _validate_outbound_url
+from synthorg.notifications.adapters._ssrf import (
+    build_pinned_transport,
+    resolve_outbound_target,
+    validate_outbound_url_scheme,
+)
 from synthorg.notifications.models import Notification
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_SLACK_DELIVERED,
     NOTIFICATION_SLACK_FAILED,
 )
+from synthorg.tools.network_validator import NetworkPolicy
 
 logger = get_logger(__name__)
 _DEFAULT_WEBHOOK_TIMEOUT_SECONDS: Final[float] = 10.0
@@ -80,15 +85,23 @@ class SlackNotificationSink:
             the notification factory threads the resolved value in at
             construction so operator tuning takes effect on restart.
             Must be positive.
+        network_policy: SSRF policy applied to *webhook_url* at
+            ``start()`` (async DNS resolution + blocked-range check +
+            connect pinning). ``None`` selects the fail-closed default
+            (private/internal IPs blocked, empty allowlist); a
+            Slack-compatible receiver on an internal address requires a
+            policy whose ``hostname_allowlist`` covers its host.
 
     Raises:
-        ValueError: If *webhook_url* targets a private/loopback host,
-            or if *webhook_timeout_seconds* is not positive.
+        ValueError: If *webhook_url* uses a non-HTTP scheme or is a
+            literal private/loopback host, or if
+            *webhook_timeout_seconds* is not positive.
     """
 
     __slots__ = (
         "_client",
         "_lifecycle_lock",
+        "_network_policy",
         "_webhook_timeout_seconds",
         "_webhook_url",
     )
@@ -98,8 +111,9 @@ class SlackNotificationSink:
         *,
         webhook_url: str,
         webhook_timeout_seconds: float = _DEFAULT_WEBHOOK_TIMEOUT_SECONDS,
+        network_policy: NetworkPolicy | None = None,
     ) -> None:
-        _validate_outbound_url(webhook_url, "webhook_url")
+        validate_outbound_url_scheme(webhook_url, "webhook_url")
         if not math.isfinite(webhook_timeout_seconds) or webhook_timeout_seconds <= 0:
             msg = (
                 "webhook_timeout_seconds must be a finite number > 0, got "
@@ -108,6 +122,9 @@ class SlackNotificationSink:
             raise ValueError(msg)
         self._webhook_url = webhook_url
         self._webhook_timeout_seconds = webhook_timeout_seconds
+        self._network_policy = (
+            network_policy if network_policy is not None else NetworkPolicy()
+        )
         self._client: httpx.AsyncClient | None = None
         # Eager init: stop() must be safe before any start() call,
         # so the lock is created here rather than lazily in start().
@@ -119,13 +136,35 @@ class SlackNotificationSink:
         return "slack"
 
     async def start(self) -> None:
-        """Create the underlying HTTP client (idempotent)."""
+        """Create the underlying HTTP client (idempotent).
+
+        Runs the async SSRF pre-flight against ``webhook_url`` (DNS
+        resolution + blocked-range check) and pins the client's TCP
+        connect to the validated IP, so a DNS name resolving to an
+        internal address is rejected and rebinding cannot redirect the
+        live connect. The pin lasts the sink's lifetime: a webhook
+        targets a single fixed host, so re-resolving per send buys
+        nothing.
+
+        ``follow_redirects=False`` is kept explicit: the pre-flight only
+        validates ``webhook_url``, so a 3xx to an internal host would
+        otherwise bypass the gate.
+
+        Raises:
+            ValueError: If ``webhook_url`` is rejected by the SSRF policy.
+        """
         async with self._lifecycle_lock:
             if self._client is not None:
                 return
+            validation = await resolve_outbound_target(
+                self._webhook_url,
+                field="webhook_url",
+                policy=self._network_policy,
+            )
             self._client = httpx.AsyncClient(
                 timeout=self._webhook_timeout_seconds,
                 follow_redirects=False,
+                transport=build_pinned_transport(validation),
             )
 
     async def close(self) -> None:

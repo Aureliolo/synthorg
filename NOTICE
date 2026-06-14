@@ -1,0 +1,39 @@
+SynthOrg
+Copyright (c) the SynthOrg authors.
+
+This product is licensed under the Business Source License 1.1 (BUSL-1.1),
+converting to Apache License 2.0 after the Change Date. See LICENSE.
+
+================================================================================
+Third-party components
+================================================================================
+
+This distribution links, at install time of the optional "postgres" extra
+and in the published Docker image, the following weak-copyleft (LGPL-3.0)
+components. They are dynamically linked / imported as separate works; SynthOrg
+itself is not a derivative work of them. Their source is available from the
+Python Package Index and the upstream project, and may be replaced or relinked
+under the terms of the GNU Lesser General Public License, version 3.
+
+  - psycopg (psycopg3)         LGPL-3.0-only   https://github.com/psycopg/psycopg
+  - psycopg_pool               LGPL-3.0-only   https://github.com/psycopg/psycopg
+  - psycopg_binary             LGPL-3.0-only   https://github.com/psycopg/psycopg
+
+The full text of the GNU Lesser General Public License, version 3, is available
+at https://www.gnu.org/licenses/lgpl-3.0.html.
+
+Re-linking note (LGPL-3.0 section 4d0): to substitute a modified psycopg, build
+the backend image with a replacement psycopg wheel installed in place of the
+pinned version (the C extension `psycopg_binary` is an optional acceleration of
+the pure-Python `psycopg`; the pure-Python package can be used standalone).
+
+================================================================================
+Deliberately excluded components
+================================================================================
+
+The following strong-copyleft components are intentionally NOT shipped, and a
+gate (scripts/check_license_compat.py) keeps them out:
+
+  - pymupdf / fitz (AGPL-3.0): excluded from all dependency tables.
+  - golangci-lint (GPL-3.0):   used only as an external developer/CI binary,
+                               never a Go module dependency of the CLI.

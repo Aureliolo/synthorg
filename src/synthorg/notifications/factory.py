@@ -28,8 +28,26 @@ from synthorg.observability.events.notification import (
 )
 from synthorg.settings.bridge_configs import NotificationsBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.tools.network_validator import NetworkPolicy
 
 logger = get_logger(__name__)
+
+
+def _build_network_policy(params: dict[str, str]) -> NetworkPolicy:
+    """Build the SSRF policy for a webhook sink from operator params.
+
+    The default policy is fail-closed (private/internal IPs blocked).
+    Operators running a self-hosted ntfy / Slack-compatible receiver on
+    an internal address opt in explicitly via a comma-separated
+    ``hostname_allowlist`` param so those hosts bypass the private-IP
+    block while still being DNS-pinned.
+
+    Returns:
+        A ``NetworkPolicy`` carrying the parsed allowlist (empty by
+        default).
+    """
+    allowlist = tuple(parse_comma_list_stripped(params.get("hostname_allowlist", "")))
+    return NetworkPolicy(hostname_allowlist=allowlist)
 
 
 def build_notification_dispatcher(
@@ -150,17 +168,20 @@ def _create_ntfy_sink(
         )
     server_url = params.get("server_url") or default_url
     token = params.get("token")
+    network_policy = _build_network_policy(params)
     if bridge_config is None:
         return NtfyNotificationSink(
             server_url=server_url,
             topic=topic,
             token=token,
+            network_policy=network_policy,
         )
     return NtfyNotificationSink(
         server_url=server_url,
         topic=topic,
         token=token,
         webhook_timeout_seconds=bridge_config.ntfy_webhook_timeout_seconds,
+        network_policy=network_policy,
     )
 
 
@@ -213,12 +234,17 @@ def _create_slack_sink(
             sink_type="slack",
             source="bridge_config.slack_default_webhook_url",
         )
+    network_policy = _build_network_policy(params)
     try:
         if bridge_config is None:
-            return SlackNotificationSink(webhook_url=webhook_url)
+            return SlackNotificationSink(
+                webhook_url=webhook_url,
+                network_policy=network_policy,
+            )
         return SlackNotificationSink(
             webhook_url=webhook_url,
             webhook_timeout_seconds=bridge_config.slack_webhook_timeout_seconds,
+            network_policy=network_policy,
         )
     except ValueError as exc:
         logger.warning(

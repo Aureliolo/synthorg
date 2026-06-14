@@ -90,14 +90,18 @@ repos:
         pass_filenames: false
         stages: [pre-push]
         always_run: true
+      - id: check-license-compat
+        name: license compatibility (no AGPL/GPL; LGPL attributed in NOTICE)
+        entry: uv run python scripts/check_license_compat.py
+        language: system
+        files: ^(pyproject\.toml|uv\.lock|cli/go\.(mod|sum)|NOTICE|scripts/check_license_compat\.py)$
+        pass_filenames: false
+        stages: [pre-push]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
-        # .test_durations.{unit,integration} are machine-generated pytest
-        # timing manifests; the generator omits the trailing newline.
-        exclude: ^\.test_durations\.(integration|unit)$
       - id: check-yaml
         # Two files reach the unsafe-mode hook below:
         #   - mkdocs.yml uses pymdownx's !!python tags
@@ -131,13 +135,8 @@ repos:
         #   ``-----BEGIN / END RSA PRIVATE KEY-----`` marker lines so
         #   operators can recognise a correct copy-paste; the file
         #   obviously contains no real key.
-        # - .test_durations.{unit,integration} key timings by pytest IDs,
-        #   which embed credential-detector test labels carrying PEM
-        #   begin/end marker text for SSH/RSA/EC keys.
-        exclude: ^(tests/|docs/reference/github-environments\.md$|\.test_durations\.(integration|unit)$)
+        exclude: ^(tests/|docs/reference/github-environments\.md$)
       - id: mixed-line-ending
-        # Generated timing manifests (see end-of-file-fixer above).
-        exclude: ^\.test_durations\.(integration|unit)$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.17
@@ -218,9 +217,6 @@ repos:
         args: [run, python, scripts/check_no_em_dashes.py]
         language: system
         types: [text]
-        # .test_durations.{unit,integration} embed pytest parametrize IDs
-        # as JSON keys, including this hook's own HTML-entity test labels.
-        exclude: ^\.test_durations\.(integration|unit)$
 
       - id: no-redundant-timeout
         name: no redundant pytest.mark.timeout(30)
@@ -1090,12 +1086,13 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
-      # data/feature_index.json + codebase_map.json regenerate to match.
+      # data/feature_index.json is committed and byte-compared; codebase_map.json
+      # is a gitignored navigation artefact validated structurally (not committed).
       - id: feature-index-freshness
-        name: data/feature_index.json + codebase_map.json are up to date
+        name: data/feature_index.json up to date (+ codebase_map structure)
         entry: uv run python scripts/check_feature_index_freshness.py
         language: system
-        files: ^(src/synthorg/.*\.py|scripts/(generate_feature_index|check_feature_index_freshness)\.py|data/(feature_index|codebase_map)\.json|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/.*\.py|scripts/(generate_feature_index|check_feature_index_freshness)\.py|data/feature_index\.json|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 

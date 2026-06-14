@@ -224,6 +224,15 @@ async def create_session_record(
 def extract_jti(request: Request[object, object, State]) -> str | None:
     """Extract the JWT ``jti`` claim from cookie or header.
 
+    SIGNATURE-ONLY TRUST: ``decode_token``
+    verifies the HMAC signature + expiry but defers ``iss`` / ``aud``
+    validation to ``_resolve_jwt_user``. This helper does NOT call
+    ``_resolve_jwt_user``, so the returned ``jti`` is trusted only as a
+    *revocation hint* for an unauthenticated logout: it identifies which
+    session to revoke and grants no privilege. Callers MUST NOT treat a
+    non-``None`` return as authorisation; revoking a session is safe even
+    if the supplied token carried a mismatched issuer/audience.
+
     Returns:
         The ``str`` value when present, ``None`` otherwise.
     """

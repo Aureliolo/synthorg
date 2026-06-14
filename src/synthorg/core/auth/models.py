@@ -122,6 +122,10 @@ class AuthenticatedUser(BaseModel):
             ``session_store.is_revoked(session_id)`` periodically so an
             admin revocation kicks the connection out instead of
             waiting for the access token to expire.
+        api_key_id: Id of the API key that authenticated the request
+            (or ``None`` for non-API-key methods). Long-lived API-key
+            streams (SSE) have no JWT ``jti``, so the revalidation tick
+            re-fetches this key by id to honour revocation / expiry.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -134,6 +138,7 @@ class AuthenticatedUser(BaseModel):
     org_roles: tuple[OrgRole, ...] = ()
     scoped_departments: tuple[NotBlankStr, ...] = ()
     session_id: NotBlankStr | None = None
+    api_key_id: NotBlankStr | None = None
 
     @model_validator(mode="after")
     def _validate_scoped_departments(self) -> AuthenticatedUser:
