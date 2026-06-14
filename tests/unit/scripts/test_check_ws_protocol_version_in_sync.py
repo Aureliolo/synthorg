@@ -22,7 +22,7 @@ def _write_pair(
     ts_body: str | None,
 ) -> None:
     py_path = tmp_root / "src" / "synthorg" / "api" / "ws_models.py"
-    ts_path = tmp_root / "web" / "src" / "utils" / "constants.ts"
+    ts_path = tmp_root / "web" / "src" / "utils" / "ws-constants.ts"
     py_path.parent.mkdir(parents=True, exist_ok=True)
     ts_path.parent.mkdir(parents=True, exist_ok=True)
     if py_body is not None:

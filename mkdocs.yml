@@ -212,6 +212,7 @@ nav:
           - ADR-0010 AI-Navigation Index: decisions/0010-ai-navigation-index.md
           - ADR-0011 Architectural Feedback Loop: decisions/0011-architectural-feedback-loop.md
           - ADR-0012 Cold-Import Cycle Break: decisions/0012-cold-import-cycle-break.md
+          - ADR-0013 Layering and Dependency-Inversion Rework: decisions/0013-layering-dependency-inversion.md
   - Roadmap:
       - roadmap/index.md
       - Open Questions: roadmap/open-questions.md
