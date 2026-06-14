@@ -8,12 +8,17 @@ it bypasses the registry that owns the env-var name + default, and it scatters
 config resolution across business logic instead of confining it to the
 construction edge.
 
-This gate flags single-key environment reads::
+This gate flags single-key environment reads, whether accessed through the
+``os`` module prefix or via a direct ``from os import environ`` /
+``from os import getenv`` binding (the latter would otherwise bypass the
+prefix check)::
 
     os.environ.get("SYNTHORG_FOO")
     os.environ["SYNTHORG_FOO"]
     os.environ.pop("SYNTHORG_FOO")
     os.getenv("SYNTHORG_FOO")
+    environ["SYNTHORG_FOO"]  # from os import environ
+    getenv("SYNTHORG_FOO")  # from os import getenv
 
 It deliberately does NOT flag whole-environment snapshots used to build a
 child-process environment (``os.environ.copy()``, ``dict(os.environ)``,
@@ -96,6 +101,29 @@ class _Violation:
     snippet: str
 
 
+def _collect_os_aliases(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
+    """Return ``(environ_names, getenv_names)`` bound via ``from os import ...``.
+
+    Direct imports (``from os import environ`` / ``from os import getenv``,
+    optionally aliased) bind a bare local name that would otherwise bypass
+    the ``os.``-prefixed attribute checks below.
+    """
+    environ_names: set[str] = set()
+    getenv_names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.module != "os":
+            continue
+        if node.level != 0:
+            continue
+        for alias in node.names:
+            local = alias.asname or alias.name
+            if alias.name == "environ":
+                environ_names.add(local)
+            elif alias.name == "getenv":
+                getenv_names.add(local)
+    return frozenset(environ_names), frozenset(getenv_names)
+
+
 def _is_os_environ(node: ast.expr) -> bool:
     """Return True if *node* is the ``os.environ`` attribute chain."""
     return (
@@ -117,28 +145,46 @@ def _is_os_getenv(func: ast.expr) -> bool:
 
 
 class _EnvReadVisitor(ast.NodeVisitor):
-    """Collect single-key ``os.environ`` / ``os.getenv`` read nodes."""
+    """Collect single-key ``os.environ`` / ``os.getenv`` read nodes.
 
-    def __init__(self) -> None:
+    Matches both the ``os.``-prefixed forms and the bare local names bound
+    by ``from os import environ`` / ``from os import getenv``.
+    """
+
+    def __init__(
+        self,
+        environ_names: frozenset[str] = frozenset(),
+        getenv_names: frozenset[str] = frozenset(),
+    ) -> None:
         self.hits: list[tuple[int, str]] = []
+        self._environ_names = environ_names
+        self._getenv_names = getenv_names
+
+    def _is_environ(self, node: ast.expr) -> bool:
+        """Return True for ``os.environ`` or a bare imported ``environ`` name."""
+        if _is_os_environ(node):
+            return True
+        return isinstance(node, ast.Name) and node.id in self._environ_names
 
     @override
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
         if _is_os_getenv(func):
             self.hits.append((node.lineno, "os.getenv(...)"))
+        elif isinstance(func, ast.Name) and func.id in self._getenv_names:
+            self.hits.append((node.lineno, "getenv(...)"))
         elif (
             isinstance(func, ast.Attribute)
             and func.attr in ("get", "pop")
-            and _is_os_environ(func.value)
+            and self._is_environ(func.value)
         ):
-            self.hits.append((node.lineno, f"os.environ.{func.attr}(...)"))
+            self.hits.append((node.lineno, f"environ.{func.attr}(...)"))
         self.generic_visit(node)
 
     @override
     def visit_Subscript(self, node: ast.Subscript) -> None:
-        if _is_os_environ(node.value):
-            self.hits.append((node.lineno, "os.environ[...]"))
+        if self._is_environ(node.value):
+            self.hits.append((node.lineno, "environ[...]"))
         self.generic_visit(node)
 
 
@@ -169,7 +215,8 @@ def _check_file(path: Path) -> list[_Violation]:
         return [_Violation(path, exc.lineno or 0, f"unparseable: {exc.msg}")]
     if rel in _ALLOWLIST:
         return []
-    visitor = _EnvReadVisitor()
+    environ_names, getenv_names = _collect_os_aliases(tree)
+    visitor = _EnvReadVisitor(environ_names, getenv_names)
     visitor.visit(tree)
     if not visitor.hits:
         return []

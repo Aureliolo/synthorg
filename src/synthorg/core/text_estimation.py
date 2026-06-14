@@ -32,7 +32,15 @@ def approx_tokens(text: str, *, chars_per_token: int = DEFAULT_CHAR_PER_TOKEN) -
         ``0`` for empty text, otherwise ``max(1, len(text) //
         chars_per_token)`` so any non-empty text counts as at least one
         token.
+
+    Raises:
+        ValueError: If ``chars_per_token`` is below 1. A zero divisor
+            would raise ``ZeroDivisionError`` and a negative one would
+            produce a meaningless estimate.
     """
+    if chars_per_token < 1:
+        msg = "chars_per_token must be >= 1"
+        raise ValueError(msg)
     if not text:
         return 0
     return max(1, len(text) // chars_per_token)

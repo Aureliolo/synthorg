@@ -27,7 +27,15 @@ def kebab_slug(text: str, *, max_length: int, fallback: str = "") -> str:
 
     Returns:
         The kebab-cased slug, or ``fallback`` when the reduction is empty.
+
+    Raises:
+        ValueError: If ``max_length`` is below 1. A non-positive bound
+            would otherwise slice from the tail (Python reverse-tail
+            slicing) and silently violate the maximum-length contract.
     """
+    if max_length < 1:
+        msg = "max_length must be >= 1"
+        raise ValueError(msg)
     safe = _KEBAB_PATTERN.sub("-", text.lower()).strip("-")
     if not safe:
         return fallback

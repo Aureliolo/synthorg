@@ -37,9 +37,11 @@ logger = get_logger(__name__)
 class UserService:
     """Wraps :class:`UserRepository` with uniform audit logging.
 
-    Raises from the underlying repository (``ConstraintViolationError``,
-    ``QueryError``) propagate unchanged so the controller can map them
-    to the appropriate HTTP response.
+    Repository ``ConstraintViolationError`` values are normalised via
+    :func:`raise_for_user_constraint` in the mutation paths (``create``,
+    ``save_update``, ``delete``) into typed conflict errors; other
+    repository failures (e.g. ``QueryError``) propagate unchanged so the
+    controller can map them to the appropriate HTTP response.
 
     Args:
         repo: User repository implementation.

@@ -24,3 +24,11 @@ def test_uses_default_divisor() -> None:
 def test_custom_divisor() -> None:
     text = "x" * 40
     assert approx_tokens(text, chars_per_token=10) == 4
+
+
+@pytest.mark.parametrize("bad_divisor", [0, -1, -4])
+def test_non_positive_divisor_rejected(bad_divisor: int) -> None:
+    # A zero divisor would raise ZeroDivisionError, a negative one would
+    # produce a meaningless estimate; both are rejected up front.
+    with pytest.raises(ValueError, match="chars_per_token must be >= 1"):
+        approx_tokens("some text", chars_per_token=bad_divisor)

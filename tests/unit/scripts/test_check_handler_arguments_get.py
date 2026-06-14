@@ -124,6 +124,52 @@ WIDGET_HANDLERS = MappingProxyType({"synthorg_widget_get": _widget_get})
     assert _run(tree) == []
 
 
+def test_aliased_typed_args_import_passes(tmp_path: Path) -> None:
+    handler = """\
+from types import MappingProxyType
+
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args as ta
+
+
+async def _widget_get(*, app_state, arguments, actor=None):
+    widget_id = ta(arguments, WidgetGetArgs).widget_id
+    return ok(widget_id)
+
+
+WIDGET_HANDLERS = MappingProxyType({"synthorg_widget_get": _widget_get})
+"""
+    tree = _make_tree(
+        tmp_path,
+        {"widget.py": _DOMAIN_WITH_MODEL},
+        {"widget.py": handler},
+    )
+    # An aliased import of typed_args must not be mistaken for a raw read.
+    assert _run(tree) == []
+
+
+def test_qualified_typed_args_call_passes(tmp_path: Path) -> None:
+    handler = """\
+from types import MappingProxyType
+
+from synthorg.meta.mcp.handlers import _mcp_handler_common as common
+
+
+async def _widget_get(*, app_state, arguments, actor=None):
+    widget_id = common.typed_args(arguments, WidgetGetArgs).widget_id
+    return ok(widget_id)
+
+
+WIDGET_HANDLERS = MappingProxyType({"synthorg_widget_get": _widget_get})
+"""
+    tree = _make_tree(
+        tmp_path,
+        {"widget.py": _DOMAIN_WITH_MODEL},
+        {"widget.py": handler},
+    )
+    # A module-qualified typed_args(...) call is an allowed narrowing form.
+    assert _run(tree) == []
+
+
 def test_raw_arguments_get_is_flagged(tmp_path: Path) -> None:
     handler = """\
 from types import MappingProxyType

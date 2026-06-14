@@ -1,9 +1,9 @@
 """Token estimation protocol and default heuristic implementation.
 
 Provides the ``PromptTokenEstimator`` protocol for pluggable token
-counting and a ``DefaultTokenEstimator`` using the common
-``len(text) // 4`` heuristic.  Consumed by ``prompt.py``,
-``context_budget.py``, and ``compaction/summarizer.py``.
+counting and a ``DefaultTokenEstimator`` backed by the shared
+``synthorg.core.text_estimation.approx_tokens`` heuristic.  Consumed by
+``prompt.py``, ``context_budget.py``, and ``compaction/summarizer.py``.
 """
 
 from typing import Protocol, runtime_checkable
@@ -49,8 +49,9 @@ class PromptTokenEstimator(Protocol):
 class DefaultTokenEstimator:
     """Heuristic token estimator using character-count approximation.
 
-    Uses the common ``len(text) // 4`` heuristic. Suitable for rough
-    estimates; swap in a tiktoken-based estimator for precision.
+    Delegates to ``synthorg.core.text_estimation.approx_tokens``.
+    Suitable for rough estimates; swap in a tiktoken-based estimator
+    for precision.
     """
 
     _PER_MESSAGE_OVERHEAD: int = 4
@@ -74,8 +75,10 @@ class DefaultTokenEstimator:
     ) -> int:
         """Estimate total tokens across all messages.
 
-        Sums ``len(content) // 4 + overhead`` per message.
-        Tool results and tool calls are included in the estimate.
+        Sums ``approx_tokens(content) + overhead`` per message via the
+        shared chars-per-token heuristic, keeping this estimate aligned
+        with ``estimate_tokens``. Tool results and tool calls are
+        included in the estimate.
 
         Args:
             messages: The conversation messages to estimate.
@@ -88,15 +91,15 @@ class DefaultTokenEstimator:
             content = msg.content or ""
             if msg.tool_result is not None:
                 content = msg.tool_result.content or ""
-            total += len(content) // 4 + self._PER_MESSAGE_OVERHEAD
+            total += approx_tokens(content) + self._PER_MESSAGE_OVERHEAD
             # Tool calls on assistant messages consume tokens
             # (id, name, serialized arguments).
             if msg.tool_calls:
                 for tc in msg.tool_calls:
                     tc_tokens = (
-                        len(tc.id) // 4
-                        + len(tc.name) // 4
-                        + len(str(tc.arguments)) // 4
+                        approx_tokens(tc.id)
+                        + approx_tokens(tc.name)
+                        + approx_tokens(str(tc.arguments))
                         + self._PER_MESSAGE_OVERHEAD
                     )
                     total += tc_tokens

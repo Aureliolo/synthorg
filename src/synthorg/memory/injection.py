@@ -71,14 +71,14 @@ class TokenEstimator(Protocol):
 
 
 class DefaultTokenEstimator:
-    """Heuristic token estimator: ``len(text) // 4``.
+    """Heuristic token estimator backed by ``approx_tokens``.
 
     Suitable for rough budget enforcement when a model-specific
     tokenizer is unavailable.
     """
 
     def estimate_tokens(self, text: str) -> int:
-        """Estimate tokens as ``max(1, len(text) // 4)`` for non-empty text.
+        """Estimate tokens via ``synthorg.core.text_estimation.approx_tokens``.
 
         Returns 0 for empty text, at least 1 for any non-empty text.
 

@@ -13,6 +13,6 @@ agent-side helper modules ``_status_checks`` (read-only probes),
 Direct imports only:
 ``from synthorg.api.controllers.setup.<module> import ...``.
 This package's ``__init__`` deliberately stays empty so the boundary
-between each sub-domain controller and the two helper modules is
+between each sub-domain controller and the helper modules is
 explicit at every call site.
 """

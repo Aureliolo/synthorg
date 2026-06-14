@@ -67,6 +67,60 @@ def test_flags_os_getenv(src_root: Path) -> None:
     assert len(violations) == 1
 
 
+def test_flags_from_os_import_getenv(src_root: Path) -> None:
+    path = _write(
+        src_root,
+        "engine/leak.py",
+        "from os import getenv\nVALUE = getenv('SYNTHORG_FOO')\n",
+    )
+    violations = _gate._check_file(path)
+    assert len(violations) == 1
+    assert violations[0].line == 2
+
+
+def test_flags_from_os_import_environ_subscript(src_root: Path) -> None:
+    path = _write(
+        src_root,
+        "engine/leak.py",
+        "from os import environ\nVALUE = environ['SYNTHORG_FOO']\n",
+    )
+    assert len(_gate._check_file(path)) == 1
+
+
+def test_flags_from_os_import_environ_get(src_root: Path) -> None:
+    path = _write(
+        src_root,
+        "engine/leak.py",
+        "from os import environ\nVALUE = environ.get('SYNTHORG_FOO')\n",
+    )
+    assert len(_gate._check_file(path)) == 1
+
+
+def test_flags_aliased_from_os_import(src_root: Path) -> None:
+    path = _write(
+        src_root,
+        "engine/leak.py",
+        "from os import getenv as ge\nVALUE = ge('SYNTHORG_FOO')\n",
+    )
+    assert len(_gate._check_file(path)) == 1
+
+
+def test_ignores_bare_environ_snapshot(src_root: Path) -> None:
+    # The whole-environment-snapshot exemption holds for the bare
+    # ``from os import environ`` form too, mirroring ``os.environ.copy()``.
+    path = _write(
+        src_root,
+        "tools/child.py",
+        (
+            "from os import environ\n"
+            "ENV = environ.copy()\n"
+            "PAIRS = dict(environ)\n"
+            "MERGED = {**environ, 'A': '1'}\n"
+        ),
+    )
+    assert _gate._check_file(path) == []
+
+
 def test_ignores_environ_copy_and_items(src_root: Path) -> None:
     path = _write(
         src_root,

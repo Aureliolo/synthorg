@@ -23,3 +23,10 @@ def test_empty_returns_fallback() -> None:
 def test_truncation_strips_trailing_dash() -> None:
     # Truncating mid-token must not leave a dangling dash.
     assert kebab_slug("alpha beta gamma", max_length=6) == "alpha"
+
+
+@pytest.mark.parametrize("bad_length", [0, -1, -5])
+def test_non_positive_max_length_rejected(bad_length: int) -> None:
+    # A non-positive bound would reverse-tail slice; reject it instead.
+    with pytest.raises(ValueError, match="max_length must be >= 1"):
+        kebab_slug("alpha beta", max_length=bad_length)

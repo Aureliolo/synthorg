@@ -7,7 +7,7 @@ raise-ceiling flow against an in-memory repo double.
 """
 
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 
@@ -23,6 +23,7 @@ from synthorg.persistence.cost_forecast_protocol import (
     CostForecastFilterSpec,
     CostForecastRepository,
 )
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -86,7 +87,7 @@ class _FakeForecastRepo:
 
 def _pending_forecast(forecast_id: UUID | None = None) -> Forecast:
     return Forecast(
-        forecast_id=forecast_id or uuid4(),
+        forecast_id=forecast_id or as_uuid("pending-forecast"),
         brief_hash="a" * 64,
         estimated_cost=1.0,
         lower_bound=0.8,
@@ -148,7 +149,7 @@ async def test_get_or_404_returns_existing() -> None:
 async def test_get_or_404_raises_for_missing() -> None:
     service = _service(_FakeForecastRepo())
     with pytest.raises(ResourceNotFoundError):
-        await service.get_or_404(uuid4())
+        await service.get_or_404(as_uuid("missing-forecast"))
 
 
 async def test_approve_transitions_pending() -> None:

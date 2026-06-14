@@ -236,7 +236,7 @@ _r.register(
 # this default so a handler constructed without an explicit override
 # observes the documented attempt budget.
 
-# ── Magentic replan escalation caps ─────────────────────────────
+# ── Multi-agent replan escalation caps ──────────────────────────
 # Mirror the ``CoordinationConfig`` model defaults (max_stall_count=3,
 # max_reset_count=2) so a config built from scratch by the resolver and
 # one built from the model default observe the same escalation budget.

@@ -241,15 +241,16 @@ async def auto_select_embedder(
         )
         return reason
     try:
-        await settings_svc.set(
-            "memory",
-            "embedder_model",
-            ranking.model_id,
-        )
-        await settings_svc.set(
-            "memory",
-            "embedder_dims",
-            str(ranking.output_dims),
+        # Persist both keys in one transaction so a mid-write failure
+        # cannot leave embedder_model set without a matching
+        # embedder_dims. The empty CAS map keeps the unconditional
+        # upsert semantics of the prior two ``set`` calls.
+        await settings_svc.set_many(
+            [
+                ("memory", "embedder_model", ranking.model_id),
+                ("memory", "embedder_dims", str(ranking.output_dims)),
+            ],
+            expected_updated_at_map={},
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

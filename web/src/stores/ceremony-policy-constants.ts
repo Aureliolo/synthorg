@@ -1,6 +1,7 @@
 /** Ceremony-policy + velocity display constants. */
 
 import type { CeremonyStrategyType, VelocityCalcType } from '@/api/types/ceremony-policy'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 export const CEREMONY_STRATEGY_LABELS: Readonly<Record<CeremonyStrategyType, string>> = {
   task_driven: 'Task Driven',
@@ -28,7 +29,7 @@ export const VELOCITY_CALC_LABELS: Readonly<Record<VelocityCalcType, string>> = 
   task_driven: 'Per Task (pts/task)',
   calendar: 'Per Day (pts/day)',
   multi_dimensional: 'Multi-Dimensional (pts/sprint)',
-  budget: 'Per Currency Unit (pts/EUR)',
+  budget: `Per Currency Unit (pts/${DEFAULT_CURRENCY})`,
   points_per_sprint: 'Points per Sprint',
 }
 
@@ -36,7 +37,7 @@ export const VELOCITY_UNIT_LABELS: Readonly<Record<VelocityCalcType, string>> = 
   task_driven: 'pts/task',
   calendar: 'pts/day',
   multi_dimensional: 'pts/sprint',
-  budget: 'pts/EUR',
+  budget: `pts/${DEFAULT_CURRENCY}`,
   points_per_sprint: 'pts/sprint',
 }
 

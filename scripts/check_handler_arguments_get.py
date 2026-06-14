@@ -465,6 +465,26 @@ class _HandlerSite:
     rel_path: str
     func: ast.AsyncFunctionDef | ast.FunctionDef
     source_lines: tuple[str, ...]
+    allowed_call_names: frozenset[str]
+
+
+def _allowed_call_names(snapshot: _ModuleSnapshot) -> frozenset[str]:
+    """Return every local name that resolves to an allowed narrowing call.
+
+    Starts from the bare contract names (``typed_args`` /
+    ``require_admin_guardrails``) and adds any local binding that reaches
+    them through a ``from ... import typed_args as ta`` alias or a
+    module-level ``ta = typed_args`` rebind, so an aliased import is not
+    mistaken for a raw ``arguments`` read.
+    """
+    names: set[str] = set(_ALLOWED_CALLS)
+    for local, (_module, attr) in snapshot.imports.items():
+        if attr in _ALLOWED_CALLS:
+            names.add(local)
+    for local, target in snapshot.aliases.items():
+        if target in names:
+            names.add(local)
+    return frozenset(names)
 
 
 def _find_dict_value_for_key(
@@ -503,6 +523,7 @@ def _resolve_name_to_func(
                 rel_path=snap.rel_path,
                 func=func,
                 source_lines=snap.source_lines,
+                allowed_call_names=_allowed_call_names(snap),
             )
         alias_target = snap.aliases.get(name)
         if alias_target is not None:
@@ -577,18 +598,31 @@ def _has_opt_out_marker(site: _HandlerSite) -> bool:
     return False
 
 
-def _allowed_arguments_nodes(func: ast.AST) -> set[int]:
+def _is_allowed_callee(callee: ast.expr, allowed_names: frozenset[str]) -> bool:
+    """Return True iff *callee* is an allowed narrowing call.
+
+    Accepts a bare/aliased local name (``typed_args`` or an alias of it,
+    per *allowed_names*) or a qualified attribute form
+    (``common.typed_args(...)``) whose final attribute is a contract name.
+    """
+    if isinstance(callee, ast.Name):
+        return callee.id in allowed_names
+    return isinstance(callee, ast.Attribute) and callee.attr in _ALLOWED_CALLS
+
+
+def _allowed_arguments_nodes(func: ast.AST, allowed_names: frozenset[str]) -> set[int]:
     """Return the id()s of ``arguments`` Names used in an allowed call.
 
     Allowed: ``arguments`` passed as a direct positional or keyword argument
-    to ``typed_args(...)`` or ``require_admin_guardrails(...)``.
+    to ``typed_args(...)`` or ``require_admin_guardrails(...)``, including
+    aliased-import and qualified-attribute call forms (see
+    :func:`_is_allowed_callee`).
     """
     allowed: set[int] = set()
     for node in ast.walk(func):
         if not isinstance(node, ast.Call):
             continue
-        callee = node.func
-        if not (isinstance(callee, ast.Name) and callee.id in _ALLOWED_CALLS):
+        if not _is_allowed_callee(node.func, allowed_names):
             continue
         for arg in node.args:
             if isinstance(arg, ast.Name) and arg.id == _ARGUMENTS_PARAM:
@@ -601,9 +635,10 @@ def _allowed_arguments_nodes(func: ast.AST) -> set[int]:
 
 def _first_banned_reference(
     func: ast.AsyncFunctionDef | ast.FunctionDef,
+    allowed_names: frozenset[str],
 ) -> ast.Name | None:
     """Return the first disallowed ``arguments`` reference, or ``None``."""
-    allowed = _allowed_arguments_nodes(func)
+    allowed = _allowed_arguments_nodes(func, allowed_names)
     for node in ast.walk(func):
         if (
             isinstance(node, ast.Name)
@@ -618,7 +653,7 @@ def _check_handler(site: _HandlerSite) -> _Violation | None:
     """Return a violation if *site* touches ``arguments`` outside the allowed calls."""
     if _has_opt_out_marker(site):
         return None
-    banned = _first_banned_reference(site.func)
+    banned = _first_banned_reference(site.func, site.allowed_call_names)
     if banned is None:
         return None
     return _Violation(

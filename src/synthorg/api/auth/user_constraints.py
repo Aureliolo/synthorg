@@ -1,12 +1,12 @@
 """Typed user-constraint conflicts + the DB-token mapping.
 
-The ``/users`` controllers used to import the persistence-layer
-constraint tokens and branch on ``ConstraintViolationError.constraint``
-to build their conflict responses. That leaked persistence-internal
-constraint strings into the API layer. This module owns the mapping:
-:func:`raise_for_user_constraint` translates a constraint-token violation
-into a typed :class:`ConflictError` subclass (all 409), so ``UserService``
-raises domain errors and the controllers never see the raw tokens.
+This module owns the constraint-token mapping that keeps
+persistence-internal detail out of the API layer:
+:func:`raise_for_user_constraint` translates a
+``ConstraintViolationError.constraint`` token into a typed
+:class:`ConflictError` subclass (all 409). ``UserService`` calls it so
+it raises domain errors and the ``/users`` controllers branch on typed
+conflicts instead of raw persistence-layer constraint strings.
 """
 
 from typing import NoReturn
