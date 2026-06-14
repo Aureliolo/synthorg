@@ -26,7 +26,7 @@ ways that the existing gates did not catch:
 - **Dead config and scattered env reads.** Two live coordination caps were never
   registered as settings, and config env vars were read directly outside the
   bootstrap edge -- including a NATS default split-brain between the worker
-  argparse default and the registry default.
+  `argparse` default and the registry default.
 - **Two bloated utility files** mixing unrelated concerns.
 
 ## Decision
@@ -120,7 +120,7 @@ build a child-process environment.
 `api/controllers/setup/agent_helpers.py` (over the `code` tier cap) split into
 `_status_checks.py`, `_runtime_wiring.py`, and `_embedder_setup.py` by concern.
 `web/src/utils/constants.ts` split its WS, task, ceremony, settings, and
-workflow clusters into colocated owners (the WS wire-protocol contract moved to
+workflow clusters into co-located owners (the WS wire-protocol contract moved to
 `ws-constants.ts`, with the `check_ws_protocol_version_in_sync` gate path
 updated to match). The two `*_sync` method names (`record_sync`,
 `set_coordinator_factory_sync`) were renamed to describe what they do
