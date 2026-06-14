@@ -9,6 +9,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import requests_facade_service_of
 from synthorg.meta.mcp.domains._remaining_args import (
+    RequestsCreateArgs,
     RequestsGetArgs,
     RequestsListArgs,
 )
@@ -20,9 +21,6 @@ from synthorg.meta.mcp.handlers.common_args import require_actor_id
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_invoke_failed,
-)
-from synthorg.meta.mcp.handlers.infrastructure._shared import (
-    _require_str,
 )
 from synthorg.observability import get_logger
 
@@ -102,8 +100,6 @@ async def _requests_get(
     return ok(record.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# title/body, but RequestsCreateArgs declares type/content.
 async def _requests_create(
     *,
     app_state: AppState,
@@ -117,11 +113,10 @@ async def _requests_create(
     """
     tool = "synthorg_requests_create"
     try:
-        title = _require_str(arguments, "title")
-        body = _require_str(arguments, "body")
+        args = typed_args(arguments, RequestsCreateArgs)
         record = await requests_facade_service_of(app_state).create_request(
-            title=title,
-            body=body,
+            title=args.title,
+            body=args.body,
             requested_by=require_actor_id(actor),
         )
     except ArgumentValidationError as exc:

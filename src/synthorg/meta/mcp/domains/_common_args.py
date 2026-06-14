@@ -34,6 +34,25 @@ A handful of domain args models declare polymorphic fields with a
 * ``steps`` (workflow create endpoints) -- a tuple of per-step
   dictionaries whose shape is the workflow-step union owned by
   ``synthorg.workflows.models``.
+* ``task_data`` (task create endpoint) -- the ``CreateTaskData`` payload
+  whose closed shape lives in ``synthorg.engine.task_engine_models`` and
+  is validated there, not at the MCP boundary.
+* ``identity`` (agent create endpoint) -- the ``AgentIdentity`` payload
+  whose closed shape lives in ``synthorg.core.agent`` and is validated
+  there, not at the MCP boundary.
+* ``message`` (message send endpoint) -- the ``Message`` payload whose
+  closed shape lives in ``synthorg.communication.message``.
+* ``definition`` (webhook create / update endpoints) -- the
+  ``WebhookDefinition`` payload whose closed shape lives in
+  ``synthorg.integrations.webhooks.models``.
+* ``payload`` (company update endpoint) -- the company-record patch bag
+  whose settable keys are owned by the company service layer.
+* ``context`` (workflow execution start endpoint) -- the free-form
+  execution context handed to the workflow engine; its shape is owned by
+  the activated workflow definition, not the MCP boundary.
+* ``proposal`` (signals submit-proposal endpoint) -- the
+  ``ImprovementProposal`` payload whose closed shape lives in
+  ``synthorg.meta.models`` and is validated there, not at the MCP boundary.
 
 These are intentionally typed as ``dict[str, object]`` (not
 ``dict[str, Any]``) so callers cannot smuggle non-JSON values

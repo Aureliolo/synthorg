@@ -59,12 +59,12 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         "create",
         "Create a new task.",
         {
-            "title": {"type": "string", "description": "Task title"},
-            "description": {"type": "string", "description": "Task description"},
-            "assigned_to": {"type": "string", "description": "Agent to assign"},
-            "project": {"type": "string", "description": "Project name"},
+            "task_data": {
+                "type": "object",
+                "description": "CreateTaskData payload (title/description/etc.)",
+            },
         },
-        required=("title",),
+        required=("task_data",),
         args_model=TasksCreateArgs,
     ),
     write_tool(
@@ -117,12 +117,12 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         "list",
         "List recent activity events.",
         {
-            "type": {"type": "string", "description": "Activity type filter"},
-            "agent_id": {"type": "string", "description": "Filter by agent"},
-            "last_n_hours": {
+            "project": {"type": "string", "description": "Filter by project"},
+            "task_id": {"type": "string", "description": "Filter by task"},
+            "window_hours": {
                 "type": "integer",
-                "description": "Lookback hours (24/48/168)",
-                "enum": [24, 48, 168],
+                "description": "Lookback window in hours",
+                "minimum": 1,
             },
             **PAGINATION_PROPERTIES,
         },

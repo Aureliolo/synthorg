@@ -20,11 +20,15 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.agent import (
     AgentIdentity,
 )
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.mcp.domains._simple_args import (
+    SignalsGetOrgSnapshotArgs,
+    SignalsGetProposalsArgs,
+    SignalsSubmitProposalArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -32,6 +36,7 @@ from synthorg.meta.mcp.errors import (
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     dump_many,
@@ -41,8 +46,8 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
-    coerce_pagination,
     parse_time_window,
+    resolve_time_window,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -59,53 +64,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_ARG_STATUS = "status"
 _ARG_PROPOSAL = "proposal"
-_TY_APPROVAL_STATUS = "ApprovalStatus string"
-_TY_PROPOSAL_OBJ = "ImprovementProposal object"
 _TY_PROPOSAL_SCHEMA = "valid ImprovementProposal schema"
 
 
-def _parse_status(arguments: dict[str, object]) -> ApprovalStatus | None:
-    """Extract and validate the optional ``status`` filter.
-
-    Returns:
-        The ``ApprovalStatus`` value when present, ``None`` otherwise.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    status_raw = arguments.get(_ARG_STATUS)
-    if status_raw in (None, ""):
-        return None
-    if not isinstance(status_raw, str):
-        raise ArgumentValidationError(_ARG_STATUS, _TY_APPROVAL_STATUS)
-    try:
-        return ApprovalStatus(status_raw)
-    except ValueError as exc:
-        raise ArgumentValidationError(_ARG_STATUS, _TY_APPROVAL_STATUS) from exc
-
-
-def _parse_proposal(arguments: dict[str, object]) -> ImprovementProposal:
-    """Decode the ``proposal`` argument into a validated model.
-
-    Returns:
-        ``ImprovementProposal`` instance.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw_proposal = arguments.get(_ARG_PROPOSAL)
-    if not isinstance(raw_proposal, dict):
-        raise ArgumentValidationError(_ARG_PROPOSAL, _TY_PROPOSAL_OBJ)
-    try:
-        return ImprovementProposal.model_validate(raw_proposal)
-    except ValidationError as exc:
-        raise ArgumentValidationError(_ARG_PROPOSAL, _TY_PROPOSAL_SCHEMA) from exc
-
-
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
-# since/until time window but SignalsGetOrgSnapshotArgs declares window_days.
 async def _snapshot(
     *,
     app_state: AppState,
@@ -114,7 +76,12 @@ async def _snapshot(
 ) -> str:
     """Return snapshot."""
     try:
-        since, until = parse_time_window(arguments, until_required=False)
+        args = typed_args(arguments, SignalsGetOrgSnapshotArgs)
+        since, until = resolve_time_window(
+            args.since,
+            args.until,
+            until_required=False,
+        )
         snapshot = await signals_service_of(app_state).get_org_snapshot(
             since=since,
             until=until,
@@ -163,9 +130,6 @@ def _make_window_handler(
     return handler
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler paginates and
-# coerces status to ApprovalStatus, but SignalsGetProposalsArgs has no pagination
-# and types status as the divergent ProposalStatus enum.
 async def _list_proposals(
     *,
     app_state: AppState,
@@ -174,10 +138,10 @@ async def _list_proposals(
 ) -> str:
     """Return list proposals."""
     try:
-        offset, limit = coerce_pagination(arguments)
-        status = _parse_status(arguments)
+        args = typed_args(arguments, SignalsGetProposalsArgs)
+        offset, limit = args.offset, args.limit
         page, total = await signals_service_of(app_state).list_proposals(
-            status=status,
+            status=args.status,
             offset=offset,
             limit=limit,
         )
@@ -192,20 +156,26 @@ async def _list_proposals(
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: admin op reading
-# guardrails + a full ImprovementProposal dict, but SignalsSubmitProposalArgs
-# declares only `trigger` and no AdminGuardrailFields.
 async def _submit_proposal(
     *,
     app_state: AppState,
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Return submit proposal."""
+    """Return submit proposal.
+
+    Raises:
+        ArgumentValidationError: When ``proposal`` is not a valid
+            ImprovementProposal payload.
+    """
     tool_name = "synthorg_signals_submit_proposal"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        proposal = _parse_proposal(arguments)
+        raw_proposal = typed_args(arguments, SignalsSubmitProposalArgs).proposal
+        try:
+            proposal = ImprovementProposal.model_validate(raw_proposal)
+        except ValidationError as exc:
+            raise ArgumentValidationError(_ARG_PROPOSAL, _TY_PROPOSAL_SCHEMA) from exc
         item = await signals_service_of(app_state).submit_proposal(
             proposal=proposal,
             actor=resolved_actor,

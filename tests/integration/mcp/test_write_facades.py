@@ -1,4 +1,4 @@
-"""Integration coverage for the META-MCP-3 write facades.
+"""Integration coverage for the MCP write facades.
 
 Exercises one happy-path dispatch per newly-live MCP tool, asserting
 that:
@@ -76,7 +76,7 @@ def identity() -> AgentIdentity:
 
 @pytest.fixture
 def services(identity: AgentIdentity) -> SimpleNamespace:
-    """Mock services covering every META-MCP-3 facade.
+    """Mock services covering every write facade.
 
     Returned as a ``SimpleNamespace`` so tests can stub side effects and
     assert on awaited calls by attribute name (``services.agent_registry``

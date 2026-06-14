@@ -128,10 +128,9 @@ class TestListPersonalityPresets:
         assert body["success"] is True
         assert isinstance(body["data"], list)
         # Pin the paginated envelope shape, not just the data: the
-        # endpoint moved from a flat list to ``PaginatedResponse``
-        # this PR, and a future regression that drops ``pagination``
-        # from the wire format must fail here, not silently in the
-        # frontend store layer.
+        # endpoint returns a ``PaginatedResponse``, and a future
+        # regression that drops ``pagination`` from the wire format must
+        # fail here, not silently in the frontend store layer.
         assert "pagination" in body
         assert isinstance(body["pagination"], dict)
         assert len(body["data"]) >= 1

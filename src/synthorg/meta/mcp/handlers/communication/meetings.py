@@ -12,6 +12,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.domains._remaining_args import (
     MeetingsDeleteArgs,
     MeetingsGetArgs,
+    MeetingsListArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -27,8 +28,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
-    get_optional_str,
     require_actor_id,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -48,29 +47,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _ARG_STATUS = "status"
-_ARG_MEETING_TYPE = "meeting_type"
 _TY_STATUS = "MeetingStatus string"
 
 
-def _parse_meeting_status(arguments: dict[str, object]) -> MeetingStatus | None:
-    """Return parse meeting status.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(_ARG_STATUS)
-    if raw in (None, ""):
-        return None
-    if not isinstance(raw, str):
-        raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS)
-    try:
-        return MeetingStatus(raw)
-    except ValueError as exc:
-        raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS) from exc
-
-
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler filters by
-# status + meeting_type, but MeetingsListArgs declares only PaginationFields.
 async def _meetings_list(
     *,
     app_state: AppState,
@@ -81,18 +60,28 @@ async def _meetings_list(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``status`` is not a known
+            :class:`MeetingStatus` value.
     """
     try:
-        status = _parse_meeting_status(arguments)
-        meeting_type = get_optional_str(arguments, _ARG_MEETING_TYPE)
-        offset, limit = coerce_pagination(arguments)
+        args = typed_args(arguments, MeetingsListArgs)
+        if args.status is not None:
+            try:
+                status = MeetingStatus(args.status)
+            except ValueError as exc:
+                bad = ArgumentValidationError(_ARG_STATUS, _TY_STATUS)
+                raise bad from exc
+        else:
+            status = None
         records, total = await meeting_service_of(app_state).list_meetings(
             status=status,
-            meeting_type=meeting_type,
-            offset=offset,
-            limit=limit,
+            meeting_type=args.meeting_type,
+            offset=args.offset,
+            limit=args.limit,
         )
-        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
+        pagination = PaginationMeta(total=total, offset=args.offset, limit=args.limit)
         return ok(dump_many(records), pagination=pagination)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_meetings_list", exc)

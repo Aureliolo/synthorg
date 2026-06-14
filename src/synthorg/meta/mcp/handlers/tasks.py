@@ -19,7 +19,6 @@ from synthorg.core.agent import (
     AgentIdentity,
 )
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import (
     TaskMutationError,
     TaskNotFoundError,
@@ -27,9 +26,13 @@ from synthorg.engine.errors import (
 from synthorg.engine.state import task_engine_of
 from synthorg.hr.state import HrStateSlice, activity_feed_service_of
 from synthorg.meta.mcp.domains._tasks_args import (
+    ActivitiesListArgs,
     TasksCancelArgs,
+    TasksCreateArgs,
     TasksDeleteArgs,
     TasksGetArgs,
+    TasksListArgs,
+    TasksTransitionArgs,
     TasksUpdateArgs,
 )
 from synthorg.meta.mcp.errors import (
@@ -51,10 +54,7 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
-    coerce_pagination,
     require_actor_id,
-    require_arg,
-    require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -73,49 +73,13 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-_TY_NON_BLANK = "non-blank string"
 _TY_AGENT = "identified agent"
-_TY_TASK_STATUS = "TaskStatus"
-_ARG_TASK_ID = "task_id"
-_ARG_TARGET = "target_status"
-_ARG_STATUS = "status"
-_ARG_ASSIGNED_TO = "assigned_to"
-_ARG_PROJECT = "project"
 _ARG_ACTOR = "actor"
-
-
-def _coerce_status(
-    raw: object,
-    *,
-    arg_name: str = _ARG_STATUS,
-) -> TaskStatus | None:
-    """Coerce a string to ``TaskStatus`` or raise ``ArgumentValidationError``.
-
-    ``arg_name`` controls which argument the envelope blames so callers
-    parsing ``status`` vs ``target_status`` get accurate feedback
-    instead of every validation failure pointing at ``"status"``.
-
-    Returns:
-        The ``TaskStatus`` value when present, ``None`` otherwise.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    if raw is None:
-        return None
-    if not isinstance(raw, str):
-        raise ArgumentValidationError(arg_name, _TY_NON_BLANK)
-    try:
-        return TaskStatus(raw)
-    except ValueError as exc:
-        raise ArgumentValidationError(arg_name, _TY_TASK_STATUS) from exc
 
 
 # --- handlers -------------------------------------------------------------
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler coerces status to a
-# TaskStatus enum but TasksListArgs.status is a raw NotBlankStr. See follow-up.
 async def _tasks_list(
     *,
     app_state: AppState,
@@ -126,30 +90,21 @@ async def _tasks_list(
 
     Returns:
         JSON-encoded MCP envelope string.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
     """
     tool = "synthorg_tasks_list"
     try:
-        status = _coerce_status(arguments.get("status"))
-        assigned_to = arguments.get("assigned_to")
-        project = arguments.get("project")
-        if assigned_to is not None and not isinstance(assigned_to, str):
-            raise ArgumentValidationError(_ARG_ASSIGNED_TO, _TY_NON_BLANK)
-        if project is not None and not isinstance(project, str):
-            raise ArgumentValidationError(_ARG_PROJECT, _TY_NON_BLANK)
-        offset, limit = coerce_pagination(arguments)
+        args = typed_args(arguments, TasksListArgs)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     try:
         tasks, total = await task_engine_of(app_state).list_tasks(
-            status=status,
-            assigned_to=assigned_to,
-            project=project,
+            status=args.status,
+            assigned_to=args.assigned_to,
+            project=args.project,
         )
+        offset, limit = args.offset, args.limit
         page, meta = paginate_sequence(
             tasks,
             offset=offset,
@@ -195,8 +150,6 @@ async def _tasks_get(
     return ok(data=task.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a task_data
-# dict (CreateTaskData) but TasksCreateArgs declares title/description/etc.
 async def _tasks_create(
     *,
     app_state: AppState,
@@ -210,7 +163,7 @@ async def _tasks_create(
     """
     tool = "synthorg_tasks_create"
     try:
-        task_data = require_arg(arguments, "task_data", dict)
+        task_data = typed_args(arguments, TasksCreateArgs).task_data
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -340,8 +293,6 @@ async def _tasks_delete(
     return ok()
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler coerces
-# target_status to a TaskStatus enum but TasksTransitionArgs types it NotBlankStr.
 async def _tasks_transition(
     *,
     app_state: AppState,
@@ -361,11 +312,9 @@ async def _tasks_transition(
         requested_by = actor_id(actor)
         if requested_by is None:
             raise ArgumentValidationError(_ARG_ACTOR, _TY_AGENT)
-        task_id = require_non_blank(arguments, _ARG_TASK_ID)
-        target_raw = require_non_blank(arguments, _ARG_TARGET)
-        target = _coerce_status(target_raw, arg_name=_ARG_TARGET)
-        if target is None:
-            raise ArgumentValidationError(_ARG_TARGET, _TY_TASK_STATUS)
+        transition_args = typed_args(arguments, TasksTransitionArgs)
+        task_id = transition_args.task_id
+        target = transition_args.target_status
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -445,55 +394,6 @@ _WHY_ACTIVITY = (
 )
 
 
-def _parse_activities_args(
-    arguments: dict[str, object],
-) -> tuple[int, int, str | None, str | None, int | None]:
-    """Validate and extract ``synthorg_activities_list`` arguments.
-
-    Extracted from ``_activities_list`` to keep that handler under the
-    ruff complexity ceiling. Returns
-    ``(offset, limit, project, task_id, window_hours)`` with strings
-    already trimmed and ``window_hours`` set to ``None`` when the
-    caller wants the service's default window.
-
-    Returns:
-        The ``tuple[int, int, str, str, int]`` value when present, ``None`` otherwise.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    arg_project = "project"
-    arg_task_id = "task_id"
-    arg_window_hours = "window_hours"
-    ty_pos_int = "positive int"
-    offset, limit = coerce_pagination(arguments)
-    project_raw = arguments.get(arg_project)
-    task_id_raw = arguments.get(arg_task_id)
-    if project_raw is not None and (
-        not isinstance(project_raw, str) or not project_raw.strip()
-    ):
-        raise ArgumentValidationError(arg_project, _TY_NON_BLANK)
-    if task_id_raw is not None and (
-        not isinstance(task_id_raw, str) or not task_id_raw.strip()
-    ):
-        raise ArgumentValidationError(arg_task_id, _TY_NON_BLANK)
-    window_hours_raw = arguments.get(arg_window_hours)
-    window_hours: int | None = None
-    if window_hours_raw is not None:
-        if isinstance(window_hours_raw, bool) or not isinstance(window_hours_raw, int):
-            raise ArgumentValidationError(arg_window_hours, ty_pos_int)
-        if window_hours_raw < 1:
-            raise ArgumentValidationError(arg_window_hours, ty_pos_int)
-        window_hours = window_hours_raw
-    project = project_raw.strip() if isinstance(project_raw, str) else None
-    task_id = task_id_raw.strip() if isinstance(task_id_raw, str) else None
-    return offset, limit, project, task_id, window_hours
-
-
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# project/task_id/window_hours via _parse_activities_args, but ActivitiesListArgs
-# declares type/agent_id/last_n_hours -- divergent field sets + service call.
-# Needs a batched contract decision before migrating.
 async def _activities_list(
     *,
     app_state: AppState,
@@ -507,28 +407,27 @@ async def _activities_list(
     """
     tool = "synthorg_activities_list"
     try:
-        offset, limit, project, task_id, window_hours = _parse_activities_args(
-            arguments,
-        )
+        args = typed_args(arguments, ActivitiesListArgs)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     if app_state.slice(HrStateSlice).activity_feed_service is None:
         return capability_gap(tool, _WHY_ACTIVITY)
     feed = activity_feed_service_of(app_state)
+    offset, limit = args.offset, args.limit
     try:
-        if window_hours is not None:
+        if args.window_hours is not None:
             events, total = await feed.list_recent_activity(
-                project=project,
-                task_id=task_id,
+                project=args.project,
+                task_id=args.task_id,
                 offset=offset,
                 limit=limit,
-                window_hours=window_hours,
+                window_hours=args.window_hours,
             )
         else:
             events, total = await feed.list_recent_activity(
-                project=project,
-                task_id=task_id,
+                project=args.project,
+                task_id=args.task_id,
                 offset=offset,
                 limit=limit,
             )

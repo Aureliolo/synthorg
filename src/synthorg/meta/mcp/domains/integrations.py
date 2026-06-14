@@ -64,9 +64,9 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         "get",
         "Get an MCP catalog entry by ID.",
         {
-            "catalog_id": {"type": "string", "description": "Catalog entry ID"},
+            "entry_id": {"type": "string", "description": "Catalog entry ID"},
         },
-        required=("catalog_id",),
+        required=("entry_id",),
         args_model=McpCatalogGetArgs,
     ),
     admin_tool(
@@ -74,9 +74,9 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         "install",
         "Install an MCP server from the catalog.",
         {
-            "catalog_id": {"type": "string", "description": "Catalog entry to install"},
+            "entry_id": {"type": "string", "description": "Catalog entry to install"},
         },
-        required=("catalog_id",),
+        required=("entry_id",),
         args_model=McpCatalogInstallArgs,
     ),
     admin_tool(
@@ -84,9 +84,10 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         "uninstall",
         "Uninstall an MCP server.",
         {
-            "install_id": {"type": "string", "description": "Installation ID"},
+            "installation_id": {"type": "string", "description": "Installation ID"},
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("install_id",),
+        required=("installation_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=McpCatalogUninstallArgs,
     ),
     # --- OAuth ---
@@ -101,10 +102,20 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         "configure_provider",
         "Configure an OAuth provider.",
         {
-            "provider": {"type": "string", "description": "Provider name"},
-            "config": {"type": "object", "description": "OAuth configuration"},
+            "name": {"type": "string", "description": "Provider name"},
+            "client_id": {"type": "string", "description": "OAuth client ID"},
+            "authorize_url": {
+                "type": "string",
+                "description": "Authorization endpoint URL",
+            },
+            "token_url": {"type": "string", "description": "Token endpoint URL"},
+            "scopes": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Requested OAuth scopes",
+            },
         },
-        required=("provider", "config"),
+        required=("name", "client_id", "authorize_url", "token_url"),
         args_model=OauthConfigureProviderArgs,
     ),
     admin_tool(
@@ -112,9 +123,10 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         "remove_provider",
         "Remove an OAuth provider.",
         {
-            "provider": {"type": "string", "description": "Provider name"},
+            "name": {"type": "string", "description": "Provider name"},
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("provider",),
+        required=("name", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=OauthRemoveProviderArgs,
     ),
     # --- Clients ---
@@ -141,6 +153,11 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         "Create a new API client.",
         {
             "name": {"type": "string", "description": "Client name"},
+            "contact_email": {
+                "type": "string",
+                "description": "Primary contact email",
+            },
+            "notes": {"type": "string", "description": "Free-form notes"},
         },
         required=("name",),
         args_model=ClientsCreateArgs,
@@ -151,8 +168,9 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         "Deactivate an API client.",
         {
             "client_id": {"type": "string", "description": "Client UUID"},
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("client_id",),
+        required=("client_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=ClientsDeactivateArgs,
     ),
     read_tool(
@@ -193,11 +211,19 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         "create",
         "Create a new artifact.",
         {
-            "task_id": {"type": "string", "description": "Associated task"},
-            "type": {"type": "string", "description": "Artifact type"},
-            "content": {"type": "string", "description": "Artifact content"},
+            "name": {"type": "string", "description": "Artifact name"},
+            "content_type": {"type": "string", "description": "MIME content type"},
+            "size_bytes": {
+                "type": "integer",
+                "description": "Artifact size in bytes",
+                "minimum": 0,
+            },
+            "storage_ref": {
+                "type": "string",
+                "description": "Storage backend reference",
+            },
         },
-        required=("type", "content"),
+        required=("name", "content_type", "size_bytes", "storage_ref"),
         args_model=ArtifactsCreateArgs,
     ),
     admin_tool(
@@ -222,11 +248,11 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
     read_tool(
         "ontology",
         "get_entity",
-        "Get an ontology entity by name.",
+        "Get an ontology entity by ID.",
         {
-            "entity_name": {"type": "string", "description": "Entity name"},
+            "entity_id": {"type": "string", "description": "Entity ID"},
         },
-        required=("entity_name",),
+        required=("entity_id",),
         args_model=OntologyGetEntityArgs,
     ),
     read_tool(
@@ -234,9 +260,9 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         "get_relationships",
         "Get relationships for an entity.",
         {
-            "entity_name": {"type": "string", "description": "Entity name"},
+            "entity_id": {"type": "string", "description": "Entity ID"},
         },
-        required=("entity_name",),
+        required=("entity_id",),
         args_model=OntologyGetRelationshipsArgs,
     ),
     read_tool(

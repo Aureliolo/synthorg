@@ -13,6 +13,7 @@ from synthorg.meta.mcp.domains._remaining_args import (
     BackupCreateArgs,
     BackupDeleteArgs,
     BackupGetArgs,
+    BackupListArgs,
     BackupRestoreArgs,
 )
 from synthorg.meta.mcp.errors import (
@@ -28,7 +29,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
     require_actor_id,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -51,8 +51,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler paginates
-# (coerce_pagination) but BackupListArgs declares no PaginationFields.
 async def _backup_list(
     *,
     app_state: AppState,
@@ -66,7 +64,8 @@ async def _backup_list(
     """
     tool = "synthorg_backup_list"
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, BackupListArgs)
+        offset, limit = page_args.offset, page_args.limit
         page, total = await backup_facade_service_of(app_state).list_backups(
             offset=offset,
             limit=limit,

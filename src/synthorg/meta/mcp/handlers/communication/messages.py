@@ -13,7 +13,9 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.domains._remaining_args import (
     MessagesDeleteArgs,
+    MessagesGetArgs,
     MessagesListArgs,
+    MessagesSendArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -38,7 +40,6 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.meta.mcp.handlers.communication._shared import (
     _map_capability_not_supported,
-    _require_str,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
@@ -48,28 +49,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_ARG_CHANNEL = "channel"
-_ARG_MESSAGE_ID = "message_id"
 _ARG_MESSAGE = "message"
 _TY_MESSAGE_OBJ = "Message object"
-
-
-def _parse_message(arguments: dict[str, object]) -> Message:
-    """Decode the ``message`` argument into a validated :class:`Message`.
-
-    Returns:
-        ``Message`` instance.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(_ARG_MESSAGE)
-    if not isinstance(raw, dict):
-        raise ArgumentValidationError(_ARG_MESSAGE, _TY_MESSAGE_OBJ)
-    try:
-        return Message.model_validate(raw)
-    except ValidationError as exc:
-        raise ArgumentValidationError(_ARG_MESSAGE, _TY_MESSAGE_OBJ) from exc
 
 
 async def _messages_list(
@@ -102,8 +83,6 @@ async def _messages_list(
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
-# `channel` (in addition to message_id), but MessagesGetArgs declares only message_id.
 async def _messages_get(
     *,
     app_state: AppState,
@@ -116,15 +95,14 @@ async def _messages_get(
         Resulting string.
     """
     try:
-        channel = _require_str(arguments, _ARG_CHANNEL)
-        message_id = _require_str(arguments, _ARG_MESSAGE_ID)
+        get_args = typed_args(arguments, MessagesGetArgs)
         message = await message_service_of(app_state).get_message(
-            channel=channel,
-            message_id=message_id,
+            channel=get_args.channel,
+            message_id=get_args.message_id,
         )
         if message is None:
             return err(
-                LookupError(f"Message {message_id} not found"),
+                LookupError(f"Message {get_args.message_id} not found"),
                 domain_code="not_found",
             )
         return ok(message.model_dump(mode="json"))
@@ -137,9 +115,6 @@ async def _messages_get(
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
-# `message` dict and builds a Message, but MessagesSendArgs declares flat
-# channel/content/sender.
 async def _messages_send(
     *,
     app_state: AppState,
@@ -150,9 +125,16 @@ async def _messages_send(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``message`` is not a valid Message.
     """
     try:
-        message = _parse_message(arguments)
+        raw_message = typed_args(arguments, MessagesSendArgs).message
+        try:
+            message = Message.model_validate(raw_message)
+        except ValidationError as exc:
+            raise ArgumentValidationError(_ARG_MESSAGE, _TY_MESSAGE_OBJ) from exc
         await message_service_of(app_state).send_message(
             message=message,
             actor_id=require_actor_id(actor),

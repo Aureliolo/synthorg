@@ -11,13 +11,13 @@ from typing import TYPE_CHECKING
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
+from synthorg.meta.mcp.domains._remaining_args import MemoryDeleteEntryArgs
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers._memory_service_helpers import (
-    _ARG_AGENT_ID,
-    _ARG_MEMORY_ID,
     _delete_entry_service,
 )
 from synthorg.meta.mcp.handlers.common import (
@@ -28,7 +28,6 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
-    require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -47,9 +46,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
-# required `memory_id`, but MemoryDeleteEntryArgs declares only agent_id (plus
-# the guardrail fields).
 async def _memory_delete_entry(
     *,
     app_state: AppState,
@@ -70,8 +66,9 @@ async def _memory_delete_entry(
     memory_id = ""
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
-        memory_id = require_non_blank(arguments, _ARG_MEMORY_ID)
+        args = typed_args(arguments, MemoryDeleteEntryArgs)
+        agent_id = args.agent_id
+        memory_id = args.memory_id
         deleted = await _delete_entry_service(app_state).delete_memory_entry(
             agent_id,
             memory_id,

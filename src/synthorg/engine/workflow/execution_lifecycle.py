@@ -103,17 +103,18 @@ async def get_execution(
 
 async def list_executions(
     repo: WorkflowExecutionRepository,
-    definition_id: str,
+    definition_id: str | None = None,
     *,
+    status: WorkflowExecutionStatus | None = None,
     limit: int = DEFAULT_LIST_LIMIT,
 ) -> tuple[WorkflowExecution, ...]:
-    """List executions for a workflow definition (bounded by *limit*).
+    """List executions filtered by definition and/or status (bounded by *limit*).
 
     Returns:
-        Executions matching the definition filter (up to ``limit``).
+        Executions matching the supplied filters (up to ``limit``).
     """
     return await repo.query(
-        WorkflowExecutionFilterSpec(definition_id=definition_id),
+        WorkflowExecutionFilterSpec(definition_id=definition_id, status=status),
         limit=limit,
     )
 

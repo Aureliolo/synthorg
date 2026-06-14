@@ -12,9 +12,11 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.state import webhook_service_of
 from synthorg.integrations.webhooks.models import WebhookDefinition
 from synthorg.meta.mcp.domains._remaining_args import (
+    WebhooksCreateArgs,
     WebhooksDeleteArgs,
     WebhooksGetArgs,
     WebhooksListArgs,
+    WebhooksUpdateArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -47,19 +49,19 @@ _ARG_DEFINITION = "definition"
 _TY_WEBHOOK_OBJ = "WebhookDefinition object"
 
 
-def _parse_webhook_definition(
-    arguments: dict[str, object],
+def _build_webhook_definition(
+    raw: dict[str, object],
     *,
     require_id: bool,
 ) -> WebhookDefinition:
-    """Return parse webhook definition.
+    """Validate a webhook ``definition`` payload into a model.
+
+    Returns:
+        ``WebhookDefinition`` instance.
 
     Raises:
         ArgumentValidationError: Raised on the corresponding failure path.
     """
-    raw = arguments.get(_ARG_DEFINITION)
-    if not isinstance(raw, dict):
-        raise ArgumentValidationError(_ARG_DEFINITION, _TY_WEBHOOK_OBJ)
     payload = dict(raw)
     if not require_id and "id" not in payload:
         payload["id"] = str(uuid4())
@@ -127,8 +129,6 @@ async def _webhooks_get(
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
-# `definition` dict, but WebhooksCreateArgs declares url + events.
 async def _webhooks_create(
     *,
     app_state: AppState,
@@ -143,7 +143,8 @@ async def _webhooks_create(
     tool = "synthorg_webhooks_create"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        definition = _parse_webhook_definition(arguments, require_id=False)
+        raw = typed_args(arguments, WebhooksCreateArgs).definition
+        definition = _build_webhook_definition(raw, require_id=False)
         actor_id = require_actor_id(resolved_actor)
         stored = await webhook_service_of(app_state).create_webhook(
             definition=definition,
@@ -175,8 +176,6 @@ async def _webhooks_create(
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a full
-# `definition` dict, but WebhooksUpdateArgs declares webhook_id + updates.
 async def _webhooks_update(
     *,
     app_state: AppState,
@@ -191,7 +190,8 @@ async def _webhooks_update(
     tool = "synthorg_webhooks_update"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        definition = _parse_webhook_definition(arguments, require_id=True)
+        raw = typed_args(arguments, WebhooksUpdateArgs).definition
+        definition = _build_webhook_definition(raw, require_id=True)
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)

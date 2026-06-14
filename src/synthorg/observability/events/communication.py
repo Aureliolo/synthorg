@@ -125,7 +125,7 @@ COMM_DISSENT_PUBLISHED: Final[str] = "communication.dissent.published"
 COMM_DISSENT_PUBLISH_FAILED: Final[str] = "communication.dissent.publish_failed"
 COMM_DISSENT_EMITTED: Final[str] = "communication.dissent.emitted"
 
-# MCP facade events (META-MCP-2)
+# MCP facade events.
 COMMUNICATION_MESSAGE_SENT_VIA_MCP: Final[str] = "communication.message.sent_via_mcp"
 COMMUNICATION_MESSAGE_DELETED: Final[str] = "communication.message.deleted"
 COMMUNICATION_MESSAGE_DELETE_FAILED: Final[str] = "communication.message.delete_failed"

@@ -14,15 +14,21 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.mcp.domains._workflows_org_args import TeamsGetArgs, TeamsListArgs
+from synthorg.meta.mcp.domains._workflows_org_args import (
+    RoleVersionsGetArgs,
+    RoleVersionsListArgs,
+    TeamsCreateArgs,
+    TeamsDeleteArgs,
+    TeamsGetArgs,
+    TeamsListArgs,
+    TeamsUpdateArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _map_capability,
-    _require_str,
-    _require_uuid,
     _to_jsonable,
     typed_args,
 )
@@ -33,7 +39,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    get_optional_str,
     require_actor_id,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -122,8 +127,6 @@ async def _teams_get(
     return ok(record.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads an
-# optional `department_id`, but TeamsCreateArgs declares a required `department`.
 async def _teams_create(
     *,
     app_state: AppState,
@@ -137,12 +140,11 @@ async def _teams_create(
     """
     tool = "synthorg_teams_create"
     try:
-        name = _require_str(arguments, "name")
-        department_id = get_optional_str(arguments, "department_id")
+        args = typed_args(arguments, TeamsCreateArgs)
         record = await team_service_of(app_state).create_team(
-            name=name,
+            name=args.name,
             actor_id=require_actor_id(actor),
-            department_id=department_id,
+            department_id=args.department_id,
         )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -154,9 +156,6 @@ async def _teams_create(
     return ok(record.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# name/department_id (with an UNSET sentinel), but TeamsUpdateArgs declares an
-# opaque `updates` dict.
 async def _teams_update(
     *,
     app_state: AppState,
@@ -170,19 +169,18 @@ async def _teams_update(
     """
     tool = "synthorg_teams_update"
     try:
-        team_id = _require_uuid(arguments, "team_id")
-        name = get_optional_str(arguments, "name")
-        if "department_id" in arguments:
-            department_id: NotBlankStr | None | UnsetType = get_optional_str(
-                arguments,
-                "department_id",
-            )
+        args = typed_args(arguments, TeamsUpdateArgs)
+        # An omitted ``department_id`` leaves the assignment untouched; an
+        # explicit ``null`` clears it. ``model_fields_set`` distinguishes the
+        # two so the UNSET sentinel only applies to the omitted case.
+        if "department_id" in args.model_fields_set:
+            department_id: NotBlankStr | None | UnsetType = args.department_id
         else:
             department_id = UNSET
         record = await team_service_of(app_state).update_team(
-            team_id=team_id,
+            team_id=args.team_id,
             actor_id=require_actor_id(actor),
-            name=name,
+            name=args.name,
             department_id=department_id,
         )
     except ArgumentValidationError as exc:
@@ -194,15 +192,12 @@ async def _teams_update(
         return err(exc)
     if record is None:
         return err(
-            LookupError(f"Team {team_id} not found"),
+            LookupError(f"Team {args.team_id} not found"),
             domain_code="not_found",
         )
     return ok(record.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler enforces
-# require_admin_guardrails but TeamsDeleteArgs (write_tool, not admin_tool)
-# declares no AdminGuardrailFields.
 async def _teams_delete(
     *,
     app_state: AppState,
@@ -217,7 +212,7 @@ async def _teams_delete(
     tool = "synthorg_teams_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        team_id = _require_uuid(arguments, "team_id")
+        team_id = typed_args(arguments, TeamsDeleteArgs).team_id
         actor_id = require_actor_id(resolved_actor)
         removed = await team_service_of(app_state).delete_team(
             team_id=team_id,
@@ -246,9 +241,6 @@ async def _teams_delete(
     return ok({"removed": removed})
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads an
-# optional `role_name` and no pagination, but RoleVersionsListArgs declares a
-# required `role_name` plus PaginationFields the handler never forwards.
 async def _role_versions_list(
     *,
     app_state: AppState,
@@ -262,10 +254,13 @@ async def _role_versions_list(
     """
     tool = "synthorg_role_versions_list"
     try:
-        role_name = get_optional_str(arguments, "role_name")
-        versions = await role_version_service_of(app_state).list_versions(
-            role_name=role_name,
+        args = typed_args(arguments, RoleVersionsListArgs)
+        page, total = await role_version_service_of(app_state).list_versions(
+            role_name=args.role_name,
+            offset=args.offset,
+            limit=args.limit,
         )
+        pagination = PaginationMeta(total=total, offset=args.offset, limit=args.limit)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -275,11 +270,9 @@ async def _role_versions_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
-    return ok([_to_jsonable(v) for v in versions])
+    return ok([_to_jsonable(v) for v in page], pagination=pagination)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
-# string `version_id`, but RoleVersionsGetArgs declares role_name + int version_num.
 async def _role_versions_get(
     *,
     app_state: AppState,
@@ -293,7 +286,7 @@ async def _role_versions_get(
     """
     tool = "synthorg_role_versions_get"
     try:
-        version_id = _require_str(arguments, "version_id")
+        version_id = typed_args(arguments, RoleVersionsGetArgs).version_id
         version = await role_version_service_of(app_state).get_version(version_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)

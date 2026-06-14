@@ -227,8 +227,8 @@ class TestAuditChainSinkValidationFailure:
         # time: ``record.levelname = 42`` violates the model's
         # str-typed ``level`` field, which AuditChainEventPayload
         # rejects when parse_typed validates the assembled dict. This
-        # exercises the explicit ``except ValidationError`` branch
-        # added in this PR; the production iteration over LogRecord
+        # exercises the explicit ``except ValidationError`` branch;
+        # the production iteration over LogRecord
         # extras is closed and cannot smuggle an unknown key, so a
         # field-type mutation is the cleanest way to reach the
         # validation path under test.

@@ -10,8 +10,10 @@ from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.state import connection_service_of
 from synthorg.meta.mcp.domains._remaining_args import (
     ConnectionsCheckHealthArgs,
+    ConnectionsCreateArgs,
     ConnectionsDeleteArgs,
     ConnectionsGetArgs,
+    ConnectionsListArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -27,20 +29,12 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    coerce_pagination,
-    get_optional_str,
     require_actor_id,
-    require_arg,
-    require_dict,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
     log_handler_invoke_failed,
-)
-from synthorg.meta.mcp.handlers.communication._shared import (
-    _get_dict,
-    _require_str,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
@@ -50,27 +44,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_ARG_NAME = "name"
 _ARG_CONNECTION_TYPE = "connection_type"
-_ARG_AUTH_METHOD = "auth_method"
-_ARG_CREDENTIALS = "credentials"
-_ARG_BASE_URL = "base_url"
-_ARG_METADATA = "metadata"
 _TY_CONNECTION_TYPE = "ConnectionType string"
 
 
-def _parse_connection_type(arguments: dict[str, object]) -> ConnectionType:
-    """Return parse connection type."""
-    raw = require_arg(arguments, _ARG_CONNECTION_TYPE, str)
-    try:
-        return ConnectionType(raw)
-    except ValueError as exc:
-        err = ArgumentValidationError(_ARG_CONNECTION_TYPE, _TY_CONNECTION_TYPE)
-        raise err from exc
-
-
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler paginates
-# (coerce_pagination) but ConnectionsListArgs declares no PaginationFields.
 async def _connections_list(
     *,
     app_state: AppState,
@@ -83,7 +60,8 @@ async def _connections_list(
         Resulting string.
     """
     try:
-        offset, limit = coerce_pagination(arguments)
+        page_args = typed_args(arguments, ConnectionsListArgs)
+        offset, limit = page_args.offset, page_args.limit
         connections, total = await connection_service_of(app_state).list_connections(
             offset=offset,
             limit=limit,
@@ -128,9 +106,6 @@ async def _connections_get(
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# auth_method/base_url/metadata, but ConnectionsCreateArgs declares only
-# name/connection_type/credentials.
 async def _connections_create(
     *,
     app_state: AppState,
@@ -141,32 +116,36 @@ async def _connections_create(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``connection_type`` is not a known
+            :class:`ConnectionType` value.
     """
     tool = "synthorg_connections_create"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        name = _require_str(arguments, _ARG_NAME)
-        connection_type = _parse_connection_type(arguments)
-        auth_method = _require_str(arguments, _ARG_AUTH_METHOD)
-        credentials = require_dict(arguments, _ARG_CREDENTIALS, value_type=str)
-        base_url = get_optional_str(arguments, _ARG_BASE_URL)
-        metadata = _get_dict(arguments, _ARG_METADATA)
+        args = typed_args(arguments, ConnectionsCreateArgs)
+        try:
+            connection_type = ConnectionType(args.connection_type)
+        except ValueError as exc:
+            bad = ArgumentValidationError(_ARG_CONNECTION_TYPE, _TY_CONNECTION_TYPE)
+            raise bad from exc
         actor_id = require_actor_id(resolved_actor)
         connection = await connection_service_of(app_state).create_connection(
-            name=name,
+            name=args.name,
             connection_type=connection_type,
-            auth_method=auth_method,
-            credentials=credentials,
+            auth_method=args.auth_method,
+            credentials=args.credentials,
             actor_id=actor_id,
-            base_url=base_url,
-            metadata=metadata,
+            base_url=args.base_url,
+            metadata=args.metadata,
         )
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
             actor_agent_id=actor_id,
             reason=reason,
-            connection_name=name,
+            connection_name=args.name,
         )
         return ok(connection.model_dump(mode="json"))
     except GuardrailViolationError as exc:

@@ -33,16 +33,20 @@ class AgentsGetArgs(_AgentNameArgs):
 
 
 class AgentsCreateArgs(_ArgsBase):
-    """Args for ``agents.create``."""
+    """Args for ``agents.create``.
 
-    name: NotBlankStr = Field(description="Agent name")
-    role: NotBlankStr = Field(description="Agent role")
-    department: NotBlankStr = Field(description="Department name")
+    ``identity`` is the full :class:`AgentIdentity` payload, validated by
+    the handler against that model; it is a polymorphic ``dict[str,
+    object]`` here because its closed shape lives in ``synthorg.core.agent``.
+    """
+
+    identity: dict[str, object] = Field(description="AgentIdentity payload")
 
 
-class AgentsUpdateArgs(_AgentNameArgs):
+class AgentsUpdateArgs(_ArgsBase):
     """Args for ``agents.update``."""
 
+    agent_id: NotBlankStr = Field(description="Agent ID")
     updates: dict[str, object] = Field(description="Fields to update")
 
 
@@ -61,7 +65,7 @@ class AgentsGetActivityArgs(_AgentNameArgs, PaginationFields):
     """Args for ``agents.get_activity``."""
 
 
-class AgentsGetHistoryArgs(_AgentNameArgs):
+class AgentsGetHistoryArgs(_AgentNameArgs, PaginationFields):
     """Args for ``agents.get_history``."""
 
 

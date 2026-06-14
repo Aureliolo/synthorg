@@ -31,6 +31,36 @@ class MCPToolDefinitionDict(TypedDict):
     parameters: dict[str, JsonValue]
 
 
+# Every windowed signals read accepts the same ``since`` (required) /
+# ``until`` (optional, defaults to now) ISO 8601 pair the handlers resolve
+# via ``parse_time_window``.
+_SINCE_UNTIL_PROPS: dict[str, JsonValue] = {
+    "since": {
+        "type": "string",
+        "description": "Start datetime (ISO 8601, timezone-aware)",
+        "format": "date-time",
+    },
+    "until": {
+        "type": "string",
+        "description": "End datetime (ISO 8601, timezone-aware); defaults to now",
+        "format": "date-time",
+    },
+}
+
+
+def _window_params() -> dict[str, JsonValue]:
+    """Return a fresh ``since`` / ``until`` parameter schema.
+
+    Returns:
+        A standalone parameters object so each tool owns its own dict.
+    """
+    return {
+        "type": "object",
+        "properties": dict(_SINCE_UNTIL_PROPS),
+        "required": ["since"],
+    }
+
+
 # Tool definitions (name, description, parameter schema).
 SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
     {
@@ -40,16 +70,7 @@ SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
             "performance, budget, coordination, scaling, errors, "
             "evolution, and telemetry summaries."
         ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "window_days": {
-                    "type": "integer",
-                    "description": "Lookback window in days (default 7)",
-                    "default": 7,
-                },
-            },
-        },
+        "parameters": _window_params(),
     },
     {
         "name": f"{TOOL_PREFIX}_get_performance",
@@ -57,16 +78,7 @@ SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
             "Get org-wide performance summary with quality scores, "
             "success rates, collaboration scores, and per-window metrics."
         ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "window_days": {
-                    "type": "integer",
-                    "description": "Lookback window in days (default 7)",
-                    "default": 7,
-                },
-            },
-        },
+        "parameters": _window_params(),
     },
     {
         "name": f"{TOOL_PREFIX}_get_budget",
@@ -74,10 +86,7 @@ SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
             "Get org-wide budget analytics with spend patterns, "
             "category breakdowns, and exhaustion forecast."
         ),
-        "parameters": {
-            "type": "object",
-            "properties": {},
-        },
+        "parameters": _window_params(),
     },
     {
         "name": f"{TOOL_PREFIX}_get_coordination",
@@ -85,10 +94,7 @@ SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
             "Get org-wide coordination health metrics including "
             "efficiency, overhead, straggler gaps, and redundancy."
         ),
-        "parameters": {
-            "type": "object",
-            "properties": {},
-        },
+        "parameters": _window_params(),
     },
     {
         "name": f"{TOOL_PREFIX}_get_scaling_history",
@@ -96,10 +102,7 @@ SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
             "Get recent scaling decisions and their outcomes "
             "(hired, pruned, deferred, rejected)."
         ),
-        "parameters": {
-            "type": "object",
-            "properties": {},
-        },
+        "parameters": _window_params(),
     },
     {
         "name": f"{TOOL_PREFIX}_get_error_patterns",
@@ -107,10 +110,7 @@ SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
             "Get error taxonomy summary with category distributions "
             "and severity trends."
         ),
-        "parameters": {
-            "type": "object",
-            "properties": {},
-        },
+        "parameters": _window_params(),
     },
     {
         "name": f"{TOOL_PREFIX}_get_evolution_outcomes",
@@ -118,30 +118,31 @@ SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
             "Get recent agent evolution outcomes with proposal "
             "approval rates and adaptation results."
         ),
-        "parameters": {
-            "type": "object",
-            "properties": {},
-        },
+        "parameters": _window_params(),
     },
     {
         "name": f"{TOOL_PREFIX}_get_proposals",
-        "description": (
-            "List improvement proposals by status "
-            "(pending, applied, rolled_back, etc.)."
-        ),
+        "description": "List improvement proposals by approval status.",
         "parameters": {
             "type": "object",
             "properties": {
                 "status": {
                     "type": "string",
-                    "description": "Filter by proposal status",
-                    "enum": [
-                        "pending",
-                        "approved",
-                        "applied",
-                        "rolled_back",
-                        "regressed",
-                    ],
+                    "description": "Filter by approval status",
+                    "enum": ["pending", "approved", "rejected", "expired"],
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Pagination offset",
+                    "default": 0,
+                    "minimum": 0,
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Page size",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": 500,
                 },
             },
         },
@@ -151,19 +152,25 @@ SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
         "description": (
             "Submit an improvement proposal to the guard chain. "
             "Used by the Chief of Staff agent to trigger "
-            "the improvement cycle."
+            "the improvement cycle (requires confirm)."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "trigger": {
+                "proposal": {
+                    "type": "object",
+                    "description": "ImprovementProposal payload",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Must be True to confirm the operation",
+                },
+                "reason": {
                     "type": "string",
-                    "description": (
-                        "What triggered this submission (manual, scheduled, inflection)"
-                    ),
-                    "default": "manual",
+                    "description": "Operator-supplied reason for audit trail",
                 },
             },
+            "required": ["proposal", "confirm", "reason"],
         },
     },
 )

@@ -10,6 +10,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.domains._remaining_args import (
     SettingsDeleteArgs,
     SettingsGetArgs,
+    SettingsUpdateArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -26,7 +27,6 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _map_capability,
-    _require_str,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
@@ -91,9 +91,6 @@ async def _settings_get(
     return ok({"key": key, "value": result})
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads `value`
-# via arguments.get as any-type/optional, but SettingsUpdateArgs declares a
-# required `value: str`.
 async def _settings_update(
     *,
     app_state: AppState,
@@ -108,12 +105,12 @@ async def _settings_update(
     tool = "synthorg_settings_update"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        key = _require_str(arguments, "key")
-        value = arguments.get("value")
+        update_args = typed_args(arguments, SettingsUpdateArgs)
+        key = update_args.key
         actor_id = require_actor_id(resolved_actor)
         await settings_read_service_of(app_state).update_setting(
             key=key,
-            value=value,
+            value=update_args.value,
             actor_id=actor_id,
         )
         logger.info(

@@ -59,10 +59,12 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "create",
         "Create a new workflow definition.",
         {
-            "name": {"type": "string", "description": "Workflow name"},
-            "steps": {"type": "array", "description": "Workflow step definitions"},
+            "definition": {
+                "type": "object",
+                "description": "WorkflowDefinition payload",
+            },
         },
-        required=("name", "steps"),
+        required=("definition",),
         args_model=WorkflowsCreateArgs,
     ),
     write_tool(
@@ -70,10 +72,12 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "update",
         "Update a workflow definition.",
         {
-            "workflow_id": {"type": "string", "description": "Workflow UUID"},
-            "updates": {"type": "object", "description": "Fields to update"},
+            "definition": {
+                "type": "object",
+                "description": "WorkflowDefinition payload (including id)",
+            },
         },
-        required=("workflow_id", "updates"),
+        required=("definition",),
         args_model=WorkflowsUpdateArgs,
     ),
     admin_tool(
@@ -92,21 +96,23 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "validate",
         "Validate a workflow definition.",
         {
-            "workflow_id": {"type": "string", "description": "Workflow UUID"},
+            "definition": {
+                "type": "object",
+                "description": "WorkflowDefinition payload to validate",
+            },
         },
-        required=("workflow_id",),
+        required=("definition",),
         args_model=WorkflowsValidateArgs,
     ),
     # --- Subworkflows ---
     read_tool(
         "subworkflows",
         "list",
-        "List subworkflows for a workflow.",
+        "List subworkflows.",
         {
-            "workflow_id": {"type": "string", "description": "Parent workflow UUID"},
+            "query": {"type": "string", "description": "Free-text search filter"},
             **PAGINATION_PROPERTIES,
         },
-        required=("workflow_id",),
         args_model=SubworkflowsListArgs,
     ),
     read_tool(
@@ -115,6 +121,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "Get a subworkflow by ID.",
         {
             "subworkflow_id": {"type": "string", "description": "Subworkflow UUID"},
+            "version": {"type": "string", "description": "Optional version label"},
         },
         required=("subworkflow_id",),
         args_model=SubworkflowsGetArgs,
@@ -124,11 +131,12 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "create",
         "Create a subworkflow.",
         {
-            "workflow_id": {"type": "string", "description": "Parent workflow UUID"},
-            "name": {"type": "string", "description": "Subworkflow name"},
-            "steps": {"type": "array", "description": "Step definitions"},
+            "definition": {
+                "type": "object",
+                "description": "WorkflowDefinition payload",
+            },
         },
-        required=("workflow_id", "name"),
+        required=("definition",),
         args_model=SubworkflowsCreateArgs,
     ),
     admin_tool(
@@ -137,9 +145,10 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "Delete a subworkflow (destructive; requires confirm).",
         {
             "subworkflow_id": {"type": "string", "description": "Subworkflow UUID"},
+            "version": {"type": "string", "description": "Version label to delete"},
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("subworkflow_id", *ADMIN_GUARDRAIL_REQUIRED),
+        required=("subworkflow_id", "version", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=SubworkflowsDeleteArgs,
     ),
     # --- Workflow executions ---
@@ -149,7 +158,17 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "List workflow execution runs.",
         {
             "workflow_id": {"type": "string", "description": "Filter by workflow"},
-            "status": {"type": "string", "description": "Filter by execution status"},
+            "status": {
+                "type": "string",
+                "description": "Filter by execution status",
+                "enum": [
+                    "pending",
+                    "running",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                ],
+            },
             **PAGINATION_PROPERTIES,
         },
         args_model=WorkflowExecutionsListArgs,
@@ -170,7 +189,8 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "Start a workflow execution.",
         {
             "workflow_id": {"type": "string", "description": "Workflow to execute"},
-            "parameters": {"type": "object", "description": "Execution parameters"},
+            "project": {"type": "string", "description": "Target project"},
+            "context": {"type": "object", "description": "Execution context"},
         },
         required=("workflow_id",),
         args_model=WorkflowExecutionsStartArgs,
@@ -204,13 +224,13 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "Get a specific workflow version.",
         {
             "workflow_id": {"type": "string", "description": "Workflow UUID"},
-            "version_num": {
+            "revision": {
                 "type": "integer",
-                "description": "Version number",
+                "description": "Revision number",
                 "minimum": 1,
             },
         },
-        required=("workflow_id", "version_num"),
+        required=("workflow_id", "revision"),
         args_model=WorkflowVersionsGetArgs,
     ),
 )

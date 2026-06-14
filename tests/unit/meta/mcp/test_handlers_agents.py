@@ -266,7 +266,7 @@ class TestAgentsDelete:
 
 
 class TestWriteHandlersValidateInputs:
-    """The META-MCP-3 write handlers reject empty/malformed input."""
+    """The agents write handlers reject empty/malformed input."""
 
     @pytest.mark.parametrize(
         "tool_name",

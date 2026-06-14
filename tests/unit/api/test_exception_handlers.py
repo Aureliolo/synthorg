@@ -1269,9 +1269,9 @@ class TestBuildResponseFallback:
 class TestDomainErrorMapping:
     """Every domain error base and its key subclasses produce RFC 9457.
 
-    Before #1405, seven domain error base classes were not registered in
-    EXCEPTION_HANDLERS -- when they escaped a controller, they fell through
-    to ``handle_unexpected`` (500, INTERNAL_ERROR).  Now each base declares
+    Every domain error base class must be registered in
+    EXCEPTION_HANDLERS; an unregistered base that escapes a controller
+    falls through to ``handle_unexpected`` (500, INTERNAL_ERROR).  Each base declares
     HTTP metadata ClassVars (``status_code``, ``error_code``,
     ``error_category``, ``retryable``, ``default_message``) and
     ``handle_domain_error`` maps them through ``_build_response``,
@@ -1563,10 +1563,10 @@ class TestDomainErrorMapping:
 class TestBareResponseFixes:
     """Controllers no longer return bare ``Response`` for error paths.
 
-    Before #1405, ``artifacts.py:354``, ``subworkflows.py:176``, and
-    ``projects.py:74,113`` returned plain ``Response(content=ApiResponse(
-    error="..."))`` objects that bypassed the RFC 9457 handler
-    registration.  Now each site raises a typed ``ApiError`` subclass
+    Error paths in ``artifacts.py``, ``subworkflows.py``, and
+    ``projects.py`` must not return plain ``Response(content=ApiResponse(
+    error="..."))`` objects that bypass the RFC 9457 handler
+    registration.  Each site raises a typed ``ApiError`` subclass
     (or lets a domain error with ClassVar metadata propagate) so the
     central handlers produce a structured response with the correct
     ``error_detail`` envelope.

@@ -23,15 +23,19 @@ class MessagesListArgs(PaginationFields):
 class MessagesGetArgs(_ArgsBase):
     """Args for ``messages.get``."""
 
+    channel: NotBlankStr = Field(description="Channel containing the message")
     message_id: NotBlankStr = Field(description="Message UUID")
 
 
 class MessagesSendArgs(_ArgsBase):
-    """Args for ``messages.send``."""
+    """Args for ``messages.send``.
 
-    channel: NotBlankStr = Field(description="Target channel")
-    content: NotBlankStr = Field(description="Message content")
-    sender: NotBlankStr | None = Field(default=None, description="Sender name")
+    ``message`` is the full :class:`Message` payload, validated by the
+    handler against that model; it is a polymorphic ``dict[str, object]``
+    here because its closed shape lives in ``synthorg.communication.message``.
+    """
+
+    message: dict[str, object] = Field(description="Message payload")
 
 
 class MessagesDeleteArgs(AdminGuardrailFields):
@@ -42,6 +46,12 @@ class MessagesDeleteArgs(AdminGuardrailFields):
 
 class MeetingsListArgs(PaginationFields):
     """Args for ``meetings.list``."""
+
+    status: NotBlankStr | None = Field(default=None, description="Filter by status")
+    meeting_type: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by meeting type",
+    )
 
 
 class MeetingsGetArgs(_ArgsBase):
@@ -73,8 +83,8 @@ class MeetingsDeleteArgs(AdminGuardrailFields):
     meeting_id: NotBlankStr = Field(description="Meeting UUID")
 
 
-class ConnectionsListArgs(_ArgsBase):
-    """Args for ``connections.list``: no fields."""
+class ConnectionsListArgs(PaginationFields):
+    """Args for ``connections.list``."""
 
 
 class ConnectionsGetArgs(_ArgsBase):
@@ -92,9 +102,15 @@ class ConnectionsCreateArgs(AdminGuardrailFields):
 
     name: NotBlankStr = Field(description="Connection name")
     connection_type: NotBlankStr = Field(description="Connection type")
-    credentials: dict[str, object] = Field(
+    auth_method: NotBlankStr = Field(description="Authentication method")
+    credentials: dict[str, str] = Field(
         default_factory=dict,
         description="Connection credentials",
+    )
+    base_url: NotBlankStr | None = Field(default=None, description="Base URL")
+    metadata: dict[str, str] | None = Field(
+        default=None,
+        description="Free-form connection metadata",
     )
 
 
@@ -127,26 +143,23 @@ class WebhooksGetArgs(_ArgsBase):
 class WebhooksCreateArgs(AdminGuardrailFields):
     """Args for ``webhooks.create`` (admin op).
 
-    Admin op: callers must supply ``confirm=True`` and a non-blank
-    ``reason`` (mixin) in addition to the URL and events list.
+    ``definition`` is the full :class:`WebhookDefinition` payload,
+    validated by the handler against that model; it is a polymorphic
+    ``dict[str, object]`` because its closed shape lives in
+    ``synthorg.integrations.webhooks.models``.
     """
 
-    url: NotBlankStr = Field(description="Webhook URL")
-    events: tuple[NotBlankStr, ...] = Field(
-        min_length=1,
-        description="Event types to subscribe",
-    )
+    definition: dict[str, object] = Field(description="WebhookDefinition payload")
 
 
 class WebhooksUpdateArgs(AdminGuardrailFields):
     """Args for ``webhooks.update`` (admin op).
 
-    Admin op: callers must supply ``confirm=True`` and a non-blank
-    ``reason`` (mixin) in addition to the webhook UUID and updates.
+    ``definition`` is the full :class:`WebhookDefinition` payload
+    (including ``id``), validated by the handler against that model.
     """
 
-    webhook_id: NotBlankStr = Field(description="Webhook UUID")
-    updates: dict[str, object] = Field(description="Fields to update")
+    definition: dict[str, object] = Field(description="WebhookDefinition payload")
 
 
 class WebhooksDeleteArgs(AdminGuardrailFields):

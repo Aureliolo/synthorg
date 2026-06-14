@@ -184,8 +184,8 @@ def _is_forbidden(module: str) -> bool:
 def test_no_module_imports_legacy_error_paths() -> None:
     """No module under ``src/synthorg`` references the deleted error modules.
 
-    ``synthorg.api.errors`` and ``synthorg.persistence.errors`` were
-    removed in #1610.  This sweep catches any stray ``from
+    ``synthorg.api.errors`` and ``synthorg.persistence.errors`` no longer
+    exist.  This sweep catches any stray ``from
     synthorg.api.errors import ...`` (including lazy imports inside
     function bodies) that would silently rot if reintroduced.
     """
@@ -213,10 +213,10 @@ def test_no_module_imports_legacy_error_paths() -> None:
 def test_lower_layers_dont_reach_into_api_errors_namespace() -> None:
     """Lower layers may not import anything under ``synthorg.api.errors.*``.
 
-    The whole point of #1610 is to break the upward edge from
-    domain layers (engine, tools, budget, ...) into the API layer's
-    error module.  Even though the module no longer exists today, this
-    test pins the rule so it survives any future re-introduction.
+    The rule breaks the upward edge from domain layers (engine, tools,
+    budget, ...) into the API layer's error module.  Even though the
+    module no longer exists today, this test pins the rule so it survives
+    any future re-introduction.
     """
     offenders = [
         (path, module)

@@ -6,7 +6,7 @@ re-validated a query param's length because Litestar 2.21's
 ``Parameter(max_length=...)`` on query params crashed the worker instead
 of returning an RFC 9457 envelope. Litestar 2.22's
 ``QueryParameter(max_length=...)`` should produce a clean 4xx; this test
-verifies that before removing the manual checks in #2091.
+verifies that, gating removal of the manual checks.
 
 If this test fails, the upstream regression is unfixed -- keep the
 manual checks and update the comments to reference ``QueryParameter``

@@ -39,7 +39,7 @@ def fake_company() -> AsyncMock:
 @pytest.fixture
 def fake_role_version() -> AsyncMock:
     service = AsyncMock()
-    service.list_versions = AsyncMock(return_value=())
+    service.list_versions = AsyncMock(return_value=((), 0))
     service.get_version = AsyncMock(return_value=None)
     return service
 
@@ -131,14 +131,14 @@ class TestCompany:
         )
         assert json.loads(response)["status"] == "ok"
 
-    async def test_reorder_rejects_non_uuid(
+    async def test_reorder_rejects_empty(
         self,
         fake_app_state: AppState,
     ) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_company_reorder_departments"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"department_ids": ["a", "b"]},
+            arguments={"department_ids": []},
             actor=make_test_actor(),
         )
         payload = json.loads(response)

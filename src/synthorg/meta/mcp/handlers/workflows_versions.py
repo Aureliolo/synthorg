@@ -16,7 +16,10 @@ from synthorg.engine.state import (
 )
 from synthorg.engine.workflow.service import WorkflowDefinitionNotFoundError
 from synthorg.engine.workflow.version_service import WorkflowVersionService
-from synthorg.meta.mcp.domains._workflows_org_args import WorkflowVersionsListArgs
+from synthorg.meta.mcp.domains._workflows_org_args import (
+    WorkflowVersionsGetArgs,
+    WorkflowVersionsListArgs,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
@@ -25,9 +28,6 @@ from synthorg.meta.mcp.handlers.common import (
     dump_many,
     err,
     ok,
-)
-from synthorg.meta.mcp.handlers.common_args import (
-    require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -40,10 +40,6 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
-
-_TY_INT = "integer"
-_ARG_DEF_ID = "workflow_id"
-_ARG_REVISION = "revision"
 
 _WHY_VERSION_SERVICE = (
     "workflow_version_service is not wired on app_state in this deployment"
@@ -63,35 +59,6 @@ def _version_service(app_state: AppState) -> WorkflowVersionService | None:
     if app_state.slice(EngineStateSlice).workflow_version_service is None:
         return None
     return workflow_version_service_of(app_state)
-
-
-def _require_int(
-    arguments: dict[str, object],
-    key: str,
-    *,
-    positive: bool = False,
-) -> int:
-    """Extract an integer argument or raise ``ArgumentValidationError``.
-
-    Booleans are explicitly rejected because ``isinstance(True, int)``
-    is ``True`` in Python; ``positive=True`` additionally rejects
-    non-positive values so callers like ``_workflow_versions_get``
-    (where the service requires ``revision >= 1``) get the more
-    accurate ``invalid_argument`` envelope here instead of bouncing off
-    a deeper validation layer.
-
-    Returns:
-        Resulting integer.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key)
-    if not isinstance(raw, int) or isinstance(raw, bool):
-        raise ArgumentValidationError(key, _TY_INT)
-    if positive and raw < 1:
-        raise ArgumentValidationError(key, _TY_INT)
-    return raw
 
 
 async def _workflow_versions_list(
@@ -131,8 +98,6 @@ async def _workflow_versions_list(
     return ok(data=dump_many(page), pagination=meta)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
-# `revision` int, but WorkflowVersionsGetArgs declares the field `version_num`.
 async def _workflow_versions_get(
     *,
     app_state: AppState,
@@ -149,8 +114,9 @@ async def _workflow_versions_get(
     if service is None:
         return capability_gap(tool, _WHY_VERSION_SERVICE)
     try:
-        def_id = require_non_blank(arguments, _ARG_DEF_ID)
-        revision = _require_int(arguments, _ARG_REVISION, positive=True)
+        get_args = typed_args(arguments, WorkflowVersionsGetArgs)
+        def_id = get_args.workflow_id
+        revision = get_args.revision
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)

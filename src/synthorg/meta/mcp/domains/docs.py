@@ -17,7 +17,12 @@ from synthorg.meta.mcp.domains._docs_args import (
     DocsSearchArgs,
     DocsWriteArgs,
 )
-from synthorg.meta.mcp.tool_builder import admin_tool, read_tool
+from synthorg.meta.mcp.tool_builder import (
+    ADMIN_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_REQUIRED,
+    admin_tool,
+    read_tool,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
@@ -81,8 +86,16 @@ DOCS_TOOLS: tuple[MCPToolDef, ...] = (
                 "description": "Existing slug to update; null to create",
                 "minLength": 1,
             },
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("project_id", "title", "doc_type", "author_agent_id", "body"),
+        required=(
+            "project_id",
+            "title",
+            "doc_type",
+            "author_agent_id",
+            "body",
+            *ADMIN_GUARDRAIL_REQUIRED,
+        ),
         args_model=DocsWriteArgs,
     ),
     read_tool(
@@ -117,7 +130,12 @@ DOCS_TOOLS: tuple[MCPToolDef, ...] = (
                 ],
             },
             "tag": {"type": ["string", "null"], "minLength": 1},
-            "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500,
+                "default": 100,
+            },
             "offset": {"type": "integer", "minimum": 0},
         },
         required=("project_id",),

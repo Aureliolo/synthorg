@@ -57,12 +57,19 @@ class _ProviderNameArgs(_ArgsBase):
     provider_name: NotBlankStr = Field(description="Provider name")
 
 
-class ProvidersGetArgs(_ProviderNameArgs):
+class ProvidersGetArgs(_ArgsBase):
     """Args for ``providers.get``."""
 
+    provider_id: NotBlankStr = Field(description="Provider ID")
 
-class ProvidersGetHealthArgs(_ProviderNameArgs):
+
+class ProvidersGetHealthArgs(_ArgsBase):
     """Args for ``providers.get_health``."""
+
+    provider_id: NotBlankStr | None = Field(
+        default=None,
+        description="Provider ID (omit for the org-wide roll-up)",
+    )
 
 
 class ProvidersTestConnectionArgs(_ProviderNameArgs, AdminGuardrailFields):
@@ -75,8 +82,8 @@ class BackupCreateArgs(AdminGuardrailFields):
     trigger: NotBlankStr = Field(description="What initiated the backup")
 
 
-class BackupListArgs(_ArgsBase):
-    """Args for ``backup.list``: no fields."""
+class BackupListArgs(PaginationFields):
+    """Args for ``backup.list``."""
 
 
 class _BackupIdArgs(_ArgsBase):
@@ -206,12 +213,24 @@ class ProjectsCreateArgs(_ArgsBase):
 
     name: NotBlankStr = Field(description="Project name")
     description: str = Field(default="", description="Project description")
+    metadata: dict[str, str] | None = Field(
+        default=None,
+        description="Free-form project metadata",
+    )
 
 
 class ProjectsUpdateArgs(_ProjectIdArgs):
     """Args for ``projects.update``."""
 
-    updates: dict[str, object] = Field(description="Fields to update")
+    name: NotBlankStr | None = Field(default=None, description="New name")
+    description: NotBlankStr | None = Field(
+        default=None,
+        description="New description",
+    )
+    metadata: dict[str, str] | None = Field(
+        default=None,
+        description="Free-form project metadata",
+    )
 
 
 class ProjectsDeleteArgs(_ProjectIdArgs, AdminGuardrailFields):
@@ -235,8 +254,8 @@ class RequestsGetArgs(_ArgsBase):
 class RequestsCreateArgs(_ArgsBase):
     """Args for ``requests.create``."""
 
-    type: NotBlankStr = Field(description="Request type")
-    content: str = Field(description="Request content")
+    title: NotBlankStr = Field(description="Request title")
+    body: NotBlankStr = Field(description="Request body")
 
 
 class SetupGetStatusArgs(_ArgsBase):
@@ -307,4 +326,4 @@ class IntegrationHealthGetAllArgs(_ArgsBase):
 class IntegrationHealthGetArgs(_ArgsBase):
     """Args for ``integration_health.get``."""
 
-    integration_name: NotBlankStr = Field(description="Integration name")
+    integration_id: NotBlankStr = Field(description="Integration ID")

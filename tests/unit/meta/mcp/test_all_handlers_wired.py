@@ -1,17 +1,17 @@
 """Acceptance sweep: every MCP handler is wired and returns a valid envelope.
 
-This is the final acceptance test for META-MCP-1.  It asserts:
+Acceptance sweep over the full MCP handler surface.  It asserts:
 
 1. **Handler count parity** -- every tool in the registry has a
    concrete entry in ``build_handler_map()``.
 2. **No placeholder remains** -- invoking each handler with a basic
    arg set returns an envelope whose ``status`` is ``"ok"`` or
    ``"error"``, never ``"not_implemented"``.  The placeholder
-   scaffold only fires for tools added after PR1 that haven't been
-   given a real handler yet; after META-MCP-1 the full 210-tool
-   surface is covered by real handlers, even if many of them return
-   a structured ``not_supported`` error envelope because the
-   underlying service layer isn't yet exposed on ``app_state``.
+   scaffold only fires for a newly registered tool that has not been
+   given a real handler yet; the full tool surface is covered by real
+   handlers, even if many of them return a structured ``not_supported``
+   error envelope because the underlying service layer isn't yet
+   exposed on ``app_state``.
 3. **Destructive ops enforce guardrails** -- the canonical
    destructive-op list (defined inline) is callable without
    ``confirm``/``reason`` and returns ``domain_code="guardrail_violated"``.
@@ -121,8 +121,8 @@ def fake_app_state() -> AppState:
     registry.list_active.return_value = ()
     registry.get_by_name.return_value = None
     registry.get.return_value = None
-    # META-MCP-3 write methods need Pydantic-shaped returns so the
-    # handler's ``.model_dump()`` does not blow up on AsyncMock returns.
+    # Write methods need Pydantic-shaped returns so the handler's
+    # ``.model_dump()`` does not blow up on AsyncMock returns.
     registry.apply_identity_update.return_value = make_test_actor(name="alpha")
     registry.update_autonomy.return_value = AutonomyUpdateResult(
         agent_id=NotBlankStr("agent-1"),
@@ -213,8 +213,8 @@ class TestNoPlaceholderInProduction:
     """No real call path returns the legacy placeholder envelope.
 
     ``status == "not_implemented"`` would indicate the old scaffold
-    placeholder is still registered for that tool -- the acceptance
-    criteria forbids that for META-MCP-1.
+    placeholder is still registered for that tool, which the wired-handler
+    contract forbids.
     """
 
     @pytest.mark.parametrize(

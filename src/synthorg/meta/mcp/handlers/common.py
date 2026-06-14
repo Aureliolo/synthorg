@@ -348,8 +348,8 @@ def capability_gap(tool_name: str, reason: str) -> str:
     service facade is still a placeholder" (:func:`service_fallback`).
 
     ``MCP_HANDLER_SERVICE_FALLBACK`` is reserved for the legacy
-    ``service_fallback`` helper; META-MCP-2 acceptance asserts zero
-    emissions of that event at runtime.
+    ``service_fallback`` helper and must never be emitted at runtime;
+    every live handler routes through a real service.
 
     Args:
         tool_name: Full ``synthorg_<domain>_<action>`` name.

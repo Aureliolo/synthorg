@@ -19,19 +19,20 @@ from synthorg.infrastructure.state import (
     oauth_facade_service_of,
 )
 from synthorg.meta.mcp.domains._remaining_args import (
+    ClientsCreateArgs,
+    ClientsDeactivateArgs,
     ClientsGetArgs,
     ClientsGetSatisfactionArgs,
     ClientsListArgs,
+    OauthConfigureProviderArgs,
+    OauthRemoveProviderArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
-from synthorg.meta.mcp.handlers._integrations_helpers import _get_list_str
 from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _map_capability,
-    _require_str,
-    _require_uuid,
     _to_jsonable,
     typed_args,
 )
@@ -42,7 +43,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    get_optional_str,
     require_actor_id,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -88,9 +88,6 @@ async def _oauth_list_providers(
     return ok([_to_jsonable(p) for p in providers])
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads flat
-# name/client_id/authorize_url/token_url/scopes, but OauthConfigureProviderArgs
-# declares provider + an opaque `config` dict.
 async def _oauth_configure_provider(
     *,
     app_state: AppState,
@@ -105,17 +102,13 @@ async def _oauth_configure_provider(
     """
     tool = "synthorg_oauth_configure_provider"
     try:
-        name = _require_str(arguments, "name")
-        client_id = _require_str(arguments, "client_id")
-        authorize_url = _require_str(arguments, "authorize_url")
-        token_url = _require_str(arguments, "token_url")
-        scopes = _get_list_str(arguments, "scopes")
+        args = typed_args(arguments, OauthConfigureProviderArgs)
         record = await oauth_facade_service_of(app_state).configure_provider(
-            name=name,
-            client_id=client_id,
-            authorize_url=authorize_url,
-            token_url=token_url,
-            scopes=scopes,
+            name=args.name,
+            client_id=args.client_id,
+            authorize_url=args.authorize_url,
+            token_url=args.token_url,
+            scopes=args.scopes,
             actor_id=require_actor_id(actor),
         )
     except CapabilityNotSupportedError as exc:
@@ -130,9 +123,6 @@ async def _oauth_configure_provider(
     return ok(record.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads `name`
-# and enforces guardrails, but OauthRemoveProviderArgs declares `provider` and no
-# AdminGuardrailFields.
 async def _oauth_remove_provider(
     *,
     app_state: AppState,
@@ -147,7 +137,7 @@ async def _oauth_remove_provider(
     tool = "synthorg_oauth_remove_provider"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        name = _require_str(arguments, "name")
+        name = typed_args(arguments, OauthRemoveProviderArgs).name
         actor_id = require_actor_id(resolved_actor)
         removed = await oauth_facade_service_of(app_state).remove_provider(
             name=name,
@@ -247,8 +237,6 @@ async def _clients_get(
     return ok(client.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# contact_email + notes, but ClientsCreateArgs declares only `name`.
 async def _clients_create(
     *,
     app_state: AppState,
@@ -263,14 +251,12 @@ async def _clients_create(
     """
     tool = "synthorg_clients_create"
     try:
-        name = _require_str(arguments, "name")
-        contact_email = get_optional_str(arguments, "contact_email")
-        notes = get_optional_str(arguments, "notes")
+        args = typed_args(arguments, ClientsCreateArgs)
         client = await client_facade_service_of(app_state).create_client(
-            name=name,
+            name=args.name,
             actor_id=require_actor_id(actor),
-            contact_email=contact_email,
-            notes=notes,
+            contact_email=args.contact_email,
+            notes=args.notes,
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -284,8 +270,6 @@ async def _clients_create(
     return ok(client.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler enforces
-# require_admin_guardrails but ClientsDeactivateArgs declares no AdminGuardrailFields.
 async def _clients_deactivate(
     *,
     app_state: AppState,
@@ -296,11 +280,18 @@ async def _clients_deactivate(
 
     Returns:
         Resulting string.
+
+    Raises:
+        ArgumentValidationError: When ``client_id`` is not a UUID string.
     """
     tool = "synthorg_clients_deactivate"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        client_id = _require_uuid(arguments, "client_id")
+        client_id = typed_args(arguments, ClientsDeactivateArgs).client_id
+        try:
+            UUID(client_id)
+        except ValueError as uuid_exc:
+            raise ArgumentValidationError(_ARG_CLIENT_ID, _TY_UUID) from uuid_exc
         actor_id = require_actor_id(resolved_actor)
         deactivated = await client_facade_service_of(app_state).deactivate_client(
             client_id=client_id,

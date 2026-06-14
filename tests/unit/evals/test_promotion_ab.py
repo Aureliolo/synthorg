@@ -13,8 +13,7 @@ Only the LLM is a deterministic stand-in (keying solely on the generic
 ``<memory-entry>`` marker). The capture -> store -> retrieve -> inject pipeline
 and the scorer are the real ones, so the score difference is earned, not faked.
 src never imports ``evals``: the gate is pure and this test (in the evals layer)
-supplies the benchmark scores -- the same seam the learning curve uses for
-#1983.
+supplies the benchmark scores -- the same seam the learning curve uses.
 """
 
 import json

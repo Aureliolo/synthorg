@@ -109,7 +109,7 @@ async def test_dispatcher_ignores_idempotent_assigned_updates() -> None:
     Without a ``previous_status != new_status`` guard the dispatcher
     would double-enqueue whenever a downstream observer replays a
     ``TaskStateChanged`` event (e.g. metadata edit on an already-
-    assigned task). Regression guard for PR #1214 review feedback.
+    assigned task).
     """
     queue = _FakeTaskQueue()
     dispatcher = DistributedDispatcher(task_queue=queue)  # type: ignore[arg-type]

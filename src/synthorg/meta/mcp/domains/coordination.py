@@ -89,12 +89,14 @@ COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
         "trigger",
         "Trigger a scaling evaluation.",
         {
-            "reason": {
-                "type": "string",
-                "description": "Reason for triggering scaling",
+            "agent_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "description": "Agents to evaluate for scaling (non-empty)",
             },
         },
-        required=("reason",),
+        required=("agent_ids",),
         args_model=ScalingTriggerArgs,
     ),
     # --- Ceremony policy ---

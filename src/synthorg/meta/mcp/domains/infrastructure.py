@@ -122,9 +122,9 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "get",
         "Get a provider configuration.",
         {
-            "provider_name": {"type": "string", "description": "Provider name"},
+            "provider_id": {"type": "string", "description": "Provider ID"},
         },
-        required=("provider_name",),
+        required=("provider_id",),
         args_model=ProvidersGetArgs,
     ),
     read_tool(
@@ -132,9 +132,11 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "get_health",
         "Get provider health status.",
         {
-            "provider_name": {"type": "string", "description": "Provider name"},
+            "provider_id": {
+                "type": "string",
+                "description": "Provider ID (omit for the org-wide roll-up)",
+            },
         },
-        required=("provider_name",),
         args_model=ProvidersGetHealthArgs,
     ),
     admin_tool(
@@ -170,7 +172,13 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         required=("trigger", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=BackupCreateArgs,
     ),
-    read_tool("backup", "list", "List available backups.", args_model=BackupListArgs),
+    read_tool(
+        "backup",
+        "list",
+        "List available backups.",
+        PAGINATION_PROPERTIES,
+        args_model=BackupListArgs,
+    ),
     read_tool(
         "backup",
         "get",
@@ -334,6 +342,11 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         {
             "name": {"type": "string", "description": "Project name"},
             "description": {"type": "string", "description": "Project description"},
+            "metadata": {
+                "type": "object",
+                "description": "Free-form project metadata (string values)",
+                "additionalProperties": {"type": "string"},
+            },
         },
         required=("name",),
         args_model=ProjectsCreateArgs,
@@ -344,9 +357,15 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "Update a project.",
         {
             "project_id": {"type": "string", "description": "Project UUID"},
-            "updates": {"type": "object", "description": "Fields to update"},
+            "name": {"type": "string", "description": "New name"},
+            "description": {"type": "string", "description": "New description"},
+            "metadata": {
+                "type": "object",
+                "description": "Free-form project metadata (string values)",
+                "additionalProperties": {"type": "string"},
+            },
         },
-        required=("project_id", "updates"),
+        required=("project_id",),
         args_model=ProjectsUpdateArgs,
     ),
     admin_tool(
@@ -383,10 +402,10 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "create",
         "Create a new request.",
         {
-            "type": {"type": "string", "description": "Request type"},
-            "content": {"type": "string", "description": "Request content"},
+            "title": {"type": "string", "description": "Request title"},
+            "body": {"type": "string", "description": "Request body"},
         },
-        required=("type", "content"),
+        required=("title", "body"),
         args_model=RequestsCreateArgs,
     ),
     # --- Setup ---
@@ -489,9 +508,9 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "get",
         "Get health for a specific integration.",
         {
-            "integration_name": {"type": "string", "description": "Integration name"},
+            "integration_id": {"type": "string", "description": "Integration ID"},
         },
-        required=("integration_name",),
+        required=("integration_id",),
         args_model=IntegrationHealthGetArgs,
     ),
 )

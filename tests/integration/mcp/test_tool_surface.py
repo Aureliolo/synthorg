@@ -1,4 +1,4 @@
-"""META-MCP acceptance sweep for the full 242-tool MCP surface.
+"""Acceptance sweep for the full MCP tool surface.
 
 The unit sweep in ``tests/unit/meta/mcp/test_all_handlers_wired.py``
 already asserts parity between the registry and the handler map, and
@@ -8,14 +8,14 @@ sweep layers the acceptance criteria on top:
 1. **Zero ``MCP_HANDLER_SERVICE_FALLBACK`` emissions** for any read or
    invoke path. The legacy ``service_fallback()`` helper stays in
    ``common.py`` for future surgical use, but it must have zero call
-   sites in the handler tree after META-MCP-2.
+   sites in the handler tree.
 2. **Typed capability events are the only ``not_supported`` sources**.
    Every ``not_supported`` wire envelope must be paired with either
    - ``MCP_HANDLER_CAPABILITY_GAP`` (INFO): handler is wired but the
      underlying primitive does not yet expose the required method, or
    - ``MCP_HANDLER_NOT_IMPLEMENTED`` (WARNING): the active backend
-     cannot support the operation at all. META-MCP-4 introduced
-     :class:`MemoryBackendUnsupportedError` + :func:`not_supported` so the
+     cannot support the operation at all.
+     :class:`MemoryBackendUnsupportedError` + :func:`not_supported` let the
      memory fine-tune handlers emit this variant when the wired
      :class:`MemoryService` refuses a lifecycle call.
 
@@ -118,8 +118,8 @@ def fake_app_state() -> AppState:
     registry.list_active.return_value = ()
     registry.get_by_name.return_value = None
     registry.get.return_value = None
-    # META-MCP-3 write facades return Pydantic shapes; AsyncMock returns
-    # would JSON-serialise as coroutines and crash the envelope.
+    # Write facades return Pydantic shapes; AsyncMock returns would
+    # JSON-serialise as coroutines and crash the envelope.
     dummy_identity = make_test_actor(name="alpha")
     registry.apply_identity_update.return_value = dummy_identity
     registry.update_autonomy.return_value = AutonomyUpdateResult(
@@ -199,7 +199,7 @@ _BLAST_ARGS: JsonDict = {
     "target_status": "in_progress",
     "steps": [],
     "status": "pending",
-    # META-MCP-3 write-handler inputs.  ``identity`` and ``definition``
+    # Write-handler inputs.  ``identity`` and ``definition``
     # need to satisfy the live Pydantic validators; the values here are
     # minimal-but-valid so the handlers fall through to the service mocks
     # rather than failing the validation step.
@@ -212,7 +212,7 @@ _BLAST_ARGS: JsonDict = {
 
 
 class TestNoServiceFallbackEvents:
-    """Acceptance gate: zero MCP_HANDLER_SERVICE_FALLBACK events after META-MCP-2."""
+    """Acceptance gate: zero MCP_HANDLER_SERVICE_FALLBACK events."""
 
     async def test_invoking_every_tool_emits_no_service_fallback_event(
         self,
@@ -231,7 +231,7 @@ class TestNoServiceFallbackEvents:
             e for e in events if e.get("event") == MCP_HANDLER_SERVICE_FALLBACK
         ]
         assert not fallback_events, (
-            f"MCP_HANDLER_SERVICE_FALLBACK must be unused after META-MCP-2, "
+            f"MCP_HANDLER_SERVICE_FALLBACK must be unused, "
             f"but {len(fallback_events)} emissions fired: "
             f"{[e.get('tool_name') for e in fallback_events]}"
         )
@@ -267,9 +267,8 @@ class TestNoServiceFallbackEvents:
         # - CAPABILITY_GAP: handler is wired but the primitive does not
         #   expose the method yet (live-handler gap).
         # - NOT_IMPLEMENTED: the active persistence backend cannot
-        #   support the operation at all (META-MCP-4 introduced
-        #   ``MemoryBackendUnsupportedError`` + ``not_supported()`` for
-        #   memory fine-tune sites).
+        #   support the operation at all (``MemoryBackendUnsupportedError``
+        #   + ``not_supported()`` cover the memory fine-tune sites).
         gap_events = [
             e
             for e in events

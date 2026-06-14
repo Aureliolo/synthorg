@@ -257,7 +257,7 @@ API_SHUTDOWN_HANDLER_SKIPPED: Final[str] = "api.shutdown.handler.skipped"
 USER_PRESENCE_CONNECT: Final[str] = "user.presence.connect"
 USER_PRESENCE_DISCONNECT: Final[str] = "user.presence.disconnect"
 
-# Settings import-source classification (Wave 2.B B7)
+# Settings import-source classification.
 API_SETTINGS_VALIDATION_FAILED: Final[str] = "api.settings.validation_failed"
 
 # Boundary typed-parse helper for stringly-typed entry-point migration.
@@ -269,7 +269,7 @@ export). Carries the boundary name, error count, the redacted error
 description, the failing field locations, and a ``truncated`` flag so
 validation failures can be diagnosed without re-running the request."""
 
-# Audit chain entries written from controllers (Wave 2.B B4 / B5 / B6)
+# Audit chain entries written from controllers.
 AGENT_IDENTITY_MODIFIED: Final[str] = "audit.agent.identity_modified"
 AGENT_DELETION_REQUESTED: Final[str] = "audit.agent.deletion_requested"
 """Pre-delete intent audit -- fires BEFORE persistence so the trail

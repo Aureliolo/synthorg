@@ -32,9 +32,11 @@ from synthorg.meta.mcp.domains._simple_args import (
 
 class TestMetaArgs:
     @pytest.mark.unit
-    def test_trigger_cycle_no_fields(self) -> None:
-        args = MetaTriggerCycleArgs()
-        assert args.model_dump() == {}
+    def test_trigger_cycle_requires_guardrails(self) -> None:
+        args = MetaTriggerCycleArgs(confirm=True, reason="manual cycle")
+        assert args.confirm is True
+        with pytest.raises(ValidationError):
+            MetaTriggerCycleArgs.model_validate({})
 
 
 class TestBudgetArgs:
@@ -56,32 +58,50 @@ class TestBudgetArgs:
             BudgetVersionsGetArgs(version_num=0)
 
 
+_SINCE = "2026-01-01T00:00:00+00:00"
+_UNTIL = "2026-01-02T00:00:00+00:00"
+
+
 class TestAnalyticsArgs:
     @pytest.mark.unit
-    def test_trends_period_is_closed(self) -> None:
-        AnalyticsGetTrendsArgs(period="daily")
+    def test_trends_requires_window(self) -> None:
+        args = AnalyticsGetTrendsArgs(
+            since=_SINCE,
+            until=_UNTIL,
+            metric_names=("throughput",),
+        )
+        assert args.metric_names == ("throughput",)
+        # ``until`` is required for trends, and the legacy ``period`` field
+        # is no longer part of the contract.
         with pytest.raises(ValidationError):
-            AnalyticsGetTrendsArgs.model_validate({"period": "yearly"})
+            AnalyticsGetTrendsArgs.model_validate({"since": _SINCE})
+        with pytest.raises(ValidationError):
+            AnalyticsGetTrendsArgs.model_validate(
+                {"since": _SINCE, "until": _UNTIL, "period": "daily"},
+            )
 
     @pytest.mark.unit
     def test_forecast_horizon_bounds(self) -> None:
-        AnalyticsGetForecastArgs(horizon_days=1)
-        AnalyticsGetForecastArgs(horizon_days=90)
+        AnalyticsGetForecastArgs(since=_SINCE, until=_UNTIL, horizon_days=1)
+        AnalyticsGetForecastArgs(since=_SINCE, until=_UNTIL, horizon_days=90)
         with pytest.raises(ValidationError):
-            AnalyticsGetForecastArgs(horizon_days=91)
+            AnalyticsGetForecastArgs(since=_SINCE, until=_UNTIL, horizon_days=91)
 
     @pytest.mark.unit
     def test_reports_generate(self) -> None:
-        args = ReportsGenerateArgs(report_type="weekly")
-        assert args.parameters == {}
+        args = ReportsGenerateArgs(template="weekly")
+        assert args.options is None
 
 
 class TestCoordinationArgs:
     @pytest.mark.unit
-    def test_scaling_trigger_requires_reason(self) -> None:
-        ScalingTriggerArgs(reason="test")
+    def test_scaling_trigger_requires_agent_ids(self) -> None:
+        args = ScalingTriggerArgs(agent_ids=("agent-1",))
+        assert args.agent_ids == ("agent-1",)
         with pytest.raises(ValidationError):
-            ScalingTriggerArgs(reason="   ")
+            ScalingTriggerArgs.model_validate({"agent_ids": []})
+        with pytest.raises(ValidationError):
+            ScalingTriggerArgs.model_validate({"agent_ids": ["   "]})
 
     @pytest.mark.unit
     def test_ceremony_resolved_optional_dept(self) -> None:
@@ -91,31 +111,44 @@ class TestCoordinationArgs:
 
 class TestQualityArgs:
     @pytest.mark.unit
-    def test_review_score_bounds(self) -> None:
-        ReviewsCreateArgs(task_id="t1", score=0.0)
-        ReviewsCreateArgs(task_id="t1", score=1.0)
+    def test_review_create_fields(self) -> None:
+        args = ReviewsCreateArgs(task_id="t1", verdict="approve")
+        assert args.comments is None
+        args_with_comment = ReviewsCreateArgs(
+            task_id="t1",
+            verdict="approve",
+            comments="looks good",
+        )
+        assert args_with_comment.comments == "looks good"
         with pytest.raises(ValidationError):
-            ReviewsCreateArgs(task_id="t1", score=1.1)
-        with pytest.raises(ValidationError):
-            ReviewsCreateArgs(task_id="t1", score=-0.1)
+            ReviewsCreateArgs.model_validate({"task_id": "t1"})
 
 
 class TestSignalsArgs:
     @pytest.mark.unit
-    def test_window_days_default(self) -> None:
-        args = SignalsGetOrgSnapshotArgs()
-        assert args.window_days == 7
+    def test_snapshot_requires_since_until_optional(self) -> None:
+        args = SignalsGetOrgSnapshotArgs(since="2026-01-01T00:00:00+00:00")
+        assert args.since == "2026-01-01T00:00:00+00:00"
+        assert args.until is None
+        with pytest.raises(ValidationError):
+            SignalsGetOrgSnapshotArgs.model_validate({})
 
     @pytest.mark.unit
     def test_proposals_status_closed(self) -> None:
-        SignalsGetProposalsArgs(status="pending")
+        SignalsGetProposalsArgs.model_validate({"status": "pending"})
         with pytest.raises(ValidationError):
             SignalsGetProposalsArgs.model_validate({"status": "draft"})
 
     @pytest.mark.unit
-    def test_submit_proposal_default_trigger(self) -> None:
-        args = SignalsSubmitProposalArgs()
-        assert args.trigger == "manual"
+    def test_submit_proposal_requires_guardrails_and_proposal(self) -> None:
+        args = SignalsSubmitProposalArgs(
+            confirm=True,
+            reason="ship it",
+            proposal={"title": "x"},
+        )
+        assert args.proposal == {"title": "x"}
+        with pytest.raises(ValidationError):
+            SignalsSubmitProposalArgs.model_validate({})
 
 
 class TestApprovalsArgs:

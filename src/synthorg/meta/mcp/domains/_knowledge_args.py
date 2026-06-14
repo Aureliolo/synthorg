@@ -10,6 +10,7 @@ from synthorg.knowledge.constants import (
     KNOWLEDGE_SEARCH_MAX_LIMIT,
 )
 from synthorg.knowledge.enums import SourceType
+from synthorg.meta.mcp.domains._common_args import AdminGuardrailFields
 
 
 class KnowledgeSearchArgs(BaseModel):
@@ -26,10 +27,8 @@ class KnowledgeSearchArgs(BaseModel):
     )
 
 
-class KnowledgeIngestArgs(BaseModel):
-    """Args for ``knowledge:ingest``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+class KnowledgeIngestArgs(AdminGuardrailFields):
+    """Args for ``knowledge:ingest`` (destructive admin op)."""
 
     project_id: NotBlankStr | None = Field(
         default=None, description="Owning project (null ingests a global source)"
@@ -39,10 +38,8 @@ class KnowledgeIngestArgs(BaseModel):
     title: NotBlankStr = Field(description="Human-readable source title")
 
 
-class KnowledgeReindexArgs(BaseModel):
-    """Args for ``knowledge:reindex``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+class KnowledgeReindexArgs(AdminGuardrailFields):
+    """Args for ``knowledge:reindex`` (destructive admin op)."""
 
     source_id: NotBlankStr = Field(description="Source to force-reindex")
 
@@ -75,9 +72,7 @@ class KnowledgeGetArgs(BaseModel):
     source_id: NotBlankStr = Field(description="Source identifier")
 
 
-class KnowledgeDeleteArgs(BaseModel):
-    """Args for ``knowledge:delete``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+class KnowledgeDeleteArgs(AdminGuardrailFields):
+    """Args for ``knowledge:delete`` (destructive admin op)."""
 
     source_id: NotBlankStr = Field(description="Source to delete + purge")

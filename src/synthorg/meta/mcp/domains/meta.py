@@ -13,7 +13,13 @@ from synthorg.meta.mcp.domains._simple_args import (
     MetaQueryFeatureMapArgs,
     MetaTriggerCycleArgs,
 )
-from synthorg.meta.mcp.tool_builder import admin_tool, read_tool
+from synthorg.meta.mcp.tool_builder import (
+    ADMIN_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_REQUIRED,
+    PAGINATION_PROPERTIES,
+    admin_tool,
+    read_tool,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
@@ -29,6 +35,7 @@ META_TOOLS: tuple[MCPToolDef, ...] = (
         "meta",
         "list_rules",
         "List self-improvement rules with their status.",
+        PAGINATION_PROPERTIES,
         args_model=MetaListRulesArgs,
     ),
     read_tool(
@@ -47,6 +54,8 @@ META_TOOLS: tuple[MCPToolDef, ...] = (
         "meta",
         "trigger_cycle",
         "Manually trigger a self-improvement cycle.",
+        dict(ADMIN_GUARDRAIL_PROPERTIES),
+        required=ADMIN_GUARDRAIL_REQUIRED,
         args_model=MetaTriggerCycleArgs,
     ),
     read_tool(

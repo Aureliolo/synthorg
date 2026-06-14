@@ -470,9 +470,8 @@ class ArtifactController(Controller):
         except Exception as exc:
             reraise_critical(exc)
             # Catch-all so any other backend / storage failure leaves an
-            # operator-visible breadcrumb on the standardized error path
-            # this PR is widening; the original exception still
-            # propagates with type intact.
+            # operator-visible breadcrumb on the standardized error path;
+            # the original exception still propagates with type intact.
             logger.warning(
                 PERSISTENCE_ARTIFACT_STORE_FAILED,
                 artifact_id=artifact_id,

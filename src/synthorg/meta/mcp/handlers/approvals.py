@@ -32,7 +32,10 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
 from synthorg.meta.mcp.domains._simple_args import (
+    ApprovalsApproveArgs,
+    ApprovalsCreateArgs,
     ApprovalsGetArgs,
+    ApprovalsListArgs,
     ApprovalsRejectArgs,
 )
 from synthorg.meta.mcp.errors import (
@@ -52,9 +55,7 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
-    coerce_pagination,
     require_actor_id,
-    require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -95,63 +96,9 @@ class _ConflictError(
     domain_code = "conflict"
 
 
-# --- argument coercion helpers ---------------------------------------------
-
-
-_TY_STRING = "string"
-_TY_NON_BLANK = "non-blank string"
-_TY_STATUS = "ApprovalStatus"
-_TY_RISK = "ApprovalRiskLevel"
-_ARG_STATUS = "status"
-_ARG_TITLE = "title"
-_ARG_COMMENT = "comment"
-_ARG_ACTION_TYPE = "action_type"
-_ARG_RISK_LEVEL = "risk_level"
-
-
-def _coerce_status(raw: object) -> ApprovalStatus | None:
-    """Map a string argument to ``ApprovalStatus`` or raise.
-
-    Returns:
-        The ``ApprovalStatus`` value when present, ``None`` otherwise.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    if raw is None:
-        return None
-    if not isinstance(raw, str):
-        raise ArgumentValidationError(_ARG_STATUS, _TY_STRING)
-    try:
-        return ApprovalStatus(raw)
-    except ValueError as exc:
-        raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS) from exc
-
-
-def _coerce_risk(raw: object, *, field: str = "risk_level") -> ApprovalRiskLevel | None:
-    """Map a string argument to ``ApprovalRiskLevel`` or raise.
-
-    Returns:
-        The ``ApprovalRiskLevel`` value when present, ``None`` otherwise.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    if raw is None:
-        return None
-    if not isinstance(raw, str):
-        raise ArgumentValidationError(field, _TY_STRING)
-    try:
-        return ApprovalRiskLevel(raw)
-    except ValueError as exc:
-        raise ArgumentValidationError(field, _TY_RISK) from exc
-
-
 # --- handlers --------------------------------------------------------------
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler coerces risk_level to
-# the ApprovalRiskLevel enum but ApprovalsListArgs.risk_level is a string Literal.
 async def _list_approvals(
     *,
     app_state: AppState,
@@ -162,26 +109,17 @@ async def _list_approvals(
 
     Returns:
         Resulting string.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
     """
     tool = "synthorg_approvals_list"
 
-    # Arg parsing (may raise ArgumentValidationError).
     try:
-        status = _coerce_status(arguments.get("status"))
-        risk = _coerce_risk(arguments.get("risk_level"))
-        action_type_raw = arguments.get("action_type")
-        action_type: str | None = None
-        if action_type_raw is not None:
-            if not isinstance(action_type_raw, str) or not action_type_raw.strip():
-                raise ArgumentValidationError(_ARG_ACTION_TYPE, _TY_NON_BLANK)
-            action_type = action_type_raw.strip()
-        offset, limit = coerce_pagination(arguments)
+        args = typed_args(arguments, ApprovalsListArgs)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
+
+    status = ApprovalStatus(args.status) if args.status is not None else None
+    risk = ApprovalRiskLevel(args.risk_level) if args.risk_level is not None else None
 
     # Service call (isolated so domain errors log at WARNING).  Argument
     # validation is already complete above, so any failure here is a
@@ -190,9 +128,9 @@ async def _list_approvals(
         items = await approval_store_of(app_state).list_items(
             status=status,
             risk_level=risk,
-            action_type=action_type,
+            action_type=args.action_type,
         )
-        page, meta = paginate_sequence(items, offset=offset, limit=limit)
+        page, meta = paginate_sequence(items, offset=args.offset, limit=args.limit)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
@@ -237,8 +175,6 @@ async def _get_approval(
     return ok(data=item.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler defaults title to
-# description[:80] when absent but ApprovalsCreateArgs makes title a required field.
 async def _create_approval(
     *,
     app_state: AppState,
@@ -257,28 +193,20 @@ async def _create_approval(
 
     try:
         requested_by = require_actor_id(actor)
-        action_type = require_non_blank(arguments, "action_type")
-        description = require_non_blank(arguments, "description")
-        title_raw = arguments.get("title")
-        if title_raw is None:
-            title = description[:80]
-        elif not isinstance(title_raw, str) or not title_raw.strip():
-            raise ArgumentValidationError(_ARG_TITLE, _TY_NON_BLANK)
-        else:
-            title = title_raw
-        risk = _coerce_risk(arguments.get("risk_level", "medium"))
-        if risk is None:
-            raise ArgumentValidationError(_ARG_RISK_LEVEL, _TY_RISK)
+        args = typed_args(arguments, ApprovalsCreateArgs)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
 
+    title = args.title if args.title is not None else args.description[:80]
+    risk = ApprovalRiskLevel(args.risk_level)
+
     now = datetime.now(UTC)
     item = ApprovalItem(
         id=uuid4(),
-        action_type=action_type,
+        action_type=args.action_type,
         title=title,
-        description=description,
+        description=args.description,
         requested_by=requested_by,
         risk_level=risk,
         created_at=now,
@@ -357,8 +285,6 @@ async def _decide(
     return saved
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler treats absent comment
-# as None (reason=None) but ApprovalsApproveArgs defaults comment to "" (reason="").
 async def _approve(
     *,
     app_state: AppState,
@@ -376,10 +302,7 @@ async def _approve(
     tool = "synthorg_approvals_approve"
 
     try:
-        approval_id = require_non_blank(arguments, "approval_id")
-        comment = arguments.get("comment")
-        if comment is not None and not isinstance(comment, str):
-            raise ArgumentValidationError(_ARG_COMMENT, _TY_STRING)
+        args = typed_args(arguments, ApprovalsApproveArgs)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -387,10 +310,10 @@ async def _approve(
     try:
         saved = await _decide(
             app_state=app_state,
-            approval_id=approval_id,
+            approval_id=args.approval_id,
             actor=actor,
             target=ApprovalStatus.APPROVED,
-            reason=comment,
+            reason=args.comment,
         )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)

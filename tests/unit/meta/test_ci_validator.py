@@ -1,7 +1,7 @@
 """Unit tests for local CI validator."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -168,6 +168,10 @@ class TestLocalCIValidator:
                 raise TimeoutError
 
             proc.communicate = slow_communicate
+            # ``Process.kill`` is synchronous on a real subprocess; keep it a
+            # plain mock so the timeout path's un-awaited ``proc.kill()`` does
+            # not leave a dangling coroutine for the GC to warn about.
+            proc.kill = MagicMock()
             return proc
 
         with (

@@ -470,14 +470,14 @@
     },
     "src/synthorg/engine/workflow/execution_lifecycle.py": {
       "cap": 700,
-      "loc": 700,
-      "ratio": 1.0,
+      "loc": 701,
+      "ratio": 1.001,
       "tier": "adapter"
     },
     "src/synthorg/engine/workflow/execution_service.py": {
       "cap": 700,
-      "loc": 627,
-      "ratio": 0.896,
+      "loc": 629,
+      "ratio": 0.899,
       "tier": "adapter"
     },
     "src/synthorg/engine/workflow/service.py": {
@@ -740,20 +740,20 @@
     },
     "src/synthorg/meta/mcp/domains/infrastructure.py": {
       "cap": 500,
-      "loc": 479,
-      "ratio": 0.958,
+      "loc": 498,
+      "ratio": 0.996,
       "tier": "code"
     },
     "src/synthorg/meta/mcp/handlers/common_args.py": {
       "cap": 500,
-      "loc": 440,
-      "ratio": 0.88,
+      "loc": 468,
+      "ratio": 0.936,
       "tier": "code"
     },
     "src/synthorg/meta/mcp/handlers/tasks.py": {
       "cap": 500,
-      "loc": 483,
-      "ratio": 0.966,
+      "loc": 403,
+      "ratio": 0.806,
       "tier": "code"
     },
     "src/synthorg/meta/rollout/ab_test.py": {
@@ -812,8 +812,8 @@
     },
     "src/synthorg/organization/services.py": {
       "cap": 600,
-      "loc": 563,
-      "ratio": 0.938,
+      "loc": 576,
+      "ratio": 0.96,
       "tier": "service"
     },
     "src/synthorg/persistence/migrations.py": {
@@ -890,8 +890,8 @@
     },
     "src/synthorg/persistence/postgres/webhook_receipt_repo.py": {
       "cap": 500,
-      "loc": 407,
-      "ratio": 0.814,
+      "loc": 408,
+      "ratio": 0.816,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/workflow_definition_repo.py": {
@@ -980,8 +980,8 @@
     },
     "src/synthorg/persistence/sqlite/webhook_receipt_repo.py": {
       "cap": 500,
-      "loc": 407,
-      "ratio": 0.814,
+      "loc": 408,
+      "ratio": 0.816,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/workflow_definition_repo.py": {
@@ -1106,8 +1106,8 @@
     },
     "src/synthorg/telemetry/collector.py": {
       "cap": 1100,
-      "loc": 1002,
-      "ratio": 0.911,
+      "loc": 1008,
+      "ratio": 0.916,
       "tier": "complex_service"
     },
     "src/synthorg/templates/loader.py": {
@@ -1221,7 +1221,7 @@
     "synthorg.core.registry": 27,
     "synthorg.core.task": 95,
     "synthorg.core.task_enums": 86,
-    "synthorg.core.types": 1081,
+    "synthorg.core.types": 1075,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 81,
@@ -1231,7 +1231,7 @@
     "synthorg.engine.task_engine": 37,
     "synthorg.engine.task_engine_models": 20,
     "synthorg.engine.workflow.definition": 40,
-    "synthorg.engine.workflow.enums": 34,
+    "synthorg.engine.workflow.enums": 35,
     "synthorg.execution.turn": 29,
     "synthorg.hr.enums": 34,
     "synthorg.hr.performance.models": 50,
@@ -1251,12 +1251,12 @@
     "synthorg.memory.protocol": 66,
     "synthorg.meta.chief_of_staff.models": 31,
     "synthorg.meta.config": 20,
-    "synthorg.meta.mcp.domains._remaining_args": 23,
-    "synthorg.meta.mcp.errors": 56,
+    "synthorg.meta.mcp.domains._remaining_args": 25,
+    "synthorg.meta.mcp.errors": 55,
     "synthorg.meta.mcp.handler_protocol": 45,
-    "synthorg.meta.mcp.handlers._mcp_handler_common": 41,
+    "synthorg.meta.mcp.handlers._mcp_handler_common": 45,
     "synthorg.meta.mcp.handlers.common": 53,
-    "synthorg.meta.mcp.handlers.common_args": 43,
+    "synthorg.meta.mcp.handlers.common_args": 37,
     "synthorg.meta.mcp.handlers.common_logging": 48,
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
@@ -1477,7 +1477,7 @@
     },
     "synthorg.telemetry.collector:TelemetryCollector": {
       "lcom4": 1,
-      "loc": 497
+      "loc": 503
     },
     "synthorg.tools.browser.browser_tool:BrowserTool": {
       "lcom4": 1,

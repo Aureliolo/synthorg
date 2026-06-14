@@ -30,6 +30,7 @@ from synthorg.meta.mcp.domains._agents_args import (
     PersonalitiesListArgs,
     TrainingGetSessionArgs,
     TrainingListSessionsArgs,
+    TrainingStartSessionArgs,
 )
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
@@ -39,9 +40,6 @@ from synthorg.meta.mcp.handlers.common import (
     dump_many,
     err,
     ok,
-)
-from synthorg.meta.mcp.handlers.common_args import (
-    require_non_blank,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -209,9 +207,6 @@ async def _training_get_session(
     return ok(data=session.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler builds a
-# TrainingPlan via the custom _parse_training_plan(arguments); TrainingStartSessionArgs
-# captures the inputs but needs an args-model -> TrainingPlan adapter to migrate.
 async def _training_start_session(
     *,
     app_state: AppState,
@@ -225,7 +220,7 @@ async def _training_start_session(
     """
     tool = "synthorg_training_start_session"
     try:
-        plan = _parse_training_plan(arguments)
+        plan = _build_training_plan(typed_args(arguments, TrainingStartSessionArgs))
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -241,12 +236,14 @@ async def _training_start_session(
     return ok(data=result.model_dump(mode="json"))
 
 
-def _parse_training_plan(arguments: dict[str, object]) -> TrainingPlan:
-    """Construct a :class:`TrainingPlan` from MCP arguments.
+def _build_training_plan(args: TrainingStartSessionArgs) -> TrainingPlan:
+    """Construct a :class:`TrainingPlan` from validated MCP args.
 
     The MCP tool only surfaces the fields a caller needs to launch a
     fresh training session; richer fields (volume caps, custom
-    selectors) stay at their :class:`TrainingPlan` defaults.
+    selectors) stay at their :class:`TrainingPlan` defaults. The
+    closed-enum ``new_agent_level`` / ``enabled_content_types`` Literals
+    are mapped onto their domain enums.
 
     Returns:
         ``TrainingPlan`` instance.
@@ -254,49 +251,18 @@ def _parse_training_plan(arguments: dict[str, object]) -> TrainingPlan:
     Raises:
         ArgumentValidationError: Raised on the corresponding failure path.
     """
-    arg_level = "new_agent_level"
-    arg_enabled = "enabled_content_types"
     arg_plan = "plan"
-    expected_level = "one of junior/mid/senior"
-    expected_enabled_list = "list of content type strings"
-    expected_enabled_values = (
-        "list of content type strings (procedural/semantic/tool_patterns)"
+    enabled = (
+        frozenset(ContentType(v) for v in args.enabled_content_types)
+        if args.enabled_content_types
+        else frozenset(ContentType)
     )
-    new_agent_id = require_non_blank(arguments, "new_agent_id")
-    new_agent_role = require_non_blank(arguments, "new_agent_role")
-    raw_level = require_non_blank(arguments, arg_level)
-    try:
-        level = SeniorityLevel(raw_level)
-    except ValueError as exc:
-        raise ArgumentValidationError(arg_level, expected_level) from exc
-    department: NotBlankStr | None = None
-    arg_department = "new_agent_department"
-    expected_department = "non-blank string"
-    if arg_department in arguments:
-        department_raw = arguments[arg_department]
-        if department_raw is not None:
-            # Reject present-but-malformed values (e.g. ``""`` or a
-            # non-string); silently dropping them would change the
-            # plan the caller intended to submit.
-            if not isinstance(department_raw, str) or not department_raw.strip():
-                raise ArgumentValidationError(arg_department, expected_department)
-            department = NotBlankStr(department_raw.strip())
-    enabled_raw = arguments.get("enabled_content_types")
-    if enabled_raw is None:
-        enabled = frozenset(ContentType)
-    else:
-        if not isinstance(enabled_raw, (list, tuple)):
-            raise ArgumentValidationError(arg_enabled, expected_enabled_list)
-        try:
-            enabled = frozenset(ContentType(v) for v in enabled_raw)
-        except ValueError as exc:
-            raise ArgumentValidationError(arg_enabled, expected_enabled_values) from exc
     try:
         return TrainingPlan(
-            new_agent_id=NotBlankStr(new_agent_id),
-            new_agent_role=NotBlankStr(new_agent_role),
-            new_agent_level=level,
-            new_agent_department=department,
+            new_agent_id=args.new_agent_id,
+            new_agent_role=args.new_agent_role,
+            new_agent_level=SeniorityLevel(args.new_agent_level),
+            new_agent_department=args.new_agent_department,
             enabled_content_types=enabled,
             created_at=datetime.now(UTC),
         )

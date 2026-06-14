@@ -37,7 +37,7 @@ DETECTOR_SCOPE_MISMATCH: Final[str] = "classification.detector.scope_mismatch"
 # Notification rate limiting events
 NOTIFICATION_RATE_LIMITED: Final[str] = "classification.notification.rate_limited"
 
-# Taxonomy store events (META-MCP-2: feeds SignalsService error aggregator)
+# Taxonomy store events (feed the SignalsService error aggregator).
 TAXONOMY_STORE_APPENDED: Final[str] = "classification.taxonomy_store.appended"
 TAXONOMY_STORE_EVICTED: Final[str] = "classification.taxonomy_store.evicted"
 TAXONOMY_STORE_APPEND_FAILED: Final[str] = "classification.taxonomy_store.append_failed"

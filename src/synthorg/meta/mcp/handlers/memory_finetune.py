@@ -19,18 +19,18 @@ from synthorg.memory.service import (
     FineTuneRunNotResumableError,
 )
 from synthorg.meta.mcp.domains._remaining_args import (
+    MemoryGetFineTuneStatusArgs,
     MemoryListRunsArgs,
     MemoryResumeFineTuneArgs,
+    MemoryRunPreflightArgs,
+    MemoryStartFineTuneArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
-from synthorg.meta.mcp.handlers._memory_finetune_parse import parse_fine_tune_plan
 from synthorg.meta.mcp.handlers._memory_service_helpers import (
-    _ARG_RUN_ID,
-    _TY_NON_BLANK,
     _service,
 )
 from synthorg.meta.mcp.handlers.common import (
@@ -61,9 +61,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler builds a
-# FineTunePlan via the custom parse_fine_tune_plan(arguments); migrating needs an
-# args-model -> FineTunePlan adapter on MemoryStartFineTuneArgs (_FineTunePlanFields).
 async def _memory_start_fine_tune(
     *,
     app_state: AppState,
@@ -82,7 +79,7 @@ async def _memory_start_fine_tune(
     tool = "synthorg_memory_start_fine_tune"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        plan = parse_fine_tune_plan(arguments)
+        plan = typed_args(arguments, MemoryStartFineTuneArgs).to_plan()
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
@@ -169,8 +166,6 @@ async def _memory_resume_fine_tune(
     return ok(data=run.model_dump(mode="json"))
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads an
-# optional `run_id`, but MemoryGetFineTuneStatusArgs declares no fields.
 async def _memory_get_fine_tune_status(
     *,
     app_state: AppState,
@@ -183,14 +178,11 @@ async def _memory_get_fine_tune_status(
         JSON-encoded MCP envelope string.
     """
     tool = "synthorg_memory_get_fine_tune_status"
-    run_id_raw = arguments.get(_ARG_RUN_ID)
-    run_id: NotBlankStr | None = None
-    if run_id_raw is not None:
-        if not isinstance(run_id_raw, str) or not run_id_raw.strip():
-            exc = ArgumentValidationError(_ARG_RUN_ID, _TY_NON_BLANK)
-            log_handler_argument_invalid(tool, exc)
-            return err(exc)
-        run_id = NotBlankStr(run_id_raw.strip())
+    try:
+        run_id = typed_args(arguments, MemoryGetFineTuneStatusArgs).run_id
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
     try:
         service = _service(app_state)
         status = await service.get_fine_tune_status(run_id)
@@ -254,9 +246,6 @@ async def _memory_cancel_fine_tune(
     return ok()
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler builds a
-# FineTunePlan via parse_fine_tune_plan(arguments); MemoryRunPreflightArgs
-# (_FineTunePlanFields) needs an args-model -> FineTunePlan adapter to migrate.
 async def _memory_run_preflight(
     *,
     app_state: AppState,
@@ -270,7 +259,7 @@ async def _memory_run_preflight(
     """
     tool = "synthorg_memory_run_preflight"
     try:
-        plan = parse_fine_tune_plan(arguments)
+        plan = typed_args(arguments, MemoryRunPreflightArgs).to_plan()
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)

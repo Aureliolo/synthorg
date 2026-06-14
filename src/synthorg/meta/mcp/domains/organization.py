@@ -26,7 +26,14 @@ from synthorg.meta.mcp.domains._workflows_org_args import (
     TeamsListArgs,
     TeamsUpdateArgs,
 )
-from synthorg.meta.mcp.tool_builder import PAGINATION_PROPERTIES, read_tool, write_tool
+from synthorg.meta.mcp.tool_builder import (
+    ADMIN_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_REQUIRED,
+    PAGINATION_PROPERTIES,
+    admin_tool,
+    read_tool,
+    write_tool,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
@@ -44,9 +51,12 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "update",
         "Update company configuration.",
         {
-            "updates": {"type": "object", "description": "Fields to update"},
+            "payload": {
+                "type": "object",
+                "description": "Company-record patch payload",
+            },
         },
-        required=("updates",),
+        required=("payload",),
         args_model=CompanyUpdateArgs,
     ),
     read_tool(
@@ -60,13 +70,14 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "reorder_departments",
         "Reorder departments.",
         {
-            "order": {
+            "department_ids": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Department names in order",
+                "minItems": 1,
+                "description": "Department IDs in display order",
             },
         },
-        required=("order",),
+        required=("department_ids",),
         args_model=CompanyReorderDepartmentsArgs,
     ),
     # --- Company versions ---
@@ -82,13 +93,13 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "get",
         "Get a specific company config version.",
         {
-            "version_num": {
-                "type": "integer",
-                "description": "Version number",
-                "minimum": 1,
+            "version_id": {
+                "type": "string",
+                "description": "Company version ID",
+                "minLength": 1,
             },
         },
-        required=("version_num",),
+        required=("version_id",),
         args_model=CompanyVersionsGetArgs,
     ),
     # --- Departments ---
@@ -102,11 +113,11 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
     read_tool(
         "departments",
         "get",
-        "Get a department by name.",
+        "Get a department by ID.",
         {
-            "name": {"type": "string", "description": "Department name"},
+            "department_id": {"type": "string", "description": "Department ID"},
         },
-        required=("name",),
+        required=("department_id",),
         args_model=DepartmentsGetArgs,
     ),
     write_tool(
@@ -115,9 +126,13 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "Create a new department.",
         {
             "name": {"type": "string", "description": "Department name"},
-            "description": {"type": "string", "description": "Department description"},
+            "description": {
+                "type": "string",
+                "description": "Department description",
+                "minLength": 1,
+            },
         },
-        required=("name",),
+        required=("name", "description"),
         args_model=DepartmentsCreateArgs,
     ),
     write_tool(
@@ -125,20 +140,26 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "update",
         "Update a department.",
         {
-            "name": {"type": "string", "description": "Department name"},
-            "updates": {"type": "object", "description": "Fields to update"},
+            "department_id": {"type": "string", "description": "Department ID"},
+            "name": {"type": "string", "description": "New name"},
+            "description": {"type": "string", "description": "New description"},
         },
-        required=("name", "updates"),
+        required=("department_id",),
         args_model=DepartmentsUpdateArgs,
     ),
-    write_tool(
+    admin_tool(
         "departments",
         "delete",
-        "Delete a department.",
+        "Delete a department (destructive; requires confirm).",
         {
-            "name": {"type": "string", "description": "Department name"},
+            "department_id": {
+                "type": "string",
+                "description": "Department ID",
+                "minLength": 1,
+            },
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("name",),
+        required=("department_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=DepartmentsDeleteArgs,
     ),
     read_tool(
@@ -146,9 +167,9 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "get_health",
         "Get department health status.",
         {
-            "name": {"type": "string", "description": "Department name"},
+            "department_id": {"type": "string", "description": "Department ID"},
         },
-        required=("name",),
+        required=("department_id",),
         args_model=DepartmentsGetHealthArgs,
     ),
     # --- Teams ---
@@ -175,9 +196,12 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "Create a new team.",
         {
             "name": {"type": "string", "description": "Team name"},
-            "department": {"type": "string", "description": "Parent department"},
+            "department_id": {
+                "type": "string",
+                "description": "Parent department ID",
+            },
         },
-        required=("name", "department"),
+        required=("name",),
         args_model=TeamsCreateArgs,
     ),
     write_tool(
@@ -186,19 +210,28 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "Update a team.",
         {
             "team_id": {"type": "string", "description": "Team UUID"},
-            "updates": {"type": "object", "description": "Fields to update"},
-        },
-        required=("team_id", "updates"),
-        args_model=TeamsUpdateArgs,
-    ),
-    write_tool(
-        "teams",
-        "delete",
-        "Delete a team.",
-        {
-            "team_id": {"type": "string", "description": "Team UUID"},
+            "name": {"type": "string", "description": "New name"},
+            "department_id": {
+                "type": "string",
+                "description": "New parent department ID",
+            },
         },
         required=("team_id",),
+        args_model=TeamsUpdateArgs,
+    ),
+    admin_tool(
+        "teams",
+        "delete",
+        "Delete a team (destructive; requires confirm).",
+        {
+            "team_id": {
+                "type": "string",
+                "description": "Team UUID",
+                "minLength": 1,
+            },
+            **ADMIN_GUARDRAIL_PROPERTIES,
+        },
+        required=("team_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=TeamsDeleteArgs,
     ),
     # --- Role versions ---
@@ -207,10 +240,9 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "list",
         "List role configuration versions.",
         {
-            "role_name": {"type": "string", "description": "Role name"},
+            "role_name": {"type": "string", "description": "Filter by role name"},
             **PAGINATION_PROPERTIES,
         },
-        required=("role_name",),
         args_model=RoleVersionsListArgs,
     ),
     read_tool(
@@ -218,14 +250,13 @@ ORGANIZATION_TOOLS: tuple[MCPToolDef, ...] = (
         "get",
         "Get a specific role version.",
         {
-            "role_name": {"type": "string", "description": "Role name"},
-            "version_num": {
-                "type": "integer",
-                "description": "Version number",
-                "minimum": 1,
+            "version_id": {
+                "type": "string",
+                "description": "Role version ID",
+                "minLength": 1,
             },
         },
-        required=("role_name", "version_num"),
+        required=("version_id",),
         args_model=RoleVersionsGetArgs,
     ),
 )

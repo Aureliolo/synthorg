@@ -11,14 +11,19 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.meta.mcp.domains._workflows_org_args import DepartmentsListArgs
+from synthorg.meta.mcp.domains._workflows_org_args import (
+    DepartmentsCreateArgs,
+    DepartmentsDeleteArgs,
+    DepartmentsGetArgs,
+    DepartmentsGetHealthArgs,
+    DepartmentsListArgs,
+    DepartmentsUpdateArgs,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handlers._mcp_handler_common import (
-    _require_str,
-    _require_uuid,
     typed_args,
 )
 from synthorg.meta.mcp.handlers.common import (
@@ -28,7 +33,6 @@ from synthorg.meta.mcp.handlers.common import (
     require_admin_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    get_optional_str,
     require_actor_id,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -76,8 +80,6 @@ async def _departments_list(
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler keys by UUID
-# `department_id` but DepartmentsGetArgs declares `name`.
 async def _departments_get(
     *,
     app_state: AppState,
@@ -91,7 +93,7 @@ async def _departments_get(
     """
     tool = "synthorg_departments_get"
     try:
-        department_id = _require_uuid(arguments, "department_id")
+        department_id = typed_args(arguments, DepartmentsGetArgs).department_id
         record = await department_service_of(app_state).get_department(department_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -108,9 +110,6 @@ async def _departments_get(
     return ok(record.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler requires a
-# non-blank `description` but DepartmentsCreateArgs makes description optional
-# (default "").
 async def _departments_create(
     *,
     app_state: AppState,
@@ -124,11 +123,10 @@ async def _departments_create(
     """
     tool = "synthorg_departments_create"
     try:
-        name = _require_str(arguments, "name")
-        description = _require_str(arguments, "description")
+        args = typed_args(arguments, DepartmentsCreateArgs)
         record = await department_service_of(app_state).create_department(
-            name=name,
-            description=description,
+            name=args.name,
+            description=args.description,
             actor_id=require_actor_id(actor),
         )
     except ArgumentValidationError as exc:
@@ -141,9 +139,6 @@ async def _departments_create(
     return ok(record.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# department_id + optional name/description, but DepartmentsUpdateArgs declares
-# name + an opaque `updates` dict.
 async def _departments_update(
     *,
     app_state: AppState,
@@ -157,14 +152,13 @@ async def _departments_update(
     """
     tool = "synthorg_departments_update"
     try:
-        department_id = _require_uuid(arguments, "department_id")
-        name = get_optional_str(arguments, "name")
-        description = get_optional_str(arguments, "description")
+        args = typed_args(arguments, DepartmentsUpdateArgs)
+        department_id = args.department_id
         record = await department_service_of(app_state).update_department(
             department_id=department_id,
             actor_id=require_actor_id(actor),
-            name=name,
-            description=description,
+            name=args.name,
+            description=args.description,
         )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -181,9 +175,6 @@ async def _departments_update(
     return ok(record.to_dict())
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler enforces
-# require_admin_guardrails and keys by UUID department_id, but DepartmentsDeleteArgs
-# declares only `name` and no AdminGuardrailFields.
 async def _departments_delete(
     *,
     app_state: AppState,
@@ -198,7 +189,7 @@ async def _departments_delete(
     tool = "synthorg_departments_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        department_id = _require_uuid(arguments, "department_id")
+        department_id = typed_args(arguments, DepartmentsDeleteArgs).department_id
         actor_id = require_actor_id(resolved_actor)
         removed = await department_service_of(app_state).delete_department(
             department_id=department_id,
@@ -227,8 +218,6 @@ async def _departments_delete(
     return ok({"removed": removed})
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler keys by UUID
-# `department_id` but DepartmentsGetHealthArgs declares `name`.
 async def _departments_get_health(
     *,
     app_state: AppState,
@@ -242,7 +231,7 @@ async def _departments_get_health(
     """
     tool = "synthorg_departments_get_health"
     try:
-        department_id = _require_uuid(arguments, "department_id")
+        department_id = typed_args(arguments, DepartmentsGetHealthArgs).department_id
         result = await department_service_of(app_state).get_health(department_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)

@@ -12,6 +12,7 @@ from synthorg.meta.mcp.domains._remaining_args import (
     UsersCreateArgs,
     UsersDeleteArgs,
     UsersGetArgs,
+    UsersUpdateArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -20,7 +21,7 @@ from synthorg.meta.mcp.errors import (
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
-from synthorg.meta.mcp.handlers.common_args import require_actor_id, require_dict
+from synthorg.meta.mcp.handlers.common_args import require_actor_id
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
@@ -28,7 +29,6 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _map_capability,
-    _require_str,
     _to_jsonable,
 )
 from synthorg.observability import get_logger
@@ -144,9 +144,6 @@ async def _users_create(
     return ok(None)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads `updates`
-# as a raw dict, but UsersUpdateArgs declares a typed `updates: UsersUpdateFields`
-# (role / must_change_password only) that would reject other keys.
 async def _users_update(
     *,
     app_state: AppState,
@@ -161,8 +158,9 @@ async def _users_update(
     tool = "synthorg_users_update"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        user_id = _require_str(arguments, "user_id")
-        updates = require_dict(arguments, "updates")
+        update_args = typed_args(arguments, UsersUpdateArgs)
+        user_id = update_args.user_id
+        updates = update_args.updates.model_dump(exclude_unset=True)
         actor_id = require_actor_id(resolved_actor)
         await user_facade_service_of(app_state).update_user(
             user_id=user_id,

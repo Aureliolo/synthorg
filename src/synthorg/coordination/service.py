@@ -17,6 +17,8 @@ owns that entry point, exposed over REST via
 ``POST /tasks/{task_id}/coordinate``.
 """
 
+from datetime import datetime
+
 from synthorg.budget.coordination_store import (
     CoordinationMetricsRecord,
     CoordinationMetricsStore,
@@ -79,23 +81,31 @@ class CoordinationService:
         )
         return record
 
-    async def list_metrics(
+    async def list_metrics(  # noqa: PLR0913 -- page bounds + 4 store filters
         self,
         *,
         offset: int,
         limit: int,
+        task_id: str | None = None,
+        agent_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> tuple[tuple[CoordinationMetricsRecord, ...], int]:
         """Return a newest-first page of metrics + the total count.
 
         :meth:`CoordinationMetricsStore.query` caps its own result set
         at ``limit``, so the page is sliced before ``offset`` is
-        applied. ``total`` is the store's own unfiltered match count
-        and therefore always reflects every record the store has
-        retained (not the page slice).
+        applied. ``total`` is the store's own filtered match count and
+        therefore reflects every record matching the filters (not the
+        page slice).
 
         Args:
             offset: Page offset (>= 0).
             limit: Page size (> 0).
+            task_id: Optional task-identifier filter.
+            agent_id: Optional lead-agent-identifier filter.
+            since: Optional lower datetime bound (inclusive).
+            until: Optional upper datetime bound (inclusive).
 
         Returns:
             Tuple of ``(page, total)``.
@@ -124,7 +134,13 @@ class CoordinationService:
             raise ValueError(msg)
         # Query enough rows to cover offset + limit; the store returns
         # newest-first already.
-        page_rows, total = self._metrics_store.query(limit=offset + limit)
+        page_rows, total = self._metrics_store.query(
+            task_id=task_id,
+            agent_id=agent_id,
+            since=since,
+            until=until,
+            limit=offset + limit,
+        )
         page = tuple(page_rows[offset : offset + limit])
         return page, total
 

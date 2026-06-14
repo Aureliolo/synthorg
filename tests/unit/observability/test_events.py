@@ -353,7 +353,7 @@ class TestEventConstants:
             "audit_chain",
             # Trace handler lifecycle + config validation events.
             "tracing",
-            # Added in META-MCP-2 for infrastructure facade audit events
+            # Infrastructure facade audit events
             # (projects + operator-request ledger).
             "infrastructure",
             # Generic registry events (REGISTRY_BUILT etc.) emitted by

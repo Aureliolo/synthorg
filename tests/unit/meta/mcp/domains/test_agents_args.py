@@ -26,10 +26,11 @@ class TestAgentsCRUD:
             AgentsGetArgs.model_validate({})
 
     @pytest.mark.unit
-    def test_create_requires_three_fields(self) -> None:
-        AgentsCreateArgs(name="alice", role="engineer", department="eng")
+    def test_create_carries_identity(self) -> None:
+        args = AgentsCreateArgs(identity={"name": "alice", "role": "engineer"})
+        assert args.identity == {"name": "alice", "role": "engineer"}
         with pytest.raises(ValidationError):
-            AgentsCreateArgs.model_validate({"name": "alice"})
+            AgentsCreateArgs.model_validate({})
 
     @pytest.mark.unit
     def test_delete_destructive(self) -> None:

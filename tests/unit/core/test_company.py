@@ -287,8 +287,8 @@ class TestCompanyConfig:
     def test_defaults(self) -> None:
         """Verify default autonomy config, budget, and communication pattern.
 
-        Autonomy default flipped SEMI -> SUPERVISED (2026-04-23, #1538):
-        fresh installs now queue approvals for state-mutating actions.
+        The autonomy default is SUPERVISED: fresh installs queue
+        approvals for state-mutating actions.
         """
         cfg = CompanyConfig()
         assert cfg.autonomy.level == AutonomyLevel.SUPERVISED

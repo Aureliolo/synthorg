@@ -17,15 +17,21 @@ at app startup.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 from uuid import UUID
-
-from pydantic import TypeAdapter, ValidationError
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr
-from synthorg.meta.mcp.domains._simple_args import ReportsGetArgs, ReportsListArgs
+from synthorg.meta.mcp.domains._simple_args import (
+    AnalyticsGetForecastArgs,
+    AnalyticsGetOverviewArgs,
+    AnalyticsGetTrendsArgs,
+    MetricsGetCurrentArgs,
+    MetricsGetHistoryArgs,
+    ReportsGenerateArgs,
+    ReportsGetArgs,
+    ReportsListArgs,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
@@ -38,10 +44,8 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    parse_str_sequence,
-    parse_time_window,
     require_actor_id,
-    require_arg,
+    resolve_time_window,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -56,102 +60,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_ARG_SINCE = "since"
-_ARG_UNTIL = "until"
-_ARG_METRIC_NAMES = "metric_names"
-_ARG_HORIZON_DAYS = "horizon_days"
-_ARG_SAMPLE_COUNT = "sample_count"
-_MAX_SAMPLE_COUNT: Final[int] = 100
-_TY_POSITIVE_INT_CAP = f"positive int <= {_MAX_SAMPLE_COUNT}"
-
-
-def _reject_oversized_sample_count(value: int) -> None:
-    """Raise ``ArgumentValidationError`` when ``value`` exceeds the cap.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    if value > _MAX_SAMPLE_COUNT:
-        raise ArgumentValidationError(_ARG_SAMPLE_COUNT, _TY_POSITIVE_INT_CAP)
-
-
-_ARG_TEMPLATE = "template"
-_ARG_OPTIONS = "options"
 _ARG_REPORT_ID = "report_id"
-
-_TY_POS_INT = "positive int"
-_TY_STR_SEQ = "sequence of strings"
 _TY_REPORT_ID = "UUID string"
-_TY_NON_BLANK = "non-blank string"
-
-_NOT_BLANK_STR_ADAPTER = TypeAdapter(NotBlankStr)
-
-
-def _parse_required_str_sequence(
-    arguments: dict[str, object],
-    key: str,
-) -> tuple[str, ...]:
-    """Parse a required ``Sequence[str]`` argument.
-
-    Returns:
-        Tuple of the declared element types.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    result = parse_str_sequence(arguments, key)
-    if result is None or len(result) == 0:
-        raise ArgumentValidationError(key, _TY_STR_SEQ)
-    return result
-
-
-def _parse_positive_int(
-    arguments: dict[str, object],
-    key: str,
-    *,
-    default: int,
-) -> int:
-    """Return parse positive int.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key)
-    if raw in (None, ""):
-        return default
-    if isinstance(raw, bool):
-        raise ArgumentValidationError(key, _TY_POS_INT)
-    if not isinstance(raw, (int, str)):
-        raise ArgumentValidationError(key, _TY_POS_INT)
-    try:
-        value = int(raw)
-    except (TypeError, ValueError) as exc:
-        raise ArgumentValidationError(key, _TY_POS_INT) from exc
-    if value < 1:
-        raise ArgumentValidationError(key, _TY_POS_INT)
-    return value
-
-
-def _parse_str_dict(
-    arguments: dict[str, object],
-    key: str,
-) -> dict[str, str] | None:
-    """Return parse str dict.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    raw = arguments.get(key)
-    if raw in (None, ""):
-        return None
-    if not isinstance(raw, dict):
-        raise ArgumentValidationError(key, "mapping of str -> str")
-    out: dict[str, str] = {}
-    for k, v in raw.items():
-        if not isinstance(k, str) or not isinstance(v, str):
-            raise ArgumentValidationError(key, "mapping of str -> str")
-        out[k] = v
-    return out
 
 
 def _parse_report_id(raw: str) -> UUID:
@@ -172,8 +82,6 @@ def _parse_report_id(raw: str) -> UUID:
 # ── Analytics handlers ────────────────────────────────────────────────
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads a
-# since/until time window but AnalyticsGetOverviewArgs declares no fields.
 async def _analytics_overview(
     *,
     app_state: AppState,
@@ -181,28 +89,25 @@ async def _analytics_overview(
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return analytics overview."""
+    tool = "synthorg_analytics_get_overview"
     try:
-        since, until = parse_time_window(arguments, until_required=False)
+        args = typed_args(arguments, AnalyticsGetOverviewArgs)
+        since, until = resolve_time_window(args.since, args.until, until_required=False)
         result = await analytics_service_of(app_state).get_overview(
             since=since,
             until=until,
         )
-        logger.info(
-            MCP_HANDLER_INVOKE_SUCCESS,
-            tool_name="synthorg_analytics_get_overview",
-        )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok(result.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_analytics_get_overview", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_analytics_get_overview", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# since/until + metric_names, but AnalyticsGetTrendsArgs declares period/metric.
 async def _analytics_trends(
     *,
     app_state: AppState,
@@ -210,31 +115,26 @@ async def _analytics_trends(
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return analytics trends."""
+    tool = "synthorg_analytics_get_trends"
     try:
-        since, until = parse_time_window(arguments)
-        metric_names = parse_str_sequence(arguments, _ARG_METRIC_NAMES)
+        args = typed_args(arguments, AnalyticsGetTrendsArgs)
+        since, until = resolve_time_window(args.since, args.until)
         result = await analytics_service_of(app_state).get_trends(
             since=since,
             until=until,
-            metric_names=metric_names,
+            metric_names=args.metric_names,
         )
-        logger.info(
-            MCP_HANDLER_INVOKE_SUCCESS,
-            tool_name="synthorg_analytics_get_trends",
-        )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok(result.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_analytics_get_trends", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_analytics_get_trends", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# since/until (+ horizon_days), but AnalyticsGetForecastArgs declares only
-# horizon_days and no time window.
 async def _analytics_forecast(
     *,
     app_state: AppState,
@@ -242,34 +142,26 @@ async def _analytics_forecast(
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return analytics forecast."""
+    tool = "synthorg_analytics_get_forecast"
     try:
-        since, until = parse_time_window(arguments)
-        horizon_days = _parse_positive_int(
-            arguments,
-            _ARG_HORIZON_DAYS,
-            default=30,
-        )
+        args = typed_args(arguments, AnalyticsGetForecastArgs)
+        since, until = resolve_time_window(args.since, args.until)
         result = await analytics_service_of(app_state).get_forecast(
             since=since,
             until=until,
-            horizon_days=horizon_days,
+            horizon_days=args.horizon_days,
         )
-        logger.info(
-            MCP_HANDLER_INVOKE_SUCCESS,
-            tool_name="synthorg_analytics_get_forecast",
-        )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok(result.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_analytics_get_forecast", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_analytics_get_forecast", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# since/until + metric_names, but MetricsGetCurrentArgs declares no fields.
 async def _metrics_current(
     *,
     app_state: AppState,
@@ -277,31 +169,26 @@ async def _metrics_current(
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return metrics current."""
+    tool = "synthorg_metrics_get_current"
     try:
-        since, until = parse_time_window(arguments, until_required=False)
-        metric_names = parse_str_sequence(arguments, _ARG_METRIC_NAMES)
+        args = typed_args(arguments, MetricsGetCurrentArgs)
+        since, until = resolve_time_window(args.since, args.until, until_required=False)
         result = await analytics_service_of(app_state).get_current_metrics(
             since=since,
             until=until,
-            metric_names=metric_names,
+            metric_names=args.metric_names,
         )
-        logger.info(
-            MCP_HANDLER_INVOKE_SUCCESS,
-            tool_name="synthorg_metrics_get_current",
-        )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok(result.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_metrics_get_current", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_metrics_get_current", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# since/until + metric_names (plural) + sample_count, but MetricsGetHistoryArgs
-# declares metric_name (singular) + since/until and no sample_count.
 async def _metrics_history(
     *,
     app_state: AppState,
@@ -309,35 +196,24 @@ async def _metrics_history(
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return metrics history."""
+    tool = "synthorg_metrics_get_history"
     try:
-        since, until = parse_time_window(arguments)
-        metric_names = _parse_required_str_sequence(arguments, _ARG_METRIC_NAMES)
-        sample_count = _parse_positive_int(
-            arguments,
-            _ARG_SAMPLE_COUNT,
-            default=8,
-        )
-        # Cap sample_count so a single MCP call cannot fan out an
-        # arbitrary number of concurrent sub-window queries against the
-        # analytics service and its underlying aggregators.
-        _reject_oversized_sample_count(sample_count)
+        args = typed_args(arguments, MetricsGetHistoryArgs)
+        since, until = resolve_time_window(args.since, args.until)
         result = await analytics_service_of(app_state).get_metric_history(
             since=since,
             until=until,
-            metric_names=metric_names,
-            sample_count=sample_count,
+            metric_names=args.metric_names,
+            sample_count=args.sample_count,
         )
-        logger.info(
-            MCP_HANDLER_INVOKE_SUCCESS,
-            tool_name="synthorg_metrics_get_history",
-        )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok(result.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_metrics_get_history", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_metrics_get_history", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
@@ -351,6 +227,7 @@ async def _reports_list(
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return reports list."""
+    tool = "synthorg_reports_list"
     try:
         page_args = typed_args(arguments, ReportsListArgs)
         offset, limit = page_args.offset, page_args.limit
@@ -365,17 +242,14 @@ async def _reports_list(
         # page 2+ requests will apply the offset a second time and come
         # back empty.
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
-        logger.info(
-            MCP_HANDLER_INVOKE_SUCCESS,
-            tool_name="synthorg_reports_list",
-        )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok(dump_many(reports), pagination=pagination)
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_reports_list", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_reports_list", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
@@ -386,6 +260,7 @@ async def _reports_get(
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Return reports get."""
+    tool = "synthorg_reports_get"
     try:
         report_id = _parse_report_id(typed_args(arguments, ReportsGetArgs).report_id)
         report = await reports_service_of(app_state).get_report(report_id)
@@ -397,28 +272,19 @@ async def _reports_get(
             # tie it to the originating request without scraping client
             # logs. Routes through safe_error_description for the
             # error message.
-            log_handler_invoke_failed(
-                "synthorg_reports_get",
-                missing,
-                report_id=str(report_id),
-            )
+            log_handler_invoke_failed(tool, missing, report_id=str(report_id))
             return err(missing, domain_code="not_found")
-        logger.info(
-            MCP_HANDLER_INVOKE_SUCCESS,
-            tool_name="synthorg_reports_get",
-        )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok(report.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_reports_get", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_reports_get", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: handler reads
-# template + options, but ReportsGenerateArgs declares report_type + parameters.
 async def _reports_generate(
     *,
     app_state: AppState,
@@ -430,32 +296,25 @@ async def _reports_generate(
     Raises:
         ArgumentValidationError: Raised on the corresponding failure path.
     """
+    tool = "synthorg_reports_generate"
     try:
-        template_raw = require_arg(arguments, _ARG_TEMPLATE, str)
-        try:
-            template = _NOT_BLANK_STR_ADAPTER.validate_python(template_raw)
-        except ValidationError as exc:
-            raise ArgumentValidationError(_ARG_TEMPLATE, _TY_NON_BLANK) from exc
-        options = _parse_str_dict(arguments, _ARG_OPTIONS)
+        args = typed_args(arguments, ReportsGenerateArgs)
         report = await reports_service_of(app_state).generate_report(
-            template=template,
+            template=args.template,
             author_id=require_actor_id(actor),
-            options=options,
+            options=args.options,
         )
-        logger.info(
-            MCP_HANDLER_INVOKE_SUCCESS,
-            tool_name="synthorg_reports_generate",
-        )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok(report.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_reports_generate", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except ValueError as exc:
-        log_handler_invoke_failed("synthorg_reports_generate", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="invalid_argument")
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_reports_generate", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 

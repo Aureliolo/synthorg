@@ -607,8 +607,20 @@ class RoleVersionService:
         self,
         *,
         role_name: NotBlankStr | None = None,
-    ) -> Sequence[object]:
-        """Return role-snapshot versions, optionally filtered by role name.
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[tuple[object, ...], int]:
+        """Return a paginated role-snapshot slice plus the unfiltered total.
+
+        Args:
+            role_name: Optional role-name filter.
+            offset: Non-negative page offset.
+            limit: Optional positive page size; ``None`` returns every
+                version from ``offset`` onwards.
+
+        Returns:
+            A ``(page, total)`` pair where ``total`` counts every version
+            matching ``role_name`` before pagination is applied.
 
         Raises:
             CapabilityNotSupportedError: When no ``OrgMutationService`` is
@@ -626,7 +638,10 @@ class RoleVersionService:
                 "role_versions_list",
                 "OrgMutationService does not expose list_role_versions",
             )
-        return tuple(await fn(role_name=role_name))
+        versions = tuple(await fn(role_name=role_name))
+        total = len(versions)
+        end = None if limit is None else offset + limit
+        return versions[offset:end], total
 
     async def get_version(
         self,

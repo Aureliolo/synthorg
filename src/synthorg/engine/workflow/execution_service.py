@@ -641,19 +641,21 @@ class WorkflowExecutionService:
 
     async def list_executions(
         self,
-        definition_id: str,
+        definition_id: str | None = None,
         *,
+        status: WorkflowExecutionStatus | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[WorkflowExecution, ...]:
-        """List executions for a workflow definition (bounded by *limit*).
+        """List executions filtered by definition and/or status.
 
         Returns:
             The tuple of :class:`WorkflowExecution` rows matching the
-            definition filter (up to ``limit`` rows).
+            supplied filters (up to ``limit`` rows).
         """
         return await lifecycle.list_executions(
             self._execution_repo,
             definition_id,
+            status=status,
             limit=limit,
         )
 

@@ -22,7 +22,12 @@ from synthorg.meta.mcp.domains._knowledge_args import (
     KnowledgeReindexArgs,
     KnowledgeSearchArgs,
 )
-from synthorg.meta.mcp.tool_builder import admin_tool, read_tool
+from synthorg.meta.mcp.tool_builder import (
+    ADMIN_GUARDRAIL_PROPERTIES,
+    ADMIN_GUARDRAIL_REQUIRED,
+    admin_tool,
+    read_tool,
+)
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
@@ -66,16 +71,20 @@ KNOWLEDGE_TOOLS: tuple[MCPToolDef, ...] = (
             "source_type": {"type": "string", "enum": _SOURCE_TYPES},
             "uri": {"type": "string", "minLength": 1},
             "title": {"type": "string", "minLength": 1},
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("source_type", "uri", "title"),
+        required=("source_type", "uri", "title", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=KnowledgeIngestArgs,
     ),
     admin_tool(
         "knowledge",
         "reindex",
         "Force a re-load + re-index of an existing source.",
-        {"source_id": {"type": "string", "minLength": 1}},
-        required=("source_id",),
+        {
+            "source_id": {"type": "string", "minLength": 1},
+            **ADMIN_GUARDRAIL_PROPERTIES,
+        },
+        required=("source_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=KnowledgeReindexArgs,
     ),
     read_tool(
@@ -107,8 +116,11 @@ KNOWLEDGE_TOOLS: tuple[MCPToolDef, ...] = (
         "knowledge",
         "delete",
         "Delete a source and purge its corpus entries + provenance.",
-        {"source_id": {"type": "string", "minLength": 1}},
-        required=("source_id",),
+        {
+            "source_id": {"type": "string", "minLength": 1},
+            **ADMIN_GUARDRAIL_PROPERTIES,
+        },
+        required=("source_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=KnowledgeDeleteArgs,
     ),
 )

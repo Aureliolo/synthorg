@@ -7,15 +7,16 @@ from typing import TYPE_CHECKING
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import integration_health_facade_service_of
+from synthorg.meta.mcp.domains._remaining_args import IntegrationHealthGetArgs
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_invoke_failed,
 )
 from synthorg.meta.mcp.handlers.infrastructure._shared import (
-    _require_str,
     _to_jsonable,
 )
 from synthorg.observability import get_logger
@@ -50,10 +51,6 @@ async def _integration_health_get_all(
     return ok({k: _to_jsonable(v) for k, v in dict(snapshot).items()})
 
 
-# lint-allow: handler-arguments-get -- cataloged mismatch: the wire schema +
-# IntegrationHealthGetArgs declare `integration_name`, but the handler reads
-# `integration_id` and forwards it to facade.get_one(integration_id). Needs a
-# batched contract decision (lookup by id or by name) before migrating.
 async def _integration_health_get(
     *,
     app_state: AppState,
@@ -67,7 +64,7 @@ async def _integration_health_get(
     """
     tool = "synthorg_integration_health_get"
     try:
-        integration_id = _require_str(arguments, "integration_id")
+        integration_id = typed_args(arguments, IntegrationHealthGetArgs).integration_id
         status = await integration_health_facade_service_of(app_state).get_one(
             integration_id,
         )
