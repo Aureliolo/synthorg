@@ -69,6 +69,54 @@ def _build_binding_payload(
     return hasher.digest()
 
 
+def _extract_event_dict(record: logging.LogRecord) -> dict[str, object] | None:
+    """Return the structlog event_dict bridged onto the record, if any.
+
+    ``structlog.stdlib.ProcessorFormatter.wrap_for_formatter`` sets
+    ``record.msg`` to the event_dict (or a ``(event_dict, ...)`` tuple),
+    so the structured kwargs a caller passed (``principal``, ``resource``,
+    ...) live INSIDE the dict, not as ``record`` attributes. Plain stdlib
+    emissions (``logger.info("security.x")``) keep ``msg`` a string and
+    carry their structured fields as record attributes via ``extra=`` --
+    that path is handled by the ``getattr`` fallback in
+    :func:`_optional_field`.
+
+    Returns:
+        The bridged event_dict, or ``None`` for a plain-string record.
+    """
+    msg = record.msg
+    if isinstance(msg, dict):
+        return msg
+    if isinstance(msg, tuple) and msg and isinstance(msg[0], dict):
+        return msg[0]
+    return None
+
+
+def _optional_field(
+    record: logging.LogRecord,
+    event_dict: dict[str, object] | None,
+    name: str,
+) -> str | None:
+    """Resolve an optional forensic field from the event_dict or record.
+
+    Prefers the structlog event_dict (where ``logger.info(event, **kw)``
+    kwargs land) and falls back to a stdlib ``record`` attribute for
+    plain ``extra=``-style emissions. Coerces non-string values to ``str``
+    to match the ``default=str`` JSON serialisation the chain hashes.
+
+    Returns:
+        The field value as a string, or ``None`` when absent on both.
+    """
+    raw: object = None
+    if event_dict is not None:
+        raw = event_dict.get(name)
+    if raw is None:
+        raw = getattr(record, name, None)
+    if raw is None:
+        return None
+    return raw if isinstance(raw, str) else str(raw)
+
+
 def _extract_event_name(record: logging.LogRecord) -> str | None:
     """Return the canonical event name from a stdlib LogRecord.
 
@@ -325,19 +373,27 @@ class AuditChainSink(logging.Handler):
             # ``model_dump_json``: it bypasses ``sort_keys`` and key
             # ordering would become definition order, which would break
             # the hash chain.
+            # Forensic fields (principal/resource/...) arrive INSIDE the
+            # structlog event_dict on ``record.msg`` -- a bare
+            # ``getattr(record, "principal")`` always misses them under the
+            # ``wrap_for_formatter`` bridge, which would sign an audit entry
+            # that records the event but not WHO performed it. Resolve from
+            # the event_dict first, falling back to record attributes for
+            # plain ``extra=``-style stdlib emissions.
+            event_dict = _extract_event_dict(record)
             payload_model = AuditChainEventPayload(
                 event=msg,
                 level=record.levelname,
                 timestamp=record.created,
                 module=record.module,
-                tool_name=getattr(record, "tool_name", None),
-                expected_hash=getattr(record, "expected_hash", None),
-                actual_hash=getattr(record, "actual_hash", None),
-                correlation_id=getattr(record, "correlation_id", None),
-                principal=getattr(record, "principal", None),
-                resource=getattr(record, "resource", None),
-                action_type=getattr(record, "action_type", None),
-                error=getattr(record, "error", None),
+                tool_name=_optional_field(record, event_dict, "tool_name"),
+                expected_hash=_optional_field(record, event_dict, "expected_hash"),
+                actual_hash=_optional_field(record, event_dict, "actual_hash"),
+                correlation_id=_optional_field(record, event_dict, "correlation_id"),
+                principal=_optional_field(record, event_dict, "principal"),
+                resource=_optional_field(record, event_dict, "resource"),
+                action_type=_optional_field(record, event_dict, "action_type"),
+                error=_optional_field(record, event_dict, "error"),
             )
             payload = payload_model.model_dump(exclude_none=True)
 
