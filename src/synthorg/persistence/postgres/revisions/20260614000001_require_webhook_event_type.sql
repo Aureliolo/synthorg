@@ -6,7 +6,9 @@
 -- Tighten the column to reject blanks at the database: backfill blanks, drop
 -- the empty-string default, and add the non-blank CHECK.
 
-UPDATE webhook_receipts SET event_type = 'unknown' WHERE TRIM(event_type) = '';
+UPDATE webhook_receipts
+SET event_type = 'unknown'
+WHERE TRIM(event_type) = '';
 
 ALTER TABLE webhook_receipts ALTER COLUMN event_type DROP DEFAULT;
 

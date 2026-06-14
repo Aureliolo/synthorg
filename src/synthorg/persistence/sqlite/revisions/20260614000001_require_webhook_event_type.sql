@@ -8,7 +8,9 @@
 -- default.
 
 -- Backfill any pre-existing blank rows to a sentinel before the constraint.
-UPDATE webhook_receipts SET event_type = 'unknown' WHERE TRIM(event_type) = '';
+UPDATE webhook_receipts
+SET event_type = 'unknown'
+WHERE TRIM(event_type) = '';
 
 CREATE TABLE webhook_receipts_new (
     id TEXT NOT NULL PRIMARY KEY,
@@ -26,8 +28,14 @@ INSERT INTO webhook_receipts_new (
     payload_json, error
 )
 SELECT
-    id, connection_name, event_type, status, received_at, processed_at,
-    payload_json, error
+    id,
+    connection_name,
+    event_type,
+    status,
+    received_at,
+    processed_at,
+    payload_json,
+    error
 FROM webhook_receipts;
 
 DROP TABLE webhook_receipts;
