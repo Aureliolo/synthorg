@@ -13,6 +13,7 @@ import pytest
 import structlog.contextvars
 from typeguard import suppress_type_checks
 
+from synthorg import __version__
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import (
     DockerSandbox,
@@ -179,7 +180,9 @@ class TestDockerSandboxInit:
 
     def test_default_config(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox(workspace=tmp_path)
-        assert sandbox.config.image == "ghcr.io/aureliolo/synthorg-sandbox:latest"
+        assert sandbox.config.image == (
+            f"ghcr.io/aureliolo/synthorg-sandbox:v{__version__}"
+        )
         assert sandbox.config.timeout_seconds == 120.0
 
     def test_custom_config(self, tmp_path: Path) -> None:

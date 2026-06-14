@@ -24,7 +24,7 @@ from synthorg.security.trust.service import TrustService
 class SecurityStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the security feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     audit_log: AuditLog | None = None
     trust_service: TrustService | None = None

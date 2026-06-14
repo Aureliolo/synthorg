@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from synthorg import __version__
 from synthorg.tools.sandbox._image_resolution import (
     set_resolved_sandbox_image,
     set_resolved_sidecar_image,
@@ -25,7 +26,7 @@ class TestDockerSandboxConfigDefaults:
 
     def test_defaults(self) -> None:
         config = DockerSandboxConfig()
-        assert config.image == "ghcr.io/aureliolo/synthorg-sandbox:latest"
+        assert config.image == f"ghcr.io/aureliolo/synthorg-sandbox:v{__version__}"
         assert config.network == "none"
         assert config.network_overrides == {}
         assert config.runtime_overrides == {}
@@ -83,7 +84,7 @@ class TestDockerSandboxConfigImageResolution:
         # short-circuit the very behaviour we're verifying.
         set_resolved_sandbox_image(cached)
         config = DockerSandboxConfig()
-        assert config.image == "ghcr.io/aureliolo/synthorg-sandbox:latest"
+        assert config.image == f"ghcr.io/aureliolo/synthorg-sandbox:v{__version__}"
 
     def test_explicit_yaml_wins_over_cache(self) -> None:
         set_resolved_sandbox_image("ghcr.io/aureliolo/synthorg-sandbox:cached")
@@ -154,7 +155,9 @@ class TestDockerSandboxConfigSidecarImageResolution:
         # test, so pre-stripping at the call site would mask it.
         set_resolved_sidecar_image(cached)
         config = DockerSandboxConfig()
-        assert config.sidecar_image == "ghcr.io/aureliolo/synthorg-sidecar:latest"
+        assert config.sidecar_image == (
+            f"ghcr.io/aureliolo/synthorg-sidecar:v{__version__}"
+        )
 
     def test_explicit_yaml_wins_over_cache(self) -> None:
         set_resolved_sidecar_image("ghcr.io/aureliolo/synthorg-sidecar:cached")

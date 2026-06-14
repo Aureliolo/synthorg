@@ -520,3 +520,44 @@ _r.register(
         max_value=1.0,
     )
 )
+
+# ── Execution limits ────────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="max_turns",
+        type=SettingType.INTEGER,
+        default="20",
+        description=(
+            "Hard cap on the number of LLM turns per agent execution."
+            " Applied by AgentEngine.run when a caller does not pass an"
+            " explicit max_turns; bounds runaway loops and per-task cost."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=1000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="task_engine_max_queue_size",
+        type=SettingType.INTEGER,
+        default="1000",
+        description=(
+            "Backpressure cap on the in-process task-mutation queue."
+            " ``0`` means unbounded. Raise for high-throughput deployments"
+            " with many concurrent agents; lower for resource-constrained"
+            " hosts. Read once at TaskEngineConfig construction."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        min_value=0,
+        max_value=1_000_000,
+    )
+)

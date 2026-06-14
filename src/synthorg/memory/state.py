@@ -21,7 +21,7 @@ from synthorg.memory.service import MemoryService
 class MemoryStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the memory feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     backend: MemoryBackend | None = None
     fine_tune_orchestrator: FineTuneOrchestrator | None = None

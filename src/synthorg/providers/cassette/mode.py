@@ -30,7 +30,7 @@ class CassetteConfig(BaseModel):
     (and would collide under xdist), so it must be chosen explicitly.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     mode: CassetteMode = Field(
         default=CassetteMode.OFF,

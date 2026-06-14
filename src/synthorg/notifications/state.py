@@ -16,6 +16,6 @@ from synthorg.notifications.dispatcher import (
 class NotificationsStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the notifications feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     dispatcher: NotificationDispatcher | None = None

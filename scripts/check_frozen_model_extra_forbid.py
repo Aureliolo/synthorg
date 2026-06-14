@@ -1,39 +1,46 @@
 #!/usr/bin/env python3
-"""Gate every frozen Pydantic model under ``src/synthorg/`` and ``tests/`` to forbid extras.
+"""Gate frozen Pydantic models for ``extra="forbid"`` and ``allow_inf_nan=False``.
 
 A frozen model that does not declare ``extra="forbid"`` silently
 absorbs unknown construction keys, masking caller typos and letting
-fabricated fields slip into business logic. ``CLAUDE.md`` section 8
-makes ``extra="forbid"`` the project standard for every model that
-does not need to round-trip through ``model_dump()``. This gate
-enforces that statically and project-wide (it strictly supersedes the
-old API-DTO-only ``check_dto_forbid_extra.py``).
+fabricated fields slip into business logic. A frozen model that omits
+``allow_inf_nan=False`` silently accepts ``float('nan')`` / ``float('inf')``
+on any float field, bypassing range constraints in some coercion paths.
+``CLAUDE.md`` section 8 makes both the project standard. This gate
+enforces them statically (it strictly supersedes the old API-DTO-only
+``check_dto_forbid_extra.py``).
 
-Scope: every class under ``src/synthorg/`` and ``tests/`` whose OWN
-body assigns ``model_config = ConfigDict(...)`` (or a dict literal)
-with ``frozen=True``. Test fixture models are included because the
-project-wide convention applies equally to fixtures: silently
-absorbing unknown construction keys in a test fixture masks the same
-class of caller typos the gate catches in production code.
+Two assertions, different scopes:
+
+* **``extra="forbid"``** is required of every frozen model under
+  ``src/synthorg/`` and ``tests/``. Test fixture models are included
+  because the project-wide convention applies equally to fixtures:
+  silently absorbing unknown construction keys in a test fixture masks
+  the same class of caller typos the gate catches in production code.
+* **``allow_inf_nan=False``** is required of every frozen model under
+  ``src/synthorg/`` only. Test fixtures are out of scope for this
+  assertion (tests are not production NaN/Inf surfaces).
 
 Carve-outs:
 
-* **``@computed_field`` (automatic).** Pydantic v2 includes a
-  computed field's value in ``model_dump()`` output; a strict-extra
-  reconstruction would reject that key on the round trip, so models
-  declaring a ``@computed_field`` are exempt without annotation. This
-  is the section-8 documented carve-out, detected by AST so the ~68
-  affected classes need no per-line noise.
+* **``@computed_field`` (automatic, ``extra="forbid"`` only).** Pydantic
+  v2 includes a computed field's value in ``model_dump()`` output; a
+  strict-extra reconstruction would reject that key on the round trip,
+  so models declaring a ``@computed_field`` are exempt from the
+  ``extra="forbid"`` assertion without annotation. The carve-out does
+  NOT apply to ``allow_inf_nan=False``: a computed field has no bearing
+  on NaN/Inf acceptance, so those models must still carry the flag.
 * **Per-line opt-out.** ``# lint-allow: frozen-extra-forbid --
-  <reason>`` on the class definition line, ``<reason>`` non-empty,
-  for the genuine remaining exceptions (e.g. an ``extra="allow"``
-  envelope that must accept arbitrary provider keys, or a
-  validator-gated config that round-trips through ``model_dump``).
-  Bare opt-outs without a reason are violations.
+  <reason>`` (for the extra assertion) or
+  ``# lint-allow: frozen-allow-inf-nan -- <reason>`` (for the inf/nan
+  assertion) on the class definition line, ``<reason>`` non-empty, for
+  the genuine remaining exceptions (e.g. an ``extra="allow"`` envelope
+  that must accept arbitrary provider keys). Bare opt-outs without a
+  reason are violations.
 
 Exit codes:
-    0 -- all frozen models forbid extras (or are carved out).
-    1 -- one or more frozen models are missing ``extra="forbid"``.
+    0 -- all frozen models comply (or are carved out).
+    1 -- one or more frozen models are missing a required flag.
     2 -- internal error parsing a source file.
 """
 
@@ -50,6 +57,11 @@ _OPTOUT_WITH_REASON_RE = re.compile(
     r"#\s*lint-allow:\s*frozen-extra-forbid\s*--\s*(?P<reason>\S.*?)\s*$"
 )
 _OPTOUT_BARE_RE = re.compile(r"#\s*lint-allow:\s*frozen-extra-forbid\b")
+
+_INF_NAN_OPTOUT_WITH_REASON_RE = re.compile(
+    r"#\s*lint-allow:\s*frozen-allow-inf-nan\s*--\s*(?P<reason>\S.*?)\s*$"
+)
+_INF_NAN_OPTOUT_BARE_RE = re.compile(r"#\s*lint-allow:\s*frozen-allow-inf-nan\b")
 
 
 def _config_value(node: ast.ClassDef) -> ast.Call | ast.Dict | None:
@@ -144,19 +156,25 @@ def _header_span(node: ast.ClassDef, total_lines: int) -> tuple[int, int]:
 def _optout_status(
     source_lines: list[str],
     node: ast.ClassDef,
+    with_reason_re: re.Pattern[str],
+    bare_re: re.Pattern[str],
 ) -> str:
     """Return ``"with-reason"`` / ``"bare"`` / ``"none"`` for the header."""
     start, end = _header_span(node, len(source_lines))
     header_lines = source_lines[start - 1 : end]
-    if any(_OPTOUT_WITH_REASON_RE.search(line) for line in header_lines):
+    if any(with_reason_re.search(line) for line in header_lines):
         return "with-reason"
-    if any(_OPTOUT_BARE_RE.search(line) for line in header_lines):
+    if any(bare_re.search(line) for line in header_lines):
         return "bare"
     return "none"
 
 
-def _walk(path: Path) -> list[tuple[Path, int, str]]:
-    """Return ``(path, lineno, class_name)`` violations in ``path``."""
+def _walk(path: Path, *, check_inf_nan: bool) -> list[tuple[Path, int, str, str]]:
+    """Return ``(path, lineno, class_name, kind)`` violations in ``path``.
+
+    ``kind`` is ``"extra-forbid"`` or ``"allow-inf-nan"``. The inf/nan
+    assertion runs only when *check_inf_nan* is True (src-only scope).
+    """
     source = path.read_text(encoding="utf-8")
     # Fast pre-filter: a frozen ConfigDict always assigns to the
     # literal name ``model_config``. Files without that token cannot
@@ -171,7 +189,7 @@ def _walk(path: Path) -> list[tuple[Path, int, str]]:
         print(f"{path}: failed to parse -- {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
     source_lines = source.splitlines()
-    violations: list[tuple[Path, int, str]] = []
+    violations: list[tuple[Path, int, str, str]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
@@ -180,46 +198,104 @@ def _walk(path: Path) -> list[tuple[Path, int, str]]:
             continue
         if _config_flag(cfg, "frozen") is not True:
             continue
-        if _config_flag(cfg, "extra") == "forbid":
-            continue
-        if _has_computed_field(node):
-            # Section-8 documented carve-out: model_dump emits the
-            # computed key; strict reconstruction would reject it.
-            continue
-        optout = _optout_status(source_lines, node)
-        if optout == "with-reason":
-            continue
-        violations.append((path, node.lineno, node.name))
+        _check_extra_forbid(node, cfg, source_lines, path, violations)
+        if check_inf_nan:
+            _check_allow_inf_nan(node, cfg, source_lines, path, violations)
     return violations
 
 
+def _check_extra_forbid(
+    node: ast.ClassDef,
+    cfg: ast.Call | ast.Dict,
+    source_lines: list[str],
+    path: Path,
+    violations: list[tuple[Path, int, str, str]],
+) -> None:
+    """Append an ``extra-forbid`` violation when the model omits the flag."""
+    if _config_flag(cfg, "extra") == "forbid":
+        return
+    if _has_computed_field(node):
+        # Section-8 documented carve-out: model_dump emits the
+        # computed key; strict reconstruction would reject it.
+        return
+    optout = _optout_status(source_lines, node, _OPTOUT_WITH_REASON_RE, _OPTOUT_BARE_RE)
+    if optout == "with-reason":
+        return
+    violations.append((path, node.lineno, node.name, "extra-forbid"))
+
+
+def _check_allow_inf_nan(
+    node: ast.ClassDef,
+    cfg: ast.Call | ast.Dict,
+    source_lines: list[str],
+    path: Path,
+    violations: list[tuple[Path, int, str, str]],
+) -> None:
+    """Append an ``allow-inf-nan`` violation when the model omits the flag.
+
+    No ``@computed_field`` carve-out: a computed field has no bearing on
+    NaN/Inf acceptance, so the flag is required regardless.
+    """
+    if _config_flag(cfg, "allow_inf_nan") is False:
+        return
+    optout = _optout_status(
+        source_lines, node, _INF_NAN_OPTOUT_WITH_REASON_RE, _INF_NAN_OPTOUT_BARE_RE
+    )
+    if optout == "with-reason":
+        return
+    violations.append((path, node.lineno, node.name, "allow-inf-nan"))
+
+
 def main() -> int:
-    """Walk ``src/synthorg/`` + ``tests/`` and report frozen models without forbid."""
+    """Walk the tree and report frozen models missing a required flag."""
     for scan_root in (SRC_DIR, TEST_DIR):
         if not scan_root.is_dir():
             print(f"{scan_root} does not exist", file=sys.stderr)
             return 2
-    violations: list[tuple[Path, int, str]] = []
+    violations: list[tuple[Path, int, str, str]] = []
     for scan_root in (SRC_DIR, TEST_DIR):
+        check_inf_nan = scan_root == SRC_DIR
         for path in sorted(scan_root.rglob("*.py")):
-            violations.extend(_walk(path))
+            violations.extend(_walk(path, check_inf_nan=check_inf_nan))
     if not violations:
         return 0
-    print(
-        f'{len(violations)} frozen model(s) missing extra="forbid":',
-        file=sys.stderr,
-    )
-    for path, lineno, name in violations:
-        rel = path.relative_to(REPO_ROOT)
-        print(f"  {rel}:{lineno}  class {name}", file=sys.stderr)
-    print(
-        '\nAdd ``extra="forbid"`` to each frozen ConfigDict. A model '
-        "that declares a @computed_field is auto-exempt. Genuine "
-        "exceptions use a per-line opt-out: "
-        "``# lint-allow: frozen-extra-forbid -- <reason>`` on the "
-        "class definition line.",
-        file=sys.stderr,
-    )
+    forbid = [v for v in violations if v[3] == "extra-forbid"]
+    inf_nan = [v for v in violations if v[3] == "allow-inf-nan"]
+    if forbid:
+        print(
+            f'{len(forbid)} frozen model(s) missing extra="forbid":',
+            file=sys.stderr,
+        )
+        for path, lineno, name, _ in forbid:
+            print(
+                f"  {path.relative_to(REPO_ROOT)}:{lineno}  class {name}",
+                file=sys.stderr,
+            )
+        print(
+            '\nAdd ``extra="forbid"`` to each frozen ConfigDict. A model '
+            "that declares a @computed_field is auto-exempt. Genuine "
+            "exceptions use a per-line opt-out: "
+            "``# lint-allow: frozen-extra-forbid -- <reason>`` on the "
+            "class definition line.",
+            file=sys.stderr,
+        )
+    if inf_nan:
+        print(
+            f"{len(inf_nan)} frozen model(s) missing allow_inf_nan=False:",
+            file=sys.stderr,
+        )
+        for path, lineno, name, _ in inf_nan:
+            print(
+                f"  {path.relative_to(REPO_ROOT)}:{lineno}  class {name}",
+                file=sys.stderr,
+            )
+        print(
+            "\nAdd ``allow_inf_nan=False`` to each frozen ConfigDict under "
+            "src/synthorg/. Genuine inf/nan-accepting models use a per-line "
+            "opt-out: ``# lint-allow: frozen-allow-inf-nan -- <reason>`` on "
+            "the class definition line.",
+            file=sys.stderr,
+        )
     return 1
 
 

@@ -128,7 +128,7 @@ class ModelCallResult(BaseModel):
     token_usage: TokenUsage = Field(
         description="Token counts and cost",
     )
-    finish_reason: str = Field(description="Why the model stopped")
+    finish_reason: NotBlankStr = Field(description="Why the model stopped")
     error: str | None = Field(
         default=None,
         description="Error description on failure",

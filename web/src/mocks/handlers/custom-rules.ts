@@ -51,6 +51,7 @@ export const customRulesHandlers = [
         has_more: false,
       },
       success: true,
+      degraded_sources: [],
     } satisfies PaginatedResponse<MetricDescriptor>),
   ),
   http.post('/api/v1/meta/custom-rules/preview', async ({ request }) => {

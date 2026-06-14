@@ -13,6 +13,7 @@ function paginatedSinks(sinks: SinkInfo[]): PaginatedResponse<SinkInfo> {
     error_detail: null,
     pagination: { limit: 200, next_cursor: null, has_more: false },
     success: true,
+    degraded_sources: [],
   }
 }
 

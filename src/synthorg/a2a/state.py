@@ -17,7 +17,7 @@ from synthorg.a2a.peer_registry import PeerRegistry
 class A2aStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the A2A feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     card_builder: AgentCardBuilder | None = None
     client: A2AClient | None = None

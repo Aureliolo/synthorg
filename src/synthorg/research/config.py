@@ -10,6 +10,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.research.constants import (
+    RESEARCH_DEDUP_JACCARD_THRESHOLD,
+    RESEARCH_DEFAULT_PER_QUERY_LIMIT,
+    RESEARCH_HYBRID_PREFILTER_FACTOR,
+    RESEARCH_TRIAGE_BATCH_SIZE,
+)
+
 QueryPlannerKind = Literal["llm"]
 """Discriminator for the query-planning strategy. ``llm`` is the only
 shipped implementation; new strategies extend this union AND the factory
@@ -62,4 +69,28 @@ class ResearchConfig(BaseModel):
     synthesizer: SynthesizerKind = Field(
         default="llm",
         description="Synthesis strategy discriminator",
+    )
+    triage_batch_size: int = Field(
+        default=RESEARCH_TRIAGE_BATCH_SIZE,
+        ge=1,
+        le=100,
+        description="Items per LLM credibility-triage call",
+    )
+    hybrid_prefilter_factor: float = Field(
+        default=RESEARCH_HYBRID_PREFILTER_FACTOR,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of brief threshold before hybrid LLM escalation",
+    )
+    dedup_similarity_threshold: float = Field(
+        default=RESEARCH_DEDUP_JACCARD_THRESHOLD,
+        ge=0.1,
+        le=1.0,
+        description="Similarity at or above which items are near-duplicates",
+    )
+    per_query_limit: int = Field(
+        default=RESEARCH_DEFAULT_PER_QUERY_LIMIT,
+        ge=1,
+        le=200,
+        description="Candidate items each source returns per sub-query",
     )

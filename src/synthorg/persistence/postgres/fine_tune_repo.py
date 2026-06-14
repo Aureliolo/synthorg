@@ -70,7 +70,7 @@ def _clamp_pagination(limit: int, offset: int) -> tuple[int, int]:
     return min(max(limit, 1), _MAX_LIST_LIMIT), max(offset, 0)
 
 
-def _run_from_row(row: DictRow) -> FineTuneRun:
+def _row_to_run(row: DictRow) -> FineTuneRun:
     """Build a ``FineTuneRun`` from a JSONB-aware Postgres row.
 
     Postgres returns JSONB as native Python dict/list and TIMESTAMPTZ
@@ -100,7 +100,7 @@ def _run_from_row(row: DictRow) -> FineTuneRun:
         raise MalformedRowError(msg) from exc
 
 
-def _checkpoint_from_row(row: DictRow) -> CheckpointRecord:
+def _row_to_checkpoint(row: DictRow) -> CheckpointRecord:
     """Build a ``CheckpointRecord`` from a JSONB-aware Postgres row.
 
     ``backup_config_json`` is a JSONB column on the wire but a string
@@ -240,7 +240,7 @@ ON CONFLICT (id) DO UPDATE SET
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return _run_from_row(row)
+        return _row_to_run(row)
 
     async def get_active_run(self) -> FineTuneRun | None:
         """Get the currently active run (if any).
@@ -273,7 +273,7 @@ ON CONFLICT (id) DO UPDATE SET
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return _run_from_row(row)
+        return _row_to_run(row)
 
     async def list_items(
         self,
@@ -308,7 +308,7 @@ ON CONFLICT (id) DO UPDATE SET
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(_run_from_row(r) for r in rows)
+        return tuple(_row_to_run(r) for r in rows)
 
     async def list_items_page(
         self,
@@ -348,7 +348,7 @@ ON CONFLICT (id) DO UPDATE SET
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(_run_from_row(r) for r in rows), total
+        return tuple(_row_to_run(r) for r in rows), total
 
     async def delete(self, entity_id: str) -> bool:
         """Delete a run by id.
@@ -569,7 +569,7 @@ ON CONFLICT (id) DO UPDATE SET
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return _checkpoint_from_row(row)
+        return _row_to_checkpoint(row)
 
     async def list_items(
         self,
@@ -605,7 +605,7 @@ ON CONFLICT (id) DO UPDATE SET
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(_checkpoint_from_row(r) for r in rows)
+        return tuple(_row_to_checkpoint(r) for r in rows)
 
     async def list_items_page(
         self,
@@ -647,7 +647,7 @@ ON CONFLICT (id) DO UPDATE SET
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(_checkpoint_from_row(r) for r in rows), total
+        return tuple(_row_to_checkpoint(r) for r in rows), total
 
     async def set_active(self, checkpoint_id: str) -> None:
         """Deactivate all checkpoints and activate *checkpoint_id* atomically.
@@ -807,7 +807,7 @@ ON CONFLICT (id) DO UPDATE SET
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return _checkpoint_from_row(row)
+        return _row_to_checkpoint(row)
 
     @staticmethod
     def _encode_backup_config(

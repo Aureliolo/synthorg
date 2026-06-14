@@ -31,6 +31,7 @@ export type {
 import type {
   EdgeChange as WireEdgeChange,
   NodeChange as WireNodeChange,
+  WorkflowDefinition,
 } from './dtos.gen'
 import {
   WORKFLOW_EDGE_TYPE_VALUES,
@@ -40,7 +41,6 @@ import type {
   WorkflowEdgeType,
   WorkflowNodeType,
 } from './enum-values.gen'
-import type { WorkflowNodeType as WireWorkflowNodeType } from './enum-values.gen'
 
 export function isWorkflowNodeType(value: unknown): value is WorkflowNodeType {
   return (
@@ -56,27 +56,6 @@ export function isWorkflowEdgeType(value: unknown): value is WorkflowEdgeType {
   )
 }
 
-/** Frontend-only node / edge / execution shapes used by the React Flow
- *  canvas. The wire emits these as embedded ``dict`` payloads on
- *  WorkflowDefinition.nodes / edges so they do not have named
- *  ``components.schemas`` entries. */
-export interface WorkflowNodeData {
-  readonly id: string
-  readonly type: WireWorkflowNodeType
-  readonly label: string
-  readonly position_x: number
-  readonly position_y: number
-  readonly config: Record<string, unknown>
-}
-
-export interface WorkflowEdgeData {
-  readonly id: string
-  readonly source_node_id: string
-  readonly target_node_id: string
-  readonly type: WorkflowEdgeType
-  readonly label: string | null
-}
-
 /** Generic version snapshot envelope matching backend VersionSnapshot[T]. */
 export interface VersionSummary<TSnapshot> {
   readonly entity_id: string
@@ -87,17 +66,7 @@ export interface VersionSummary<TSnapshot> {
   readonly saved_at: string
 }
 
-export interface WorkflowDefinitionSnapshot {
-  readonly id: string
-  readonly name: string
-  readonly description: string
-  readonly workflow_type: string
-  readonly nodes: readonly WorkflowNodeData[]
-  readonly edges: readonly WorkflowEdgeData[]
-  readonly created_by: string
-}
-
-export type WorkflowDefinitionVersionSummary = VersionSummary<WorkflowDefinitionSnapshot>
+export type WorkflowDefinitionVersionSummary = VersionSummary<WorkflowDefinition>
 
 // NodeChange / EdgeChange overlay the wire shape's optional+nullable
 // ``old_value`` / ``new_value`` fields as required+nullable: the diff

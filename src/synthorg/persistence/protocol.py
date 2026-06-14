@@ -261,6 +261,18 @@ class PersistenceBackend(Protocol):
         """
         ...
 
+    @property
+    def supports_conversational_approvals(self) -> bool:
+        """Whether this backend can durably persist conversational approvals.
+
+        ``True`` only for backends that can durably retain a parked
+        approval produced mid-conversation (Chief of Staff propose /
+        invite). SQLite returns ``False`` until that limitation is
+        resolved. Wiring guards read this capability predicate rather
+        than comparing ``kind``/``backend_name`` against a literal.
+        """
+        ...
+
     async def connect(self) -> None:
         """Establish connection to the storage backend.
 

@@ -832,6 +832,13 @@ class FakePersistenceBackend(PersistenceBackend):
         return "sqlite"
 
     @override
+    @property
+    def supports_conversational_approvals(self) -> bool:
+        # The in-memory fake durably retains approvals for the test's
+        # lifetime, so it does not impose the SQLite persistence limit.
+        return True
+
+    @override
     def write_context(self) -> AbstractAsyncContextManager[None]:
         # The fake is in-memory and not used in any path that needs the
         # cross-statement write-context guard; yield a no-op context so

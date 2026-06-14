@@ -36,8 +36,10 @@ def _validate_default_type(
     """Reject defaults that are not compatible with the declared type.
 
     Raises:
-        TypeError: Raised on the corresponding failure path.
-        ValueError: Raised on the corresponding failure path.
+        ValueError: On any incompatibility (non-JSON-serialisable,
+            NaN/Inf, bool-for-int/float, or type mismatch). Raised as
+            ``ValueError`` so the calling validator wraps it into a
+            ``ValidationError``.
     """
     try:
         json.dumps(default, allow_nan=False)
@@ -62,13 +64,13 @@ def _validate_default_type(
             f"Declaration {name!r}: default value {default!r} is not "
             f"compatible with type {declared_type.value!r}"
         )
-        raise TypeError(msg)
+        raise ValueError(msg)
     if not isinstance(default, expected):
         msg = (
             f"Declaration {name!r}: default value {default!r} is not "
             f"compatible with type {declared_type.value!r}"
         )
-        raise TypeError(msg)
+        raise ValueError(msg)  # noqa: TRY004 -- Pydantic needs ValueError
 
 
 class WorkflowIODeclarationRequest(BaseModel):

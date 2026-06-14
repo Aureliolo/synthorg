@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 class ToolsStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the tools feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     invocation_tracker: ToolInvocationTracker | None = None
 

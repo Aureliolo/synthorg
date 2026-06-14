@@ -8,6 +8,8 @@ behaviour.
 
 from typing import Final
 
+from synthorg import __version__
+
 SESSION_START_TIMEOUT_SECONDS: Final[float] = 30.0
 LAUNCH_TIMEOUT_SECONDS: Final[float] = 30.0
 MAX_LAUNCH_TIMEOUT_MULTIPLIER: Final[int] = 20
@@ -42,7 +44,9 @@ MAX_SETTLE_DELAY_SECONDS: Final[float] = 10.0
 CONTAINER_WORKSPACE_ROOT: Final[str] = "/workspace"
 SCREENSHOTS_SUBDIR: Final[str] = ".synthorg/desktop/screenshots"
 
-DESKTOP_IMAGE_PIN_DEFAULT: Final[str] = "ghcr.io/aureliolo/synthorg-desktop:latest"
+DESKTOP_IMAGE_PIN_DEFAULT: Final[str] = (
+    f"ghcr.io/aureliolo/synthorg-desktop:v{__version__}"
+)
 
 SHA256_HEX_LENGTH: Final[int] = 64
 SHA256_HEX_PATTERN: Final[str] = "^[a-f0-9]{64}$"

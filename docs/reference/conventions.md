@@ -494,6 +494,7 @@ collection returns, where ``NotFoundError`` belongs).
 | `delete` | `async def delete(id) -> bool` | Removal. ``True`` if a row was removed, ``False`` if the id did not exist; same return type used in §1. |
 | `list_items` | `async def list_items(...) -> tuple[Entity, ...]` | Full scan / paginated list. Some older repositories use `list_all()`; new repositories prefer `list_items(*, limit, offset, **filters)` so callers can paginate without defensive slicing. |
 | `query` | `async def query(...) -> tuple[Entity, ...]` | Filtered query when the filter set diverges from a single canonical `list_items`. |
+| `get_by_<key>` | `async def get_by_<key>(value) -> Entity \| None` | Single-entity fetch keyed on a non-primary unique column (e.g. `get_by_session_id`, `get_by_external_ref`). Same `Entity \| None`-on-miss contract as `get`. The `get_by_<key>` form is the canonical alternate-key lookup name; `find_by_<key>` is **not** used (the lone surviving `find_by_task_id` is a pre-convention deviation, not a sanctioned variant). |
 
 Query methods always return `tuple[T, ...]`, never `list[T]`. This
 matches the immutability default for collection returns and lets

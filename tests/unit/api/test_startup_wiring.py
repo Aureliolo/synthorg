@@ -365,7 +365,10 @@ class TestConversationalPersistenceGuard:
         with pytest.raises(ServiceUnavailableError):
             _guard_conversational_persistence(
                 ChiefOfStaffConfig(invite_enabled=True),
-                mock_of[PersistenceBackend](backend_name="sqlite"),
+                mock_of[PersistenceBackend](
+                    backend_name="sqlite",
+                    supports_conversational_approvals=False,
+                ),
                 _persistent_store(),
             )
 
@@ -373,7 +376,10 @@ class TestConversationalPersistenceGuard:
         with pytest.raises(ServiceUnavailableError):
             _guard_conversational_persistence(
                 ChiefOfStaffConfig(propose_enabled=True),
-                mock_of[PersistenceBackend](backend_name="sqlite"),
+                mock_of[PersistenceBackend](
+                    backend_name="sqlite",
+                    supports_conversational_approvals=False,
+                ),
                 _persistent_store(),
             )
 
@@ -382,7 +388,10 @@ class TestConversationalPersistenceGuard:
         # conversational source never reaches the SQLite table.
         _guard_conversational_persistence(
             ChiefOfStaffConfig(invite_enabled=True),
-            mock_of[PersistenceBackend](backend_name="sqlite"),
+            mock_of[PersistenceBackend](
+                backend_name="sqlite",
+                supports_conversational_approvals=False,
+            ),
             ApprovalStore(),
         )
 
@@ -390,7 +399,10 @@ class TestConversationalPersistenceGuard:
         # Postgres widened its source CHECK, so the durable store is fine.
         _guard_conversational_persistence(
             ChiefOfStaffConfig(invite_enabled=True),
-            mock_of[PersistenceBackend](backend_name="postgres"),
+            mock_of[PersistenceBackend](
+                backend_name="postgres",
+                supports_conversational_approvals=True,
+            ),
             _persistent_store(),
         )
 

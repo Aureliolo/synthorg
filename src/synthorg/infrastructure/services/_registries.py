@@ -11,6 +11,7 @@ import asyncio
 import copy
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from types import MappingProxyType
 from uuid import UUID, uuid4
 
 from synthorg.core.types import NotBlankStr
@@ -30,7 +31,7 @@ logger = get_logger(__name__)
 
 
 class _ProjectRecord:
-    __slots__ = ("created_at", "description", "id", "metadata", "name")
+    __slots__ = ("_metadata", "created_at", "description", "id", "name")
 
     def __init__(
         self,
@@ -45,7 +46,15 @@ class _ProjectRecord:
         self.name = name
         self.description = description
         self.created_at = created_at
-        self.metadata = dict(metadata or {})
+        # Stored as a private dict so the record stays deep-copyable
+        # (a MappingProxyType cannot be deepcopied); the public
+        # ``metadata`` property hands out a read-only view so a caller
+        # holding the record cannot mutate the stored dict in place.
+        self._metadata = dict(metadata or {})
+
+    @property
+    def metadata(self) -> Mapping[str, str]:
+        return MappingProxyType(self._metadata)
 
     def to_dict(self) -> dict[str, object]:
         return {

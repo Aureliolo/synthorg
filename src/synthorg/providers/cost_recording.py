@@ -85,15 +85,17 @@ class CostRecordingContext(BaseModel):
     def _validate_cost_tracker(cls, value: object) -> object:
         """Validate that ``cost_tracker`` is a ``CostTracker`` instance.
 
-        Runs in ``before`` mode so the explicit ``TypeError`` fires ahead
-        of Pydantic's core ``is_instance_of`` check (which would otherwise
-        raise a ``ValidationError`` for the field's ``CostTracker`` type).
+        Runs in ``before`` mode so the explicit rejection fires ahead of
+        Pydantic's core ``is_instance_of`` check. Raises ``ValueError`` so
+        Pydantic wraps it into a ``ValidationError`` with a field path; a
+        bare ``TypeError`` would escape the model-construction call
+        uncaught.
 
         Returns:
             The validated ``CostTracker`` value.
 
         Raises:
-            TypeError: If *value* is not a ``CostTracker`` instance.
+            ValueError: If *value* is not a ``CostTracker`` instance.
         """
         from synthorg.budget.tracker import CostTracker  # noqa: PLC0415
 
@@ -102,7 +104,7 @@ class CostRecordingContext(BaseModel):
                 f"cost_tracker must be a CostTracker instance, got "
                 f"{type(value).__name__}"
             )
-            raise TypeError(msg)
+            raise ValueError(msg)  # noqa: TRY004 -- Pydantic needs ValueError
         return value
 
 

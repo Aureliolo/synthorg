@@ -5,6 +5,8 @@ Dismisses transient low-severity issues, escalates critical ones.
 Rule-based only (deterministic, zero LLM cost).
 """
 
+from typing import Final
+
 from synthorg.engine.health.models import EscalationSeverity, EscalationTicket
 from synthorg.observability import get_logger
 from synthorg.observability.events.health import (
@@ -15,9 +17,11 @@ from synthorg.observability.events.health import (
 
 logger = get_logger(__name__)
 
-# Thresholds for MEDIUM severity promotion to escalation.
-_MEDIUM_STALL_DURATION_THRESHOLD: float = 60.0
-_MEDIUM_STEPS_THRESHOLD: int = 5
+# Thresholds for MEDIUM severity promotion to escalation. Named constants
+# (not settings): the health pipeline is not yet wired into a boot-started
+# service, so a registered setting would be ghost-wired.
+_MEDIUM_STALL_DURATION_THRESHOLD: Final[float] = 60.0
+_MEDIUM_STEPS_THRESHOLD: Final[int] = 5
 
 
 class TriageFilter:

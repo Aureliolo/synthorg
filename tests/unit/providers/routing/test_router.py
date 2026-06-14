@@ -30,14 +30,6 @@ class TestModelRouterConstruction:
         router = ModelRouter(config, three_model_provider)
         assert router.strategy_name == "cost_aware"
 
-    def test_builds_with_cheapest_alias(
-        self,
-        three_model_provider: dict[str, ProviderConfig],
-    ) -> None:
-        config = RoutingConfig(strategy="cheapest")
-        router = ModelRouter(config, three_model_provider)
-        assert router.strategy_name == "cost_aware"
-
     def test_raises_for_unknown_strategy(
         self,
         three_model_provider: dict[str, ProviderConfig],

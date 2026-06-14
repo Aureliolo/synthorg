@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from synthorg import __version__
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 
@@ -17,7 +18,9 @@ class TestSandboxingConfigDefaults:
         assert config.default_backend == "subprocess"
         assert config.overrides == {}
         assert config.subprocess.timeout_seconds == 30.0
-        assert config.docker.image == "ghcr.io/aureliolo/synthorg-sandbox:latest"
+        assert config.docker.image == (
+            f"ghcr.io/aureliolo/synthorg-sandbox:v{__version__}"
+        )
 
     def test_frozen(self) -> None:
         config = SandboxingConfig()

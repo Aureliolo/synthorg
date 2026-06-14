@@ -223,8 +223,11 @@ class _HeartbeatParams:
     department_count: int = 0
     team_count: int = 0
     template_name: str = ""
-    persistence_backend: str = "sqlite"
-    memory_backend: str = "mem0"
+    # Empty (not an assumed "sqlite"/"mem0") so an absent snapshot reads
+    # as visibly-unknown rather than silently mislabelling a Postgres /
+    # alternate-memory deployment as the default backends.
+    persistence_backend: str = ""
+    memory_backend: str = ""
     features_enabled: str = ""
 
 
@@ -801,13 +804,18 @@ class TelemetryCollector:
                 "docker_info_available": False,
                 "docker_info_unavailable_reason": "daemon_unreachable",
             }
+        params = (
+            self._heartbeat_snapshot_provider()
+            if self._heartbeat_snapshot_provider is not None
+            else _HeartbeatParams()
+        )
         event = self._build_event(
             TELEMETRY_EVENT_DEPLOYMENT_STARTUP,
-            agent_count=0,
-            department_count=0,
-            template_name="",
-            persistence_backend="sqlite",
-            memory_backend="mem0",
+            agent_count=params.agent_count,
+            department_count=params.department_count,
+            template_name=params.template_name,
+            persistence_backend=params.persistence_backend,
+            memory_backend=params.memory_backend,
             **docker_info,
         )
         await self._send(event)

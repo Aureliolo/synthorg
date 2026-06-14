@@ -408,7 +408,7 @@ class SafetyClassifier:
                     tools=[_SAFETY_VERDICT_TOOL],
                     config=CompletionConfig(
                         temperature=0.0,
-                        max_tokens=256,
+                        max_tokens=self._config.max_output_tokens,
                     ),
                 ),
                 timeout=self._config.timeout_seconds,

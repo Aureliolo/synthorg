@@ -6,11 +6,13 @@ audit what was rendered.  The in-memory store keeps the full shape so
 future durable impls can persist identical payloads.
 """
 
+import copy
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Self
 from uuid import UUID, uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 
@@ -51,3 +53,14 @@ class Report(BaseModel):
     author_id: NotBlankStr
     content: dict[str, object] = Field(default_factory=dict)
     options: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _deep_copy_mutables(self) -> Self:
+        """Deep-copy mutable dicts so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``content`` and ``options`` deep-copied.
+        """
+        object.__setattr__(self, "content", copy.deepcopy(self.content))
+        object.__setattr__(self, "options", copy.deepcopy(self.options))
+        return self

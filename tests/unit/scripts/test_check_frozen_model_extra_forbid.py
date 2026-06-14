@@ -1,8 +1,10 @@
-"""Self-tests for the project-wide ``frozen-extra-forbid`` gate.
+"""Self-tests for the project-wide frozen-model gate.
 
-Pins the gate contract: every frozen ``ConfigDict`` model needs
+Pins two contracts: every frozen ``ConfigDict`` model needs
 ``extra="forbid"`` unless it declares a ``@computed_field`` (automatic
-section-8 carve-out) or carries a reasoned per-line opt-out.
+section-8 carve-out) or carries a reasoned per-line opt-out; and (under
+``src/synthorg/`` only) every frozen model needs ``allow_inf_nan=False``
+with no ``@computed_field`` carve-out.
 """
 
 import importlib.util
@@ -32,12 +34,14 @@ def _load_gate() -> object:
     return module
 
 
-def _walk(tmp_path: Path, source: str) -> list[tuple[Path, int, str]]:
+def _walk(
+    tmp_path: Path, source: str, *, check_inf_nan: bool = False
+) -> list[tuple[Path, int, str, str]]:
     gate = _load_gate()
     target = tmp_path / "mod.py"
     target.write_text(source, encoding="utf-8")
-    result = gate._walk(target)  # type: ignore[attr-defined]
-    return cast("list[tuple[Path, int, str]]", result)
+    result = gate._walk(target, check_inf_nan=check_inf_nan)  # type: ignore[attr-defined]
+    return cast("list[tuple[Path, int, str, str]]", result)
 
 
 def test_frozen_with_forbid_passes(tmp_path: Path) -> None:
@@ -189,7 +193,7 @@ def test_walk_prefilter_skips_files_without_model_config_token(
         "    name: str\n",
         encoding="utf-8",
     )
-    assert gate._walk(target) == []  # type: ignore[attr-defined]
+    assert gate._walk(target, check_inf_nan=False) == []  # type: ignore[attr-defined]
 
 
 def test_walk_prefilter_does_not_skip_files_with_model_config_token(
@@ -204,9 +208,64 @@ def test_walk_prefilter_does_not_skip_files_with_model_config_token(
         "    model_config = ConfigDict(frozen=True)\n",
         encoding="utf-8",
     )
-    violations = gate._walk(target)  # type: ignore[attr-defined]
+    violations = gate._walk(target, check_inf_nan=False)  # type: ignore[attr-defined]
     assert len(violations) == 1
     assert violations[0][2] == "HasConfig"
+
+
+def test_inf_nan_present_passes(tmp_path: Path) -> None:
+    src = (
+        "from pydantic import BaseModel, ConfigDict\n\n\n"
+        "class Ok(BaseModel):\n"
+        "    model_config = ConfigDict("
+        'frozen=True, allow_inf_nan=False, extra="forbid")\n'
+    )
+    assert _walk(tmp_path, src, check_inf_nan=True) == []
+
+
+def test_inf_nan_missing_is_violation(tmp_path: Path) -> None:
+    src = (
+        "from pydantic import BaseModel, ConfigDict\n\n\n"
+        "class Bad(BaseModel):\n"
+        '    model_config = ConfigDict(frozen=True, extra="forbid")\n'
+    )
+    violations = _walk(tmp_path, src, check_inf_nan=True)
+    assert [(v[2], v[3]) for v in violations] == [("Bad", "allow-inf-nan")]
+
+
+def test_inf_nan_not_checked_when_disabled(tmp_path: Path) -> None:
+    """Tests-scope (check_inf_nan=False) ignores a missing allow_inf_nan."""
+    src = (
+        "from pydantic import BaseModel, ConfigDict\n\n\n"
+        "class Bad(BaseModel):\n"
+        '    model_config = ConfigDict(frozen=True, extra="forbid")\n'
+    )
+    assert _walk(tmp_path, src, check_inf_nan=False) == []
+
+
+def test_inf_nan_no_computed_field_carveout(tmp_path: Path) -> None:
+    """A @computed_field model is still required to carry allow_inf_nan=False."""
+    src = (
+        "from pydantic import BaseModel, ConfigDict, computed_field\n\n\n"
+        "class Derived(BaseModel):\n"
+        '    model_config = ConfigDict(frozen=True, extra="forbid")\n\n'
+        "    @computed_field\n"
+        "    @property\n"
+        "    def x(self) -> int:\n"
+        "        return 1\n"
+    )
+    violations = _walk(tmp_path, src, check_inf_nan=True)
+    assert [(v[2], v[3]) for v in violations] == [("Derived", "allow-inf-nan")]
+
+
+def test_inf_nan_optout_with_reason_passes(tmp_path: Path) -> None:
+    src = (
+        "from pydantic import BaseModel, ConfigDict\n\n\n"
+        "class Allowed(BaseModel):  "
+        "# lint-allow: frozen-allow-inf-nan -- accepts NaN by design\n"
+        '    model_config = ConfigDict(frozen=True, extra="forbid")\n'
+    )
+    assert _walk(tmp_path, src, check_inf_nan=True) == []
 
 
 def test_real_codebase_is_compliant() -> None:

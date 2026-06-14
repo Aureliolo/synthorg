@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 class ApprovalStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the approval feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     store: ApprovalStoreProtocol | None = None
     gate: ApprovalGate | None = None

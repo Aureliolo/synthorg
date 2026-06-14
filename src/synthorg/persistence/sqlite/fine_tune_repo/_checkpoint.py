@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 _MAX_LIST_LIMIT: int = 1_000
 
 
-def _checkpoint_from_row(row: aiosqlite.Row) -> CheckpointRecord:
+def _row_to_checkpoint(row: aiosqlite.Row) -> CheckpointRecord:
     """Build a ``CheckpointRecord`` from a database row.
 
     Returns:
@@ -150,7 +150,7 @@ class SQLiteFineTuneCheckpointRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return _checkpoint_from_row(row)
+        return _row_to_checkpoint(row)
 
     async def list_items(
         self,
@@ -182,7 +182,7 @@ class SQLiteFineTuneCheckpointRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(_checkpoint_from_row(r) for r in rows)
+        return tuple(_row_to_checkpoint(r) for r in rows)
 
     async def list_items_page(
         self,
@@ -220,7 +220,7 @@ class SQLiteFineTuneCheckpointRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(_checkpoint_from_row(r) for r in rows), total
+        return tuple(_row_to_checkpoint(r) for r in rows), total
 
     async def set_active(self, checkpoint_id: str) -> None:
         """Deactivate all checkpoints and activate the given one.
@@ -366,7 +366,7 @@ class SQLiteFineTuneCheckpointRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return _checkpoint_from_row(row)
+        return _row_to_checkpoint(row)
 
 
 __all__ = ["SQLiteFineTuneCheckpointRepository"]

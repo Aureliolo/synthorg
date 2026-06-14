@@ -127,7 +127,9 @@ class BaseFeatureStateSlice(BaseModel):
     requires per class.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        frozen=True, allow_inf_nan=False, extra="forbid", arbitrary_types_allowed=True
+    )
 
 
 @runtime_checkable
@@ -259,7 +261,9 @@ class ControllerRegistration(BaseModel):  # type: ignore[explicit-any]
       ``"root"`` mounts at the application root (e.g. a2a ``/.well-known``).
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        frozen=True, allow_inf_nan=False, extra="forbid", arbitrary_types_allowed=True
+    )
 
     controller: type[Controller]
     predicate: Callable[..., bool] | None = None  # type: ignore[explicit-any]
@@ -284,7 +288,9 @@ class McpHandlerDescriptor(BaseModel):
       typed ``object`` here for the same layering reason.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        frozen=True, allow_inf_nan=False, extra="forbid", arbitrary_types_allowed=True
+    )
 
     domain: str
     tool_names: tuple[str, ...]
@@ -300,7 +306,9 @@ class FeatureManifest(BaseModel):
     and rejects unknown fields so a typo in a ``feature.py`` fails at import.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        frozen=True, allow_inf_nan=False, extra="forbid", arbitrary_types_allowed=True
+    )
 
     name: NotBlankStr
     settings_namespace: SettingNamespace | None = None

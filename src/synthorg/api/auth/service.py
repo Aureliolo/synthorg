@@ -7,7 +7,7 @@ import secrets
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import ClassVar
+from typing import ClassVar, Final
 
 import argon2
 import jwt
@@ -25,6 +25,7 @@ from synthorg.core.domain_errors import (
     ServiceUnavailableError,
 )
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -50,12 +51,21 @@ class SecretNotConfiguredError(ServiceUnavailableError):
     status_code: ClassVar[int] = 503
 
 
+# Argon2id parameters. Named so a future OWASP / RFC 9106 ratchet of the
+# profile (memory_cost in particular) is a one-line constant change, not a
+# grep hunt. These are algorithm parameters, not operator-tunable settings.
+_ARGON2_TIME_COST: Final[int] = 3
+_ARGON2_MEMORY_COST: Final[int] = 65536
+_ARGON2_PARALLELISM: Final[int] = 4
+_ARGON2_HASH_LEN: Final[int] = 32
+_ARGON2_SALT_LEN: Final[int] = 16
+
 _hasher = argon2.PasswordHasher(
-    time_cost=3,
-    memory_cost=65536,
-    parallelism=4,
-    hash_len=32,
-    salt_len=16,
+    time_cost=_ARGON2_TIME_COST,
+    memory_cost=_ARGON2_MEMORY_COST,
+    parallelism=_ARGON2_PARALLELISM,
+    hash_len=_ARGON2_HASH_LEN,
+    salt_len=_ARGON2_SALT_LEN,
 )
 
 
@@ -68,11 +78,11 @@ class RefreshRotation(BaseModel):
     access token rotated in place), not a freshly minted one.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    token: str
+    token: NotBlankStr
     expires_in: int
-    session_id: str
+    session_id: NotBlankStr
     user: User
 
 

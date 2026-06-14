@@ -7,7 +7,7 @@ iteratively improve retrieval quality.
 
 import builtins
 from collections.abc import Awaitable, Callable
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.models import MemoryEntry
@@ -18,6 +18,11 @@ from synthorg.observability.events.memory import (
 )
 
 logger = get_logger(__name__)
+
+# Caps on how much of each memory entry, and how many entries, reach the
+# LLM prompt in the results summary. Bounds prompt token pressure.
+_REFORMULATION_ENTRY_MAX_CHARS: Final[int] = 200
+_REFORMULATION_MAX_ENTRIES: Final[int] = 10
 
 _REFORMULATE_PROMPT = (
     "You are a query reformulation assistant. Given an original search "
@@ -103,11 +108,11 @@ def _format_results_summary(entries: tuple[MemoryEntry, ...]) -> str:
     """
     if not entries:
         return "(no results)"
-    _max_len = 200
+    max_len = _REFORMULATION_ENTRY_MAX_CHARS
     parts: list[str] = []
-    for e in entries[:10]:
-        text = e.content[:_max_len]
-        if len(e.content) > _max_len:
+    for e in entries[:_REFORMULATION_MAX_ENTRIES]:
+        text = e.content[:max_len]
+        if len(e.content) > max_len:
             text += "..."
         parts.append(f"- [{e.category.value}] {_sanitize_for_xml_block(text)}")
     return "\n".join(parts)

@@ -4,6 +4,7 @@ Covers git subprocess kill-grace, Docker sandbox sidecar resource
 limits, Docker stop grace period, and subprocess sandbox kill-grace.
 """
 
+from synthorg import __version__
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
@@ -182,7 +183,7 @@ _r.register(
         namespace=SettingNamespace.TOOLS,
         key="sandbox_image",
         type=SettingType.STRING,
-        default="ghcr.io/aureliolo/synthorg-sandbox:latest",
+        default=f"ghcr.io/aureliolo/synthorg-sandbox:v{__version__}",
         description=(
             "Docker image used for sandbox containers. Resolution"
             " precedence at backend startup: DB override >"
@@ -209,7 +210,7 @@ _r.register(
         namespace=SettingNamespace.TOOLS,
         key="sidecar_image",
         type=SettingType.STRING,
-        default="ghcr.io/aureliolo/synthorg-sidecar:latest",
+        default=f"ghcr.io/aureliolo/synthorg-sidecar:v{__version__}",
         description=(
             "Docker image used for the sandbox network sidecar"
             " container. Resolution precedence at backend startup: DB"
@@ -402,7 +403,7 @@ _r.register(
         namespace=SettingNamespace.TOOLS,
         key="desktop_image_pin",
         type=SettingType.STRING,
-        default="ghcr.io/aureliolo/synthorg-desktop:latest",
+        default=f"ghcr.io/aureliolo/synthorg-desktop:v{__version__}",
         description=(
             "Container image used by the desktop sandbox backend. Must"
             " contain Xvfb, xdotool, scrot, and the GUI toolkits the"

@@ -32,7 +32,7 @@ from synthorg.persistence.cost_forecast_protocol import (
 class BudgetStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the budget feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     cost_tracker: CostTracker | None = None
     cost_forecaster: CostForecaster | None = None

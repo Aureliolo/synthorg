@@ -4,6 +4,7 @@ Frozen Pydantic models for hiring, firing, onboarding, offboarding,
 and agent lifecycle events.
 """
 
+import copy
 from typing import Self
 from uuid import UUID, uuid4
 
@@ -392,3 +393,13 @@ class AgentLifecycleEvent(BaseModel):
         default_factory=dict,
         description="Additional structured metadata",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_metadata(self) -> Self:
+        """Deep-copy metadata so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``metadata`` deep-copied.
+        """
+        object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        return self

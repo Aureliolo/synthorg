@@ -63,7 +63,6 @@ from .resilience import (
 )
 from .routing import (
     STRATEGY_MAP,
-    STRATEGY_NAME_CHEAPEST,
     STRATEGY_NAME_COST_AWARE,
     STRATEGY_NAME_FASTEST,
     STRATEGY_NAME_MANUAL,
@@ -89,7 +88,6 @@ from .routing import (
 __all__ = [
     "CASSETTE_FORMAT_VERSION",
     "STRATEGY_MAP",
-    "STRATEGY_NAME_CHEAPEST",
     "STRATEGY_NAME_COST_AWARE",
     "STRATEGY_NAME_FASTEST",
     "STRATEGY_NAME_MANUAL",

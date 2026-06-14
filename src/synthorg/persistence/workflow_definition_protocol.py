@@ -12,7 +12,6 @@ from synthorg.persistence._generics import (
     FilteredQueryRepository,
     IdKeyedRepository,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT  # noqa: F401
 
 
 class WorkflowDefinitionFilterSpec(BaseModel):

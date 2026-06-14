@@ -17,7 +17,7 @@ from synthorg.observability.tracing.protocol import TraceHandler
 class ObservabilityStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the observability feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     prometheus_collector: PrometheusCollector | None = None
     trace_handler: TraceHandler | None = None

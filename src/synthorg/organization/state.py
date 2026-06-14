@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 class OrganizationStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the organization feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     company_read_service: CompanyReadService | None = None
     department_service: DepartmentService | None = None

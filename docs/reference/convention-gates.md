@@ -118,7 +118,7 @@ The same gate also asserts the **cardinal rule**: no CI *correctness* job (in `c
 
 Most gates scan `src/synthorg/` only. Those that walk additional trees encode every such tree in their `files:` regex (a PR that adds a violation only in an unlisted tree would otherwise bypass the gate). The notable multi-tree gates:
 
-- `check_frozen_model_extra_forbid.py`: `src/synthorg/` AND `tests/`. The project-wide `extra="forbid"` rule applies equally to test fixtures, so the gate walks both trees in a single pass.
+- `check_frozen_model_extra_forbid.py`: `src/synthorg/` AND `tests/`. The project-wide `extra="forbid"` rule applies equally to test fixtures, so the gate walks both trees in a single pass. The same gate also enforces `allow_inf_nan=False` on every frozen model, but scoped to `src/synthorg/` only (test fixtures are exempt from the inf/nan assertion). The `extra` check auto-exempts `@computed_field`-only models; the `allow_inf_nan` check does not. Per-line opt-outs: `# lint-allow: frozen-extra-forbid -- <reason>` and `# lint-allow: frozen-allow-inf-nan -- <reason>`.
 - `check_persistence_boundary.py`, `check_no_review_origin_in_code.py`, `check_no_migration_framing.py`, `check_docstring_completeness.py`: `src/synthorg/` AND `tests/`.
 - `check_dead_api_endpoints.py`: `src/synthorg/api/` AND `web/src/` (frontend / backend route parity).
 

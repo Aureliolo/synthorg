@@ -41,6 +41,25 @@ Each shared helper carries a dedicated unit suite under `tests/unit/persistence/
 
 Adding a new shared helper: extract the duplicated logic into `_shared/`, add a dedicated unit suite alongside it (`test_<helper>.py`), and add a conformance test that runs against both backends.
 
+## Repository-private row marshalling helpers
+
+When a repository's row<->model mapping is not (yet) shared across backends, the per-repository helpers follow a fixed naming pair so the deserialise and serialise directions are unambiguous:
+
+- `_row_to_<noun>(row: RowLike) -> Model`: **deserialise** a single driver row into its domain model. The `<noun>` is the aggregate, not the table (`_row_to_run`, `_row_to_checkpoint`, `_row_to_author`), so a module that reconstructs several models reads cleanly. Each helper routes every timestamp column through `coerce_row_timestamp` and re-raises driver/parse failures as the layer's `MalformedRowError`. The `from_row` / `<noun>_from_row` ordering is **not** used; the verb-then-noun `_row_to_<noun>` form is canonical.
+- `_to_row(self, entity) -> dict[str, object]` (or an explicit column tuple): **serialise** a domain model into the driver's parameter shape. JSON wrapping that diverges by driver (`json.dumps` on SQLite, psycopg `Jsonb` on Postgres) stays on the backend side of this boundary; the helper produces only plain Python values.
+
+These mirror the shared `row_to_*` functions in `_shared/` (same direction, same timestamp discipline); the leading underscore marks the ones that are still repository-private because no second backend consumes them yet. Promoting a private `_row_to_<noun>` to a shared `row_to_<noun>` is the standard move when the SQLite and Postgres repos start to duplicate it.
+
+## Rollback discipline
+
+Repositories that open a write transaction expose a single private coroutine for the failure path:
+
+```python
+async def _safe_rollback(self, *, event: str) -> None:
+```
+
+It rolls back the active transaction and swallows-then-logs any rollback-time driver error (a failed rollback must never mask the original write failure being handled), logging under the supplied `event` constant with `error_type` + `safe_error_description`. The `event` argument is keyword-only so every call site names the operation whose rollback failed. Call it from the `except` arm of a write before re-raising the domain error; never inline a bare `await conn.rollback()` (which would let a rollback-time exception escape and shadow the real cause).
+
 ## In-memory invariant pins (interim, schema-deferred)
 
 When a Pydantic model gains a required field but the corresponding column hasn't been added yet (e.g. a yoyo revision is queued in a follow-up issue), the repository may carry a process-local `_pinned_<field>` map keyed by the row's primary key, plus a true **per-key lock registry** (not a fixed-size stripe set): `_lock_registry: dict[str, asyncio.Lock]` lazily populated under a small `_registry_lock` so each primary key gets its own dedicated `asyncio.Lock`. Concurrent operations on different keys never block each other; the per-key lock is held across the full critical section -- check-and-set + DB I/O + deserialise -- so concurrent first-writes for the *same* key cannot diverge the in-memory dict from the durable row. Mismatched-pin writes raise the same domain error a column constraint would (e.g. `MixedCurrencyAggregationError`). On any failure mode (DB error, missing RETURNING row, deserialise failure) a `try`/`finally` around the I/O block rolls the pin back so a retry isn't blocked by a phantom pin. The read path (`get`) uses a bare `dict.get` -- atomic under the GIL, never yields -- and falls back to a sane neutral default (`DEFAULT_CURRENCY` for currency, etc.) when no pin is present, with a DEBUG log per pin-miss. The schema-gap notice is emitted at INFO **once per process** via a module-level guard, not per repo instance, so test suites that build many repositories don't flood the log.

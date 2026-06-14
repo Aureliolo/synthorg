@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 class RuntimeStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the runtime feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     worker_execution_service: WorkerExecutionService | None = None
     coordinator: MultiAgentCoordinator | None = None

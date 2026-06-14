@@ -4,10 +4,12 @@ Defines the data structures for review stage results, pipeline
 results, and the review verdict enum.
 """
 
+import copy
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 
@@ -54,6 +56,16 @@ class ReviewStageResult(BaseModel):
         default_factory=dict,
         description="Additional stage-specific metadata",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_metadata(self) -> Self:
+        """Deep-copy metadata so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``metadata`` deep-copied.
+        """
+        object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        return self
 
 
 class PipelineResult(BaseModel):

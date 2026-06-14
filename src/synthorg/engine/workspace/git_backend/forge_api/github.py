@@ -32,7 +32,7 @@ class _GitHubUser(BaseModel):  # lint-allow: frozen-extra-forbid -- forge extras
     beyond the login we model.
     """
 
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
 
     login: NotBlankStr
 
@@ -44,7 +44,7 @@ class _GitHubRepo(BaseModel):  # lint-allow: frozen-extra-forbid -- forge extras
     beyond the four we model.
     """
 
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
 
     full_name: NotBlankStr
     clone_url: NotBlankStr

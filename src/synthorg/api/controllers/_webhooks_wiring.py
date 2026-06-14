@@ -52,7 +52,7 @@ class WebhookEventPayload(
     every external provider integration.
     """
 
-    model_config = ConfigDict(frozen=True, extra="allow")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="allow")
 
 
 # DB CHECK constraint on ``idempotency_keys.key`` caps the column at

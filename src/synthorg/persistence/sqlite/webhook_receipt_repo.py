@@ -66,8 +66,8 @@ def _row_to_receipt(row: aiosqlite.Row) -> WebhookReceipt:
         return WebhookReceipt(
             id=UUID(str(receipt_id)),
             connection_name=NotBlankStr(connection_name),
-            event_type=event_type or "",
-            status=status or "received",
+            event_type=NotBlankStr(event_type),
+            status=NotBlankStr(status or "received"),
             received_at=coerce_row_timestamp(received_at),
             processed_at=(coerce_row_timestamp(processed_at) if processed_at else None),
             payload_json=payload_json or "",

@@ -129,6 +129,15 @@ class PostgresPersistenceBackend(
         return "postgres"
 
     @property
+    def supports_conversational_approvals(self) -> bool:
+        """Postgres durably persists conversational approvals.
+
+        Returns:
+            ``True`` -- the Postgres ApprovalStore retains parked approvals.
+        """
+        return True
+
+    @property
     def config(self) -> PostgresConfig:
         """Public read-only view of the backend's Postgres config.
 

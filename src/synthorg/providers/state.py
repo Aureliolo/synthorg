@@ -28,7 +28,7 @@ from synthorg.providers.routing.router import ModelRouter
 class ProvidersStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the providers feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     registry: ProviderRegistry | None = None
     model_router: ModelRouter | None = None

@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 class IntegrationsStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the integrations feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     connection_catalog: ConnectionCatalog | None = None
     connection_service: ConnectionService | None = None

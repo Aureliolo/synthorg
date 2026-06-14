@@ -71,6 +71,15 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
         return "sqlite"
 
     @property
+    def supports_conversational_approvals(self) -> bool:
+        """SQLite cannot durably persist conversational approvals.
+
+        Returns:
+            ``False`` until the SQLite ApprovalStore limitation is resolved.
+        """
+        return False
+
+    @property
     def config(self) -> SQLiteConfig:
         """Public read-only view of the backend's config.
 

@@ -18,6 +18,7 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
     EscalationQueueStore,
 )
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_EXPIRED,
@@ -90,7 +91,7 @@ class EscalationExpirationSweeper:
         # state resets so it remains observable on the next ``start()``
         # call.
         self._stop_failed: bool = False
-        self._stop_drain_timeout_seconds: float = 30.0
+        self._stop_drain_timeout_seconds: float = DEFAULT_DRAIN_TIMEOUT_SECONDS
 
     def _task_is_on_current_loop(self) -> bool:
         """True iff the existing task is alive on the running loop.

@@ -30,7 +30,7 @@ from synthorg.hr.training.service import TrainingService
 class HrStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the HR feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_registry: AgentRegistryService | None = None
     performance_tracker: PerformanceTracker | None = None

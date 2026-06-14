@@ -24,6 +24,7 @@ to avoid leaking a value across tests.
 
 from typing import Final
 
+from synthorg import __version__
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import (
     CONFIG_FALLBACK_USED,
@@ -32,8 +33,15 @@ from synthorg.observability.events.config import (
 
 logger = get_logger(__name__)
 
-_FALLBACK_SANDBOX_IMAGE: Final[str] = "ghcr.io/aureliolo/synthorg-sandbox:latest"
-_FALLBACK_SIDECAR_IMAGE: Final[str] = "ghcr.io/aureliolo/synthorg-sidecar:latest"
+# Versioned (not ``:latest``) so a programmatic / pre-lifecycle
+# construction falls back to the running release's image, matching the
+# ``tools.sandbox_image`` / ``tools.sidecar_image`` registered defaults.
+_FALLBACK_SANDBOX_IMAGE: Final[str] = (
+    f"ghcr.io/aureliolo/synthorg-sandbox:v{__version__}"
+)
+_FALLBACK_SIDECAR_IMAGE: Final[str] = (
+    f"ghcr.io/aureliolo/synthorg-sidecar:v{__version__}"
+)
 
 _resolved_sandbox_image: str | None = None
 _resolved_sidecar_image: str | None = None

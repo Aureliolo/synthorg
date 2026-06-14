@@ -56,7 +56,11 @@ _SYSTEM_PROMPT_HEADER = (
     + untrusted_content_directive((TAG_TASK_DATA,))
 )
 
-_COMPLETION_CONFIG = CompletionConfig(temperature=0.3, max_tokens=256)
+# Response-token budget for the calibration model's structured verdict.
+_CALIBRATION_MAX_TOKENS: Final[int] = 256
+_COMPLETION_CONFIG = CompletionConfig(
+    temperature=0.3, max_tokens=_CALIBRATION_MAX_TOKENS
+)
 
 
 class LlmCalibrationSampler:

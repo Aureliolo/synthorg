@@ -32,6 +32,9 @@ def build_benchmark_score_repo(app_state: AppState) -> BenchmarkScoreRepository:
     Returns:
         The SQLite or Postgres :class:`BenchmarkScoreRepository`.
     """
+    from synthorg.persistence.backend_dispatch import (  # noqa: PLC0415
+        build_for_backend,
+    )
     from synthorg.persistence.db_handle import (  # noqa: PLC0415
         postgres_pool,
         sqlite_connection,
@@ -39,7 +42,8 @@ def build_benchmark_score_repo(app_state: AppState) -> BenchmarkScoreRepository:
     from synthorg.persistence.state import persistence_of  # noqa: PLC0415
 
     persistence = persistence_of(app_state)
-    if persistence.backend_name == "sqlite":
+
+    def _build_sqlite() -> BenchmarkScoreRepository:
         from synthorg.persistence.sqlite.benchmark_score_repo import (  # noqa: PLC0415
             SQLiteBenchmarkScoreRepository,
         )
@@ -48,11 +52,17 @@ def build_benchmark_score_repo(app_state: AppState) -> BenchmarkScoreRepository:
             sqlite_connection(persistence),
             write_context=persistence.write_context,
         )
-    from synthorg.persistence.postgres.benchmark_score_repo import (  # noqa: PLC0415
-        PostgresBenchmarkScoreRepository,
-    )
 
-    return PostgresBenchmarkScoreRepository(postgres_pool(persistence))
+    def _build_postgres() -> BenchmarkScoreRepository:
+        from synthorg.persistence.postgres.benchmark_score_repo import (  # noqa: PLC0415
+            PostgresBenchmarkScoreRepository,
+        )
+
+        return PostgresBenchmarkScoreRepository(postgres_pool(persistence))
+
+    return build_for_backend(
+        persistence, sqlite=_build_sqlite, postgres=_build_postgres
+    )
 
 
 def select_benchmark_provider(

@@ -4,6 +4,7 @@ Defines adaptation proposals, decisions, and evolution events that
 flow through the trigger-proposer-guard-adapter pipeline.
 """
 
+import copy
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Self
@@ -67,6 +68,16 @@ class AdaptationProposal(BaseModel):
     proposed_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_changes(self) -> Self:
+        """Deep-copy changes so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``changes`` deep-copied.
+        """
+        object.__setattr__(self, "changes", copy.deepcopy(self.changes))
+        return self
 
 
 class AdaptationDecision(BaseModel):

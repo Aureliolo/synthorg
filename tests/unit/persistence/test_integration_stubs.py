@@ -21,7 +21,8 @@ def _receipt(receipt_id: str, *, status: str = "received") -> WebhookReceipt:
     return WebhookReceipt(
         id=as_uuid(receipt_id),
         connection_name=NotBlankStr("conn-1"),
-        status=status,
+        event_type=NotBlankStr("push"),
+        status=NotBlankStr(status),
     )
 
 

@@ -73,8 +73,8 @@ def _row_to_receipt(row: DictRow) -> WebhookReceipt:
         return WebhookReceipt(
             id=UUID(str(row["id"])),
             connection_name=NotBlankStr(row["connection_name"]),
-            event_type=row.get("event_type") or "",
-            status=row.get("status") or "received",
+            event_type=NotBlankStr(row["event_type"]),
+            status=NotBlankStr(row.get("status") or "received"),
             received_at=coerce_row_timestamp(row["received_at"]),
             processed_at=(coerce_row_timestamp(processed_at) if processed_at else None),
             payload_json=payload_str,

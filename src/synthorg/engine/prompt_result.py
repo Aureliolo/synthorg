@@ -6,9 +6,10 @@ appender, and the build-success logger. Kept free of any dependency on
 the render engine so the render module can import from here.
 """
 
-from typing import TYPE_CHECKING
+import copy
+from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.communication.async_tasks.models import AsyncTaskStateChannel
 from synthorg.core.agent import AgentIdentity
@@ -64,6 +65,16 @@ class SystemPrompt(BaseModel):
         default=None,
         description="Populated when personality section was trimmed",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_metadata(self) -> Self:
+        """Deep-copy metadata so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``metadata`` deep-copied.
+        """
+        object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        return self
 
 
 def build_prompt_result(  # noqa: PLR0913

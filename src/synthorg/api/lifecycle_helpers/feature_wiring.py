@@ -292,6 +292,22 @@ async def _wire_research_engine(
             synthesizer=(
                 await runtime_settings.get("research", "synthesizer")
             ).value.strip(),  # type: ignore[arg-type]
+            triage_batch_size=int(
+                (await runtime_settings.get("research", "triage_batch_size")).value
+            ),
+            hybrid_prefilter_factor=float(
+                (
+                    await runtime_settings.get("research", "hybrid_prefilter_factor")
+                ).value
+            ),
+            dedup_similarity_threshold=float(
+                (
+                    await runtime_settings.get("research", "dedup_similarity_threshold")
+                ).value
+            ),
+            per_query_limit=int(
+                (await runtime_settings.get("research", "per_query_limit")).value
+            ),
         )
         service = build_research_service(
             runs_repo=persistence_of(app_state).research_runs,
