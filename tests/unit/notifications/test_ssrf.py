@@ -76,6 +76,21 @@ class TestValidateOutboundUrlScheme:
         with pytest.raises(ValueError, match="private/internal IP"):
             validate_outbound_url_scheme(url, "server_url")
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://[::ffff:127.0.0.1]/x",
+            "http://[::ffff:169.254.169.254]/latest/meta-data/",
+            "http://[::ffff:10.0.0.1]/x",
+        ],
+    )
+    def test_rejects_ipv4_mapped_ipv6_loopback_and_private(self, url: str) -> None:
+        # IPv4-mapped IPv6 reports neither is_private nor is_loopback on the
+        # IPv6Address; the check must unwrap to the embedded IPv4 so the
+        # mapped notation cannot bypass the SSRF fast-fail.
+        with pytest.raises(ValueError, match="private/internal IP"):
+            validate_outbound_url_scheme(url, "server_url")
+
     def test_accepts_public_hostname(self) -> None:
         # No raise: a public hostname passes the sync check (DNS is the
         # async pre-flight's job, not this one's).

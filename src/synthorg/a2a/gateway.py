@@ -726,7 +726,21 @@ async def _verify_peer_credentials(
                     reason="token mismatch",
                 )
                 return False
-        # mTLS/none: no header-level check needed
+        elif scheme in ("mtls", "none"):
+            # mTLS/none: no header-level check needed.
+            pass
+        else:
+            # An unknown scheme (blank, typo, or a value the catalog was
+            # misconfigured with) must fail closed: falling through to the
+            # trailing ``return True`` would grant access without any
+            # credential check.
+            logger.warning(
+                A2A_INBOUND_AUTH_FAILED,
+                peer_name=peer_name,
+                reason="unsupported auth scheme",
+                auth_scheme=str(scheme),
+            )
+            return False
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # Credential verification sits alongside ``request``,

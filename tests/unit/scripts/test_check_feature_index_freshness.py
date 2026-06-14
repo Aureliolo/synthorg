@@ -29,6 +29,12 @@ class _GateModule(Protocol):
     @staticmethod
     def check(*, repo_root: Path) -> list[str]: ...
 
+    @staticmethod
+    def _validate_codebase_map(
+        modules: list[object],
+        expected_index: dict[str, object],
+    ) -> list[str]: ...
+
 
 def _load() -> _GateModule:
     spec = importlib.util.spec_from_file_location(
@@ -48,6 +54,15 @@ def test_gate_passes_on_current_repo() -> None:
     """Committed artefacts must round-trip cleanly."""
     findings = _GATE.check(repo_root=_REPO_ROOT)
     assert findings == [], "\n".join(findings)
+
+
+def test_non_dict_module_entry_is_a_finding_not_a_traceback() -> None:
+    """A malformed (non-object) map entry surfaces as a finding."""
+    findings = _GATE._validate_codebase_map(
+        ["not-an-object"],
+        {"features": []},
+    )
+    assert any("non-object entry" in finding for finding in findings)
 
 
 def test_gate_fails_when_feature_index_missing(tmp_path: Path) -> None:

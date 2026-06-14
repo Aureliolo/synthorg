@@ -231,6 +231,9 @@ class TestHealthDetail:
         assert body["status"] == "ok"
         assert body["persistence"] is True
         assert body["message_bus"] is True
+        # ``/health`` exposes the full per-component breakdown, so the
+        # providers component must be present (None when unconfigured).
+        assert "providers" in body
         assert body["telemetry"] in {"enabled", "disabled"}
 
     async def test_authenticated_503_when_bus_down(

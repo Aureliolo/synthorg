@@ -515,6 +515,32 @@ class TestVerifyPeerCredentials:
         assert result is True
 
     @pytest.mark.unit
+    async def test_unsupported_scheme_fails_closed(self) -> None:
+        """An unknown auth_scheme (typo / misconfiguration) is denied.
+
+        It must not fall through to the trailing ``return True`` and grant
+        access without any credential check.
+        """
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        catalog.get_credentials = AsyncMock(
+            return_value={"auth_scheme": "totally-bogus", "api_key": "x"},
+        )
+        app_state = make_app_state(connection_catalog=catalog)
+        request = MagicMock(spec=Request)
+        request.headers = {"x-api-key": "x"}
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is False
+
+    @pytest.mark.unit
     async def test_catalog_error_denies(self) -> None:
         """Catalog errors result in denial."""
         from unittest.mock import AsyncMock, MagicMock

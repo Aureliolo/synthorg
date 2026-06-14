@@ -55,6 +55,12 @@ def validate_outbound_url_scheme(url: str, field: str) -> None:
         addr = ipaddress.ip_address(host)
     except ValueError:
         return
+    # IPv4-mapped IPv6 (``::ffff:127.0.0.1``) reports neither ``is_private``
+    # nor ``is_loopback`` on the IPv6Address; unwrap to the embedded IPv4 so
+    # the loopback/private/link-local check cannot be bypassed via the mapped
+    # notation.
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+        addr = addr.ipv4_mapped
     if addr.is_private or addr.is_link_local or addr.is_loopback:
         msg = f"{field} must not target private/internal IP"
         raise ValueError(msg)

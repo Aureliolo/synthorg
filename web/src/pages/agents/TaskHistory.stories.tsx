@@ -13,6 +13,7 @@ function makeTask(overrides: Partial<Task> & { id: string; title: string }): Tas
     project: 'main',
     created_by: 'system',
     assigned_to: 'Alice Smith',
+    requested_by_user_id: null,
     reviewers: [],
     dependencies: [],
     artifacts_expected: [],

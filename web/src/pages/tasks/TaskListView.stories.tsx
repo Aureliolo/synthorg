@@ -13,6 +13,7 @@ function makeTask(id: string, title: string, overrides: Partial<DashboardTask> =
     project: 'test-project',
     created_by: 'agent-cto',
     assigned_to: 'agent-eng',
+    requested_by_user_id: null,
     reviewers: [],
     dependencies: [],
     artifacts_expected: [],

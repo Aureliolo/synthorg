@@ -100,6 +100,33 @@ async def test_issue_persists_hashed_key_and_returns_plaintext_once() -> None:
     assert stored.created_at == _NOW
 
 
+async def test_issue_rejects_naive_expires_at() -> None:
+    # A naive expires_at would pass here but raise TypeError later when the
+    # SSE revalidation tick compares it to the aware clock; reject it at the
+    # boundary.
+    repo = _FakeApiKeyRepo()
+    svc = _service(repo)
+    with pytest.raises(ValueError, match="timezone-aware"):
+        await svc.issue(
+            owner=_user(),
+            name="ci",
+            role=HumanRole.OBSERVER,
+            expires_at=datetime(2026, 7, 1, 12, 0, 0),  # noqa: DTZ001 -- naive on purpose
+        )
+
+
+async def test_issue_accepts_aware_expires_at() -> None:
+    repo = _FakeApiKeyRepo()
+    svc = _service(repo)
+    expires = _NOW + timedelta(days=30)
+    issued = await svc.issue(
+        owner=_user(), name="ci", role=HumanRole.OBSERVER, expires_at=expires
+    )
+    stored = await repo.get(issued.view.id)
+    assert stored is not None
+    assert stored.expires_at == expires
+
+
 async def test_issue_rejects_role_above_issuer() -> None:
     repo = _FakeApiKeyRepo()
     svc = _service(repo)

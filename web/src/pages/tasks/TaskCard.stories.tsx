@@ -13,6 +13,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     project: 'test-project',
     created_by: 'agent-cto',
     assigned_to: 'agent-eng-lead',
+    requested_by_user_id: null,
     reviewers: [],
     dependencies: ['task-0'],
     artifacts_expected: [],

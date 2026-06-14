@@ -13,6 +13,7 @@ const baseTask: DashboardTask = {
   project: 'engine-rewrite',
   created_by: 'alice',
   assigned_to: 'bob',
+  requested_by_user_id: null,
   reviewers: [],
   dependencies: [],
   artifacts_expected: [],

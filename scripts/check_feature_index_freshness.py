@@ -61,7 +61,7 @@ _MAP_ENTRY_KEYS: Final[frozenset[str]] = frozenset(
 
 
 def _validate_codebase_map(
-    modules: list[dict[str, object]],
+    modules: list[object],
     expected_index: dict[str, object],
 ) -> list[str]:
     """Validate the regenerated codebase map's structure + cross-consistency.
@@ -87,6 +87,11 @@ def _validate_codebase_map(
         if isinstance(feature, dict) and "name" in feature
     }
     for entry in modules:
+        if not isinstance(entry, dict):
+            findings.append(
+                f"{CODEBASE_MAP_REL.as_posix()} contains non-object entry: {entry!r}"
+            )
+            continue
         missing = _MAP_ENTRY_KEYS - entry.keys()
         if missing:
             findings.append(

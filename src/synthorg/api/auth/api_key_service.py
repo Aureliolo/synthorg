@@ -24,6 +24,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_API_KEY_ISSUED,
     SECURITY_API_KEY_REVOKED,
+    SECURITY_AUTH_FAILED,
 )
 from synthorg.persistence.user_protocol import (
     ApiKeyFilterSpec,
@@ -144,8 +145,23 @@ class ApiKeyService:
         Raises:
             ForbiddenError: When ``role`` exceeds the owner's seniority
                 or is not issuable (e.g. ``SYSTEM``).
+            ValueError: When ``expires_at`` is a naive datetime; a naive
+                value passes here but raises ``TypeError`` later when the
+                SSE revalidation tick compares it against the
+                timezone-aware ``clock.now()``, so reject it at the
+                boundary instead.
         """
+        if expires_at is not None and expires_at.tzinfo is None:
+            msg = "expires_at must be timezone-aware"
+            raise ValueError(msg)
         if not _may_issue_role(issuer=owner.role, target=role):
+            logger.warning(
+                SECURITY_AUTH_FAILED,
+                reason="api_key_issue_role_forbidden",
+                issuer_user_id=owner.user_id,
+                issuer_role=owner.role.value,
+                requested_role=role.value,
+            )
             msg = "Cannot issue an API key with a role above your own"
             raise ForbiddenError(msg)
         raw_key = self._auth_service.generate_api_key()
@@ -200,6 +216,13 @@ class ApiKeyService:
         if key is None or (
             key.user_id != requester.user_id and requester.role is not HumanRole.CEO
         ):
+            logger.warning(
+                SECURITY_AUTH_FAILED,
+                reason="api_key_revoke_not_found_or_forbidden",
+                requester_user_id=requester.user_id,
+                requester_role=requester.role.value,
+                key_id=key_id,
+            )
             raise ApiKeyNotFoundError
         if key.revoked:
             return

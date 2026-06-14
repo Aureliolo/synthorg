@@ -33,11 +33,15 @@ CI gate:
    (non-LGPL) is a hard failure; LGPL is permitted only if the dist is
    attributed in ``NOTICE``. A curated ``_KNOWN_LGPL`` set is also
    asserted against ``NOTICE`` directly so the attribution holds even
-   when an extra is not synced into the gate's venv. Transitive
-   copyleft of unknown packages is covered by the name denylist (check 1)
-   over the full ``uv.lock`` closure, which is the maintained mechanism
-   for that case: transitive licence metadata is too unreliable to
-   classify by scanning.
+   when an extra is not synced into the gate's venv. A CORE dependency
+   (``[project.dependencies]``) that cannot be resolved fails closed with
+   a violation -- core deps are always installed, so an unresolvable one
+   would otherwise let a strong-copyleft package slip past classification;
+   an unsynced EXTRA is tolerated (it is still covered by the denylist and
+   the deterministic NOTICE assertion). Transitive copyleft of unknown
+   packages is covered by the name denylist (check 1) over the full
+   ``uv.lock`` closure, which is the maintained mechanism for that case:
+   transitive licence metadata is too unreliable to classify by scanning.
 
 Exit codes:
 
@@ -67,8 +71,10 @@ _HARD_DENYLIST: frozenset[str] = frozenset(
 # Weak-copyleft (LGPL) dists known to ship. Each MUST be attributed in
 # NOTICE. The shipped-closure scan also discovers any LGPL dist not
 # listed here; this set guarantees coverage even when the relevant extra
-# is not synced into the gate's environment.
-_KNOWN_LGPL: frozenset[str] = frozenset({"psycopg", "psycopg-pool"})
+# is not synced into the gate's environment. ``psycopg-binary`` ships via
+# the ``psycopg[binary]`` extra (never as a direct requirement name), so
+# it is asserted here rather than discovered through the declared set.
+_KNOWN_LGPL: frozenset[str] = frozenset({"psycopg", "psycopg-pool", "psycopg-binary"})
 
 _GO_GPL_TOOLS: frozenset[str] = frozenset({"golangci-lint"})
 
@@ -149,6 +155,27 @@ def _pyproject_dependency_specs(pyproject: dict[str, object]) -> list[str]:
             if isinstance(extra, list):
                 specs.extend(str(item) for item in extra)
     return specs
+
+
+def _pyproject_core_dependency_names(pyproject: dict[str, object]) -> set[str]:
+    """Canonical names of the always-installed core runtime dependencies.
+
+    Only ``[project.dependencies]`` -- the unconditionally-installed
+    runtime set -- excluding ``[project.optional-dependencies]`` extras
+    (``fine-tune-*``, ``knowledge``, ...) that a gate environment may
+    legitimately not sync. A core dependency that cannot be resolved is
+    an anomaly worth failing closed on; an unsynced extra is expected.
+
+    Returns:
+        Canonical distribution names from ``[project.dependencies]``.
+    """
+    project = pyproject.get("project")
+    if not isinstance(project, dict):
+        return set()
+    deps = project.get("dependencies")
+    if not isinstance(deps, list):
+        return set()
+    return {name for item in deps if (name := _requirement_name(str(item))) is not None}
 
 
 def _uv_lock_package_names(lock: dict[str, object]) -> set[str]:
@@ -310,8 +337,18 @@ def _check_direct_copyleft(
     pyproject: dict[str, object],
     notice: str,
 ) -> list[Violation]:
-    """Classify every DIRECT runtime+extras dependency by licence."""
+    """Classify every DIRECT runtime+extras dependency by licence.
+
+    A CORE dependency (``[project.dependencies]``) that cannot be resolved
+    fails closed with a Violation: core deps are always installed in any
+    working environment, so an unresolvable one would otherwise let a
+    strong-copyleft package slip past classification. An unsynced EXTRA
+    dependency (``fine-tune-*`` etc.) is skipped -- it is legitimately
+    absent and still covered by the name denylist over the uv.lock closure
+    plus the deterministic ``_KNOWN_LGPL``/NOTICE assertion.
+    """
     violations: list[Violation] = []
+    core = _pyproject_core_dependency_names(pyproject)
     direct = sorted(
         {
             name
@@ -323,9 +360,17 @@ def _check_direct_copyleft(
         try:
             dist = metadata.distribution(name)
         except metadata.PackageNotFoundError:
-            # The extra carrying this dep is not synced into the gate's
-            # venv; it cannot be classified here. The denylist (uv.lock)
-            # and _KNOWN_LGPL/NOTICE checks remain authoritative.
+            if name in core:
+                violations.append(
+                    Violation(
+                        "dependencies",
+                        f"core dependency {name!r} could not be resolved for"
+                        " licence classification; sync the environment so the"
+                        " copyleft gate cannot fail open",
+                    )
+                )
+            # An unsynced EXTRA cannot be classified here; the denylist
+            # (uv.lock) and _KNOWN_LGPL/NOTICE checks remain authoritative.
             continue
         family = _classify(_license_blob(dist))
         if family in {"agpl", "gpl"}:
@@ -346,26 +391,21 @@ def _check_direct_copyleft(
     return violations
 
 
-def _check_known_lgpl_notice(
-    pyproject: dict[str, object],
-    notice: str,
-) -> list[Violation]:
-    """Assert every declared known-LGPL dep is attributed in NOTICE.
+def _check_known_lgpl_notice(notice: str) -> list[Violation]:
+    """Assert every known-LGPL dep is attributed in NOTICE.
 
     Deterministic counterpart to the closure scan: holds even when the
-    relevant extra is not synced into the gate's venv.
+    relevant extra is not synced into the gate's venv. Asserts the full
+    ``_KNOWN_LGPL`` set unconditionally -- ``psycopg-binary`` ships via
+    the ``psycopg[binary]`` extra and so never appears as a direct
+    requirement name, yet it must still be attributed.
     """
-    declared = {
-        name
-        for spec in _pyproject_dependency_specs(pyproject)
-        if (name := _requirement_name(spec)) is not None
-    }
     return [
         Violation(
             "NOTICE",
-            f"declared LGPL dependency {name!r} is not attributed in NOTICE",
+            f"known LGPL dependency {name!r} is not attributed in NOTICE",
         )
-        for name in sorted(declared & _KNOWN_LGPL)
+        for name in sorted(_KNOWN_LGPL)
         if not _notice_covers(notice, name)
     ]
 
@@ -385,7 +425,7 @@ def run_checks(repo_root: Path) -> list[Violation]:
     violations: list[Violation] = []
     violations.extend(_check_denylist(pyproject, lock))
     violations.extend(_check_go_gpl(repo_root))
-    violations.extend(_check_known_lgpl_notice(pyproject, notice))
+    violations.extend(_check_known_lgpl_notice(notice))
     violations.extend(_check_direct_copyleft(pyproject, notice))
     return violations
 

@@ -9,7 +9,7 @@ present via the postgres extra).
 
 import importlib.util
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -164,41 +164,128 @@ def test_go_gpl_absent_files_no_violation(tmp_path: Path) -> None:
 
 
 def test_known_lgpl_requires_notice() -> None:
-    import tomllib
-
-    pyproject = tomllib.loads(_CLEAN_PYPROJECT)
-    violations = _MODULE._check_known_lgpl_notice(pyproject, "no attribution here")
+    violations = _MODULE._check_known_lgpl_notice("no attribution here")
     names = " ".join(v.message for v in violations)
     assert "psycopg" in names
 
 
-def test_known_lgpl_satisfied_by_notice() -> None:
-    import tomllib
-
-    pyproject = tomllib.loads(_CLEAN_PYPROJECT)
+def test_known_lgpl_requires_psycopg_binary_attribution() -> None:
+    # ``psycopg-binary`` ships via the ``psycopg[binary]`` extra and never
+    # appears as a direct requirement name, so a NOTICE that lists only
+    # ``psycopg`` / ``psycopg-pool`` must still be flagged.
     notice = "attributes psycopg and psycopg-pool".lower()
-    assert _MODULE._check_known_lgpl_notice(pyproject, notice) == []
+    violations = _MODULE._check_known_lgpl_notice(notice)
+    assert any("psycopg-binary" in v.message for v in violations)
 
 
-# ── direct copyleft scan (real venv) ────────────────────────────
+def test_known_lgpl_satisfied_by_notice() -> None:
+    notice = "attributes psycopg, psycopg-pool and psycopg-binary".lower()
+    assert _MODULE._check_known_lgpl_notice(notice) == []
 
 
-def test_direct_copyleft_flags_lgpl_without_notice() -> None:
-    # psycopg is installed (LGPL via License-Expression); an empty NOTICE
-    # must surface it as an attribution gap.
+# ── direct copyleft scan (deterministic via monkeypatch) ────────
+
+
+class _FakeMeta:
+    """Minimal stand-in for ``importlib.metadata`` ``PackageMetadata``."""
+
+    def __init__(self, expression: str) -> None:
+        self._expression = expression
+
+    def get(self, key: str) -> str | None:
+        return self._expression if key == "License-Expression" else None
+
+    def get_all(self, _key: str) -> list[str]:
+        return []
+
+
+def _fake_distribution_factory(
+    classifier: dict[str, str],
+) -> Any:  # type: ignore[explicit-any]  # dynamically loaded gate boundary
+    """Build a ``metadata.distribution`` replacement keyed by name substring.
+
+    ``classifier`` maps a name substring to the SPDX licence expression the
+    fake dist should report. The first matching substring wins; an unmatched
+    name raises ``PackageNotFoundError`` so the unsynced-extra path can be
+    exercised deterministically.
+    """
+
+    def _distribution(name: str) -> Any:  # type: ignore[explicit-any]
+        for needle, expression in classifier.items():
+            if needle in name:
+                return cast("Any", SimpleNamespace(metadata=_FakeMeta(expression)))
+        raise _MODULE.metadata.PackageNotFoundError(name)
+
+    return _distribution
+
+
+def test_direct_copyleft_flags_lgpl_without_notice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # psycopg classified LGPL via the faked License-Expression; an empty
+    # NOTICE must surface it as an attribution gap, independent of which
+    # extras are installed in the running environment.
     import tomllib
 
+    monkeypatch.setattr(
+        _MODULE.metadata,
+        "distribution",
+        _fake_distribution_factory({"psycopg": "LGPL-3.0-only", "httpx": "MIT"}),
+    )
     pyproject = tomllib.loads(_CLEAN_PYPROJECT)
     violations = _MODULE._check_direct_copyleft(pyproject, "")
     assert any("psycopg" in v.message for v in violations)
 
 
-def test_direct_copyleft_clean_with_notice() -> None:
+def test_direct_copyleft_clean_with_notice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import tomllib
 
+    monkeypatch.setattr(
+        _MODULE.metadata,
+        "distribution",
+        _fake_distribution_factory({"psycopg": "LGPL-3.0-only", "httpx": "MIT"}),
+    )
     pyproject = tomllib.loads(_CLEAN_PYPROJECT)
     notice = "psycopg psycopg-pool psycopg-binary"
     assert _MODULE._check_direct_copyleft(pyproject, notice) == []
+
+
+def test_direct_copyleft_core_dep_unresolved_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # httpx is a CORE dependency; if it cannot be resolved the gate must
+    # fail closed rather than silently skip classification.
+    import tomllib
+
+    monkeypatch.setattr(
+        _MODULE.metadata,
+        "distribution",
+        _fake_distribution_factory({"psycopg": "LGPL-3.0-only"}),
+    )
+    pyproject = tomllib.loads(_CLEAN_PYPROJECT)
+    violations = _MODULE._check_direct_copyleft(pyproject, "psycopg psycopg-pool")
+    assert any(
+        "core dependency" in v.message and "httpx" in v.message for v in violations
+    )
+
+
+def test_direct_copyleft_unsynced_extra_is_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An optional-extra dep (psycopg) absent from the venv is tolerated:
+    # the deterministic _KNOWN_LGPL/NOTICE assertion and the uv.lock
+    # denylist remain authoritative for extras.
+    import tomllib
+
+    monkeypatch.setattr(
+        _MODULE.metadata,
+        "distribution",
+        _fake_distribution_factory({"httpx": "MIT"}),
+    )
+    pyproject = tomllib.loads(_CLEAN_PYPROJECT)
+    assert _MODULE._check_direct_copyleft(pyproject, "") == []
 
 
 # ── run_checks / main integration ───────────────────────────────
@@ -207,7 +294,13 @@ def test_direct_copyleft_clean_with_notice() -> None:
 def _make_clean_repo(tmp_path: Path) -> Path:
     _write(tmp_path / "pyproject.toml", '[project]\nname = "demo"\ndependencies = []\n')
     _write(tmp_path / "uv.lock", _CLEAN_LOCK)
-    _write(tmp_path / "NOTICE", "SynthOrg NOTICE\n")
+    # The known-LGPL NOTICE assertion is unconditional, so a clean repo
+    # must attribute all three psycopg dists even though it declares no
+    # dependencies.
+    _write(
+        tmp_path / "NOTICE",
+        "SynthOrg NOTICE\npsycopg psycopg-pool psycopg-binary\n",
+    )
     _write(tmp_path / "cli" / "go.mod", "module x\n")
     return tmp_path
 

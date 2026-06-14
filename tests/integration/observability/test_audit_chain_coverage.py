@@ -481,7 +481,7 @@ class TestSecuritySettingsImportAuditChainCoverage:
         self,
         audit_sink: AuditChainSink,
     ) -> None:
-        from types import SimpleNamespace
+        from litestar import Request
 
         from synthorg.api.controllers.settings.security import (
             SecurityConfigImportRequest,
@@ -489,6 +489,7 @@ class TestSecuritySettingsImportAuditChainCoverage:
         )
         from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
         from synthorg.core.auth.roles import HumanRole
+        from tests._shared import mock_of
 
         ctrl = SettingsSecurityController(owner=SettingsSecurityController)  # type: ignore[arg-type]
         actor = AuthenticatedUser(
@@ -497,7 +498,11 @@ class TestSecuritySettingsImportAuditChainCoverage:
             role=HumanRole.CEO,
             auth_method=AuthMethod.JWT,
         )
-        request = SimpleNamespace(scope={"user": actor})
+        # The controller's ``request`` param is typeguard-checked against
+        # ``litestar.Request`` at runtime, so a bare attribute bag is
+        # rejected; ``mock_of`` autospecs an instance that satisfies the
+        # isinstance check while exposing the real ``scope`` mapping.
+        request = mock_of[Request](scope={"user": actor})
         before = len(audit_sink.chain.entries)
         await ctrl.import_security_config.fn(
             ctrl,
