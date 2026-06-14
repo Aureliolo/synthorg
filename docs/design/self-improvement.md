@@ -203,7 +203,7 @@ src/synthorg/meta/
 
 The nine `synthorg_signals_*` tools follow the shared args conventions:
 
-- Windowed reads (`get_org_snapshot` plus the six per-domain getters)
+- Windowed reads (`get_org_snapshot` plus the six per-domain read tools)
   take a `since` / `until` ISO 8601 pair (timezone-aware; an inverted
   window is rejected at the args boundary), not a `window_days` count.
 - `synthorg_signals_get_proposals` paginates and filters by an

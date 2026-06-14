@@ -514,7 +514,7 @@ use in-memory stores pending durable repositories. Writes emit
 The MCP args contract follows the same conventions as the rest of the
 tool surface:
 
-- Entity lookups key by UUID: `synthorg_departments_{get,update,delete,get_health}`
+- Entity reads key by UUID: `synthorg_departments_{get,update,delete,get_health}`
   take `department_id`; `synthorg_teams_{get,update,delete}` take `team_id`;
   `synthorg_company_versions_get` and `synthorg_role_versions_get` take a
   string `version_id`. `synthorg_teams_create` accepts an optional
