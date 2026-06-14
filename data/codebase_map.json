@@ -422,7 +422,7 @@
     },
     {
       "kind": "code",
-      "loc": 236,
+      "loc": 238,
       "loc_cap": 500,
       "module": "src/synthorg/api/auth/user_service.py",
       "owning_feature": "api_core"
@@ -1325,7 +1325,7 @@
     },
     {
       "kind": "code",
-      "loc": 234,
+      "loc": 231,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/setup/_embedder_setup.py",
       "owning_feature": "api_core"
@@ -4440,7 +4440,7 @@
     },
     {
       "kind": "code",
-      "loc": 26,
+      "loc": 33,
       "loc_cap": 500,
       "module": "src/synthorg/core/slug.py",
       "owning_feature": null
@@ -4482,7 +4482,7 @@
     },
     {
       "kind": "code",
-      "loc": 29,
+      "loc": 36,
       "loc_cap": 500,
       "module": "src/synthorg/core/text_estimation.py",
       "owning_feature": null
@@ -7114,7 +7114,7 @@
     },
     {
       "kind": "code",
-      "loc": 78,
+      "loc": 81,
       "loc_cap": 500,
       "module": "src/synthorg/engine/token_estimation.py",
       "owning_feature": "engine"
