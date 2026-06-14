@@ -92,8 +92,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--nats-url",
-        default=os.environ.get("SYNTHORG_NATS_URL", "nats://localhost:4222"),
-        help="NATS server URL (default: env SYNTHORG_NATS_URL or nats://localhost:4222).",
+        # Route through the bootstrap resolver so the worker shares ONE
+        # default (registry ``communication.nats_url`` = ``nats://nats:4222``)
+        # and the ``SYNTHORG_NATS_URL`` env override with the API, instead of
+        # the hardcoded ``nats://localhost:4222`` that split-brained the two.
+        default=resolve_init_value(SettingNamespace.COMMUNICATION, "nats_url").value,
+        help=(
+            "NATS server URL (default: env SYNTHORG_NATS_URL or the registered"
+            " communication.nats_url default)."
+        ),
     )
     parser.add_argument(
         "--stream-prefix",

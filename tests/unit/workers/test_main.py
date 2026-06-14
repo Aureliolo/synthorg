@@ -12,6 +12,7 @@ import pytest
 
 from synthorg.workers.__main__ import (
     _DEFAULT_WORKER_COUNT,
+    _build_parser,
     _resolve_http_timeout,
     _resolve_worker_count,
 )
@@ -94,3 +95,25 @@ def test_http_timeout_invalid_env_returns_none(
     """Non-numeric env returns None so the caller emits a structured error."""
     monkeypatch.setenv("SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS", "not-a-number")
     assert _resolve_http_timeout(explicit=None) is None
+
+
+def test_nats_url_default_matches_registry_not_localhost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No-env nats-url default resolves to the registry value, not localhost.
+
+    Closes the worker/API split-brain: the worker used to hardcode
+    ``nats://localhost:4222`` while the registry default is
+    ``nats://nats:4222``. Routing the argparse default through the
+    bootstrap resolver keeps the two in lockstep.
+    """
+    monkeypatch.delenv("SYNTHORG_NATS_URL", raising=False)
+    args = _build_parser().parse_args([])
+    assert args.nats_url == "nats://nats:4222"
+
+
+def test_nats_url_env_override_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``SYNTHORG_NATS_URL`` overrides the registered default."""
+    monkeypatch.setenv("SYNTHORG_NATS_URL", "nats://custom:4242")
+    args = _build_parser().parse_args([])
+    assert args.nats_url == "nats://custom:4242"
