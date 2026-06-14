@@ -473,7 +473,7 @@ class TestDelegationServiceRecordStore:
         from unittest.mock import MagicMock
 
         store = MagicMock(spec=DelegationRecordStore)
-        store.record_sync.side_effect = RuntimeError("storage failure")
+        store.append.side_effect = RuntimeError("storage failure")
 
         service, _ = _build_service(record_store=store)
 
@@ -500,7 +500,7 @@ class TestDelegationServiceRecordStore:
         from unittest.mock import MagicMock
 
         store = MagicMock(spec=DelegationRecordStore)
-        store.record_sync.side_effect = exc_class("fatal")
+        store.append.side_effect = exc_class("fatal")
 
         service, _ = _build_service(record_store=store)
 

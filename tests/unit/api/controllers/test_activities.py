@@ -392,7 +392,7 @@ class TestActivityFeed:
             delegated_task_id="del-abc123",
             timestamp=_NOW - timedelta(hours=1),
         )
-        delegation_record_store.record_sync(record)
+        delegation_record_store.append(record)
         resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
@@ -413,7 +413,7 @@ class TestActivityFeed:
             delegated_task_id="del-abc123",
             timestamp=_NOW - timedelta(hours=1),
         )
-        delegation_record_store.record_sync(record)
+        delegation_record_store.append(record)
         # Filter by delegator agent -- only sees delegation_sent
         resp = await async_test_client.get(
             "/api/v1/activities",

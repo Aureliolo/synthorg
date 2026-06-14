@@ -29,12 +29,12 @@ _DEFAULT_MAX_RECORDS: Final[int] = 10_000
 class DelegationRecordStore:
     """In-memory delegation record store with size-cap eviction and filtering.
 
-    Provides both a sync ``record_sync`` method (for callers that
+    Provides both a sync ``append`` method (for callers that
     cannot await) and async query methods.  When record count exceeds
     ``max_records``, oldest entries are evicted (FIFO) via bounded
     ``deque``.
 
-    Concurrency note: ``record_sync`` does not acquire the async
+    Concurrency note: ``append`` does not acquire the async
     ``_lock`` (which serialises concurrent async readers only).
     Cooperative asyncio scheduling and deque's internal maxlen
     enforcement make single-call sync writes safe
@@ -83,7 +83,7 @@ class DelegationRecordStore:
             cleared_count=cleared_count,
         )
 
-    def record_sync(self, delegation: DelegationRecord) -> None:
+    def append(self, delegation: DelegationRecord) -> None:
         """Append a delegation record (sync, for cooperative scheduling).
 
         Safe to call from sync code under asyncio cooperative scheduling
@@ -198,7 +198,7 @@ class DelegationRecordStore:
         The async ``_lock`` serialises overlapping async readers, and
         the sync ``_warning_lock`` is also taken briefly while copying
         the deque so the snapshot cannot race with writes done under
-        the same sync lock (``record_sync`` / ``clear``).
+        the same sync lock (``append`` / ``clear``).
         """
         async with self._lock:
             with self._warning_lock:

@@ -190,7 +190,7 @@ def _wire_rate_limit_coordinator_factory(
     """Wire the shared rate-limit coordinator factory."""
     from synthorg.integrations.rate_limiting.shared_state import (  # noqa: PLC0415
         SharedRateLimitCoordinator,
-        set_coordinator_factory_sync,
+        register_coordinator_factory,
     )
 
     _bus = message_bus
@@ -224,7 +224,7 @@ def _wire_rate_limit_coordinator_factory(
             max_rpm=max_rpm,
         )
 
-    set_coordinator_factory_sync(_make_coordinator)
+    register_coordinator_factory(_make_coordinator)
     logger.info(
         API_SERVICE_AUTO_WIRED,
         service="rate_limit_coordinator_factory",

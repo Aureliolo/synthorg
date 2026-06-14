@@ -43,10 +43,10 @@ class TestDelegationRecordStore:
         records = await store.get_all_records()
         assert records == ()
 
-    async def test_record_sync_and_retrieve(self) -> None:
+    async def test_append_and_retrieve(self) -> None:
         store = DelegationRecordStore()
         record = _make_record()
-        store.record_sync(record)
+        store.append(record)
 
         records = await store.get_all_records()
         assert len(records) == 1
@@ -54,10 +54,10 @@ class TestDelegationRecordStore:
 
     async def test_filter_as_delegator(self) -> None:
         store = DelegationRecordStore()
-        store.record_sync(
+        store.append(
             _make_record(delegator_id="alice", delegatee_id="bob"),
         )
-        store.record_sync(
+        store.append(
             _make_record(
                 delegation_id="del-002",
                 delegator_id="bob",
@@ -71,10 +71,10 @@ class TestDelegationRecordStore:
 
     async def test_filter_as_delegatee(self) -> None:
         store = DelegationRecordStore()
-        store.record_sync(
+        store.append(
             _make_record(delegator_id="alice", delegatee_id="bob"),
         )
-        store.record_sync(
+        store.append(
             _make_record(
                 delegation_id="del-002",
                 delegator_id="bob",
@@ -88,19 +88,19 @@ class TestDelegationRecordStore:
 
     async def test_time_range_filtering(self) -> None:
         store = DelegationRecordStore()
-        store.record_sync(
+        store.append(
             _make_record(
                 delegation_id="del-old",
                 timestamp=_NOW - timedelta(hours=3),
             ),
         )
-        store.record_sync(
+        store.append(
             _make_record(
                 delegation_id="del-mid",
                 timestamp=_NOW - timedelta(hours=1),
             ),
         )
-        store.record_sync(
+        store.append(
             _make_record(delegation_id="del-new", timestamp=_NOW),
         )
 
@@ -113,8 +113,8 @@ class TestDelegationRecordStore:
 
     async def test_get_all_records_returns_all(self) -> None:
         store = DelegationRecordStore()
-        store.record_sync(_make_record(delegation_id="del-001"))
-        store.record_sync(_make_record(delegation_id="del-002"))
+        store.append(_make_record(delegation_id="del-001"))
+        store.append(_make_record(delegation_id="del-002"))
 
         records = await store.get_all_records()
         assert len(records) == 2
@@ -134,21 +134,21 @@ class TestDelegationRecordStore:
 
     async def test_returns_immutable_tuple(self) -> None:
         store = DelegationRecordStore()
-        store.record_sync(_make_record())
+        store.append(_make_record())
         records = await store.get_all_records()
         assert isinstance(records, tuple)
 
     async def test_delegator_time_range_filtering(self) -> None:
         """Time range filtering works on get_records_as_delegator."""
         store = DelegationRecordStore()
-        store.record_sync(
+        store.append(
             _make_record(
                 delegation_id="del-old",
                 delegator_id="alice",
                 timestamp=_NOW - timedelta(hours=3),
             ),
         )
-        store.record_sync(
+        store.append(
             _make_record(
                 delegation_id="del-mid",
                 delegator_id="alice",
@@ -168,14 +168,14 @@ class TestDelegationRecordStore:
     async def test_delegatee_time_range_filtering(self) -> None:
         """Time range filtering works on get_records_as_delegatee."""
         store = DelegationRecordStore()
-        store.record_sync(
+        store.append(
             _make_record(
                 delegation_id="del-old",
                 delegatee_id="bob",
                 timestamp=_NOW - timedelta(hours=3),
             ),
         )
-        store.record_sync(
+        store.append(
             _make_record(
                 delegation_id="del-mid",
                 delegatee_id="bob",
@@ -203,7 +203,7 @@ class TestDelegationRecordStoreEviction:
     async def test_eviction_when_max_exceeded(self) -> None:
         store = DelegationRecordStore(max_records=3)
         for i in range(5):
-            store.record_sync(
+            store.append(
                 _make_record(
                     delegation_id=f"del-{i:03d}",
                     timestamp=_NOW + timedelta(seconds=i),
@@ -218,7 +218,7 @@ class TestDelegationRecordStoreEviction:
     async def test_no_eviction_below_max(self) -> None:
         store = DelegationRecordStore(max_records=10)
         for i in range(5):
-            store.record_sync(
+            store.append(
                 _make_record(delegation_id=f"del-{i:03d}"),
             )
         records = await store.get_all_records()
@@ -232,7 +232,7 @@ class TestDelegationRecordStoreEviction:
     async def test_no_eviction_at_exact_max(self) -> None:
         store = DelegationRecordStore(max_records=3)
         for i in range(3):
-            store.record_sync(
+            store.append(
                 _make_record(delegation_id=f"del-{i:03d}"),
             )
         records = await store.get_all_records()
@@ -242,8 +242,8 @@ class TestDelegationRecordStoreEviction:
 
     async def test_max_records_one_keeps_only_last(self) -> None:
         store = DelegationRecordStore(max_records=1)
-        store.record_sync(_make_record(delegation_id="del-first"))
-        store.record_sync(_make_record(delegation_id="del-last"))
+        store.append(_make_record(delegation_id="del-first"))
+        store.append(_make_record(delegation_id="del-last"))
         records = await store.get_all_records()
         assert len(records) == 1
         assert records[0].delegation_id == "del-last"
@@ -268,7 +268,7 @@ class TestEvictionWarningConcurrency:
 
         def worker(i: int) -> None:
             barrier.wait()
-            store.record_sync(_make_record(delegation_id=f"del-{i:04d}"))
+            store.append(_make_record(delegation_id=f"del-{i:04d}"))
 
         with (
             structlog.testing.capture_logs() as cap,
@@ -284,10 +284,10 @@ class TestEvictionWarningConcurrency:
 
         with structlog.testing.capture_logs() as cap:
             for i in range(5):
-                store.record_sync(_make_record(delegation_id=f"a-{i}"))
+                store.append(_make_record(delegation_id=f"a-{i}"))
             store.clear()
             for i in range(5):
-                store.record_sync(_make_record(delegation_id=f"b-{i}"))
+                store.append(_make_record(delegation_id=f"b-{i}"))
 
         assert _count_eviction_warnings(cap) == 2
 
@@ -298,7 +298,7 @@ class TestEvictionWarningConcurrency:
 
         Cycles are serialised by a barrier so each executes fully before
         the next starts -- this is what "exactly once per cycle" actually
-        means.  Threads within a cycle race through 12 ``record_sync``
+        means.  Threads within a cycle race through 12 ``append``
         calls concurrently past ``max_records=3`` and the closing
         ``clear()``; because the check/set on ``_eviction_warned`` and
         the buffer mutations are both held under ``_warning_lock``, the
@@ -312,7 +312,7 @@ class TestEvictionWarningConcurrency:
         def fill_thread(start: threading.Barrier, done: threading.Barrier) -> None:
             start.wait()
             for i in range(fills_per_cycle):
-                store.record_sync(_make_record(delegation_id=f"d-{i:03d}"))
+                store.append(_make_record(delegation_id=f"d-{i:03d}"))
             done.wait()
 
         with structlog.testing.capture_logs() as cap:
