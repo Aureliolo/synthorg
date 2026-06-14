@@ -11972,7 +11972,7 @@
     },
     {
       "kind": "code",
-      "loc": 287,
+      "loc": 292,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/communication/webhooks.py",
       "owning_feature": "meta"
@@ -12203,7 +12203,7 @@
     },
     {
       "kind": "code",
-      "loc": 237,
+      "loc": 255,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/signals.py",
       "owning_feature": "meta"
