@@ -11,7 +11,7 @@ from litestar.status_codes import HTTP_201_CREATED
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
-from synthorg.api.controllers.setup.agent_helpers import AGENT_LOCK as _AGENT_LOCK
+from synthorg.api.controllers.setup._runtime_wiring import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.controllers.setup_agents import expand_template_agents
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access

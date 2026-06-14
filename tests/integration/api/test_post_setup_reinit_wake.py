@@ -13,7 +13,7 @@ must swap both.
 
 import pytest
 
-from synthorg.api.controllers.setup.agent_helpers import post_setup_reinit
+from synthorg.api.controllers.setup._runtime_wiring import post_setup_reinit
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.errors import RuntimeServicesBuildError

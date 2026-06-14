@@ -10,14 +10,14 @@ from litestar import Controller, post
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_201_CREATED
 
-from synthorg.api.controllers.setup.agent_helpers import (
+from synthorg.api.controllers.setup._embedder_setup import (
+    auto_create_template_agents as _auto_create_template_agents,
+)
+from synthorg.api.controllers.setup._runtime_wiring import (
     AGENT_LOCK as _AGENT_LOCK,
 )
-from synthorg.api.controllers.setup.agent_helpers import (
+from synthorg.api.controllers.setup._runtime_wiring import (
     COMPLETE_LOCK as _COMPLETE_LOCK,
-)
-from synthorg.api.controllers.setup.agent_helpers import (
-    auto_create_template_agents as _auto_create_template_agents,
 )
 from synthorg.api.controllers.setup.company_helpers import (
     check_setup_not_complete as _check_setup_not_complete,

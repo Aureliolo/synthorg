@@ -2,7 +2,8 @@
 
 Covers company metadata, template resolution, locale storage, and
 setup-complete checks. Agent-side helpers (bootstrap, model
-selection, tier coverage) live in ``setup.agent_helpers``.
+selection, tier coverage) live in ``setup._status_checks``,
+``setup._runtime_wiring``, and ``setup._embedder_setup``.
 """
 
 import json

@@ -12,13 +12,13 @@ from litestar.datastructures import State
 from litestar.params import PathParameter
 from litestar.status_codes import HTTP_200_OK
 
-from synthorg.api.controllers.setup.agent_helpers import (
+from synthorg.api.controllers.setup._runtime_wiring import (
     AGENT_LOCK as _AGENT_LOCK,
 )
-from synthorg.api.controllers.setup.agent_helpers import (
+from synthorg.api.controllers.setup._runtime_wiring import (
     COMPLETE_LOCK as _COMPLETE_LOCK,
 )
-from synthorg.api.controllers.setup.agent_helpers import (
+from synthorg.api.controllers.setup._status_checks import (
     validate_agent_index as _validate_agent_index,
 )
 from synthorg.api.controllers.setup.company_helpers import (

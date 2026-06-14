@@ -11,13 +11,13 @@ import asyncio
 from litestar import Controller, get
 from litestar.datastructures import State
 
-from synthorg.api.controllers.setup.agent_helpers import (
+from synthorg.api.controllers.setup._status_checks import (
     check_has_agents as _check_has_agents,
 )
-from synthorg.api.controllers.setup.agent_helpers import (
+from synthorg.api.controllers.setup._status_checks import (
     check_needs_admin as _check_needs_admin,
 )
-from synthorg.api.controllers.setup.agent_helpers import (
+from synthorg.api.controllers.setup._status_checks import (
     check_needs_setup as _check_needs_setup,
 )
 from synthorg.api.controllers.setup.company_helpers import (

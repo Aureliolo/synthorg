@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.api.controllers.setup.agent_helpers import auto_select_embedder
+from synthorg.api.controllers.setup._embedder_setup import auto_select_embedder
 from synthorg.memory.embedding.rankings import LMEB_RANKINGS
 
 
