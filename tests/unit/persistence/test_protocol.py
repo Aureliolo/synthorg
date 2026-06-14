@@ -1147,6 +1147,10 @@ class _FakeBackend:
     def kind(self) -> Literal["sqlite", "postgres"]:
         return "sqlite"
 
+    @property
+    def supports_conversational_approvals(self) -> bool:
+        return False
+
     async def connect(self) -> None:
         pass
 

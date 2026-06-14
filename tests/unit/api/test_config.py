@@ -67,7 +67,7 @@ class TestApiConfig:
     def test_rate_limit_legacy_max_requests_rejected(self) -> None:
         with pytest.raises(
             ValidationError,
-            match=r"max_requests.*replaced",
+            match=r"[Ee]xtra inputs are not permitted",
         ):
             RateLimitConfig(max_requests=100)  # type: ignore[call-arg]
 

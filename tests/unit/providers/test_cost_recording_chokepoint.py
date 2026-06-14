@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator
 from typing import override
 
 import pytest
+from pydantic import ValidationError
 from typeguard import suppress_type_checks
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -348,7 +349,7 @@ class TestContextValidation:
     async def test_rejects_non_tracker(self) -> None:
         with (
             suppress_type_checks(),
-            pytest.raises(TypeError, match="cost_tracker must be a CostTracker"),
+            pytest.raises(ValidationError, match="cost_tracker must be a CostTracker"),
         ):
             async with cost_recording_scope(
                 cost_tracker="not-a-tracker",  # type: ignore[arg-type]
