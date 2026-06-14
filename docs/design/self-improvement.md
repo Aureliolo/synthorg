@@ -199,6 +199,20 @@ src/synthorg/meta/
 | Analytics anonymisation | Strict allowlist (enums + numerics only) | Maximum privacy; free text dropped, UUIDs hashed, timestamps coarsened |
 | Analytics aggregation | In-process API endpoints | Zero extra infra; any deployment can be emitter and/or collector |
 
+### Signals MCP args contract
+
+The nine `synthorg_signals_*` tools follow the shared args conventions:
+
+- Windowed reads (`get_org_snapshot` plus the six per-domain getters)
+  take a `since` / `until` ISO 8601 pair (timezone-aware; an inverted
+  window is rejected at the args boundary), not a `window_days` count.
+- `synthorg_signals_get_proposals` paginates and filters by an
+  `ApprovalStatus` value (proposals live in the shared approval queue,
+  so they carry `ApprovalStatus`, not a bespoke proposal status).
+- `synthorg_signals_submit_proposal` is an `admin_tool`: it enforces the
+  guardrail triple (`confirm` + `reason` + actor) and emits
+  `MCP_ADMIN_OP_EXECUTED` once the proposal is accepted.
+
 ## Signal Domains
 
 | Domain | Source | Key Metrics |

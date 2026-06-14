@@ -57,7 +57,10 @@ from synthorg.meta.mcp.handlers.common_logging import (
 from synthorg.meta.models import ImprovementProposal
 from synthorg.meta.state import signals_service_of
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -74,7 +77,12 @@ async def _snapshot(
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return snapshot."""
+    """Handle the ``synthorg_signals_get_org_snapshot`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
+    tool = "synthorg_signals_get_org_snapshot"
     try:
         args = typed_args(arguments, SignalsGetOrgSnapshotArgs)
         since, until = resolve_time_window(
@@ -86,14 +94,15 @@ async def _snapshot(
             since=since,
             until=until,
         )
-        return ok(snapshot.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_signals_get_org_snapshot", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_signals_get_org_snapshot", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(snapshot.model_dump(mode="json"))
 
 
 def _make_window_handler(
@@ -113,12 +122,15 @@ def _make_window_handler(
         arguments: dict[str, object],
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
-        """Return handler."""
+        """Dispatch a windowed signals read to the bound service method.
+
+        Returns:
+            JSON-encoded MCP envelope string.
+        """
         try:
             since, until = parse_time_window(arguments, until_required=False)
             fn = getattr(signals_service_of(app_state), method_name)
             result = await fn(since=since, until=until)
-            return ok(result.model_dump(mode="json"))
         except ArgumentValidationError as exc:
             log_handler_argument_invalid(tool_name, exc)
             return err(exc)
@@ -126,6 +138,8 @@ def _make_window_handler(
             reraise_critical(exc)
             log_handler_invoke_failed(tool_name, exc)
             return err(exc)
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
+        return ok(result.model_dump(mode="json"))
 
     return handler
 
@@ -136,24 +150,31 @@ async def _list_proposals(
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return list proposals."""
+    """Handle the ``synthorg_signals_get_proposals`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
+    tool = "synthorg_signals_get_proposals"
     try:
         args = typed_args(arguments, SignalsGetProposalsArgs)
         offset, limit = args.offset, args.limit
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
+    try:
         page, total = await signals_service_of(app_state).list_proposals(
             status=args.status,
             offset=offset,
             limit=limit,
         )
         pagination_meta = PaginationMeta(total=total, offset=offset, limit=limit)
-        return ok(dump_many(page), pagination=pagination_meta)
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_signals_get_proposals", exc)
-        return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_signals_get_proposals", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(dump_many(page), pagination=pagination_meta)
 
 
 async def _submit_proposal(
@@ -162,7 +183,10 @@ async def _submit_proposal(
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Return submit proposal.
+    """Handle the ``synthorg_signals_submit_proposal`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
 
     Raises:
         ArgumentValidationError: When ``proposal`` is not a valid
@@ -181,6 +205,7 @@ async def _submit_proposal(
             actor=resolved_actor,
             reason=reason,
         )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool_name,

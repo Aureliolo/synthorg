@@ -5,6 +5,7 @@ Covers tasks and activities controllers.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.task_enums import TaskStatus
 from synthorg.meta.mcp.domains._tasks_args import (
     ActivitiesListArgs,
     TasksCancelArgs,
@@ -34,7 +35,11 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         "list",
         "List tasks with optional filtering.",
         {
-            "status": {"type": "string", "description": "Filter by task status"},
+            "status": {
+                "type": "string",
+                "description": "Filter by task status",
+                "enum": [s.value for s in TaskStatus],
+            },
             "assigned_to": {
                 "type": "string",
                 "description": "Filter by assigned agent",
@@ -95,7 +100,11 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         "Transition a task to a new state.",
         {
             "task_id": {"type": "string", "description": "Task UUID"},
-            "target_status": {"type": "string", "description": "Target status"},
+            "target_status": {
+                "type": "string",
+                "description": "Target status",
+                "enum": [s.value for s in TaskStatus],
+            },
         },
         required=("task_id", "target_status"),
         args_model=TasksTransitionArgs,

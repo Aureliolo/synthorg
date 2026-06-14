@@ -9,6 +9,7 @@ from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.communication.state import meeting_service_of
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.meta.mcp.domains._remaining_args import (
     MeetingsDeleteArgs,
     MeetingsGetArgs,
@@ -39,7 +40,10 @@ from synthorg.meta.mcp.handlers.communication._shared import (
     _map_capability_not_supported,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -65,6 +69,7 @@ async def _meetings_list(
         ArgumentValidationError: When ``status`` is not a known
             :class:`MeetingStatus` value.
     """
+    tool = "synthorg_meetings_list"
     try:
         args = typed_args(arguments, MeetingsListArgs)
         if args.status is not None:
@@ -82,14 +87,15 @@ async def _meetings_list(
             limit=args.limit,
         )
         pagination = PaginationMeta(total=total, offset=args.offset, limit=args.limit)
-        return ok(dump_many(records), pagination=pagination)
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_meetings_list", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_meetings_list", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(dump_many(records), pagination=pagination)
 
 
 async def _meetings_get(
@@ -103,22 +109,23 @@ async def _meetings_get(
     Returns:
         Resulting string.
     """
+    tool = "synthorg_meetings_get"
     try:
         meeting_id = typed_args(arguments, MeetingsGetArgs).meeting_id
         record = await meeting_service_of(app_state).get_meeting(meeting_id)
-        if record is None:
-            return err(
-                LookupError(f"Meeting {meeting_id} not found"),
-                domain_code="not_found",
-            )
-        return ok(record.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_meetings_get", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_meetings_get", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    if record is None:
+        missing = NotFoundError(f"Meeting {meeting_id} not found")
+        log_handler_invoke_failed(tool, missing, meeting_id=meeting_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(record.model_dump(mode="json"))
 
 
 async def _meetings_create(
@@ -141,6 +148,7 @@ async def _meetings_create(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 
@@ -164,6 +172,7 @@ async def _meetings_update(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 
@@ -199,6 +208,7 @@ async def _meetings_delete(
                 reason=reason,
                 target_id=meeting_id,
             )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok({"removed": removed})
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)

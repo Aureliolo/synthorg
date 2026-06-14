@@ -8,7 +8,6 @@ Shims the 8 task tools onto ``task_engine_of(app_state)``
 ``capability_gap`` envelope.
 """
 
-import copy
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -441,16 +440,14 @@ async def _activities_list(
 
 
 TASK_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_tasks_list": _tasks_list,
-            "synthorg_tasks_get": _tasks_get,
-            "synthorg_tasks_create": _tasks_create,
-            "synthorg_tasks_update": _tasks_update,
-            "synthorg_tasks_delete": _tasks_delete,
-            "synthorg_tasks_transition": _tasks_transition,
-            "synthorg_tasks_cancel": _tasks_cancel,
-            "synthorg_activities_list": _activities_list,
-        },
-    ),
+    {
+        "synthorg_tasks_list": _tasks_list,
+        "synthorg_tasks_get": _tasks_get,
+        "synthorg_tasks_create": _tasks_create,
+        "synthorg_tasks_update": _tasks_update,
+        "synthorg_tasks_delete": _tasks_delete,
+        "synthorg_tasks_transition": _tasks_transition,
+        "synthorg_tasks_cancel": _tasks_cancel,
+        "synthorg_activities_list": _activities_list,
+    },
 )

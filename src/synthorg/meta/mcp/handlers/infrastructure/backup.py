@@ -43,7 +43,10 @@ from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _to_jsonable,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -71,7 +74,6 @@ async def _backup_list(
             limit=limit,
         )
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
-        return ok([_to_jsonable(b) for b in page], pagination=pagination)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -81,6 +83,8 @@ async def _backup_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok([_to_jsonable(b) for b in page], pagination=pagination)
 
 
 async def _backup_get(
@@ -109,6 +113,7 @@ async def _backup_get(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(manifest))
 
 
@@ -156,6 +161,7 @@ async def _backup_create(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(manifest))
 
 
@@ -199,6 +205,7 @@ async def _backup_delete(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 
@@ -242,6 +249,7 @@ async def _backup_restore(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(dict(result))
 
 

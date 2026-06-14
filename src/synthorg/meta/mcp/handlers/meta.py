@@ -16,7 +16,6 @@ optional-service pattern other handlers (activity feed, agent health,
 etc.) already use.
 """
 
-import copy
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -313,14 +312,12 @@ async def _meta_query_feature_map(
 
 
 META_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_meta_get_config": _meta_get_config,
-            "synthorg_meta_list_rules": _meta_list_rules,
-            "synthorg_meta_list_mcp_tools": _meta_list_mcp_tools,
-            "synthorg_meta_get_mcp_server_config": _meta_get_mcp_server_config,
-            "synthorg_meta_trigger_cycle": _meta_trigger_cycle,
-            "synthorg_meta_query_feature_map": _meta_query_feature_map,
-        },
-    ),
+    {
+        "synthorg_meta_get_config": _meta_get_config,
+        "synthorg_meta_list_rules": _meta_list_rules,
+        "synthorg_meta_list_mcp_tools": _meta_list_mcp_tools,
+        "synthorg_meta_get_mcp_server_config": _meta_get_mcp_server_config,
+        "synthorg_meta_trigger_cycle": _meta_trigger_cycle,
+        "synthorg_meta_query_feature_map": _meta_query_feature_map,
+    },
 )

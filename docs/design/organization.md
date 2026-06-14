@@ -510,3 +510,17 @@ MCP handler shims:
 `OrgMutationService` read surface; `DepartmentService` and `TeamService`
 use in-memory stores pending durable repositories. Writes emit
 `organization.*_via_mcp` audit events from the facade layer.
+
+The MCP args contract follows the same conventions as the rest of the
+tool surface:
+
+- Entity lookups key by UUID: `synthorg_departments_{get,update,delete,get_health}`
+  take `department_id`; `synthorg_teams_{get,update,delete}` take `team_id`;
+  `synthorg_company_versions_get` and `synthorg_role_versions_get` take a
+  string `version_id`. `synthorg_teams_create` accepts an optional
+  `department_id` to attach the new team.
+- `synthorg_departments_delete` and `synthorg_teams_delete` are
+  `admin_tool`s: they enforce the guardrail triple (`confirm` + `reason` +
+  actor) and emit `MCP_ADMIN_OP_EXECUTED` on a successful delete.
+- `synthorg_role_versions_list` paginates through `offset`/`limit` and
+  reports the unfiltered `total` in the envelope's pagination block.

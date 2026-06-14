@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.infrastructure.state import integration_health_facade_service_of
 from synthorg.meta.mcp.domains._remaining_args import IntegrationHealthGetArgs
 from synthorg.meta.mcp.errors import ArgumentValidationError
@@ -20,6 +21,7 @@ from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _to_jsonable,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -48,6 +50,7 @@ async def _integration_health_get_all(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok({k: _to_jsonable(v) for k, v in dict(snapshot).items()})
 
 
@@ -76,10 +79,10 @@ async def _integration_health_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if status is None:
-        return err(
-            LookupError(f"Integration {integration_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Integration {integration_id} not found")
+        log_handler_invoke_failed(tool, missing, integration_id=integration_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(status))
 
 

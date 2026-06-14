@@ -7,6 +7,7 @@ from uuid import UUID
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.infrastructure.state import project_facade_service_of
 from synthorg.meta.mcp.domains._remaining_args import (
     ProjectsCreateArgs,
@@ -36,7 +37,10 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -67,7 +71,6 @@ async def _projects_list(
             limit=limit,
         )
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
-        return ok([p.to_dict() for p in page], pagination=pagination)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -75,6 +78,8 @@ async def _projects_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok([p.to_dict() for p in page], pagination=pagination)
 
 
 async def _projects_get(
@@ -107,10 +112,10 @@ async def _projects_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if project is None:
-        return err(
-            LookupError(f"Project {project_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Project {project_id} not found")
+        log_handler_invoke_failed(tool, missing, project_id=project_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(project.to_dict())
 
 
@@ -141,6 +146,7 @@ async def _projects_create(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(project.to_dict())
 
 
@@ -180,10 +186,10 @@ async def _projects_update(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if project is None:
-        return err(
-            LookupError(f"Project {args.project_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Project {args.project_id} not found")
+        log_handler_invoke_failed(tool, missing, project_id=args.project_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(project.to_dict())
 
 
@@ -234,6 +240,7 @@ async def _projects_delete(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok({"removed": removed})
 
 

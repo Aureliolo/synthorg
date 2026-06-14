@@ -16,7 +16,6 @@ rejection.  Create and approve are non-destructive writes and only
 need an actor (to populate ``requested_by`` / ``decided_by``).
 """
 
-import copy
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
@@ -385,13 +384,11 @@ async def _reject(
 
 
 APPROVAL_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_approvals_list": _list_approvals,
-            "synthorg_approvals_get": _get_approval,
-            "synthorg_approvals_create": _create_approval,
-            "synthorg_approvals_approve": _approve,
-            "synthorg_approvals_reject": _reject,
-        },
-    ),
+    {
+        "synthorg_approvals_list": _list_approvals,
+        "synthorg_approvals_get": _get_approval,
+        "synthorg_approvals_create": _create_approval,
+        "synthorg_approvals_approve": _approve,
+        "synthorg_approvals_reject": _reject,
+    },
 )

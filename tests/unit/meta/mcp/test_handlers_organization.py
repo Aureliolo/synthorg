@@ -5,14 +5,17 @@ versions (2).
 """
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+import structlog.testing
 
 from synthorg.api.state import AppState
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.meta.mcp.handlers.organization import ORGANIZATION_HANDLERS
+from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 from synthorg.organization.services import (
     DepartmentService,
     TeamService,
@@ -148,7 +151,9 @@ class TestCompany:
     async def test_versions_list(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_company_versions_list"]
         response = await handler(app_state=fake_app_state, arguments={})
-        assert json.loads(response)["status"] == "ok"
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        assert payload["data"] == []
 
     async def test_versions_get_not_found(
         self,
@@ -235,7 +240,9 @@ class TestDepartments:
     async def test_list(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_departments_list"]
         response = await handler(app_state=fake_app_state, arguments={})
-        assert json.loads(response)["status"] == "ok"
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        assert payload["data"] == []
 
     async def test_delete_requires_guardrails(
         self,
@@ -248,6 +255,37 @@ class TestDepartments:
             actor=make_test_actor(),
         )
         assert json.loads(response)["domain_code"] == "guardrail_violated"
+
+    async def test_delete_emits_admin_op_executed(
+        self,
+        fake_app_state: AppState,
+    ) -> None:
+        create = ORGANIZATION_HANDLERS["synthorg_departments_create"]
+        created = json.loads(
+            await create(
+                app_state=fake_app_state,
+                arguments={"name": "doomed", "description": "v1"},
+                actor=make_test_actor(),
+            ),
+        )
+        dept_id = created["data"]["id"]
+        handler = ORGANIZATION_HANDLERS["synthorg_departments_delete"]
+        with structlog.testing.capture_logs() as events:
+            response = await handler(
+                app_state=fake_app_state,
+                arguments={
+                    "department_id": dept_id,
+                    "confirm": True,
+                    "reason": "cleanup",
+                },
+                actor=make_test_actor(),
+            )
+        assert json.loads(response)["status"] == "ok"
+        assert any(
+            e.get("event") == MCP_ADMIN_OP_EXECUTED
+            and e.get("tool_name") == "synthorg_departments_delete"
+            for e in events
+        )
 
     async def test_health(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_departments_get_health"]
@@ -322,7 +360,9 @@ class TestTeams:
     async def test_list(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_teams_list"]
         response = await handler(app_state=fake_app_state, arguments={})
-        assert json.loads(response)["status"] == "ok"
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        assert payload["data"] == []
 
     async def test_delete_guardrails(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_teams_delete"]
@@ -332,6 +372,37 @@ class TestTeams:
             actor=make_test_actor(),
         )
         assert json.loads(response)["domain_code"] == "guardrail_violated"
+
+    async def test_delete_emits_admin_op_executed(
+        self,
+        fake_app_state: AppState,
+    ) -> None:
+        create = ORGANIZATION_HANDLERS["synthorg_teams_create"]
+        created = json.loads(
+            await create(
+                app_state=fake_app_state,
+                arguments={"name": "doomed-team"},
+                actor=make_test_actor(),
+            ),
+        )
+        team_id = created["data"]["id"]
+        handler = ORGANIZATION_HANDLERS["synthorg_teams_delete"]
+        with structlog.testing.capture_logs() as events:
+            response = await handler(
+                app_state=fake_app_state,
+                arguments={
+                    "team_id": team_id,
+                    "confirm": True,
+                    "reason": "cleanup",
+                },
+                actor=make_test_actor(),
+            )
+        assert json.loads(response)["status"] == "ok"
+        assert any(
+            e.get("event") == MCP_ADMIN_OP_EXECUTED
+            and e.get("tool_name") == "synthorg_teams_delete"
+            for e in events
+        )
 
     async def test_update_patches_existing(
         self,
@@ -381,7 +452,28 @@ class TestRoleVersions:
     async def test_list(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_role_versions_list"]
         response = await handler(app_state=fake_app_state, arguments={})
-        assert json.loads(response)["status"] == "ok"
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        assert payload["data"] == []
+
+    async def test_list_paginates_and_reports_total(
+        self,
+        fake_role_version: AsyncMock,
+        fake_app_state: AppState,
+    ) -> None:
+        version = SimpleNamespace(model_dump=lambda mode="json": {"id": "rv-1"})
+        fake_role_version.list_versions = AsyncMock(return_value=((version,), 7))
+        handler = ORGANIZATION_HANDLERS["synthorg_role_versions_list"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"offset": 3, "limit": 2},
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        assert payload["pagination"] == {"total": 7, "offset": 3, "limit": 2}
+        call = fake_role_version.list_versions.await_args
+        assert call.kwargs["offset"] == 3
+        assert call.kwargs["limit"] == 2
 
     async def test_get_not_found(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_role_versions_get"]

@@ -1,11 +1,11 @@
 """Pydantic args models for living-documentation MCP tools."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import DOCS_LIST_DEFAULT_LIMIT
 from synthorg.docs_engine.enums import DocType
-from synthorg.meta.mcp.domains._common_args import AdminGuardrailFields
+from synthorg.meta.mcp.domains._common_args import AdminGuardrailFields, _ArgsBase
 from synthorg.tools.docs._args import (
     WriteLivingDocBlockArg,
 )
@@ -34,10 +34,8 @@ class DocsWriteArgs(AdminGuardrailFields):
     slug: NotBlankStr | None = Field(default=None)
 
 
-class DocsReadArgs(BaseModel):
+class DocsReadArgs(_ArgsBase):
     """Args for ``docs:get``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     project_id: NotBlankStr = Field(description="Owning project")
     slug: NotBlankStr = Field(description="Doc slug")
@@ -47,10 +45,8 @@ class DocsReadArgs(BaseModel):
     )
 
 
-class DocsListArgs(BaseModel):
+class DocsListArgs(_ArgsBase):
     """Args for ``docs:list``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     project_id: NotBlankStr = Field(description="Owning project")
     doc_type: DocType | None = Field(default=None)
@@ -59,10 +55,8 @@ class DocsListArgs(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
-class DocsSearchArgs(BaseModel):
+class DocsSearchArgs(_ArgsBase):
     """Args for ``docs:search``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     project_id: NotBlankStr = Field(description="Owning project")
     query: NotBlankStr = Field(description="Search text")
@@ -70,10 +64,8 @@ class DocsSearchArgs(BaseModel):
     limit: int = Field(default=8, ge=1, le=64)
 
 
-class DocsHistoryArgs(BaseModel):
+class DocsHistoryArgs(_ArgsBase):
     """Args for ``docs:history``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     project_id: NotBlankStr = Field(description="Owning project")
     slug: NotBlankStr = Field(description="Doc slug")

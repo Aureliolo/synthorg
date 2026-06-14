@@ -29,7 +29,10 @@ from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _map_capability,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 from synthorg.settings.state import settings_read_service_of
 
 if TYPE_CHECKING:
@@ -61,6 +64,7 @@ async def _settings_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(dict(result))
 
 
@@ -88,6 +92,7 @@ async def _settings_get(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok({"key": key, "value": result})
 
 
@@ -132,6 +137,7 @@ async def _settings_update(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 
@@ -175,6 +181,7 @@ async def _settings_delete(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 

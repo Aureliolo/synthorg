@@ -164,10 +164,13 @@ SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
                 "confirm": {
                     "type": "boolean",
                     "description": "Must be True to confirm the operation",
+                    "enum": [True],
                 },
                 "reason": {
                     "type": "string",
                     "description": "Operator-supplied reason for audit trail",
+                    "minLength": 1,
+                    "pattern": ".*\\S.*",
                 },
             },
             "required": ["proposal", "confirm", "reason"],

@@ -20,6 +20,7 @@ from synthorg.meta.mcp.domains._common_args import (
     PaginationFields,
     _ArgsBase,
 )
+from synthorg.meta.mcp.errors import ArgumentValidationError
 
 FineTuneBackend = Literal["in-process", "docker"]
 FineTuneDataSource = Literal["directory", "trajectory"]
@@ -170,26 +171,41 @@ class _FineTunePlanFields(_ArgsBase):
 
         Returns:
             The validated ``FineTunePlan``.
+
+        Raises:
+            ArgumentValidationError: When the wire fields satisfy this
+                model but violate a canonical ``FineTunePlan`` invariant.
+            MemoryError: Re-raised unwrapped; a system error must not be masked.
+            RecursionError: Re-raised unwrapped; a system error must not be masked.
         """
         execution = (
             _PlanExecutionConfig(**self.execution.model_dump())
             if self.execution is not None
             else None
         )
-        return FineTunePlan(
-            data_source=FineTuneDataSourceType(self.data_source),
-            source_dir=self.source_dir,
-            base_model=self.base_model,
-            output_dir=self.output_dir,
-            resume_run_id=self.resume_run_id,
-            epochs=self.epochs,
-            learning_rate=self.learning_rate,
-            temperature=self.temperature,
-            top_k=self.top_k,
-            batch_size=self.batch_size,
-            validation_split=self.validation_split,
-            execution=execution,
-        )
+        try:
+            return FineTunePlan(
+                data_source=FineTuneDataSourceType(self.data_source),
+                source_dir=self.source_dir,
+                base_model=self.base_model,
+                output_dir=self.output_dir,
+                resume_run_id=self.resume_run_id,
+                epochs=self.epochs,
+                learning_rate=self.learning_rate,
+                temperature=self.temperature,
+                top_k=self.top_k,
+                batch_size=self.batch_size,
+                validation_split=self.validation_split,
+                execution=execution,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Surface any cross-model invariant the wire fields satisfy but
+            # the canonical FineTunePlan rejects (e.g. path-traversal guard)
+            # as a typed argument error, not a raw ValidationError.
+            arg, expected = "plan", "valid FineTunePlan shape"
+            raise ArgumentValidationError(arg, expected) from exc
 
 
 class MemoryStartFineTuneArgs(_FineTunePlanFields, AdminGuardrailFields):

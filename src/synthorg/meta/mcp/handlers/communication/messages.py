@@ -11,6 +11,7 @@ from synthorg.communication.message import Message
 from synthorg.communication.state import message_service_of
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.meta.mcp.domains._remaining_args import (
     MessagesDeleteArgs,
     MessagesGetArgs,
@@ -42,7 +43,10 @@ from synthorg.meta.mcp.handlers.communication._shared import (
     _map_capability_not_supported,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -64,6 +68,7 @@ async def _messages_list(
     Returns:
         Resulting string.
     """
+    tool = "synthorg_messages_list"
     try:
         page_args = typed_args(arguments, MessagesListArgs)
         offset, limit = page_args.offset, page_args.limit
@@ -73,14 +78,15 @@ async def _messages_list(
             limit=limit,
         )
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
-        return ok(dump_many(messages), pagination=pagination)
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_messages_list", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_messages_list", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(dump_many(messages), pagination=pagination)
 
 
 async def _messages_get(
@@ -94,25 +100,26 @@ async def _messages_get(
     Returns:
         Resulting string.
     """
+    tool = "synthorg_messages_get"
     try:
         get_args = typed_args(arguments, MessagesGetArgs)
         message = await message_service_of(app_state).get_message(
             channel=get_args.channel,
             message_id=get_args.message_id,
         )
-        if message is None:
-            return err(
-                LookupError(f"Message {get_args.message_id} not found"),
-                domain_code="not_found",
-            )
-        return ok(message.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_messages_get", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_messages_get", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    if message is None:
+        missing = NotFoundError(f"Message {get_args.message_id} not found")
+        log_handler_invoke_failed(tool, missing, message_id=get_args.message_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(message.model_dump(mode="json"))
 
 
 async def _messages_send(
@@ -129,6 +136,7 @@ async def _messages_send(
     Raises:
         ArgumentValidationError: When ``message`` is not a valid Message.
     """
+    tool = "synthorg_messages_send"
     try:
         raw_message = typed_args(arguments, MessagesSendArgs).message
         try:
@@ -139,14 +147,15 @@ async def _messages_send(
             message=message,
             actor_id=require_actor_id(actor),
         )
-        return ok({"id": str(message.id)})
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_messages_send", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_messages_send", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok({"id": str(message.id)})
 
 
 async def _messages_delete(
@@ -186,6 +195,7 @@ async def _messages_delete(
                 reason=reason,
                 target_id=message_id,
             )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok({"removed": removed})
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)

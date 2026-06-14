@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.infrastructure.state import provider_read_service_of
 from synthorg.meta.mcp.domains._remaining_args import (
     ProvidersGetArgs,
@@ -31,7 +32,10 @@ from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _to_jsonable,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -62,6 +66,7 @@ async def _providers_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(p) for p in providers])
 
 
@@ -90,10 +95,10 @@ async def _providers_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if provider is None:
-        return err(
-            LookupError(f"Provider {provider_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Provider {provider_id} not found")
+        log_handler_invoke_failed(tool, missing, provider_id=provider_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(provider))
 
 
@@ -121,6 +126,7 @@ async def _providers_get_health(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok({k: _to_jsonable(v) for k, v in dict(result).items()})
 
 
@@ -160,6 +166,7 @@ async def _providers_test_connection(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok({k: _to_jsonable(v) for k, v in dict(result).items()})
 
 

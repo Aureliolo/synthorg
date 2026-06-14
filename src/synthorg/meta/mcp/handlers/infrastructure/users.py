@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.infrastructure.state import user_facade_service_of
 from synthorg.meta.mcp.domains._remaining_args import (
     UsersCreateArgs,
@@ -32,7 +33,10 @@ from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _to_jsonable,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -63,6 +67,7 @@ async def _users_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(u) for u in users])
 
 
@@ -91,10 +96,10 @@ async def _users_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if user is None:
-        return err(
-            LookupError(f"User {user_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"User {user_id} not found")
+        log_handler_invoke_failed(tool, missing, user_id=user_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(user))
 
 
@@ -141,6 +146,7 @@ async def _users_create(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 
@@ -187,6 +193,7 @@ async def _users_update(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 
@@ -230,6 +237,7 @@ async def _users_delete(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 

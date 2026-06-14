@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.state import connection_service_of
 from synthorg.meta.mcp.domains._remaining_args import (
@@ -37,7 +38,10 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -59,6 +63,7 @@ async def _connections_list(
     Returns:
         Resulting string.
     """
+    tool = "synthorg_connections_list"
     try:
         page_args = typed_args(arguments, ConnectionsListArgs)
         offset, limit = page_args.offset, page_args.limit
@@ -67,14 +72,15 @@ async def _connections_list(
             limit=limit,
         )
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
-        return ok(dump_many(connections), pagination=pagination)
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_connections_list", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_connections_list", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(dump_many(connections), pagination=pagination)
 
 
 async def _connections_get(
@@ -88,22 +94,23 @@ async def _connections_get(
     Returns:
         Resulting string.
     """
+    tool = "synthorg_connections_get"
     try:
         name = typed_args(arguments, ConnectionsGetArgs).name
         connection = await connection_service_of(app_state).get_connection(name)
-        if connection is None:
-            return err(
-                LookupError(f"Connection {name} not found"),
-                domain_code="not_found",
-            )
-        return ok(connection.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_connections_get", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_connections_get", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    if connection is None:
+        missing = NotFoundError(f"Connection {name} not found")
+        log_handler_invoke_failed(tool, missing, connection_name=name)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(connection.model_dump(mode="json"))
 
 
 async def _connections_create(
@@ -147,6 +154,7 @@ async def _connections_create(
             reason=reason,
             connection_name=args.name,
         )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok(connection.model_dump(mode="json"))
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
@@ -188,6 +196,7 @@ async def _connections_delete(
             reason=reason,
             connection_name=name,
         )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
         return ok(None)
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
@@ -212,22 +221,23 @@ async def _connections_check_health(
     Returns:
         Resulting string.
     """
+    tool = "synthorg_connections_check_health"
     try:
         name = typed_args(arguments, ConnectionsCheckHealthArgs).name
         connection = await connection_service_of(app_state).check_health(name=name)
-        if connection is None:
-            return err(
-                LookupError(f"Connection {name} not found"),
-                domain_code="not_found",
-            )
-        return ok(connection.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        log_handler_argument_invalid("synthorg_connections_check_health", exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
-        log_handler_invoke_failed("synthorg_connections_check_health", exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
+    if connection is None:
+        missing = NotFoundError(f"Connection {name} not found")
+        log_handler_invoke_failed(tool, missing, connection_name=name)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(connection.model_dump(mode="json"))
 
 
 CONNECTIONS_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

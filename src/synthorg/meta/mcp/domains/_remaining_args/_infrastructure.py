@@ -212,7 +212,9 @@ class ProjectsCreateArgs(_ArgsBase):
     """Args for ``projects.create``."""
 
     name: NotBlankStr = Field(description="Project name")
-    description: str = Field(default="", description="Project description")
+    description: NotBlankStr | None = Field(
+        default=None, description="Project description"
+    )
     metadata: dict[str, str] | None = Field(
         default=None,
         description="Free-form project metadata",

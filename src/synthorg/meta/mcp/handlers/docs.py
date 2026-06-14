@@ -28,7 +28,10 @@ from synthorg.meta.mcp.domains._docs_args import (
     DocsSearchArgs,
     DocsWriteArgs,
 )
-from synthorg.meta.mcp.errors import ArgumentValidationError
+from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
+    GuardrailViolationError,
+)
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
@@ -36,6 +39,7 @@ from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
+    log_handler_guardrail_violated,
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
@@ -91,6 +95,9 @@ async def _docs_write(
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_DOCS_WRITE)
         return ok(metadata.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(_TOOL_DOCS_WRITE, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_DOCS_WRITE, exc)
         return err(exc)

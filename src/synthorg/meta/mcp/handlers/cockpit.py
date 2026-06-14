@@ -27,7 +27,10 @@ from synthorg.meta.mcp.domains._cockpit_args import (
     SteerListArgs,
     SteerSupersedeArgs,
 )
-from synthorg.meta.mcp.errors import ArgumentValidationError
+from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
+    GuardrailViolationError,
+)
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
@@ -43,6 +46,7 @@ from synthorg.meta.mcp.handlers.common_args import (
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
+    log_handler_guardrail_violated,
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
@@ -175,6 +179,9 @@ async def _intervene_pause(
             tool_name="synthorg_cockpit_intervene_pause",
         )
         return ok(task.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated("synthorg_cockpit_intervene_pause", exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_cockpit_intervene_pause", exc)
         return err(exc)
@@ -204,6 +211,9 @@ async def _intervene_kill(
             tool_name="synthorg_cockpit_intervene_kill",
         )
         return ok(task.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated("synthorg_cockpit_intervene_kill", exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_cockpit_intervene_kill", exc)
         return err(exc)
@@ -248,6 +258,9 @@ async def _steer(
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
         return ok(result.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool_name, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool_name, exc)
         return err(exc)
@@ -292,6 +305,9 @@ async def _steer_supersede(
                 "cancelled_task_ids": [str(t) for t in cancelled],
             }
         )
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool_name, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool_name, exc)
         return err(exc)

@@ -24,8 +24,8 @@ from synthorg.meta.mcp.tool_builder import (
     ADMIN_GUARDRAIL_PROPERTIES,
     ADMIN_GUARDRAIL_REQUIRED,
     PAGINATION_PROPERTIES,
+    admin_tool,
     read_tool,
-    write_tool,
 )
 
 if TYPE_CHECKING:
@@ -124,7 +124,7 @@ SIGNAL_MCP_TOOLS: tuple[MCPToolDef, ...] = (
         },
         args_model=SignalsGetProposalsArgs,
     ),
-    write_tool(
+    admin_tool(
         "signals",
         "submit_proposal",
         "Submit an improvement proposal to the guard chain (requires confirm).",

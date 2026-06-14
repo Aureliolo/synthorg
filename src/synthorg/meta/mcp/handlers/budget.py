@@ -9,7 +9,6 @@ falls back to per-call construction for compatibility with legacy
 app_states).  All budget tools are reads; none are destructive.
 """
 
-import copy
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -251,13 +250,11 @@ async def _budget_versions_get(
 
 
 BUDGET_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_budget_get_config": _budget_get_config,
-            "synthorg_budget_list_records": _budget_list_records,
-            "synthorg_budget_get_agent_spending": _budget_get_agent_spending,
-            "synthorg_budget_versions_list": _budget_versions_list,
-            "synthorg_budget_versions_get": _budget_versions_get,
-        },
-    ),
+    {
+        "synthorg_budget_get_config": _budget_get_config,
+        "synthorg_budget_list_records": _budget_list_records,
+        "synthorg_budget_get_agent_spending": _budget_get_agent_spending,
+        "synthorg_budget_versions_list": _budget_versions_list,
+        "synthorg_budget_versions_get": _budget_versions_get,
+    },
 )

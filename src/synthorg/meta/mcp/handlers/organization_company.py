@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.meta.mcp.domains._workflows_org_args import (
     CompanyReorderDepartmentsArgs,
     CompanyUpdateArgs,
@@ -28,10 +29,14 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_invoke_failed,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 from synthorg.organization.state import company_read_service_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+
+logger = get_logger(__name__)
 
 
 async def _company_get(
@@ -57,6 +62,7 @@ async def _company_get(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(company))
 
 
@@ -87,6 +93,7 @@ async def _company_update(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(result))
 
 
@@ -113,6 +120,7 @@ async def _company_list_departments(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(d) for d in departments])
 
 
@@ -143,6 +151,7 @@ async def _company_reorder_departments(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(None)
 
 
@@ -169,6 +178,7 @@ async def _company_versions_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok([_to_jsonable(v) for v in versions])
 
 
@@ -197,8 +207,8 @@ async def _company_versions_get(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if version is None:
-        return err(
-            LookupError(f"Version {version_id} not found"),
-            domain_code="not_found",
-        )
+        missing = NotFoundError(f"Version {version_id} not found")
+        log_handler_invoke_failed(tool, missing, version_id=version_id)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(_to_jsonable(version))

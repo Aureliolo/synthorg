@@ -15,6 +15,7 @@ the broader integration sweep.
 """
 
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -241,6 +242,40 @@ class TestMetricsList:
             "offset": 5,
             "limit": 3,
         }
+
+    async def test_filters_forwarded_to_service(
+        self,
+        actor: AgentIdentity,
+    ) -> None:
+        service = AsyncMock()
+        service.list_metrics.return_value = ((), 0)
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"coordination_service": service}},
+        )
+        handler = COORDINATION_HANDLERS["synthorg_coordination_metrics_list"]
+
+        raw = await handler(
+            app_state=state,
+            arguments={
+                "task_id": "t-9",
+                "agent_id": "a-7",
+                "since": "2026-01-01T00:00:00+00:00",
+                "until": "2026-02-01T00:00:00+00:00",
+                "offset": 2,
+                "limit": 5,
+            },
+            actor=actor,
+        )
+
+        body = _parse(raw)
+        assert body["status"] == "ok"
+        call = service.list_metrics.await_args
+        assert call.kwargs["task_id"] == "t-9"
+        assert call.kwargs["agent_id"] == "a-7"
+        assert call.kwargs["since"] == datetime(2026, 1, 1, tzinfo=UTC)
+        assert call.kwargs["until"] == datetime(2026, 2, 1, tzinfo=UTC)
+        assert call.kwargs["offset"] == 2
+        assert call.kwargs["limit"] == 5
 
     async def test_service_raises_maps_to_err(
         self,

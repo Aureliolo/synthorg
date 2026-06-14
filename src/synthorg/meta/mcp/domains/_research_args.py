@@ -1,8 +1,9 @@
 """Pydantic args models for research-subsystem MCP tools."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.mcp.domains._common_args import _ArgsBase
 from synthorg.research.constants import (
     RESEARCH_LIST_DEFAULT_LIMIT,
     RESEARCH_LIST_MAX_LIMIT,
@@ -20,18 +21,14 @@ class ResearchRunArgs(ResearchBriefArgs):
     )
 
 
-class ResearchGetArgs(BaseModel):
+class ResearchGetArgs(_ArgsBase):
     """Args for ``research:get``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     run_id: NotBlankStr = Field(description="The run identifier to fetch")
 
 
-class ResearchListArgs(BaseModel):
+class ResearchListArgs(_ArgsBase):
     """Args for ``research:list``."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     brief_id: NotBlankStr | None = Field(default=None)
     project_id: NotBlankStr | None = Field(default=None)

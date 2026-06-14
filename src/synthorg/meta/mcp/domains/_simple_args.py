@@ -34,13 +34,16 @@ from synthorg.meta.mcp.domains._common_args import (
 
 
 def _check_time_window_ordering(since: str | None, until: str | None) -> None:
-    """Reject ``since > until`` on time-window filter args.
+    """Reject ``since >= until`` on time-window filter args.
 
     Used by ``MetricsGetHistoryArgs`` and ``CoordinationMetricsListArgs``
     where both ``since`` and ``until`` are optional ``IsoDatetimeStr``
-    values (already validated as timezone-aware ISO 8601).  Returns
-    ``None`` on success; callers should ``return self`` after invoking
-    this helper from their ``model_validator(mode="after")``.
+    values (already validated as timezone-aware ISO 8601).  Rejects a
+    zero-width or reversed window so the model boundary matches the
+    handler-side :func:`resolve_time_window`, which also rejects
+    ``since >= until``.  Returns ``None`` on success; callers should
+    ``return self`` after invoking this helper from their
+    ``model_validator(mode="after")``.
 
     Raises:
         ValueError: Raised on the corresponding failure path.
@@ -49,8 +52,10 @@ def _check_time_window_ordering(since: str | None, until: str | None) -> None:
         return
     start = datetime.fromisoformat(since)
     end = datetime.fromisoformat(until)
-    if start > end:
-        msg = f"since must be on or before until; got since={since!r}, until={until!r}"
+    if start >= end:
+        msg = (
+            f"since must be strictly before until; got since={since!r}, until={until!r}"
+        )
         raise ValueError(msg)
 
 

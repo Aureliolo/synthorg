@@ -12,27 +12,25 @@ from synthorg.meta.mcp.domains._agents_args import (
     TrainingStartSessionArgs,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestAgentsCRUD:
-    @pytest.mark.unit
     def test_list_pagination_defaults(self) -> None:
         args = AgentsListArgs()
         assert args.offset == 0
         assert args.limit == 50
 
-    @pytest.mark.unit
     def test_get_requires_agent_name(self) -> None:
         with pytest.raises(ValidationError):
             AgentsGetArgs.model_validate({})
 
-    @pytest.mark.unit
     def test_create_carries_identity(self) -> None:
         args = AgentsCreateArgs(identity={"name": "alice", "role": "engineer"})
         assert args.identity == {"name": "alice", "role": "engineer"}
         with pytest.raises(ValidationError):
             AgentsCreateArgs.model_validate({})
 
-    @pytest.mark.unit
     def test_delete_destructive(self) -> None:
         AgentsDeleteArgs(
             agent_name="alice",
@@ -46,7 +44,6 @@ class TestAgentsCRUD:
 
 
 class TestTrainingStartSessionArgs:
-    @pytest.mark.unit
     def test_seniority_is_closed(self) -> None:
         TrainingStartSessionArgs(
             new_agent_id="a1",
@@ -62,7 +59,6 @@ class TestTrainingStartSessionArgs:
                 },
             )
 
-    @pytest.mark.unit
     def test_content_types_are_closed(self) -> None:
         args = TrainingStartSessionArgs(
             new_agent_id="a1",
@@ -72,7 +68,6 @@ class TestTrainingStartSessionArgs:
         )
         assert "procedural" in args.enabled_content_types
 
-    @pytest.mark.unit
     def test_content_types_reject_unknown(self) -> None:
         """Closed-set guard: arbitrary strings are rejected.
 
@@ -91,7 +86,6 @@ class TestTrainingStartSessionArgs:
 
 
 class TestAutonomyUpdateArgs:
-    @pytest.mark.unit
     def test_level_is_closed(self) -> None:
         AutonomyUpdateArgs(agent_id="a1", level="semi", reason="rollout")
         with pytest.raises(ValidationError):
@@ -99,7 +93,6 @@ class TestAutonomyUpdateArgs:
                 {"agent_id": "a1", "level": "blocked", "reason": "x"},
             )
 
-    @pytest.mark.unit
     def test_reason_blank_rejected(self) -> None:
         with pytest.raises(ValidationError):
             AutonomyUpdateArgs(agent_id="a1", level="full", reason="   ")
