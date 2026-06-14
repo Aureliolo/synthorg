@@ -33,6 +33,7 @@ def test_env_present_no_parse_returns_env_value(
     assert resolved == BootstrapResolvedValue(
         value="/var/log/synthorg-test",
         source=SettingSource.ENVIRONMENT,
+        env_present=True,
     )
 
 
@@ -104,6 +105,42 @@ def test_env_present_parse_returns_none_falls_back_to_default(
     )
     assert resolved.source == SettingSource.DEFAULT
     assert resolved.value is True  # api.rate_limiter_enabled default is "true"
+
+
+def test_env_present_true_when_invalid_env_falls_back_to_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``env_present`` stays True when a set env var fails parsing.
+
+    This lets strict callers (the worker entry point) distinguish
+    "env set but unparseable" (env_present True, source DEFAULT) from
+    "env unset" (env_present False) without re-reading os.environ.
+    """
+    monkeypatch.setenv("SYNTHORG_API_SERVER_PORT", "not-an-int")
+
+    def parse_int(raw: str) -> int | None:
+        try:
+            return int(raw)
+        except ValueError:
+            return None
+
+    resolved = resolve_init_value(
+        SettingNamespace.API,
+        "server_port",
+        parse=parse_int,
+    )
+    assert resolved.source == SettingSource.DEFAULT
+    assert resolved.env_present is True
+
+
+def test_env_present_false_when_env_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``env_present`` is False when the env var is unset."""
+    monkeypatch.delenv("SYNTHORG_API_SERVER_PORT", raising=False)
+    resolved = resolve_init_value(SettingNamespace.API, "server_port")
+    assert resolved.source == SettingSource.DEFAULT
+    assert resolved.env_present is False
 
 
 def test_unknown_setting_raises_not_found() -> None:

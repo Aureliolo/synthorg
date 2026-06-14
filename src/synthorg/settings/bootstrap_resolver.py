@@ -49,12 +49,18 @@ class BootstrapResolvedValue(BaseModel, Generic[T]):  # noqa: UP046
         source: Origin of the value (ENVIRONMENT or DEFAULT). Never
             DATABASE since the bootstrap resolver runs before the
             persistence layer is wired.
+        env_present: Whether the env var was set (non-empty after strip),
+            regardless of whether ``parse`` accepted it. Lets a strict
+            caller distinguish "env set but invalid" (``env_present`` and
+            ``source`` is DEFAULT) from "env unset" without re-reading
+            ``os.environ``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     value: T
     source: SettingSource
+    env_present: bool
 
 
 def resolve_init_value(  # noqa: UP047
@@ -111,6 +117,7 @@ def resolve_init_value(  # noqa: UP047
         else _env_var_name(str(namespace), key)
     )
     env_raw = env.get(env_name, "").strip()
+    env_present = bool(env_raw)
 
     if env_raw:
         if parse is not None:
@@ -119,11 +126,13 @@ def resolve_init_value(  # noqa: UP047
                 return BootstrapResolvedValue(
                     value=parsed,
                     source=SettingSource.ENVIRONMENT,
+                    env_present=True,
                 )
         else:
             return BootstrapResolvedValue(
                 value=env_raw,
                 source=SettingSource.ENVIRONMENT,
+                env_present=True,
             )
 
     default = definition.default if definition.default is not None else ""
@@ -152,6 +161,11 @@ def resolve_init_value(  # noqa: UP047
         return BootstrapResolvedValue(
             value=parsed_default,
             source=SettingSource.DEFAULT,
+            env_present=env_present,
         )
 
-    return BootstrapResolvedValue(value=default, source=SettingSource.DEFAULT)
+    return BootstrapResolvedValue(
+        value=default,
+        source=SettingSource.DEFAULT,
+        env_present=env_present,
+    )

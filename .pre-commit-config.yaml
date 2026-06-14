@@ -765,6 +765,17 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: no-os-environ-outside-bootstrap
+        name: env-read gate (single-key os.environ reads only at the bootstrap edge)
+        entry: uv run python scripts/check_no_os_environ_outside_bootstrap.py
+        language: system
+        # Trigger on any src change or an edit to the gate script / this config
+        # so a new direct os.environ read in business logic (or a weakening of
+        # the gate's allowlist) cannot bypass the precedence boundary.
+        files: ^(src/synthorg/.*\.py|scripts/check_no_os_environ_outside_bootstrap\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: dead-api-endpoints
         name: dead-API-endpoint gate (frontend ↔ backend route parity)
         entry: uv run python scripts/check_dead_api_endpoints.py

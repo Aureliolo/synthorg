@@ -38,7 +38,7 @@ from synthorg.observability.events.workers import (
     WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED,
 )
 from synthorg.settings.bootstrap_resolver import resolve_init_value
-from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.mirrors import parse_float, parse_int
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim, TaskClaimStatus
 from synthorg.workers.config import QueueConfig
@@ -161,14 +161,15 @@ def _resolve_worker_count(explicit: int | None) -> int | None:
     """
     if explicit is not None:
         return explicit
-    env_raw = os.environ.get("SYNTHORG_WORKERS", "").strip()
-    if env_raw and parse_int(env_raw) is None:
-        return None
     resolved = resolve_init_value(
         SettingNamespace.WORKERS,
         "count",
         parse=parse_int,
     )
+    # env set but the resolver fell back to the default => unparseable
+    # integer; surface a usage error rather than masking operator intent.
+    if resolved.env_present and resolved.source is not SettingSource.ENVIRONMENT:
+        return None
     if isinstance(resolved.value, int):
         return resolved.value
     return None
@@ -192,14 +193,15 @@ def _resolve_http_timeout(explicit: float | None) -> float | None:
     """
     if explicit is not None:
         return explicit
-    env_raw = os.environ.get("SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS", "").strip()
-    if env_raw and parse_float(env_raw) is None:
-        return None
     resolved = resolve_init_value(
         SettingNamespace.WORKERS,
         "executor_http_timeout_seconds",
         parse=parse_float,
     )
+    # env set but the resolver fell back to the default => unparseable
+    # float; surface a usage error rather than masking operator intent.
+    if resolved.env_present and resolved.source is not SettingSource.ENVIRONMENT:
+        return None
     if isinstance(resolved.value, float):
         return resolved.value
     return None
