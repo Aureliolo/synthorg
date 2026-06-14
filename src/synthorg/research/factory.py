@@ -55,10 +55,16 @@ def _build_triage(
     heuristic = HeuristicCredibilityTriage(clock=clock)
     if config.credibility_triage == "heuristic":
         return heuristic
-    llm = LlmCredibilityTriage(provider=provider, model=model)
+    llm = LlmCredibilityTriage(
+        provider=provider, model=model, batch_size=config.triage_batch_size
+    )
     if config.credibility_triage == "llm":
         return llm
-    return HybridCredibilityTriage(heuristic=heuristic, llm=llm)
+    return HybridCredibilityTriage(
+        heuristic=heuristic,
+        llm=llm,
+        prefilter_factor=config.hybrid_prefilter_factor,
+    )
 
 
 def _build_deduplicator(
@@ -80,8 +86,10 @@ def _build_deduplicator(
         if embedder is None:
             msg = "embedding deduplicator requires an embedder to be injected"
             raise ResearchUnavailableError(msg)
-        return EmbeddingDeduplicator(embedder=embedder)
-    return LexicalDeduplicator()
+        return EmbeddingDeduplicator(
+            embedder=embedder, threshold=config.dedup_similarity_threshold
+        )
+    return LexicalDeduplicator(threshold=config.dedup_similarity_threshold)
 
 
 def _build_sources(
@@ -159,5 +167,6 @@ def build_research_service(  # noqa: PLR0913 -- injected boot collaborators
             clock=clock,
         ),
         runs_repo=runs_repo,
+        per_query_limit=config.per_query_limit,
         clock=clock,
     )

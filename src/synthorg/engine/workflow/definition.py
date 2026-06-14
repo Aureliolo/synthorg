@@ -44,18 +44,19 @@ def _check_default_type(name: str, default: object, vtype: WorkflowValueType) ->
     """Validate that *default* is compatible with *vtype*.
 
     Raises:
-        TypeError: If ``default`` is not serialisable as JSON when
+        ValueError: If ``default`` is not serialisable as JSON when
             ``vtype`` is ``JSON``, if ``default``'s Python type does
             not match ``vtype``, if a ``DATETIME`` default is not a
             valid ISO-8601 string, or if a ``FLOAT`` default is not
-            finite.
+            finite. Raised as ``ValueError`` (not ``TypeError``) so the
+            calling ``model_validator`` wraps it into a ``ValidationError``.
     """
     if vtype is WorkflowValueType.JSON:
         try:
             json.dumps(default, allow_nan=False)
         except (TypeError, ValueError) as exc:
             msg = f"Declaration {name!r}: JSON default is not serializable"
-            raise TypeError(msg) from exc
+            raise ValueError(msg) from exc
         return
     expected = _VALUE_TYPE_CHECKS.get(vtype)
     if expected is None:
@@ -64,26 +65,26 @@ def _check_default_type(name: str, default: object, vtype: WorkflowValueType) ->
         default, bool
     ):
         msg = f"Declaration {name!r}: default must be {vtype.value}, got bool"
-        raise TypeError(msg)
+        raise ValueError(msg)
     if not isinstance(default, expected):
         msg = (
             f"Declaration {name!r}: default must be"
             f" {vtype.value}, got {type(default).__name__}"
         )
-        raise TypeError(msg)
+        raise ValueError(msg)  # noqa: TRY004 -- Pydantic needs ValueError
     if vtype is WorkflowValueType.DATETIME and isinstance(default, str):
         try:
             datetime.fromisoformat(default)
         except ValueError as exc:
             msg = f"Declaration {name!r}: DATETIME default is not valid ISO-8601"
-            raise TypeError(msg) from exc
+            raise ValueError(msg) from exc
     if (
         vtype is WorkflowValueType.FLOAT
         and isinstance(default, (int, float))
         and not math.isfinite(default)
     ):
         msg = f"Declaration {name!r}: FLOAT default must be finite"
-        raise TypeError(msg)
+        raise ValueError(msg)
 
 
 class WorkflowIODeclaration(BaseModel):

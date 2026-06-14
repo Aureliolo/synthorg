@@ -73,8 +73,12 @@ _r.register(
         namespace=SettingNamespace.BACKUP,
         key="on_shutdown",
         type=SettingType.BOOLEAN,
-        default="true",
-        description="Create a backup on graceful shutdown",
+        default="false",
+        description=(
+            "Create a backup on graceful shutdown. Disabled by default so"
+            " enabling backups does not silently add shutdown-triggered"
+            " writes; scheduled backups cover the routine guarantee."
+        ),
         group="Triggers",
     )
 )

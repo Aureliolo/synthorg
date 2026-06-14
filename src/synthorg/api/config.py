@@ -253,25 +253,6 @@ class RateLimitConfig(BaseModel):
         """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
-    @model_validator(mode="before")
-    @classmethod
-    def _reject_legacy_max_requests(cls, data: object) -> object:
-        """Reject the removed ``max_requests`` field with guidance.
-
-        Returns:
-            ``object`` instance.
-
-        Raises:
-            ValueError: Raised on the corresponding failure path.
-        """
-        if isinstance(data, dict) and "max_requests" in data:
-            msg = (
-                "'max_requests' was replaced by 'unauth_max_requests' "
-                "and 'auth_max_requests' in v0.6.3"
-            )
-            raise ValueError(msg)
-        return data
-
 
 class ServerConfig(BaseModel):
     """Uvicorn server configuration.

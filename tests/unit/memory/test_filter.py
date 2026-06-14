@@ -8,7 +8,6 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.filter import (
     NON_INFERABLE_TAG,
     MemoryFilterStrategy,
-    PassthroughMemoryFilter,
     TagBasedMemoryFilter,
 )
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
@@ -49,9 +48,6 @@ class TestProtocolCompliance:
 
     def test_tag_based_satisfies_protocol(self) -> None:
         assert isinstance(TagBasedMemoryFilter(), MemoryFilterStrategy)
-
-    def test_passthrough_satisfies_protocol(self) -> None:
-        assert isinstance(PassthroughMemoryFilter(), MemoryFilterStrategy)
 
 
 # ── TagBasedMemoryFilter ──────────────────────────────────────────
@@ -112,33 +108,6 @@ class TestTagBasedMemoryFilter:
 
     def test_strategy_name(self) -> None:
         assert TagBasedMemoryFilter().strategy_name == "tag_based"
-
-
-# ── PassthroughMemoryFilter ──────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestPassthroughMemoryFilter:
-    """Tests for the passthrough (no-op) memory filter."""
-
-    def test_returns_all_unchanged(self) -> None:
-        m1 = _make_scored_memory(entry_id="m1")
-        m2 = _make_scored_memory(entry_id="m2")
-        filt = PassthroughMemoryFilter()
-
-        result = filt.filter_for_injection((m1, m2))
-
-        assert len(result) == 2
-        assert result[0].entry.id == "m1"
-        assert result[1].entry.id == "m2"
-
-    def test_empty_input_returns_empty(self) -> None:
-        filt = PassthroughMemoryFilter()
-        result = filt.filter_for_injection(())
-        assert result == ()
-
-    def test_strategy_name(self) -> None:
-        assert PassthroughMemoryFilter().strategy_name == "passthrough"
 
 
 # ── NON_INFERABLE_TAG constant ───────────────────────────────────

@@ -45,6 +45,7 @@ class LlmFallbackConfig(BaseModel):
             same-family fallback).
         timeout_seconds: Maximum time for the LLM call.
         max_input_tokens: Token budget cap for security eval prompts.
+        max_output_tokens: Response token budget for the LLM verdict.
         on_error: Policy when the LLM call fails.
         reason_visibility: How much of the LLM reason is visible
             to the evaluated agent.
@@ -58,6 +59,7 @@ class LlmFallbackConfig(BaseModel):
     model: NotBlankStr | None = None
     timeout_seconds: float = Field(default=10.0, gt=0.0)
     max_input_tokens: int = Field(default=2000, gt=0)
+    max_output_tokens: int = Field(default=256, gt=0, le=4096)
     on_error: LlmFallbackErrorPolicy = LlmFallbackErrorPolicy.ESCALATE
     reason_visibility: VerdictReasonVisibility = VerdictReasonVisibility.GENERIC
     argument_truncation: ArgumentTruncationStrategy = (
@@ -165,6 +167,7 @@ class SafetyClassifierConfig(BaseModel):
             provider (cross-family preferred, same-family fallback).
         timeout_seconds: Maximum time for the LLM classification call.
         max_input_tokens: Token budget cap for classification prompts.
+        max_output_tokens: Response token budget for the classifier verdict.
         auto_reject_blocked: Automatically reject actions classified
             as BLOCKED (returns DENY verdict without creating an
             approval item).
@@ -184,6 +187,7 @@ class SafetyClassifierConfig(BaseModel):
     model: NotBlankStr | None = None
     timeout_seconds: float = Field(default=10.0, gt=0.0)
     max_input_tokens: int = Field(default=2000, gt=0)
+    max_output_tokens: int = Field(default=256, gt=0, le=4096)
     auto_reject_blocked: bool = True
     max_consecutive_denials: int = Field(default=3, ge=1)
     max_total_denials: int = Field(default=20, ge=1)

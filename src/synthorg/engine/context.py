@@ -6,6 +6,7 @@ Wraps an ``AgentIdentity`` (frozen config) with evolving runtime state
 """
 
 from datetime import UTC, datetime
+from typing import Final
 from uuid import uuid4
 
 from pydantic import (
@@ -46,8 +47,11 @@ from synthorg.providers.models import (
 
 logger = get_logger(__name__)
 
-DEFAULT_MAX_TURNS: int = 20
-"""Default hard limit on LLM turns per agent execution."""
+DEFAULT_MAX_TURNS: Final[int] = 20
+"""Default hard limit on LLM turns per agent execution.
+
+Fallback when ``engine.max_turns`` is not resolvable; the operator-tunable
+value flows through that setting (see ``AgentEngine._resolve_max_turns``)."""
 
 
 class AgentContext(BaseModel):

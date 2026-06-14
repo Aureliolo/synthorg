@@ -14,6 +14,6 @@ from synthorg.telemetry.collector import TelemetryCollector
 class TelemetryStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the telemetry feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     collector: TelemetryCollector | None = None

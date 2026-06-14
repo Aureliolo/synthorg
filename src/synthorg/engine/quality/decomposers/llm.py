@@ -53,6 +53,8 @@ from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_PROBES_PER_CRITERION: Final[int] = 5
+# Response-token budget for the decomposer's structured tool-call output.
+_DECOMPOSER_MAX_TOKENS: Final[int] = 2048
 
 _DECOMPOSER_TOOL_NAME: Final[str] = "emit_atomic_probes"
 _DECOMPOSER_TOOL_DESCRIPTION: Final[str] = (
@@ -372,7 +374,9 @@ class LLMCriteriaDecomposer:
                 messages=messages,
                 model=self._model_id,
                 tools=[tool],
-                config=CompletionConfig(temperature=0.0, top_p=1.0, max_tokens=2048),
+                config=CompletionConfig(
+                    temperature=0.0, top_p=1.0, max_tokens=_DECOMPOSER_MAX_TOKENS
+                ),
             )
 
     def _extract_raw_probes(

@@ -23,7 +23,7 @@ from synthorg.persistence.red_team_report_protocol import (
 class PersistenceStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the persistence feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     backend: PersistenceBackend | None = None
 

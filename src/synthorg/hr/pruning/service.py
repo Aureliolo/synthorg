@@ -32,6 +32,7 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
 from synthorg.hr.errors import PruningUnrestartableError
@@ -113,7 +114,7 @@ class PruningService:
         # safe before any ``start()`` call.
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._stop_failed: bool = False
-        self._stop_drain_timeout_seconds: float = 30.0
+        self._stop_drain_timeout_seconds: float = DEFAULT_DRAIN_TIMEOUT_SECONDS
         self._pending_requests: dict[str, PruningRequest] = {}
         self._completed: list[PruningRecord] = []
         self._processed_approval_ids: set[str] = set()

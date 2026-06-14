@@ -56,7 +56,7 @@ class _WebhookEvent(BaseModel):  # lint-allow: frozen-extra-forbid -- bus metada
     ignored rather than rejected.
     """
 
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
 
     event_type: NotBlankStr
     payload: Mapping[str, object] = Field(default_factory=dict)

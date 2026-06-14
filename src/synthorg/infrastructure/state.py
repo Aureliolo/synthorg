@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 class FacadesStateSlice(BaseFeatureStateSlice):
     """Application-state slice for the read / MCP facade services."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     artifact_facade_service: ArtifactFacadeService | None = None
     audit_read_service: AuditReadService | None = None

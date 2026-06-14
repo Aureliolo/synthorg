@@ -15859,7 +15859,6 @@ export type components = {
         readonly WebhookReceipt: {
             readonly connection_name: string;
             readonly error: string | null;
-            /** @default  */
             readonly event_type: string;
             /** Format: uuid */
             readonly id: string;

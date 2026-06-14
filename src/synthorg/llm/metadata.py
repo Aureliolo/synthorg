@@ -28,7 +28,7 @@ from synthorg.core.types import NotBlankStr
 class ModelPinMetadata(BaseModel):
     """Pinned-model metadata for a prompt class."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     prompt_class_id: NotBlankStr = Field(
         description="Stable identifier for the prompt class",

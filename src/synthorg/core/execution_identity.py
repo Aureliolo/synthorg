@@ -40,7 +40,7 @@ class ExecutionIdentity(BaseModel):
         project_id: Owning project, when the task is project-scoped.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     execution_id: NotBlankStr
     task_id: NotBlankStr

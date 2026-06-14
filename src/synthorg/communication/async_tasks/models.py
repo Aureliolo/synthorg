@@ -4,6 +4,7 @@ Defines the state channel, task records, and status enum
 for supervisor-facing async task management.
 """
 
+import copy
 from datetime import datetime
 from enum import StrEnum
 from typing import Self
@@ -92,6 +93,16 @@ class TaskSpec(BaseModel):
         default_factory=dict,
         description="Additional metadata",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_metadata(self) -> Self:
+        """Deep-copy metadata so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``metadata`` deep-copied.
+        """
+        object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        return self
 
 
 class AsyncTaskStateChannel(BaseModel):

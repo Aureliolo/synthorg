@@ -20,7 +20,6 @@ from .selector import (
 )
 from .strategies import (
     STRATEGY_MAP,
-    STRATEGY_NAME_CHEAPEST,
     STRATEGY_NAME_COST_AWARE,
     STRATEGY_NAME_FASTEST,
     STRATEGY_NAME_MANUAL,
@@ -36,7 +35,6 @@ from .strategies import (
 
 __all__ = [
     "STRATEGY_MAP",
-    "STRATEGY_NAME_CHEAPEST",
     "STRATEGY_NAME_COST_AWARE",
     "STRATEGY_NAME_FASTEST",
     "STRATEGY_NAME_MANUAL",

@@ -21,7 +21,7 @@ from synthorg.engine.intervention import SteeringNotifier, SteeringService
 class CockpitStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the cockpit feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     cockpit_service: CockpitService | None = None
     flight_recorder_service: FlightRecorderService | None = None

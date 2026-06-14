@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 class ResearchStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the research feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     service: ResearchService | None = None
     tool_factory: ResearchToolFactory | None = None

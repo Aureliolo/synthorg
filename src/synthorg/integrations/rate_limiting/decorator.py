@@ -6,7 +6,7 @@ the existing ``RateLimiter`` from the provider resilience layer.
 
 import functools
 from collections.abc import Callable, Coroutine
-from typing import ParamSpec, TypeVar
+from typing import Final, ParamSpec, TypeVar
 
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.observability import get_logger
@@ -21,6 +21,10 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 _limiters: dict[tuple[str, str], RateLimiter] = {}
+
+# Fallback connection-level rate limit applied when a caller of
+# ``with_connection_rate_limit`` provides no explicit config.
+_DEFAULT_CONNECTION_RPM: Final[int] = 60
 
 
 def _config_signature(config: RateLimiterConfig) -> str:
@@ -83,7 +87,7 @@ def with_connection_rate_limit(
         async def fetch_github_pr(self, repo: str) -> str: ...
     """
     effective_config = config or RateLimiterConfig(
-        max_requests_per_minute=60,
+        max_requests_per_minute=_DEFAULT_CONNECTION_RPM,
     )
     config_was_explicit = config is not None
 

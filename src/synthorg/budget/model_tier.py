@@ -75,7 +75,7 @@ class ModelTierMap(BaseModel):
             before the heuristic. Each value must be a canonical tier.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     overrides: Mapping[NotBlankStr, str] = Field(default_factory=dict)
 

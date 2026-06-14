@@ -27,6 +27,7 @@ from synthorg.communication.conflict_resolution.escalation.registry import (
 )
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.conflict import (
@@ -197,7 +198,7 @@ class PostgresEscalationNotifySubscriber:
         # connection. The flag survives any state resets so it
         # remains observable on the next ``start()`` call.
         self._stop_failed: bool = False
-        self._stop_drain_timeout_seconds: float = 30.0
+        self._stop_drain_timeout_seconds: float = DEFAULT_DRAIN_TIMEOUT_SECONDS
 
     def set_config_resolver(self, resolver: ConfigResolver) -> None:
         """Inject the ConfigResolver after construction.

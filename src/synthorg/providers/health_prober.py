@@ -19,6 +19,7 @@ import httpx
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -193,7 +194,7 @@ class ProviderHealthProber:
         self._task: asyncio.Task[None] | None = None
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._stop_failed: bool = False
-        self._stop_drain_timeout_seconds: float = 30.0
+        self._stop_drain_timeout_seconds: float = DEFAULT_DRAIN_TIMEOUT_SECONDS
         # Resolver-failure warnings are log-once per failure run so a
         # prolonged settings outage cannot flood logs with one warning
         # per cycle. The flag clears on the first successful resolution

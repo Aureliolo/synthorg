@@ -80,7 +80,7 @@ def tags_from_json(raw: object) -> tuple[NotBlankStr, ...]:
     return tuple(NotBlankStr(cast("str", t)) for t in parsed)
 
 
-def _author_from_row(row: RowLike) -> OrgFactAuthor:
+def _row_to_author(row: RowLike) -> OrgFactAuthor:
     """Reconstruct an :class:`OrgFactAuthor` from a row's author columns.
 
     Returns:
@@ -111,7 +111,7 @@ def snapshot_row_to_org_fact(row: RowLike) -> OrgFact:
             content=str(row["content"]),
             category=OrgFactCategory(str(row["category"])),
             tags=tags_from_json(row["tags"]),
-            author=_author_from_row(row),
+            author=_row_to_author(row),
             created_at=coerce_row_timestamp(row["created_at"]),
         )
     except _ROW_PARSE_ERRORS as exc:

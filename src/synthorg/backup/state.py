@@ -13,6 +13,6 @@ from synthorg.backup.service import BackupService
 class BackupStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the backup feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     service: BackupService | None = None

@@ -595,6 +595,9 @@ class SettingsChangeDispatcher:
             asyncio.CancelledError: If the coroutine is cancelled while
                 awaiting the resolver.
         """
+        # Mirrors the settings.dispatcher_max_consecutive_errors registered
+        # default; kept inline (not imported) to avoid a settings-registry
+        # circular import at this pre-resolver boot site.
         bootstrap_default = 30
         if self._config_resolver is None:
             return bootstrap_default

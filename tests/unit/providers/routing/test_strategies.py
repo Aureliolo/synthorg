@@ -49,7 +49,6 @@ class TestRoutingStrategyProtocol:
             "cost_aware",
             "fastest",
             "smart",
-            "cheapest",
         }
         assert set(STRATEGY_MAP) == expected
 

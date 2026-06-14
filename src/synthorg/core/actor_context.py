@@ -61,7 +61,7 @@ class ActorIdentity(BaseModel):
         label: Optional human-readable descriptor for logs.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     actor_id: NotBlankStr
     kind: ActorKind

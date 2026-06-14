@@ -158,7 +158,7 @@ def _guard_conversational_persistence(
     if (
         (config.propose_enabled or config.invite_enabled)
         and persistence is not None
-        and persistence.backend_name == "sqlite"
+        and not persistence.supports_conversational_approvals
         and store_has_persistent_repo
     ):
         msg = (

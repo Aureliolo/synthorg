@@ -22,7 +22,7 @@ from synthorg.persistence.ontology_protocol import (
 class OntologyStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the ontology feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     service: OntologyService | None = None
     drift_report_store: OntologyDriftReportRepository | None = None

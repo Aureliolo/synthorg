@@ -317,8 +317,8 @@ class WebhookReceipt(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     connection_name: NotBlankStr
-    event_type: str = ""
-    status: str = "received"
+    event_type: NotBlankStr
+    status: NotBlankStr = "received"
     received_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )

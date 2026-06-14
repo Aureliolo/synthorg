@@ -12,6 +12,7 @@ from uuid import UUID
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
+from pydantic import ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import MalformedRowError, QueryError
@@ -72,15 +73,15 @@ def _row_to_receipt(row: DictRow) -> WebhookReceipt:
         processed_at = row.get("processed_at")
         return WebhookReceipt(
             id=UUID(str(row["id"])),
-            connection_name=NotBlankStr(row["connection_name"]),
-            event_type=row.get("event_type") or "",
+            connection_name=row["connection_name"],
+            event_type=row["event_type"],
             status=row.get("status") or "received",
             received_at=coerce_row_timestamp(row["received_at"]),
             processed_at=(coerce_row_timestamp(processed_at) if processed_at else None),
             payload_json=payload_str,
             error=row.get("error"),
         )
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, ValidationError) as exc:
         row_id = row.get("id", "<missing>")
         msg = f"Failed to deserialize webhook receipt {row_id!r}"
         logger.warning(

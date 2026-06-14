@@ -236,7 +236,6 @@ The `routing` section controls how models are selected for agent tasks.
 | `manual` | Explicit model assignment per agent |
 | `role_based` | Match models to agent seniority |
 | `cost_aware` | Balance quality vs. cost |
-| `cheapest` | Always use the cheapest model |
 | `fastest` | Always use the fastest model |
 | `smart` | Cascade: override > task-type > role > seniority > cheapest > fallback |
 

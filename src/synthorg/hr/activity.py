@@ -5,10 +5,11 @@ and delegation records into a unified chronological timeline, and
 filters career-relevant events.
 """
 
+import copy
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost_detail
@@ -55,6 +56,16 @@ class ActivityEvent(BaseModel):
         description="Related entity identifiers",
     )
 
+    @model_validator(mode="after")
+    def _deep_copy_related_ids(self) -> Self:
+        """Deep-copy related_ids so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``related_ids`` deep-copied.
+        """
+        object.__setattr__(self, "related_ids", copy.deepcopy(self.related_ids))
+        return self
+
 
 class CareerEvent(BaseModel):
     """Career milestone in an agent's history.
@@ -81,6 +92,16 @@ class CareerEvent(BaseModel):
         default_factory=dict,
         description="Additional structured metadata",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_metadata(self) -> Self:
+        """Deep-copy metadata so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``metadata`` deep-copied.
+        """
+        object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        return self
 
 
 _CAREER_EVENT_TYPES: frozenset[LifecycleEventType] = frozenset(

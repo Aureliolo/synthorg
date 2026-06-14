@@ -33,13 +33,34 @@ Sanctioned exceptions cover three categories. The authoritative list lives in `_
 - `custom_rule.py`: shared custom-rule deserialisation (`row_to_custom_rule`, `serialize_altitudes`).
 - `rows.py`: the `RowLike` `@runtime_checkable` protocol (a string-key `__getitem__`). Both `aiosqlite.Row` and psycopg `dict_row` mappings satisfy it, so a single `RowLike`-typed marshalling module serves both backends without importing a driver.
 - `pagination.py`: shared pagination-argument validation (`validate_pagination_args`).
-- Per-entity row<->model marshalling modules, one per aggregate, each shared by the SQLite and Postgres repositories: `charter_marshalling.py`, `cost_forecast_marshalling.py`, `org_fact_marshalling.py`, `workflow_definition_marshalling.py`, `workflow_execution_marshalling.py`. Each exposes the column list, a `row_to_*` deserialisation function (consuming `RowLike`, normalising the JSONB-vs-TEXT and `TIMESTAMPTZ`-vs-ISO divergence), and a `build_*_where` clause builder taking the backend's placeholder token. JSON wrapping on the write path (`json.dumps` vs psycopg `Jsonb`) stays in the backend repos so these modules never import a driver.
+- Per-entity row<->model marshalling modules, one per aggregate, each shared by the SQLite and Postgres repositories: `charter_marshalling.py`, `cost_forecast_marshalling.py`, `org_fact_marshalling.py`, `workflow_definition_marshalling.py`, `workflow_execution_marshalling.py`. Each exposes a `row_to_*` deserialisation function (consuming `RowLike`, normalising the JSONB-vs-TEXT and `TIMESTAMPTZ`-vs-ISO divergence); most also expose the column list and a `build_*_where` clause builder taking the backend's placeholder token (`org_fact_marshalling.py` exposes only the deserialisation functions, as its MVCC SQL stays in the backend modules). JSON wrapping on the write path (`json.dumps` vs psycopg `Jsonb`) stays in the backend repos so these modules never import a driver.
 
 When to use which: the strict pair (`parse_iso_utc` / `format_iso_utc`) sits at the boundary where ISO strings cross the persistence layer (settings DTOs, JSON envelopes, SQLite TEXT writes); `coerce_row_timestamp` sits inside `_row_to_*` deserializers where the driver shape is uncertain; `normalize_utc` is the lowest-level primitive and is rarely called directly by repository code.
 
 Each shared helper carries a dedicated unit suite under `tests/unit/persistence/_shared/` (e.g. `test_datetime_marshaller.py`, `test_rows.py`, `test_<entity>_marshalling.py`) and is exercised end-to-end by every backend conformance test that round-trips the relevant entity (`test_audit_repository.py`, `test_custom_rule_repo.py`, `test_settings_repo.py`, `test_charter_repository.py`, etc.).
 
 Adding a new shared helper: extract the duplicated logic into `_shared/`, add a dedicated unit suite alongside it (`test_<helper>.py`), and add a conformance test that runs against both backends.
+
+## Repository-private row marshalling helpers
+
+When a repository's row<->model mapping is not (yet) shared across backends, the per-repository helpers follow a fixed naming pair so the deserialise and serialise directions are unambiguous:
+
+- `_row_to_<noun>(row: RowLike) -> Model`: **deserialise** a single driver row into its domain model. The `<noun>` is the aggregate, not the table (`_row_to_run`, `_row_to_checkpoint`, `_row_to_author`), so a module that reconstructs several models reads cleanly. Each helper routes every timestamp column through `coerce_row_timestamp` and re-raises driver/parse failures as the layer's `MalformedRowError`. The `from_row` / `<noun>_from_row` ordering is **not** used; the verb-then-noun `_row_to_<noun>` form is canonical.
+- `_to_row(self, entity) -> dict[str, object]` (or an explicit column tuple): **serialise** a domain model into the driver's parameter shape. JSON wrapping that diverges by driver (`json.dumps` on SQLite, psycopg `Jsonb` on Postgres) stays on the backend side of this boundary; the helper produces only plain Python values.
+
+These mirror the shared `row_to_*` functions in `_shared/` (same direction, same timestamp discipline); the leading underscore marks the ones that are still repository-private because no second backend consumes them yet. Promoting a private `_row_to_<noun>` to a shared `row_to_<noun>` is the standard move when the SQLite and Postgres repos start to duplicate it.
+
+## Rollback discipline
+
+Repositories that open a write transaction expose a private coroutine for the failure path. The recommended form for new code is:
+
+```python
+async def _safe_rollback(self, *, event: str) -> None:
+```
+
+It rolls back the active transaction and swallows-then-logs any rollback-time driver error (a failed rollback must never mask the original write failure being handled), logging under the supplied `event` constant with `error_type` + `safe_error_description`. Call it from the `except` arm of a write before re-raising the domain error; never inline a bare `await conn.rollback()` (which would let a rollback-time exception escape and shadow the real cause).
+
+Existing repositories carry several historical shapes (instance vs module-level helper, `event` vs `operation`/`failure_event` parameter name, positional vs keyword-only, some taking the connection explicitly); these predate the recommended form and are not yet normalised. New repositories should follow the keyword-only `event` signature above.
 
 ## In-memory invariant pins (interim, schema-deferred)
 

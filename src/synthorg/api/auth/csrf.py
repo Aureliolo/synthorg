@@ -14,6 +14,7 @@ import hmac as _hmac
 import json
 from collections.abc import Iterable
 from http.cookies import SimpleCookie
+from typing import Final
 
 from litestar.types import (
     ASGIApp,
@@ -36,6 +37,12 @@ from synthorg.observability.events.security import (
 )
 
 logger = get_logger(__name__)
+
+# Domain error code for a CSRF rejection. Named because this raw-ASGI
+# path bypasses Litestar's exception pipeline (where ErrorCode would
+# normally apply), so the literal must stay greppable and in lockstep
+# with the documented client-facing error codes.
+_CSRF_ERROR_CODE: Final[int] = 1004
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -151,7 +158,7 @@ async def _send_403(send: Send) -> None:
             "success": False,
             "data": None,
             "error": "CSRF token missing or invalid",
-            "error_code": 1004,
+            "error_code": _CSRF_ERROR_CODE,
             "error_category": "auth",
         }
     ).encode("utf-8")

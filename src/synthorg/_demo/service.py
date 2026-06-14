@@ -8,7 +8,7 @@ from synthorg.core.types import NotBlankStr
 class DemoGreeting(BaseModel):
     """The greeting payload the demo service returns."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     greeting: NotBlankStr
 

@@ -11,7 +11,6 @@ from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY
 from synthorg.memory.errors import MemoryRetrievalError
 from synthorg.memory.filter import (
     NON_INFERABLE_TAG,
-    PassthroughMemoryFilter,
     TagBasedMemoryFilter,
 )
 from synthorg.memory.injection import (
@@ -512,25 +511,6 @@ class TestMemoryFilterIntegration:
             token_budget=5000,
         )
         assert result == ()
-
-    async def test_passthrough_filter_keeps_all(self) -> None:
-        """PassthroughMemoryFilter returns all memories unchanged."""
-        entry = _make_entry(content="passthrough content")
-        strategy = ContextInjectionStrategy(
-            backend=_make_backend((entry,)),
-            config=MemoryRetrievalConfig(min_relevance=0.0),
-            memory_filter=PassthroughMemoryFilter(),
-        )
-        result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
-        )
-        assert len(result) == 2
-        _, memory_message = result
-        content = memory_message.content
-        assert content is not None
-        assert "passthrough content" in content
 
     async def test_non_inferable_only_config_creates_filter(self) -> None:
         """non_inferable_only=True auto-creates TagBasedMemoryFilter."""

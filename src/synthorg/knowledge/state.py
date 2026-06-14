@@ -19,7 +19,7 @@ from synthorg.knowledge.tool_factory import (
 class KnowledgeStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the knowledge feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     service: KnowledgeService | None = None
     tool_factory: KnowledgeToolFactory | None = None

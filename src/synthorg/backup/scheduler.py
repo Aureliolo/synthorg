@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from synthorg.backup.errors import BackupUnrestartableError
 from synthorg.backup.models import BackupTrigger
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.backup import (
@@ -47,7 +48,7 @@ class BackupScheduler:
         self._stop_event: asyncio.Event | None = None
         self._lifecycle_lock: asyncio.Lock | None = None
         self._stop_failed: bool = False
-        self._stop_drain_timeout_seconds: float = 30.0
+        self._stop_drain_timeout_seconds: float = DEFAULT_DRAIN_TIMEOUT_SECONDS
 
     def _task_is_on_current_loop(self) -> bool:
         """True iff the existing task is alive on the current loop.

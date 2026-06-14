@@ -32,7 +32,7 @@ class _GitLabUser(BaseModel):  # lint-allow: frozen-extra-forbid -- forge extras
     beyond the username we model.
     """
 
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
 
     username: NotBlankStr
 
@@ -44,7 +44,7 @@ class _GitLabNamespace(BaseModel):  # lint-allow: frozen-extra-forbid -- forge e
     beyond the id we model.
     """
 
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
 
     id: int
 
@@ -56,7 +56,7 @@ class _GitLabProject(BaseModel):  # lint-allow: frozen-extra-forbid -- forge ext
     beyond the four we model.
     """
 
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
 
     path_with_namespace: NotBlankStr
     http_url_to_repo: NotBlankStr

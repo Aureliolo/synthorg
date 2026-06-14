@@ -834,7 +834,15 @@ def _session_needs_postgres(session: pytest.Session) -> bool:
         return True
     args = [str(a).lower() for a in (session.config.args or [])]
     needles = ("conformance", "integration", "e2e")
-    return any(needle in arg for arg in args for needle in needles)
+    # Match path SEGMENTS, not substrings: the ``integrations`` package
+    # (``tests/unit/integrations/``) must NOT match the ``integration``
+    # needle and spuriously pre-acquire a postgres testcontainer (which
+    # crashes the ProactorEventLoop session-start on Windows).
+    for arg in args:
+        segments = [seg.split("::", 1)[0] for seg in arg.replace("\\", "/").split("/")]
+        if any(needle in segments for needle in needles):
+            return True
+    return False
 
 
 @pytest.hookimpl(tryfirst=True)

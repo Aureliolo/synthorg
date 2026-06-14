@@ -18,7 +18,7 @@ from synthorg.engine.loop_protocol import TerminationReason
 class ExecutedToolCall(BaseModel):
     """One tool the chat action invoked, with its fenced result."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     tool_name: NotBlankStr = Field(description="Name of the invoked tool")
     is_error: bool = Field(description="Whether the tool reported an error")
@@ -37,7 +37,7 @@ class ChatActionResult(BaseModel):
     fenced "approval required" notice is already in the conversation.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     termination_reason: TerminationReason = Field(
         description="Why the chat-action loop stopped",

@@ -12,7 +12,7 @@ a database backend.
 """
 
 from datetime import UTC, datetime
-from typing import overload
+from typing import Final, overload
 
 from synthorg.observability import get_logger
 from synthorg.persistence._shared.datetime_marshaller import (
@@ -32,6 +32,7 @@ from synthorg.persistence._shared.pagination import (
 __all__ = (
     "DEFAULT_LIST_LIMIT",
     "MAX_LIST_LIMIT",
+    "TURN_APPEND_MAX_RETRIES",
     "coerce_row_timestamp",
     "collect_all",
     "collect_all_mapping",
@@ -45,6 +46,14 @@ __all__ = (
 )
 
 logger = get_logger(__name__)
+
+# Bounded retry on the (conversation_id, sequence) uniqueness race when
+# appending a conversation turn. Two concurrent ``converse()`` calls can
+# both compute the same sequence from a stale read; the loser re-queries
+# the live max sequence and retries. Shared by both backends so the
+# budget stays in lockstep. A caller losing repeatedly signals write-side
+# contention worth surfacing as a constraint violation.
+TURN_APPEND_MAX_RETRIES: Final[int] = 3
 
 
 def normalize_utc(value: datetime) -> datetime:

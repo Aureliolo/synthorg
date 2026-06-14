@@ -60,6 +60,7 @@ describe('client property tests', () => {
             error_detail: null,
             success: true,
             pagination: { limit, next_cursor: null, has_more: false },
+            degraded_sources: [],
           })
           const result = unwrapPaginated(response)
           expect(result.data).toEqual(items)
@@ -90,6 +91,7 @@ describe('client property tests', () => {
               next_cursor: nextCursor,
               has_more: true,
             },
+            degraded_sources: [],
           })
           const result = unwrapPaginated(response)
           expect(result.nextCursor).toBe(nextCursor)

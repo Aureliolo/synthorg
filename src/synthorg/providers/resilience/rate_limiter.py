@@ -2,6 +2,7 @@
 
 import asyncio
 import math
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.resilience_config import RateLimiterConfig
@@ -14,6 +15,10 @@ from synthorg.observability.events.provider import (
 )
 
 logger = get_logger(__name__)
+
+# Width of the requests-per-minute sliding window. Defines what
+# "per minute" means; it is the algorithm, not an operator knob.
+_RPM_WINDOW_SECONDS: Final[float] = 60.0
 
 
 class RateLimiter:
@@ -154,7 +159,7 @@ class RateLimiter:
         an available slot and over-committing the window.
         """
         rpm = self._config.max_requests_per_minute
-        window = 60.0
+        window = _RPM_WINDOW_SECONDS
 
         # lint-allow: long-running-loop-kill-switch -- per-call RPM-slot wait.
         while True:

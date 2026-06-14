@@ -49,7 +49,7 @@ from synthorg.tools.structure_map.tool_factory import (
 class EngineStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the engine feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_engine: TaskEngine | None = None
     work_pipeline: WorkPipeline | None = None

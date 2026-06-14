@@ -29,7 +29,6 @@ from ._strategy_helpers import (
     _within_budget,
 )
 from ._strategy_names import (
-    STRATEGY_NAME_CHEAPEST,
     STRATEGY_NAME_COST_AWARE,
     STRATEGY_NAME_FASTEST,
     STRATEGY_NAME_MANUAL,
@@ -47,7 +46,6 @@ logger = get_logger(__name__)
 # ``providers.routing.strategies`` stays stable under ``no_implicit_reexport``.
 __all__ = [
     "STRATEGY_MAP",
-    "STRATEGY_NAME_CHEAPEST",
     "STRATEGY_NAME_COST_AWARE",
     "STRATEGY_NAME_FASTEST",
     "STRATEGY_NAME_MANUAL",
@@ -469,7 +467,6 @@ STRATEGY_MAP: Mapping[str, RoutingStrategy] = MappingProxyType(
         STRATEGY_NAME_COST_AWARE: _COST_AWARE,
         STRATEGY_NAME_FASTEST: _FASTEST,
         STRATEGY_NAME_SMART: _SMART,
-        STRATEGY_NAME_CHEAPEST: _COST_AWARE,  # Alias for cost_aware
     },
 )
 """Maps config strategy names to singleton instances."""

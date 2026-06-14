@@ -34,7 +34,11 @@ def _build_dynamic_tool_repo(
     Returns:
         The SQLite or Postgres dynamic-tool blueprint repository.
     """
-    if persistence.backend_name == "sqlite":
+    from synthorg.persistence.backend_dispatch import (  # noqa: PLC0415
+        build_for_backend,
+    )
+
+    def _build_sqlite() -> DynamicToolRepository:
         from synthorg.persistence.db_handle import (  # noqa: PLC0415
             sqlite_connection,
         )
@@ -46,12 +50,18 @@ def _build_dynamic_tool_repo(
             sqlite_connection(persistence),
             write_context=persistence.write_context,
         )
-    from synthorg.persistence.db_handle import postgres_pool  # noqa: PLC0415
-    from synthorg.persistence.postgres.tool_blueprint_repo import (  # noqa: PLC0415
-        PostgresDynamicToolRepository,
-    )
 
-    return PostgresDynamicToolRepository(postgres_pool(persistence))
+    def _build_postgres() -> DynamicToolRepository:
+        from synthorg.persistence.db_handle import postgres_pool  # noqa: PLC0415
+        from synthorg.persistence.postgres.tool_blueprint_repo import (  # noqa: PLC0415
+            PostgresDynamicToolRepository,
+        )
+
+        return PostgresDynamicToolRepository(postgres_pool(persistence))
+
+    return build_for_backend(
+        persistence, sqlite=_build_sqlite, postgres=_build_postgres
+    )
 
 
 def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith runtime dependencies

@@ -44,7 +44,7 @@ from synthorg.communication.messages.service import MessageService
 class CommunicationStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the communication feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     message_bus: MessageBus | None = None
     message_service: MessageService | None = None

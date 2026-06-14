@@ -133,6 +133,7 @@ export function paginatedFor<
     error_detail: null,
     pagination,
     success: true,
+    degraded_sources: [],
   }
 }
 
@@ -207,5 +208,6 @@ export function paginatedEnvelopeFor<
       has_more: options.hasMore ?? false,
     },
     success: true,
+    degraded_sources: [],
   }
 }

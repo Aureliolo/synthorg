@@ -4,12 +4,19 @@ Shared formatting, argument parsing, and result merging utilities used
 by ``ToolBasedInjectionStrategy`` and its reformulation loop.
 """
 
+from typing import Final
+
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.models import MemoryEntry
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import MEMORY_RETRIEVAL_DEGRADED
 
 logger = get_logger(__name__)
+
+# Default result count when the LLM omits ``limit``, and the hard ceiling
+# applied on top of the configured per-agent maximum.
+_DEFAULT_MEMORY_LIMIT: Final[int] = 10
+_MAX_MEMORY_LIMIT: Final[int] = 50
 
 
 def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
@@ -191,12 +198,12 @@ def _parse_search_args(
     if not query_text:
         return None, 0, None, ()
 
-    limit_raw = arguments.get("limit", 10)
+    limit_raw = arguments.get("limit", _DEFAULT_MEMORY_LIMIT)
     if isinstance(limit_raw, bool) or not isinstance(limit_raw, int | float):
-        limit = 10
+        limit = _DEFAULT_MEMORY_LIMIT
     else:
         limit = int(limit_raw)
-    effective_max = min(50, config_max_memories)
+    effective_max = min(_MAX_MEMORY_LIMIT, config_max_memories)
     limit = min(max(limit, 1), effective_max)
 
     categories, rejected = _parse_categories(

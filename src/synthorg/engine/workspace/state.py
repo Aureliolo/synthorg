@@ -34,7 +34,7 @@ _DEFAULT_WORKSPACE_TEMP_SUBDIR: Final[str] = "synthorg-agent-workspaces"
 class WorkspaceStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the workspace feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     project_workspace_service: ProjectWorkspaceService | None = None
     environment_service: EnvironmentService | None = None

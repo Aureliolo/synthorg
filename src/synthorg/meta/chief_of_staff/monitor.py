@@ -12,6 +12,7 @@ from typing import ClassVar, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.meta.chief_of_staff.inflection import OrgInflectionDetector
 from synthorg.meta.chief_of_staff.models import OrgInflection
 from synthorg.meta.chief_of_staff.protocol import OrgInflectionSink
@@ -82,7 +83,7 @@ class OrgInflectionMonitor:
         self._stop_event = asyncio.Event()  # lint-allow: loop-bound-init -- see.
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._stop_failed: bool = False
-        self._stop_drain_timeout_seconds: float = 30.0
+        self._stop_drain_timeout_seconds: float = DEFAULT_DRAIN_TIMEOUT_SECONDS
 
     async def start(self) -> None:
         """Start the background monitoring loop.

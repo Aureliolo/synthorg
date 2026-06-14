@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 class DocsStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the living-documentation feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     service: DocsService | None = None
     memory_facade: ProjectAwareMemoryFacade | None = None

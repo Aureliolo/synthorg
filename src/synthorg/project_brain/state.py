@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 class ProjectBrainStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the project-brain feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     service: ProjectBrainService | None = None
     tool_factory: ProjectBrainToolFactory | None = None

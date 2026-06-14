@@ -19,7 +19,7 @@ from synthorg.settings.service import SettingsService
 class SettingsStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the settings feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     settings_service: SettingsService | None = None
     settings_read_service: SettingsReadService | None = None

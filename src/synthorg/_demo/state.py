@@ -18,7 +18,7 @@ class DemoStateSlice(BaseFeatureStateSlice):
     demo controller and MCP handler degrade (503 / capability gap) on ``None``.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     service: DemoService | None = None
 

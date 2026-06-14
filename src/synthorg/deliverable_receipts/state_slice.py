@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 class DeliverableReceiptStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the deliverable-receipts feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     service: DeliverableReceiptService | None = None
 

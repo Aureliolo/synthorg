@@ -54,7 +54,7 @@ class CassetteRequestKey(BaseModel):
     ``messages`` / ``tools`` / ``config`` stay at their empty defaults.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     method: CassetteMethod = Field(description="Provider method")
     provider: NotBlankStr = Field(description="Resolved provider label")

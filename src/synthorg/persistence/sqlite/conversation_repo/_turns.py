@@ -15,7 +15,11 @@ from synthorg.observability.events.persistence.conversation_turn import (
 )
 from synthorg.persistence._conversation_marshalling import row_to_turn
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
+from synthorg.persistence._shared import (
+    TURN_APPEND_MAX_RETRIES,
+    format_iso_utc,
+    validate_pagination_args,
+)
 from synthorg.persistence.conversation_protocol import ConversationTurnFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.sqlite.conversation_repo._base import (
@@ -43,13 +47,6 @@ _TURN_NEXT_SEQUENCE_SQL = """
     WHERE conversation_id = ?
 """
 
-# Bounded retry on the (conversation_id, sequence) uniqueness race.
-# Two concurrent ``converse()`` calls can both compute the same
-# sequence from a stale read and the second insert will collide. We
-# re-query the live max sequence and retry the insert; with a small
-# bound any caller losing repeatedly is a sign of write-side
-# contention worth surfacing as a constraint violation.
-_TURN_APPEND_MAX_RETRIES: int = 3
 # Substring that flags the (conversation_id, sequence) uniqueness
 # violation in SQLite's IntegrityError message ("UNIQUE constraint
 # failed: conversation_turns.conversation_id,
@@ -86,7 +83,7 @@ class SQLiteConversationTurnRepository:
         natural TOCTOU race when two concurrent callers compute the
         next sequence from a stale snapshot; this method re-queries
         the live max sequence and retries the insert up to
-        ``_TURN_APPEND_MAX_RETRIES`` times before surfacing the
+        ``TURN_APPEND_MAX_RETRIES`` times before surfacing the
         violation. Other constraint failures (FK miss, CHECK on
         content/role/created_at) are not retried and translate
         directly to ``ConstraintViolationError``.
@@ -103,7 +100,7 @@ class SQLiteConversationTurnRepository:
             # constraint-branch resequence on the (conversation_id, sequence)
             # uniqueness race, not a transient-I/O backoff; it stays in the
             # repository and must not move to GeneralRetryHandler.
-            for attempt in range(_TURN_APPEND_MAX_RETRIES + 1):
+            for attempt in range(TURN_APPEND_MAX_RETRIES + 1):
                 params = (
                     str(current.id),
                     current.conversation_id,
@@ -129,7 +126,7 @@ class SQLiteConversationTurnRepository:
                     )
                     sequence_race = (
                         _TURN_SEQUENCE_UNIQUE_HINT in str(exc)
-                        and attempt < _TURN_APPEND_MAX_RETRIES
+                        and attempt < TURN_APPEND_MAX_RETRIES
                     )
                     if sequence_race:
                         try:

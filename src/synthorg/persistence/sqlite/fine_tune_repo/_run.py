@@ -35,7 +35,7 @@ _ACTIVE_STAGES = tuple(
 _MAX_LIST_LIMIT: int = 1_000
 
 
-def _run_from_row(row: aiosqlite.Row) -> FineTuneRun:
+def _row_to_run(row: aiosqlite.Row) -> FineTuneRun:
     """Build a ``FineTuneRun`` from a database row.
 
     Returns:
@@ -166,7 +166,7 @@ class SQLiteFineTuneRunRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return _run_from_row(row)
+        return _row_to_run(row)
 
     async def get_active_run(self) -> FineTuneRun | None:
         """Get the currently active run (if any).
@@ -196,7 +196,7 @@ class SQLiteFineTuneRunRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return _run_from_row(row)
+        return _row_to_run(row)
 
     async def list_items(
         self,
@@ -228,7 +228,7 @@ class SQLiteFineTuneRunRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(_run_from_row(r) for r in rows)
+        return tuple(_row_to_run(r) for r in rows)
 
     async def list_items_page(
         self,
@@ -266,7 +266,7 @@ class SQLiteFineTuneRunRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(_run_from_row(r) for r in rows), total
+        return tuple(_row_to_run(r) for r in rows), total
 
     async def delete(self, entity_id: str) -> bool:
         """Delete a run by id.

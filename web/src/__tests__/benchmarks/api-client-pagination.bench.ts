@@ -52,6 +52,7 @@ function makePaginatedResponse<T>(rows: T[]): AxiosResponse<PaginatedResponse<T>
         next_cursor: 'opaque-cursor-deadbeef',
         has_more: true,
       },
+      degraded_sources: [],
     },
     status: 200,
     statusText: 'OK',

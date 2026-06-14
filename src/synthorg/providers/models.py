@@ -1,5 +1,6 @@
 """Provider-layer domain models for chat completion requests and responses."""
 
+import copy
 from typing import Self
 
 from pydantic import (
@@ -464,6 +465,18 @@ class CompletionResponse(BaseModel):
                 f"or tool_calls"
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _deep_copy_provider_metadata(self) -> Self:
+        """Deep-copy provider_metadata so the frozen model cannot be aliased.
+
+        Returns:
+            The instance with ``provider_metadata`` deep-copied.
+        """
+        object.__setattr__(
+            self, "provider_metadata", copy.deepcopy(self.provider_metadata)
+        )
         return self
 
 

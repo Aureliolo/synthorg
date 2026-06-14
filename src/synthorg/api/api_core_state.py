@@ -45,7 +45,7 @@ from synthorg.persistence.auth_protocol import (
 class ApiCoreStateSlice(BaseFeatureStateSlice):
     """Application-state slice for cross-cutting API-core services."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     cursor_secret: CursorSecret | None = None
     auth_service: AuthService | None = None

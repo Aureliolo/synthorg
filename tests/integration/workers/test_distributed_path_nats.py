@@ -128,6 +128,28 @@ async def _wait_until(
             await changed.wait_for(predicate)
 
 
+async def _shutdown_pool(pool: asyncio.Task[None]) -> None:
+    """Cancel the worker pool and join its exit, bounded by the hard cap.
+
+    The pool's shutdown drains real JetStream subscriptions and joins the
+    per-worker run loops. Under heavy parallel-shard contention that join can
+    stall; left unbounded it would run to the module-level timeout, which fires
+    ``SIGABRT`` and takes the whole xdist worker down (failing the entire shard
+    rather than this one test). Bounding the join applies the same
+    ``_HARD_CAP_SECONDS`` "hang -> fast, legible failure" contract the
+    happy-path wait already uses: a stalled teardown surfaces as a clean
+    per-test ``TimeoutError`` instead of a suite-killing abort. The expected
+    ``CancelledError`` raised by the cancelled pool is swallowed; a cap breach
+    propagates as ``TimeoutError``.
+    """
+    pool.cancel()
+    try:
+        async with asyncio.timeout(_HARD_CAP_SECONDS):
+            await pool
+    except asyncio.CancelledError:
+        pass
+
+
 async def test_synthetic_load_no_loss_no_duplication(
     task_queue: JetStreamTaskQueue,
 ) -> None:
@@ -162,9 +184,7 @@ async def test_synthetic_load_no_loss_no_duplication(
         try:
             await _wait_until(changed, lambda: len(executed) >= claim_count)
         finally:
-            pool.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await pool
+            await _shutdown_pool(pool)
 
     assert sorted(executed) == sorted(f"task-{i}" for i in range(claim_count)), (
         "loss or duplication detected"
@@ -219,9 +239,7 @@ async def test_long_execution_extends_ack_no_duplicate(
                 async with asyncio.timeout(_ACK_WAIT_SECONDS * 3):
                     await duplicate_run.wait()
         finally:
-            pool.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await pool
+            await _shutdown_pool(pool)
 
     assert runs.count("slow-task") == 1, f"duplicate execution: {runs}"
 
@@ -265,9 +283,7 @@ async def test_max_deliver_dead_letters_to_failed_no_loss(
         try:
             await _wait_until(changed, lambda: failed.count("doomed-task") >= 1)
         finally:
-            pool.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await pool
+            await _shutdown_pool(pool)
             await consumer.stop()
 
     assert failed == ["doomed-task"], f"task lost or double-failed: {failed}"

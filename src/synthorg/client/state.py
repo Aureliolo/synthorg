@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 class ClientStateSlice(BaseFeatureStateSlice):
     """Application-state slice owned by the client feature."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     simulation_state: ClientSimulationState | None = None
 

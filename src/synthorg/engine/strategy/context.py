@@ -51,7 +51,9 @@ class _StrategicContextOverridesArgs(
     the boundary forward-compatible with future enrichment fields.
     """
 
-    model_config = ConfigDict(frozen=True, extra="ignore", strict=True)
+    model_config = ConfigDict(
+        frozen=True, allow_inf_nan=False, extra="ignore", strict=True
+    )
 
     maturity_stage: NotBlankStr | None = None
     industry: NotBlankStr | None = None

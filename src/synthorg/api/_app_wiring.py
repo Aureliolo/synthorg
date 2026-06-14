@@ -44,6 +44,9 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     from synthorg.budget.model_tier import ModelTierMap  # noqa: PLC0415
     from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.persistence.backend_dispatch import (  # noqa: PLC0415
+        build_for_backend,
+    )
     from synthorg.persistence.db_handle import (  # noqa: PLC0415
         postgres_pool,
         sqlite_connection,
@@ -54,22 +57,30 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     from synthorg.persistence.state import persistence_of  # noqa: PLC0415
 
     budget_config = BudgetConfig()
-    backend_name = persistence_of(app_state).backend_name
-    if backend_name == "sqlite":
-        forecast_repo: CostForecastRepository = SQLiteCostForecastRepository(
-            sqlite_connection(persistence_of(app_state)),
-            write_context=persistence_of(app_state).write_context,
+    persistence = persistence_of(app_state)
+
+    def _build_sqlite_forecast_repo() -> CostForecastRepository:
+        return SQLiteCostForecastRepository(
+            sqlite_connection(persistence),
+            write_context=persistence.write_context,
             currency_getter=lambda: budget_config.currency,
         )
-    else:
+
+    def _build_postgres_forecast_repo() -> CostForecastRepository:
         from synthorg.persistence.postgres.cost_forecast_repo import (  # noqa: PLC0415
             PostgresCostForecastRepository,
         )
 
-        forecast_repo = PostgresCostForecastRepository(
-            postgres_pool(persistence_of(app_state)),
+        return PostgresCostForecastRepository(
+            postgres_pool(persistence),
             currency_getter=lambda: budget_config.currency,
         )
+
+    forecast_repo: CostForecastRepository = build_for_backend(
+        persistence,
+        sqlite=_build_sqlite_forecast_repo,
+        postgres=_build_postgres_forecast_repo,
+    )
 
     benchmark_score_repo = build_benchmark_score_repo(app_state)
     model_tier_map = ModelTierMap(overrides=budget_config.model_tier_overrides)

@@ -267,7 +267,7 @@ class LlmSecurityEvaluator(_LlmEvaluatorSupportMixin):
                         config=CompletionConfig(
                             temperature=self._config.temperature,
                             top_p=self._config.top_p,
-                            max_tokens=256,
+                            max_tokens=self._config.max_output_tokens,
                         ),
                     ),
                     timeout=self._config.timeout_seconds,

@@ -6,6 +6,12 @@ discriminators. Strategy values are validated against
 :class:`~synthorg.research.config.ResearchConfig` at wiring time.
 """
 
+from synthorg.research.constants import (
+    RESEARCH_DEDUP_JACCARD_THRESHOLD,
+    RESEARCH_DEFAULT_PER_QUERY_LIMIT,
+    RESEARCH_HYBRID_PREFILTER_FACTOR,
+    RESEARCH_TRIAGE_BATCH_SIZE,
+)
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
@@ -121,5 +127,84 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         validator_pattern=r"^[a-z][a-z0-9_]*$",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.RESEARCH,
+        key="triage_batch_size",
+        type=SettingType.INTEGER,
+        default=str(RESEARCH_TRIAGE_BATCH_SIZE),
+        description=(
+            "Number of retrieved items grouped into each LLM"
+            " credibility-triage call. Higher cuts provider round-trips"
+            " (lower cost on large result sets); lower reduces per-call"
+            " token pressure on weaker models."
+        ),
+        group="Tuning",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=1,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.RESEARCH,
+        key="hybrid_prefilter_factor",
+        type=SettingType.FLOAT,
+        default=str(RESEARCH_HYBRID_PREFILTER_FACTOR),
+        description=(
+            "Fraction of a brief's min_credibility a source's heuristic"
+            " score must reach before the hybrid strategy escalates it to"
+            " LLM triage. Lower widens the LLM pass (higher quality, higher"
+            " cost); higher narrows it."
+        ),
+        group="Tuning",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=0.0,
+        max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.RESEARCH,
+        key="dedup_similarity_threshold",
+        type=SettingType.FLOAT,
+        default=str(RESEARCH_DEDUP_JACCARD_THRESHOLD),
+        description=(
+            "Similarity at or above which two retrieved items are collapsed"
+            " as near-duplicates (token-shingle Jaccard for the lexical"
+            " deduplicator, cosine for the embedding one). Lower collapses"
+            " more aggressively; higher is more permissive."
+        ),
+        group="Tuning",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=0.1,
+        max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.RESEARCH,
+        key="per_query_limit",
+        type=SettingType.INTEGER,
+        default=str(RESEARCH_DEFAULT_PER_QUERY_LIMIT),
+        description=(
+            "Default number of candidate items each retrieval source"
+            " returns per sub-query. The deployment-level floor applied"
+            " when a brief does not override it."
+        ),
+        group="Tuning",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=1,
+        max_value=200,
     )
 )

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict, override
 
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import run_identity_scope
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._agent_engine_run import AgentEngineRunMixin
@@ -40,6 +41,7 @@ from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
+    safe_error_description,
 )
 from synthorg.observability.correlation import correlation_scope
 from synthorg.observability.events.approval_gate import (
@@ -408,13 +410,38 @@ class AgentEngine(
             raise ExecutionStateError(msg)
         return await self._coordinator.coordinate(context)
 
+    async def _resolve_max_turns(self, *, agent_id: str, task_id: str) -> int:
+        """Resolve the per-run turn cap from settings, falling back to default.
+
+        Returns:
+            The operator-configured ``engine.max_turns`` when a resolver is
+            wired and the value is positive, else :data:`DEFAULT_MAX_TURNS`.
+            A settings-backend outage fails safe to the default.
+        """
+        if self._config_resolver is None:
+            return DEFAULT_MAX_TURNS
+        try:
+            resolved = await self._config_resolver.get_int("engine", "max_turns")
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                note="failed to read engine.max_turns, using default",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return DEFAULT_MAX_TURNS
+        return resolved if resolved > 0 else DEFAULT_MAX_TURNS
+
     async def run(  # noqa: PLR0913
         self,
         *,
         identity: AgentIdentity,
         task: Task,
         completion_config: CompletionConfig | None = None,
-        max_turns: int = DEFAULT_MAX_TURNS,
+        max_turns: int | None = None,
         memory_messages: tuple[ChatMessage, ...] = (),
         timeout_seconds: float | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
@@ -439,6 +466,10 @@ class AgentEngine(
         """
         agent_id = str(identity.id)
         task_id = str(task.id)
+        if max_turns is None:
+            max_turns = await self._resolve_max_turns(
+                agent_id=agent_id, task_id=task_id
+            )
 
         validate_run_inputs(
             agent_id=agent_id,

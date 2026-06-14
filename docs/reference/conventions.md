@@ -196,7 +196,15 @@ by `scripts/check_frozen_model_extra_forbid.py`: every class under
 fixture model that silently absorbs unknown construction keys masks
 the same class of caller typos the gate catches in production code.
 
-Two carve-outs:
+The same gate also enforces `allow_inf_nan=False` on every frozen
+model, but scoped to `src/synthorg/` only (test fixtures are exempt
+from the inf/nan assertion). The `@computed_field` carve-out below
+applies to the `extra="forbid"` check only; a `@computed_field`-bearing
+model still must carry `allow_inf_nan=False`. Genuine inf/nan-accepting
+boundaries opt out per-line with
+`# lint-allow: frozen-allow-inf-nan -- <reason>`.
+
+Two carve-outs (for the `extra="forbid"` check):
 
 * **`@computed_field` (automatic).** Classes declaring a
   `@computed_field` are exempt without annotation: Pydantic v2
@@ -494,6 +502,7 @@ collection returns, where ``NotFoundError`` belongs).
 | `delete` | `async def delete(id) -> bool` | Removal. ``True`` if a row was removed, ``False`` if the id did not exist; same return type used in §1. |
 | `list_items` | `async def list_items(...) -> tuple[Entity, ...]` | Full scan / paginated list. Some older repositories use `list_all()`; new repositories prefer `list_items(*, limit, offset, **filters)` so callers can paginate without defensive slicing. |
 | `query` | `async def query(...) -> tuple[Entity, ...]` | Filtered query when the filter set diverges from a single canonical `list_items`. |
+| `get_by_<key>` | `async def get_by_<key>(value) -> Entity \| None` | Single-entity fetch keyed on a non-primary unique column (e.g. `get_by_username`, `get_by_name`, `get_by_content_hash`). Same `Entity \| None`-on-miss contract as `get`. The `get_by_<key>` form is the canonical alternate-key lookup name; `find_by_<key>` is **not** used (the lone surviving `find_by_task_id` is a pre-convention deviation, not a sanctioned variant). |
 
 Query methods always return `tuple[T, ...]`, never `list[T]`. This
 matches the immutability default for collection returns and lets
