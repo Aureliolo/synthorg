@@ -1,4 +1,4 @@
-import { WS_PROTOCOL_MISMATCH_THRESHOLD, WS_PROTOCOL_VERSION } from '@/utils/constants'
+import { WS_PROTOCOL_MISMATCH_THRESHOLD, WS_PROTOCOL_VERSION } from '@/utils/ws-constants'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type { WsSet } from './types'

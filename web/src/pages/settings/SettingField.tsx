@@ -5,7 +5,7 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { TagInput } from '@/components/ui/tag-input'
 import { ToggleField } from '@/components/ui/toggle-field'
-import { SIMPLE_ARRAY_SETTINGS } from '@/utils/constants'
+import { SIMPLE_ARRAY_SETTINGS } from '@/pages/settings/settings-constants'
 
 const log = createLogger('settings')
 

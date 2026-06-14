@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useWorkflowsStore } from '@/stores/workflows'
-import { WORKFLOW_TYPES } from '@/utils/constants'
+import { WORKFLOW_TYPES } from '@/pages/workflows/workflow-constants'
 
 export type WorkflowCreateMode = 'blank' | 'blueprint'
 

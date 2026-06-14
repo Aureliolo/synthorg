@@ -3,7 +3,7 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { PolicySourceBadge } from '@/components/ui/policy-source-badge'
-import { VELOCITY_CALC_LABELS, VELOCITY_CALC_TYPES } from '@/utils/constants'
+import { VELOCITY_CALC_LABELS, VELOCITY_CALC_TYPES } from '@/stores/ceremony-policy-constants'
 
 const VELOCITY_OPTIONS = VELOCITY_CALC_TYPES.map((v) => ({
   value: v,

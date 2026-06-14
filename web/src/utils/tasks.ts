@@ -230,3 +230,31 @@ export function canTransitionTo(currentStatus: TaskStatus, targetStatus: TaskSta
 export function getAvailableTransitions(status: TaskStatus): readonly TaskStatus[] {
   return VALID_TRANSITIONS[status]
 }
+
+// ── Status ordering + role constants ────────────────────────
+
+/** Ordered task statuses for Kanban columns. */
+export const TASK_STATUS_ORDER: readonly TaskStatus[] = [
+  'created',
+  'assigned',
+  'in_progress',
+  'auth_required',
+  'in_review',
+  'blocked',
+  'completed',
+  'failed',
+  'interrupted',
+  'suspended',
+  'rejected',
+  'cancelled',
+] as const
+
+/** Terminal task statuses that cannot transition further. */
+export const TERMINAL_STATUSES: ReadonlySet<TaskStatus> = new Set<TaskStatus>([
+  'completed',
+  'cancelled',
+  'rejected',
+])
+
+/** Write-capable human roles. */
+export const WRITE_ROLES = ['ceo', 'manager', 'pair_programmer'] as const

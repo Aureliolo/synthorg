@@ -1,5 +1,5 @@
 import type { CeremonyStrategyType, VelocityCalcType } from '@/api/types/ceremony-policy'
-import { STRATEGY_DEFAULT_VELOCITY_CALC, VELOCITY_UNIT_LABELS } from '@/utils/constants'
+import { STRATEGY_DEFAULT_VELOCITY_CALC, VELOCITY_UNIT_LABELS } from '@/stores/ceremony-policy-constants'
 
 export interface VelocityUnitIndicatorProps {
   strategy: CeremonyStrategyType

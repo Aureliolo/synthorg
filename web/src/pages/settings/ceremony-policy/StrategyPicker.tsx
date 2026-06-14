@@ -4,7 +4,7 @@ import {
   CEREMONY_STRATEGY_DESCRIPTIONS,
   CEREMONY_STRATEGY_LABELS,
   CEREMONY_STRATEGY_TYPES,
-} from '@/utils/constants'
+} from '@/stores/ceremony-policy-constants'
 import { VelocityUnitIndicator } from './VelocityUnitIndicator'
 
 const STRATEGY_OPTIONS = CEREMONY_STRATEGY_TYPES.map((s) => ({

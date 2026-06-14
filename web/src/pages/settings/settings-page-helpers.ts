@@ -4,7 +4,7 @@ import {
   HIDDEN_SETTINGS,
   NAMESPACE_ORDER,
   SENSITIVE_VALUE_PLACEHOLDER,
-} from '@/utils/constants'
+} from '@/pages/settings/settings-constants'
 import { matchesSetting } from './utils'
 
 function compositeKey(entry: SettingEntry): string {

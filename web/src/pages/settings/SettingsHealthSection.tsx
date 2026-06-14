@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'react'
 
 import type { SettingNamespace } from '@/api/types/settings'
 import { cn } from '@/lib/utils'
-import { NAMESPACE_DISPLAY_NAMES } from '@/utils/constants'
+import { NAMESPACE_DISPLAY_NAMES } from '@/pages/settings/settings-constants'
 
 export interface NamespaceTabBarProps {
   namespaces: readonly SettingNamespace[]

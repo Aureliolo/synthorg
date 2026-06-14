@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useAuthStore, useIsAuthenticated, useUserRole, useMustChangePassword } from '@/stores/auth'
-import { WRITE_ROLES } from '@/utils/constants'
+import { WRITE_ROLES } from '@/utils/tasks'
 import type { UserInfoResponse } from '@/api/types/auth'
 import type { HumanRole } from '@/api/types/enums'
 

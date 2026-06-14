@@ -1,7 +1,7 @@
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { SETTING_DEPENDENCIES } from '@/utils/constants'
+import { SETTING_DEPENDENCIES } from '@/pages/settings/settings-constants'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('settings')

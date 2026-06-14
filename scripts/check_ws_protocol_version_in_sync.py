@@ -3,7 +3,7 @@
 
 The dashboard's WebSocket client validates every incoming event's
 ``version`` field against ``WS_PROTOCOL_VERSION`` in
-``web/src/utils/constants.ts`` and discards mismatched frames. The
+``web/src/utils/ws-constants.ts`` and discards mismatched frames. The
 server emits frames with ``WS_PROTOCOL_VERSION`` from
 ``src/synthorg/api/ws_models.py``. If a PR bumps one side without the
 other, the dashboard will silently discard every event after the next
@@ -57,7 +57,7 @@ def main() -> int:
     """Compare both declarations and exit 0 when they agree."""
     repo_root = Path(__file__).resolve().parents[1]
     py_path = repo_root / "src" / "synthorg" / "api" / "ws_models.py"
-    ts_path = repo_root / "web" / "src" / "utils" / "constants.ts"
+    ts_path = repo_root / "web" / "src" / "utils" / "ws-constants.ts"
 
     py_version = _read_int(py_path, PY_PATTERN, "Python")
     ts_version = _read_int(ts_path, TS_PATTERN, "TypeScript")
