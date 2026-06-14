@@ -33,12 +33,106 @@ _MIN_VERIFIER_LENGTH: Final[int] = 43
 _MAX_VERIFIER_LENGTH: Final[int] = 128
 
 _MASTER_KEY_ENV = "SYNTHORG_MASTER_KEY"
+
+
+class OAuthPKCECipher:
+    """Fernet cipher for at-rest encryption of OAuth PKCE verifiers.
+
+    Validates the Fernet key at construction so a missing or corrupt
+    key fails loudly at the wiring edge rather than mid-flight on the
+    first OAuth operation.
+
+    Args:
+        master_key: URL-safe base64 Fernet key (ASCII).
+
+    Raises:
+        MasterKeyError: If *master_key* is blank or not a valid Fernet
+            key.
+    """
+
+    __slots__ = ("_fernet",)
+
+    def __init__(self, master_key: str) -> None:
+        raw = master_key.strip()
+        if not raw:
+            msg = (
+                f"{_MASTER_KEY_ENV} must be set to a valid Fernet key "
+                f"to encrypt OAuth PKCE verifiers at rest"
+            )
+            raise MasterKeyError(msg)
+        try:
+            self._fernet = Fernet(raw.encode("ascii"))
+        except (ValueError, TypeError) as exc:
+            msg = f"Invalid Fernet key in {_MASTER_KEY_ENV}"
+            raise MasterKeyError(msg) from exc
+
+    @classmethod
+    def from_env(cls, *, env_var: str = _MASTER_KEY_ENV) -> OAuthPKCECipher:
+        """Construct from the master-key environment variable.
+
+        Cat-3 bootstrap secret: the Fernet key is a pure-env boot secret
+        read at construction time, mirroring the encrypted secret
+        backends.
+
+        Args:
+            env_var: Environment variable holding the Fernet key.
+
+        Returns:
+            A validated ``OAuthPKCECipher``.
+
+        Raises:
+            MasterKeyError: If the env var is unset or holds an invalid
+                key.
+        """
+        return cls(os.environ.get(env_var, ""))
+
+    def encrypt(self, verifier: str) -> str:
+        """Encrypt *verifier* and return URL-safe Fernet ciphertext.
+
+        Returns:
+            URL-safe Fernet ciphertext (ASCII).
+        """
+        return self._fernet.encrypt(verifier.encode("ascii")).decode("ascii")
+
+    def decrypt(self, ciphertext: str) -> str:
+        """Decrypt Fernet *ciphertext* back to the verifier plaintext.
+
+        Returns:
+            The decrypted verifier plaintext.
+
+        Raises:
+            InvalidToken: If the ciphertext cannot be decrypted.
+        """
+        return self._fernet.decrypt(ciphertext.encode("ascii")).decode("ascii")
+
+
 _cipher_lock = Lock()
-_cipher_holder: list[Fernet | None] = [None]
+_cipher_holder: list[OAuthPKCECipher | None] = [None]
 
 
-def _get_cipher() -> Fernet:
-    """Return the lazy-initialized Fernet instance for verifier cipher.
+def init_pkce_cipher() -> None:
+    """Eagerly construct + validate the PKCE cipher at startup.
+
+    Best-effort boot hook: when ``SYNTHORG_MASTER_KEY`` is present it is
+    validated now so a corrupt or rotated key fails loudly at integration
+    wiring instead of mid-flight on the first OAuth exchange. When the
+    key is absent this is a no-op (OAuth is optional; a deployment that
+    never runs an OAuth flow needs no master key, and an OAuth op without
+    a key still raises ``MasterKeyError`` at use).
+
+    Raises:
+        MasterKeyError: If the key is present but not a valid Fernet key.
+    """
+    with _cipher_lock:
+        if _cipher_holder[0] is not None:
+            return
+        if not os.environ.get(_MASTER_KEY_ENV, "").strip():
+            return
+        _cipher_holder[0] = OAuthPKCECipher.from_env()
+
+
+def _get_cipher() -> OAuthPKCECipher:
+    """Return the PKCE cipher, constructing it on first use if needed.
 
     Raises:
         MasterKeyError: If ``SYNTHORG_MASTER_KEY`` is unset or invalid.
@@ -47,18 +141,7 @@ def _get_cipher() -> Fernet:
         cached = _cipher_holder[0]
         if cached is not None:
             return cached
-        raw = os.environ.get(_MASTER_KEY_ENV, "").strip()
-        if not raw:
-            msg = (
-                f"{_MASTER_KEY_ENV} must be set to a valid Fernet key "
-                f"to encrypt OAuth PKCE verifiers at rest"
-            )
-            raise MasterKeyError(msg)
-        try:
-            cipher = Fernet(raw.encode("ascii"))
-        except (ValueError, TypeError) as exc:
-            msg = f"Invalid Fernet key in {_MASTER_KEY_ENV}"
-            raise MasterKeyError(msg) from exc
+        cipher = OAuthPKCECipher.from_env()
         _cipher_holder[0] = cipher
         return cipher
 
@@ -83,8 +166,7 @@ def encrypt_pkce_verifier(verifier: str) -> str:
     """
     validate_code_verifier(verifier)
     cipher = _get_cipher()
-    token = cipher.encrypt(verifier.encode("ascii"))
-    return token.decode("ascii")
+    return cipher.encrypt(verifier)
 
 
 def decrypt_pkce_verifier(ciphertext: str) -> str:
@@ -104,14 +186,12 @@ def decrypt_pkce_verifier(ciphertext: str) -> str:
     """
     cipher = _get_cipher()
     try:
-        plaintext = cipher.decrypt(ciphertext.encode("ascii"))
-        # Decode inside the guarded block so a ``UnicodeDecodeError``
-        # (non-ASCII bytes in a corrupted row) is caught and
-        # translated into ``PKCEValidationError`` along with the
-        # decrypt-side failures. Leaving the decode outside the try
-        # would leak the error as an unhandled 500 instead of a
-        # structured validation failure.
-        return plaintext.decode("ascii")
+        # ``decrypt`` ascii-encodes the ciphertext and ascii-decodes the
+        # plaintext internally, so a ``UnicodeDecodeError`` (non-ASCII
+        # bytes in a corrupted row) is caught here alongside the
+        # decrypt-side failures and translated into a structured
+        # ``PKCEValidationError`` rather than leaking as a 500.
+        return cipher.decrypt(ciphertext)
     except (InvalidToken, UnicodeEncodeError, UnicodeDecodeError) as exc:
         # Corrupted persisted data can fail in multiple ways:
         # ``InvalidToken`` (tamper / wrong key) or a Unicode error
