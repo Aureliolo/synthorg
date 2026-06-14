@@ -102,8 +102,9 @@ async def _webhooks_list(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    response = ok(dump_many(definitions), pagination=pagination)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(dump_many(definitions), pagination=pagination)
+    return response
 
 
 async def _webhooks_get(
@@ -132,8 +133,9 @@ async def _webhooks_get(
         missing = NotFoundError(f"Webhook {webhook_id} not found")
         log_handler_invoke_failed(tool, missing, webhook_id=webhook_id)
         return err(missing, domain_code="not_found")
+    response = ok(definition.model_dump(mode="json"))
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(definition.model_dump(mode="json"))
+    return response
 
 
 async def _webhooks_create(
@@ -157,15 +159,6 @@ async def _webhooks_create(
             definition=definition,
             actor_id=actor_id,
         )
-        logger.info(
-            MCP_ADMIN_OP_EXECUTED,
-            tool_name=tool,
-            actor_agent_id=actor_id,
-            reason=reason,
-            webhook_id=stored.id,
-        )
-        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-        return ok(stored.model_dump(mode="json"))
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
@@ -182,6 +175,16 @@ async def _webhooks_create(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    response = ok(stored.model_dump(mode="json"))
+    logger.info(
+        MCP_ADMIN_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_id,
+        reason=reason,
+        webhook_id=stored.id,
+    )
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return response
 
 
 async def _webhooks_update(
@@ -248,6 +251,7 @@ async def _apply_webhook_update(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    response = ok(stored.model_dump(mode="json"))
     logger.info(
         MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
@@ -256,7 +260,7 @@ async def _apply_webhook_update(
         webhook_id=stored.id,
     )
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(stored.model_dump(mode="json"))
+    return response
 
 
 async def _webhooks_delete(
@@ -280,20 +284,6 @@ async def _webhooks_delete(
             actor_id=actor_id,
             reason=reason,
         )
-        if not removed:
-            missing = NotFoundError(f"Webhook {webhook_id} not found")
-            log_handler_invoke_failed(tool, missing, webhook_id=webhook_id)
-            return err(missing, domain_code="not_found")
-        logger.info(
-            MCP_ADMIN_OP_EXECUTED,
-            tool_name=tool,
-            actor_agent_id=actor_id,
-            reason=reason,
-            webhook_id=webhook_id,
-            removed=removed,
-        )
-        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-        return ok({"removed": removed})
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
@@ -304,6 +294,21 @@ async def _webhooks_delete(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    if not removed:
+        missing = NotFoundError(f"Webhook {webhook_id} not found")
+        log_handler_invoke_failed(tool, missing, webhook_id=webhook_id)
+        return err(missing, domain_code="not_found")
+    response = ok({"removed": removed})
+    logger.info(
+        MCP_ADMIN_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_id,
+        reason=reason,
+        webhook_id=webhook_id,
+        removed=removed,
+    )
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return response
 
 
 WEBHOOKS_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

@@ -25,9 +25,16 @@ from synthorg.core.agent import (
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.domains._simple_args import (
+    SignalsGetBudgetArgs,
+    SignalsGetCoordinationArgs,
+    SignalsGetErrorPatternsArgs,
+    SignalsGetEvolutionOutcomesArgs,
     SignalsGetOrgSnapshotArgs,
+    SignalsGetPerformanceArgs,
     SignalsGetProposalsArgs,
+    SignalsGetScalingHistoryArgs,
     SignalsSubmitProposalArgs,
+    _SinceOptionalUntilArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -46,7 +53,6 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.meta.mcp.handlers.common_args import (
     actor_id,
-    parse_time_window,
     resolve_time_window,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -110,6 +116,7 @@ def _make_window_handler(
     *,
     tool_name: str,
     method_name: str,
+    args_model: type[_SinceOptionalUntilArgs],
 ) -> ToolHandler:
     """Build a windowed-read handler dispatching to ``signals_service.<method>``.
 
@@ -129,7 +136,12 @@ def _make_window_handler(
             JSON-encoded MCP envelope string.
         """
         try:
-            since, until = parse_time_window(arguments, until_required=False)
+            args = typed_args(arguments, args_model)
+            since, until = resolve_time_window(
+                args.since,
+                args.until,
+                until_required=False,
+            )
             fn = getattr(signals_service_of(app_state), method_name)
             result = await fn(since=since, until=until)
         except ArgumentValidationError as exc:
@@ -236,26 +248,32 @@ SIGNAL_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
         "synthorg_signals_get_performance": _make_window_handler(
             tool_name="synthorg_signals_get_performance",
             method_name="get_performance",
+            args_model=SignalsGetPerformanceArgs,
         ),
         "synthorg_signals_get_budget": _make_window_handler(
             tool_name="synthorg_signals_get_budget",
             method_name="get_budget",
+            args_model=SignalsGetBudgetArgs,
         ),
         "synthorg_signals_get_coordination": _make_window_handler(
             tool_name="synthorg_signals_get_coordination",
             method_name="get_coordination",
+            args_model=SignalsGetCoordinationArgs,
         ),
         "synthorg_signals_get_scaling_history": _make_window_handler(
             tool_name="synthorg_signals_get_scaling_history",
             method_name="get_scaling_history",
+            args_model=SignalsGetScalingHistoryArgs,
         ),
         "synthorg_signals_get_error_patterns": _make_window_handler(
             tool_name="synthorg_signals_get_error_patterns",
             method_name="get_error_patterns",
+            args_model=SignalsGetErrorPatternsArgs,
         ),
         "synthorg_signals_get_evolution_outcomes": _make_window_handler(
             tool_name="synthorg_signals_get_evolution_outcomes",
             method_name="get_evolution_outcomes",
+            args_model=SignalsGetEvolutionOutcomesArgs,
         ),
         "synthorg_signals_get_proposals": _list_proposals,
         "synthorg_signals_submit_proposal": _submit_proposal,
