@@ -123,6 +123,17 @@ async def test_ownership_missing_task_is_denied() -> None:
     assert reason == "session_not_owned"
 
 
+async def test_ownership_agent_internal_task_is_denied() -> None:
+    # A task with no human requester (agent-internal) has
+    # requested_by_user_id=None; a non-CEO user must not be able to
+    # subscribe to its stream. Guards against a future None-coalescing
+    # refactor silently flipping this to allow.
+    state = _state_with_task(_task(requested_by_user_id=None))
+    reason, ok = await _session_ownership_reason(state, "sess-1", _auth_user())
+    assert ok is True
+    assert reason == "session_not_owned"
+
+
 async def test_ownership_ceo_bypasses_without_lookup() -> None:
     state = _state_with_task(None)
     reason, ok = await _session_ownership_reason(

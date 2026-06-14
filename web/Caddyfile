@@ -53,7 +53,7 @@
 	# nonce-aware browsers still get style-src-elem nonce protection for
 	# <style> elements. Removing it would block Base UI positioning styles
 	# on Level-2-only browsers, so the residual inline-style risk is a
-	# known, accepted trade-off (issue #2336, finding 87).
+	# known, accepted trade-off.
 	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'nonce-{http.request.uuid}' 'unsafe-inline'; style-src-elem 'self' 'nonce-{http.request.uuid}'; style-src-attr 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" {
 		defer
 	}
@@ -136,7 +136,7 @@
 			# Document-level headers still apply to a directly-navigated
 			# asset response and cost nothing on sub-resource loads; mirror
 			# the (security_headers) snippet so a cached/304 asset is never
-			# served without them (issue #2336, finding 87). CSP stays
+			# served without them. CSP stays
 			# omitted (a per-request nonce cannot be cached, see above).
 			X-Frame-Options "DENY"
 			Referrer-Policy "strict-origin-when-cross-origin"

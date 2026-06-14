@@ -177,7 +177,8 @@ class PostgresTaskRepository:
 
     _TASK_COLUMNS = (
         "id, title, description, type, priority, project, created_by, "
-        "assigned_to, status, estimated_complexity, budget_limit, deadline, "
+        "requested_by_user_id, assigned_to, status, estimated_complexity, "
+        "budget_limit, deadline, "
         "max_retries, parent_task_id, task_structure, coordination_topology, "
         "reviewers, dependencies, artifacts_expected, acceptance_criteria, "
         "delegation_chain"

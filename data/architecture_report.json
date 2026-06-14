@@ -38,8 +38,8 @@
     },
     "src/synthorg/api/controllers/__init__.py": {
       "cap": 500,
-      "loc": 423,
-      "ratio": 0.846,
+      "loc": 426,
+      "ratio": 0.852,
       "tier": "code"
     },
     "src/synthorg/api/controllers/_conversational_resume.py": {
@@ -1267,7 +1267,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 64,
-    "synthorg.observability": 1544,
+    "synthorg.observability": 1545,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 165,
     "synthorg.observability.events.chief_of_staff": 29,

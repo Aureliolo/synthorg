@@ -33,9 +33,10 @@ Stores that expose `fetchMore*` actions keep `nextCursor` + `hasMore` in state (
 The dashboard calls:
 
 - `getLiveness()` (`/api/v1/healthz`): always 200 while the process is alive.
-- `getReadiness()` (`/api/v1/readyz`): 200 on healthy persistence + message bus, 503 otherwise.
+- `getReadiness()` (`/api/v1/readyz`): 200 when every configured dependency (persistence, message bus, providers) is healthy, 503 otherwise. The body is topology-free (binary outcome + version + uptime).
+- `getHealthDetail()` (`/api/v1/health`): authenticated per-component breakdown (persistence / message bus / providers / telemetry) for the health popover; requires a read-access role. 200 healthy / 503 unavailable.
 
-`ReadinessOutcome` is a binary `'ok' | 'unavailable'` union; the old tri-state `'degraded'` was dropped because supervisors have no sensible action for it. `StatusBar` / `health-popover` map `'unavailable'` to the local `SubsystemState` / `SystemStatus` models; any new caller must handle the 503 path explicitly rather than assuming a 200 body. The legacy `getHealth()` export is a pure alias for `getReadiness()` and exists only so older call sites compile.
+`ReadinessOutcome` is a binary `'ok' | 'unavailable'` union; the old tri-state `'degraded'` was dropped because supervisors have no sensible action for it. `StatusBar` / `health-popover` map `'unavailable'` to the local `SubsystemState` / `SystemStatus` models; any new caller must handle the 503 path explicitly rather than assuming a 200 body.
 
 ## MSW Handlers (MANDATORY)
 

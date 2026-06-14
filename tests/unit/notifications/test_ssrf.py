@@ -141,6 +141,32 @@ class TestResolveOutboundTarget:
                 policy=policy,
             )
 
+    async def test_raises_when_allowlisted_host_dns_fails(self) -> None:
+        # An allowlisted host whose DNS cannot be resolved yields a
+        # validation with no pinned IP; falling back to an unpinned
+        # transport would reopen the rebinding window, so it fails closed.
+        policy = NetworkPolicy(hostname_allowlist=("ntfy.internal",))
+        with (
+            patch(_RESOLVE_AND_CHECK, return_value="temporary DNS failure"),
+            pytest.raises(ValueError, match="could not be resolved for DNS pinning"),
+        ):
+            await resolve_outbound_target(
+                "http://ntfy.internal/x",
+                field="server_url",
+                policy=policy,
+            )
+
+    async def test_literal_public_ip_target_accepted_without_pin(self) -> None:
+        # A literal public IP has no DNS to rebind, so an empty
+        # ``resolved_ips`` must NOT be rejected (unlike an unresolved
+        # allowlisted hostname).
+        result = await resolve_outbound_target(
+            f"https://{_LITERAL_PUBLIC_IP}/x",
+            field="server_url",
+            policy=NetworkPolicy(),
+        )
+        assert isinstance(result, DnsValidationOk)
+
     async def test_raises_when_hostname_unextractable(self) -> None:
         # The async pre-flight delegates scheme rejection to the sync
         # check; what it rejects is a URL whose host cannot be extracted
@@ -235,6 +261,22 @@ class TestSlackStartSsrf:
             await sink.start()
         transport = mock_cls.call_args.kwargs["transport"]
         assert isinstance(transport, PinnedDnsTransport)
+
+    async def test_start_allows_allowlisted_internal_host(self) -> None:
+        sink = SlackNotificationSink(
+            webhook_url="http://hooks.internal/services/abc",
+            network_policy=NetworkPolicy(hostname_allowlist=("hooks.internal",)),
+        )
+        with (
+            patch(_RESOLVE_AND_CHECK, return_value=(_PUBLIC_IP,)),
+            patch(
+                "synthorg.notifications.adapters.slack.httpx.AsyncClient",
+                autospec=True,
+            ),
+        ):
+            await sink.start()
+        assert sink._client is not None
+        await sink.close()
 
 
 # ── Construction-time rejection (both adapters) ─────────────────

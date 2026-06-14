@@ -118,6 +118,17 @@ async def test_issue_rejects_system_role() -> None:
         )
 
 
+async def test_issuer_can_issue_at_own_ceiling() -> None:
+    # The role ceiling is inclusive: a MANAGER may mint a MANAGER-scoped
+    # key (equal seniority), not only roles strictly below.
+    repo = _FakeApiKeyRepo()
+    svc = _service(repo)
+    issued = await svc.issue(
+        owner=_user(role=HumanRole.MANAGER), name="peer", role=HumanRole.MANAGER
+    )
+    assert issued.view.role is HumanRole.MANAGER
+
+
 async def test_ceo_can_issue_any_human_role() -> None:
     repo = _FakeApiKeyRepo()
     svc = _service(repo)

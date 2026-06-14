@@ -43,7 +43,7 @@ All store **mutation** actions (create / update / delete) follow the `stores/con
 
 **Cursor pagination (MANDATORY)**: list endpoints use opaque cursor-based paging via `PaginationMeta`. Stores keep `nextCursor` + `hasMore` in state (not offset arithmetic) and early-return when `!hasMore || !nextCursor`. Display counts come from `data.length`; the wire envelope no longer carries `total`.
 
-**Health / readiness endpoints (MANDATORY)**: `getLiveness()` is always 200 while the process is alive; `getReadiness()` is 200 healthy / 503 unavailable (binary `'ok' | 'unavailable'` outcome, no tri-state). Any new caller must handle the 503 path explicitly.
+**Health / readiness endpoints (MANDATORY)**: `getLiveness()` is always 200 while the process is alive; `getReadiness()` (`/readyz`, unauthenticated) is 200 healthy / 503 unavailable (binary `'ok' | 'unavailable'` outcome, no tri-state) with a topology-free body; `getHealthDetail()` (`/health`, requires a read-access role) returns the full per-component breakdown for the health popover. Any new caller must handle the 503 path explicitly.
 
 **MSW handlers (MANDATORY)**: `web/src/mocks/handlers/` mirrors `web/src/api/endpoints/*.ts` 1:1 with a default happy-path handler for every exported endpoint. `test-setup.tsx` boots with `onUnhandledRequest: 'error'`; tests override per-case via `server.use(...)`, never `vi.mock('@/api/endpoints/*')`. Typed envelope helpers (`successFor`, `paginatedFor`, `voidSuccess`) keep handlers in lockstep with endpoint return types.
 

@@ -4,8 +4,8 @@ The ntfy and Slack sinks both POST to an operator-configured URL. A
 static host check (exact-string loopback + literal-IP) does not catch a
 DNS name that resolves to an internal address (e.g. a cloud metadata
 endpoint at ``169.254.169.254`` behind a CNAME), so this module routes
-both adapters through the hardened ``network_validator`` path used by
-every other HTTP egress in the codebase: async DNS resolution, every
+both adapters through the hardened ``network_validator`` path used by the
+other HTTP egress sites in the codebase: async DNS resolution, every
 resolved IP checked against ``BLOCKED_NETWORKS``, and a pinned-IP
 transport so DNS rebinding cannot redirect the live connect after
 validation.
@@ -15,14 +15,16 @@ import ipaddress
 from typing import Final
 from urllib.parse import urlparse
 
-import httpx
-
+from synthorg.observability import get_logger
+from synthorg.observability.events.notification import NOTIFICATION_SINK_CONFIG_INVALID
 from synthorg.tools._dns_pinning import PinnedDnsTransport
 from synthorg.tools.network_validator import (
     DnsValidationOk,
     NetworkPolicy,
     validate_url_host,
 )
+
+logger = get_logger(__name__)
 
 _ALLOWED_SCHEMES: Final[frozenset[str]] = frozenset({"http", "https"})
 _BLOCKED_HOSTS: Final[frozenset[str]] = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -58,6 +60,15 @@ def validate_outbound_url_scheme(url: str, field: str) -> None:
         raise ValueError(msg)
 
 
+def _is_literal_ip(host: str) -> bool:
+    """Return ``True`` when ``host`` is a literal IP (no DNS to pin)."""
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return True
+
+
 async def resolve_outbound_target(
     url: str,
     *,
@@ -77,7 +88,8 @@ async def resolve_outbound_target(
     Raises:
         ValueError: When the URL is rejected by the SSRF policy
             (non-HTTP scheme, unresolvable host, or any resolved IP in a
-            blocked range).
+            blocked range), or when an allowlisted hostname could not be
+            resolved to an IP and therefore cannot be pinned.
     """
     result = await validate_url_host(url, policy)
     if not isinstance(result, DnsValidationOk):
@@ -86,18 +98,37 @@ async def resolve_outbound_target(
         # rejection is a value error, not a TypeError.
         msg = f"{field} rejected by SSRF policy: {result}"
         raise ValueError(msg)  # noqa: TRY004 -- value rejection, not a type mismatch
+    if not result.resolved_ips and not _is_literal_ip(result.hostname):
+        # An allowlisted hostname whose DNS failed carries no pinned IP, so
+        # the live connect would re-resolve at request time and reopen the
+        # rebinding window. Fail closed rather than fall back to an unpinned
+        # transport. Literal-IP targets legitimately have no resolved IPs and
+        # need no pin, so they are exempt from this check.
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            field=field,
+            hostname=result.hostname,
+            reason="allowlisted_host_dns_unresolved_no_pin",
+        )
+        msg = (
+            f"{field}: allowlisted host {result.hostname!r} could not be "
+            "resolved for DNS pinning"
+        )
+        raise ValueError(msg)
     return result
 
 
 def build_pinned_transport(
     validation: DnsValidationOk,
-) -> httpx.AsyncBaseTransport | None:
+) -> PinnedDnsTransport | None:
     """Build a DNS-pinned transport from a validated target.
 
     Pins the TCP connect to the first validated IP so a malicious DNS
     server cannot rebind the hostname between the pre-flight and the live
-    request. Returns ``None`` for literal-IP / allowlisted targets where
-    ``resolved_ips`` is empty (the default transport is then used).
+    request. Returns ``None`` for literal-IP targets where ``resolved_ips``
+    is empty; the caller then omits the ``transport`` argument so
+    ``httpx.AsyncClient`` uses its default transport, which connects
+    straight to the literal IP (nothing to rebind).
 
     Returns:
         A ``PinnedDnsTransport`` when pinned IPs are available, else

@@ -127,9 +127,12 @@ class TestParseActionItems:
 class TestParsingReDoSResistance:
     """A pathological single long line parses in bounded time and is capped."""
 
+    @pytest.mark.timeout(5)
     def test_long_single_line_bounded(self) -> None:
         # A 64 kB single-line bullet with no second bullet to anchor the
         # old nested-repetition regex used to drive O(n^2) backtracking.
+        # The explicit 5s timeout makes the "bounded time" claim a real
+        # assertion: the old catastrophic regex would blow past it.
         blob = "x" * 65_536
         text = f"# Decisions\n- {blob}\n"
         result = parse_decisions(text)

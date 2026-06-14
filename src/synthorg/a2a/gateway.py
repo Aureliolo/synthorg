@@ -674,17 +674,27 @@ async def _verify_peer_credentials(
         scheme = credentials.get("auth_scheme", "api_key")
         if scheme == "api_key":
             stored_key = credentials.get("api_key", "")
+            if not stored_key:
+                # A blank credential value in a configured catalog record is
+                # a misconfiguration; treat it like a missing record and fail
+                # closed rather than skipping the comparison and granting access.
+                logger.warning(
+                    A2A_INBOUND_AUTH_FAILED,
+                    peer_name=peer_name,
+                    reason="blank stored api_key in catalog",
+                )
+                return False
             request_key = request.headers.get("x-api-key", "") or (
                 extract_bearer_token(request.headers.get("authorization", "")) or ""
             )
-            if stored_key and not request_key:
+            if not request_key:
                 logger.warning(
                     A2A_INBOUND_AUTH_FAILED,
                     peer_name=peer_name,
                     reason="missing credentials in request",
                 )
                 return False
-            if stored_key and not _credentials_match(stored_key, request_key):
+            if not _credentials_match(stored_key, request_key):
                 logger.warning(
                     A2A_INBOUND_AUTH_FAILED,
                     peer_name=peer_name,
@@ -693,9 +703,23 @@ async def _verify_peer_credentials(
                 return False
         elif scheme in ("bearer", "oauth2"):
             stored_token = credentials.get("access_token", "")
+            if not stored_token:
+                logger.warning(
+                    A2A_INBOUND_AUTH_FAILED,
+                    peer_name=peer_name,
+                    reason="blank stored access_token in catalog",
+                )
+                return False
             auth_header = request.headers.get("authorization", "")
             request_token = extract_bearer_token(auth_header) or ""
-            if stored_token and not _credentials_match(stored_token, request_token):
+            if not request_token:
+                logger.warning(
+                    A2A_INBOUND_AUTH_FAILED,
+                    peer_name=peer_name,
+                    reason="missing token in request",
+                )
+                return False
+            if not _credentials_match(stored_token, request_token):
                 logger.warning(
                     A2A_INBOUND_AUTH_FAILED,
                     peer_name=peer_name,

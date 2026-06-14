@@ -14,6 +14,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.boundary import parse_typed
+from synthorg.core.domain_errors import UnauthorizedError
 from synthorg.core.domain_errors import ValidationError as DomainValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -180,13 +181,20 @@ class SettingsSecurityController(Controller):
             The validated and persisted config.
 
         Raises:
+            UnauthorizedError: If no authenticated actor is on the request.
             DomainValidationError: If the config fails validation
                 (HTTP 422).
             ValidationError: Generic schema-level validation rejected
                 a registered setting value.
         """
         app_state: AppState = state.app_state
-        actor: AuthenticatedUser = request.scope["user"]
+        # The class guard already enforces CEO/manager, but resolve the
+        # identity fail-closed rather than via a bare ``scope["user"]`` key
+        # access that would 500 if the guard chain were ever reordered.
+        actor = request.scope.get("user")
+        if not isinstance(actor, AuthenticatedUser):
+            msg = "Authentication required"
+            raise UnauthorizedError(msg)
         try:
             validated = parse_typed(
                 "settings.security",
