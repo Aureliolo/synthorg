@@ -23,9 +23,13 @@ from synthorg.knowledge.constants import (
 )
 from synthorg.knowledge.errors import KnowledgeDependencyError
 from synthorg.knowledge.models import CodeLocator, RawUnit
+from synthorg.observability import get_logger
+from synthorg.observability.events.knowledge import KNOWLEDGE_GRAMMAR_LOAD_FAILED
 
 if TYPE_CHECKING:
     import tree_sitter
+
+logger = get_logger(__name__)
 
 # Maps file extension to a tree-sitter-language-pack grammar name. Kept
 # small and obvious; unknown extensions fall back to line windows.
@@ -110,7 +114,15 @@ def _cached_grammar(language: str) -> tree_sitter.Language | None:
         raise KnowledgeDependencyError(msg) from exc
     try:
         return get_language(language)
-    except LookupError, OSError, ValueError:
+    except (LookupError, OSError, ValueError) as exc:
+        # A missing grammar is the expected "degrade to line-window"
+        # path; log at WARNING so a corrupt grammar pack or I/O failure
+        # is distinguishable from the clean not-installed fallback.
+        logger.warning(
+            KNOWLEDGE_GRAMMAR_LOAD_FAILED,
+            language=language,
+            error_type=type(exc).__name__,
+        )
         return None
 
 

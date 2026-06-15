@@ -35,6 +35,12 @@ MEMORY_ENTRY_FETCHED: Final[str] = "memory.entry.fetched"
 MEMORY_ENTRY_FETCH_FAILED: Final[str] = "memory.entry.fetch_failed"
 MEMORY_ENTRY_COUNTED: Final[str] = "memory.entry.counted"
 MEMORY_ENTRY_COUNT_FAILED: Final[str] = "memory.entry.count_failed"
+MEMORY_RRF_PIPELINE_COMPLETED: Final[str] = "memory.rrf.pipeline_completed"
+"""Emitted at DEBUG after the RRF hybrid pipeline fuses + filters results.
+
+Carries dense / sparse / fused counts so retrieval behaviour is
+observable without a debugger (an unexpectedly empty fused result is
+then traceable to a threshold or an empty arm)."""
 
 # ── Shared knowledge ─────────────────────────────────────────────
 

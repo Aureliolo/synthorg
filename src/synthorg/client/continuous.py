@@ -131,6 +131,7 @@ class ContinuousMode:
         # find ``_running=False``, never observing the conflict.
         async with self._lifecycle_lock:
             if self._running:
+                logger.warning(CONTINUOUS_MODE_STARTED, reason="already_running")
                 msg = "ContinuousMode is already running"
                 raise RuntimeError(msg)
             self._running = True

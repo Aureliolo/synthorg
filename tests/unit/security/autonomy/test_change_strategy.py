@@ -1,8 +1,13 @@
 """Tests for HumanOnlyPromotionStrategy."""
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.observability.events.security import (
+    SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED,
+    SECURITY_AUTONOMY_OVERRIDE_CLEARED,
+)
 from synthorg.security.autonomy.change_strategy import HumanOnlyPromotionStrategy
 from synthorg.security.autonomy.enums import DowngradeReason
 
@@ -123,3 +128,40 @@ class TestOverrideManagement:
     def test_clear_nonexistent_override(self) -> None:
         strategy = HumanOnlyPromotionStrategy()
         assert strategy.clear_override("agent-1") is False
+
+    @pytest.mark.unit
+    def test_clear_override_emits_audit_log(self) -> None:
+        """Clearing an override (regaining autonomy) emits an INFO audit log."""
+        strategy = HumanOnlyPromotionStrategy()
+        strategy.auto_downgrade("agent-1", DowngradeReason.SECURITY_INCIDENT)
+        with capture_logs() as logs:
+            strategy.clear_override("agent-1")
+        cleared = [
+            e for e in logs if e.get("event") == SECURITY_AUTONOMY_OVERRIDE_CLEARED
+        ]
+        assert len(cleared) == 1
+        assert cleared[0]["log_level"] == "info"
+        assert cleared[0]["agent_id"] == "agent-1"
+        assert cleared[0]["reason"] == DowngradeReason.SECURITY_INCIDENT.value
+
+    @pytest.mark.unit
+    def test_clear_nonexistent_override_is_silent(self) -> None:
+        """No audit log fires when there was no override to clear."""
+        strategy = HumanOnlyPromotionStrategy()
+        with capture_logs() as logs:
+            strategy.clear_override("ghost")
+        assert not [
+            e for e in logs if e.get("event") == SECURITY_AUTONOMY_OVERRIDE_CLEARED
+        ]
+
+    @pytest.mark.unit
+    def test_auto_downgrade_logs_transition_at_info(self) -> None:
+        """The applied-downgrade state transition logs at INFO, not WARNING."""
+        strategy = HumanOnlyPromotionStrategy()
+        with capture_logs() as logs:
+            strategy.auto_downgrade("agent-1", DowngradeReason.BUDGET_EXHAUSTED)
+        triggered = [
+            e for e in logs if e.get("event") == SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED
+        ]
+        assert len(triggered) == 1
+        assert triggered[0]["log_level"] == "info"

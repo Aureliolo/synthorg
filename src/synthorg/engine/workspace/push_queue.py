@@ -154,10 +154,20 @@ class PushQueueCoordinator:
             WorkspacePushError: The backend push failed.
         """
         if self._closing:
+            logger.warning(
+                WORKSPACE_PUSH_QUEUE_FAILED,
+                project_id=self._project_id,
+                reason="coordinator_closing",
+            )
             msg = "PushQueueCoordinator is stopping; new pushes refused"
             raise WorkspaceError(msg)
         queue = self._queue
         if queue is None:
+            logger.error(
+                WORKSPACE_PUSH_QUEUE_FAILED,
+                project_id=self._project_id,
+                reason="queue_not_started",
+            )
             msg = "PushQueueCoordinator: enqueue called before start()"
             raise WorkspaceError(msg)
         loop = asyncio.get_running_loop()

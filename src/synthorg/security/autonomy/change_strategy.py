@@ -7,6 +7,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED,
+    SECURITY_AUTONOMY_OVERRIDE_CLEARED,
     SECURITY_AUTONOMY_PROMOTION_DENIED,
     SECURITY_AUTONOMY_PROMOTION_REQUESTED,
     SECURITY_AUTONOMY_RECOVERY_REQUESTED,
@@ -122,7 +123,12 @@ class HumanOnlyPromotionStrategy:
         )
         self._overrides[agent_id] = override
 
-        logger.warning(
+        # INFO, not WARNING: this is the successful application of a
+        # state transition (the override is now written), logged AFTER
+        # the mutation. The business significance is carried by the
+        # event name + the ``reason`` field, not the log level; the
+        # component that DECIDED to downgrade emits its own WARNING.
+        logger.info(
             SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED,
             agent_id=agent_id,
             reason=reason.value,
@@ -169,4 +175,17 @@ class HumanOnlyPromotionStrategy:
         Returns:
             ``True`` if an override was removed, ``False`` if none existed.
         """
-        return self._overrides.pop(agent_id, None) is not None
+        removed = self._overrides.pop(agent_id, None)
+        if removed is not None:
+            # Clearing a SECURITY_INCIDENT / downgrade override restores
+            # an agent toward its original autonomy level (it regains
+            # previously denied action types), so the removal needs an
+            # audit-trail INFO log just like the downgrade that set it.
+            logger.info(
+                SECURITY_AUTONOMY_OVERRIDE_CLEARED,
+                agent_id=agent_id,
+                original_level=removed.original_level.value,
+                restored_from=removed.current_level.value,
+                reason=removed.reason.value,
+            )
+        return removed is not None

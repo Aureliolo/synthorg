@@ -21,6 +21,10 @@ from synthorg.memory.retriever_fetch import (
     fetch_sparse_memories,
 )
 from synthorg.memory.shared import SharedKnowledgeStore
+from synthorg.observability import get_logger
+from synthorg.observability.events.memory import MEMORY_RRF_PIPELINE_COMPLETED
+
+logger = get_logger(__name__)
 
 
 async def execute_rrf_pipeline(
@@ -76,22 +80,43 @@ async def execute_rrf_pipeline(
     dense_personal, dense_shared = dense_task.result()
     sparse_personal, sparse_shared = sparse_task.result()
 
+    dense_count = len(dense_personal) + len(dense_shared)
+    sparse_count = len(sparse_personal) + len(sparse_shared)
+
     # When sparse is empty, fall back to linear ranking instead
     # of running RRF on a single dense list.
     if not sparse_personal and not sparse_shared:
         now = datetime.now(UTC)
-        return rank_memories(
+        fused = rank_memories(
             dense_personal,
             config=config,
             now=now,
             shared_entries=dense_shared,
         )
+        logger.debug(
+            MEMORY_RRF_PIPELINE_COMPLETED,
+            agent_id=agent_id,
+            dense_count=dense_count,
+            sparse_count=sparse_count,
+            fused_count=len(fused),
+            mode="linear_fallback",
+        )
+        return fused
 
-    return _merge_and_fuse(
+    fused = _merge_and_fuse(
         dense_personal + dense_shared,
         sparse_personal + sparse_shared,
         config=config,
     )
+    logger.debug(
+        MEMORY_RRF_PIPELINE_COMPLETED,
+        agent_id=agent_id,
+        dense_count=dense_count,
+        sparse_count=sparse_count,
+        fused_count=len(fused),
+        mode="rrf",
+    )
+    return fused
 
 
 def _merge_and_fuse(

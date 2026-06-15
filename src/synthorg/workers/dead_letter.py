@@ -267,7 +267,11 @@ class DeadLetterConsumer:
             await self._handle_retryable(claim, raw)
             return
         if outcome is DeadLetterOutcome.TRANSITIONED:
-            logger.warning(
+            # INFO, not WARNING: a successful drive-to-FAILED is the
+            # dead-letter consumer doing its job, a normal terminal state
+            # transition. WARNING here would conflate it with real
+            # failures in level-filtered monitoring.
+            logger.info(
                 WORKERS_DEAD_LETTER_TRANSITIONED,
                 task_id=claim.task_id,
                 idempotency_key=claim.idempotency_key,

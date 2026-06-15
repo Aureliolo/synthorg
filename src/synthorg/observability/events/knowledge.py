@@ -33,6 +33,14 @@ KNOWLEDGE_CHUNKS_INDEXED: Final[str] = "knowledge.chunks.indexed"
 KNOWLEDGE_CHUNKS_INDEX_FAILED: Final[str] = "knowledge.chunks.index_failed"
 """Emitted at WARNING when the indexer fails a delete-prior or store phase."""
 
+KNOWLEDGE_GRAMMAR_LOAD_FAILED: Final[str] = "knowledge.grammar.load_failed"
+"""Emitted at WARNING when a tree-sitter grammar fails to load.
+
+Distinguishes a clean "grammar not installed" fallback to the line-window
+chunker from a regression in the grammar pack (corrupt data, I/O failure)
+that operators would otherwise have no signal for.
+"""
+
 # -- Retrieval ----------------------------------------------------------------
 
 KNOWLEDGE_SEARCHED: Final[str] = "knowledge.searched"
