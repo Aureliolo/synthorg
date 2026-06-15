@@ -10,7 +10,9 @@ from typing import Final
 
 from pydantic import ValidationError
 
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.boundary import parse_typed
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     untrusted_content_directive,
@@ -44,16 +46,18 @@ _SYSTEM_PROMPT: Final[str] = (
 class LlmQueryPlanner:
     """Produces a query plan with a single deterministic LLM call."""
 
-    __slots__ = ("_model", "_provider")
+    __slots__ = ("_cost_tracker", "_model", "_provider")
 
     def __init__(
         self,
         *,
         provider: CompletionProvider,
         model: str,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
+        self._cost_tracker = cost_tracker
 
     async def plan(self, brief: ResearchBrief) -> tuple[ResearchQueryPlan, float]:
         """Return a query plan and the USD cost of producing it."""
@@ -72,6 +76,9 @@ class LlmQueryPlanner:
             self._model,
             system=_SYSTEM_PROMPT,
             user=user,
+            cost_tracker=self._cost_tracker,
+            task_id=NotBlankStr(f"system:research:planning:{brief.brief_id}"),
+            project_id=brief.project_id,
         )
         output = self._parse(content)
         sub_queries = self._build_sub_queries(brief, output)

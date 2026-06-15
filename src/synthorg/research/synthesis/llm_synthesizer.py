@@ -11,8 +11,10 @@ from typing import Final
 
 from pydantic import ValidationError
 
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_RESEARCH_SOURCE,
     TAG_TASK_DATA,
@@ -55,7 +57,7 @@ _SYSTEM_PROMPT: Final[str] = (
 class LlmSynthesizer:
     """Produces a citation-backed report with one deterministic LLM call."""
 
-    __slots__ = ("_binder", "_clock", "_model", "_provider")
+    __slots__ = ("_binder", "_clock", "_cost_tracker", "_model", "_provider")
 
     def __init__(
         self,
@@ -64,11 +66,13 @@ class LlmSynthesizer:
         model: str,
         binder: CitationBinder,
         clock: Clock | None = None,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
         self._binder = binder
         self._clock = clock if clock is not None else SystemClock()
+        self._cost_tracker = cost_tracker
 
     async def synthesize(
         self,
@@ -97,6 +101,9 @@ class LlmSynthesizer:
             self._model,
             system=_SYSTEM_PROMPT,
             user=self._build_user_prompt(brief, plan, sources),
+            cost_tracker=self._cost_tracker,
+            task_id=NotBlankStr(f"system:research:synthesis:{brief.brief_id}"),
+            project_id=brief.project_id,
         )
         output = self._parse(content)
         claims = tuple(

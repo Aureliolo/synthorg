@@ -12,7 +12,9 @@ from typing import Final
 
 from pydantic import ValidationError
 
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.boundary import parse_typed
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_RESEARCH_SOURCE,
     TAG_TASK_DATA,
@@ -47,7 +49,7 @@ _SYSTEM_PROMPT: Final[str] = (
 class LlmCredibilityTriage:
     """Scores credibility with batched deterministic LLM calls."""
 
-    __slots__ = ("_batch_size", "_model", "_provider")
+    __slots__ = ("_batch_size", "_cost_tracker", "_model", "_provider")
 
     def __init__(
         self,
@@ -55,6 +57,7 @@ class LlmCredibilityTriage:
         provider: CompletionProvider,
         model: str,
         batch_size: int = RESEARCH_TRIAGE_BATCH_SIZE,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         if batch_size < 1:
             msg = "batch_size must be >= 1"
@@ -62,6 +65,7 @@ class LlmCredibilityTriage:
         self._provider = provider
         self._model = model
         self._batch_size = batch_size
+        self._cost_tracker = cost_tracker
 
     async def triage(
         self,
@@ -114,6 +118,9 @@ class LlmCredibilityTriage:
             self._model,
             system=_SYSTEM_PROMPT,
             user=user,
+            cost_tracker=self._cost_tracker,
+            task_id=NotBlankStr(f"system:research:triage:{brief.brief_id}"),
+            project_id=brief.project_id,
         )
         try:
             obj = json.loads(extract_json_object(content))
