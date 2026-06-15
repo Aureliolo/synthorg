@@ -6,18 +6,23 @@ and injected dependencies.
 
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Literal, assert_never
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.pruning.policy import PruningPolicy
-from synthorg.hr.scaling.config import ScalingConfig
+from synthorg.hr.scaling.config import ScalingConfig, TriggerConfig
 from synthorg.hr.scaling.context import ScalingContextBuilder
 from synthorg.hr.scaling.guards.approval_gate import ApprovalGateGuard
 from synthorg.hr.scaling.guards.composite import CompositeScalingGuard
 from synthorg.hr.scaling.guards.conflict_resolver import ConflictResolver
 from synthorg.hr.scaling.guards.cooldown import CooldownGuard
 from synthorg.hr.scaling.guards.rate_limit import RateLimitGuard
-from synthorg.hr.scaling.protocols import ScalingGuard, ScalingStrategy
+from synthorg.hr.scaling.protocols import (
+    ScalingGuard,
+    ScalingStrategy,
+    ScalingTrigger,
+)
 from synthorg.hr.scaling.signals.benchmark import BenchmarkSignalSource
 from synthorg.hr.scaling.signals.budget import BudgetSignalSource
 from synthorg.hr.scaling.signals.performance import PerformanceSignalSource
@@ -32,6 +37,8 @@ from synthorg.hr.scaling.strategies.workload import (
     WorkloadAutoScaleStrategy,
 )
 from synthorg.hr.scaling.triggers.batched import BatchedScalingTrigger
+from synthorg.hr.scaling.triggers.composite import CompositeScalingTrigger
+from synthorg.hr.scaling.triggers.threshold import SignalThresholdTrigger
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_FACTORY_ASSEMBLED
 
@@ -188,17 +195,75 @@ def create_scaling_context_builder(
     )
 
 
-def create_scaling_trigger(
-    config: ScalingConfig,
-) -> BatchedScalingTrigger:
-    """Create the trigger from configuration.
+def _build_batched(triggers: TriggerConfig) -> BatchedScalingTrigger:
+    """Build the time-interval batched trigger.
+
+    Returns:
+        A configured :class:`BatchedScalingTrigger`.
+    """
+    return BatchedScalingTrigger(interval_seconds=triggers.batched_interval_seconds)
+
+
+def _build_signal_threshold(triggers: TriggerConfig) -> SignalThresholdTrigger:
+    """Build the signal-threshold trigger.
+
+    Returns:
+        A configured :class:`SignalThresholdTrigger`.
+    """
+    return SignalThresholdTrigger(
+        signal_name=triggers.signal_name,
+        threshold=triggers.signal_threshold,
+        above=triggers.signal_above,
+    )
+
+
+def _build_leaf_trigger(
+    member: Literal["batched", "signal_threshold"],
+    triggers: TriggerConfig,
+) -> ScalingTrigger:
+    """Build a single leaf trigger for the composite.
+
+    Returns:
+        The leaf :class:`ScalingTrigger`.
+    """
+    if member == "batched":
+        return _build_batched(triggers)
+    return _build_signal_threshold(triggers)
+
+
+def create_scaling_trigger(config: ScalingConfig) -> ScalingTrigger:
+    """Create the trigger selected by ``config.triggers.type``.
+
+    The ``batched`` default reproduces the historical time-interval
+    trigger exactly. ``signal_threshold`` fires on a signal crossing
+    (primed via ``ScalingService.update_signal``), and ``composite``
+    combines the configured leaf triggers with OR semantics.
 
     Args:
         config: Scaling configuration.
 
     Returns:
-        Configured trigger.
+        The configured :class:`ScalingTrigger`.
     """
-    return BatchedScalingTrigger(
-        interval_seconds=config.triggers.batched_interval_seconds,
+    triggers = config.triggers
+    match triggers.type:
+        case "batched":
+            trigger: ScalingTrigger = _build_batched(triggers)
+        case "signal_threshold":
+            trigger = _build_signal_threshold(triggers)
+        case "composite":
+            trigger = CompositeScalingTrigger(
+                triggers=tuple(
+                    _build_leaf_trigger(member, triggers)
+                    for member in triggers.composite_members
+                ),
+            )
+        case _:  # pragma: no cover
+            assert_never(triggers.type)
+    logger.debug(
+        HR_SCALING_FACTORY_ASSEMBLED,
+        component="trigger",
+        trigger_type=triggers.type,
+        name=str(trigger.name),
     )
+    return trigger

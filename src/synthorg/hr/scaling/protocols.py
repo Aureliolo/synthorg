@@ -103,6 +103,27 @@ class ScalingTrigger(Protocol):
 
 
 @runtime_checkable
+class SignalAwareTrigger(ScalingTrigger, Protocol):
+    """A :class:`ScalingTrigger` that consumes pushed signals.
+
+    Signal-driven triggers (and composites containing them) accept the
+    latest :class:`ScalingSignal` out-of-band via :meth:`update_signal`,
+    which primes their crossing state before ``should_trigger`` is
+    polled. ``ScalingService`` forwards pushed signals to triggers that
+    satisfy this protocol and ignores those that do not (e.g. the
+    time-interval ``batched`` trigger).
+    """
+
+    async def update_signal(self, signal: ScalingSignal) -> None:
+        """Feed the latest signal value into the trigger.
+
+        Args:
+            signal: Current signal value to track for crossings.
+        """
+        ...
+
+
+@runtime_checkable
 class ScalingGuard(Protocol):
     """Filters or modifies scaling decisions before execution.
 

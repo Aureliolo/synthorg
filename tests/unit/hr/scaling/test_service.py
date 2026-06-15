@@ -12,10 +12,25 @@ from synthorg.hr.scaling.enums import (
 )
 from synthorg.hr.scaling.guards.composite import CompositeScalingGuard
 from synthorg.hr.scaling.guards.rate_limit import RateLimitGuard
-from synthorg.hr.scaling.models import ScalingActionRecord, ScalingDecision
+from synthorg.hr.scaling.models import (
+    ScalingActionRecord,
+    ScalingDecision,
+    ScalingSignal,
+)
 from synthorg.hr.scaling.service import ScalingService
+from synthorg.hr.scaling.triggers.batched import BatchedScalingTrigger
+from synthorg.hr.scaling.triggers.threshold import SignalThresholdTrigger
 
 from .conftest import NOW, make_decision
+
+
+def _utilization_signal(value: float) -> ScalingSignal:
+    return ScalingSignal(
+        name=NotBlankStr("avg_utilization"),
+        value=value,
+        source=NotBlankStr("workload"),
+        timestamp=NOW,
+    )
 
 
 class _AlwaysHireStrategy:
@@ -165,3 +180,53 @@ class TestScalingService:
         )
         decisions = await service.evaluate(agent_ids=_AGENT_IDS)
         assert len(decisions) == 0
+
+    async def test_update_signal_primes_threshold_trigger(self) -> None:
+        trigger = SignalThresholdTrigger(
+            signal_name=NotBlankStr("avg_utilization"),
+            threshold=0.85,
+            above=True,
+        )
+        service = ScalingService(
+            strategies=(_AlwaysHireStrategy(),),
+            trigger=trigger,
+            guard=_PassthroughGuard(),
+            context_builder=ScalingContextBuilder(),
+            config=ScalingConfig(),
+        )
+        # First signal initialises state; second crosses the threshold.
+        await service.update_signal(_utilization_signal(0.50))
+        await service.update_signal(_utilization_signal(0.95))
+        decisions = await service.evaluate(agent_ids=_AGENT_IDS)
+        assert len(decisions) == 1
+
+    async def test_update_signal_without_crossing_stays_gated(self) -> None:
+        trigger = SignalThresholdTrigger(
+            signal_name=NotBlankStr("avg_utilization"),
+            threshold=0.85,
+            above=True,
+        )
+        service = ScalingService(
+            strategies=(_AlwaysHireStrategy(),),
+            trigger=trigger,
+            guard=_PassthroughGuard(),
+            context_builder=ScalingContextBuilder(),
+            config=ScalingConfig(),
+        )
+        await service.update_signal(_utilization_signal(0.50))
+        decisions = await service.evaluate(agent_ids=_AGENT_IDS)
+        assert decisions == ()
+
+    async def test_update_signal_noop_for_batched_trigger(self) -> None:
+        service = ScalingService(
+            strategies=(_AlwaysHireStrategy(),),
+            trigger=BatchedScalingTrigger(interval_seconds=900),
+            guard=_PassthroughGuard(),
+            context_builder=ScalingContextBuilder(),
+            config=ScalingConfig(),
+        )
+        # Batched trigger ignores pushed signals; the push must not raise
+        # and the first evaluation still fires (interval elapsed).
+        await service.update_signal(_utilization_signal(0.95))
+        decisions = await service.evaluate(agent_ids=_AGENT_IDS)
+        assert len(decisions) == 1

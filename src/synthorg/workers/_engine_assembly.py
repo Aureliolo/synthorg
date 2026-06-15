@@ -24,6 +24,7 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.flight_recording import FlightRecorderSink
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.routing_policy import build_stakes_router
+from synthorg.engine.stagnation import create_stagnation_detector
 from synthorg.engine.state import task_engine_of
 from synthorg.integrations.state import (
     IntegrationsStateSlice,
@@ -311,6 +312,7 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         brain_tool_factory_provider=boot_brain_tool_factory_provider(app_state),
         flight_recorder_sink=flight_recorder_sink,
         steering_inbox=boot_steering_inbox(app_state),
+        stagnation_detector=create_stagnation_detector(app_state.config.stagnation),
         clock=app_state.clock,
     )
 
