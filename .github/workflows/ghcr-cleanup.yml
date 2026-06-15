@@ -41,7 +41,12 @@ on:
 
 permissions: {}
 
-# Never let two cleanup runs delete against the same packages at once.
+# One global mutex across BOTH triggers (workflow_call from dev-release
+# and manual workflow_dispatch): two cleanup runs must never delete
+# against the same packages at once. The trade-off -- a dev-release
+# cleanup queueing behind a long manual backfill -- is acceptable because
+# the cleanup job is off the release-critical path. cancel-in-progress is
+# false so a queued run is never dropped.
 concurrency:
   group: ghcr-cleanup
   cancel-in-progress: false
@@ -69,6 +74,18 @@ jobs:
           - synthorg-sidecar-base
           - synthorg-fine-tune-base
     steps:
+      # On a live run (dry-run: false) with no dedicated PAT, deletions
+      # fall back to the default GITHUB_TOKEN. Surface which identity is
+      # doing the deleting so a live run is never silently attributed.
+      - name: Warn when deleting with the default token
+        if: ${{ !inputs.dry-run }}
+        env:
+          CLEANUP_PAT: ${{ secrets.GHCR_CLEANUP_TOKEN }}
+        run: |
+          if [ -z "$CLEANUP_PAT" ]; then
+            echo "::warning::GHCR_CLEANUP_TOKEN is not set; live deletions run with the default GITHUB_TOKEN. Provision a classic PAT (write:packages + delete:packages) for an explicit deletion identity."
+          fi
+
       # Pass 1 -- dev builds: keep the newest 5 dev manifests, delete the
       # rest. `keep-n-tagged` is scoped to the `delete-tags` dev subset,
       # so releases are outside its reach; deleting an old multi-arch dev
@@ -116,6 +133,6 @@ jobs:
           token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
           use-regex: true
           delete-orphaned-images: true
-          exclude-tags: '^\d+\.\d+\.\d+$,^\d+\.\d+$,^latest$,^dev$'
+          exclude-tags: '^\d+\.\d+\.\d+$,^\d+\.\d+$,^latest$,^dev$,^\d+\.\d+\.\d+-dev\.\d+$'
           validate: true
           dry-run: ${{ inputs.dry-run }}
