@@ -4,7 +4,7 @@ Frozen Pydantic models defining per-strategy, trigger, and guard
 configuration for the scaling service.
 """
 
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -168,16 +168,68 @@ class TriggerConfig(BaseModel):
     """Configuration for scaling triggers.
 
     Attributes:
+        type: Trigger discriminator (``batched`` default preserves the
+            time-interval-only behaviour).
         batched_interval_seconds: Interval for the batched trigger.
+        signal_name: Signal the ``signal_threshold`` trigger watches.
+        signal_threshold: Threshold value for the ``signal_threshold``
+            trigger.
+        signal_above: When True, fire on an upward crossing; when False,
+            on a downward crossing.
+        composite_members: Leaf triggers combined (OR) by the
+            ``composite`` trigger.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    type: Literal["batched", "composite", "signal_threshold"] = Field(
+        default="batched",
+        description="Trigger selector (batched preserves current behaviour)",
+    )
     batched_interval_seconds: int = Field(
         default=900,
         ge=60,
         description="Batched trigger interval",
     )
+    signal_name: NotBlankStr = Field(
+        default=NotBlankStr("avg_utilization"),
+        description="Signal the signal_threshold trigger watches",
+    )
+    signal_threshold: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description="Threshold for the signal_threshold trigger",
+    )
+    signal_above: bool = Field(
+        default=True,
+        description="Fire on an upward crossing when True, else downward",
+    )
+    composite_members: tuple[Literal["batched", "signal_threshold"], ...] = Field(
+        default=("batched", "signal_threshold"),
+        description="Leaf triggers combined (OR) by the composite trigger",
+    )
+
+    @model_validator(mode="after")
+    def _validate_composite_members(self) -> Self:
+        """Require non-empty members when the composite trigger is selected.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
+        if self.type == "composite" and not self.composite_members:
+            msg = "composite trigger requires a non-empty composite_members"
+            logger.warning(
+                HR_SCALING_CONFIG_VALIDATION_FAILED,
+                model="TriggerConfig",
+                field="composite_members",
+                reason="empty",
+            )
+            raise ValueError(msg)
+        return self
 
 
 class GuardConfig(BaseModel):

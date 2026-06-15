@@ -8,6 +8,7 @@ from synthorg.engine.coordination.context_dependent_dispatcher import (
 from synthorg.engine.coordination.dispatcher_types import TopologyDispatcher
 from synthorg.engine.coordination.sas_dispatcher import SasDispatcher
 from synthorg.engine.coordination.wave_dispatcher import WaveDispatcher
+from synthorg.engine.middleware.orchestrator_strategy import OrchestratorStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
     COORDINATION_PHASE_FAILED,
@@ -21,6 +22,7 @@ def select_dispatcher(
     topology: CoordinationTopology,
     *,
     clock: Clock | None = None,
+    orchestrator_strategy: OrchestratorStrategy | None = None,
 ) -> TopologyDispatcher:
     """Select the appropriate dispatcher for a topology.
 
@@ -29,6 +31,9 @@ def select_dispatcher(
         clock: Time source threaded into the dispatcher and the
             shared workspace/wave helpers so elapsed instrumentation
             uses the injected seam. Defaults to ``SystemClock``.
+        orchestrator_strategy: Subtask-selection strategy injected into
+            the centralized ``WaveDispatcher``. ``None`` keeps the
+            original dispatch order (the ``naive`` default behaviour).
 
     Returns:
         A dispatcher instance for the topology.
@@ -45,6 +50,7 @@ def select_dispatcher(
                 clock=clock,
                 isolation_required=False,
                 topology_label="centralized",
+                orchestrator_strategy=orchestrator_strategy,
             )
         case CoordinationTopology.DECENTRALIZED:
             dispatcher = WaveDispatcher(

@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Memory retrieval pipeline configuration.
 
 Frozen Pydantic config for the retrieval pipeline -- weights,
@@ -41,6 +42,9 @@ class MemoryRetrievalConfig(BaseModel):
         injection_point: Message role for context injection.
         non_inferable_only: When True, auto-creates a ``TagBasedMemoryFilter``
             in ``ContextInjectionStrategy`` if no explicit filter is provided.
+        memory_filter_strategy: Post-ranking filter selector ``off`` /
+            ``tag_based`` / ``passthrough``; ``off`` defers to
+            ``non_inferable_only``.
         fusion_strategy: Ranking fusion strategy -- LINEAR for single-source
             relevance+recency, RRF for multi-source ranked list merging.
         rrf_k: RRF smoothing constant (1-1000, only used with RRF strategy).
@@ -122,6 +126,17 @@ class MemoryRetrievalConfig(BaseModel):
     non_inferable_only: bool = Field(
         default=False,
         description="When True, only inject memories tagged as non-inferable",
+    )
+    memory_filter_strategy: Literal["off", "tag_based", "passthrough"] = Field(
+        default="off",
+        description=(
+            "Post-ranking memory filter selector consumed by "
+            "ContextInjectionStrategy.  'off' (default) defers to the "
+            "legacy non_inferable_only flag; 'tag_based' always retains "
+            "only non-inferable-tagged memories; 'passthrough' injects "
+            "every ranked memory.  An explicitly injected memory_filter "
+            "overrides this discriminator."
+        ),
     )
     fusion_strategy: FusionStrategy = Field(
         default=FusionStrategy.LINEAR,
@@ -268,6 +283,29 @@ class MemoryRetrievalConfig(BaseModel):
                 reason=msg,
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_memory_filter_strategy_consistency(self) -> Self:
+        """Warn when memory_filter_strategy contradicts non_inferable_only.
+
+        Selecting ``passthrough`` while ``non_inferable_only`` is set is
+        contradictory: the discriminator wins and injects every memory,
+        silently overriding the non-inferable intent.
+
+        Returns:
+            Result of type ``Self``.
+        """
+        if self.memory_filter_strategy == "passthrough" and self.non_inferable_only:
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="memory_filter_strategy",
+                value=self.memory_filter_strategy,
+                reason=(
+                    "memory_filter_strategy='passthrough' overrides "
+                    "non_inferable_only=True; all memories are injected"
+                ),
+            )
         return self
 
     @model_validator(mode="after")

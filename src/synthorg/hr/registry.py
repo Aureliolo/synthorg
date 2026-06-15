@@ -284,6 +284,23 @@ class AgentRegistryService:
                 a for a in self._agents.values() if a.status == AgentStatus.ACTIVE
             )
 
+    def active_agent_ids(self) -> tuple[str, ...]:
+        """Snapshot the ids of active agents synchronously (lock-free).
+
+        Provides the synchronous agent-id source the performance signal
+        aggregator's ``agent_ids_provider`` contract requires. The read
+        is a best-effort point-in-time snapshot rather than a
+        lock-guarded view: an id appearing or disappearing between turns
+        only shifts which agents the aggregator queries on the next read,
+        which is acceptable for an observability signal.
+
+        Returns:
+            The ids of the currently ACTIVE agents.
+        """
+        return tuple(
+            str(a.id) for a in self._agents.values() if a.status == AgentStatus.ACTIVE
+        )
+
     async def list_by_department(
         self,
         department: NotBlankStr,

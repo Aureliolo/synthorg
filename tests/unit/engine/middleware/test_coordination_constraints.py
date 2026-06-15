@@ -278,12 +278,12 @@ class TestMagenticReplanHook:
     """MagenticReplanHook with stall detection and caps."""
 
     async def test_no_progress_ledger_no_replan(self) -> None:
-        hook = MagenticReplanHook()
+        hook = MagenticReplanHook(max_stall_count=3, max_reset_count=2)
         ctx = _mw_context(progress_ledger=None)
         assert await hook.should_replan(ctx) is False
 
     async def test_no_stall_no_replan(self) -> None:
-        hook = MagenticReplanHook()
+        hook = MagenticReplanHook(max_stall_count=3, max_reset_count=2)
         progress = ProgressLedger(
             round_number=1,
             progress_made=True,
@@ -293,7 +293,7 @@ class TestMagenticReplanHook:
         assert await hook.should_replan(ctx) is False
 
     async def test_stall_triggers_replan(self) -> None:
-        hook = MagenticReplanHook(max_stall_count=3)
+        hook = MagenticReplanHook(max_stall_count=3, max_reset_count=2)
         progress = ProgressLedger(
             round_number=2,
             progress_made=False,
@@ -304,7 +304,7 @@ class TestMagenticReplanHook:
         assert await hook.should_replan(ctx) is True
 
     async def test_stall_cap_blocks_replan(self) -> None:
-        hook = MagenticReplanHook(max_stall_count=2)
+        hook = MagenticReplanHook(max_stall_count=2, max_reset_count=2)
         progress = ProgressLedger(
             round_number=3,
             progress_made=False,
@@ -315,7 +315,7 @@ class TestMagenticReplanHook:
         assert await hook.should_replan(ctx) is False
 
     async def test_reset_cap_blocks_replan(self) -> None:
-        hook = MagenticReplanHook(max_reset_count=1)
+        hook = MagenticReplanHook(max_stall_count=3, max_reset_count=1)
         progress = ProgressLedger(
             round_number=2,
             progress_made=False,
@@ -327,7 +327,7 @@ class TestMagenticReplanHook:
         assert await hook.should_replan(ctx) is False
 
     async def test_replan_increments_reset(self) -> None:
-        hook = MagenticReplanHook()
+        hook = MagenticReplanHook(max_stall_count=3, max_reset_count=2)
         progress = ProgressLedger(
             round_number=2,
             progress_made=False,
@@ -362,7 +362,7 @@ class TestReplanMiddleware:
         assert result is ctx
 
     async def test_with_replan_hook(self) -> None:
-        hook = MagenticReplanHook(max_stall_count=5)
+        hook = MagenticReplanHook(max_stall_count=5, max_reset_count=2)
         mw = ReplanMiddleware(replan_hook=hook)
         progress = ProgressLedger(
             round_number=2,

@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from synthorg.api._app_wiring import (
     _try_wire_cockpit,
     _try_wire_cost_dial,
-    _wire_environment_service,
+    _try_wire_environment_service,
 )
 from synthorg.api._benchmark_wiring import seed_benchmark_scores
 from synthorg.api.app_helpers import resolve_agent_workspace_root_env
@@ -187,8 +187,10 @@ async def install_runtime_services(
         )
 
     # Per-project reproducible environment substrate (extracted to
-    # keep this hook under the cyclomatic-complexity cap).
-    _wire_environment_service(app_state)
+    # keep this hook under the cyclomatic-complexity cap). Best-effort:
+    # a misconfigured environment must 503 its controllers, not poison
+    # the whole startup.
+    _try_wire_environment_service(app_state)
 
     try:
         services = await build_runtime_services(

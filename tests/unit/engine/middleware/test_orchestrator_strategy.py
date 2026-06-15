@@ -2,11 +2,13 @@
 
 import pytest
 
+from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.engine.middleware.models import ProgressLedger
 from synthorg.engine.middleware.orchestrator_strategy import (
     MagenticDynamicSelectStrategy,
     NaiveDispatchStrategy,
     OrchestratorStrategy,
+    create_orchestrator_strategy,
 )
 
 # ── Protocol compliance ───────────────────────────────────────────
@@ -115,3 +117,25 @@ class TestMagenticDynamicSelectStrategy:
         result = await s.select_subtasks(ids, progress)
         # st-3 first, then st-1, st-2 in original order
         assert result == ("st-3", "st-1", "st-2")
+
+
+# ── create_orchestrator_strategy factory ──────────────────────────
+
+
+@pytest.mark.unit
+class TestCreateOrchestratorStrategy:
+    """create_orchestrator_strategy maps a discriminator to a strategy."""
+
+    def test_naive_is_safe_default(self) -> None:
+        strategy = create_orchestrator_strategy("naive")
+        assert isinstance(strategy, NaiveDispatchStrategy)
+        assert strategy.name == "naive"
+
+    def test_magentic_dynamic(self) -> None:
+        strategy = create_orchestrator_strategy("magentic_dynamic")
+        assert isinstance(strategy, MagenticDynamicSelectStrategy)
+        assert strategy.name == "magentic_dynamic"
+
+    def test_unknown_strategy_raises(self) -> None:
+        with pytest.raises(StrategyFactoryNotFoundError):
+            create_orchestrator_strategy("bogus")

@@ -33,11 +33,13 @@ from synthorg.hr.scaling.models import (
     ScalingActionRecord,
     ScalingContext,
     ScalingDecision,
+    ScalingSignal,
 )
 from synthorg.hr.scaling.protocols import (
     ScalingGuard,
     ScalingStrategy,
     ScalingTrigger,
+    SignalAwareTrigger,
 )
 from synthorg.observability import (
     get_logger,
@@ -182,6 +184,22 @@ class ScalingService:
         if self._trigger is None:
             return True
         return await self._trigger.should_trigger()
+
+    async def update_signal(self, signal: ScalingSignal) -> None:
+        """Push the latest signal into a signal-aware trigger.
+
+        Out-of-band feed used by signal sources so a
+        ``SignalThresholdTrigger`` (or a composite containing one) can
+        detect a crossing before the next ``evaluate`` polls
+        ``should_trigger``. Triggers that do not consume signals (the
+        ``batched`` default, or no trigger at all) ignore the push, so
+        the historical behaviour is unchanged.
+
+        Args:
+            signal: Current signal value to track for crossings.
+        """
+        if isinstance(self._trigger, SignalAwareTrigger):
+            await self._trigger.update_signal(signal)
 
     def update_priority_order(
         self,

@@ -546,6 +546,62 @@ class TestMemoryFilterIntegration:
         assert "tagged memory" in content
         assert "untagged memory" not in content
 
+    async def test_memory_filter_strategy_tag_based(self) -> None:
+        """memory_filter_strategy='tag_based' retains only tagged memories."""
+        tagged = _make_entry(
+            entry_id="tagged", content="tagged memory", relevance_score=0.9
+        ).model_copy(
+            update={"metadata": MemoryMetadata(tags=(NON_INFERABLE_TAG,))},
+        )
+        untagged = _make_entry(
+            entry_id="untagged", content="untagged memory", relevance_score=0.9
+        )
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((tagged, untagged)),
+            config=MemoryRetrievalConfig(
+                min_relevance=0.0,
+                memory_filter_strategy="tag_based",
+            ),
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=5000,
+        )
+        _, memory_message = result
+        content = memory_message.content
+        assert content is not None
+        assert "tagged memory" in content
+        assert "untagged memory" not in content
+
+    async def test_memory_filter_strategy_passthrough_injects_all(self) -> None:
+        """memory_filter_strategy='passthrough' injects every memory."""
+        tagged = _make_entry(
+            entry_id="tagged", content="tagged memory", relevance_score=0.9
+        ).model_copy(
+            update={"metadata": MemoryMetadata(tags=(NON_INFERABLE_TAG,))},
+        )
+        untagged = _make_entry(
+            entry_id="untagged", content="untagged memory", relevance_score=0.9
+        )
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((tagged, untagged)),
+            config=MemoryRetrievalConfig(
+                min_relevance=0.0,
+                memory_filter_strategy="passthrough",
+            ),
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=5000,
+        )
+        _, memory_message = result
+        content = memory_message.content
+        assert content is not None
+        assert "tagged memory" in content
+        assert "untagged memory" in content
+
     async def test_filter_failure_fails_closed(self) -> None:
         """Filter error returns no messages (fail closed, never leak)."""
 

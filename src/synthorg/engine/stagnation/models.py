@@ -7,7 +7,7 @@ and its implementations.
 
 import copy
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -94,6 +94,62 @@ class StagnationConfig(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+
+class QualityErosionConfig(BaseModel):
+    """Configuration for the quality-erosion stagnation detector.
+
+    Attributes:
+        threshold: Structural erosion score (0.0-1.0) that triggers
+            detection.
+        window_size: Number of recent tool-bearing turns analysed for
+            erosion.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Structural erosion score that triggers detection",
+    )
+    window_size: int = Field(
+        default=10,
+        ge=2,
+        le=50,
+        description="Number of recent tool-bearing turns to analyse",
+    )
+
+
+class StagnationDetectionConfig(BaseModel):
+    """Selects the intra-loop stagnation detector wired into the engine.
+
+    The ``off`` default reproduces the historical boot, where the engine
+    runs without a stagnation detector. ``tool_repetition`` and
+    ``quality_erosion`` activate the matching detector with the
+    co-located sub-config.
+
+    Attributes:
+        strategy: Which detector to build (``off`` disables detection).
+        tool_repetition: Config for the tool-repetition detector.
+        quality_erosion: Config for the quality-erosion detector.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    strategy: Literal["off", "tool_repetition", "quality_erosion"] = Field(
+        default="off",
+        description="Stagnation detector selector (off disables detection)",
+    )
+    tool_repetition: StagnationConfig = Field(
+        default_factory=StagnationConfig,
+        description="Config for the tool-repetition detector",
+    )
+    quality_erosion: QualityErosionConfig = Field(
+        default_factory=QualityErosionConfig,
+        description="Config for the quality-erosion detector",
+    )
 
 
 class StagnationResult(BaseModel):

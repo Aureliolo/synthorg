@@ -25,6 +25,8 @@ from synthorg.engine.coordination.group_builder import build_execution_waves
 from synthorg.engine.coordination.models import CoordinationPhaseResult
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.errors import CoordinationError
+from synthorg.engine.middleware.orchestrator_strategy import OrchestratorStrategy
+from synthorg.engine.parallel_models import ParallelExecutionGroup
 from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.engine.workspace.models import Workspace, WorkspaceGroupResult
@@ -46,6 +48,11 @@ class WaveDispatcher:
             isolation is best-effort and skipped when unavailable.
         topology_label: Topology name carried for the precondition
             message and the ``COORDINATION_PHASE_FAILED`` phase tag.
+        orchestrator_strategy: Optional subtask-selection strategy. When
+            supplied, each built wave's assignments are reordered via
+            ``select_subtasks`` before execution (so a max-concurrency
+            cap dispatches the prioritised subtasks first). ``None`` and
+            the ``naive`` strategy both preserve the original order.
     """
 
     def __init__(
@@ -54,10 +61,12 @@ class WaveDispatcher:
         clock: Clock | None = None,
         isolation_required: bool,
         topology_label: str,
+        orchestrator_strategy: OrchestratorStrategy | None = None,
     ) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._isolation_required = isolation_required
         self._topology_label = topology_label
+        self._orchestrator_strategy = orchestrator_strategy
 
     async def dispatch(  # noqa: PLR0913 -- dispatch contract surface
         self,
@@ -122,6 +131,7 @@ class WaveDispatcher:
                 config=config,
                 workspaces=workspaces,
             )
+            groups = await self._apply_orchestrator_strategy(groups)
 
             waves, exec_phases = await execute_waves(
                 groups,
@@ -157,3 +167,36 @@ class WaveDispatcher:
         finally:
             if workspaces and workspace_service is not None:
                 await teardown_workspaces(workspace_service, workspaces)
+
+    async def _apply_orchestrator_strategy(
+        self,
+        groups: tuple[ParallelExecutionGroup, ...],
+    ) -> tuple[ParallelExecutionGroup, ...]:
+        """Reorder each wave's assignments via the orchestrator strategy.
+
+        A no-op when no strategy is wired. Single-pass dispatch has no
+        progress ledger, so ``select_subtasks`` is invoked with
+        ``progress=None``; both shipped strategies then preserve the
+        original order, leaving behaviour unchanged until a progress-
+        bearing replan loop drives the selection.
+
+        Returns:
+            The groups with each one's assignments reordered to match the
+            strategy's subtask ordering.
+        """
+        strategy = self._orchestrator_strategy
+        if strategy is None:
+            return groups
+        reordered: list[ParallelExecutionGroup] = []
+        for group in groups:
+            by_id = {str(a.task.id): a for a in group.assignments}
+            ordered_ids = await strategy.select_subtasks(tuple(by_id), None)
+            ordered = tuple(by_id[i] for i in ordered_ids if i in by_id)
+            ordered_set = set(ordered_ids)
+            missing = tuple(
+                a for a in group.assignments if str(a.task.id) not in ordered_set
+            )
+            reordered.append(
+                group.model_copy(update={"assignments": ordered + missing})
+            )
+        return tuple(reordered)

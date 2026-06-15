@@ -67,6 +67,29 @@ class TestCompositeScalingTrigger:
         composite = CompositeScalingTrigger(triggers=(batched, threshold))
         assert (await composite.should_trigger()) is expect_trigger
 
+    async def test_update_signal_forwards_to_signal_aware_children(self) -> None:
+        threshold = SignalThresholdTrigger(
+            signal_name=NotBlankStr("utilization"),
+            threshold=0.85,
+        )
+        batched = BatchedScalingTrigger(interval_seconds=900)
+        await batched.should_trigger()
+        await batched.record_run()
+        composite = CompositeScalingTrigger(triggers=(batched, threshold))
+
+        def _signal(value: float) -> ScalingSignal:
+            return ScalingSignal(
+                name=NotBlankStr("utilization"),
+                value=value,
+                source=NotBlankStr("test"),
+                timestamp=_NOW,
+            )
+
+        # Push through the composite; only the threshold child consumes it.
+        await composite.update_signal(_signal(0.80))
+        await composite.update_signal(_signal(0.90))
+        assert await threshold.should_trigger() is True
+
     async def test_empty_triggers_returns_false(self) -> None:
         composite = CompositeScalingTrigger(triggers=())
         assert await composite.should_trigger() is False

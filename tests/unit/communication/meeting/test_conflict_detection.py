@@ -20,6 +20,24 @@ from synthorg.communication.meeting.conflict_detection import (
     LlmJudgeDetector,
     StructuredComparisonDetector,
 )
+from synthorg.communication.meeting.embedder import HashingTextEmbedder
+
+_DIVERGENT = json.dumps(
+    {
+        "positions": [
+            {"recommendation": "approve the budget increase for cloud scaling"},
+            {"recommendation": "reject all spending freeze hiring postpone forever"},
+        ]
+    }
+)
+_AGREEING = json.dumps(
+    {
+        "positions": [
+            {"recommendation": "approve the budget increase for cloud scaling"},
+            {"recommendation": "approve the budget increase for cloud scaling"},
+        ]
+    }
+)
 
 
 @pytest.mark.unit
@@ -356,20 +374,50 @@ class TestLlmJudgeDetector:
 class TestEmbeddingSimilarityDetector:
     """Tests for EmbeddingSimilarityDetector."""
 
-    def test_raises_not_implemented(self) -> None:
-        """detect() raises NotImplementedError until infra is available."""
-        detector = EmbeddingSimilarityDetector()
-        with pytest.raises(NotImplementedError, match="Embedding infrastructure"):
-            detector.detect("anything")
+    def test_detects_divergent_positions(self) -> None:
+        """Dissimilar positions (low cosine) are flagged as conflicting."""
+        detector = EmbeddingSimilarityDetector(embedder=HashingTextEmbedder())
+        assert detector.detect(_DIVERGENT) is True
+
+    def test_agreeing_positions_not_conflicting(self) -> None:
+        """Identical positions (cosine 1.0) are not flagged."""
+        detector = EmbeddingSimilarityDetector(embedder=HashingTextEmbedder())
+        assert detector.detect(_AGREEING) is False
+
+    def test_single_position_not_conflicting(self) -> None:
+        """Fewer than two positions cannot conflict."""
+        detector = EmbeddingSimilarityDetector(embedder=HashingTextEmbedder())
+        response = json.dumps({"position": {"recommendation": "ship it"}})
+        assert detector.detect(response) is False
+
+    def test_two_empty_positions_not_conflicting(self) -> None:
+        """Two identity-only positions both embed to zero; not a conflict."""
+        detector = EmbeddingSimilarityDetector(embedder=HashingTextEmbedder())
+        response = json.dumps(
+            {
+                "positions": [
+                    {"agent_id": "agent-1", "role": "engineer"},
+                    {"agent_id": "agent-2", "role": "designer"},
+                ]
+            }
+        )
+        assert detector.detect(response) is False
+
+    def test_non_json_not_conflicting(self) -> None:
+        """A response with no positions cannot conflict."""
+        detector = EmbeddingSimilarityDetector(embedder=HashingTextEmbedder())
+        assert detector.detect("free-form prose, no positions") is False
 
     def test_accepts_similarity_threshold(self) -> None:
         """Accepts custom similarity threshold."""
-        detector = EmbeddingSimilarityDetector(similarity_threshold=0.5)
+        detector = EmbeddingSimilarityDetector(
+            embedder=HashingTextEmbedder(), similarity_threshold=0.5
+        )
         assert detector.similarity_threshold == 0.5
 
     def test_default_threshold_is_0_7(self) -> None:
         """Default similarity threshold is 0.7."""
-        detector = EmbeddingSimilarityDetector()
+        detector = EmbeddingSimilarityDetector(embedder=HashingTextEmbedder())
         assert detector.similarity_threshold == 0.7
 
 
@@ -378,32 +426,38 @@ class TestHybridDetector:
     """Tests for HybridDetector."""
 
     def test_detects_conflicts_via_keyword_fallback(self) -> None:
-        """Detect conflicts through keyword fallback."""
-        detector = HybridDetector()
+        """Detect conflicts through keyword fallback when embedding agrees."""
+        detector = HybridDetector(embedder=HashingTextEmbedder())
         response = "CONFLICTS: YES - scope disagreement"
         assert detector.detect(response) is True
 
+    def test_detects_conflicts_via_embedding(self) -> None:
+        """Detect conflicts through the embedding leg (no keyword marker)."""
+        detector = HybridDetector(embedder=HashingTextEmbedder())
+        assert detector.detect(_DIVERGENT) is True
+
     def test_no_conflicts_via_keyword_fallback(self) -> None:
-        """No conflicts when keyword absent."""
-        detector = HybridDetector()
+        """No conflicts when keyword absent and positions agree."""
+        detector = HybridDetector(embedder=HashingTextEmbedder())
         response = "All positions align on timing"
         assert detector.detect(response) is False
 
     def test_accepts_custom_threshold(self) -> None:
         """Accepts custom similarity threshold."""
-        detector = HybridDetector(similarity_threshold=0.5)
-        # Verify it's stored in the embedding detector
+        detector = HybridDetector(
+            embedder=HashingTextEmbedder(), similarity_threshold=0.5
+        )
         assert detector.embedding_detector.similarity_threshold == 0.5
 
     def test_has_both_detectors(self) -> None:
         """Initializes both embedding and keyword detectors."""
-        detector = HybridDetector()
+        detector = HybridDetector(embedder=HashingTextEmbedder())
         assert isinstance(detector.embedding_detector, EmbeddingSimilarityDetector)
         assert isinstance(detector.keyword_detector, KeywordConflictDetector)
 
     def test_handles_json_response_via_keyword(self) -> None:
         """Handle JSON responses via keyword fallback."""
-        detector = HybridDetector()
+        detector = HybridDetector(embedder=HashingTextEmbedder())
         response = json.dumps(
             {
                 "positions": [{"stance": "yes"}],
@@ -533,15 +587,15 @@ class TestDetectorProtocolCompliance:
         assert isinstance(result, bool)
 
     def test_embedding_detector_has_detect_method(self) -> None:
-        """EmbeddingSimilarityDetector has detect but raises NotImplementedError."""
-        detector = EmbeddingSimilarityDetector()
+        """EmbeddingSimilarityDetector has detect(response_content: str) -> bool."""
+        detector = EmbeddingSimilarityDetector(embedder=HashingTextEmbedder())
         assert callable(detector.detect)
-        with pytest.raises(NotImplementedError):
-            detector.detect("test")
+        result = detector.detect("test")
+        assert isinstance(result, bool)
 
     def test_hybrid_detector_has_detect_method(self) -> None:
         """HybridDetector has detect(response_content: str) -> bool."""
-        detector = HybridDetector()
+        detector = HybridDetector(embedder=HashingTextEmbedder())
         assert callable(detector.detect)
         result = detector.detect("test")
         assert isinstance(result, bool)

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.communication.conflict_resolution.escalation.in_memory_store import (
     InMemoryEscalationStore,
 )
@@ -34,6 +35,7 @@ from synthorg.communication.errors import (
     EscalationDecisionAgentError,
     EscalationDecisionShapeError,
 )
+from synthorg.core.approval import ApprovalItem
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from tests._shared import as_uuid, mock_of, sid
 
@@ -57,6 +59,42 @@ def _tracking_registry() -> tuple[PendingFuturesRegistry, asyncio.Queue[str]]:
 
     registry.register = tracked  # type: ignore[method-assign]
     return registry, enqueued
+
+
+@pytest.mark.unit
+class TestApprovalStoreRouting:
+    """The resolver mirrors the conflict into the approval queue in parallel."""
+
+    async def test_routes_to_approval_store_when_injected(self) -> None:
+        added: list[ApprovalItem] = []
+
+        async def _record(item: ApprovalItem) -> None:
+            added.append(item)
+
+        store = mock_of[ApprovalStoreProtocol](add=_record)
+        resolver = HumanEscalationResolver(approval_store=store, timeout_seconds=0)
+        conflict = make_conflict()
+        await resolver.resolve(conflict)
+        await asyncio.gather(*tuple(resolver._approval_tasks))
+        assert len(added) == 1
+        assert added[0].action_type == "conflict.escalation"
+        assert added[0].metadata["conflict_id"] == str(conflict.id)
+
+    async def test_no_submission_without_approval_store(self) -> None:
+        resolver = HumanEscalationResolver(timeout_seconds=0)
+        await resolver.resolve(make_conflict())
+        assert resolver._approval_tasks == set()
+
+    async def test_store_failure_does_not_break_escalation(self) -> None:
+        async def _boom(_item: ApprovalItem) -> None:
+            msg = "approval store down"
+            raise RuntimeError(msg)
+
+        store = mock_of[ApprovalStoreProtocol](add=_boom)
+        resolver = HumanEscalationResolver(approval_store=store, timeout_seconds=0)
+        resolution = await resolver.resolve(make_conflict())
+        await asyncio.gather(*tuple(resolver._approval_tasks), return_exceptions=True)
+        assert resolution.outcome == ConflictResolutionOutcome.ESCALATED_TO_HUMAN
 
 
 @pytest.mark.unit

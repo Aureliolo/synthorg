@@ -1,6 +1,6 @@
 """Meeting protocol configuration models (see Communication design page)."""
 
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -113,6 +113,14 @@ class StructuredPhasesConfig(BaseModel):
     conflict_detector: ConflictDetectorType = Field(
         default=ConflictDetectorType.KEYWORD,
         description="Conflict-detection strategy discriminator",
+    )
+    embedder_strategy: Literal["hashing", "sentence_transformer"] = Field(
+        default="hashing",
+        description=(
+            "Text-embedding backend for the embedding / hybrid conflict"
+            " detectors. 'hashing' (default) is dependency-free;"
+            " 'sentence_transformer' needs the optional extra."
+        ),
     )
 
 

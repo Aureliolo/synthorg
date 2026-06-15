@@ -38,12 +38,10 @@ from synthorg.observability.events.middleware import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.budget.enforcer import BudgetEnforcer
+    from synthorg.budget.affordability import BudgetAffordabilityChecker
 
 logger = get_logger(__name__)
 _DEFAULT_ESCALATION_THRESHOLD: Final[int] = 3
-_DEFAULT_MAX_STALL_COUNT: Final[int] = 3
-_DEFAULT_MAX_RESET_COUNT: Final[int] = 2
 
 
 # ── TaskLedgerMiddleware ──────────────────────────────────────────
@@ -276,15 +274,16 @@ class MagenticReplanHook:
     Args:
         max_stall_count: Maximum consecutive stalls before escalation.
         max_reset_count: Maximum replan cycles before escalation.
-        budget_enforcer: Optional budget enforcer for affordability checks.
+        budget_enforcer: Optional affordability checker gating an
+            affordable replan.
     """
 
     def __init__(
         self,
         *,
-        max_stall_count: int = _DEFAULT_MAX_STALL_COUNT,
-        max_reset_count: int = _DEFAULT_MAX_RESET_COUNT,
-        budget_enforcer: BudgetEnforcer | None = None,
+        max_stall_count: int,
+        max_reset_count: int,
+        budget_enforcer: BudgetAffordabilityChecker | None = None,
     ) -> None:
         self._max_stall_count = max_stall_count
         self._max_reset_count = max_reset_count

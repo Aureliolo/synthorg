@@ -135,6 +135,17 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         budget_config=budget_config,
         clock=app_state.clock.now,
     )
+    # Build the shared budget enforcer the coordination replan gate
+    # consults for affordability. Needs the live cost tracker; a
+    # persistence-less / tracker-absent boot leaves it None and the
+    # magentic replan hook simply skips the affordability check.
+    from synthorg.budget.enforcer import BudgetEnforcer  # noqa: PLC0415
+
+    budget_enforcer = (
+        BudgetEnforcer(budget_config=budget_config, cost_tracker=cost_tracker)
+        if cost_tracker is not None
+        else None
+    )
     app_state.wire(
         BudgetStateSlice,
         budget_config=budget_config,
@@ -144,6 +155,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         cost_forecaster=forecaster,
         pareto_analyzer=analyzer,
         forecast_service=forecast_service,
+        budget_enforcer=budget_enforcer,
     )
 
 
@@ -376,9 +388,25 @@ def _wire_environment_service(app_state: AppState) -> None:
     )
 
 
+def _try_wire_environment_service(app_state: AppState) -> None:
+    """Wire the environment substrate best-effort; never poison startup."""
+    try:
+        _wire_environment_service(app_state)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="environment",
+            note="environment wiring failed; controllers will 503",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
 __all__ = [
     "_try_wire_cockpit",
     "_try_wire_cost_dial",
+    "_try_wire_environment_service",
     "_wire_cockpit_services",
     "_wire_cost_dial_services",
     "_wire_environment_service",

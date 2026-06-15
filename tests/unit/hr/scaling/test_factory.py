@@ -10,6 +10,7 @@ from synthorg.hr.scaling.config import (
     PerformancePruningConfig,
     ScalingConfig,
     SkillGapConfig,
+    TriggerConfig,
     WorkloadScalingConfig,
 )
 from synthorg.hr.scaling.factory import (
@@ -18,6 +19,9 @@ from synthorg.hr.scaling.factory import (
     create_scaling_strategies,
     create_scaling_trigger,
 )
+from synthorg.hr.scaling.triggers.batched import BatchedScalingTrigger
+from synthorg.hr.scaling.triggers.composite import CompositeScalingTrigger
+from synthorg.hr.scaling.triggers.threshold import SignalThresholdTrigger
 from synthorg.meta.learning_curve import ScorecardSummary, append_summary
 
 
@@ -96,6 +100,29 @@ class TestCreateScalingTrigger:
         config = ScalingConfig()
         trigger = create_scaling_trigger(config)
         assert trigger.name == "batched"
+        assert isinstance(trigger, BatchedScalingTrigger)
+
+    def test_creates_signal_threshold_trigger(self) -> None:
+        config = ScalingConfig(triggers=TriggerConfig(type="signal_threshold"))
+        trigger = create_scaling_trigger(config)
+        assert trigger.name == "signal_threshold"
+        assert isinstance(trigger, SignalThresholdTrigger)
+
+    def test_creates_composite_trigger(self) -> None:
+        config = ScalingConfig(triggers=TriggerConfig(type="composite"))
+        trigger = create_scaling_trigger(config)
+        assert trigger.name == "composite"
+        assert isinstance(trigger, CompositeScalingTrigger)
+
+    def test_composite_with_single_member(self) -> None:
+        config = ScalingConfig(
+            triggers=TriggerConfig(
+                type="composite",
+                composite_members=("signal_threshold",),
+            )
+        )
+        trigger = create_scaling_trigger(config)
+        assert isinstance(trigger, CompositeScalingTrigger)
 
 
 @pytest.mark.unit

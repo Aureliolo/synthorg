@@ -449,6 +449,9 @@ def _coordination_get_side_effect(
         ("coordination", "base_branch"): "main",
         ("coordination", "max_stall_count"): "3",
         ("coordination", "max_reset_count"): "2",
+        ("coordination", "replan_strategy"): "noop",
+        ("coordination", "orchestrator_strategy"): "naive",
+        ("coordination", "max_delegation_rounds"): "3",
     }
     merged = {**defaults, **(overrides or {})}
 

@@ -1,14 +1,15 @@
+# module-kind: code
 """Memory filter strategies for non-inferable principle enforcement.
 
 Filters scored memories before injection into agent prompts.  The
-``TagBasedMemoryFilter`` (initial D23 implementation) retains only
-memories tagged with ``"non-inferable"``; the ``PassthroughMemoryFilter``
-is a no-op for backward compatibility and testing.
-
-Both satisfy the ``MemoryFilterStrategy`` runtime-checkable protocol.
+``TagBasedMemoryFilter`` retains only memories tagged with
+``"non-inferable"``; the ``PassthroughMemoryFilter`` is an explicit
+no-op.  Both satisfy the ``MemoryFilterStrategy`` runtime-checkable
+protocol and are selected by :func:`build_memory_filter` via the
+``memory_filter_strategy`` discriminator.
 """
 
-from typing import Final, Protocol, runtime_checkable
+from typing import Final, Literal, Protocol, assert_never, runtime_checkable
 
 from synthorg.memory.ranking import ScoredMemory
 from synthorg.observability import get_logger
@@ -102,3 +103,84 @@ class TagBasedMemoryFilter:
             ``"tag_based"``.
         """
         return "tag_based"
+
+
+class PassthroughMemoryFilter:
+    """No-op filter that injects every ranked memory unchanged.
+
+    Selected by ``memory_filter_strategy="passthrough"``.  Unlike a
+    ``None`` filter (the default ``off`` path), choosing passthrough is
+    an explicit opt-in that records the decision in the logs, so an
+    operator can distinguish "no filter configured" from "filtering
+    deliberately disabled".
+    """
+
+    def __init__(self) -> None:
+        logger.debug(
+            MEMORY_FILTER_INIT,
+            strategy=self.strategy_name,
+        )
+
+    def filter_for_injection(
+        self,
+        memories: tuple[ScoredMemory, ...],
+    ) -> tuple[ScoredMemory, ...]:
+        """Return all memories unchanged.
+
+        Args:
+            memories: Ranked scored memories.
+
+        Returns:
+            The input tuple, unmodified.
+        """
+        logger.info(
+            MEMORY_FILTER_APPLIED,
+            strategy=self.strategy_name,
+            candidates=len(memories),
+            retained=len(memories),
+        )
+        return memories
+
+    @property
+    def strategy_name(self) -> str:
+        """Human-readable name of the filter strategy.
+
+        Returns:
+            ``"passthrough"``.
+        """
+        return "passthrough"
+
+
+MemoryFilterStrategyName = Literal["off", "tag_based", "passthrough"]
+
+
+def build_memory_filter(
+    strategy: MemoryFilterStrategyName,
+    *,
+    non_inferable_only: bool,
+) -> MemoryFilterStrategy | None:
+    """Resolve the post-ranking memory filter from the discriminator.
+
+    The default ``off`` strategy defers to the legacy
+    ``non_inferable_only`` flag (auto-creating a
+    :class:`TagBasedMemoryFilter` only when it is set), so the shipped
+    default reproduces the historical behaviour exactly.  ``tag_based``
+    and ``passthrough`` select their filter unconditionally.
+
+    Args:
+        strategy: The ``memory_filter_strategy`` discriminator.
+        non_inferable_only: Legacy flag consulted only for ``off``.
+
+    Returns:
+        The selected filter, or ``None`` when ``off`` and
+        ``non_inferable_only`` is ``False`` (no filtering).
+    """
+    match strategy:
+        case "off":
+            return TagBasedMemoryFilter() if non_inferable_only else None
+        case "tag_based":
+            return TagBasedMemoryFilter()
+        case "passthrough":
+            return PassthroughMemoryFilter()
+        case _:  # pragma: no cover
+            assert_never(strategy)

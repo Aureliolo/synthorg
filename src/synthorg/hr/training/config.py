@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Training mode configuration.
 
 Frozen Pydantic configuration model with safe defaults for all
@@ -29,6 +30,27 @@ def _default_selector_config() -> dict[str, _ConfigValue]:
         Mapping from ``str`` to ``_ConfigValue``.
     """
     return {"top_n": 3}
+
+
+class CompositeSubSelector(BaseModel):
+    """A weighted child selector within a ``composite`` source selector.
+
+    Attributes:
+        selector_type: Child selector strategy name (any registered
+            selector except ``composite`` itself).
+        weight: Relative weight applied to the child's contribution.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    selector_type: NotBlankStr = Field(
+        description="Child selector strategy name",
+    )
+    weight: float = Field(
+        default=1.0,
+        gt=0.0,
+        description="Relative weight applied to the child's contribution",
+    )
 
 
 def _default_curation_config() -> dict[str, _ConfigValue]:
@@ -70,6 +92,7 @@ class TrainingConfig(BaseModel):
         enabled: Whether training mode is active.
         source_selector_type: Source selector strategy name.
         source_selector_config: Serialized config for the selector.
+        composite_sub_selectors: Weighted child selectors for ``composite``.
         curation_strategy_type: Curation strategy name.
         curation_strategy_config: Serialized config for curation.
         default_volume_caps: Default per-content-type hard limits.
@@ -92,6 +115,12 @@ class TrainingConfig(BaseModel):
     source_selector_config: dict[str, _ConfigValue] = Field(
         default_factory=_default_selector_config,
         description="Serialized config for the selector",
+    )
+    composite_sub_selectors: tuple[CompositeSubSelector, ...] = Field(
+        default=(),
+        description=(
+            "Weighted child selectors merged when source_selector_type is 'composite'"
+        ),
     )
     curation_strategy_type: NotBlankStr = Field(
         default="relevance",

@@ -23,7 +23,7 @@ import json
 from collections.abc import Mapping
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pydantic import BaseModel
 
@@ -761,6 +761,15 @@ class ConfigResolver:
                 t_reset = tg.create_task(
                     self.get_int("coordination", "max_reset_count")
                 )
+                t_replan = tg.create_task(
+                    self.get_str("coordination", "replan_strategy")
+                )
+                t_orch = tg.create_task(
+                    self.get_str("coordination", "orchestrator_strategy")
+                )
+                t_deleg = tg.create_task(
+                    self.get_int("coordination", "max_delegation_rounds")
+                )
         except ExceptionGroup as eg:
             first_failure = eg.exceptions[0]
             logger.warning(
@@ -784,6 +793,11 @@ class ConfigResolver:
             base_branch=t_branch.result(),
             max_stall_count=t_stall.result(),
             max_reset_count=t_reset.result(),
+            replan_strategy=cast("Literal['noop', 'magentic']", t_replan.result()),
+            orchestrator_strategy=cast(
+                "Literal['naive', 'magentic_dynamic']", t_orch.result()
+            ),
+            max_delegation_rounds=t_deleg.result(),
         )
 
     # ── Config-bridge composed reads (delegation + event-stream) ────

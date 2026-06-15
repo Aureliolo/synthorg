@@ -31,6 +31,7 @@ from synthorg.core.role import CustomRole
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
+from synthorg.engine.stagnation.models import StagnationDetectionConfig
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.workflow.config import WorkflowConfig
@@ -113,6 +114,7 @@ class RootConfig(BaseModel):
         queue: Distributed task queue configuration (opt-in, requires
             a distributed bus backend such as NATS).
         coordination: Multi-agent coordination configuration.
+        stagnation: Intra-loop stagnation detection selector and sub-configs.
         strategy: Strategy and trendslop mitigation configuration.
         git_clone: Git clone SSRF prevention network policy.
         backup: Backup and restore configuration.
@@ -263,6 +265,10 @@ class RootConfig(BaseModel):
     coordination: CoordinationSectionConfig = Field(
         default_factory=CoordinationSectionConfig,
         description="Multi-agent coordination configuration",
+    )
+    stagnation: StagnationDetectionConfig = Field(
+        default_factory=StagnationDetectionConfig,
+        description="Intra-loop stagnation detection selector and sub-configs",
     )
     strategy: StrategyConfig = Field(
         default_factory=StrategyConfig,

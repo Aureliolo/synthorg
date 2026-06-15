@@ -4,7 +4,7 @@ Bridges the ``coordination:`` section in company YAML to the
 per-run :class:`CoordinationConfig` used by :class:`MultiAgentCoordinator`.
 """
 
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -83,6 +83,29 @@ class CoordinationSectionConfig(BaseModel):
             parse=parse_int,
             only_if_env_set=True,
         ),
+        MirrorField(
+            field="enable_coordination_middleware",
+            namespace=SettingNamespace.COORDINATION,
+            key="enable_coordination_middleware",
+            parse=parse_bool,
+        ),
+        MirrorField(
+            field="replan_strategy",
+            namespace=SettingNamespace.COORDINATION,
+            key="replan_strategy",
+        ),
+        MirrorField(
+            field="orchestrator_strategy",
+            namespace=SettingNamespace.COORDINATION,
+            key="orchestrator_strategy",
+        ),
+        MirrorField(
+            field="max_delegation_rounds",
+            namespace=SettingNamespace.COORDINATION,
+            key="max_delegation_rounds",
+            parse=parse_int,
+            only_if_env_set=True,
+        ),
     )
 
     topology: CoordinationTopology = Field(
@@ -131,6 +154,27 @@ class CoordinationSectionConfig(BaseModel):
         ge=1,
         description="Max replan cycles before the coordinator escalates",
     )
+    enable_coordination_middleware: bool = Field(
+        default=False,
+        description=(
+            "Build and run the coordination middleware pipeline. Off by "
+            "default so wiring it in preserves current behaviour exactly."
+        ),
+    )
+    replan_strategy: Literal["noop", "magentic"] = Field(
+        default="noop",
+        description="Replan hook the middleware pipeline runs",
+    )
+    orchestrator_strategy: Literal["naive", "magentic_dynamic"] = Field(
+        default="naive",
+        description="Subtask-selection strategy for centralized dispatch",
+    )
+    max_delegation_rounds: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        description="Soft cap on delegation rounds; hard abort at 2x",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -165,4 +209,7 @@ class CoordinationSectionConfig(BaseModel):
             base_branch=self.base_branch,
             max_stall_count=self.max_stall_count,
             max_reset_count=self.max_reset_count,
+            replan_strategy=self.replan_strategy,
+            orchestrator_strategy=self.orchestrator_strategy,
+            max_delegation_rounds=self.max_delegation_rounds,
         )

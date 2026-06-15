@@ -155,10 +155,73 @@ def _build_department_diversity(
     )
 
 
+def _build_composite(
+    config: TrainingConfig,
+    *,
+    tracker: PerformanceTracker,
+    registry: AgentRegistryService,
+) -> SourceSelector:
+    """Build a composite selector that merges its child selectors.
+
+    Reads ``config.composite_sub_selectors``: a tuple of typed
+    ``CompositeSubSelector`` specs. Each child is built through this same
+    registry (so its own config keys still apply) and the weights are
+    threaded into the composite. Nesting a composite inside a composite is
+    rejected to keep the build finite.
+
+    Returns:
+        A :class:`CompositeSelector` over the configured children.
+
+    Raises:
+        ValueError: When ``composite_sub_selectors`` is empty or nests
+            another composite.
+    """
+    from synthorg.hr.training.source_selectors.composite import (  # noqa: PLC0415
+        CompositeSelector,
+    )
+
+    specs = config.composite_sub_selectors
+    if not specs:
+        msg = (
+            "composite source selector requires a non-empty "
+            "composite_sub_selectors tuple"
+        )
+        logger.warning(
+            HR_TRAINING_CONFIG_INVALID,
+            field="composite_sub_selectors",
+            expected="non_empty_tuple",
+            value_type=type(specs).__name__,
+        )
+        raise ValueError(msg)
+
+    selectors: list[SourceSelector] = []
+    weights: list[float] = []
+    for spec in specs:
+        child_type = str(spec.selector_type)
+        if child_type == "composite":
+            msg = "composite source selectors must not nest a composite"
+            logger.warning(
+                HR_TRAINING_CONFIG_INVALID,
+                field="composite_sub_selectors",
+                expected="child_selector_type_not_composite",
+                value_type=type(spec.selector_type).__name__,
+                value_repr=repr(spec.selector_type),
+            )
+            raise ValueError(msg)
+        weights.append(spec.weight)
+        selectors.append(
+            _SELECTOR_REGISTRY.build(
+                child_type, config, tracker=tracker, registry=registry
+            )
+        )
+    return CompositeSelector(selectors=tuple(selectors), weights=tuple(weights))
+
+
 _SELECTOR_REGISTRY: StrategyRegistry[SourceSelector] = StrategyRegistry(
     {
         "role_top_performers": _build_role_top_performers,
         "department_diversity": _build_department_diversity,
+        "composite": _build_composite,
     },
     kind="training_selector",
 )

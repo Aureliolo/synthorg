@@ -11,7 +11,7 @@ import synthorg.memory.errors as memory_errors
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
-from synthorg.memory.filter import MemoryFilterStrategy, TagBasedMemoryFilter
+from synthorg.memory.filter import MemoryFilterStrategy, build_memory_filter
 from synthorg.memory.formatter import format_memory_context_with_directive
 from synthorg.memory.injection import (
     DefaultTokenEstimator,
@@ -76,11 +76,15 @@ class ContextInjectionStrategy:
             shared_store: Optional shared knowledge store.
             token_estimator: Optional custom token estimator.
             memory_filter: Optional filter applied after ranking,
-                before formatting.  When ``None`` and
-                ``config.non_inferable_only`` is ``True``, a
-                ``TagBasedMemoryFilter`` is auto-created.  When ``None``
-                and ``non_inferable_only`` is ``False``, all ranked
-                memories are injected (backward-compatible).
+                before formatting.  When ``None``, the filter is
+                resolved by :func:`build_memory_filter` from
+                ``config.memory_filter_strategy``: ``"off"`` defers to
+                ``config.non_inferable_only`` (auto-creating a
+                ``TagBasedMemoryFilter`` only when it is ``True``, else
+                no filtering), ``"tag_based"`` always installs a
+                ``TagBasedMemoryFilter``, and ``"passthrough"`` injects
+                every ranked memory unchanged.  An explicit instance
+                overrides this strategy-based resolution.
             hierarchical_retriever: Optional hierarchical retriever
                 (used when ``config.retriever == "hierarchical"``).
             reranker: Optional query-specific re-ranker (used when
@@ -92,12 +96,15 @@ class ContextInjectionStrategy:
         self._backend = backend
         self._config = config
         self._shared_store = shared_store
-        if memory_filter is None and config.non_inferable_only:
-            memory_filter = TagBasedMemoryFilter()
-        elif memory_filter is not None and config.non_inferable_only:
+        if memory_filter is None:
+            memory_filter = build_memory_filter(
+                config.memory_filter_strategy,
+                non_inferable_only=config.non_inferable_only,
+            )
+        elif config.non_inferable_only or config.memory_filter_strategy != "off":
             logger.debug(
                 MEMORY_FILTER_INIT,
-                note="explicit memory_filter overrides non_inferable_only config",
+                note="explicit memory_filter overrides filter config",
                 filter_strategy=getattr(memory_filter, "strategy_name", "unknown"),
             )
         self._memory_filter = memory_filter
