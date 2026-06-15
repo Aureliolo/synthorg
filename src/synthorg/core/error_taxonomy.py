@@ -294,6 +294,8 @@ def set_error_docs_base_url(value: str) -> None:
             " (host required, no userinfo / query / fragment)"
         )
         raise ValueError(msg)
+    # Inlined (not core.normalization.strip_trailing_slash): this leaf is
+    # imported by the whole error hierarchy and must not pull in observability.
     normalised = candidate.rstrip("/")
     global _ERROR_DOCS_BASE  # noqa: PLW0603 -- single-writer startup hook; tests reset via the same setter
     _ERROR_DOCS_BASE = normalised

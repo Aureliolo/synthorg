@@ -2,7 +2,6 @@
 
 import copy
 from collections import Counter
-from datetime import datetime
 from typing import Self
 from uuid import UUID, uuid4
 
@@ -21,6 +20,7 @@ from synthorg.core.task_enums import (
 )
 from synthorg.core.task_transitions import validate_transition
 from synthorg.core.types import NotBlankStr
+from synthorg.core.validation import validate_iso8601_deadline
 from synthorg.observability import get_logger
 from synthorg.observability.events.task import TASK_STATUS_CHANGED
 from synthorg.ontology.decorator import ontology_entity
@@ -242,15 +242,7 @@ class Task(BaseModel):
             ValueError: If ``deadline`` is whitespace-only or not a valid
                 ISO 8601 string.
         """
-        if self.deadline is not None:
-            if not self.deadline.strip():
-                msg = "deadline must not be whitespace-only"
-                raise ValueError(msg)
-            try:
-                datetime.fromisoformat(self.deadline)
-            except ValueError as exc:
-                msg = f"deadline must be a valid ISO 8601 string, got {self.deadline!r}"
-                raise ValueError(msg) from exc
+        validate_iso8601_deadline(self.deadline)
         return self
 
     @model_validator(mode="after")

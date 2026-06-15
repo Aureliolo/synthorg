@@ -107,12 +107,10 @@ class RecoveryConfigError(EngineError):
 class ProjectNotFoundError(EngineError):
     """Referenced project does not exist.
 
-    The message is deliberately generic to avoid leaking internal
-    identifiers.  The ``project_id`` attribute is available for
-    structured logs but must NOT be included in user-facing responses.
-
-    Attributes:
-        project_id: The project identifier that was not found.
+    The single not-found error for a missing project, raised from both
+    the engine lookup and work-pipeline intake paths. The ``project_id``
+    attribute is for structured logs only and must NOT be surfaced to
+    clients; the wire message stays the generic ``default_message``.
     """
 
     status_code: ClassVar[int] = 404
@@ -120,20 +118,16 @@ class ProjectNotFoundError(EngineError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
     default_message: ClassVar[str] = "Project not found"
 
-    def __init__(self, *, project_id: NotBlankStr) -> None:
-        super().__init__("Project not found")
-        self.project_id: NotBlankStr = project_id
+    def __init__(self, *, project_id: NotBlankStr | None = None) -> None:
+        super().__init__(self.default_message)
+        self.project_id: NotBlankStr | None = project_id
 
 
 class ProjectAgentNotMemberError(EngineError):
     """Agent is not a member of the task's project team.
 
-    The message is deliberately generic to avoid leaking internal
-    identifiers.  Attributes are available for structured logs only.
-
-    Attributes:
-        project_id: The project the agent attempted to access.
-        agent_id: The agent that is not in the project team.
+    The wire message stays generic to avoid leaking identifiers; the
+    ``project_id`` / ``agent_id`` attributes are for structured logs only.
     """
 
     status_code: ClassVar[int] = 403
@@ -191,12 +185,9 @@ class ProjectWorkspaceError(EngineError):
 class ProjectWorkspaceNotProvisionedError(ProjectWorkspaceError):
     """Raised when a project workspace is required but not yet provisioned.
 
-    The message is deliberately generic to avoid leaking internal
-    identifiers.  The ``project_id`` attribute is available for
-    structured logs but must NOT be included in user-facing responses.
-
-    Attributes:
-        project_id: The project that has no provisioned workspace.
+    The wire message stays generic to avoid leaking identifiers; the
+    ``project_id`` attribute is for structured logs only and must NOT be
+    surfaced to clients.
     """
 
     status_code: ClassVar[int] = 409

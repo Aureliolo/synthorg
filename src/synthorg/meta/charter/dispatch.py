@@ -29,7 +29,7 @@ from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.pipeline.errors import WorkProjectNotFoundError
+from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.meta.charter.enums import CharterStatus
@@ -163,7 +163,7 @@ class CharterDispatcher:
             CharterAlreadyDecidedError: When the charter is not DRAFTED.
             MixedCurrencyAggregationError: When the charter envelope
                 currency does not match the live ``budget.currency``.
-            WorkProjectNotFoundError: When an existing referenced
+            ProjectNotFoundError: When an existing referenced
                 project does not exist.
 
         Returns:
@@ -276,12 +276,12 @@ class CharterDispatcher:
             ``NotBlankStr`` instance.
 
         Raises:
-            WorkProjectNotFoundError: Raised on the corresponding failure path.
+            ProjectNotFoundError: Raised on the corresponding failure path.
         """
         if charter.project_id is not None:
             existing = await self._project_repo.get(charter.project_id)
             if existing is None:
-                raise WorkProjectNotFoundError
+                raise ProjectNotFoundError(project_id=charter.project_id)
             return charter.project_id
         project_uuid = uuid.uuid5(PROJECT_NAMESPACE, f"charter-{charter.id}")
         project_id = NotBlankStr(str(project_uuid))

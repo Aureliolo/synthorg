@@ -20,7 +20,7 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
-from synthorg.core.domain_errors import NotFoundError, VersionConflictError
+from synthorg.core.domain_errors import VersionConflictError
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
     RecordNotFoundError,
@@ -137,7 +137,8 @@ class WorkflowExecutionController(Controller):
             ``Response[ApiResponse[WorkflowExecution]]`` instance.
 
         Raises:
-            NotFoundError: Raised on the corresponding failure path.
+            WorkflowExecutionNotFoundError: Propagated (404,
+                ``WORKFLOW_EXECUTION_NOT_FOUND``) when the definition is absent.
         """
         activated_by = _extract_username(request)
         service = await _build_service(state)
@@ -149,12 +150,14 @@ class WorkflowExecutionController(Controller):
                 context=data.context,
             )
         except WorkflowExecutionNotFoundError:
+            # Keep the structured log context, but let the typed error
+            # propagate so the wire keeps WORKFLOW_EXECUTION_NOT_FOUND
+            # instead of collapsing to the generic RESOURCE_NOT_FOUND.
             logger.warning(
                 WORKFLOW_EXEC_NOT_FOUND,
                 workflow_id=workflow_id,
             )
-            msg = f"Workflow definition {workflow_id!r} not found"
-            raise NotFoundError(msg) from None
+            raise
 
         return Response(
             content=ApiResponse[WorkflowExecution](data=execution),
@@ -255,7 +258,10 @@ class WorkflowExecutionController(Controller):
             ``Response[ApiResponse[WorkflowExecution]]`` instance.
 
         Raises:
-            NotFoundError: Raised on the corresponding failure path.
+            WorkflowExecutionNotFoundError: Propagated (404,
+                ``WORKFLOW_EXECUTION_NOT_FOUND``) when the execution is absent.
+            RecordNotFoundError: Propagated (404, ``RECORD_NOT_FOUND``) when a
+                backing row is absent.
             VersionConflictError: Raised on the corresponding failure path.
         """
         cancelled_by = _extract_username(request)
@@ -266,12 +272,14 @@ class WorkflowExecutionController(Controller):
                 cancelled_by=cancelled_by,
             )
         except WorkflowExecutionNotFoundError, RecordNotFoundError:
+            # Keep the log context, but let each typed not-found propagate
+            # so the wire keeps its discriminator (WORKFLOW_EXECUTION_NOT_FOUND
+            # / RECORD_NOT_FOUND) instead of collapsing to RESOURCE_NOT_FOUND.
             logger.warning(
                 WORKFLOW_EXEC_NOT_FOUND,
                 execution_id=execution_id,
             )
-            msg = f"Workflow execution {execution_id!r} not found"
-            raise NotFoundError(msg) from None
+            raise
         except PersistenceVersionConflictError as exc:
             # Drop the persistence-layer detail (row IDs, version
             # numbers) on the public envelope; the engine emits

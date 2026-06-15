@@ -5,6 +5,9 @@ self-improvement configuration.
 """
 
 from synthorg.core.types import NotBlankStr
+from synthorg.meta._proposal_altitude_descriptor import (
+    PROPOSAL_ALTITUDE_DESCRIPTORS,
+)
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
     GuardResult,
@@ -83,19 +86,12 @@ class ScopeCheckGuard:
     def _is_altitude_enabled(self, altitude: ProposalAltitude) -> bool:
         """Check if an altitude is enabled in config.
 
+        Reads the gating flag named by the altitude's descriptor, which
+        is exhaustive over :class:`ProposalAltitude` by an import-time
+        completeness guard.
+
         Returns:
             ``True`` or ``False`` reflecting the condition.
         """
-        match altitude:
-            case ProposalAltitude.CONFIG_TUNING:
-                return self._config.config_tuning_enabled
-            case ProposalAltitude.ARCHITECTURE:
-                return self._config.architecture_proposals_enabled
-            case ProposalAltitude.PROMPT_TUNING:
-                return self._config.prompt_tuning_enabled
-            case ProposalAltitude.CODE_MODIFICATION:
-                return self._config.code_modification_enabled
-            case ProposalAltitude.TOOL_CREATION:
-                return self._config.tool_creation_enabled
-            case _:
-                return False  # type: ignore[unreachable]
+        attr = PROPOSAL_ALTITUDE_DESCRIPTORS[altitude].enable_config_attr
+        return bool(getattr(self._config, attr))

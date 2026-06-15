@@ -23,7 +23,7 @@ class CoordinationConfig(BaseModel):
             (used by ``MagenticReplanHook``).
         replan_strategy: Replan hook implementation to use.
         orchestrator_strategy: Subtask selection strategy within
-            ``CentralizedDispatcher``.
+            the centralized ``WaveDispatcher``.
         max_delegation_rounds: Soft cap on delegation rounds
             (default 3, ge=1, le=20). Warning emitted at this
             limit; hard abort at 2x the value.

@@ -23,7 +23,10 @@ from synthorg.core.domain_errors import (
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.engine.errors import TaskNotFoundError, WorkflowExecutionNotFoundError
 from synthorg.engine.workflow.service import WorkflowDefinitionNotFoundError
-from synthorg.integrations.errors import ConnectionNotFoundError
+from synthorg.integrations.errors import (
+    ConnectionNotFoundError,
+    SecretRetrievalNotFoundError,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -47,6 +50,10 @@ _FOREIGN_SUBCLASS_CODES: tuple[tuple[type[NotFoundError], ErrorCode], ...] = (
     (WorkflowExecutionNotFoundError, ErrorCode.WORKFLOW_EXECUTION_NOT_FOUND),
     (WorkflowDefinitionNotFoundError, ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND),
     (ConnectionNotFoundError, ErrorCode.CONNECTION_NOT_FOUND),
+    # Deliberate uniform-404 override for reveal_secret: carries the same
+    # generic RESOURCE_NOT_FOUND as a plain NotFoundError so a secret-backend
+    # failure is indistinguishable from a missing connection.
+    (SecretRetrievalNotFoundError, ErrorCode.RESOURCE_NOT_FOUND),
 )
 
 

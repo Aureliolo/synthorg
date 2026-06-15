@@ -25,6 +25,7 @@ from pydantic import JsonValue
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_FAILED,
@@ -237,6 +238,19 @@ async def discover_models(
     )
 
 
+def _discovery_url(base_url: str, suffix: str) -> str:
+    """Join a discovery endpoint *suffix* onto a provider base URL.
+
+    Args:
+        base_url: Provider base URL (trailing slashes are stripped).
+        suffix: Endpoint path beginning with ``/`` (e.g. ``/models``).
+
+    Returns:
+        The composed discovery URL.
+    """
+    return f"{strip_trailing_slash(base_url)}{suffix}"
+
+
 async def _discover_ollama(
     base_url: str,
     *,
@@ -253,7 +267,7 @@ async def _discover_ollama(
     Returns:
         Discovered models, or empty tuple on failure.
     """
-    url = f"{base_url.rstrip('/')}/api/tags"
+    url = _discovery_url(base_url, "/api/tags")
     data = await _fetch_json(url, "ollama", headers=headers, trust_url=trust_url)
     if data is None:
         return ()
@@ -281,7 +295,7 @@ async def _discover_standard_api(
     Returns:
         Discovered models, or empty tuple on failure.
     """
-    url = f"{base_url.rstrip('/')}/models"
+    url = _discovery_url(base_url, "/models")
     data = await _fetch_json(
         url,
         preset_name,

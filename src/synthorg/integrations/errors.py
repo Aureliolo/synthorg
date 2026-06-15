@@ -86,6 +86,21 @@ class SecretRetrievalError(IntegrationError):
     retryable: ClassVar[bool] = True
 
 
+class SecretRetrievalNotFoundError(NotFoundError):
+    """A secret reveal is reported as a 404, hiding the real cause.
+
+    Deliberate security override for ``reveal_secret``: whether the
+    connection is absent OR the secret backend is unreachable, the client
+    sees one uniform 404 (``RESOURCE_NOT_FOUND``, non-retryable, generic
+    message) so a secret-backend error code cannot be used to enumerate
+    which connections exist. The typed class makes the intentional 502 ->
+    404 / retryable -> non-retryable override explicit so a future
+    maintainer does not "fix" it back to 502; operators still get the
+    true cause from the ERROR-level redacted log. See
+    docs/reference/errors.md.
+    """
+
+
 class SecretStorageError(IntegrationError):
     """A secret could not be stored in the backend."""
 

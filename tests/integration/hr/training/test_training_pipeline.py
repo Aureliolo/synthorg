@@ -20,11 +20,8 @@ from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.curation.relevance import (
     RelevanceScoreCuration,
 )
-from synthorg.hr.training.extractors.procedural import (
-    ProceduralMemoryExtractor,
-)
-from synthorg.hr.training.extractors.semantic import (
-    SemanticMemoryExtractor,
+from synthorg.hr.training.extractors.memory_backed import (
+    MemoryBackedExtractor,
 )
 from synthorg.hr.training.extractors.tool_patterns import (
     ToolPatternExtractor,
@@ -166,13 +163,17 @@ def _build_service(
     )
     extractors: dict[
         ContentType,
-        ProceduralMemoryExtractor | SemanticMemoryExtractor | ToolPatternExtractor,
+        MemoryBackedExtractor | ToolPatternExtractor,
     ] = {
-        ContentType.PROCEDURAL: ProceduralMemoryExtractor(
+        ContentType.PROCEDURAL: MemoryBackedExtractor(
             backend=backend,
+            memory_category=MemoryCategory.PROCEDURAL,
+            content_type=ContentType.PROCEDURAL,
         ),
-        ContentType.SEMANTIC: SemanticMemoryExtractor(
+        ContentType.SEMANTIC: MemoryBackedExtractor(
             backend=backend,
+            memory_category=MemoryCategory.SEMANTIC,
+            content_type=ContentType.SEMANTIC,
         ),
         ContentType.TOOL_PATTERNS: ToolPatternExtractor(
             tracker=tool_tracker,

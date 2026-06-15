@@ -76,6 +76,11 @@ mandatory_rules:
     header: No Hardcoded Values
     gate: scripts/check_no_magic_numbers.py
 
+  - id: claude-md::error-code-uniqueness
+    file: CLAUDE.md
+    header: Error-Code Uniqueness
+    gate: scripts/check_error_code_uniqueness.py
+
   - id: claude-md::doc-numeric-claims
     file: CLAUDE.md
     header: Doc Numeric Claims

@@ -22,8 +22,8 @@ from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.registry_protocol import AgentRegistryProtocol
+from synthorg.security.risk_map import MapBackedRiskClassifier
 from synthorg.security.timeout.protocol import RiskTierClassifier
-from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.service import SettingsService
@@ -45,7 +45,7 @@ _PAIRS: tuple[tuple[type, type], ...] = (
     (SettingsServiceProtocol, SettingsService),
     (CostTrackerProtocol, CostTracker),
     (AgentRegistryProtocol, AgentRegistryService),
-    (RiskTierClassifier, DefaultRiskTierClassifier),
+    (RiskTierClassifier, MapBackedRiskClassifier),
 )
 
 
@@ -112,7 +112,7 @@ if TYPE_CHECKING:
         settings: SettingsService,
         tracker: CostTracker,
         registry: AgentRegistryService,
-        classifier: DefaultRiskTierClassifier,
+        classifier: MapBackedRiskClassifier,
     ) -> None:
         """Static-only: mypy proves each concrete class is assignable to its Protocol.
 

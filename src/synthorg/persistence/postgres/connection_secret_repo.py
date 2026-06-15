@@ -1,7 +1,7 @@
 """Postgres-backed encrypted-secret blob repository.
 
 Persists raw encrypted bytes in the ``connection_secrets`` table
-(``encrypted_value BYTEA``) for the ``EncryptedPostgresSecretBackend``.
+(``encrypted_value BYTEA``) for the ``PostgresSecretRowStore``.
 This layer NEVER encrypts or decrypts; callers pass already-encrypted
 bytes in and receive the same bytes back unchanged.
 """

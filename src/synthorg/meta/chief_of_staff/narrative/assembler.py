@@ -8,6 +8,7 @@ function: same inputs, same blocks. Decisions and metrics are emitted
 verbatim; the prose only introduces each section.
 """
 
+from synthorg.budget.currency import format_cost
 from synthorg.docs_engine.models import (
     BulletListBlock,
     DecisionBlock,
@@ -115,7 +116,7 @@ def _append_contributions(
     items = tuple(
         _clip(
             f"{c.agent_id}: {c.turn_count} turn(s), "
-            f"cost {c.cost:.2f} {reduced.currency}"
+            f"cost {format_cost(c.cost, reduced.currency)}"
             + (f", tools: {', '.join(c.tools)}" if c.tools else "")
         )
         for c in reduced.contributions

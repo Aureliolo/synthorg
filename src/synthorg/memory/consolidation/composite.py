@@ -6,8 +6,7 @@ the selector then aggregating one :class:`OpResult` per group.
 
 ``parallel`` (the factory wires it ``True`` for the LLM composite)
 moves the per-group op calls under one ``asyncio.TaskGroup`` and
-unwraps the resulting ``ExceptionGroup`` to the first exception --
-byte-identical with ``LLMConsolidationStrategy._run_groups``.
+unwraps the resulting ``ExceptionGroup`` to the first exception.
 """
 
 import asyncio
@@ -124,12 +123,11 @@ class CompositeConsolidationStrategy:
         agent_id: NotBlankStr,
         context: object,
     ) -> list[OpResult]:
-        """Cross-group ``TaskGroup`` fan-out (LLM ``_run_groups`` parity).
+        """Cross-group ``TaskGroup`` fan-out over the selected groups.
 
         Unwraps the ``ExceptionGroup`` so callers see the original
-        exception type (matching the pre-split sequential semantics);
-        every ``except*`` branch logs the sibling count before
-        re-raising the first exception.
+        exception type from the first failing op; every ``except*``
+        branch logs the sibling count before re-raising that exception.
 
         Returns:
             List of ``OpResult``.

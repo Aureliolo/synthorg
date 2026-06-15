@@ -6,7 +6,7 @@ LLM calls (retry + rate limiting handled by the provider).
 """
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.currency import format_cost
 
 # These types appear in public annotations of ``ChiefOfStaffChat``
 # (constructor + ``explain_proposal`` / ``explain_alert`` / ``ask``)
@@ -291,7 +291,7 @@ def _format_snapshot(snapshot: OrgSignalSnapshot) -> str:
         f"Success Rate: {perf.avg_success_rate:.0%}",
         f"Collaboration: {perf.avg_collaboration_score:.1f}/10",
         f"Active Agents: {perf.agent_count}",
-        f"Total Spend: {budget.total_spend:.2f} {DEFAULT_CURRENCY}",
+        f"Total Spend: {format_cost(budget.total_spend)}",
         f"Orchestration Overhead: {budget.orchestration_overhead:.2f}",
         f"Error Findings: {snapshot.errors.total_findings}",
     ]

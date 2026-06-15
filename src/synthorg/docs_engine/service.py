@@ -10,12 +10,12 @@ endpoints call it directly for read-only operations.
 
 import asyncio
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.concurrency import RefcountedLockMap
+from synthorg.core.iso_datetime import parse_git_log_timestamp
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.chunker import DocChunker
@@ -603,11 +603,8 @@ def _parse_history_line(line: str) -> DocVersion | None:
     if len(parts) != _HISTORY_FIELDS_PER_LINE:
         return None
     sha, committed_at_iso, summary = parts
-    try:
-        committed_at = datetime.fromisoformat(committed_at_iso)
-    except ValueError:
-        return None
-    if committed_at.tzinfo is None:
+    committed_at = parse_git_log_timestamp(committed_at_iso)
+    if committed_at is None:
         return None
     return DocVersion(
         commit_sha=NotBlankStr(sha),

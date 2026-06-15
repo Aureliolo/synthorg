@@ -15,13 +15,16 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_CONFIG_LOADED,
     SECURITY_DISABLED,
+    SECURITY_RISK_FALLBACK,
 )
+from synthorg.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.resolver import ModelResolver
 from synthorg.security.audit import AuditLog
 from synthorg.security.config import SecurityConfig
 from synthorg.security.output_scanner import OutputScanner
 from synthorg.security.protocol import SecurityInterceptionStrategy
+from synthorg.security.risk_map import default_risk_classifier
 from synthorg.security.rules.credential_detector import CredentialDetector
 from synthorg.security.rules.custom_policy_rule import CustomPolicyRule
 from synthorg.security.rules.data_leak_detector import DataLeakDetector
@@ -33,9 +36,7 @@ from synthorg.security.rules.path_traversal_detector import (
     PathTraversalDetector,
 )
 from synthorg.security.rules.policy_validator import PolicyValidator
-from synthorg.security.rules.risk_classifier import RiskClassifier
 from synthorg.security.service import SecOpsService
-from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 from synthorg.tools.external_api._runtime import ExternalApiRuntime
 from synthorg.tools.registry import ToolRegistry
 
@@ -167,7 +168,7 @@ def make_security_interceptor(  # noqa: PLR0913
         output_scanner=OutputScanner(),
         approval_store=approval_store,
         effective_autonomy=effective_autonomy,
-        risk_classifier=DefaultRiskTierClassifier(),
+        risk_classifier=default_risk_classifier(miss_event=TIMEOUT_UNKNOWN_ACTION_TYPE),
         llm_evaluator=llm_evaluator,
         safety_classifier=safety_classifier,
         uncertainty_checker=uncertainty_checker,
@@ -230,7 +231,7 @@ def _build_rule_engine(cfg: SecurityConfig) -> RuleEngine:
 
     return RuleEngine(
         rules=tuple(rules),
-        risk_classifier=RiskClassifier(),
+        risk_classifier=default_risk_classifier(miss_event=SECURITY_RISK_FALLBACK),
         config=re_cfg,
     )
 
@@ -281,7 +282,7 @@ def registry_with_approval_tool(
 
     approval_tool = RequestHumanApprovalTool(
         approval_store=approval_store,
-        risk_classifier=DefaultRiskTierClassifier(),
+        risk_classifier=default_risk_classifier(miss_event=TIMEOUT_UNKNOWN_ACTION_TYPE),
         agent_id=str(identity.id),
         task_id=task_id,
     )
@@ -328,7 +329,7 @@ def registry_with_external_api_tool(  # noqa: PLR0913 -- run-scoped wiring input
         task_id=task_id,
         network_policy=runtime.network_policy,
         effective_autonomy=effective_autonomy,
-        risk_classifier=DefaultRiskTierClassifier(),
+        risk_classifier=default_risk_classifier(miss_event=TIMEOUT_UNKNOWN_ACTION_TYPE),
         max_response_bytes=runtime.max_response_bytes,
         timeout_seconds=runtime.timeout_seconds,
         default_max_rpm=runtime.default_max_rpm,

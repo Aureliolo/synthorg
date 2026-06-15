@@ -4,8 +4,8 @@ import pytest
 
 from synthorg.core.domain_errors import (
     AccountLockedError,
-    ArtifactRejectedTooLargeError,
-    ArtifactStorageRejectedFullError,
+    CheckpointActiveConflictError,
+    CheckpointOperationConflictError,
     ConcurrencyLimitExceededError,
     ConflictError,
     DomainError,
@@ -182,20 +182,6 @@ class TestConcreteClassMetadata:
                 True,
             ),
             (
-                ArtifactRejectedTooLargeError,
-                ErrorCategory.VALIDATION,
-                ErrorCode.ARTIFACT_TOO_LARGE,
-                413,
-                False,
-            ),
-            (
-                ArtifactStorageRejectedFullError,
-                ErrorCategory.INTERNAL,
-                ErrorCode.ARTIFACT_STORAGE_FULL,
-                507,
-                False,
-            ),
-            (
                 PerOperationRateLimitError,
                 ErrorCategory.RATE_LIMIT,
                 ErrorCode.PER_OPERATION_RATE_LIMITED,
@@ -208,6 +194,13 @@ class TestConcreteClassMetadata:
                 ErrorCode.CONCURRENCY_LIMIT_EXCEEDED,
                 429,
                 True,
+            ),
+            (
+                CheckpointActiveConflictError,
+                ErrorCategory.CONFLICT,
+                ErrorCode.CHECKPOINT_OPERATION_CONFLICT,
+                409,
+                False,
             ),
         ],
     )
@@ -236,6 +229,16 @@ class TestConcreteClassMetadata:
     def test_concurrency_inherits_per_op_rate_limit(self) -> None:
         assert issubclass(ConcurrencyLimitExceededError, PerOperationRateLimitError)
 
+    def test_checkpoint_active_inherits_operation_conflict(self) -> None:
+        """The active-checkpoint conflict is an alias of the operation conflict.
+
+        Inheritance keeps the shared ``CHECKPOINT_OPERATION_CONFLICT`` code
+        an explicit alias (gate-clean) while naming the precise rule.
+        """
+        assert issubclass(
+            CheckpointActiveConflictError, CheckpointOperationConflictError
+        )
+
     def test_every_concrete_class_inherits_domain_error(self) -> None:
         for cls in (
             NotFoundError,
@@ -247,8 +250,6 @@ class TestConcreteClassMetadata:
             SessionRevokedError,
             AccountLockedError,
             ServiceUnavailableError,
-            ArtifactRejectedTooLargeError,
-            ArtifactStorageRejectedFullError,
             PerOperationRateLimitError,
             ConcurrencyLimitExceededError,
         ):

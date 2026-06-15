@@ -23,7 +23,7 @@ from synthorg.security.rules.policy_validator import (
     _RULE_NAME as _POLICY_VALIDATOR_RULE_NAME,
 )
 from synthorg.security.rules.protocol import SecurityRule
-from synthorg.security.rules.risk_classifier import RiskClassifier
+from synthorg.security.timeout.protocol import RiskTierClassifier
 
 logger = get_logger(__name__)
 
@@ -61,7 +61,7 @@ class RuleEngine:
         self,
         *,
         rules: tuple[SecurityRule, ...],
-        risk_classifier: RiskClassifier,
+        risk_classifier: RiskTierClassifier,
         config: RuleEngineConfig,
         clock: Clock | None = None,
     ) -> None:

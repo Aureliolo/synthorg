@@ -22,10 +22,8 @@ from synthorg.api.rate_limits import (
 from synthorg.api.state import AppState
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
-    CheckpointOperationConflictError,
     NotFoundError,
 )
-from synthorg.core.persistence_errors import QueryError
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
     FineTuneRun,
@@ -37,8 +35,6 @@ from synthorg.memory.service import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
-    MEMORY_CHECKPOINT_DELETE_FAILED,
-    MEMORY_CHECKPOINT_DEPLOY_FAILED,
     MEMORY_CHECKPOINT_NOT_FOUND,
     MEMORY_CHECKPOINT_ROLLBACK_FAILED,
 )
@@ -108,18 +104,15 @@ class MemoryCheckpointsController(Controller):
         Exception mapping:
 
         - ``CheckpointNotFoundError`` -> HTTP 404
-        - ``QueryError`` (persistence-level failure during activation
-          or re-read) -> HTTP 409 with a safe message
-        - Any other exception propagates so unexpected server bugs
-          surface as HTTP 500 instead of being silenced as 409
-          "conflict".
+        - A transient ``QueryError`` propagates to the central handler as
+          HTTP 500 + retryable: deploy has no business-rule conflict, so a
+          backend failure must not be flattened to a 409 "conflict".
 
         Returns:
             ``ApiResponse[CheckpointRecord]`` instance.
 
         Raises:
             NotFoundError: Raised on the corresponding failure path.
-            CheckpointOperationConflictError: Raised on the corresponding failure path.
         """
         service = _shared.build_memory_service(state.app_state)
         try:
@@ -137,16 +130,6 @@ class MemoryCheckpointsController(Controller):
             # full diagnostic detail stays in the warning log above.
             msg = "Checkpoint not found"
             raise NotFoundError(msg) from exc
-        except QueryError as exc:
-            logger.warning(
-                MEMORY_CHECKPOINT_DEPLOY_FAILED,
-                checkpoint_id=checkpoint_id,
-                operation="deploy",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = "Failed to deploy checkpoint"
-            raise CheckpointOperationConflictError(msg) from exc
         return ApiResponse(data=updated)
 
     @post(
@@ -253,20 +236,21 @@ class MemoryCheckpointsController(Controller):
             checkpoint_id: Checkpoint identifier (1-128 chars, enforced
                 at the path-parameter boundary by ``PathId``).
 
-        Exception mapping mirrors deploy/rollback so all checkpoint
-        endpoints share the same contract:
+        Exception mapping:
 
         - ``CheckpointNotFoundError`` -> HTTP 404
-        - ``QueryError`` (e.g. attempt to delete the active checkpoint)
-          -> HTTP 409
-        - anything else propagates as HTTP 500
+        - ``CheckpointActiveConflictError`` (the service's explicit
+          "cannot delete the active checkpoint" business rule) carries its
+          own 409 + ``CHECKPOINT_OPERATION_CONFLICT`` and propagates to the
+          central handler unchanged.
+        - A transient ``QueryError`` propagates to HTTP 500 + retryable
+          rather than being flattened to a 409 state-conflict.
 
         Returns:
             ``ApiResponse[None]`` instance.
 
         Raises:
             NotFoundError: Raised on the corresponding failure path.
-            CheckpointOperationConflictError: Raised on the corresponding failure path.
         """
         service = _shared.build_memory_service(state.app_state)
         try:
@@ -281,19 +265,6 @@ class MemoryCheckpointsController(Controller):
             )
             msg = "Checkpoint not found"
             raise NotFoundError(msg) from exc
-        except QueryError as exc:
-            logger.warning(
-                MEMORY_CHECKPOINT_DELETE_FAILED,
-                checkpoint_id=checkpoint_id,
-                operation="delete",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            # Use a controller-authored message so backend exception
-            # text doesn't leak into the 409 response.  Detail stays in
-            # the warning log above for operator triage.
-            msg = "Failed to delete checkpoint"
-            raise CheckpointOperationConflictError(msg) from exc
         return ApiResponse(data=None)
 
     @get("/fine-tune/runs")

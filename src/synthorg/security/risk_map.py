@@ -1,5 +1,13 @@
-"""Configurable risk tier classifier for timeout policies."""
+"""Canonical action-type risk map + the map-backed classifier.
 
+One home for the default ``ActionType -> ApprovalRiskLevel`` taxonomy and
+the single classifier that reads it, so the security-rules and
+timeout-policy subsystems can never silently diverge. The only per-site
+variance is the base map (default vs operator-supplied), the optional
+overlay, and the miss-log event name, all passed at construction.
+"""
+
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
 
@@ -30,8 +38,10 @@ def elevate_one_tier(level: ApprovalRiskLevel) -> ApprovalRiskLevel:
     return _ELEVATION[level]
 
 
-# Reuses the same risk assignments as security/rules/risk_classifier.py.
-_DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProxyType(
+# The single source of truth for default action-type risk tiers,
+# consumed by both the security-rules baseline classifier and the
+# tiered-timeout default classifier.
+DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProxyType(
     {
         # CRITICAL
         ActionType.DEPLOY_PRODUCTION: ApprovalRiskLevel.CRITICAL,
@@ -84,56 +94,86 @@ _DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProx
 
 # Validate exhaustiveness at module load time -- log a warning for any
 # ActionType members missing from the default map.
-_missing_action_types = {m.value for m in ActionType} - set(_DEFAULT_RISK_MAP)
+_missing_action_types = {m.value for m in ActionType} - set(DEFAULT_RISK_MAP)
 if _missing_action_types:
     logger.warning(
         TIMEOUT_UNKNOWN_ACTION_TYPE,
         missing_types=sorted(_missing_action_types),
         note=(
-            "ActionType members missing from _DEFAULT_RISK_MAP -- "
+            "ActionType members missing from DEFAULT_RISK_MAP -- "
             "they will default to HIGH at classify() time"
         ),
     )
 del _missing_action_types
 
 
-class DefaultRiskTierClassifier:
-    """Maps action types to risk tiers for tiered timeout policies.
+class MapBackedRiskClassifier:
+    """Classify action types to risk tiers from a configured map.
 
-    Unknown action types default to HIGH (fail-safe per D19).
+    Unknown action types fail safe to ``HIGH`` (DESIGN_SPEC D19): a
+    taxonomy gap must never silently downgrade an action's risk.
 
     Args:
-        custom_map: Optional overrides for the default risk mapping.
+        base_map: Starting map. ``DEFAULT_RISK_MAP`` for the default /
+            rules classifiers (merge semantics); ``None`` for the
+            operator-configurable classifier (the overlay is the whole
+            map, replace semantics).
+        custom_map: Optional overrides applied on top of ``base_map``.
+        miss_event: Observability event name logged when an action type
+            is absent and the fail-safe ``HIGH`` is returned.
     """
 
     def __init__(
         self,
         *,
-        custom_map: dict[str, ApprovalRiskLevel] | None = None,
+        base_map: Mapping[str, ApprovalRiskLevel] | None,
+        custom_map: Mapping[str, ApprovalRiskLevel] | None = None,
+        miss_event: str,
     ) -> None:
+        merged: dict[str, ApprovalRiskLevel] = dict(base_map) if base_map else {}
         if custom_map:
-            merged = dict(_DEFAULT_RISK_MAP)
             merged.update(custom_map)
-            self._risk_map = MappingProxyType(merged)
-        else:
-            self._risk_map = _DEFAULT_RISK_MAP
+        self._risk_map: MappingProxyType[str, ApprovalRiskLevel] = MappingProxyType(
+            merged
+        )
+        self._miss_event = miss_event
 
     def classify(self, action_type: str) -> ApprovalRiskLevel:
-        """Classify an action type's risk tier.
+        """Classify an action type's risk tier; unknown -> HIGH (D19).
 
         Args:
             action_type: The ``category:action`` string.
 
         Returns:
-            Risk tier. Defaults to HIGH for unknown types.
+            The mapped risk tier, or ``HIGH`` for an unknown type.
         """
         result = self._risk_map.get(action_type)
         if result is None:
             logger.warning(
-                TIMEOUT_UNKNOWN_ACTION_TYPE,
+                self._miss_event,
                 action_type=action_type,
-                default_tier="high",
-                note="unknown action type -- defaulting to HIGH (D19)",
+                fallback_tier="high",
             )
             return ApprovalRiskLevel.HIGH
         return result
+
+
+def default_risk_classifier(
+    *,
+    miss_event: str,
+    custom_map: Mapping[str, ApprovalRiskLevel] | None = None,
+) -> MapBackedRiskClassifier:
+    """Build a classifier over :data:`DEFAULT_RISK_MAP` (merge semantics).
+
+    The single canonical constructor for the security-rules baseline and
+    the tiered-timeout default classifiers; they differ only by
+    *miss_event*.
+
+    Returns:
+        A ``MapBackedRiskClassifier`` over the default map plus overrides.
+    """
+    return MapBackedRiskClassifier(
+        base_map=DEFAULT_RISK_MAP,
+        custom_map=custom_map,
+        miss_event=miss_event,
+    )

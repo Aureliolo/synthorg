@@ -27,6 +27,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.types import NotBlankStr
@@ -230,7 +231,7 @@ class ExternalRemoteGitBackend:
             GitBackendConfigError: If ``connection.base_url`` is not
                 ``https`` or has no host component.
         """
-        split = urlsplit(str(connection.base_url).rstrip("/"))
+        split = urlsplit(strip_trailing_slash(str(connection.base_url)))
         if split.scheme != "https":
             msg = "external git remote must be an https URL"
             raise GitBackendConfigError(msg)

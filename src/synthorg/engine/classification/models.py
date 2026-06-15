@@ -88,7 +88,7 @@ class ClassificationResult(BaseModel):
         classified_at: Timestamp when classification completed.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     execution_id: NotBlankStr = Field(description="Execution run identifier")
     agent_id: NotBlankStr = Field(description="Agent identifier")

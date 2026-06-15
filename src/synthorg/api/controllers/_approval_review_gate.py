@@ -1,8 +1,8 @@
 """Review-gate helpers for the approvals controller.
 
-Extracted from ``approvals.py`` to keep that module under the 800-line
-budget and to isolate the review-gate flow (mid-execution resume
-vs review gate transition) from the controller CRUD logic.
+Isolates the review-gate flow (mid-execution resume vs review-gate
+transition) from the controller CRUD logic so the resume and
+gate-transition paths can be tested in isolation.
 
 Exposes:
 - :func:`try_mid_execution_resume` -- resume parked context path.

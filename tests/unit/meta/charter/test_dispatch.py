@@ -12,7 +12,7 @@ from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.pipeline.errors import WorkProjectNotFoundError
+from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.pipeline.models import WorkItem
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.meta.charter.dispatch import PROJECT_NAMESPACE, CharterDispatcher
@@ -301,7 +301,7 @@ class TestApprove:
     async def test_existing_project_missing_raises(self) -> None:
         charter = _charter(project_id="ghost", proposed_project_name=None)
         dispatcher, _, _, _ = _dispatcher(charter)
-        with pytest.raises(WorkProjectNotFoundError):
+        with pytest.raises(ProjectNotFoundError):
             await dispatcher.approve(
                 NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
             )

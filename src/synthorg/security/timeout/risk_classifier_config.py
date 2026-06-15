@@ -1,8 +1,8 @@
 """Risk-tier-classifier plugin config + dependency bundle.
 
 A ``StrEnum`` discriminator plus a frozen Pydantic config, with the
-safe ``DEFAULT`` byte-identical to a bare
-``DefaultRiskTierClassifier()``. Runtime collaborators that do not
+safe ``DEFAULT`` building the ``MapBackedRiskClassifier`` over the
+default risk map. Runtime collaborators that do not
 belong in frozen config (the in-flight probe callable, the ``Clock``
 seam) live in :class:`RiskClassifierDeps`, matching the consolidation
 factory's deps-bundle split.
@@ -47,8 +47,8 @@ class RiskClassifierType(StrEnum):
 class RiskClassifierConfig(BaseModel):
     """Operator-tunable risk-tier-classifier configuration.
 
-    Default-constructed (``kind=DEFAULT``) it is byte-identical with
-    a bare ``DefaultRiskTierClassifier()``.
+    Default-constructed (``kind=DEFAULT``) it builds the
+    ``MapBackedRiskClassifier`` over the default risk map.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

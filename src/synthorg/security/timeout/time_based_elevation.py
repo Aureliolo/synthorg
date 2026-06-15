@@ -10,8 +10,8 @@ tests. The window is evaluated in the clock's timezone (UTC for
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.security.risk_map import elevate_one_tier
 from synthorg.security.timeout.protocol import RiskTierClassifier
-from synthorg.security.timeout.risk_tier_classifier import elevate_one_tier
 
 _SATURDAY: int = 5  # datetime.weekday(): Mon=0 .. Sun=6
 _MIN_HOUR_OF_DAY: int = 0

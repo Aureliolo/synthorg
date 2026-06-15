@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.observability.events.security import SECURITY_RISK_FALLBACK
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.security.config import RuleEngineConfig
 from synthorg.security.models import (
@@ -12,8 +13,11 @@ from synthorg.security.models import (
     SecurityVerdict,
     SecurityVerdictType,
 )
+from synthorg.security.risk_map import (
+    MapBackedRiskClassifier,
+    default_risk_classifier,
+)
 from synthorg.security.rules.engine import RuleEngine
-from synthorg.security.rules.risk_classifier import RiskClassifier
 
 # ── Helpers ───────────────────────────────────────────────────────
 
@@ -74,11 +78,12 @@ def _make_escalate_verdict(
 def _make_engine(
     rules: tuple[_StubRule, ...] = (),
     *,
-    risk_classifier: RiskClassifier | None = None,
+    risk_classifier: MapBackedRiskClassifier | None = None,
 ) -> RuleEngine:
     return RuleEngine(
         rules=rules,
-        risk_classifier=risk_classifier or RiskClassifier(),
+        risk_classifier=risk_classifier
+        or default_risk_classifier(miss_event=SECURITY_RISK_FALLBACK),
         config=RuleEngineConfig(),
     )
 

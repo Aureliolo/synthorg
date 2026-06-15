@@ -308,7 +308,7 @@ async def wire_real_task_board_entry(
     is supplied per-filing by the user, so this helper does NOT
     bootstrap a default project. The pipeline's project-existence
     check runs against whatever ``project`` the filing carries; an
-    unknown project surfaces as ``WorkProjectNotFoundError`` from the
+    unknown project surfaces as ``ProjectNotFoundError`` from the
     pipeline (the same shape the intake path uses for its own checks),
     which the background coroutine in the controller logs.
 

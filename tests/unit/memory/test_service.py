@@ -12,6 +12,7 @@ from typing import override
 
 import pytest
 
+from synthorg.core.domain_errors import CheckpointActiveConflictError
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
@@ -277,6 +278,26 @@ class TestMemoryServiceCheckpoints:
         )
         await service.delete_checkpoint(sid("a"))
         assert await repo.get(sid("a")) is None
+
+    async def test_delete_active_checkpoint_raises_typed_conflict(self) -> None:
+        """Deleting the active checkpoint is a typed 409, not a QueryError.
+
+        The service rejects the business rule explicitly so a transient
+        backend QueryError on the same path keeps its 500, instead of both
+        collapsing to a 409 at the controller.
+        """
+        repo = _FakeCheckpointRepo()
+        await repo.save(_checkpoint(checkpoint_id="a"))
+        await repo.set_active(sid("a"))
+        service = MemoryService(
+            checkpoint_repo=repo,
+            run_repo=_FakeRunRepo(),
+            settings_service=None,
+        )
+        with pytest.raises(CheckpointActiveConflictError):
+            await service.delete_checkpoint(sid("a"))
+        # The row is untouched: the rejection happens before the delete.
+        assert await repo.get(sid("a")) is not None
 
 
 class TestMemoryServiceDeploy:

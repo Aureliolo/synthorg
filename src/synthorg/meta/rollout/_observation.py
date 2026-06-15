@@ -38,6 +38,30 @@ type RolloutSnapshotBuilder = Callable[[], Awaitable[OrgSignalSnapshot]]
 logger = get_logger(__name__)
 
 
+def validate_window_and_interval(
+    observation_hours: float,
+    check_interval_hours: float,
+) -> None:
+    """Reject a non-positive observation window or check interval.
+
+    Shared by :func:`observe_until_verdict` and the A/B rollout loop:
+    both need a positive window and a positive interval so ``elapsed``
+    advances each tick.
+
+    Raises:
+        ValueError: If either value is not strictly positive.
+    """
+    if observation_hours <= 0.0:
+        msg = f"observation_window_hours must be positive; got {observation_hours}"
+        raise ValueError(msg)
+    if check_interval_hours <= 0.0:
+        msg = (
+            "check_interval_hours must be positive so elapsed advances "
+            f"each tick; got {check_interval_hours}"
+        )
+        raise ValueError(msg)
+
+
 def _regression_exit_result(
     *,
     result: RegressionResult,
@@ -154,15 +178,7 @@ async def observe_until_verdict(  # noqa: PLR0913
         ValueError: Raised on the corresponding failure path.
     """
     observation_hours = float(proposal.observation_window_hours)
-    if observation_hours <= 0.0:
-        msg = f"observation_window_hours must be positive; got {observation_hours}"
-        raise ValueError(msg)
-    if check_interval_hours <= 0.0:
-        msg = (
-            "check_interval_hours must be positive so elapsed advances "
-            f"each tick; got {check_interval_hours}"
-        )
-        raise ValueError(msg)
+    validate_window_and_interval(observation_hours, check_interval_hours)
     elapsed = 0.0
     last_result: RegressionResult | None = None
     while elapsed < observation_hours:

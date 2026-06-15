@@ -34,6 +34,7 @@ from urllib.parse import quote
 import httpx
 
 from synthorg.core.clock import Clock
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_EXECUTOR_HTTP_FAILED,
@@ -128,7 +129,7 @@ class TaskExecutionExecutor:
                 error=msg,
             )
             raise ValueError(msg)
-        self._base_url = api_base_url.rstrip("/")
+        self._base_url = strip_trailing_slash(api_base_url)
         self._auth_token = auth_token
         self._http = http_client
         self._timeout_seconds = timeout_seconds

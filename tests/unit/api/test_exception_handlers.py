@@ -1573,14 +1573,17 @@ class TestBareResponseFixes:
     """
 
     async def test_artifact_too_large_produces_rfc_9457_413(self) -> None:
-        """Artifact upload over the size limit returns 413 + error_detail."""
-        from synthorg.core.domain_errors import (
-            ArtifactRejectedTooLargeError,
-        )
+        """Artifact upload over the size limit returns 413 + error_detail.
+
+        The persistence-layer ``ArtifactTooLargeError`` is registered with
+        ``handle_domain_error`` above the generic ``PersistenceError`` 500
+        handler, so its 413 status + ``ARTIFACT_TOO_LARGE`` code reach the wire.
+        """
+        from synthorg.core.persistence_errors import ArtifactTooLargeError
 
         @post("/upload")
         async def handler() -> None:
-            raise ArtifactRejectedTooLargeError
+            raise ArtifactTooLargeError
 
         async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
             resp = await client.post("/upload")
@@ -1591,6 +1594,31 @@ class TestBareResponseFixes:
                 body,
                 error_code=ErrorCode.ARTIFACT_TOO_LARGE,
                 error_category=ErrorCategory.VALIDATION,
+                retryable=False,
+            )
+
+    async def test_artifact_storage_full_produces_rfc_9457_507(self) -> None:
+        """Storage-full rejection returns 507 with structured detail.
+
+        Same registration pattern as the too-large case: the
+        ``ArtifactStorageFullError`` 507 + ``ARTIFACT_STORAGE_FULL`` code
+        win over the generic ``PersistenceError`` 500 mapping.
+        """
+        from synthorg.core.persistence_errors import ArtifactStorageFullError
+
+        @post("/upload")
+        async def handler() -> None:
+            raise ArtifactStorageFullError
+
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.post("/upload")
+            assert resp.status_code == 507
+            body = resp.json()
+            assert body["success"] is False
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.ARTIFACT_STORAGE_FULL,
+                error_category=ErrorCategory.INTERNAL,
                 retryable=False,
             )
 

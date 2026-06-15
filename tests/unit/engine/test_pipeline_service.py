@@ -10,12 +10,12 @@ from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.errors import (
     WorkIntakeRejectedError,
     WorkPipelineTeamPathUnavailableError,
-    WorkProjectNotFoundError,
     WorkRoutingUndecidableError,
 )
 from synthorg.engine.pipeline.models import (
@@ -170,7 +170,7 @@ class TestProjectPhase:
             coordinator=None,
             agents=(make_e2e_identity(),),
         )
-        with pytest.raises(WorkProjectNotFoundError):
+        with pytest.raises(ProjectNotFoundError):
             await pipeline.run(_work_item())
 
 

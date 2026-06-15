@@ -236,9 +236,8 @@ async def capture_distillation(
 
     Non-critical -- returns ``None`` on non-system failures and logs
     a warning.  The captured data is stored as an EPISODIC memory
-    entry tagged with ``"distillation"`` so downstream consolidation
-    strategies (notably ``LLMConsolidationStrategy``) can read it as
-    trajectory context.
+    entry tagged with ``"distillation"`` so the downstream LLM
+    synthesis op can read it as trajectory context.
 
     Args:
         execution_result: The completed execution result.

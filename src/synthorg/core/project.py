@@ -1,7 +1,6 @@
 """Project domain model for task collection management."""
 
 from collections import Counter
-from datetime import datetime
 from typing import Self
 from uuid import UUID, uuid4
 
@@ -9,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.core.validation import validate_iso8601_deadline
 from synthorg.ontology.decorator import ontology_entity
 
 
@@ -77,15 +77,7 @@ class Project(BaseModel):
             ValueError: If ``deadline`` is whitespace-only or not a valid
                 ISO 8601 string.
         """
-        if self.deadline is not None:
-            if not self.deadline.strip():
-                msg = "deadline must not be whitespace-only"
-                raise ValueError(msg)
-            try:
-                datetime.fromisoformat(self.deadline)
-            except ValueError:
-                msg = f"deadline must be a valid ISO 8601 string, got {self.deadline!r}"
-                raise ValueError(msg) from None
+        validate_iso8601_deadline(self.deadline)
         return self
 
     @model_validator(mode="after")

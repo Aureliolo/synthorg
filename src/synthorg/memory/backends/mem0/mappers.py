@@ -9,6 +9,7 @@ import math
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
+from synthorg.core.iso_datetime import parse_iso_assume_utc
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.mem0.mappers_shared import _PREFIX
@@ -75,7 +76,7 @@ def parse_mem0_datetime(raw: object) -> datetime | None:
         )
         return None
     try:
-        dt = datetime.fromisoformat(raw)
+        return parse_iso_assume_utc(raw)
     except ValueError:
         logger.warning(
             MEMORY_MODEL_INVALID,
@@ -84,9 +85,6 @@ def parse_mem0_datetime(raw: object) -> datetime | None:
             reason="malformed ISO 8601 datetime, returning None",
         )
         return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return dt
 
 
 def normalize_relevance_score(score: object) -> float | None:

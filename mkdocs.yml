@@ -213,6 +213,7 @@ nav:
           - ADR-0011 Architectural Feedback Loop: decisions/0011-architectural-feedback-loop.md
           - ADR-0012 Cold-Import Cycle Break: decisions/0012-cold-import-cycle-break.md
           - ADR-0013 Layering and Dependency-Inversion Rework: decisions/0013-layering-dependency-inversion.md
+          - ADR-0014 Error-Contract Consolidation: decisions/0014-error-contract-consolidation.md
   - Roadmap:
       - roadmap/index.md
       - Open Questions: roadmap/open-questions.md

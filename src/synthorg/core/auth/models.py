@@ -30,6 +30,28 @@ class OrgRole(StrEnum):
     VIEWER = "viewer"
 
 
+def _validate_dept_admin_scoping(
+    org_roles: tuple[OrgRole, ...],
+    scoped_departments: tuple[NotBlankStr, ...],
+) -> None:
+    """Enforce the two-way DEPARTMENT_ADMIN / scoped_departments invariant.
+
+    Shared by :class:`User` and :class:`AuthenticatedUser`, which carry
+    the identical field pair, so the rule lives once.
+
+    Raises:
+        ValueError: If ``scoped_departments`` is set without the
+            ``DEPARTMENT_ADMIN`` org role, or that role is present
+            without any scoped departments.
+    """
+    if scoped_departments and OrgRole.DEPARTMENT_ADMIN not in org_roles:
+        msg = "scoped_departments requires DEPARTMENT_ADMIN in org_roles"
+        raise ValueError(msg)
+    if OrgRole.DEPARTMENT_ADMIN in org_roles and not scoped_departments:
+        msg = "DEPARTMENT_ADMIN requires non-empty scoped_departments"
+        raise ValueError(msg)
+
+
 class User(BaseModel):
     """Persisted user account.
 
@@ -69,12 +91,7 @@ class User(BaseModel):
                 ``DEPARTMENT_ADMIN`` org role, or that role is present
                 without any scoped departments.
         """
-        if self.scoped_departments and OrgRole.DEPARTMENT_ADMIN not in self.org_roles:
-            msg = "scoped_departments requires DEPARTMENT_ADMIN in org_roles"
-            raise ValueError(msg)
-        if OrgRole.DEPARTMENT_ADMIN in self.org_roles and not self.scoped_departments:
-            msg = "DEPARTMENT_ADMIN requires non-empty scoped_departments"
-            raise ValueError(msg)
+        _validate_dept_admin_scoping(self.org_roles, self.scoped_departments)
         return self
 
 
@@ -179,10 +196,5 @@ class AuthenticatedUser(BaseModel):
                 ``DEPARTMENT_ADMIN`` org role, or that role is present
                 without any scoped departments.
         """
-        if self.scoped_departments and OrgRole.DEPARTMENT_ADMIN not in self.org_roles:
-            msg = "scoped_departments requires DEPARTMENT_ADMIN in org_roles"
-            raise ValueError(msg)
-        if OrgRole.DEPARTMENT_ADMIN in self.org_roles and not self.scoped_departments:
-            msg = "DEPARTMENT_ADMIN requires non-empty scoped_departments"
-            raise ValueError(msg)
+        _validate_dept_admin_scoping(self.org_roles, self.scoped_departments)
         return self

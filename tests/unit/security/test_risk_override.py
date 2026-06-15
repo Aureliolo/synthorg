@@ -6,13 +6,28 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.approval.enums import ApprovalRiskLevel
-from synthorg.security.rules.risk_classifier import RiskClassifier
+from synthorg.observability.events.security import SECURITY_RISK_FALLBACK
+from synthorg.security.risk_map import (
+    MapBackedRiskClassifier,
+    default_risk_classifier,
+)
 from synthorg.security.rules.risk_override import (
     RiskTierOverride,
     SecOpsRiskClassifier,
 )
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
+
+
+def _baseline() -> MapBackedRiskClassifier:
+    """Build the rules-baseline classifier wrapped by SecOps overrides.
+
+    Returns:
+        A ``MapBackedRiskClassifier`` over the default map.
+    """
+    return default_risk_classifier(miss_event=SECURITY_RISK_FALLBACK)
+
 
 _NOW = datetime.now(tz=UTC)
 _FUTURE = _NOW + timedelta(hours=24)
@@ -51,7 +66,7 @@ class TestRiskTierOverrideModel:
         assert ovr.action_type == "code:write"
         assert ovr.original_tier == ApprovalRiskLevel.MEDIUM
         assert ovr.override_tier == ApprovalRiskLevel.LOW
-        assert ovr.is_active is True
+        assert ovr.is_active(_NOW) is True
 
     def test_frozen(self) -> None:
         ovr = _make_override()
@@ -80,28 +95,28 @@ class TestRiskTierOverrideModel:
             created_at=_NOW - timedelta(hours=2),
             expires_at=_NOW - timedelta(hours=1),
         )
-        assert ovr.is_active is False
+        assert ovr.is_active(_NOW) is False
 
     def test_revoked_override_not_active(self) -> None:
         ovr = _make_override(
             revoked_at=_NOW,
             revoked_by="admin-1",
         )
-        assert ovr.is_active is False
+        assert ovr.is_active(_NOW) is False
 
 
 class TestSecOpsRiskClassifier:
     """Tests for SecOpsRiskClassifier."""
 
     def test_falls_back_to_base_when_no_overrides(self) -> None:
-        base = RiskClassifier()
+        base = _baseline()
         classifier = SecOpsRiskClassifier(base=base)
         # CODE_WRITE is MEDIUM in the default map
         result = classifier.classify("code:write")
         assert result == ApprovalRiskLevel.MEDIUM
 
     def test_active_override_takes_precedence(self) -> None:
-        base = RiskClassifier()
+        base = _baseline()
         ovr = _make_override(
             action_type="code:write",
             original=ApprovalRiskLevel.MEDIUM,
@@ -112,7 +127,7 @@ class TestSecOpsRiskClassifier:
         assert result == ApprovalRiskLevel.LOW
 
     def test_expired_override_ignored(self) -> None:
-        base = RiskClassifier()
+        base = _baseline()
         ovr = RiskTierOverride(
             id="ovr-exp",
             action_type="code:write",
@@ -128,7 +143,7 @@ class TestSecOpsRiskClassifier:
         assert result == ApprovalRiskLevel.MEDIUM
 
     def test_revoked_override_ignored(self) -> None:
-        base = RiskClassifier()
+        base = _baseline()
         ovr = _make_override(
             revoked_at=_NOW,
             revoked_by="admin-1",
@@ -138,7 +153,7 @@ class TestSecOpsRiskClassifier:
         assert result == ApprovalRiskLevel.MEDIUM
 
     def test_add_override(self) -> None:
-        base = RiskClassifier()
+        base = _baseline()
         classifier = SecOpsRiskClassifier(base=base)
         ovr = _make_override()
         classifier.add_override(ovr)
@@ -146,24 +161,24 @@ class TestSecOpsRiskClassifier:
         assert result == ApprovalRiskLevel.LOW
 
     def test_revoke_override(self) -> None:
-        base = RiskClassifier()
+        base = _baseline()
         ovr = _make_override()
         classifier = SecOpsRiskClassifier(base=base, overrides=(ovr,))
         revoked = classifier.revoke_override("ovr-1")
         assert revoked is not None
-        assert revoked.is_active is False
+        assert revoked.is_active(_NOW) is False
         # After revocation, falls back to base
         result = classifier.classify("code:write")
         assert result == ApprovalRiskLevel.MEDIUM
 
     def test_revoke_nonexistent_returns_none(self) -> None:
-        base = RiskClassifier()
+        base = _baseline()
         classifier = SecOpsRiskClassifier(base=base)
         result = classifier.revoke_override("nonexistent")
         assert result is None
 
     def test_active_overrides_returns_only_active(self) -> None:
-        base = RiskClassifier()
+        base = _baseline()
         active = _make_override(override_id="ovr-active")
         revoked = _make_override(
             override_id="ovr-revoked",
@@ -178,8 +193,35 @@ class TestSecOpsRiskClassifier:
         assert len(result) == 1
         assert result[0].id == "ovr-active"
 
+    def test_override_expiry_driven_by_injected_clock(self) -> None:
+        base = _baseline()
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        clock = FakeClock(start=start)
+        ovr = RiskTierOverride(
+            id="ovr-clock",
+            action_type="code:write",
+            original_tier=ApprovalRiskLevel.MEDIUM,
+            override_tier=ApprovalRiskLevel.LOW,
+            reason="clock-seam test",
+            created_by="user-1",
+            created_at=start,
+            expires_at=start + timedelta(hours=1),
+        )
+        classifier = SecOpsRiskClassifier(
+            base=base,
+            overrides=(ovr,),
+            clock=clock,
+        )
+        # Before expiry the override applies.
+        assert classifier.classify("code:write") == ApprovalRiskLevel.LOW
+        assert len(classifier.active_overrides()) == 1
+        # Advancing past expiry drops it without touching wall-clock.
+        clock.advance(timedelta(hours=2).total_seconds())
+        assert classifier.classify("code:write") == ApprovalRiskLevel.MEDIUM
+        assert classifier.active_overrides() == ()
+
     def test_multiple_overrides_last_active_wins(self) -> None:
-        base = RiskClassifier()
+        base = _baseline()
         ovr1 = _make_override(
             override_id="ovr-1",
             override=ApprovalRiskLevel.LOW,

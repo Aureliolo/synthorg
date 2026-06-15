@@ -96,6 +96,41 @@ def _taxonomy_config(
     return ErrorTaxonomyConfig(enabled=enabled, detectors=detectors)
 
 
+def _coordination_failure_messages(
+    *tool_errors: str,
+    assistant: str = "Running the build now.",
+) -> tuple[ChatMessage, ...]:
+    """Build a coordination-failure conversation.
+
+    Produces a SYSTEM / USER / ASSISTANT prefix followed by one
+    erroring TOOL message per entry in ``tool_errors``.
+
+    Args:
+        tool_errors: Error content for each failing tool result.
+        assistant: The assistant turn's content.
+
+    Returns:
+        The assembled conversation tuple.
+    """
+    prefix = (
+        ChatMessage(role=MessageRole.SYSTEM, content="You are an engineer."),
+        ChatMessage(role=MessageRole.USER, content="Run the build."),
+        ChatMessage(role=MessageRole.ASSISTANT, content=assistant),
+    )
+    tools = tuple(
+        ChatMessage(
+            role=MessageRole.TOOL,
+            tool_result=ToolResult(
+                tool_call_id=f"call-build-{index}",
+                content=content,
+                is_error=True,
+            ),
+        )
+        for index, content in enumerate(tool_errors, start=1)
+    )
+    return prefix + tools
+
+
 @pytest.mark.integration
 class TestErrorTaxonomyIntegration:
     """Full pipeline integration with realistic conversation patterns."""
@@ -416,6 +451,26 @@ def _child_task(
     )
 
 
+def _task_tree_repo(*children: Task) -> AsyncMock:
+    """Stub a task repository whose ``query`` returns ``children``."""
+    repo = AsyncMock()
+    repo.query = AsyncMock(return_value=children)
+    return repo
+
+
+def _llm_provider(content: str) -> AsyncMock:
+    """Stub an LLM provider whose ``complete`` returns ``content``."""
+    response = CompletionResponse(
+        content=content,
+        finish_reason=FinishReason.STOP,
+        usage=TokenUsage(input_tokens=50, output_tokens=50, cost=0.0005),
+        model="test-small-001",
+    )
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=response)
+    return provider
+
+
 @pytest.mark.integration
 class TestCrossAgentNumericalDriftTaskTree:
     """LLM numerical-drift detection across a task tree.
@@ -466,27 +521,14 @@ class TestCrossAgentNumericalDriftTaskTree:
             description="Delegate beta reported 240 hours.",
         )
 
-        mock_repo = AsyncMock()
-        mock_repo.query = AsyncMock(return_value=(child_alpha, child_beta))
-
-        provider_response = CompletionResponse(
-            content=(
-                '[{"description": "Numerical estimate diverges between '
-                'agents (lead: 120h, alpha: 40h, beta: 240h)", '
-                '"severity": "high", '
-                '"evidence": ["lead=120", "alpha=40", "beta=240"], '
-                '"turn_start": 0, "turn_end": 2}]'
-            ),
-            finish_reason=FinishReason.STOP,
-            usage=TokenUsage(
-                input_tokens=50,
-                output_tokens=50,
-                cost=0.0005,
-            ),
-            model="test-small-001",
+        mock_repo = _task_tree_repo(child_alpha, child_beta)
+        mock_provider = _llm_provider(
+            '[{"description": "Numerical estimate diverges between '
+            'agents (lead: 120h, alpha: 40h, beta: 240h)", '
+            '"severity": "high", '
+            '"evidence": ["lead=120", "alpha=40", "beta=240"], '
+            '"turn_start": 0, "turn_end": 2}]',
         )
-        mock_provider = AsyncMock()
-        mock_provider.complete = AsyncMock(return_value=provider_response)
 
         config = ErrorTaxonomyConfig(
             enabled=True,
@@ -576,8 +618,7 @@ class TestDelegationProtocolViolationIntegration:
             delegation_chain=("agent-root",),
             estimated_complexity=Complexity.MEDIUM,
         )
-        mock_repo = AsyncMock()
-        mock_repo.query = AsyncMock(return_value=(legal_child,))
+        mock_repo = _task_tree_repo(legal_child)
 
         config = ErrorTaxonomyConfig(
             enabled=True,
@@ -708,28 +749,7 @@ class TestClassificationSinksFlowThrough:
         # A realistic coordination-failure conversation: a tool
         # error plus an ERROR finish reason produces two HIGH
         # findings that should fan out to both sinks.
-        messages = (
-            ChatMessage(
-                role=MessageRole.SYSTEM,
-                content="You are an engineer.",
-            ),
-            ChatMessage(
-                role=MessageRole.USER,
-                content="Run the build.",
-            ),
-            ChatMessage(
-                role=MessageRole.ASSISTANT,
-                content="Running the build now.",
-            ),
-            ChatMessage(
-                role=MessageRole.TOOL,
-                tool_result=ToolResult(
-                    tool_call_id="call-build-1",
-                    content="FAILED: build error",
-                    is_error=True,
-                ),
-            ),
-        )
+        messages = _coordination_failure_messages("FAILED: build error")
         turns = (
             _turn(turn_number=1),
             _turn(turn_number=2, finish_reason=FinishReason.ERROR),
@@ -782,35 +802,10 @@ class TestClassificationSinksFlowThrough:
 
         # Build a result with 3 HIGH-severity findings for the
         # same agent.  Only the first should dispatch.
-        messages = (
-            ChatMessage(
-                role=MessageRole.SYSTEM,
-                content="You are an engineer.",
-            ),
-            ChatMessage(
-                role=MessageRole.USER,
-                content="Run the build.",
-            ),
-            ChatMessage(
-                role=MessageRole.ASSISTANT,
-                content="Running.",
-            ),
-            ChatMessage(
-                role=MessageRole.TOOL,
-                tool_result=ToolResult(
-                    tool_call_id="call-build-1",
-                    content="FAILED: 1",
-                    is_error=True,
-                ),
-            ),
-            ChatMessage(
-                role=MessageRole.TOOL,
-                tool_result=ToolResult(
-                    tool_call_id="call-build-2",
-                    content="FAILED: 2",
-                    is_error=True,
-                ),
-            ),
+        messages = _coordination_failure_messages(
+            "FAILED: 1",
+            "FAILED: 2",
+            assistant="Running.",
         )
         turns = (
             _turn(turn_number=1),

@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.budget.currency import format_cost
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import (
@@ -112,22 +113,21 @@ class TestAssembleBlocks:
         assert any("No agent activity was recorded" in t for t in prose_texts)
 
     def test_contribution_cost_carries_currency(self) -> None:
-        blocks = assemble_blocks(
-            _run(
-                contributions=(
-                    AgentContribution(
-                        agent_id=NotBlankStr("agent-a"), turn_count=3, cost=1.5
-                    ),
-                )
-            ),
-            _prose(),
+        run = _run(
+            contributions=(
+                AgentContribution(
+                    agent_id=NotBlankStr("agent-a"), turn_count=3, cost=1.5
+                ),
+            )
         )
+        blocks = assemble_blocks(run, _prose())
         bullet_text = [
             item for b in blocks if isinstance(b, BulletListBlock) for item in b.items
         ]
-        # _run() defaults to the system currency (USD); the cost must
-        # render with a unit, never as a bare number.
-        assert any("cost 1.50 USD" in t for t in bullet_text)
+        # The cost renders via the canonical ``format_cost`` helper (symbol +
+        # amount) in the run's effective currency, never as a bare number and
+        # never privileging a specific currency symbol.
+        assert any(f"cost {format_cost(1.5, run.currency)}" in t for t in bullet_text)
 
     def test_malicious_source_url_coerced_end_to_end(self) -> None:
         # A javascript: or protocol-relative citation that flows through

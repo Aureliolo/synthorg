@@ -26,7 +26,7 @@ from synthorg.api.path_params import (
 )
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
-from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.domain_errors import ConflictError, ValidationError
 from synthorg.core.types import (
     NotBlankStr,
 )
@@ -42,6 +42,7 @@ from synthorg.integrations.errors import (
     DuplicateConnectionError,
     InvalidConnectionAuthError,
     SecretRetrievalError,
+    SecretRetrievalNotFoundError,
 )
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import (
@@ -551,7 +552,10 @@ class ConnectionsController(Controller):
             ``ApiResponse[dict[str, str]]`` instance.
 
         Raises:
-            NotFoundError: Raised on the corresponding failure path.
+            SecretRetrievalNotFoundError: For a missing connection, an unset
+                field, or a secret-backend failure. Every reveal miss surfaces
+                through one deliberate uniform 404 (``RESOURCE_NOT_FOUND``) so
+                the error cannot enumerate which connections exist.
         """
         catalog = require_service(
             state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
@@ -566,7 +570,7 @@ class ConnectionsController(Controller):
                 field=field,
                 reason="connection_not_found",
             )
-            raise NotFoundError(_REVEAL_GENERIC_ERROR) from exc
+            raise SecretRetrievalNotFoundError(_REVEAL_GENERIC_ERROR) from exc
         except SecretRetrievalError as exc:
             # Secret backend failures are operational errors, not a
             # "not found" condition -- log at ERROR level so they
@@ -589,7 +593,11 @@ class ConnectionsController(Controller):
                 field=field,
                 reason="secret_retrieval_failed",
             )
-            raise NotFoundError(_REVEAL_GENERIC_ERROR) from exc
+            # Uniform 404 (typed): identical wire shape to the missing-
+            # connection branch above, so the secret-backend error code
+            # cannot enumerate which connections exist. The typed class
+            # records this intentional 502 -> 404 / non-retryable override.
+            raise SecretRetrievalNotFoundError(_REVEAL_GENERIC_ERROR) from exc
 
         value = credentials.get(field)
         if value is None:
@@ -599,7 +607,7 @@ class ConnectionsController(Controller):
                 field=field,
                 reason="field_not_set",
             )
-            raise NotFoundError(_REVEAL_GENERIC_ERROR)
+            raise SecretRetrievalNotFoundError(_REVEAL_GENERIC_ERROR)
         logger.info(
             SECURITY_CONNECTION_SECRET_REVEALED,
             connection=name,

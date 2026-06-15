@@ -6,12 +6,13 @@ with override support.  Overrides have mandatory expiration and can
 be revoked, with all changes audit-logged.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, model_validator
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
@@ -20,7 +21,7 @@ from synthorg.observability.events.security import (
     SECURITY_RISK_OVERRIDE_EXPIRED,
     SECURITY_RISK_OVERRIDE_REVOKED,
 )
-from synthorg.security.rules.risk_classifier import RiskClassifier
+from synthorg.security.timeout.protocol import RiskTierClassifier
 
 logger = get_logger(__name__)
 
@@ -107,12 +108,20 @@ class RiskTierOverride(BaseModel):
             raise ValueError(msg)
         return self
 
-    @property
-    def is_active(self) -> bool:
-        """True if the override is not revoked and not expired."""
+    def is_active(self, now: datetime) -> bool:
+        """Return whether the override is neither revoked nor expired.
+
+        Args:
+            now: The current time, read through the caller's ``Clock``
+                seam so activity evaluation is deterministic in tests.
+
+        Returns:
+            True if the override has not been revoked and ``now`` is
+            before ``expires_at``.
+        """
         if self.revoked_at is not None:
             return False
-        return datetime.now(tz=UTC) < self.expires_at
+        return now < self.expires_at
 
 
 class SecOpsRiskClassifier:
@@ -125,18 +134,29 @@ class SecOpsRiskClassifier:
     When multiple active overrides exist for the same action type,
     the last one added wins.
 
+    The ``_overrides`` list grows for the lifetime of the classifier:
+    revoked and expired entries are retained (never pruned) so the
+    audit trail and ``revoke_override`` lookups stay stable.  Callers
+    that need to bound growth must reconstruct the classifier from a
+    filtered set rather than relying on in-place cleanup.
+
     Args:
         base: The base risk classifier for fallback.
         overrides: Initial set of overrides.
+        clock: Clock seam; defaults to :class:`SystemClock`.  Activity
+            checks read time through it so they are deterministic under
+            ``FakeClock`` in tests.
     """
 
     def __init__(
         self,
         *,
-        base: RiskClassifier,
+        base: RiskTierClassifier,
         overrides: tuple[RiskTierOverride, ...] = (),
+        clock: Clock | None = None,
     ) -> None:
         self._base = base
+        self._clock: Clock = clock if clock is not None else SystemClock()
         self._overrides: list[RiskTierOverride] = sorted(
             overrides,
             key=lambda o: o.created_at,
@@ -156,11 +176,12 @@ class SecOpsRiskClassifier:
         Returns:
             The assessed risk level.
         """
+        now = self._clock.now()
         # Search in reverse -- last added wins.
         for override in reversed(self._overrides):
             if override.action_type != action_type:
                 continue
-            if not override.is_active:
+            if not override.is_active(now):
                 event = (
                     SECURITY_RISK_OVERRIDE_REVOKED
                     if override.revoked_at is not None
@@ -215,9 +236,9 @@ class SecOpsRiskClassifier:
         Returns:
             The revoked override, or None if not found.
         """
-        now = datetime.now(tz=UTC)
+        now = self._clock.now()
         for i, ovr in enumerate(self._overrides):
-            if ovr.id == override_id and ovr.is_active:
+            if ovr.id == override_id and ovr.is_active(now):
                 revoked = ovr.model_copy(
                     update={
                         "revoked_at": now,
@@ -244,4 +265,5 @@ class SecOpsRiskClassifier:
         Returns:
             Tuple of active (non-expired, non-revoked) overrides.
         """
-        return tuple(o for o in self._overrides if o.is_active)
+        now = self._clock.now()
+        return tuple(o for o in self._overrides if o.is_active(now))

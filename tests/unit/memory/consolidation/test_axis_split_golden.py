@@ -21,6 +21,10 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
+from synthorg.memory.consolidation.axis import (
+    ConsolidationContext,
+    SelectionGroup,
+)
 from synthorg.memory.consolidation.composite import (
     CompositeConsolidationStrategy,
 )
@@ -32,6 +36,8 @@ from synthorg.memory.consolidation.models import ArchivalMode
 from synthorg.memory.consolidation.ops import (
     ConcatenationOp,
     DensityRoutingOp,
+    abstractive_summarization_op,
+    extractive_preservation_op,
 )
 from synthorg.memory.consolidation.selectors import HighestRelevanceSelector
 from synthorg.memory.models import (
@@ -312,3 +318,71 @@ async def test_llm_truncation_keeps_dropped_entries() -> None:
     assert result.removed_ids == tuple(backend.deleted)
     assert len(result.removed_ids) < 3
     assert "t3" not in result.removed_ids
+
+
+# ── SingleModeOp factory bindings (axis-collapse parity) ──
+
+
+async def test_extractive_preservation_op_factory_golden() -> None:
+    """The extractive factory op stores mode:extractive + deletes all."""
+    backend = _RecordingBackend()
+    extractor = ExtractivePreserver()
+    entries = tuple(
+        _entry(f"e{i}", content=f"id=ABC-{i} key: value", relevance=0.1 * i)
+        for i in range(3)
+    )
+    group = SelectionGroup(
+        category=MemoryCategory.EPISODIC,
+        kept=entries[0],
+        to_remove=entries,
+    )
+    op = extractive_preservation_op(backend=backend, extractor=extractor)
+
+    result = await op.consolidate(
+        group, context=ConsolidationContext(agent_id=NotBlankStr(_AGENT))
+    )
+
+    assert result.removed_ids == ("e0", "e1", "e2")
+    assert tuple(a.original_id for a in result.mode_assignments) == ("e0", "e1", "e2")
+    assert all(a.mode is ArchivalMode.EXTRACTIVE for a in result.mode_assignments)
+    _agent, req = backend.stored[0]
+    assert req.metadata.tags == ("consolidated", "mode:extractive")
+    expected = "\n---\n".join(extractor.extract(e.content) for e in entries)
+    assert req.content == expected
+
+
+async def test_abstractive_summarization_op_factory_golden() -> None:
+    """The abstractive factory op fans out summarize + stores mode:abstractive."""
+    backend = _RecordingBackend()
+
+    class _FixedSummarizer(AbstractiveSummarizer):
+        def __init__(self) -> None:
+            """Skip provider/model wiring; return a fixed per-entry summary."""
+
+        @override
+        async def summarize(
+            self, content: str, *, agent_id: NotBlankStr | None = None
+        ) -> str:
+            return f"summary({content})"
+
+    entries = tuple(
+        _entry(f"a{i}", content=f"raw-{i}", relevance=0.1 * i) for i in range(3)
+    )
+    group = SelectionGroup(
+        category=MemoryCategory.EPISODIC,
+        kept=entries[0],
+        to_remove=entries,
+    )
+    op = abstractive_summarization_op(backend=backend, summarizer=_FixedSummarizer())
+
+    result = await op.consolidate(
+        group, context=ConsolidationContext(agent_id=NotBlankStr(_AGENT))
+    )
+
+    assert result.removed_ids == ("a0", "a1", "a2")
+    assert tuple(a.original_id for a in result.mode_assignments) == ("a0", "a1", "a2")
+    assert all(a.mode is ArchivalMode.ABSTRACTIVE for a in result.mode_assignments)
+    _agent, req = backend.stored[0]
+    assert req.metadata.tags == ("consolidated", "mode:abstractive")
+    expected = "\n---\n".join(f"summary(raw-{i})" for i in range(3))
+    assert req.content == expected

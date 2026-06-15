@@ -1,10 +1,10 @@
 """Memory consolidation -- axis split (selector + op), retention, archival.
 
 Re-exports the public API so consumers can import from
-``synthorg.memory.consolidation`` directly. The pre-split monolithic
-``Simple`` / ``DualMode`` / ``LLM`` strategy classes were removed in
-the ADR-0005 axis split; build a composite via
-:func:`build_consolidation_strategy` instead.
+``synthorg.memory.consolidation`` directly. Assemble a strategy by
+composing a selector with one or more ops via
+:func:`build_consolidation_strategy`; that builder is the only public
+construction path (ADR-0005).
 """
 
 from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer
@@ -48,10 +48,11 @@ from synthorg.memory.consolidation.models import (
     RetentionRule,
 )
 from synthorg.memory.consolidation.ops import (
-    AbstractiveSummarizationOp,
     ConcatenationOp,
     DensityRoutingOp,
-    ExtractivePreservationOp,
+    SingleModeOp,
+    abstractive_summarization_op,
+    extractive_preservation_op,
 )
 from synthorg.memory.consolidation.retention import RetentionEnforcer
 from synthorg.memory.consolidation.selectors import HighestRelevanceSelector
@@ -59,7 +60,6 @@ from synthorg.memory.consolidation.service import MemoryConsolidationService
 from synthorg.memory.consolidation.strategy import ConsolidationStrategy
 
 __all__ = [
-    "AbstractiveSummarizationOp",
     "AbstractiveSummarizer",
     "ArchivalConfig",
     "ArchivalEntry",
@@ -82,7 +82,6 @@ __all__ = [
     "DistillationRequest",
     "DualModeConfig",
     "EntrySelector",
-    "ExtractivePreservationOp",
     "ExtractivePreserver",
     "HighestRelevanceSelector",
     "LLMConsolidationConfig",
@@ -94,7 +93,10 @@ __all__ = [
     "RetentionEnforcer",
     "RetentionRule",
     "SelectionGroup",
+    "SingleModeOp",
     "SynthesisOutcome",
+    "abstractive_summarization_op",
     "build_consolidation_strategy",
     "capture_distillation",
+    "extractive_preservation_op",
 ]

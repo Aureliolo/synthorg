@@ -25,7 +25,6 @@ from synthorg.integrations.errors import (
     InvalidStateError,
     OIDCVerificationError,
     SecretRetrievalError,
-    TokenExchangeFailedError,
 )
 from synthorg.integrations.oauth.callback_handler import (
     resolve_oauth_http_timeout,
@@ -201,6 +200,9 @@ class OAuthController(Controller):
 
         Raises:
             ValidationError: Raised on the corresponding failure path.
+            TokenExchangeFailedError: Propagated from the token-exchange step
+                with its own 502 + retryable metadata, rather than being
+                flattened to a non-retryable 422.
         """
         from synthorg.integrations.oauth.callback_handler import (  # noqa: PLC0415
             handle_oauth_callback,
@@ -230,8 +232,10 @@ class OAuthController(Controller):
             # id_token signature/claim/nonce rejection is a callback
             # validation failure (400), not an upstream 502.
             raise ValidationError(str(exc)) from exc
-        except TokenExchangeFailedError as exc:
-            raise ValidationError(str(exc)) from exc
+        # ``TokenExchangeFailedError`` is NOT caught: a token-endpoint
+        # failure (upstream rate-limit, non-JSON body) is transient, so its
+        # own 502 + retryable metadata propagates to handle_domain_error
+        # rather than being flattened to a non-retryable 422.
         return ApiResponse(
             data={
                 "status": "connected",

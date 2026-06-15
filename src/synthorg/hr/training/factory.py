@@ -200,22 +200,24 @@ def _build_extractors(
     Returns:
         Mapping from ``ContentType`` to ``ContentExtractor``.
     """
-    from synthorg.hr.training.extractors.procedural import (  # noqa: PLC0415
-        ProceduralMemoryExtractor,
-    )
-    from synthorg.hr.training.extractors.semantic import (  # noqa: PLC0415
-        SemanticMemoryExtractor,
+    from synthorg.core.memory_enums import MemoryCategory  # noqa: PLC0415
+    from synthorg.hr.training.extractors.memory_backed import (  # noqa: PLC0415
+        MemoryBackedExtractor,
     )
     from synthorg.hr.training.extractors.tool_patterns import (  # noqa: PLC0415
         ToolPatternExtractor,
     )
 
     return {
-        ContentType.PROCEDURAL: ProceduralMemoryExtractor(
+        ContentType.PROCEDURAL: MemoryBackedExtractor(
             backend=memory_backend,
+            memory_category=MemoryCategory.PROCEDURAL,
+            content_type=ContentType.PROCEDURAL,
         ),
-        ContentType.SEMANTIC: SemanticMemoryExtractor(
+        ContentType.SEMANTIC: MemoryBackedExtractor(
             backend=memory_backend,
+            memory_category=MemoryCategory.SEMANTIC,
+            content_type=ContentType.SEMANTIC,
         ),
         ContentType.TOOL_PATTERNS: ToolPatternExtractor(
             tracker=tool_tracker,

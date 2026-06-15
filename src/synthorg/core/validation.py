@@ -1,6 +1,34 @@
 """Shared validation utilities for domain value formats."""
 
+from datetime import datetime
+
 _ACTION_TYPE_PARTS: int = 2
+
+
+def validate_iso8601_deadline(deadline: str | None) -> None:
+    """Validate an optional ISO 8601 deadline string.
+
+    Canonical guard for the ``deadline`` field shared by ``Task``,
+    ``Project``, and the project-request DTO: ``None`` is accepted,
+    whitespace-only is rejected, and any non-ISO-8601 value is rejected.
+
+    Args:
+        deadline: The deadline string to validate, or ``None`` to skip.
+
+    Raises:
+        ValueError: If ``deadline`` is whitespace-only or not a valid
+            ISO 8601 string.
+    """
+    if deadline is None:
+        return
+    if not deadline.strip():
+        msg = "deadline must not be whitespace-only"
+        raise ValueError(msg)
+    try:
+        datetime.fromisoformat(deadline)
+    except ValueError as exc:
+        msg = f"deadline must be a valid ISO 8601 string, got {deadline!r}"
+        raise ValueError(msg) from exc
 
 
 def is_valid_action_type(action_type: str) -> bool:

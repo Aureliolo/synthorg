@@ -32,7 +32,10 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.models import ImprovementProposal, ProposalAltitude
+from synthorg.meta._proposal_altitude_descriptor import (
+    PROPOSAL_ALTITUDE_DESCRIPTORS,
+)
+from synthorg.meta.models import ImprovementProposal
 from synthorg.meta.signal_models import (
     OrgBudgetSummary,
     OrgCoordinationSummary,
@@ -55,7 +58,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_PROPOSAL_LISTED,
     META_PROPOSAL_SUBMITTED,
-    META_PROPOSAL_UNKNOWN_ALTITUDE,
 )
 
 logger = get_logger(__name__)
@@ -324,39 +326,15 @@ class SignalsService:
 def _risk_from_altitude(proposal: ImprovementProposal) -> ApprovalRiskLevel:
     """Map proposal altitude to approval risk tier.
 
-    The mapping is exhaustive over :class:`ProposalAltitude`: code
-    modifications are high-risk (they change production source),
-    architecture changes are medium, prompt and config tuning are low.
-    A new enum member added without a matching branch is a bug in
-    this file; log a warning so ops learn about the gap on the first
-    occurrence and fall through to ``HIGH`` (fail-safe, not fail-silent)
-    rather than silently routing it to ``LOW``.
+    Reads :data:`PROPOSAL_ALTITUDE_DESCRIPTORS`, which is exhaustive over
+    :class:`ProposalAltitude` by an import-time completeness guard, so a
+    new enum member added without a descriptor fails at import rather
+    than silently routing to the wrong tier here.
 
     Returns:
         ``ApprovalRiskLevel`` instance.
     """
-    # Exhaustive over every ``ProposalAltitude`` value.  A future enum
-    # member added without a matching branch will trip the runtime
-    # fall-through at the bottom and emit
-    # ``META_PROPOSAL_UNKNOWN_ALTITUDE``; type checkers flag the
-    # fall-through as unreachable, which is the desired signal.
-    altitude = proposal.altitude
-    if altitude is ProposalAltitude.CODE_MODIFICATION:
-        return ApprovalRiskLevel.HIGH
-    if altitude is ProposalAltitude.TOOL_CREATION:
-        return ApprovalRiskLevel.HIGH
-    if altitude is ProposalAltitude.ARCHITECTURE:
-        return ApprovalRiskLevel.MEDIUM
-    if altitude is ProposalAltitude.PROMPT_TUNING:
-        return ApprovalRiskLevel.LOW
-    if altitude is ProposalAltitude.CONFIG_TUNING:
-        return ApprovalRiskLevel.LOW
-    logger.warning(  # type: ignore[unreachable]
-        META_PROPOSAL_UNKNOWN_ALTITUDE,
-        altitude=str(altitude),
-        proposal_id=str(proposal.id),
-    )
-    return ApprovalRiskLevel.HIGH
+    return PROPOSAL_ALTITUDE_DESCRIPTORS[proposal.altitude].risk_level
 
 
 __all__ = [
