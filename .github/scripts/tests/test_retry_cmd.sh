@@ -112,6 +112,28 @@ else
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 
+# --- 7. non-numeric base delay: rejected up front with exit 2 -----------
+rc=0
+out="$(RETRY_CMD_ATTEMPTS=2 RETRY_CMD_BASE_DELAY=abc \
+  bash "$HELPER" "selftest-baddelay" bash -c 'exit 1' 2>&1)" || rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'RETRY_CMD_BASE_DELAY must be a non-negative integer' <<<"$out"; then
+  pass "retry_cmd rejects a non-numeric RETRY_CMD_BASE_DELAY with exit 2"
+else
+  fail "retry_cmd did not reject a non-numeric base delay (rc=${rc}, expected 2)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- 8. non-numeric max delay: rejected up front with exit 2 ------------
+rc=0
+out="$(RETRY_CMD_ATTEMPTS=2 RETRY_CMD_BASE_DELAY=0 RETRY_CMD_MAX_DELAY=abc \
+  bash "$HELPER" "selftest-badmax" bash -c 'exit 1' 2>&1)" || rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'RETRY_CMD_MAX_DELAY must be a non-negative integer' <<<"$out"; then
+  pass "retry_cmd rejects a non-numeric RETRY_CMD_MAX_DELAY with exit 2"
+else
+  fail "retry_cmd did not reject a non-numeric max delay (rc=${rc}, expected 2)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   printf '\nretry_cmd self-test FAILED\n' >&2
   exit 1
