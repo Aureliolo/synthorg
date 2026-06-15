@@ -13,7 +13,6 @@ finish current tool, and checkpoint-and-stop.  The
 """
 
 import asyncio
-import contextlib
 import signal
 import sys
 import types
@@ -425,8 +424,19 @@ class ShutdownManager:
             )
             # If request_shutdown() itself fails, stop the event loop as
             # a last resort to avoid a process that ignores signals.
-            with contextlib.suppress(Exception):
+            try:
                 asyncio.get_running_loop().stop()
+            except Exception as stop_exc:  # noqa: BLE001 -- criticals re-raised
+                # The primary path already logged via structlog above; if
+                # the last-resort loop.stop() ALSO fails the process may be
+                # stuck. Emit via signal-safe ``sys.stderr.write`` (not
+                # structlog, whose lock state is suspect here) so there is
+                # still a trace.
+                reraise_critical(stop_exc)
+                sys.stderr.write(
+                    "shutdown: last-resort loop.stop() failed "
+                    f"({type(stop_exc).__name__})\n"
+                )
 
     def _handle_signal_threadsafe(
         self,
@@ -459,8 +469,14 @@ class ShutdownManager:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                with contextlib.suppress(Exception):
+                try:
                     asyncio.get_running_loop().stop()
+                except Exception as stop_exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(stop_exc)
+                    sys.stderr.write(
+                        "shutdown: last-resort loop.stop() failed "
+                        f"({type(stop_exc).__name__})\n"
+                    )
 
         try:
             loop = asyncio.get_running_loop()

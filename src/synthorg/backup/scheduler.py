@@ -254,8 +254,23 @@ class BackupScheduler:
                     note="shutdown_interrupted",
                 )
                 drain_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, Exception):
+                try:
                     await drain_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as drain_exc:  # noqa: BLE001 -- criticals re-raised
+                    # The drain task hit a real error (persistence write,
+                    # file lock, flush) during an interrupted shutdown.
+                    # Surface it so a corrupted/incomplete backup is
+                    # diagnosable rather than invisible behind the
+                    # interruption warning above.
+                    reraise_critical(drain_exc)
+                    logger.warning(
+                        BACKUP_FAILED,
+                        error_type=type(drain_exc).__name__,
+                        error=safe_error_description(drain_exc),
+                        note="drain_task_error_on_interrupt",
+                    )
                 raise
             self._task = None
             # Drop loop-bound primitives so the next ``start()`` rebinds

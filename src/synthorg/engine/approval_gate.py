@@ -12,7 +12,6 @@ it, and returns the restored context along with a decision message
 that the caller can inject into the conversation.
 """
 
-import contextlib
 from datetime import UTC, datetime
 from typing import Final
 from uuid import uuid4
@@ -173,8 +172,21 @@ class ApprovalGate:
                     resolved_at=datetime.now(UTC),
                     resolved_by="approval_gate_compensation",
                 )
-                with contextlib.suppress(Exception):
+                try:
                     await self._interrupt_store.resolve(resolution)
+                except Exception as comp_exc:  # noqa: BLE001 -- criticals re-raised
+                    # Compensation itself failed: the interrupt is now
+                    # dangling AND no parked context exists. Surface it so
+                    # an operator can resolve the stuck interrupt instead
+                    # of waiting for the expiry sweeper, but still re-raise
+                    # the ORIGINAL failure below.
+                    reraise_critical(comp_exc)
+                    log_exception_redacted(
+                        logger,
+                        APPROVAL_GATE_CONTEXT_PARK_FAILED,
+                        comp_exc,
+                        note="interrupt_compensation_failed",
+                    )
             raise
         await self._notify_approval_required(escalation, agent_id, task_id)
         return parked

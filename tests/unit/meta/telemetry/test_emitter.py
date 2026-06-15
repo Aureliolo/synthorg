@@ -1,15 +1,18 @@
 """Unit tests for the cross-deployment analytics emitter."""
 
+from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.meta.chief_of_staff.models import ProposalOutcome
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import ImprovementProposal, RolloutResult
 from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 from synthorg.meta.telemetry.emitter import HttpAnalyticsEmitter
+from synthorg.observability.events.cross_deployment import XDEPLOY_BATCH_FLUSH_FAILED
 from tests._shared.fake_clock import FakeClock
 
 from .conftest import BUILTIN_RULE_NAMES
@@ -140,6 +143,51 @@ class TestEmitterBuffering:
             )
             # Background flush task should be created on first enqueue.
             assert emitter._flush_task is not None
+
+
+class TestEmitterPeriodicFlushResilience:
+    """Regression (audit 33): a flush failure must not kill the loop."""
+
+    async def test_periodic_flush_survives_flush_error(
+        self,
+        emitter: HttpAnalyticsEmitter,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls = {"n": 0}
+
+        async def _flaky_flush() -> None:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                # Mirrors the real ``_send_batch`` ValueError on a
+                # missing collector_url that previously killed the task.
+                msg = "collector_url is required when analytics is enabled"
+                raise ValueError(msg)
+            # Second tick: let the loop exit cleanly.
+            emitter._closed = True
+
+        async def _noop_sleep(*_a: object, **_k: object) -> None:
+            return None
+
+        flush_override: Callable[[], Awaitable[None]] = _flaky_flush
+        monkeypatch.setattr(emitter, "flush", flush_override)
+        monkeypatch.setattr(
+            "synthorg.meta.telemetry.emitter.asyncio.sleep",
+            _noop_sleep,
+        )
+
+        with capture_logs() as logs:
+            # Must NOT propagate the ValueError: the loop logs and retries.
+            await emitter._periodic_flush()
+
+        assert calls["n"] == 2
+        flush_errors = [
+            e
+            for e in logs
+            if e.get("event") == XDEPLOY_BATCH_FLUSH_FAILED
+            and e.get("note") == "periodic_flush_error"
+        ]
+        assert len(flush_errors) == 1
+        assert flush_errors[0]["error_type"] == "ValueError"
 
 
 class TestEmitterFlush:
