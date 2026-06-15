@@ -57,6 +57,10 @@ from synthorg.hr.performance.quality_override_store import (
 from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
 from synthorg.hr.performance.trend_protocol import TrendDetectionStrategy
 from synthorg.hr.performance.window_protocol import MetricsWindowStrategy
+from synthorg.hr.persistence_protocol import (
+    CollaborationMetricRepository,
+    TaskMetricRepository,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.inflection import (
     PERF_INFLECTION_DETECTED,
@@ -68,6 +72,7 @@ from synthorg.observability.events.performance import (
     PERF_INFLECTION_SINK_BOUND,
     PERF_INFLECTION_SINK_CLEARED,
     PERF_LLM_SAMPLE_FAILED,
+    PERF_METRIC_PERSIST_FAILED,
     PERF_METRIC_RECORDED,
     PERF_OVERRIDE_APPLIED,
     PERF_SNAPSHOT_COMPUTED,
@@ -146,9 +151,13 @@ class PerformanceTracker:
         override_store: CollaborationOverrideStore | None = None,
         quality_override_store: QualityOverrideStore | None = None,
         inflection_sink: InflectionSink | None = None,
+        task_metric_repo: TaskMetricRepository | None = None,
+        collab_metric_repo: CollaborationMetricRepository | None = None,
     ) -> None:
         cfg = config or PerformanceConfig()
         self._config = cfg
+        self._task_metric_repo = task_metric_repo
+        self._collab_metric_repo = collab_metric_repo
         self._quality_strategy = quality_strategy or self._default_quality()
         self._collaboration_strategy = (
             collaboration_strategy or self._default_collaboration(cfg)
@@ -379,7 +388,54 @@ class PerformanceTracker:
             task_id=record.task_id,
             is_success=record.is_success,
         )
+        await self._persist_metric(
+            self._task_metric_repo, record, agent_id=str(record.agent_id)
+        )
         return record
+
+    def attach_metric_repos(
+        self,
+        *,
+        task_metric_repo: TaskMetricRepository,
+        collab_metric_repo: CollaborationMetricRepository,
+    ) -> None:
+        """Attach the durable metric repos post-connect.
+
+        The tracker is built at the synchronous construction phase before
+        persistence is connected, so the durable repos are wired here once
+        a backend exists. Called once at boot before traffic, so the plain
+        attribute assignment is safe without a lock.
+        """
+        self._task_metric_repo = task_metric_repo
+        self._collab_metric_repo = collab_metric_repo
+
+    async def _persist_metric(
+        self,
+        repo: TaskMetricRepository | CollaborationMetricRepository | None,
+        record: TaskMetricRecord | CollaborationMetricRecord,
+        *,
+        agent_id: str,
+    ) -> None:
+        """Durably persist a metric record best-effort.
+
+        The in-memory append is the source of truth for live queries;
+        the durable write is a backstop so a restart does not silently
+        discard recorded performance data. Fail-open: a write failure
+        logs at WARNING but never surfaces to the caller, mirroring the
+        cost-aggregate path.
+        """
+        if repo is None:
+            return
+        try:
+            await repo.save(record)  # type: ignore[arg-type]
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                PERF_METRIC_PERSIST_FAILED,
+                agent_id=agent_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def record_coordination_contributions(
         self,
@@ -461,6 +517,9 @@ class PerformanceTracker:
             PERF_METRIC_RECORDED,
             agent_id=record.agent_id,
             metric_type="collaboration",
+        )
+        await self._persist_metric(
+            self._collab_metric_repo, record, agent_id=str(record.agent_id)
         )
 
     async def get_collaboration_score(

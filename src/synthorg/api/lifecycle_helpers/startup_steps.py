@@ -11,6 +11,7 @@ from synthorg.api._app_wiring import (
     _try_wire_cockpit,
     _try_wire_cost_dial,
     _try_wire_environment_service,
+    _try_wire_performance_persistence,
 )
 from synthorg.api._benchmark_wiring import seed_benchmark_scores
 from synthorg.api.app_helpers import resolve_agent_workspace_root_env
@@ -140,6 +141,10 @@ async def install_runtime_services(
     # tree per project under the workspace base. Persistence-less
     # boots (test fixtures, dev apps with no DB) skip wiring.
     _try_wire_cost_dial(app_state)
+    # Attach durable metric repos to the performance tracker now that the
+    # backend is connected (audit 103: a restart otherwise discards all
+    # recorded task/collaboration performance metrics).
+    _try_wire_performance_persistence(app_state)
     # Seed the measured benchmark-score repo from the committed artifact
     # (idempotent; measured arm only) now the cost-dial repo is wired.
     await seed_benchmark_scores(app_state)

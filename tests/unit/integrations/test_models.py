@@ -53,6 +53,22 @@ class TestConnectionModel:
         meta["key"] = "modified"
         assert conn.metadata["key"] == "value"
 
+    def test_secret_refs_excluded_from_serialisation(self) -> None:
+        # Audit 103: secret_refs hold backend-internal coordinates that
+        # must not leak into API responses (they are serialised from
+        # every Connection-returning endpoint).
+        conn = Connection(
+            name="test",
+            connection_type=ConnectionType.SLACK,
+            auth_method=AuthMethod.OAUTH2,
+            secret_refs=(SecretRef(secret_id="abc-123", backend="encrypted_sqlite"),),
+        )
+        # The attribute is still readable (the repo persists it directly),
+        # but model_dump / JSON serialisation drops it.
+        assert len(conn.secret_refs) == 1
+        assert "secret_refs" not in conn.model_dump()
+        assert "secret_refs" not in conn.model_dump(mode="json")
+
 
 @pytest.mark.unit
 class TestSecretRefModel:

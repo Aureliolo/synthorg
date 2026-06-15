@@ -189,6 +189,82 @@ class TestRecordTaskMetric:
         assert len(metrics) == 2
 
 
+class _RecordingMetricRepo:
+    """Captures saved records; ``fail`` makes ``save`` raise (fail-open test).
+
+    Implements both the ``save`` and ``query`` members so it conforms to
+    the ``TaskMetricRepository`` / ``CollaborationMetricRepository``
+    protocols (typeguard checks structural conformance at runtime).
+    """
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.saved: list[object] = []
+        self.fail = fail
+
+    async def save(self, record: object) -> None:
+        if self.fail:
+            msg = "repo down"
+            raise RuntimeError(msg)
+        self.saved.append(record)
+
+    async def query(
+        self,
+        *,
+        agent_id: object = None,
+        since: object = None,
+        until: object = None,
+        limit: int = 100,
+    ) -> tuple[object, ...]:
+        del agent_id, since, until, limit
+        return tuple(self.saved)
+
+
+@pytest.mark.unit
+class TestMetricPersistence:
+    """Audit 103: metrics persist durably so a restart does not lose them."""
+
+    async def test_task_metric_persisted_when_repo_attached(self) -> None:
+        repo = _RecordingMetricRepo()
+        tracker = PerformanceTracker(task_metric_repo=repo)  # type: ignore[arg-type]
+        record = make_task_metric(completed_at=NOW)
+
+        await tracker.record_task_metric(record)
+
+        assert repo.saved == [record]
+
+    async def test_collab_metric_persisted_when_repo_attached(self) -> None:
+        repo = _RecordingMetricRepo()
+        tracker = PerformanceTracker(collab_metric_repo=repo)  # type: ignore[arg-type]
+        record = make_collab_metric(recorded_at=NOW)
+
+        await tracker.record_collaboration_event(record)
+
+        assert repo.saved == [record]
+
+    async def test_attach_metric_repos_wires_post_connect(self) -> None:
+        repo = _RecordingMetricRepo()
+        tracker = PerformanceTracker()
+        tracker.attach_metric_repos(
+            task_metric_repo=repo,  # type: ignore[arg-type]
+            collab_metric_repo=repo,  # type: ignore[arg-type]
+        )
+
+        await tracker.record_task_metric(make_task_metric(completed_at=NOW))
+
+        assert len(repo.saved) == 1
+
+    async def test_persist_failure_is_fail_open(self) -> None:
+        repo = _RecordingMetricRepo(fail=True)
+        tracker = PerformanceTracker(task_metric_repo=repo)  # type: ignore[arg-type]
+        record = make_task_metric(completed_at=NOW)
+
+        # A repo failure must not surface or drop the in-memory record.
+        await tracker.record_task_metric(record)
+
+        metrics = tracker.get_task_metrics(agent_id=NotBlankStr("agent-001"))
+        assert len(metrics) == 1
+
+
 @pytest.mark.unit
 class TestRecordCollaborationEvent:
     """PerformanceTracker.record_collaboration_event."""
