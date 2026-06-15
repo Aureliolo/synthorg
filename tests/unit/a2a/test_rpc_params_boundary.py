@@ -28,7 +28,10 @@ def _message_payload() -> dict[str, JsonValue]:
         role="agent",  # type: ignore[arg-type]
         parts=({"type": "text", "text": "hello"},),  # type: ignore[arg-type]
     )
-    return {"message": msg.model_dump(mode="json")}
+    return {
+        "message": msg.model_dump(mode="json"),
+        "message_id": "44444444-4444-4444-4444-444444444444",
+    }
 
 
 @pytest.mark.unit

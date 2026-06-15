@@ -17,6 +17,8 @@ from synthorg.a2a.rpc_params import (
     parse_rpc_params,
 )
 
+_MESSAGE_ID = "33333333-3333-3333-3333-333333333333"
+
 
 def _sample_message() -> A2AMessage:
     """Build a minimal valid A2AMessage for tests."""
@@ -26,15 +28,36 @@ def _sample_message() -> A2AMessage:
     )
 
 
+def _send_params() -> A2AMessageSendParams:
+    """Build a minimal valid message/send params model."""
+    from uuid import UUID
+
+    return A2AMessageSendParams(message=_sample_message(), message_id=UUID(_MESSAGE_ID))
+
+
 class TestA2AMessageSendParams:
     """Typed params for ``message/send``."""
 
     @pytest.mark.unit
     def test_construction(self) -> None:
         """Carries a typed A2AMessage."""
-        params = A2AMessageSendParams(message=_sample_message())
+        params = _send_params()
         assert params.method == "message/send"
         assert params.message.role == A2AMessageRole.USER
+
+    @pytest.mark.unit
+    def test_message_id_required(self) -> None:
+        """Audit 133: message_id is strictly required for idempotency."""
+        with pytest.raises(ValidationError):
+            A2AMessageSendParams.model_validate(
+                {
+                    "method": "message/send",
+                    "message": {
+                        "role": "user",
+                        "parts": [{"type": "text", "text": "hi"}],
+                    },
+                },
+            )
 
     @pytest.mark.unit
     def test_method_is_literal(self) -> None:
@@ -79,7 +102,7 @@ class TestA2AMessageSendParams:
     @pytest.mark.unit
     def test_frozen(self) -> None:
         """Cannot reassign fields after construction."""
-        params = A2AMessageSendParams(message=_sample_message())
+        params = _send_params()
         with pytest.raises(ValidationError):
             params.method = "tasks/get"  # type: ignore[assignment,misc]
 
@@ -136,7 +159,8 @@ class TestParseRpcParams:
                 "message": {
                     "role": "user",
                     "parts": [{"type": "text", "text": "hi"}],
-                }
+                },
+                "message_id": _MESSAGE_ID,
             },
         )
         params = parse_rpc_params(req)
@@ -217,7 +241,7 @@ class TestDiscriminatedUnion:
 
         adapter: TypeAdapter[A2ARpcParams] = TypeAdapter(A2ARpcParams)
 
-        send = A2AMessageSendParams(message=_sample_message())
+        send = _send_params()
         get = A2ATaskGetParams(id="t1")
         cancel = A2ATaskCancelParams(id="t2")
         for original in (send, get, cancel):

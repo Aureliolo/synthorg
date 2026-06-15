@@ -904,21 +904,66 @@ async def _handle_message_send(
         project="a2a-inbound",
         created_by="a2a-gateway",
     )
-    created = await task_engine.create_task(
-        task_data,
-        requested_by=f"a2a-gateway:{peer_name}",
-    )
 
-    logger.info(
-        A2A_TASK_CREATED,
-        task_id=created.id,
-        peer_name=peer_name,
+    from synthorg.api.api_core_state import (  # noqa: PLC0415
+        idempotency_service_of,
     )
+    from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
-    return {
-        "id": str(created.id),
-        "state": to_a2a(created.status).value,
-    }
+    async def _create_task_state() -> dict[str, JsonValue]:
+        """Create the task and return its A2A state dict (the cached value).
+
+        Returns:
+            The ``{"id", "state"}`` task-state dict idempotency caches.
+        """
+        created = await task_engine.create_task(
+            task_data,
+            requested_by=f"a2a-gateway:{peer_name}",
+        )
+        logger.info(
+            A2A_TASK_CREATED,
+            task_id=created.id,
+            peer_name=peer_name,
+        )
+        return {
+            "id": str(created.id),
+            "state": to_a2a(created.status).value,
+        }
+
+    # A2A peers retry ``message/send`` on a 503 / transport error. Wrap the
+    # create in the durable idempotency guard keyed on the caller-supplied
+    # ``message_id`` so a retry replays to the same task instead of
+    # double-creating + double-dispatching agent work.
+    outcome = await idempotency_service_of(app_state).run_idempotent(
+        scope=NotBlankStr("a2a:message_send"),
+        key=NotBlankStr(str(params.message_id)),
+        callback=_create_task_state,
+    )
+    if outcome.timed_out:
+        logger.warning(
+            A2A_JSONRPC_INVALID_PARAMS,
+            reason="message_send_in_flight",
+            message_id=str(params.message_id),
+            peer_name=peer_name,
+        )
+        raise _A2AMethodError(
+            JSONRPC_INTERNAL_ERROR,
+            "Concurrent in-flight message/send; retry",
+            http_status=409,
+        )
+    cached = outcome.result
+    if not isinstance(cached, dict):
+        logger.error(
+            A2A_JSONRPC_INVALID_PARAMS,
+            reason="idempotency_cache_corrupt",
+            message_id=str(params.message_id),
+            peer_name=peer_name,
+        )
+        raise _A2AMethodError(
+            JSONRPC_INTERNAL_ERROR,
+            "message/send idempotency cache is malformed",
+        )
+    return cached
 
 
 async def _handle_tasks_get(
