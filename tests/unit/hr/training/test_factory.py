@@ -1,7 +1,5 @@
 """Unit tests for the training source-selector factory registry."""
 
-from unittest.mock import AsyncMock
-
 import pytest
 
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
@@ -16,14 +14,15 @@ from synthorg.hr.training.source_selectors.department_diversity import (
 from synthorg.hr.training.source_selectors.role_top_performers import (
     RoleTopPerformers,
 )
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
 
 def _deps() -> tuple[PerformanceTracker, AgentRegistryService]:
     return (
-        AsyncMock(spec=PerformanceTracker),
-        AsyncMock(spec=AgentRegistryService),
+        mock_of[PerformanceTracker](),
+        mock_of[AgentRegistryService](),
     )
 
 
