@@ -391,6 +391,18 @@ repos:
         # actually scanned, letting a weakened gate land unchecked.
         pass_filenames: false
 
+      - id: ci-workflow-resilience
+        name: CI workflow resilience (job timeouts + fail-closed retry ladders)
+        entry: uv
+        args: [run, python, scripts/check_ci_workflow_resilience.py, --scan-all]
+        language: system
+        files: ^(\.github/workflows/.*\.ya?ml|scripts/check_ci_workflow_resilience\.py|\.pre-commit-config\.yaml)$
+        # pass_filenames: false so the hook always re-scans every workflow
+        # regardless of which file in `files:` triggered it (same rationale
+        # as workflow-tag-lifecycle above): an edit limited to the checker
+        # script or this config would otherwise scan zero workflows.
+        pass_filenames: false
+
       - id: retry-helper-selftest
         name: cosign/push retry helpers classify large 5xx output as transient (broken-pipe regression)
         entry: bash .github/scripts/tests/test_retry_classifiers.sh
@@ -405,6 +417,17 @@ repos:
         # pre-commit only: the test is fast (three subprocesses, zero
         # backoff) and gives feedback before a commit message is written;
         # without an explicit stage it would also run at commit-msg.
+        stages: [pre-commit]
+
+      - id: retry-cmd-selftest
+        name: retry_cmd.sh retries-then-fails-closed self-test
+        entry: bash .github/scripts/tests/test_retry_cmd.sh
+        language: system
+        # Re-run whenever the generic retry helper or its test changes; the
+        # test drives the retry-to-success, fail-closed-with-exit-code, and
+        # no-retry-on-clean-success contracts with zero backoff.
+        files: ^\.github/scripts/(retry_cmd|tests/test_retry_cmd)\.sh$
+        pass_filenames: false
         stages: [pre-commit]
 
       - id: doc-drift-counts

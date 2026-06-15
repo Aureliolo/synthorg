@@ -14,6 +14,11 @@ jobs:
   sync:
     name: sync
     runs-on: ubuntu-latest
+    # Bound the per-label gh_with_retry.sh ladders (~1m45s worst case
+    # each): a healthy run upserts every label in well under a minute, so
+    # 10 reaps a genuinely stuck label API rather than hanging on the
+    # 6-hour default.
+    timeout-minutes: 10
     permissions:
       # `contents: read` is the minimum the checkout needs to fetch the
       # ref under the deny-all top-level default (`permissions: {}`).
@@ -48,7 +53,11 @@ jobs:
             description=$(printf '%s' "$label_json" | jq -r '.description // ""')
 
             echo "::group::sync $name"
-            gh label create "$name" \
+            # --force makes this an idempotent upsert, so retrying a
+            # transient label-API 5xx / timeout cannot double-create or
+            # corrupt; gh_with_retry.sh fast-fails a definitive 4xx.
+            .github/scripts/gh_with_retry.sh "label upsert $name" \
+              gh label create "$name" \
               --color "$color" \
               --description "$description" \
               --force

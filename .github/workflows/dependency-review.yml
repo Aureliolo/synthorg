@@ -10,6 +10,10 @@ jobs:
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
+    # The dependency-review action is a single GitHub dependency-graph API
+    # call; 10 reaps a hung request instead of riding the 6-hour default
+    # on this PR-blocking check.
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: write

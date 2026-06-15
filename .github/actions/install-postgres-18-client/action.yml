@@ -36,7 +36,11 @@ runs:
         # for sudo-launched curl blocks writes back into the runner's
         # owned tmp path). Root is still required for placing the key in
         # /usr/share via the subsequent ``sudo install`` step.
-        curl -fsSL -o "${tmp_key}" \
+        # curl's built-in retry is the house standard for binary/key
+        # downloads (matches setup-apko): ride out a transient
+        # postgresql.org CDN blip rather than failing the step on one hit.
+        curl -fsSL --connect-timeout 30 --retry 8 --retry-all-errors \
+          --retry-max-time 300 -o "${tmp_key}" \
           https://www.postgresql.org/media/keys/ACCC4CF8.asc
         echo "${PGDG_KEY_SHA256}  ${tmp_key}" | sha256sum --check --status \
           || { echo "::error::PGDG signing key SHA-256 mismatch; refusing to trust apt repo."; exit 1; }
@@ -51,11 +55,17 @@ runs:
         # the package we need came from PGDG. The base archive indices are
         # already present from image provisioning, so scoping the refresh to
         # pgdg.list is sufficient to resolve postgresql-client-18 and its deps.
-        sudo apt-get update \
+        # Both apt calls reach the PGDG mirror; wrap each in the generic
+        # retry helper so a transient mirror 5xx / connection reset retries
+        # (idempotent: re-running update / install converges) rather than
+        # failing the integration + e2e jobs on a single blip.
+        .github/scripts/retry_cmd.sh "apt-get update (pgdg)" \
+          sudo apt-get update \
           -o Dir::Etc::sourcelist="sources.list.d/pgdg.list" \
           -o Dir::Etc::sourceparts="-" \
           -o APT::Get::List-Cleanup="0"
-        sudo apt-get install -y postgresql-client-18
+        .github/scripts/retry_cmd.sh "apt-get install postgresql-client-18" \
+          sudo apt-get install -y postgresql-client-18
         echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
         /usr/lib/postgresql/18/bin/pg_dump --version
         /usr/lib/postgresql/18/bin/pg_restore --version

@@ -11,6 +11,10 @@ jobs:
   pip-audit:
     name: pip-audit
     runs-on: ubuntu-latest
+    # pip-audit queries the PyPI / OSV advisory DB; 10 reaps a hung
+    # request instead of the 6-hour default (and keeps a transient OSV
+    # outage from looking like a stuck job).
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:

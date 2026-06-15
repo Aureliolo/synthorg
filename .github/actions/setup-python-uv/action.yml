@@ -15,14 +15,24 @@ runs:
       with:
         enable-cache: true
 
+    # Both installs are wrapped in retry_cmd.sh: a cold run (or evicted
+    # uv cache) fetches the CPython standalone tarball and every dependency
+    # from PyPI / Astral's index, and a transient CDN / index blip on any
+    # of those would otherwise fail the step on a single attempt. This is
+    # the Python analogue of go-mod-download-retry; both wrapped commands
+    # are idempotent, so retry-everything is safe. ~3m45s backoff budget.
     - name: Install Python
       shell: bash
       env:
         PYTHON_VERSION: ${{ inputs.python-version }}
-      run: uv python install "$PYTHON_VERSION"
+      run: |
+        .github/scripts/retry_cmd.sh "uv python install" \
+          uv python install "$PYTHON_VERSION"
 
     - name: Install dependencies
       shell: bash
       env:
         PYTHON_VERSION: ${{ inputs.python-version }}
-      run: uv sync --frozen --python "$PYTHON_VERSION"
+      run: |
+        .github/scripts/retry_cmd.sh "uv sync --frozen" \
+          uv sync --frozen --python "$PYTHON_VERSION"

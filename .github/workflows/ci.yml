@@ -1013,17 +1013,55 @@ jobs:
       - name: Generate combined coverage XML
         run: uv run coverage xml -o coverage.xml
 
-      # Codecov upload is best-effort -- CI must not fail on Codecov
-      # outages. The 80% enforcement above is Codecov-independent. This
-      # is the ONLY Codecov coverage upload in the workflow: one combined
-      # report, so the Codecov project view is never fragmented across
-      # partial per-suite uploads. Tokenless OIDC (public repo).
-      - name: Upload combined coverage to Codecov
+      # Codecov upload, wrapped in a 3-attempt retry ladder. This is the
+      # ONLY Codecov coverage upload in the workflow: one combined report,
+      # so the Codecov project view is never fragmented across partial
+      # per-suite uploads. Tokenless OIDC (public repo).
+      #
+      # Why a ladder rather than fail_ci_if_error: false alone: the
+      # original incident was a 503 from the OIDC getIDToken() mint, which
+      # throws an UNHANDLED error BEFORE the upload, so fail_ci_if_error
+      # (which only suppresses the upload error path) never sees it and the
+      # step crashed exit 1. Every attempt sets fail_ci_if_error: true so a
+      # soft upload error ALSO surfaces as a non-zero outcome that the next
+      # attempt retries; intermediate attempts add continue-on-error so the
+      # run advances to the retry; the final attempt has neither guard, so a
+      # genuinely persistent Codecov/OIDC outage (past the ~2.5min budget)
+      # fails CI loud rather than being silently swallowed.
+      - name: Upload combined coverage to Codecov (attempt 1/3)
+        id: codecov-cov-1
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: coverage.xml
-          fail_ci_if_error: false
+          fail_ci_if_error: true
+          use_oidc: true
+      - name: Backoff before Codecov coverage attempt 2
+        if: ${{ !cancelled() && steps.codecov-cov-1.outcome == 'failure' }}
+        run: |
+          echo "::warning::Codecov coverage upload attempt 1 failed; waiting 30s before retry"
+          sleep 30
+      - name: Upload combined coverage to Codecov (attempt 2/3)
+        id: codecov-cov-2
+        if: ${{ !cancelled() && steps.codecov-cov-1.outcome == 'failure' }}
+        continue-on-error: true
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: coverage.xml
+          fail_ci_if_error: true
+          use_oidc: true
+      - name: Backoff before Codecov coverage attempt 3
+        if: ${{ !cancelled() && steps.codecov-cov-1.outcome == 'failure' && steps.codecov-cov-2.outcome == 'failure' }}
+        run: |
+          echo "::warning::Codecov coverage upload attempt 2 failed; waiting 120s before final retry"
+          sleep 120
+      - name: Upload combined coverage to Codecov (attempt 3/3)
+        if: ${{ !cancelled() && steps.codecov-cov-1.outcome == 'failure' && steps.codecov-cov-2.outcome == 'failure' }}
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: coverage.xml
+          fail_ci_if_error: true
           use_oidc: true
 
       - name: Collect junit file list
@@ -1045,12 +1083,43 @@ jobs:
           echo "files=${files}" >> "${GITHUB_OUTPUT}"
           echo "Uploading: ${files}"
 
-      - name: Upload test results to Codecov
+      # Same 3-attempt ladder rationale as the coverage upload above.
+      - name: Upload test results to Codecov (attempt 1/3)
+        id: codecov-junit-1
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: ${{ steps.junit.outputs.files }}
-          fail_ci_if_error: false
+          fail_ci_if_error: true
+          report_type: test_results
+          use_oidc: true
+      - name: Backoff before Codecov test-results attempt 2
+        if: ${{ !cancelled() && steps.codecov-junit-1.outcome == 'failure' }}
+        run: |
+          echo "::warning::Codecov test-results upload attempt 1 failed; waiting 30s before retry"
+          sleep 30
+      - name: Upload test results to Codecov (attempt 2/3)
+        id: codecov-junit-2
+        if: ${{ !cancelled() && steps.codecov-junit-1.outcome == 'failure' }}
+        continue-on-error: true
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: ${{ steps.junit.outputs.files }}
+          fail_ci_if_error: true
+          report_type: test_results
+          use_oidc: true
+      - name: Backoff before Codecov test-results attempt 3
+        if: ${{ !cancelled() && steps.codecov-junit-1.outcome == 'failure' && steps.codecov-junit-2.outcome == 'failure' }}
+        run: |
+          echo "::warning::Codecov test-results upload attempt 2 failed; waiting 120s before final retry"
+          sleep 120
+      - name: Upload test results to Codecov (attempt 3/3)
+        if: ${{ !cancelled() && steps.codecov-junit-1.outcome == 'failure' && steps.codecov-junit-2.outcome == 'failure' }}
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: ${{ steps.junit.outputs.files }}
+          fail_ci_if_error: true
           report_type: test_results
           use_oidc: true
 
