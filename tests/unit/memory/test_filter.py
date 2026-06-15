@@ -8,7 +8,9 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.filter import (
     NON_INFERABLE_TAG,
     MemoryFilterStrategy,
+    PassthroughMemoryFilter,
     TagBasedMemoryFilter,
+    build_memory_filter,
 )
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.ranking import ScoredMemory
@@ -48,6 +50,52 @@ class TestProtocolCompliance:
 
     def test_tag_based_satisfies_protocol(self) -> None:
         assert isinstance(TagBasedMemoryFilter(), MemoryFilterStrategy)
+
+    def test_passthrough_satisfies_protocol(self) -> None:
+        assert isinstance(PassthroughMemoryFilter(), MemoryFilterStrategy)
+
+
+# ── PassthroughMemoryFilter ──────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestPassthroughMemoryFilter:
+    """Tests for the no-op passthrough filter."""
+
+    def test_returns_all_memories_unchanged(self) -> None:
+        m1 = _make_scored_memory(entry_id="m1", tags=())
+        m2 = _make_scored_memory(entry_id="m2", tags=(NON_INFERABLE_TAG,))
+        result = PassthroughMemoryFilter().filter_for_injection((m1, m2))
+        assert result == (m1, m2)
+
+    def test_empty_input_returns_empty(self) -> None:
+        assert PassthroughMemoryFilter().filter_for_injection(()) == ()
+
+    def test_strategy_name(self) -> None:
+        assert PassthroughMemoryFilter().strategy_name == "passthrough"
+
+
+# ── build_memory_filter discriminator ────────────────────────────
+
+
+@pytest.mark.unit
+class TestBuildMemoryFilter:
+    """Tests for the memory-filter discriminator resolver."""
+
+    def test_off_without_non_inferable_is_none(self) -> None:
+        assert build_memory_filter("off", non_inferable_only=False) is None
+
+    def test_off_with_non_inferable_is_tag_based(self) -> None:
+        result = build_memory_filter("off", non_inferable_only=True)
+        assert isinstance(result, TagBasedMemoryFilter)
+
+    def test_tag_based_selection(self) -> None:
+        result = build_memory_filter("tag_based", non_inferable_only=False)
+        assert isinstance(result, TagBasedMemoryFilter)
+
+    def test_passthrough_selection(self) -> None:
+        result = build_memory_filter("passthrough", non_inferable_only=False)
+        assert isinstance(result, PassthroughMemoryFilter)
 
 
 # ── TagBasedMemoryFilter ──────────────────────────────────────────

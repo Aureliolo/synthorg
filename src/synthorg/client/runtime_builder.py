@@ -18,15 +18,17 @@ no LLM calls, so the runtime comes online for an empty company.
 
 import os
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.client.config import IntakeConfig
 from synthorg.client.factory import UnknownStrategyError, build_intake_strategy
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.engine.intake.engine import IntakeEngine
-from synthorg.engine.review.pipeline import ReviewPipeline
-from synthorg.engine.review.stages.internal import InternalReviewStage
+from synthorg.engine.review.factory import (
+    ReviewPipelineStrategy,
+    build_review_pipeline,
+)
 from synthorg.engine.state import task_engine_of
 from synthorg.observability import (
     get_logger,
@@ -50,6 +52,7 @@ logger = get_logger(__name__)
 _INTAKE_STRATEGY_KEY = "intake_strategy"
 _INTAKE_MODEL_KEY = "intake_model"
 _INTAKE_DEFAULT_PROJECT_KEY = "intake_default_project"
+_REVIEW_PIPELINE_STRATEGY_KEY = "review_pipeline_strategy"
 _DEFAULT_STRATEGY = "direct"
 
 
@@ -99,6 +102,27 @@ def _resolve_intake_settings(
         ).value
     ).strip()
     return strategy, model, default_project
+
+
+def _resolve_review_pipeline_strategy(
+    env: Mapping[str, str],
+) -> ReviewPipelineStrategy:
+    """Resolve the boot review-pipeline strategy from settings.
+
+    Boot-site read (env > registered default) via the bootstrap
+    resolver, matching the intake-strategy read above. The setting is a
+    closed ENUM, so the resolved string is one of the two registered
+    members.
+
+    Returns:
+        The ``review_pipeline_strategy`` discriminator.
+    """
+    value = str(
+        resolve_init_value(
+            SettingNamespace.SIMULATIONS, _REVIEW_PIPELINE_STRATEGY_KEY, env=env
+        ).value
+    )
+    return cast("ReviewPipelineStrategy", value)
 
 
 def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
@@ -193,7 +217,8 @@ def build_client_simulation_runtime(
         provider=provider,
         cost_tracker=cost_tracker,
     )
-    review_pipeline = ReviewPipeline(stages=(InternalReviewStage(),))
+    review_strategy = _resolve_review_pipeline_strategy(env)
+    review_pipeline = build_review_pipeline(strategy=review_strategy)
     logger.info(
         CLIENT_SIMULATION_RUNTIME_WIRED,
         requested_strategy=requested_strategy,

@@ -2,6 +2,7 @@
 
 from typing import Final, LiteralString
 
+REVIEW_PIPELINE_BUILT: Final[str] = "review.pipeline.built"
 REVIEW_PIPELINE_STARTED: Final[str] = "review.pipeline.started"
 REVIEW_PIPELINE_STAGE_COMPLETED: Final[str] = "review.pipeline.stage.completed"
 REVIEW_PIPELINE_COMPLETED: Final[str] = "review.pipeline.completed"

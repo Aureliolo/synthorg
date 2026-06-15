@@ -91,6 +91,27 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.SIMULATIONS,
+        key="review_pipeline_strategy",
+        type=SettingType.ENUM,
+        default="internal_only",
+        enum_values=("internal_only", "client_then_internal"),
+        description=(
+            "Review pipeline wired into the client-simulation runtime at"
+            " boot. 'internal_only' runs a single internal review stage;"
+            " 'client_then_internal' prepends a client-delegated stage"
+            " when a client pool is available, otherwise it degrades to"
+            " internal-only. Baked in at process startup."
+        ),
+        group="Review",
+        level=SettingLevel.ADVANCED,
+        read_only_post_init=True,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SIMULATIONS,
         key="review_timeout_seconds",
         type=SettingType.FLOAT,
         default="30.0",
