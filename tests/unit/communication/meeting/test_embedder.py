@@ -3,6 +3,8 @@
 import sys
 import types
 
+import numpy as np
+import numpy.typing as npt
 import pytest
 
 from synthorg.communication.meeting.embedder import (
@@ -61,9 +63,9 @@ def _fake_sentence_transformers() -> types.ModuleType:
 
         def encode(
             self, text: str, *, normalize_embeddings: bool = True
-        ) -> list[float]:
+        ) -> npt.NDArray[np.float64]:
             _ = text, normalize_embeddings
-            return [0.1, 0.2, 0.3]
+            return np.array([0.1, 0.2, 0.3], dtype=np.float64)
 
     module.SentenceTransformer = _FakeModel  # type: ignore[attr-defined]
     return module
