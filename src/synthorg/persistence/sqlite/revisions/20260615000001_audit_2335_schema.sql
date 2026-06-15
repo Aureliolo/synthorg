@@ -10,10 +10,10 @@
 -- the guard survives a restart. See ../schema.sql and
 -- project_cost_claim_seen_protocol.py for the full rationale.
 CREATE TABLE project_cost_claim_seen (
-    claim_id TEXT NOT NULL PRIMARY KEY CHECK (length(trim(claim_id)) > 0),
-    project_id TEXT NOT NULL CHECK (length(trim(project_id)) > 0),
-    seen_at TEXT NOT NULL CHECK (length(trim(seen_at)) > 0),
-    expires_at TEXT NOT NULL CHECK (length(trim(expires_at)) > 0),
+    claim_id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(claim_id)) > 0),
+    project_id TEXT NOT NULL CHECK (LENGTH(TRIM(project_id)) > 0),
+    seen_at TEXT NOT NULL CHECK (LENGTH(TRIM(seen_at)) > 0),
+    expires_at TEXT NOT NULL CHECK (LENGTH(TRIM(expires_at)) > 0),
     CHECK (expires_at > seen_at)
 );
 CREATE INDEX idx_project_cost_claim_seen_expires_at
@@ -68,7 +68,30 @@ CREATE TABLE approvals_new (
         status != 'rejected' OR (decision_reason IS NOT NULL AND LENGTH(TRIM(decision_reason)) > 0)
     )
 );
-INSERT INTO approvals_new SELECT * FROM approvals;
+INSERT INTO approvals_new (
+    id, action_type, title, description, requested_by, risk_level, source,
+    status, created_at, expires_at, decided_at, decided_by, decision_reason,
+    task_id, evidence_package, metadata, consumed_at
+)
+SELECT
+    id,
+    action_type,
+    title,
+    description,
+    requested_by,
+    risk_level,
+    source,
+    status,
+    created_at,
+    expires_at,
+    decided_at,
+    decided_by,
+    decision_reason,
+    task_id,
+    evidence_package,
+    metadata,
+    consumed_at
+FROM approvals;
 DROP TABLE approvals;
 ALTER TABLE approvals_new RENAME TO approvals;
 CREATE INDEX idx_approvals_status ON approvals (status);

@@ -131,7 +131,7 @@ async def test_complete_emits_provider_error_with_classification(
     """``complete`` classifies the raised exception before re-raising."""
     recorder = MagicMock()
     monkeypatch.setattr(
-        "synthorg.providers.base.record_provider_error",
+        "synthorg.providers._call_instrumentation.record_provider_error",
         recorder,
     )
 
@@ -156,7 +156,7 @@ async def test_stream_emits_provider_error_with_classification(
     """``stream`` classifies the raised exception before re-raising."""
     recorder = MagicMock()
     monkeypatch.setattr(
-        "synthorg.providers.base.record_provider_error",
+        "synthorg.providers._call_instrumentation.record_provider_error",
         recorder,
     )
 
@@ -183,7 +183,7 @@ async def test_success_does_not_emit_error_metric(
     """Successful completions never increment the error counter."""
     recorder = MagicMock()
     monkeypatch.setattr(
-        "synthorg.providers.base.record_provider_error",
+        "synthorg.providers._call_instrumentation.record_provider_error",
         recorder,
     )
 

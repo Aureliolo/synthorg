@@ -87,7 +87,7 @@ export function buildAgent(
 }
 
 /** Minimal valid AgentIdentity stub for the rollback happy path. */
-export function buildAgentIdentity(
+function buildAgentIdentity(
   overrides: Partial<AgentIdentity> = {},
 ): AgentIdentity {
   return {

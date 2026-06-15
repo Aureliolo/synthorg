@@ -10,8 +10,6 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
 from typing import Final, ParamSpec, TypeVar
 
-from opentelemetry.trace import Status, StatusCode
-
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
@@ -28,14 +26,19 @@ from synthorg.observability.events.provider import (
     PROVIDER_STREAM_USAGE_EXPECTED,
 )
 from synthorg.observability.metrics_hub import (
-    record_provider_call_duration,
     record_provider_error,
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
 
+from ._call_instrumentation import (
+    build_call_span_attributes,
+    merge_call_metadata,
+    record_call_failure,
+    record_call_success,
+    record_cost_if_in_scope,
+)
 from ._validation import validate_messages, validate_model
 from .capabilities import ModelCapabilities
-from .cost_recording import current_cost_context, emit_cost_record_from_context
 from .errors import RateLimitError, classify_provider_error
 from .models import (
     ChatMessage,
@@ -169,12 +172,12 @@ class BaseCompletionProvider(ABC):
         # so attacker-controlled provider error strings are scrubbed
         # before reaching the OTLP exporter.
         provider_label = self._provider_label()
-        span_attributes: dict[str, str | int] = {
-            "provider.name": provider_label,
-            "provider.model": model,
-            "provider.message_count": len(messages),
-            "provider.tool_count": len(tools) if tools else 0,
-        }
+        span_attributes = build_call_span_attributes(
+            provider_label=provider_label,
+            model=model,
+            message_count=len(messages),
+            tool_count=len(tools) if tools else 0,
+        )
         with _tracer.start_as_current_span(
             "provider.complete",
             attributes=span_attributes,
@@ -194,49 +197,22 @@ class BaseCompletionProvider(ABC):
                 latency_ms = (
                     self._clock.monotonic() - t_start
                 ) * _MILLISECONDS_PER_SECOND
-                # ``logger.exception`` (what TRY400 suggests) would
-                # attach a traceback whose serialized frame-locals can
-                # leak provider credentials (API keys in headers,
-                # connection URLs with user:pass). Use ``logger.error``
-                # with the structured ``error_type`` + scrubbed
-                # ``error`` fields instead.
-                log_exception_redacted(
-                    logger, PROVIDER_CALL_ERROR, exc, model=model, latency_ms=latency_ms
-                )
-                span.set_attribute("exception.type", type(exc).__name__)
-                span.set_attribute(
-                    "exception.message",
-                    safe_error_description(exc),
-                )
-                span.set_attribute("provider.latency_ms", latency_ms)
-                # ``set_status_on_exception=False`` opts out of the
-                # auto-instrumentation that would have stamped an
-                # un-scrubbed ``str(exc)`` into the span status, so the
-                # ERROR status must be set manually here. The scrubbed
-                # error description is exposed via ``exception.message``
-                # above; ``Status.description`` is intentionally left
-                # unset so the OTLP exporter never carries the raw
-                # provider string.
-                span.set_status(Status(StatusCode.ERROR))
-                record_provider_error(
-                    provider=provider_label,
+                record_call_failure(
+                    span,
+                    exc,
                     model=model,
-                    error_class=classify_provider_error(exc),
-                )
-                record_provider_call_duration(
-                    provider=provider_label,
-                    model=model,
+                    provider_label=provider_label,
                     call_type="complete",
-                    duration_sec=latency_ms / _MILLISECONDS_PER_SECOND,
+                    latency_ms=latency_ms,
                 )
                 raise
             latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
-            span.set_attribute("provider.latency_ms", latency_ms)
-            record_provider_call_duration(
-                provider=provider_label,
+            record_call_success(
+                span,
+                provider_label=provider_label,
                 model=model,
                 call_type="complete",
-                duration_sec=latency_ms / _MILLISECONDS_PER_SECOND,
+                latency_ms=latency_ms,
             )
             if retry_info is not None:
                 span.set_attribute(
@@ -244,37 +220,11 @@ class BaseCompletionProvider(ABC):
                     max(0, retry_info.attempt_count - 1),
                 )
 
-        metadata: dict[str, object] = {"_synthorg_latency_ms": latency_ms}
-        if retry_info is not None:
-            metadata["_synthorg_retry_count"] = max(
-                0,
-                retry_info.attempt_count - 1,
-            )
-            if retry_info.retry_reason is not None:
-                metadata["_synthorg_retry_reason"] = retry_info.retry_reason
-
-        merged_metadata = dict(result.provider_metadata or {})
-        merged_metadata.update(metadata)
-        result = result.model_copy(update={"provider_metadata": merged_metadata})
-        logger.debug(
-            PROVIDER_CALL_SUCCESS,
-            model=model,
+        result = merge_call_metadata(
+            result, latency_ms=latency_ms, retry_info=retry_info
         )
-
-        # Cost recording chokepoint: when a ``cost_recording_scope`` is
-        # open in the current asyncio task, emit a CostRecord. Sites
-        # without a scope (probes, tests, and the engine path which
-        # records via ``record_execution_costs`` post-execution) see no
-        # change. Recording errors are logged and swallowed inside the
-        # helper -- never surface to the caller.
-        ctx = current_cost_context()
-        if ctx is not None:
-            await emit_cost_record_from_context(
-                ctx,
-                result,
-                model=model,
-                provider=self._provider_label(),
-            )
+        logger.debug(PROVIDER_CALL_SUCCESS, model=model)
+        await record_cost_if_in_scope(result, model=model, provider=provider_label)
         return result
 
     async def stream(
@@ -343,12 +293,12 @@ class BaseCompletionProvider(ABC):
         # Mid-stream consumption happens in the caller's scope, so the
         # span measures time-to-first-iterator, not full stream length.
         provider_label = self._provider_label()
-        span_attributes: dict[str, str | int] = {
-            "provider.name": provider_label,
-            "provider.model": model,
-            "provider.message_count": len(messages),
-            "provider.tool_count": len(tools) if tools else 0,
-        }
+        span_attributes = build_call_span_attributes(
+            provider_label=provider_label,
+            model=model,
+            message_count=len(messages),
+            tool_count=len(tools) if tools else 0,
+        )
         with _tracer.start_as_current_span(
             "provider.stream",
             attributes=span_attributes,
@@ -363,36 +313,22 @@ class BaseCompletionProvider(ABC):
                 latency_ms = (
                     self._clock.monotonic() - t_start
                 ) * _MILLISECONDS_PER_SECOND
-                # See the ``complete`` sibling handler; ``logger.error``
-                # + scrubbed fields instead of ``logger.exception``
-                # prevents traceback frame-locals from leaking provider
-                # credentials.
-                log_exception_redacted(
-                    logger, PROVIDER_CALL_ERROR, exc, model=model, latency_ms=latency_ms
-                )
-                span.set_attribute("exception.type", type(exc).__name__)
-                span.set_attribute("exception.message", safe_error_description(exc))
-                span.set_attribute("provider.latency_ms", latency_ms)
-                span.set_status(Status(StatusCode.ERROR))
-                record_provider_error(
-                    provider=provider_label,
+                record_call_failure(
+                    span,
+                    exc,
                     model=model,
-                    error_class=classify_provider_error(exc),
-                )
-                record_provider_call_duration(
-                    provider=provider_label,
-                    model=model,
+                    provider_label=provider_label,
                     call_type="stream",
-                    duration_sec=latency_ms / _MILLISECONDS_PER_SECOND,
+                    latency_ms=latency_ms,
                 )
                 raise
             latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
-            span.set_attribute("provider.latency_ms", latency_ms)
-            record_provider_call_duration(
-                provider=provider_label,
+            record_call_success(
+                span,
+                provider_label=provider_label,
                 model=model,
                 call_type="stream",
-                duration_sec=latency_ms / _MILLISECONDS_PER_SECOND,
+                latency_ms=latency_ms,
             )
         # Token counts surface only on the terminal USAGE chunk; emit a
         # DEBUG marker so log-based monitoring can flag a driver that
