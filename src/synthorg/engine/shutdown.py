@@ -554,6 +554,16 @@ class ShutdownManager:
         """
         return self._strategy.is_shutting_down()
 
+    def request_shutdown(self) -> None:
+        """Close the drain gate without running the full shutdown sequence.
+
+        Bridges an OS signal (handled elsewhere) to the strategy so
+        :meth:`register_task` starts rejecting new work immediately,
+        while the bounded drain + force-cancel runs later via
+        :meth:`initiate_shutdown` from the on-shutdown hook.
+        """
+        self._strategy.request_shutdown()
+
     async def initiate_shutdown(self) -> ShutdownResult:
         """Invoke the strategy's shutdown sequence.
 

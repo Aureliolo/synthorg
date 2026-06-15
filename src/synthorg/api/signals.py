@@ -133,3 +133,8 @@ def _on_signal(sig: signal.Signals, app_state: AppState) -> None:
     event = app_state.shutdown_requested
     if not event.is_set():
         event.set()
+    # Close the cooperative drain gate immediately so the multi-agent
+    # coordinator rejects new parallel agent tasks the moment the signal
+    # arrives; the bounded grace-then-cancel of in-flight tasks runs
+    # later from the on-shutdown hook via ``initiate_shutdown``.
+    app_state.shutdown_manager.request_shutdown()
