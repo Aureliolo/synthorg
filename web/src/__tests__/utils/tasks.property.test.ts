@@ -34,6 +34,7 @@ function arbTask(): fc.Arbitrary<Task> {
     project: fc.constant('test-project'),
     created_by: fc.constant('agent-cto'),
     assigned_to: arbAgentName,
+    requested_by_user_id: arbAgentName,
     reviewers: fc.constant([] as readonly string[]),
     dependencies: fc.constant([] as readonly string[]),
     artifacts_expected: fc.constant([] as readonly { readonly path: string; readonly type: 'code' | 'tests' | 'documentation' }[]),

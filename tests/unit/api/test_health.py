@@ -1,4 +1,10 @@
-"""Tests for the liveness (/healthz) and readiness (/readyz) endpoints."""
+"""Tests for liveness (/healthz), readiness (/readyz), and health (/health).
+
+``/readyz`` is the unauthenticated supervisor probe: it returns the
+binary outcome plus version and uptime only, never the component
+topology. The per-component breakdown lives behind authentication on
+``/health``.
+"""
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -18,6 +24,8 @@ from synthorg.providers.health import (
 from tests._shared import JsonDict, LoopAsyncClient
 from tests._shared import build_test_app as create_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
+
+_TOPOLOGY_KEYS = ("persistence", "message_bus", "providers", "telemetry")
 
 
 @pytest.mark.unit
@@ -47,18 +55,10 @@ class TestLiveness:
         assert response.status_code == 200
         assert response.json()["data"]["status"] == "ok"
 
-    async def test_old_health_endpoint_is_gone(
-        self,
-        async_test_client: LoopAsyncClient,
-    ) -> None:
-        # Pre-alpha: /health was replaced by /healthz + /readyz without
-        # a compatibility shim.  Old callers must migrate.
-        assert (await async_test_client.get("/api/v1/health")).status_code == 404
-
 
 @pytest.mark.unit
-class TestReadinessHealthy:
-    """``/readyz`` returns 200 when persistence + bus are both healthy."""
+class TestReadinessProbe:
+    """``/readyz`` returns a topology-free outcome + 200/503."""
 
     async def test_returns_ok_when_all_healthy(
         self, async_test_client: LoopAsyncClient
@@ -68,9 +68,17 @@ class TestReadinessHealthy:
         body = response.json()
         assert body["success"] is True
         assert body["data"]["status"] == "ok"
-        assert body["data"]["persistence"] is True
-        assert body["data"]["message_bus"] is True
-        assert body["data"]["telemetry"] in {"enabled", "disabled"}
+        assert "version" in body["data"]
+        assert body["data"]["uptime_seconds"] >= 0
+
+    async def test_body_carries_no_topology(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """The unauthenticated probe must not leak operational topology."""
+        response = await async_test_client.get("/api/v1/readyz")
+        body = response.json()["data"]
+        for key in _TOPOLOGY_KEYS:
+            assert key not in body, f"/readyz must not expose {key!r}"
 
 
 @pytest.mark.unit
@@ -85,9 +93,7 @@ class TestReadinessUnhealthy:
         fake_message_bus._running = False
         response = await async_test_client.get("/api/v1/readyz")
         assert response.status_code == 503
-        body = response.json()
-        assert body["data"]["status"] == "unavailable"
-        assert body["data"]["message_bus"] is False
+        assert response.json()["data"]["status"] == "unavailable"
 
     async def test_503_when_persistence_and_bus_down(
         self,
@@ -104,51 +110,32 @@ class TestReadinessUnhealthy:
 
 @pytest.mark.unit
 class TestReadinessUnconfigured:
-    """Dev stacks without a bus still report ready (no configured deps fail)."""
+    """Dev stacks without a bus still report ready (no configured deps fail).
+
+    Asserts the gate outcome only; component values are an authenticated
+    ``/health`` concern.
+    """
 
     @pytest.mark.parametrize(
-        (
-            "persistence_state",
-            "bus_state",
-            "expected_status_code",
-            "expected_outcome",
-            "expected_persistence",
-            "expected_bus",
-        ),
+        ("persistence_state", "bus_state", "expected_status_code", "expected_outcome"),
         [
-            pytest.param(None, None, 200, "ok", None, True, id="no_services"),
+            pytest.param(None, None, 200, "ok", id="no_services"),
+            pytest.param("healthy", None, 200, "ok", id="persistence_only_healthy"),
             pytest.param(
-                "healthy", None, 200, "ok", True, True, id="persistence_only_healthy"
+                "unhealthy", None, 503, "unavailable", id="persistence_only_unhealthy"
             ),
+            pytest.param(None, "healthy", 200, "ok", id="bus_only_healthy"),
             pytest.param(
-                "unhealthy",
-                None,
-                503,
-                "unavailable",
-                False,
-                True,
-                id="persistence_only_unhealthy",
-            ),
-            pytest.param(None, "healthy", 200, "ok", None, True, id="bus_only_healthy"),
-            pytest.param(
-                None,
-                "unhealthy",
-                503,
-                "unavailable",
-                None,
-                False,
-                id="bus_only_unhealthy",
+                None, "unhealthy", 503, "unavailable", id="bus_only_unhealthy"
             ),
         ],
     )
-    async def test_unconfigured_services(  # noqa: PLR0913 -- parametrized test
+    async def test_unconfigured_services(
         self,
         persistence_state: str | None,
         bus_state: str | None,
         expected_status_code: int,
         expected_outcome: str,
-        expected_persistence: bool | None,
-        expected_bus: bool | None,
     ) -> None:
         backend = None
         bus = None
@@ -169,10 +156,7 @@ class TestReadinessUnconfigured:
 
             response = await client.get("/api/v1/readyz")
             assert response.status_code == expected_status_code
-            body = response.json()
-            assert body["data"]["status"] == expected_outcome
-            assert body["data"]["persistence"] is expected_persistence
-            assert body["data"]["message_bus"] is expected_bus
+            assert response.json()["data"]["status"] == expected_outcome
 
 
 @pytest.mark.unit
@@ -180,7 +164,7 @@ class TestReadinessExceptionPaths:
     """``/readyz`` surfaces 503 when a probe raises."""
 
     @pytest.mark.parametrize(
-        ("service_spec", "response_key"),
+        "service_spec",
         [
             pytest.param(
                 {
@@ -188,9 +172,7 @@ class TestReadinessExceptionPaths:
                     "init": "connect",
                     "kwarg": "persistence",
                     "attr": "health_check",
-                    "patch_kw": {},
                 },
-                "persistence",
                 id="persistence_exception",
             ),
             pytest.param(
@@ -199,17 +181,14 @@ class TestReadinessExceptionPaths:
                     "init": "start",
                     "kwarg": "message_bus",
                     "attr": "health_check",
-                    "patch_kw": {},
                 },
-                "message_bus",
                 id="message_bus_exception",
             ),
         ],
     )
-    async def test_service_exception_returns_false(
+    async def test_service_exception_returns_503(
         self,
         service_spec: JsonDict,
-        response_key: str,
     ) -> None:
         service = service_spec["factory"]()
         await getattr(service, service_spec["init"])()
@@ -220,13 +199,54 @@ class TestReadinessExceptionPaths:
                 type(service),
                 service_spec["attr"],
                 side_effect=RuntimeError("test error"),
-                **service_spec["patch_kw"],
             ):
                 response = await client.get("/api/v1/readyz")
                 assert response.status_code == 503
-                body = response.json()
-                assert body["data"][response_key] is False
-                assert body["data"]["status"] == "unavailable"
+                assert response.json()["data"]["status"] == "unavailable"
+
+
+@pytest.mark.unit
+class TestHealthDetail:
+    """``/health`` exposes the per-component breakdown behind auth."""
+
+    async def test_rejects_invalid_token(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        # An invalid bearer token overrides the shared client's default
+        # CEO header and must be rejected: ``/health`` is auth-gated,
+        # unlike the public ``/readyz`` probe.
+        response = await async_test_client.get(
+            "/api/v1/health",
+            headers={"Authorization": "Bearer not.a.valid.token"},
+        )
+        assert response.status_code in {401, 403}
+
+    async def test_authenticated_returns_component_breakdown(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        # ``async_test_client`` carries a default CEO Authorization header.
+        response = await async_test_client.get("/api/v1/health")
+        assert response.status_code == 200
+        body = response.json()["data"]
+        assert body["status"] == "ok"
+        assert body["persistence"] is True
+        assert body["message_bus"] is True
+        # ``/health`` exposes the full per-component breakdown, so the
+        # providers component must be present (None when unconfigured).
+        assert "providers" in body
+        assert body["telemetry"] in {"enabled", "disabled"}
+
+    async def test_authenticated_503_when_bus_down(
+        self,
+        async_test_client: LoopAsyncClient,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        fake_message_bus._running = False
+        response = await async_test_client.get("/api/v1/health")
+        assert response.status_code == 503
+        body = response.json()["data"]
+        assert body["status"] == "unavailable"
+        assert body["message_bus"] is False
 
 
 @pytest.mark.unit
@@ -262,43 +282,27 @@ class TestResolveTelemetryStatus:
 
 
 @pytest.mark.unit
-class TestReadinessTelemetryField:
-    """``/readyz`` always surfaces a telemetry status."""
-
-    async def test_disabled_by_default(
-        self, async_test_client: LoopAsyncClient
-    ) -> None:
-        response = await async_test_client.get("/api/v1/readyz")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["data"]["telemetry"] == "disabled"
-
-
-@pytest.mark.unit
 class TestReadinessProviders:
     """``/readyz`` reports 503 when any provider is in DOWN state.
 
     DEGRADED and UNKNOWN providers stay reachable; only DOWN providers
-    flip the gate. Wired through ``ProviderHealthTracker.are_all_reachable``
-    so the readyz probe surfaces the same view operators see in the
-    provider health summary.
+    flip the gate. Wired through ``ProviderHealthTracker.are_all_reachable``.
+    Asserts the gate outcome only; the ``providers`` component value is an
+    authenticated ``/health`` concern.
     """
 
-    async def test_empty_tracker_reports_providers_reachable(self) -> None:
+    async def test_empty_tracker_reports_ready(self) -> None:
         tracker = ProviderHealthTracker()
         async with LoopAsyncClient(
             create_app(provider_health_tracker=tracker),
         ) as client:
             response = await client.get("/api/v1/readyz")
             assert response.status_code == 200
-            body = response.json()
-            assert body["data"]["status"] == "ok"
-            assert body["data"]["providers"] is True
+            assert response.json()["data"]["status"] == "ok"
 
     async def test_down_provider_flips_readiness_to_503(self) -> None:
         tracker = ProviderHealthTracker()
-        # Record 6 failures, 0 successes for a 100% error rate ->
-        # DOWN ( >= 50% threshold).
+        # 6 failures, 0 successes => 100% error rate => DOWN (>=50%).
         now = datetime.now(UTC)
         for i in range(6):
             await tracker.record(
@@ -315,9 +319,7 @@ class TestReadinessProviders:
         ) as client:
             response = await client.get("/api/v1/readyz")
             assert response.status_code == 503
-            body = response.json()
-            assert body["data"]["status"] == "unavailable"
-            assert body["data"]["providers"] is False
+            assert response.json()["data"]["status"] == "unavailable"
 
     async def test_degraded_provider_stays_reachable(self) -> None:
         tracker = ProviderHealthTracker()
@@ -347,6 +349,4 @@ class TestReadinessProviders:
         ) as client:
             response = await client.get("/api/v1/readyz")
             assert response.status_code == 200
-            body = response.json()
-            assert body["data"]["status"] == "ok"
-            assert body["data"]["providers"] is True
+            assert response.json()["data"]["status"] == "ok"

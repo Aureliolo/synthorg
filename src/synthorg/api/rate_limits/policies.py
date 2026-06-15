@@ -86,6 +86,9 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "auth.sessions_list": (30, 60),
     "auth.sessions_revoke": (60, 60),
     "auth.ws_ticket": (20, 60),
+    "auth.api_keys_issue": (10, 60),
+    "auth.api_keys_list": (30, 60),
+    "auth.api_keys_revoke": (30, 60),
     # brownfield
     "brownfield.import": (10, 60),
     # clients

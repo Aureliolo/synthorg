@@ -36,6 +36,7 @@ from synthorg.engine.pipeline.models import (
     WorkItem,
     WorkPhaseResult,
     WorkPipelineResult,
+    WorkSource,
 )
 from synthorg.engine.pipeline.narrator_port import RunNarrator
 from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
@@ -73,6 +74,14 @@ _PHASE_DECOMPOSE = "decompose"
 _PHASE_SOLO = "solo_execution"
 _PHASE_TEAM = "team_execution"
 _PHASE_METRICS = "coordination_metrics"
+
+#: Work sources whose ``requested_by`` is a human user id (not an agent or
+#: system identity). Only these stamp ``Task.requested_by_user_id`` so the SSE
+#: event-stream endpoint can resolve session ownership; agent/system sources
+#: leave it ``None`` (no human owner, so only a CEO may stream them).
+_HUMAN_ORIGINATED_SOURCES: frozenset[WorkSource] = frozenset(
+    {WorkSource.TASK_BOARD, WorkSource.CONVERSATIONAL}
+)
 
 
 class DefaultWorkPipeline:
@@ -327,8 +336,32 @@ class DefaultWorkPipeline:
         if task is None:
             msg = f"intake reported task {result.task_id!r} but it is not persisted"
             raise WorkIntakeRejectedError(msg)
+        task = await self._stamp_requester(task, work_item)
         task = await self._link_forecast(task, work_item)
         return await self._assess_stakes(task, work_item)
+
+    async def _stamp_requester(self, task: Task, work_item: WorkItem) -> Task:
+        """Stamp the human requester's user id for SSE session ownership.
+
+        Only human-originated work (task board, conversational) carries a
+        real user id in ``requested_by``; agent and system sources carry an
+        agent/system identity instead, so their tasks keep
+        ``requested_by_user_id=None`` and only a CEO may subscribe to their
+        event stream.
+
+        Returns:
+            The task with ``requested_by_user_id`` set for human-originated
+            work, otherwise the task unchanged.
+        """
+        if work_item.source not in _HUMAN_ORIGINATED_SOURCES:
+            return task
+        if task.requested_by_user_id == work_item.requested_by:
+            return task
+        return await self._task_engine.update_task(
+            str(task.id),
+            {"requested_by_user_id": work_item.requested_by},
+            requested_by=work_item.requested_by,
+        )
 
     async def _assess_stakes(self, task: Task, work_item: WorkItem) -> Task:
         """Assess and stamp parent-task stakes for the LEAF (solo) path.

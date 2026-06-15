@@ -637,9 +637,12 @@ async def _verify_peer_credentials(
 
     Looks up the peer's stored API key and compares it to the
     ``Authorization`` or ``X-API-Key`` header from the request.
-    Returns ``True`` when credentials match or when no connection
-    catalog is available (graceful degradation -- allowlist is
-    still enforced).
+    Returns ``True`` only when the catalog is entirely absent (a
+    dev-only no-catalog deployment where the allowlist is the sole
+    gate). A configured catalog that has no credential record for a
+    peer FAILS CLOSED: an operator who adds a peer to ``allowed_peers``
+    but forgets its credentials must not silently grant unauthenticated
+    access to task creation / cancellation.
 
     Args:
         app_state: Application state container.
@@ -647,30 +650,51 @@ async def _verify_peer_credentials(
         peer_name: Declared peer name from header.
 
     Returns:
-        ``True`` if credentials are valid or catalog unavailable.
+        ``True`` if credentials are valid, or when no catalog is
+        configured at all (dev-only). ``False`` when a configured
+        catalog lacks credentials for the peer.
     """
     try:
         catalog = app_state.slice(IntegrationsStateSlice).connection_catalog
         if catalog is None:
+            # No catalog configured at all: dev-only path, allowlist is
+            # the sole gate. This is the ONLY fail-open branch.
             return True
         credentials = await catalog.get_credentials(peer_name)
         if not credentials:
-            return True
+            # Catalog IS configured but has no credential record for this
+            # allowlisted peer: fail closed rather than granting access.
+            logger.warning(
+                A2A_INBOUND_AUTH_FAILED,
+                peer_name=peer_name,
+                reason="no credentials configured for allowlisted peer",
+            )
+            return False
 
         scheme = credentials.get("auth_scheme", "api_key")
         if scheme == "api_key":
             stored_key = credentials.get("api_key", "")
+            if not stored_key:
+                # A blank credential value in a configured catalog record is
+                # a misconfiguration; treat it like a missing record and fail
+                # closed rather than skipping the comparison and granting access.
+                logger.warning(
+                    A2A_INBOUND_AUTH_FAILED,
+                    peer_name=peer_name,
+                    reason="blank stored api_key in catalog",
+                )
+                return False
             request_key = request.headers.get("x-api-key", "") or (
                 extract_bearer_token(request.headers.get("authorization", "")) or ""
             )
-            if stored_key and not request_key:
+            if not request_key:
                 logger.warning(
                     A2A_INBOUND_AUTH_FAILED,
                     peer_name=peer_name,
                     reason="missing credentials in request",
                 )
                 return False
-            if stored_key and not _credentials_match(stored_key, request_key):
+            if not _credentials_match(stored_key, request_key):
                 logger.warning(
                     A2A_INBOUND_AUTH_FAILED,
                     peer_name=peer_name,
@@ -679,16 +703,44 @@ async def _verify_peer_credentials(
                 return False
         elif scheme in ("bearer", "oauth2"):
             stored_token = credentials.get("access_token", "")
+            if not stored_token:
+                logger.warning(
+                    A2A_INBOUND_AUTH_FAILED,
+                    peer_name=peer_name,
+                    reason="blank stored access_token in catalog",
+                )
+                return False
             auth_header = request.headers.get("authorization", "")
             request_token = extract_bearer_token(auth_header) or ""
-            if stored_token and not _credentials_match(stored_token, request_token):
+            if not request_token:
+                logger.warning(
+                    A2A_INBOUND_AUTH_FAILED,
+                    peer_name=peer_name,
+                    reason="missing token in request",
+                )
+                return False
+            if not _credentials_match(stored_token, request_token):
                 logger.warning(
                     A2A_INBOUND_AUTH_FAILED,
                     peer_name=peer_name,
                     reason="token mismatch",
                 )
                 return False
-        # mTLS/none: no header-level check needed
+        elif scheme in ("mtls", "none"):
+            # mTLS/none: no header-level check needed.
+            pass
+        else:
+            # An unknown scheme (blank, typo, or a value the catalog was
+            # misconfigured with) must fail closed: falling through to the
+            # trailing ``return True`` would grant access without any
+            # credential check.
+            logger.warning(
+                A2A_INBOUND_AUTH_FAILED,
+                peer_name=peer_name,
+                reason="unsupported auth scheme",
+                auth_scheme=str(scheme),
+            )
+            return False
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         # Credential verification sits alongside ``request``,

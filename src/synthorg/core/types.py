@@ -12,7 +12,7 @@ from collections import Counter
 from typing import Annotated, Final, Literal
 from uuid import UUID, uuid5
 
-from pydantic import AfterValidator, StringConstraints
+from pydantic import AfterValidator, BeforeValidator, StringConstraints
 
 ModelTier = Literal["large", "medium", "small"]
 """Model capability tier: large (most capable), medium, small (cheapest)."""
@@ -45,6 +45,35 @@ NotBlankStr = Annotated[
     AfterValidator(_check_not_whitespace),
 ]
 """A string that must be non-empty and not consist solely of whitespace."""
+
+
+def flatten_label(value: str) -> str:
+    """Flatten a semi-trusted label for safe interpolation into a prompt.
+
+    Collapses all whitespace (newlines included) onto one line and drops
+    angle brackets so a crafted value cannot forge an untrusted-content
+    fence or inject a fresh instruction line into a SYSTEM prompt. Shared
+    by the persona renderer, the chief-of-staff router, and the
+    ``PersonaLabelStr`` field type so the sanitisation cannot drift
+    between sink and source.
+
+    Returns:
+        The single-line, angle-bracket-free label.
+    """
+    collapsed = " ".join(value.split())
+    return collapsed.replace("<", "").replace(">", "")
+
+
+PersonaLabelStr = Annotated[
+    str,
+    BeforeValidator(flatten_label),
+    StringConstraints(min_length=1),
+    AfterValidator(_check_not_whitespace),
+]
+"""A persona-bound label (role / department / name): flattened to a
+single line with angle brackets stripped at construction, then required
+non-blank. Source-side defence-in-depth for prompt-injection (the render
+sites also flatten); a value that is empty after flattening is rejected."""
 
 
 _AGENT_ID_NAMESPACE: Final = UUID("0b3d2c1e-7a4f-4b8e-9c6d-1f2e3a4b5c6d")

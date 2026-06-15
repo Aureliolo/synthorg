@@ -46,6 +46,7 @@ CREATE TABLE tasks (
     priority TEXT NOT NULL DEFAULT 'medium',
     project TEXT NOT NULL,
     created_by TEXT NOT NULL,
+    requested_by_user_id TEXT,
     assigned_to TEXT,
     status TEXT NOT NULL DEFAULT 'created',
     estimated_complexity TEXT NOT NULL DEFAULT 'medium',

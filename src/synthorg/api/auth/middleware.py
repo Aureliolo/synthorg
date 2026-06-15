@@ -39,10 +39,10 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_COOKIE_NAME_FALLBACK,
     API_AUTH_COOKIE_USED,
+    API_AUTH_SUCCESS,
 )
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
-    SECURITY_AUTH_SUCCESS,
 )
 from synthorg.persistence.state import persistence_of
 
@@ -330,7 +330,7 @@ async def _resolve_jwt_user(
             return None
 
     logger.info(
-        SECURITY_AUTH_SUCCESS,
+        API_AUTH_SUCCESS,
         user_id=db_user.id,
         username=db_user.username,
         auth_method="jwt",
@@ -429,7 +429,7 @@ async def _resolve_api_key_user(
         return None
 
     logger.info(
-        SECURITY_AUTH_SUCCESS,
+        API_AUTH_SUCCESS,
         user_id=db_user.id,
         username=db_user.username,
         auth_method="api_key",
@@ -444,6 +444,7 @@ async def _resolve_api_key_user(
         must_change_password=db_user.must_change_password,
         org_roles=(),
         scoped_departments=(),
+        api_key_id=api_key.id,
     )
 
 

@@ -1,6 +1,6 @@
 import { Dialog } from '@base-ui/react/dialog'
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
-import { getReadiness } from '@/api/endpoints/health'
+import { getHealthDetail } from '@/api/endpoints/health'
 import { useWebSocketStore } from '@/stores/websocket'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
@@ -29,7 +29,7 @@ function useFetchHealth(): {
   const fetchHealth = useCallback(() => {
     setLoadState({ state: 'loading' })
     const probeId = ++latestProbeRef.current
-    getReadiness()
+    getHealthDetail()
       .then((data) => {
         if (probeId !== latestProbeRef.current) return
         const fetchedAt = new Date()

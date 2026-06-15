@@ -83,6 +83,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     project: 'test-project',
     created_by: 'system',
     assigned_to: 'Alice Smith',
+    requested_by_user_id: null,
     reviewers: [],
     dependencies: [],
     artifacts_expected: [],

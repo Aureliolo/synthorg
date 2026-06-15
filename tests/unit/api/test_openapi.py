@@ -369,10 +369,12 @@ class TestOperationInjection:
         post_responses = result["paths"]["/api/v1/tasks"]["post"]["responses"]
         assert "403" in post_responses
 
-    def test_get_endpoints_skip_403(self, base_schema: JsonDict) -> None:
+    def test_authenticated_get_endpoints_have_403(self, base_schema: JsonDict) -> None:
+        # Authenticated read endpoints sit behind a role/permission guard
+        # (e.g. require_read_access), so 403 is reachable on GET too.
         result: JsonDict = inject_rfc9457_responses(base_schema)
         get_responses = result["paths"]["/api/v1/tasks"]["get"]["responses"]
-        assert "403" not in get_responses
+        assert "403" in get_responses
 
     def test_existing_responses_not_overwritten(self) -> None:
         """Pre-existing non-400 error responses are preserved."""

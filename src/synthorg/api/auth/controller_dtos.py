@@ -175,3 +175,61 @@ class SessionResponse(BaseModel):
     last_active_at: AwareDatetime
     expires_at: AwareDatetime
     is_current: bool = False
+
+
+class CreateApiKeyRequest(BaseModel):
+    """API-key issuance payload.
+
+    Attributes:
+        name: Human-readable label for the key.
+        role: Access-control role the key will carry (may not exceed the
+            caller's own seniority; ``SYSTEM`` is not issuable).
+        expires_at: Optional expiry timestamp (timezone-aware).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    name: NotBlankStr = Field(max_length=128)
+    role: HumanRole
+    expires_at: AwareDatetime | None = None
+
+
+class ApiKeyResponse(BaseModel):
+    """Hash-free API-key metadata (never carries the raw key or hash).
+
+    Attributes:
+        id: Key identifier.
+        name: Human-readable label.
+        role: Access-control role.
+        user_id: Owner user id.
+        created_at: Creation timestamp.
+        expires_at: Optional expiry timestamp.
+        revoked: Whether the key has been revoked.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr
+    name: NotBlankStr
+    role: HumanRole
+    user_id: NotBlankStr
+    created_at: AwareDatetime
+    expires_at: AwareDatetime | None = None
+    revoked: bool = False
+
+
+class CreatedApiKeyResponse(BaseModel):
+    """Issuance response: metadata plus the one-time plaintext key.
+
+    The ``api_key`` plaintext is returned exactly once at creation and is
+    never retrievable again; clients must store it securely.
+
+    Attributes:
+        key: Hash-free metadata for the new key.
+        api_key: The raw key string (shown once).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    key: ApiKeyResponse
+    api_key: NotBlankStr = Field(repr=False)

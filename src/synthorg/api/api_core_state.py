@@ -19,6 +19,7 @@ in-place-mutated state.
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.auth.api_key_service import ApiKeyService
 from synthorg.api.auth.presence import UserPresence
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.ticket_store import WsTicketStore
@@ -49,6 +50,7 @@ class ApiCoreStateSlice(BaseFeatureStateSlice):
 
     cursor_secret: CursorSecret | None = None
     auth_service: AuthService | None = None
+    api_key_service: ApiKeyService | None = None
     session_store: SessionStore | None = None
     lockout_store: LockoutStore | None = None
     refresh_store: RefreshStore | None = None
@@ -80,6 +82,31 @@ def org_mutation_service_of(app_state: AppStateSliceMixin) -> OrgMutationService
         app_state.slice(ApiCoreStateSlice).org_mutation_service,
         "Org Mutation Service",
     )
+
+
+def api_key_service_of(app_state: AppStateSliceMixin) -> ApiKeyService:
+    """Resolve the API-key service, lazily building it on first use.
+
+    Requires connected persistence (for ``api_keys``) and a wired auth
+    service (for key generation / hashing); raises a 503 via
+    :func:`persistence_of` / :func:`auth_service_of` when either is
+    absent. The lazy install is made atomic via ``wire_if_field_absent``
+    so concurrent first-readers cannot overwrite each other.
+
+    Returns:
+        The wired or lazily-composed API-key service.
+    """
+    existing = app_state.slice(ApiCoreStateSlice).api_key_service
+    if existing is not None:
+        return existing
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    candidate = ApiKeyService(
+        api_keys=persistence_of(app_state).api_keys,
+        auth_service=auth_service_of(app_state),
+    )
+    app_state.wire_if_field_absent(ApiCoreStateSlice, "api_key_service", candidate)
+    return app_state.slice(ApiCoreStateSlice).api_key_service or candidate
 
 
 def session_store_of(app_state: AppStateSliceMixin) -> SessionStore:

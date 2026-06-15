@@ -61,6 +61,11 @@ mandatory_rules:
     header: Convention Rollout
     gate: scripts/check_convention_gate_inventory.py
 
+  - id: claude-md::license-compatibility
+    file: CLAUDE.md
+    header: License Compatibility
+    gate: scripts/check_license_compat.py
+
   - id: claude-md::configuration-precedence
     file: CLAUDE.md
     header: Configuration Precedence

@@ -28,6 +28,24 @@ class TestTaskRepository:
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         assert await backend.tasks.get("missing") is None
 
+    async def test_requested_by_user_id_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        task = make_task(task_id="t-owner", requested_by_user_id="user-42")
+        await backend.tasks.save(task)
+        fetched = await backend.tasks.get(sid("t-owner"))
+        assert fetched is not None
+        assert fetched.requested_by_user_id == "user-42"
+
+    async def test_requested_by_user_id_defaults_none(
+        self, backend: PersistenceBackend
+    ) -> None:
+        task = make_task(task_id="t-no-owner")
+        await backend.tasks.save(task)
+        fetched = await backend.tasks.get(sid("t-no-owner"))
+        assert fetched is not None
+        assert fetched.requested_by_user_id is None
+
     async def test_upsert_updates_existing(self, backend: PersistenceBackend) -> None:
         task = make_task(task_id="t2", title="Original")
         await backend.tasks.save(task)

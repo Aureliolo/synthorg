@@ -110,6 +110,7 @@ task:
   priority: "high"              # critical, high, medium, low
   project: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"   # references Project.id (UUID)
   created_by: "product_manager_1"
+  requested_by_user_id: null      # user id of the human who filed the task via API; null for agent-internal tasks. Gates SSE event-stream ownership
   assigned_to: "sarah_chen"
   reviewers: ["engineering_lead", "security_engineer"]
   dependencies:                 # other task ids (UUIDs)

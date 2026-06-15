@@ -377,7 +377,12 @@ def _should_inject(
         "InternalError": True,
         "ServiceUnavailable": not is_public or serves_503,
         "Unauthorized": not is_public,
-        "Forbidden": not is_public and is_write,
+        # Any authenticated endpoint sits behind a role/permission guard
+        # (e.g. ``require_read_access`` on ``GET /health``), so an
+        # authenticated-but-not-authorised caller can hit 403 on reads as
+        # well as writes -- mirror the ``Unauthorized`` rule rather than
+        # restricting to write methods.
+        "Forbidden": not is_public,
         # Inject on write methods or replace Litestar's incorrect default.
         "BadRequest": is_write or _has_response_code(operation, "400"),
         "NotFound": has_params,

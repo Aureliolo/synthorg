@@ -56,6 +56,7 @@ def _task_params(task: Task) -> dict[str, object]:
         "priority": _enum_value(task.priority),
         "project": task.project,
         "created_by": task.created_by,
+        "requested_by_user_id": task.requested_by_user_id,
         "assigned_to": task.assigned_to,
         "status": _enum_value(task.status),
         "estimated_complexity": _enum_value(task.estimated_complexity),
@@ -90,13 +91,15 @@ class PostgresTaskRepository:
     _UPSERT_SQL = """
                     INSERT INTO tasks (
                         id, title, description, type, priority, project, created_by,
-                        assigned_to, status, estimated_complexity, budget_limit,
+                        requested_by_user_id, assigned_to, status,
+                        estimated_complexity, budget_limit,
                         deadline, max_retries, parent_task_id, task_structure,
                         coordination_topology, reviewers, dependencies,
                         artifacts_expected, acceptance_criteria, delegation_chain
                     ) VALUES (
                         %(id)s, %(title)s, %(description)s, %(type)s, %(priority)s,
-                        %(project)s, %(created_by)s, %(assigned_to)s, %(status)s,
+                        %(project)s, %(created_by)s, %(requested_by_user_id)s,
+                        %(assigned_to)s, %(status)s,
                         %(estimated_complexity)s, %(budget_limit)s, %(deadline)s,
                         %(max_retries)s, %(parent_task_id)s, %(task_structure)s,
                         %(coordination_topology)s, %(reviewers)s, %(dependencies)s,
@@ -110,6 +113,7 @@ class PostgresTaskRepository:
                         priority=EXCLUDED.priority,
                         project=EXCLUDED.project,
                         created_by=EXCLUDED.created_by,
+                        requested_by_user_id=EXCLUDED.requested_by_user_id,
                         assigned_to=EXCLUDED.assigned_to,
                         status=EXCLUDED.status,
                         estimated_complexity=EXCLUDED.estimated_complexity,
@@ -173,7 +177,8 @@ class PostgresTaskRepository:
 
     _TASK_COLUMNS = (
         "id, title, description, type, priority, project, created_by, "
-        "assigned_to, status, estimated_complexity, budget_limit, deadline, "
+        "requested_by_user_id, assigned_to, status, estimated_complexity, "
+        "budget_limit, deadline, "
         "max_retries, parent_task_id, task_structure, coordination_topology, "
         "reviewers, dependencies, artifacts_expected, acceptance_criteria, "
         "delegation_chain"

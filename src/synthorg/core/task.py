@@ -63,6 +63,9 @@ class Task(BaseModel):
         priority: Task urgency and importance level.
         project: Project ID this task belongs to.
         created_by: Agent name of the task creator.
+        requested_by_user_id: User id of the human who filed the task via
+            the API (``None`` for agent-internal tasks); gates SSE
+            event-stream session ownership.
         assigned_to: Agent ID of the assignee (``None`` if unassigned).
         reviewers: Agent IDs of designated reviewers.
         dependencies: IDs of tasks this task depends on.
@@ -104,6 +107,16 @@ class Task(BaseModel):
     )
     created_by: NotBlankStr = Field(
         description="Agent name of the task creator",
+    )
+    requested_by_user_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "User id of the human who filed this task via the API"
+            " (distinct from created_by, which is the agent name)."
+            " Drives SSE event-stream session ownership: only the"
+            " requester (or a CEO) may subscribe to a session keyed"
+            " by this task's id. None for agent-internal tasks."
+        ),
     )
     assigned_to: NotBlankStr | None = Field(
         default=None,

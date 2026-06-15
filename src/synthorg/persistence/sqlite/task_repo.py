@@ -71,16 +71,16 @@ class SQLiteTaskRepository:
     _UPSERT_SQL = """\
 INSERT INTO tasks (
     id, title, description, type, priority, project, created_by,
-    assigned_to, status, estimated_complexity, budget_limit, deadline,
-    max_retries, parent_task_id, task_structure, coordination_topology,
-    reviewers, dependencies, artifacts_expected, acceptance_criteria,
-    delegation_chain
+    requested_by_user_id, assigned_to, status, estimated_complexity,
+    budget_limit, deadline, max_retries, parent_task_id, task_structure,
+    coordination_topology, reviewers, dependencies, artifacts_expected,
+    acceptance_criteria, delegation_chain
 ) VALUES (
     :id, :title, :description, :type, :priority, :project, :created_by,
-    :assigned_to, :status, :estimated_complexity, :budget_limit, :deadline,
-    :max_retries, :parent_task_id, :task_structure, :coordination_topology,
-    :reviewers, :dependencies, :artifacts_expected, :acceptance_criteria,
-    :delegation_chain
+    :requested_by_user_id, :assigned_to, :status, :estimated_complexity,
+    :budget_limit, :deadline, :max_retries, :parent_task_id, :task_structure,
+    :coordination_topology, :reviewers, :dependencies, :artifacts_expected,
+    :acceptance_criteria, :delegation_chain
 )
 ON CONFLICT(id) DO UPDATE SET
     title=excluded.title,
@@ -89,6 +89,7 @@ ON CONFLICT(id) DO UPDATE SET
     priority=excluded.priority,
     project=excluded.project,
     created_by=excluded.created_by,
+    requested_by_user_id=excluded.requested_by_user_id,
     assigned_to=excluded.assigned_to,
     status=excluded.status,
     estimated_complexity=excluded.estimated_complexity,
@@ -207,10 +208,10 @@ ON CONFLICT(id) DO UPDATE SET
 
     _TASK_COLUMNS = """\
 id, title, description, type, priority, project, created_by,
-       assigned_to, status, estimated_complexity, budget_limit, deadline,
-       max_retries, parent_task_id, task_structure, coordination_topology,
-       reviewers, dependencies, artifacts_expected, acceptance_criteria,
-       delegation_chain"""
+       requested_by_user_id, assigned_to, status, estimated_complexity,
+       budget_limit, deadline, max_retries, parent_task_id, task_structure,
+       coordination_topology, reviewers, dependencies, artifacts_expected,
+       acceptance_criteria, delegation_chain"""
 
     async def get(self, task_id: str) -> Task | None:
         """Retrieve a task by its ID.

@@ -40,8 +40,15 @@ jobs:
     timeout-minutes: 8
     environment: release
     permissions:
-      contents: write
-      pull-requests: write   # gh pr create + gh pr merge --auto
+      # GITHUB_TOKEN only ever READS here: the dedup `gh pr list` queries
+      # and the `git tag` / `git log` history walk. Every WRITE (the
+      # signed empty commit, the branch ref, `gh pr create`, and
+      # `gh pr merge --auto`) runs under the synthorg-repo-bot App token
+      # minted by release-runner-setup, which carries its own
+      # contents:write + pull-requests:write. So the job token stays
+      # read-only on both scopes.
+      contents: read
+      pull-requests: read
     steps:
       # Full-history checkout: the "Check if rollover is needed" step
       # walks git tags via `git tag --sort=-v:refname` and compares the

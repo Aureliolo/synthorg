@@ -55,12 +55,70 @@ def _load_json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+_MAP_ENTRY_KEYS: Final[frozenset[str]] = frozenset(
+    {"module", "kind", "loc_cap", "loc", "owning_feature"}
+)
+
+
+def _validate_codebase_map(
+    modules: list[object],
+    expected_index: dict[str, object],
+) -> list[str]:
+    """Validate the regenerated codebase map's structure + cross-consistency.
+
+    ``codebase_map.json`` is no longer committed (it is a regenerated,
+    gitignored navigation artefact), so there is nothing to byte-compare.
+    Instead this asserts the generator produced a well-formed map and
+    that it stays consistent with the still-tracked ``feature_index.json``:
+    every ``owning_feature`` must name a feature present in the index.
+
+    Returns:
+        Findings; empty means the map is structurally sound and consistent.
+    """
+    findings: list[str] = []
+    if not modules:
+        findings.append(f"{CODEBASE_MAP_REL.as_posix()} regenerated empty (corrupt)")
+        return findings
+    features_raw = expected_index.get("features", [])
+    features = features_raw if isinstance(features_raw, list) else []
+    feature_names = {
+        feature["name"]
+        for feature in features
+        if isinstance(feature, dict) and "name" in feature
+    }
+    for entry in modules:
+        if not isinstance(entry, dict):
+            findings.append(
+                f"{CODEBASE_MAP_REL.as_posix()} contains non-object entry: {entry!r}"
+            )
+            continue
+        missing = _MAP_ENTRY_KEYS - entry.keys()
+        if missing:
+            findings.append(
+                f"{CODEBASE_MAP_REL.as_posix()} entry {entry.get('module')!r} "
+                f"missing keys: {sorted(missing)}"
+            )
+            continue
+        owning = entry["owning_feature"]
+        if owning is not None and owning not in feature_names:
+            findings.append(
+                f"{CODEBASE_MAP_REL.as_posix()} entry {entry['module']!r} names "
+                f"owning_feature {owning!r} absent from {FEATURE_INDEX_REL.as_posix()}"
+            )
+    return findings
+
+
 def check(*, repo_root: Path) -> list[str]:
     """Return findings (empty == artefacts match the freshly-regenerated state).
 
-    Both files must exist; if missing, fail-closed. The committed JSON
-    must match the regenerated JSON modulo the ``generated_at`` field of
-    the feature index (which moves on every run by design).
+    ``feature_index.json`` is the committed source of truth and is
+    byte-compared against a fresh regeneration (modulo the ``generated_at``
+    field, which moves every run). ``codebase_map.json`` is no longer
+    committed -- it is a regenerated, gitignored navigation artefact
+    (``scripts/generate_feature_index.py`` writes it on demand) -- so the
+    gate rebuilds it in memory and validates its structure and
+    cross-consistency with the still-tracked index rather than
+    byte-comparing a committed file.
 
     Args:
         repo_root: Repository root containing ``data/`` and ``scripts/``.
@@ -70,12 +128,8 @@ def check(*, repo_root: Path) -> list[str]:
     """
     findings: list[str] = []
     index_path = repo_root / FEATURE_INDEX_REL
-    map_path = repo_root / CODEBASE_MAP_REL
     if not index_path.is_file():
         findings.append(f"missing {FEATURE_INDEX_REL.as_posix()} (fail-closed)")
-    if not map_path.is_file():
-        findings.append(f"missing {CODEBASE_MAP_REL.as_posix()} (fail-closed)")
-    if findings:
         return findings
 
     try:
@@ -87,14 +141,13 @@ def check(*, repo_root: Path) -> list[str]:
         build_index = generator.build_feature_index  # type: ignore[attr-defined]
         build_map = generator.build_codebase_map  # type: ignore[attr-defined]
         expected_index = build_index().model_dump(mode="json")
-        expected_map = {"modules": build_map()}
+        expected_modules = build_map()
     except Exception as exc:
         findings.append(f"generator failed: {exc}")
         return findings
 
     try:
         committed_index_raw = _load_json(index_path)
-        committed_map_raw = _load_json(map_path)
     except ValueError as exc:
         findings.append(f"failed to parse committed JSON: {exc}")
         return findings
@@ -102,9 +155,6 @@ def check(*, repo_root: Path) -> list[str]:
         findings.append(
             f"{FEATURE_INDEX_REL.as_posix()} is not a JSON object (corrupt)"
         )
-        return findings
-    if not isinstance(committed_map_raw, dict):
-        findings.append(f"{CODEBASE_MAP_REL.as_posix()} is not a JSON object (corrupt)")
         return findings
 
     committed_index_norm = _canonical_json(_strip_generated_at(committed_index_raw))
@@ -114,13 +164,8 @@ def check(*, repo_root: Path) -> list[str]:
             f"{FEATURE_INDEX_REL.as_posix()} is stale; regenerate via "
             "`uv run python scripts/generate_feature_index.py`"
         )
-    committed_map_norm = _canonical_json(committed_map_raw)
-    expected_map_norm = _canonical_json(expected_map)
-    if committed_map_norm != expected_map_norm:
-        findings.append(
-            f"{CODEBASE_MAP_REL.as_posix()} is stale; regenerate via "
-            "`uv run python scripts/generate_feature_index.py`"
-        )
+
+    findings.extend(_validate_codebase_map(expected_modules, expected_index))
     return findings
 
 

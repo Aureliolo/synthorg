@@ -1,5 +1,9 @@
 import { http, HttpResponse } from 'msw'
-import type { getLiveness, getReadiness } from '@/api/endpoints/health'
+import type {
+  getHealthDetail,
+  getLiveness,
+  getReadiness,
+} from '@/api/endpoints/health'
 import { successFor } from './helpers'
 
 export const healthHandlers = [
@@ -16,10 +20,20 @@ export const healthHandlers = [
       }),
     ),
   ),
-  // Readiness -- 200 on healthy persistence + message bus.
+  // Readiness -- topology-free public probe (status + version + uptime).
   http.get('/api/v1/readyz', () =>
     HttpResponse.json(
       successFor<typeof getReadiness>({
+        status: 'ok',
+        version: '0.6.4',
+        uptime_seconds: 0,
+      }),
+    ),
+  ),
+  // Health detail -- authenticated per-component breakdown.
+  http.get('/api/v1/health', () =>
+    HttpResponse.json(
+      successFor<typeof getHealthDetail>({
         status: 'ok',
         persistence: true,
         message_bus: true,

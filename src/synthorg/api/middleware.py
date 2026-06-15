@@ -74,9 +74,14 @@ def _is_healthcheck_path(path: str) -> bool:
 # Applied to every HTTP response via the before_send hook.
 
 # Strict CSP for API routes -- no inline scripts, self-origin only.
+# style-src / img-src / font-src / connect-src are listed explicitly even
+# though they would fall back to default-src 'self'; spelling them out
+# keeps the policy intent auditable (mirrors _DOCS_CSP) so a future
+# HTML-rendering endpoint can't silently introduce 'unsafe-inline'.
 _API_CSP: Final[str] = (
-    "default-src 'self'; script-src 'self'; object-src 'none'; "
-    "base-uri 'self'; frame-ancestors 'none'"
+    "default-src 'self'; script-src 'self'; style-src 'self'; "
+    "img-src 'self'; font-src 'self'; connect-src 'self'; "
+    "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 )
 
 # Relaxed CSP for /docs/ -- Scalar UI loads resources from external origins.
@@ -191,7 +196,7 @@ _SECURITY_HEADERS: Final[MappingProxyType[str, str]] = MappingProxyType(
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
         "Referrer-Policy": "strict-origin-when-cross-origin",
-        "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
+        "Strict-Transport-Security": ("max-age=63072000; includeSubDomains; preload"),
         "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
         "Cross-Origin-Resource-Policy": "same-origin",
         "Cross-Origin-Opener-Policy": "same-origin",

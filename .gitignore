@@ -1,6 +1,19 @@
 # Audit artifacts
 _audit/
 
+# Generated, non-source-of-truth artifacts. Each is regenerated on demand
+# by a script and validated by its gate; tracking them only inflated the
+# pack store and produced merge noise. (Vendored third-party assets such
+# as axe-core stay committed -- vendoring is deliberate for reproducible,
+# offline builds; only OUR generated output is untracked here.)
+#   - .test_durations.*       pytest-split shard timings (Refresh workflow removed;
+#                             pytest-split count-partitions when absent)
+#   - data/codebase_map.json  regenerated + structure-validated by
+#                             scripts/check_feature_index_freshness.py
+.test_durations.unit
+.test_durations.integration
+data/codebase_map.json
+
 # Benchmark scorecards emitted by `make benchmark`
 .benchmark/
 

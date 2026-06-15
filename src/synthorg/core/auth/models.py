@@ -122,6 +122,10 @@ class AuthenticatedUser(BaseModel):
             ``session_store.is_revoked(session_id)`` periodically so an
             admin revocation kicks the connection out instead of
             waiting for the access token to expire.
+        api_key_id: Id of the API key that authenticated the request
+            (or ``None`` for non-API-key methods). Long-lived API-key
+            streams (SSE) have no JWT ``jti``, so the revalidation tick
+            re-fetches this key by id to honour revocation / expiry.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -134,6 +138,34 @@ class AuthenticatedUser(BaseModel):
     org_roles: tuple[OrgRole, ...] = ()
     scoped_departments: tuple[NotBlankStr, ...] = ()
     session_id: NotBlankStr | None = None
+    api_key_id: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _validate_api_key_binding(self) -> AuthenticatedUser:
+        """Tie ``api_key_id`` presence to the API_KEY auth method.
+
+        An ``API_KEY`` identity without an ``api_key_id`` cannot be
+        resolved by the long-lived stream revalidation tick (which
+        re-fetches the key by id to honour revocation / expiry), and an
+        ``api_key_id`` on any other method is meaningless. Reject both
+        invalid states at construction so the invariant holds wherever
+        an ``AuthenticatedUser`` is built.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``auth_method`` is ``API_KEY`` without an
+                ``api_key_id``, or ``api_key_id`` is set for any other
+                method.
+        """
+        if self.auth_method is AuthMethod.API_KEY and self.api_key_id is None:
+            msg = "api_key_id is required when auth_method is 'api_key'"
+            raise ValueError(msg)
+        if self.auth_method is not AuthMethod.API_KEY and self.api_key_id is not None:
+            msg = "api_key_id must be None unless auth_method is 'api_key'"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _validate_scoped_departments(self) -> AuthenticatedUser:

@@ -4,6 +4,7 @@ export type {
   AutonomyLevelRequest,
   AutonomyLevelResponse,
   LivenessStatus,
+  ReadinessProbe,
   ReadinessStatus,
   ReadinessStatus as HealthStatus,
 } from './dtos.gen'

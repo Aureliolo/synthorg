@@ -316,6 +316,7 @@ function sanitizeRequiredStrings(c: DashboardTask) {
 function sanitizeNullableStrings(c: DashboardTask) {
   return {
     assigned_to: sanitizeNullable(c.assigned_to ?? null, 128),
+    requested_by_user_id: sanitizeNullable(c.requested_by_user_id ?? null, 128),
     parent_task_id: sanitizeNullable(c.parent_task_id ?? null, 128),
     deadline: sanitizeNullable(c.deadline ?? null, 64),
     forecast_id: sanitizeNullable(c.forecast_id ?? null, 64),

@@ -46,9 +46,11 @@ API -> CLI
 | Endpoint | Purpose |
 |----------|---------|
 | `/api/v1/healthz` | Liveness probe; always 200 while the process is alive (used by supervisors to decide whether to restart the pod) |
-| `/api/v1/readyz` | Readiness probe; 200 when persistence + message bus are healthy, 503 otherwise (used by load-balancers to gate traffic) |
+| `/api/v1/readyz` | Readiness probe; 200 when every configured dependency (persistence, message bus, providers) is healthy, 503 otherwise (used by load-balancers to gate traffic). Body is topology-free (binary outcome + version + uptime) |
+| `GET /api/v1/health` | Authenticated per-component health breakdown (persistence / message bus / providers / telemetry) for the dashboard; requires a read-access role |
 | `/api/v1/metrics` | Prometheus metrics scrape endpoint (unauthenticated). 12 metric families: `synthorg_app_info` (Info, version), `synthorg_active_agents_total` (Gauge with status, trust_level labels), `synthorg_tasks_total` (Gauge with status, agent labels), `synthorg_cost_total` (Gauge), `synthorg_budget_used_percent` (Gauge), `synthorg_budget_monthly_cost` (Gauge), `synthorg_budget_daily_used_percent` (Gauge, daily cost as % of prorated daily budget), `synthorg_agent_cost_total` (Gauge with agent_id label, per-agent accumulated cost), `synthorg_agent_budget_used_percent` (Gauge with agent_id label, per-agent daily cost as % of daily limit), `synthorg_coordination_efficiency` (Gauge, push-updated), `synthorg_coordination_overhead_percent` (Gauge, push-updated), `synthorg_security_evaluations_total` (Counter with verdict label). Most refreshed per-scrape; coordination and security metrics are push-updated. |
 | `/api/v1/auth` | Authentication: setup, login (HttpOnly cookie sessions, CSRF double-submit), password change (rotates session cookie), ws-ticket, session management (list/revoke, concurrent session limits), logout, account lockout, refresh token rotation (three-tier rate limiting; see `docs/security.md`) |
+| `/api/v1/auth/api-keys` | API-key management: issue (plaintext returned once), list (hash never exposed), revoke (owner-or-CEO, 404 for non-owner). Issuance is role-ceiling capped; issue/revoke emit signed audit-chain events |
 | `/api/v1/company` | CRUD company config |
 | `/api/v1/agents` | List, hire, fire, modify agents |
 | `GET /api/v1/agents/{name}/health` | Per-agent composite health (performance, trust, lifecycle status) |

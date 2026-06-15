@@ -22,12 +22,14 @@
       "controllers": [
         "LivenessController",
         "ReadinessController",
+        "HealthController",
         "CapabilitiesController",
         "AuthBootstrapController",
         "AuthSessionController",
         "AuthCredentialsController",
         "AuthIdentityController",
         "AuthSessionsController",
+        "AuthApiKeysController",
         "UserController",
         "UserOrgRolesController",
         "SetupStatusController",
@@ -54,6 +56,7 @@
       "state_slice_fields": [
         "cursor_secret",
         "auth_service",
+        "api_key_service",
         "session_store",
         "lockout_store",
         "refresh_store",
@@ -1209,6 +1212,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-14T20:03:33.388062Z",
+  "generated_at": "2026-06-14T22:07:36.828835Z",
   "schema_version": 1
 }

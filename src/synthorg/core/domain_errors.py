@@ -125,6 +125,18 @@ class AbTestNotFoundError(NotFoundError):
     error_code: ClassVar[ErrorCode] = ErrorCode.AB_TEST_NOT_FOUND
 
 
+class ApiKeyNotFoundError(NotFoundError):
+    """Raised when an API key lookup / revoke fails (404).
+
+    Revoke / lookup on a non-owned key raises this with a 404 (never
+    403) so a caller cannot enumerate other users' key ids by status
+    code.
+    """
+
+    default_message: ClassVar[str] = "API key not found"
+    error_code: ClassVar[ErrorCode] = ErrorCode.API_KEY_NOT_FOUND
+
+
 class ConflictError(DomainError):
     """Raised when a resource conflict occurs (409)."""
 

@@ -203,7 +203,7 @@ class SetupAgentsController(Controller):
     )
     async def update_agent_model(
         self,
-        agent_index: Annotated[int, PathParameter()],
+        agent_index: Annotated[int, PathParameter(ge=0)],
         data: UpdateAgentModelRequest,
         state: State,
     ) -> ApiResponse[SetupAgentSummary]:
@@ -263,7 +263,7 @@ class SetupAgentsController(Controller):
     )
     async def update_agent_name(
         self,
-        agent_index: Annotated[int, PathParameter()],
+        agent_index: Annotated[int, PathParameter(ge=0)],
         data: UpdateAgentNameRequest,
         state: State,
     ) -> ApiResponse[SetupAgentSummary]:
@@ -322,7 +322,7 @@ class SetupAgentsController(Controller):
     )
     async def randomize_agent_name(
         self,
-        agent_index: Annotated[int, PathParameter()],
+        agent_index: Annotated[int, PathParameter(ge=0)],
         state: State,
     ) -> ApiResponse[SetupAgentSummary]:
         """Generate a random name for an agent using locale preferences.

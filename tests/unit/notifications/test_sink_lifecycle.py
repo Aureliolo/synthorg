@@ -33,9 +33,14 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
+from synthorg.tools.network_validator import NetworkPolicy
 
 if TYPE_CHECKING:
     from synthorg.notifications.protocol import NotificationSink
+
+# Lifecycle tests do not exercise the SSRF gate; the private-IP block is
+# disabled so ``start()`` skips live DNS resolution (no network).
+_DEV_POLICY = NetworkPolicy(block_private_ips=False)
 
 
 @pytest.mark.unit
@@ -46,6 +51,7 @@ class TestSlackSinkLifecycle:
         """``__init__`` is pure construction; no ``httpx.AsyncClient``."""
         sink = SlackNotificationSink(
             webhook_url="https://hooks.example.com/services/abc",
+            network_policy=_DEV_POLICY,
         )
         assert sink._client is None
 
@@ -53,6 +59,7 @@ class TestSlackSinkLifecycle:
         """Calling ``send`` before ``start`` is a loud failure."""
         sink = SlackNotificationSink(
             webhook_url="https://hooks.example.com/services/abc",
+            network_policy=_DEV_POLICY,
         )
         n = Notification(
             category=NotificationCategory.SYSTEM,
@@ -73,6 +80,7 @@ class TestSlackSinkLifecycle:
             mock_cls.return_value.aclose = aclose
             sink = SlackNotificationSink(
                 webhook_url="https://hooks.example.com/services/abc",
+                network_policy=_DEV_POLICY,
             )
             async with sink:
                 assert sink._client is mock_cls.return_value
@@ -83,6 +91,7 @@ class TestSlackSinkLifecycle:
         """Second ``start()`` does not create a second client."""
         sink = SlackNotificationSink(
             webhook_url="https://hooks.example.com/services/abc",
+            network_policy=_DEV_POLICY,
         )
         await sink.start()
         first = sink._client
@@ -94,6 +103,7 @@ class TestSlackSinkLifecycle:
         """``close()`` on a never-started sink is harmless."""
         sink = SlackNotificationSink(
             webhook_url="https://hooks.example.com/services/abc",
+            network_policy=_DEV_POLICY,
         )
         await sink.close()
         assert sink._client is None
@@ -106,6 +116,7 @@ class TestSlackSinkLifecycle:
         ) as mock_cls:
             sink = SlackNotificationSink(
                 webhook_url="https://hooks.example.com/services/abc",
+                network_policy=_DEV_POLICY,
             )
             await asyncio.gather(sink.start(), sink.start())
             assert mock_cls.call_count == 1
@@ -120,6 +131,7 @@ class TestNtfySinkLifecycle:
         sink = NtfyNotificationSink(
             server_url="https://ntfy.example.com",
             topic="alerts",
+            network_policy=_DEV_POLICY,
         )
         assert sink._client is None
 
@@ -127,6 +139,7 @@ class TestNtfySinkLifecycle:
         sink = NtfyNotificationSink(
             server_url="https://ntfy.example.com",
             topic="alerts",
+            network_policy=_DEV_POLICY,
         )
         n = Notification(
             category=NotificationCategory.SYSTEM,
@@ -147,6 +160,7 @@ class TestNtfySinkLifecycle:
             sink = NtfyNotificationSink(
                 server_url="https://ntfy.example.com",
                 topic="alerts",
+                network_policy=_DEV_POLICY,
             )
             async with sink:
                 assert sink._client is mock_cls.return_value
@@ -157,6 +171,7 @@ class TestNtfySinkLifecycle:
         sink = NtfyNotificationSink(
             server_url="https://ntfy.example.com",
             topic="alerts",
+            network_policy=_DEV_POLICY,
         )
         await sink.start()
         first = sink._client
@@ -168,6 +183,7 @@ class TestNtfySinkLifecycle:
         sink = NtfyNotificationSink(
             server_url="https://ntfy.example.com",
             topic="alerts",
+            network_policy=_DEV_POLICY,
         )
         await sink.close()
         assert sink._client is None
@@ -180,6 +196,7 @@ class TestNtfySinkLifecycle:
             sink = NtfyNotificationSink(
                 server_url="https://ntfy.example.com",
                 topic="alerts",
+                network_policy=_DEV_POLICY,
             )
             await asyncio.gather(sink.start(), sink.start())
             assert mock_cls.call_count == 1
@@ -312,6 +329,7 @@ class TestSlackSendThroughLifecycle:
         )
         sink = SlackNotificationSink(
             webhook_url="https://hooks.example.com/services/abc",
+            network_policy=_DEV_POLICY,
         )
         async with sink:
             await sink.send(

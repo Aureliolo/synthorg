@@ -20,8 +20,8 @@
     },
     "src/synthorg/api/auth/middleware.py": {
       "cap": 500,
-      "loc": 408,
-      "ratio": 0.816,
+      "loc": 409,
+      "ratio": 0.818,
       "tier": "code"
     },
     "src/synthorg/api/auth/service.py": {
@@ -38,8 +38,8 @@
     },
     "src/synthorg/api/controllers/__init__.py": {
       "cap": 500,
-      "loc": 420,
-      "ratio": 0.84,
+      "loc": 426,
+      "ratio": 0.852,
       "tier": "code"
     },
     "src/synthorg/api/controllers/_conversational_resume.py": {
@@ -78,6 +78,12 @@
       "ratio": 0.928,
       "tier": "code"
     },
+    "src/synthorg/api/controllers/events/_sse.py": {
+      "cap": 500,
+      "loc": 418,
+      "ratio": 0.836,
+      "tier": "code"
+    },
     "src/synthorg/api/controllers/memory/_preflight.py": {
       "cap": 500,
       "loc": 430,
@@ -104,8 +110,8 @@
     },
     "src/synthorg/api/controllers/scaling.py": {
       "cap": 500,
-      "loc": 449,
-      "ratio": 0.898,
+      "loc": 448,
+      "ratio": 0.896,
       "tier": "code"
     },
     "src/synthorg/api/controllers/settings/core.py": {
@@ -416,8 +422,8 @@
     },
     "src/synthorg/engine/pipeline/service.py": {
       "cap": 600,
-      "loc": 493,
-      "ratio": 0.822,
+      "loc": 518,
+      "ratio": 0.863,
       "tier": "service"
     },
     "src/synthorg/engine/quality/decomposers/llm.py": {
@@ -1174,15 +1180,15 @@
   "description": "Architecture-metrics baseline for the drift gate (scripts/check_architecture_drift.py). fan_in: direct-importer counts for hub modules (>= 20). budget_pressure: source files within 20% of their module-size tier cap. lcom: LCOM4 for service-tier classes >= 400 LOC (1 = cohesive). Regenerate with: uv run python scripts/architecture_report.py",
   "fan_in": {
     "synthorg._core.features": 143,
-    "synthorg.api.api_core_state": 28,
+    "synthorg.api.api_core_state": 29,
     "synthorg.api.construction_wiring": 20,
     "synthorg.api.cursor": 26,
-    "synthorg.api.dto": 113,
-    "synthorg.api.guards": 105,
+    "synthorg.api.dto": 114,
+    "synthorg.api.guards": 110,
     "synthorg.api.pagination": 56,
-    "synthorg.api.path_params": 73,
-    "synthorg.api.rate_limits": 66,
-    "synthorg.api.state": 224,
+    "synthorg.api.path_params": 75,
+    "synthorg.api.rate_limits": 67,
+    "synthorg.api.state": 225,
     "synthorg.api.state_slices": 32,
     "synthorg.approval.enums": 69,
     "synthorg.approval.protocol": 42,
@@ -1205,13 +1211,13 @@
     "synthorg.config.schema": 45,
     "synthorg.core.agent": 155,
     "synthorg.core.approval": 35,
-    "synthorg.core.auth.models": 33,
-    "synthorg.core.auth.roles": 27,
+    "synthorg.core.auth.models": 36,
+    "synthorg.core.auth.roles": 29,
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 27,
-    "synthorg.core.clock": 161,
+    "synthorg.core.clock": 162,
     "synthorg.core.critical_errors": 510,
-    "synthorg.core.domain_errors": 200,
+    "synthorg.core.domain_errors": 203,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.memory_enums": 48,
@@ -1221,7 +1227,7 @@
     "synthorg.core.registry": 27,
     "synthorg.core.task": 95,
     "synthorg.core.task_enums": 87,
-    "synthorg.core.types": 1075,
+    "synthorg.core.types": 1077,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 81,
@@ -1261,7 +1267,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 64,
-    "synthorg.observability": 1542,
+    "synthorg.observability": 1545,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 165,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1277,7 +1283,7 @@
     "synthorg.observability.events.meta": 55,
     "synthorg.observability.events.ontology": 21,
     "synthorg.observability.events.provider": 28,
-    "synthorg.observability.events.security": 66,
+    "synthorg.observability.events.security": 70,
     "synthorg.observability.events.settings": 35,
     "synthorg.observability.events.tool": 24,
     "synthorg.observability.events.training": 23,
@@ -1369,7 +1375,7 @@
     },
     "synthorg.engine.pipeline.service:DefaultWorkPipeline": {
       "lcom4": 1,
-      "loc": 426
+      "loc": 447
     },
     "synthorg.engine.task_engine:TaskEngine": {
       "lcom4": 3,

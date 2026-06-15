@@ -15,6 +15,9 @@ jobs:
     name: sync
     runs-on: ubuntu-latest
     permissions:
+      # `contents: read` is the minimum the checkout needs to fetch the
+      # ref under the deny-all top-level default (`permissions: {}`).
+      contents: read
       # `issues: write` is the GitHub-side scope that covers
       # `gh label create / edit / delete` on the repository.
       # No `contents: write` is needed because we only mutate

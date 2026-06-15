@@ -55,8 +55,14 @@ API_WS_SEND_FAILED: Final[str] = "api.ws.send_failed"
 API_SERVICE_UNAVAILABLE: Final[str] = "api.service.unavailable"
 API_SERVICE_AUTO_WIRED: Final[str] = "api.service.auto_wired"
 API_SERVICE_AUTO_WIRE_FAILED: Final[str] = "api.service.auto_wire_failed"
-# api.auth.success / failed / token_issued / setup_complete / password_changed
-# moved to events.security as SECURITY_AUTH_* (audit-chained).
+# auth.failed / token_issued / setup_complete / password_changed are
+# audit-chained security decisions and live in events.security as
+# SECURITY_AUTH_*. A *successful* per-request authentication is NOT a
+# decision worth signing -- it fires on every authenticated request, so
+# chaining it would grow the hash chain unbounded. It stays here under
+# api.* (unsigned). The audited grant is the login itself
+# (SECURITY_AUTH_TOKEN_ISSUED), emitted once per credential exchange.
+API_AUTH_SUCCESS: Final[str] = "api.auth.success"
 API_AUTH_GUARD_SKIPPED: Final[str] = "api.auth.guard_skipped"
 API_TASK_TRANSITION_FAILED: Final[str] = "api.task.transition_failed"
 API_TASK_MUTATION_FAILED: Final[str] = "api.task.mutation_failed"

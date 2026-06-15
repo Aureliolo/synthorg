@@ -49,12 +49,16 @@ from synthorg.observability.audit_chain.protocol import (
 )
 from synthorg.observability.audit_chain.sink import AuditChainSink
 from synthorg.observability.audit_chain.timestamping import LocalClockProvider
+from synthorg.observability.events.api import API_AUTH_SUCCESS
 from synthorg.observability.events.security import (
+    SECURITY_API_KEY_ISSUED,
+    SECURITY_API_KEY_REVOKED,
     SECURITY_CONNECTION_CREATED,
     SECURITY_CUSTOM_RULE_CREATED,
     SECURITY_CUSTOM_RULE_DELETED,
     SECURITY_CUSTOM_RULE_TOGGLED,
     SECURITY_CUSTOM_RULE_UPDATED,
+    SECURITY_SETTINGS_IMPORTED,
 )
 from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
 from synthorg.persistence.protocol import PersistenceBackend
@@ -393,6 +397,139 @@ class TestCustomRuleAuditChainCoverage:
             SECURITY_CUSTOM_RULE_DELETED,
         ):
             assert event.encode() in all_data
+
+
+@pytest.mark.integration
+class TestApiKeyAuditChainCoverage:
+    """API-key issuance + revocation land signed entries on the chain."""
+
+    async def test_issue_and_revoke_land_entries(
+        self,
+        audit_sink: AuditChainSink,
+    ) -> None:
+        from synthorg.api.auth.api_key_service import ApiKeyService
+        from synthorg.api.auth.service import AuthService
+        from synthorg.core.auth.config import AuthConfig
+        from synthorg.core.auth.models import ApiKey, AuthenticatedUser, AuthMethod
+        from synthorg.core.auth.roles import HumanRole
+        from synthorg.persistence.user_protocol import (
+            ApiKeyFilterSpec,
+            ApiKeyRepository,
+        )
+
+        store: dict[str, ApiKey] = {}
+        repo = MagicMock(spec=ApiKeyRepository)
+
+        async def _save(entity: ApiKey, /) -> None:
+            store[entity.id] = entity
+
+        async def _get(entity_id: str, /) -> ApiKey | None:
+            return store.get(entity_id)
+
+        async def _query(
+            spec: ApiKeyFilterSpec, *, limit: int = 100, offset: int = 0
+        ) -> tuple[ApiKey, ...]:
+            return tuple(store.values())
+
+        repo.save.side_effect = _save
+        repo.get.side_effect = _get
+        repo.query.side_effect = _query
+
+        svc = ApiKeyService(
+            api_keys=repo,
+            auth_service=AuthService(
+                AuthConfig(jwt_secret="test-secret-key-must-be-32-chars-long!")
+            ),
+        )
+        owner = AuthenticatedUser(
+            user_id="u-1",
+            username="alice",
+            role=HumanRole.MANAGER,
+            auth_method=AuthMethod.JWT,
+        )
+
+        before = len(audit_sink.chain.entries)
+        issued = await svc.issue(owner=owner, name="ci", role=HumanRole.OBSERVER)
+        await svc.revoke(key_id=issued.view.id, requester=owner)
+        snapshot = audit_sink.chain
+        assert len(snapshot.entries) - before == 2
+        assert snapshot.verify_integrity() is True
+
+        all_data = b"".join(e.canonical_payload for e in snapshot.entries)
+        assert SECURITY_API_KEY_ISSUED.encode() in all_data
+        assert SECURITY_API_KEY_REVOKED.encode() in all_data
+
+
+@pytest.mark.integration
+class TestSecuritySettingsImportAuditChainCoverage:
+    """A bulk security-config import lands one signed envelope; a plain
+    authenticated request lands nothing."""
+
+    @staticmethod
+    def _import_state() -> Any:  # type: ignore[explicit-any]  # spec'd controller-state stub
+        from litestar.datastructures import State
+
+        from synthorg.settings.service import SettingsService
+        from tests._shared import make_app_state
+
+        svc = MagicMock(spec=SettingsService)
+        svc.set_many = AsyncMock(return_value=None)
+        app_state = make_app_state(settings_service=svc)
+        return State({"app_state": app_state})
+
+    async def test_import_emits_one_signed_envelope(
+        self,
+        audit_sink: AuditChainSink,
+    ) -> None:
+        from litestar import Request
+
+        from synthorg.api.controllers.settings.security import (
+            SecurityConfigImportRequest,
+            SettingsSecurityController,
+        )
+        from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
+        from synthorg.core.auth.roles import HumanRole
+        from tests._shared import mock_of
+
+        ctrl = SettingsSecurityController(owner=SettingsSecurityController)  # type: ignore[arg-type]
+        actor = AuthenticatedUser(
+            user_id="u-7",
+            username="carol",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.JWT,
+        )
+        # The controller's ``request`` param is typeguard-checked against
+        # ``litestar.Request`` at runtime, so a bare attribute bag is
+        # rejected; ``mock_of`` autospecs an instance that satisfies the
+        # isinstance check while exposing the real ``scope`` mapping.
+        request = mock_of[Request](scope={"user": actor})
+        before = len(audit_sink.chain.entries)
+        await ctrl.import_security_config.fn(
+            ctrl,
+            state=self._import_state(),
+            data=SecurityConfigImportRequest(config={}),
+            request=request,
+        )
+        snapshot = audit_sink.chain
+        # ``set_many`` is mocked (no per-key SECURITY_SETTINGS_CHANGED
+        # emissions), so the import envelope is the only new chain entry.
+        assert len(snapshot.entries) - before == 1
+        assert snapshot.verify_integrity() is True
+        payload = snapshot.entries[-1].canonical_payload
+        assert SECURITY_SETTINGS_IMPORTED.encode() in payload
+        assert b"u-7" in payload
+
+    async def test_plain_authenticated_request_event_not_signed(
+        self,
+        audit_sink: AuditChainSink,
+    ) -> None:
+        # The per-request auth-success event was renamed to api.* so it
+        # is no longer chained; emitting it must not append an entry.
+        assert not API_AUTH_SUCCESS.startswith("security.")
+        before = len(audit_sink.chain.entries)
+        logging.getLogger("synthorg.api.auth.middleware").info(API_AUTH_SUCCESS)
+        after = len(audit_sink.chain.entries)
+        assert after == before
 
 
 @pytest.mark.integration

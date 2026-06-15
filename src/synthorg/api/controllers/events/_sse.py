@@ -21,6 +21,7 @@ from synthorg.communication.event_stream.types import StreamEvent
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
 from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.clock import SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
@@ -34,6 +35,7 @@ from synthorg.observability.events.event_stream import (
     EVENT_STREAM_CLIENT_DISCONNECTED,
     EVENT_STREAM_PROJECTION_FAILED,
 )
+from synthorg.observability.events.security import SECURITY_AUTH_FAILED
 from synthorg.observability.metrics_hub import record_client_disconnect
 from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
@@ -133,14 +135,15 @@ def _build_revalidation_limiter(
 
 async def _user_revocation_reason(
     app_state: AppState,
-    user_id: str,
-    session_id: str | None,
+    user: AuthenticatedUser,
 ) -> tuple[str | None, bool]:
     """Return ``(reason, ok)``: reason is None when still authorised.
 
-    Checks the user record (deleted / role-missing / demoted) **and**
-    the session-revocation set (an admin ``DELETE /sessions/{jti}``
-    must kick a live SSE stream within one revalidation interval).
+    Checks the user record (deleted / role-missing / demoted), the
+    JWT session-revocation set (an admin ``DELETE /sessions/{jti}``
+    must kick a live SSE stream within one revalidation interval), and,
+    for API-key-authenticated streams (no JWT session id), the
+    originating API key itself (revoked / expired).
 
     ``ok`` is False when the persistence call itself failed (transient
     backend error). Callers admit ``ok=False`` ticks into the shared
@@ -152,13 +155,13 @@ async def _user_revocation_reason(
         Tuple of ``(reason, ok)``, where ``reason`` may be ``None``.
     """
     try:
-        db_user = await persistence_of(app_state).users.get(user_id)
+        db_user = await persistence_of(app_state).users.get(user.user_id)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             EVENT_STREAM_PROJECTION_FAILED,
             note="sse_revalidate_persistence_error",
-            user_id=user_id,
+            user_id=user.user_id,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
@@ -172,12 +175,114 @@ async def _user_revocation_reason(
         return "role_demoted", True
     session_store = app_state.slice(ApiCoreStateSlice).session_store
     if (
-        session_id is not None
+        user.session_id is not None
         and session_store is not None
-        and session_store.is_revoked(session_id)
+        and session_store.is_revoked(user.session_id)
     ):
         return "session_revoked", True
+    # API-key streams carry no JWT jti; the session-revocation set never
+    # covers them. Re-inspect the originating key so revocation / expiry
+    # tears the stream down within one revalidation interval.
+    if user.session_id is None and user.api_key_id is not None:
+        return await _api_key_revocation_reason(app_state, user.api_key_id)
     return None, True
+
+
+async def _api_key_revocation_reason(
+    app_state: AppState,
+    api_key_id: str,
+) -> tuple[str | None, bool]:
+    """Return ``(reason, ok)`` for an API-key-authenticated SSE stream.
+
+    Re-fetches the API key by id (O(1)) and reports ``"api_key_revoked"``
+    when the record is missing or revoked, ``"api_key_expired"`` once
+    ``expires_at`` has passed (compared against the injected clock). A
+    transient backend error yields ``ok=False`` so the caller admits it
+    to the shared sliding-window limiter rather than tearing down.
+
+    Returns:
+        Tuple of ``(reason, ok)``, where ``reason`` may be ``None``.
+    """
+    try:
+        api_key = await persistence_of(app_state).api_keys.get(api_key_id)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            EVENT_STREAM_PROJECTION_FAILED,
+            note="sse_revalidate_api_key_persistence_error",
+            api_key_id=api_key_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None, False
+    if api_key is None or api_key.revoked:
+        return "api_key_revoked", True
+    if api_key.expires_at is not None and api_key.expires_at <= app_state.clock.now():
+        return "api_key_expired", True
+    return None, True
+
+
+async def _session_ownership_reason(
+    app_state: AppState,
+    ag_ui_session_id: str,
+    user: AuthenticatedUser,
+) -> tuple[str | None, bool]:
+    """Return ``(reason, ok)`` for AG-UI session ownership.
+
+    The AG-UI ``session_id`` is the task id. Only the human who filed
+    the task (``Task.requested_by_user_id``) or a CEO may subscribe to
+    its event stream. A missing task (or a non-matching requester)
+    yields ``"session_not_owned"``; a transient backend error yields
+    ``ok=False`` so the caller admits it to the revalidation limiter.
+
+    Returns:
+        Tuple of ``(reason, ok)``, where ``reason`` may be ``None``.
+    """
+    if user.role is HumanRole.CEO:
+        return None, True
+    try:
+        task = await persistence_of(app_state).tasks.get(ag_ui_session_id)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            EVENT_STREAM_PROJECTION_FAILED,
+            note="sse_ownership_persistence_error",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None, False
+    if task is None or task.requested_by_user_id != user.user_id:
+        return "session_not_owned", True
+    return None, True
+
+
+async def assert_sse_session_access(
+    app_state: AppState,
+    ag_ui_session_id: str,
+    user: AuthenticatedUser,
+) -> None:
+    """Enforce AG-UI session ownership at the SSE handshake.
+
+    Raises a 404 (never 403) when the caller is neither the task's
+    requester nor a CEO, so a caller cannot enumerate other users'
+    session ids by status code. A transient backend error fails closed
+    (also 404): the stream is denied rather than opened on unverified
+    ownership.
+
+    Raises:
+        NotFoundError: When ownership cannot be confirmed for the caller.
+    """
+    reason, ok = await _session_ownership_reason(app_state, ag_ui_session_id, user)
+    if reason is None and ok:
+        return
+    logger.warning(
+        SECURITY_AUTH_FAILED,
+        reason="session_not_owned" if ok else "ownership_check_unavailable",
+        session_id=ag_ui_session_id[:8],
+        user_id=user.user_id,
+    )
+    msg = "Session not found"
+    raise NotFoundError(msg)
 
 
 def _require_hub(app_state: AppState) -> EventStreamHub:
@@ -235,6 +340,7 @@ async def _run_revalidation_tick(
     *,
     app_state: AppState,
     user: AuthenticatedUser,
+    session_id: str,
     failure_limiter: SlidingWindowEventLimiter,
 ) -> dict[str, str] | None:
     """Execute one revalidation check; return a ``revoked`` frame or None.
@@ -246,17 +352,18 @@ async def _run_revalidation_tick(
     ``api.auth_revalidate_window_seconds``). Failures age out of the
     window instead of resetting a streak on success, so a flaky
     backend interleaving one success cannot hold a stale-auth stream
-    open. A genuine revocation (deleted / demoted / session revoked)
-    tears down immediately. Returns ``None`` when the loop continues.
+    open. A genuine revocation (deleted / demoted / session revoked /
+    API key revoked or expired / session ownership lost) tears down
+    immediately. Returns ``None`` when the loop continues.
 
     Returns:
         The ``dict[str, str]`` value when present, ``None`` otherwise.
     """
-    reason, ok = await _user_revocation_reason(
-        app_state,
-        user.user_id,
-        user.session_id,
-    )
+    reason, ok = await _user_revocation_reason(app_state, user)
+    if ok and reason is None:
+        # Ownership is re-checked every tick so a deleted / reassigned
+        # task tears the stream down within one revalidation interval.
+        reason, ok = await _session_ownership_reason(app_state, session_id, user)
     if not ok:
         admitted = await failure_limiter.take(user.user_id)
         if not admitted:
@@ -368,6 +475,7 @@ async def _sse_event_stream(
                 revoked_frame = await _run_revalidation_tick(
                     app_state=app_state,
                     user=user,
+                    session_id=session_id,
                     failure_limiter=failure_limiter,
                 )
                 if revoked_frame is not None:

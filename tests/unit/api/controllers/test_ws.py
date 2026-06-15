@@ -385,6 +385,34 @@ class TestWsTicketAuth:
             f"invalid_ticket, got {exc_info.value.code}"
         )
 
+    def test_ws_rejects_oversized_query_ticket(
+        self,
+        ws_test_client: TestClient[Litestar],
+    ) -> None:
+        """An oversized ``?ticket=`` value is rejected before it ever reaches
+        the ticket store."""
+        from unittest.mock import patch
+
+        from litestar.exceptions import WebSocketDisconnect
+
+        oversized = "x" * 500
+        app_state = ws_test_client.app.state["app_state"]
+        store = ticket_store_of(app_state)
+        with (
+            patch.object(
+                store,
+                "validate_and_consume",
+                wraps=store.validate_and_consume,
+            ) as validate,
+            pytest.raises(WebSocketDisconnect) as exc_info,
+            ws_test_client.websocket_connect(f"/api/v1/ws?ticket={oversized}"),
+        ):
+            pass
+        # The size guard must reject the oversized ticket before any store
+        # consultation, so ``validate_and_consume`` is never called.
+        validate.assert_not_called()
+        assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED
+
     def test_ws_rejects_bad_first_message_ticket(
         self,
         ws_test_client: TestClient[Litestar],

@@ -100,7 +100,13 @@ class AuthConfig(BaseModel):
     )
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = Field(
         default="HS256",
-        description="JWT signing algorithm (HMAC family)",
+        description=(
+            "JWT signing algorithm (HMAC family). HS256 is the default and "
+            "is correctly keyed at the enforced MIN_SECRET_LENGTH (32 bytes); "
+            "HS384/HS512 are accepted but RFC 7518 wants a >=48/64-byte key "
+            "for full strength, so operators selecting them should provision "
+            "a correspondingly longer jwt_secret."
+        ),
     )
     jwt_expiry_minutes: int = Field(
         default=1440,

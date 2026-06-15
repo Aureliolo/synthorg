@@ -96,6 +96,13 @@ _WS_CLOSE_BACKPRESSURE: int = 1013
 _WS_CLOSE_AUTH_FAILED: int = 4001
 _WS_CLOSE_FORBIDDEN: int = 4003
 
+# Upper bound on the legacy ``?ticket=`` query parameter before it is even
+# looked up in the ticket store. A ticket is ``token_urlsafe(N)`` where N is
+# ``security.auth_token_bytes`` (max 64), so the longest legitimate ticket is
+# ceil(64 * 4 / 3) = 86 chars; double it as a generous ceiling so an oversized
+# value is rejected at the boundary instead of being passed to the store.
+_MAX_TICKET_QUERY_LEN: int = 172
+
 
 async def _validate_ticket(
     socket: WebSocket[object, object, State],
@@ -118,6 +125,12 @@ async def _validate_ticket(
     if not ticket:
         logger.warning(API_WS_TICKET_INVALID, reason="missing_ticket")
         await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Missing ticket")
+        return None
+    if len(ticket) > _MAX_TICKET_QUERY_LEN:
+        # Reject oversized values before they ever reach the ticket store;
+        # a legitimate ticket is at most 86 chars (see the constant).
+        logger.warning(API_WS_TICKET_INVALID, reason="ticket_too_large")
+        await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Invalid ticket")
         return None
 
     app_state = socket.app.state["app_state"]

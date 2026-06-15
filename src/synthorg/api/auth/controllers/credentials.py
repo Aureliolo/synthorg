@@ -26,6 +26,7 @@ from synthorg.api.auth.controllers._shared import _AUTH_RATE_LIMIT
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.dto import ApiResponse
+from synthorg.api.guards import require_read_access
 from synthorg.api.state import AppState
 from synthorg.core.auth.models import AuthenticatedUser, User
 from synthorg.core.domain_errors import UnauthorizedError
@@ -180,6 +181,7 @@ class AuthCredentialsController(Controller):
         "/change-password",
         status_code=200,
         summary="Change current user password",
+        guards=[require_read_access],
         middleware=[_AUTH_RATE_LIMIT.middleware],
     )
     async def change_password(

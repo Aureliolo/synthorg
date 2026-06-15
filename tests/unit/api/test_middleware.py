@@ -78,6 +78,25 @@ def _assert_all_security_headers(
 class TestSecurityHeadersHook:
     """Verify security headers appear on ALL response types."""
 
+    def test_hsts_includes_preload(self) -> None:
+        """HSTS carries ``preload`` so the domain can join the preload list."""
+        hsts = _SECURITY_HEADERS["Strict-Transport-Security"]
+        assert "preload" in hsts
+        assert "includeSubDomains" in hsts
+
+    def test_api_csp_lists_directives_explicitly(self) -> None:
+        """``_API_CSP`` spells out style/img/font/connect-src rather than
+        relying on the default-src fallback."""
+        for directive in (
+            "style-src 'self'",
+            "img-src 'self'",
+            "font-src 'self'",
+            "connect-src 'self'",
+            "object-src 'none'",
+            "frame-ancestors 'none'",
+        ):
+            assert directive in _API_CSP
+
     async def test_success_response_has_all_security_headers(self) -> None:
         """200 OK carries every static security header and CSP."""
 

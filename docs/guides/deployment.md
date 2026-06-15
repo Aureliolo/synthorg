@@ -134,10 +134,11 @@ Three distinct health endpoints live in this deployment; don't conflate them.
 | Endpoint | Layer | Purpose | Behaviour |
 |----------|-------|---------|----------|
 | `GET /api/v1/healthz` | Backend (API) | Liveness | Always 200 while the API process is alive. Fails only on process death. Use for **container restart policies** (`docker compose` `healthcheck`, Kubernetes `livenessProbe`). |
-| `GET /api/v1/readyz` | Backend (API) | Readiness | 200 when persistence + message bus + runtime services are healthy; 503 otherwise. Use for **load-balancer drain** and `docker compose` readiness gates (`depends_on.condition: service_healthy`). |
+| `GET /api/v1/readyz` | Backend (API) | Readiness | 200 when every configured dependency (persistence, message bus, providers) is healthy; 503 otherwise. Body is topology-free (binary outcome + version + uptime). Use for **load-balancer drain** and `docker compose` readiness gates (`depends_on.condition: service_healthy`). |
+| `GET /api/v1/health` | Backend (API) | Component detail | Authenticated per-component breakdown (persistence / message bus / providers / telemetry); requires a read-access role. For operator dashboards, not orchestrator probes. |
 | `GET /healthz` | Web (Caddy) | Liveness | Caddy's built-in endpoint, served by the static-asset container. Reports that Caddy is accepting HTTP; distinct from the backend's `/api/v1/healthz`. |
 
-The backend endpoints are unauthenticated so load-balancers and container orchestrators can probe them without credentials. Both are pinned in the OpenAPI schema.
+The probe endpoints (`/api/v1/healthz`, `/api/v1/readyz`) are unauthenticated so load-balancers and container orchestrators can probe them without credentials. The component-detail endpoint (`/api/v1/health`) is authenticated and returns the full per-component breakdown. All are pinned in the OpenAPI schema.
 
 ---
 

@@ -3,7 +3,7 @@
 
 from datetime import UTC, datetime
 
-from litestar import Controller, get, post
+from litestar import Controller, Request, get, post
 from litestar.datastructures import State
 from pydantic import AwareDatetime, BaseModel, ConfigDict, ValidationError
 
@@ -12,7 +12,9 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.boundary import parse_typed
+from synthorg.core.domain_errors import UnauthorizedError
 from synthorg.core.domain_errors import ValidationError as DomainValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -21,6 +23,7 @@ from synthorg.observability.events.api import (
     API_SECURITY_CONFIG_IMPORT_FAILED,
     API_SECURITY_CONFIG_IMPORTED,
 )
+from synthorg.observability.events.security import SECURITY_SETTINGS_IMPORTED
 from synthorg.observability.events.settings import SETTINGS_NOT_FOUND
 from synthorg.security.config import SecurityConfig
 from synthorg.settings.enums import SettingNamespace, SettingsImportSource
@@ -61,7 +64,7 @@ async def _persist_security_settings(
     config: SecurityConfig,
     *,
     import_source: SettingsImportSource,
-) -> None:
+) -> int:
     """Persist registered security settings from a validated config.
 
     Only fields with a registered setting definition are persisted.
@@ -79,6 +82,10 @@ async def _persist_security_settings(
         import_source: Source attribution forwarded so audit logs
             distinguish bulk-import writes from per-key
             ``PATCH /settings`` calls.
+
+    Returns:
+        The number of registered settings persisted (so the caller can
+        stamp the audit envelope with an accurate ``key_count``).
     """
     ns = SettingNamespace.SECURITY
     items: list[tuple[str, str, str]] = []
@@ -94,7 +101,7 @@ async def _persist_security_settings(
         str_value = str(value).lower() if isinstance(value, bool) else str(value)
         items.append((ns.value, key, str_value))
     if not items:
-        return
+        return 0
     # ``expected_updated_at_map`` of all-empty strings means
     # "first-write" semantics for every key; matches the prior
     # ``svc.set`` loop, which also did not pass CAS versions.
@@ -103,6 +110,7 @@ async def _persist_security_settings(
         expected_updated_at_map={(ns_val, key): "" for ns_val, key, _ in items},
         import_source=import_source,
     )
+    return len(items)
 
 
 class SettingsSecurityController(Controller):
@@ -152,27 +160,41 @@ class SettingsSecurityController(Controller):
         self,
         state: State,
         data: SecurityConfigImportRequest,
+        request: Request[object, object, State],
     ) -> ApiResponse[SecurityConfigExportResponse]:
         """Import, validate, and persist a security configuration.
 
         Validates the payload as a ``SecurityConfig``, then persists
         each field that has a registered setting through the
-        :class:`SettingsService`.
+        :class:`SettingsService`. After the write lands, emits a single
+        signed ``SECURITY_SETTINGS_IMPORTED`` envelope correlating the
+        batch to its actor so the audit chain records the bulk import as
+        one control-plane action (the per-key ``SECURITY_SETTINGS_CHANGED``
+        emissions from ``set_many`` are grouped under it).
 
         Args:
             state: Application state.
             data: Import request with config dict.
+            request: Incoming request, carrying the authenticated actor.
 
         Returns:
             The validated and persisted config.
 
         Raises:
+            UnauthorizedError: If no authenticated actor is on the request.
             DomainValidationError: If the config fails validation
                 (HTTP 422).
             ValidationError: Generic schema-level validation rejected
                 a registered setting value.
         """
         app_state: AppState = state.app_state
+        # The class guard already enforces CEO/manager, but resolve the
+        # identity fail-closed rather than via a bare ``scope["user"]`` key
+        # access that would 500 if the guard chain were ever reordered.
+        actor = request.scope.get("user")
+        if not isinstance(actor, AuthenticatedUser):
+            msg = "Authentication required"
+            raise UnauthorizedError(msg)
         try:
             validated = parse_typed(
                 "settings.security",
@@ -195,12 +217,18 @@ class SettingsSecurityController(Controller):
             msg = "Invalid security config"
             raise DomainValidationError(msg) from exc
 
-        await _persist_security_settings(
+        key_count = await _persist_security_settings(
             require_service(
                 app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
             ),
             validated,
             import_source=SettingsImportSource.API_BODY,
+        )
+        logger.info(
+            SECURITY_SETTINGS_IMPORTED,
+            principal=str(actor.user_id),
+            key_count=key_count,
+            import_source=SettingsImportSource.API_BODY.value,
         )
 
         warning = (

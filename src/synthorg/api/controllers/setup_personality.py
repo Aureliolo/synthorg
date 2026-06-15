@@ -67,7 +67,7 @@ class SetupPersonalityController(Controller):
     )
     async def update_agent_personality(
         self,
-        agent_index: Annotated[int, PathParameter()],
+        agent_index: Annotated[int, PathParameter(ge=0)],
         data: UpdateAgentPersonalityRequest,
         state: State,
     ) -> ApiResponse[SetupAgentSummary]:

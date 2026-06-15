@@ -289,8 +289,10 @@ class TestVerifyPeerCredentials:
         assert result is True
 
     @pytest.mark.unit
-    async def test_empty_credentials_returns_true(self) -> None:
-        """Peer has no stored credentials: pass-through."""
+    async def test_empty_credentials_fails_closed(self) -> None:
+        """A configured catalog with no credentials for an allowlisted peer
+        FAILS CLOSED: an operator who adds a peer but forgets its
+        credentials must not silently grant access."""
         from unittest.mock import AsyncMock, MagicMock
 
         from synthorg.a2a.gateway import _verify_peer_credentials
@@ -305,7 +307,7 @@ class TestVerifyPeerCredentials:
             request,
             "peer-a",
         )
-        assert result is True
+        assert result is False
 
     @pytest.mark.unit
     async def test_api_key_match_returns_true(self) -> None:
@@ -361,6 +363,73 @@ class TestVerifyPeerCredentials:
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
             return_value={"auth_scheme": "api_key", "api_key": "stored"},
+        )
+        app_state = make_app_state(connection_catalog=catalog)
+        request = MagicMock(spec=Request)
+        request.headers = {}
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is False
+
+    @pytest.mark.unit
+    async def test_blank_stored_api_key_fails_closed(self) -> None:
+        """A catalog record whose api_key is blank must not grant access."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        catalog.get_credentials = AsyncMock(
+            return_value={"auth_scheme": "api_key", "api_key": ""},
+        )
+        app_state = make_app_state(connection_catalog=catalog)
+        request = MagicMock(spec=Request)
+        # Present a key: a blank stored value must still deny, not match.
+        request.headers = {"x-api-key": "anything"}
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is False
+
+    @pytest.mark.unit
+    async def test_blank_stored_access_token_fails_closed(self) -> None:
+        """A catalog record whose access_token is blank must not grant access."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        catalog.get_credentials = AsyncMock(
+            return_value={"auth_scheme": "bearer", "access_token": ""},
+        )
+        app_state = make_app_state(connection_catalog=catalog)
+        request = MagicMock(spec=Request)
+        request.headers = {"authorization": "Bearer anything"}
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is False
+
+    @pytest.mark.unit
+    async def test_bearer_token_missing_in_request_fails_closed(self) -> None:
+        """A stored bearer token with no token presented is denied."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        catalog.get_credentials = AsyncMock(
+            return_value={"auth_scheme": "bearer", "access_token": "stored"},
         )
         app_state = make_app_state(connection_catalog=catalog)
         request = MagicMock(spec=Request)
@@ -444,6 +513,32 @@ class TestVerifyPeerCredentials:
             "peer-a",
         )
         assert result is True
+
+    @pytest.mark.unit
+    async def test_unsupported_scheme_fails_closed(self) -> None:
+        """An unknown auth_scheme (typo / misconfiguration) is denied.
+
+        It must not fall through to the trailing ``return True`` and grant
+        access without any credential check.
+        """
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.a2a.gateway import _verify_peer_credentials
+
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        catalog.get_credentials = AsyncMock(
+            return_value={"auth_scheme": "totally-bogus", "api_key": "x"},
+        )
+        app_state = make_app_state(connection_catalog=catalog)
+        request = MagicMock(spec=Request)
+        request.headers = {"x-api-key": "x"}
+
+        result = await _verify_peer_credentials(
+            app_state,
+            request,
+            "peer-a",
+        )
+        assert result is False
 
     @pytest.mark.unit
     async def test_catalog_error_denies(self) -> None:

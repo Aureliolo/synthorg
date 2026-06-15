@@ -47,6 +47,23 @@ def _make_user(role: HumanRole = HumanRole.CEO) -> User:
     )
 
 
+def _auth_user(
+    *,
+    role: HumanRole = HumanRole.CEO,
+    session_id: str | None = None,
+    api_key_id: str | None = None,
+) -> AuthenticatedUser:
+    """Build the request-side identity passed to the revalidation path."""
+    return AuthenticatedUser(
+        user_id="u-001",
+        username="alice",
+        role=role,
+        auth_method=AuthMethod.JWT if api_key_id is None else AuthMethod.API_KEY,
+        session_id=session_id,
+        api_key_id=api_key_id,
+    )
+
+
 def _make_app_state(  # noqa: PLR0913
     *,
     persisted_user: User | None,
@@ -101,7 +118,7 @@ async def test_serialise_stream_event_includes_id_field() -> None:
 
 async def test_revocation_reason_returns_user_deleted_when_user_missing() -> None:
     state = _make_app_state(persisted_user=None)
-    reason, ok = await _user_revocation_reason(state, "u-001", None)
+    reason, ok = await _user_revocation_reason(state, _auth_user())
     assert ok is True
     assert reason == "user_deleted"
 
@@ -109,7 +126,7 @@ async def test_revocation_reason_returns_user_deleted_when_user_missing() -> Non
 async def test_revocation_reason_returns_role_demoted_for_system_role() -> None:
     demoted = _make_user(role=HumanRole.SYSTEM)
     state = _make_app_state(persisted_user=demoted)
-    reason, ok = await _user_revocation_reason(state, "u-001", None)
+    reason, ok = await _user_revocation_reason(state, _auth_user())
     assert ok is True
     assert reason == "role_demoted"
 
@@ -117,14 +134,14 @@ async def test_revocation_reason_returns_role_demoted_for_system_role() -> None:
 async def test_revocation_reason_returns_none_for_active_user() -> None:
     user = _make_user(role=HumanRole.CEO)
     state = _make_app_state(persisted_user=user)
-    reason, ok = await _user_revocation_reason(state, "u-001", None)
+    reason, ok = await _user_revocation_reason(state, _auth_user())
     assert ok is True
     assert reason is None
 
 
 async def test_revocation_reason_signals_not_ok_on_transient_failure() -> None:
     state = _make_app_state(persisted_user=None, raise_on_get=True)
-    reason, ok = await _user_revocation_reason(state, "u-001", None)
+    reason, ok = await _user_revocation_reason(state, _auth_user())
     assert ok is False
     assert reason is None
 
@@ -139,7 +156,7 @@ async def test_revocation_reason_session_revoked_kicks_stream() -> None:
         has_session_store=True,
         is_revoked=True,
     )
-    reason, ok = await _user_revocation_reason(state, "u-001", "jti-123")
+    reason, ok = await _user_revocation_reason(state, _auth_user(session_id="jti-123"))
     assert ok is True
     assert reason == "session_revoked"
 
@@ -229,6 +246,7 @@ async def test_revalidation_tick_tolerates_failures_within_window() -> None:
         revoked = await _run_revalidation_tick(
             app_state=state,
             user=user,
+            session_id="sess-1",
             failure_limiter=limiter,
         )
         assert revoked is None
@@ -247,6 +265,7 @@ async def test_revalidation_tick_revokes_when_window_saturates() -> None:
             await _run_revalidation_tick(
                 app_state=state,
                 user=user,
+                session_id="sess-1",
                 failure_limiter=limiter,
             )
             is None
@@ -255,6 +274,7 @@ async def test_revalidation_tick_revokes_when_window_saturates() -> None:
     revoked = await _run_revalidation_tick(
         app_state=state,
         user=user,
+        session_id="sess-1",
         failure_limiter=limiter,
     )
     assert revoked is not None
@@ -290,6 +310,7 @@ async def test_interleaved_success_does_not_reset_failure_budget() -> None:
             await _run_revalidation_tick(
                 app_state=state,
                 user=user,
+                session_id="sess-1",
                 failure_limiter=limiter,
             )
             is None
@@ -300,6 +321,7 @@ async def test_interleaved_success_does_not_reset_failure_budget() -> None:
     revoked = await _run_revalidation_tick(
         app_state=state,
         user=user,
+        session_id="sess-1",
         failure_limiter=limiter,
     )
     assert revoked is not None

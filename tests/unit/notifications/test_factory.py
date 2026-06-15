@@ -171,7 +171,7 @@ class TestCreateSlackSink:
     ) -> None:
         # An explicit per-sink ``webhook_url`` overrides the bridge
         # default, so the factory must still reject an outbound target
-        # that ``SlackNotificationSink._validate_outbound_url`` blocks
+        # that the sink's construction-time scheme/IP check blocks
         # (here a loopback IP). The bridge default is canonical and
         # would have been valid -- proving the factory does not silently
         # swap to it when the explicit URL is bad.

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { http, HttpResponse } from 'msw'
-import type { getReadiness } from '@/api/endpoints/health'
+import type { getHealthDetail } from '@/api/endpoints/health'
 import { ErrorCategory, ErrorCode } from '@/api/types/errors'
 import { apiError, successFor } from '@/mocks/handlers/helpers'
 import { Button } from '@/components/ui/button'
@@ -36,8 +36,8 @@ export const AllSystemsOk: Story = {
   parameters: {
     msw: {
       handlers: [
-        http.get('/api/v1/readyz', () =>
-          HttpResponse.json(successFor<typeof getReadiness>(BASE_PAYLOAD)),
+        http.get('/api/v1/health', () =>
+          HttpResponse.json(successFor<typeof getHealthDetail>(BASE_PAYLOAD)),
         ),
       ],
     },
@@ -51,9 +51,9 @@ export const Degraded: Story = {
   parameters: {
     msw: {
       handlers: [
-        http.get('/api/v1/readyz', () =>
+        http.get('/api/v1/health', () =>
           HttpResponse.json(
-            successFor<typeof getReadiness>({
+            successFor<typeof getHealthDetail>({
               ...BASE_PAYLOAD,
               status: 'unavailable',
               message_bus: false,
@@ -72,9 +72,9 @@ export const Down: Story = {
   parameters: {
     msw: {
       handlers: [
-        http.get('/api/v1/readyz', () =>
+        http.get('/api/v1/health', () =>
           HttpResponse.json(
-            successFor<typeof getReadiness>({
+            successFor<typeof getHealthDetail>({
               ...BASE_PAYLOAD,
               status: 'unavailable',
               persistence: false,
@@ -94,7 +94,7 @@ export const LoadError: Story = {
   parameters: {
     msw: {
       handlers: [
-        http.get('/api/v1/readyz', () =>
+        http.get('/api/v1/health', () =>
           HttpResponse.json(
             apiError('Service unavailable: dependency probe failed.', {
               error_code: ErrorCode.SERVICE_UNAVAILABLE,
@@ -125,9 +125,9 @@ export const Loading: Story = {
   parameters: {
     msw: {
       handlers: [
-        http.get('/api/v1/readyz', async () => {
+        http.get('/api/v1/health', async () => {
           await new Promise((resolve) => { setTimeout(resolve, LOADING_STORY_DELAY_MS) })
-          return HttpResponse.json(successFor<typeof getReadiness>(BASE_PAYLOAD))
+          return HttpResponse.json(successFor<typeof getHealthDetail>(BASE_PAYLOAD))
         }),
       ],
     },

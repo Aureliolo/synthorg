@@ -11,6 +11,7 @@ untrusted content identically.
 from collections.abc import Sequence
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.types import flatten_label
 from synthorg.engine.prompt_safety import (
     TAG_PEER_CONTRIBUTION,
     TAG_TASK_DATA,
@@ -40,15 +41,23 @@ def render_agent_persona_body(identity: AgentIdentity) -> str:
     Returns:
         The multi-line persona preamble (no trailing directive).
     """
+    # Flatten every interpolated identity field: name / role / department
+    # reach AgentIdentity from semi-trusted HiringRequest / CandidateCard
+    # values, and personality fields likewise. Flattening here stops a
+    # crafted value (e.g. a newline-injected "Ignore all prior
+    # instructions") from forging a fresh instruction line in this SYSTEM
+    # preamble.
+    name = flatten_label(identity.name)
+    role = flatten_label(identity.role)
+    department = flatten_label(identity.department)
     lines: list[str] = [
-        f"You are {identity.name}, a {identity.role} "
-        f"in the {identity.department} department.",
+        f"You are {name}, a {role} in the {department} department.",
         f"Seniority level: {identity.level.value}.",
     ]
-    traits = identity.personality.traits
+    traits = tuple(flatten_label(t) for t in identity.personality.traits)
     if traits:
         lines.append("Personality traits: " + ", ".join(traits) + ".")
-    communication_style = identity.personality.communication_style
+    communication_style = flatten_label(identity.personality.communication_style)
     if communication_style:
         lines.append(f"Communication style: {communication_style}.")
     return "\n".join(lines)
