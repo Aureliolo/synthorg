@@ -146,6 +146,12 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
         # The boundary checker itself references driver names in
         # patterns and error messages.
         "scripts/check_persistence_boundary.py",
+        # Schema-drift revision gate: applies the per-backend yoyo
+        # revisions to a throwaway DB and dumps the schema to compare
+        # against the canonical ``schema.sql``. It legitimately holds a
+        # driver handle and issues DDL for that bootstrap, same rationale
+        # as the test-DB helpers below; it is a CI/dev gate, never app code.
+        "scripts/check_schema_drift_revisions.py",
         # Shared conftest bootstraps the test database via aiosqlite.
         "tests/conftest.py",
         # Shared helper that builds a migrated Postgres template database

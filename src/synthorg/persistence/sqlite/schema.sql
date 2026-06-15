@@ -2205,6 +2205,11 @@ CREATE TABLE code_execution_record (
     stdout_tail TEXT,
     stderr_tail TEXT,
     executed_at TEXT NOT NULL,
+    -- Parity note: Postgres stores ``timed_out`` as BOOLEAN and writes
+    -- this CHECK as ``NOT timed_out``; SQLite stores it as INTEGER 0/1
+    -- so the equivalent predicate is ``timed_out = 0``. The two are
+    -- semantically identical -- only the per-backend boolean encoding
+    -- differs.
     CHECK (passed = (returncode = 0 AND timed_out = 0))
 );
 

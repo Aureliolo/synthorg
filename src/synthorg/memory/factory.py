@@ -240,6 +240,22 @@ def _build_inmemory_entry(
     return _create_inmemory_backend(config)
 
 
+def build_in_memory_backend() -> MemoryBackend:
+    """Build a disconnected default in-memory memory backend.
+
+    Public seam so callers outside the memory package (e.g. the API
+    lifecycle wiring building an ephemeral backend for the training
+    service) construct one through the factory instead of reaching into
+    ``memory.backends.inmemory`` directly. Uses the default options; pass
+    a config through :func:`create_memory_backend` when operator-tuned
+    limits are needed.
+
+    Returns:
+        A new, disconnected default ``InMemoryBackend``.
+    """
+    return _create_inmemory_backend(CompanyMemoryConfig())
+
+
 def _build_composite_entry(
     config: CompanyMemoryConfig,
     *,

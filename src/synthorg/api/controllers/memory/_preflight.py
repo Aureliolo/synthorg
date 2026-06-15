@@ -414,8 +414,10 @@ def _check_gpu() -> PreflightCheck:
     Returns:
         ``PreflightCheck`` instance.
     """
+    from synthorg.memory.embedding.fine_tune import _import_torch  # noqa: PLC0415
+
     try:
-        import torch  # type: ignore[import-not-found]  # noqa: PLC0415
+        torch = _import_torch()
 
         if torch.cuda.is_available():
             props = torch.cuda.get_device_properties(0)
@@ -432,7 +434,7 @@ def _check_gpu() -> PreflightCheck:
             message="No GPU detected -- training will be slow",
             detail="CPU-only mode",
         )
-    except ImportError:
+    except FineTuneDependencyError:
         return PreflightCheck(
             name="gpu",
             status="warn",
@@ -475,8 +477,10 @@ def _recommend_batch_size(
         MemoryError: Raised on the corresponding failure path.
         RecursionError: Raised on the corresponding failure path.
     """
+    from synthorg.memory.embedding.fine_tune import _import_torch  # noqa: PLC0415
+
     try:
-        import torch  # noqa: PLC0415
+        torch = _import_torch()
 
         if not torch.cuda.is_available():
             return default_batch_size
@@ -488,7 +492,7 @@ def _recommend_batch_size(
         return default_batch_size  # noqa: TRY300
     except MemoryError, RecursionError:
         raise
-    except ImportError:
+    except FineTuneDependencyError:
         # torch is optional -- absence is expected on CPU-only installs.
         return None
     except Exception as exc:  # noqa: BLE001 -- best-effort probe: log and continue

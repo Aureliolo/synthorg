@@ -368,13 +368,13 @@ async def _run_startup(  # noqa: PLR0913
             from synthorg.hr.training.factory import (  # noqa: PLC0415
                 build_training_service,
             )
-            from synthorg.memory.backends.inmemory import (  # noqa: PLC0415
-                InMemoryBackend,
+            from synthorg.memory.factory import (  # noqa: PLC0415
+                build_in_memory_backend,
             )
 
             _perf = app_state.slice(HrStateSlice).performance_tracker
             if _perf is not None:
-                _mem = InMemoryBackend()
+                _mem = build_in_memory_backend()
                 await _mem.connect()
                 from synthorg._core.features import (  # noqa: PLC0415
                     require_service,

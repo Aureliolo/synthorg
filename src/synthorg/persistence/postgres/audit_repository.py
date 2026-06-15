@@ -120,6 +120,7 @@ class PostgresAuditRepository:
             since=filter_spec.since,
             until=filter_spec.until,
             limit=limit,
+            offset=offset,
         )
 
         where, params = self._build_query_clause(
@@ -176,12 +177,13 @@ class PostgresAuditRepository:
         since: datetime | None,
         until: datetime | None,
         limit: int,
+        offset: int = 0,
     ) -> None:
         """Validate query parameters before execution.
 
         Raises:
-            QueryError: If *limit* < 1, *since* or *until* is naive, or
-                *until* < *since*.
+            QueryError: If *limit* < 1, *offset* < 0, *since* or *until*
+                is naive, or *until* < *since*.
         """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
@@ -189,6 +191,15 @@ class PostgresAuditRepository:
                 PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
                 error=msg,
                 limit=limit,
+            )
+            raise QueryError(msg)
+
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error=msg,
+                offset=offset,
             )
             raise QueryError(msg)
 
@@ -335,15 +346,7 @@ class PostgresAuditRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        self._validate_query_args(since=since, until=until, limit=limit)
-        if offset < 0:
-            msg = f"offset must be >= 0, got {offset}"
-            logger.warning(
-                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
-                error=msg,
-                offset=offset,
-            )
-            raise QueryError(msg)
+        self._validate_query_args(since=since, until=until, limit=limit, offset=offset)
         time_conds, time_params = self._build_time_clause(since, until)
         all_conds = [extra_condition, *time_conds]
         all_params = [*extra_params, *time_params]
