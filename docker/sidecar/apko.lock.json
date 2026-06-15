@@ -142,22 +142,22 @@
       },
       {
         "name": "libxcrypt",
-        "url": "https://packages.wolfi.dev/os/x86_64/libxcrypt-4.5.2-r2.apk",
-        "version": "4.5.2-r2",
+        "url": "https://packages.wolfi.dev/os/x86_64/libxcrypt-4.5.2-r3.apk",
+        "version": "4.5.2-r3",
         "architecture": "x86_64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-7351",
-          "checksum": "sha1-Hd4hmmuoHyn1GTmAZseSSpDjRZg="
+          "range": "bytes=0-8536",
+          "checksum": "sha1-I0YlF5JXljMqn3nnsq4AWUw6X/8="
         },
         "data": {
-          "range": "bytes=7352-102849",
-          "checksum": "sha256-K67qe8YxV8RpTxkq9quau99j8AB4VuUtWo0MwOIRdtk="
+          "range": "bytes=8537-106099",
+          "checksum": "sha256-mzRytDzhPafMZpD3kpn03C6x2XCNuG0nZ1F3Bjo+Jx4="
         },
-        "checksum": "Q1Hd4hmmuoHyn1GTmAZseSSpDjRZg="
+        "checksum": "Q1I0YlF5JXljMqn3nnsq4AWUw6X/8="
       },
       {
         "name": "libcrypt1",
@@ -180,22 +180,22 @@
       },
       {
         "name": "busybox",
-        "url": "https://packages.wolfi.dev/os/x86_64/busybox-1.37.0-r59.apk",
-        "version": "1.37.0-r59",
+        "url": "https://packages.wolfi.dev/os/x86_64/busybox-1.37.0-r60.apk",
+        "version": "1.37.0-r60",
         "architecture": "x86_64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-10238",
-          "checksum": "sha1-yCkZsV/X1Q1v/S0m+AniWAJvPD4="
+          "range": "bytes=0-10584",
+          "checksum": "sha1-zTe9mnCFimtyFHD0F6IT0a4N6iU="
         },
         "data": {
-          "range": "bytes=10239-429821",
-          "checksum": "sha256-ohPddzmYJM05jROTDb/+s+GHF46UK3WArPXoElsOxrA="
+          "range": "bytes=10585-430124",
+          "checksum": "sha256-6+ubDe9kHjVp/rhDrHHnM//QU2f3oPojhL0UiMPLZXI="
         },
-        "checksum": "Q1yCkZsV/X1Q1v/S0m+AniWAJvPD4="
+        "checksum": "Q1zTe9mnCFimtyFHD0F6IT0a4N6iU="
       },
       {
         "name": "libmnl",
@@ -370,22 +370,22 @@
       },
       {
         "name": "libxcrypt",
-        "url": "https://packages.wolfi.dev/os/aarch64/libxcrypt-4.5.2-r2.apk",
-        "version": "4.5.2-r2",
+        "url": "https://packages.wolfi.dev/os/aarch64/libxcrypt-4.5.2-r3.apk",
+        "version": "4.5.2-r3",
         "architecture": "aarch64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-7395",
-          "checksum": "sha1-McB8vGRCy1ZHRghUBm9SZPIfTbk="
+          "range": "bytes=0-8572",
+          "checksum": "sha1-ghgqrJg4iSn9gnlkDzpWMPFaymg="
         },
         "data": {
-          "range": "bytes=7396-104689",
-          "checksum": "sha256-QLE9M55RoGXYiY9e9OvdfHbk3gv0QUTsipcIMQ2ZRgQ="
+          "range": "bytes=8573-104313",
+          "checksum": "sha256-XizRWLvfUizHwKzjGLYIFKzfDDehNmTY9yPgDFlLPS4="
         },
-        "checksum": "Q1McB8vGRCy1ZHRghUBm9SZPIfTbk="
+        "checksum": "Q1ghgqrJg4iSn9gnlkDzpWMPFaymg="
       },
       {
         "name": "libcrypt1",
@@ -408,22 +408,22 @@
       },
       {
         "name": "busybox",
-        "url": "https://packages.wolfi.dev/os/aarch64/busybox-1.37.0-r59.apk",
-        "version": "1.37.0-r59",
+        "url": "https://packages.wolfi.dev/os/aarch64/busybox-1.37.0-r60.apk",
+        "version": "1.37.0-r60",
         "architecture": "aarch64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-10265",
-          "checksum": "sha1-2DdrwUDz5KqQegIf3UxL7LATUrM="
+          "range": "bytes=0-10617",
+          "checksum": "sha1-zIgDKq8XfS0XRret4/uF2SZo9YQ="
         },
         "data": {
-          "range": "bytes=10266-429336",
-          "checksum": "sha256-GZOewwb2hEHCA6tjP6g2Glq2Uelr1DosXeoVDZDSf6I="
+          "range": "bytes=10618-429652",
+          "checksum": "sha256-0O03bP/NQ62LmTFu9hFW/bzPnl8AWmLcdqCRwsA7xbY="
         },
-        "checksum": "Q12DdrwUDz5KqQegIf3UxL7LATUrM="
+        "checksum": "Q1zIgDKq8XfS0XRret4/uF2SZo9YQ="
       },
       {
         "name": "libmnl",
