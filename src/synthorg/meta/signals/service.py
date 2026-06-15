@@ -76,7 +76,9 @@ class SignalsService:
         performance: Per-domain aggregator.
         budget: Per-domain aggregator.
         coordination: Per-domain aggregator.
-        scaling: Per-domain aggregator.
+        scaling: Per-domain aggregator, or ``None`` when no scaling
+            service is wired (the scaling domain then degrades to an
+            empty summary rather than 503-ing the whole facade).
         errors: Per-domain aggregator.
         evolution: Per-domain aggregator.
         telemetry: Per-domain aggregator.
@@ -91,7 +93,7 @@ class SignalsService:
         performance: PerformanceSignalAggregator,
         budget: BudgetSignalAggregator,
         coordination: CoordinationSignalAggregator,
-        scaling: ScalingSignalAggregator,
+        scaling: ScalingSignalAggregator | None,
         errors: ErrorSignalAggregator,
         evolution: EvolutionSignalAggregator,
         telemetry: TelemetrySignalAggregator,
@@ -171,8 +173,11 @@ class SignalsService:
         """Scaling signal summary for the window.
 
         Returns:
-            ``OrgScalingSummary`` instance.
+            ``OrgScalingSummary`` instance, or an empty summary when no
+            scaling service is wired.
         """
+        if self._scaling is None:
+            return OrgScalingSummary()
         return await self._scaling.aggregate(since=since, until=until)
 
     async def get_error_patterns(

@@ -200,6 +200,25 @@ class TestAgentRegistryService:
         result = await registry.list_active()
         assert result == ()
 
+    async def test_active_agent_ids_snapshots_active_only(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        active = make_agent_identity(name="active-agent", status=AgentStatus.ACTIVE)
+        onboarding = make_agent_identity(
+            name="onboarding-agent",
+            status=AgentStatus.ONBOARDING,
+        )
+        await registry.register(active)
+        await registry.register(onboarding)
+        assert registry.active_agent_ids() == (str(active.id),)
+
+    def test_active_agent_ids_empty(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        assert registry.active_agent_ids() == ()
+
     async def test_list_by_department(
         self,
         registry: AgentRegistryService,

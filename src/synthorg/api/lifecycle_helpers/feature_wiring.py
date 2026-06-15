@@ -443,6 +443,52 @@ async def _wire_charter_engine(
         )
 
 
+async def _wire_signals_service(
+    app_state: AppState,
+    *,
+    effective_approval_store: ApprovalStoreProtocol,
+) -> None:
+    """Wire the org-signals facade once persistence + a tracker exist.
+
+    Best-effort + idempotent. Gated on a connected persistence backend
+    and a performance tracker (the one hard aggregator dependency); the
+    scaling service and the error / evolution / telemetry stores are
+    optional and degrade to empty per-domain summaries when absent, so
+    the signals MCP handlers and ``/meta/chat`` signal reads come online
+    rather than 503-ing.
+    """
+    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+    )
+
+    if app_state.slice(MetaStateSlice).signals_service is not None:
+        return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        return
+    performance_tracker = app_state.slice(HrStateSlice).performance_tracker
+    if performance_tracker is None:
+        logger.info(
+            API_APP_STARTUP,
+            service="signals",
+            note="performance tracker absent; signals wiring skipped",
+        )
+        return
+    from synthorg.meta.signals.factory import build_signals_service  # noqa: PLC0415
+
+    registry = app_state.slice(HrStateSlice).agent_registry
+    agent_ids_provider = registry.active_agent_ids if registry is not None else tuple
+    signals_service = build_signals_service(
+        performance_tracker=performance_tracker,
+        agent_ids_provider=agent_ids_provider,
+        approval_store=effective_approval_store,
+        scaling_service=app_state.slice(HrStateSlice).scaling_service,
+    )
+    app_state.wire(MetaStateSlice, signals_service=signals_service)
+    logger.info(API_APP_STARTUP, service="signals", note="wired")
+
+
 async def _wire_chief_of_staff_chat(
     app_state: AppState,
     *,
@@ -493,6 +539,10 @@ async def wire_features_on_startup(
         provider_registry=provider_registry,
         persistence=persistence,
         cost_tracker=cost_tracker,
+    )
+    await _wire_signals_service(
+        app_state,
+        effective_approval_store=effective_approval_store,
     )
     await _wire_chief_of_staff_chat(
         app_state,

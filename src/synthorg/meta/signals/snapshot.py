@@ -69,7 +69,9 @@ class SnapshotBuilder:
         performance: Performance signal aggregator.
         budget: Budget signal aggregator.
         coordination: Coordination signal aggregator.
-        scaling: Scaling signal aggregator.
+        scaling: Scaling signal aggregator, or ``None`` when no scaling
+            service is wired (the snapshot then carries an empty scaling
+            summary).
         errors: Error signal aggregator.
         evolution: Evolution signal aggregator.
         telemetry: Telemetry signal aggregator.
@@ -84,7 +86,7 @@ class SnapshotBuilder:
         performance: PerformanceSignalAggregator,
         budget: BudgetSignalAggregator,
         coordination: CoordinationSignalAggregator,
-        scaling: ScalingSignalAggregator,
+        scaling: ScalingSignalAggregator | None,
         errors: ErrorSignalAggregator,
         evolution: EvolutionSignalAggregator,
         telemetry: TelemetrySignalAggregator,
@@ -154,12 +156,13 @@ class SnapshotBuilder:
                     self._coordination.aggregate(since=since, until=until),
                 )
             )
-            _ = tg.create_task(
-                _run(
-                    "scale",
-                    self._scaling.aggregate(since=since, until=until),
+            if self._scaling is not None:
+                _ = tg.create_task(
+                    _run(
+                        "scale",
+                        self._scaling.aggregate(since=since, until=until),
+                    )
                 )
-            )
             _ = tg.create_task(
                 _run(
                     "err",
