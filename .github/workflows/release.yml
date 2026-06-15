@@ -120,13 +120,23 @@ jobs:
           # github-actions[bot], appearing as Verified in the release PR
           # UI. (The eventual squash-merge produces a separate GitHub-
           # signed commit on main regardless of this step's signature.)
+          # Materialise the payload to a file (not a pipe) so each
+          # gh_with_retry.sh attempt re-reads identical stdin -- a piped
+          # `--input -` drains on the first attempt, leaving a retry with
+          # empty input. The write is idempotent: the embedded blob `sha`
+          # optimistic-locks it, so retrying a transient 5xx / timeout
+          # cannot double-commit, and a real 409/422 sha conflict (a
+          # concurrent push to the branch) fast-fails so the next main push
+          # retriggers cleanly rather than looping on a stale sha.
+          payload=$(mktemp)
           jq -n \
             --arg msg "chore: update BSL Change Date to $new_date" \
             --arg content "$(base64 -w0 LICENSE)" \
             --arg sha "$cur_sha" \
             --arg branch "$BRANCH" \
-            '{message: $msg, content: $content, sha: $sha, branch: $branch}' \
-          | gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/LICENSE" --input -
+            '{message: $msg, content: $content, sha: $sha, branch: $branch}' > "$payload"
+          .github/scripts/gh_with_retry.sh "BSL Change Date write" \
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/LICENSE" --input "$payload"
 
       # ── Release-notes Highlights section ──
       # Generate a 3-5 bullet Highlights summary from the auto-generated

@@ -197,3 +197,12 @@ class QualityOverrideStore:
             for o in self._overrides.values()
             if o.expires_at is None or o.expires_at > now
         )
+
+    def clear(self) -> None:
+        """Drop every stored override.
+
+        Mirrors the ``clear()`` reset seam the sibling in-memory stores
+        expose so a shared (module/session-scoped) app can be reused
+        across tests without override state leaking between them.
+        """
+        self._overrides.clear()

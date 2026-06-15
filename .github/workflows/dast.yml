@@ -27,6 +27,11 @@ jobs:
   zap-scan:
     name: ZAP API Scan
     runs-on: ubuntu-latest
+    # The ZAP scan self-caps (-T 20 wall-time, maxScanDurationInMins=30);
+    # 45 covers the worst-case scan plus the apko base build + compose
+    # bring-up, while still reaping a hung Docker pull / ZAP-container
+    # startup instead of riding the 6-hour default.
+    timeout-minutes: 45
     permissions:
       contents: read
       # The ZAP action creates/updates a single GitHub issue per repo with scan

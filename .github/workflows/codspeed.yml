@@ -87,7 +87,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # 30 (was 15) so the worst case of the 3-attempt CodSpeed ladder below
+    # (a transient OIDC/upload failure forcing up to three benchmark runs)
+    # still completes within the job budget. Steady state runs once; the
+    # extra runs only occur during an actual CodSpeed outage.
+    timeout-minutes: 30
     permissions:
       contents: read
       # OIDC-based auth to CodSpeed (no CODSPEED_TOKEN secret required).
@@ -102,7 +106,22 @@ jobs:
 
       - uses: ./.github/actions/setup-python-uv
 
-      - name: Run CodSpeed Python benchmarks
+      # CodSpeed authenticates via OIDC (id-token: write) and uploads to
+      # codspeed.io. Both phases can hit a transient 503 (the same
+      # getIDToken() / upstream-upload failure class that took down the
+      # Codecov step), and this is a REQUIRED check, so an unguarded blip
+      # blocks PR merges. The 3-attempt ladder rides it out: intermediate
+      # attempts carry continue-on-error so the run advances to the retry;
+      # the final attempt has none, so a persistent CodSpeed outage fails
+      # the check loud. The benchmark re-runs only when an attempt actually
+      # fails -- the steady-state path runs the suite once.
+      #
+      # The env / with block (typeguard suppression, serial -n0, simulation
+      # mode) is identical across attempts; see the inline rationale on
+      # attempt 1.
+      - name: Run CodSpeed Python benchmarks (attempt 1/3)
+        id: codspeed-py-1
+        continue-on-error: true
         uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
         env:
           # Measure the real production code path, not test-harness overhead:
@@ -118,6 +137,34 @@ jobs:
           # --typeguard-packages= overrides the addopts default so the typeguard
           # plugin instruments nothing (see SYNTHORG_BENCH_NO_TYPEGUARD above).
           run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
+      - name: Backoff before CodSpeed Python attempt 2
+        if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' }}
+        run: |
+          echo "::warning::CodSpeed Python attempt 1 failed; waiting 20s before retry"
+          sleep 20
+      - name: Run CodSpeed Python benchmarks (attempt 2/3)
+        id: codspeed-py-2
+        if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' }}
+        continue-on-error: true
+        uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
+        env:
+          SYNTHORG_BENCH_NO_TYPEGUARD: "1"
+        with:
+          mode: simulation
+          run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
+      - name: Backoff before CodSpeed Python attempt 3
+        if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure' }}
+        run: |
+          echo "::warning::CodSpeed Python attempt 2 failed; waiting 60s before final retry"
+          sleep 60
+      - name: Run CodSpeed Python benchmarks (attempt 3/3)
+        if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure' }}
+        uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
+        env:
+          SYNTHORG_BENCH_NO_TYPEGUARD: "1"
+        with:
+          mode: simulation
+          run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
 
   # ── Shard 2: React dashboard benchmarks ──
   codspeed-web:
@@ -125,7 +172,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # 30 (was 15): headroom for the 3-attempt CodSpeed ladder below (see
+    # the codspeed-python job for the rationale).
+    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
@@ -150,7 +199,36 @@ jobs:
           working-directory: web
           npm-ci-args: --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
 
-      - name: Run CodSpeed Web benchmarks
+      # 3-attempt OIDC/upload retry ladder, same rationale as the
+      # codspeed-python job above. Required check; rides out a transient
+      # CodSpeed 503, fails loud on a persistent one.
+      - name: Run CodSpeed Web benchmarks (attempt 1/3)
+        id: codspeed-web-1
+        continue-on-error: true
+        uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
+        with:
+          mode: simulation
+          run: npm --prefix web run bench
+      - name: Backoff before CodSpeed Web attempt 2
+        if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' }}
+        run: |
+          echo "::warning::CodSpeed Web attempt 1 failed; waiting 20s before retry"
+          sleep 20
+      - name: Run CodSpeed Web benchmarks (attempt 2/3)
+        id: codspeed-web-2
+        if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' }}
+        continue-on-error: true
+        uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
+        with:
+          mode: simulation
+          run: npm --prefix web run bench
+      - name: Backoff before CodSpeed Web attempt 3
+        if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
+        run: |
+          echo "::warning::CodSpeed Web attempt 2 failed; waiting 60s before final retry"
+          sleep 60
+      - name: Run CodSpeed Web benchmarks (attempt 3/3)
+        if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
         uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
         with:
           mode: simulation

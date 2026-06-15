@@ -21,6 +21,10 @@ jobs:
   zizmor:
     name: zizmor
     runs-on: ubuntu-latest
+    # The impostor-commit audit shells out to `git ls-remote` against
+    # github.com for every pinned action SHA; 10 reaps a hung ls-remote
+    # rather than the 6-hour default on this workflow-file PR check.
+    timeout-minutes: 10
     permissions:
       security-events: write
       contents: read

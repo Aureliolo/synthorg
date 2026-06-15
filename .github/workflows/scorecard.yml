@@ -13,6 +13,10 @@ jobs:
   scorecard:
     name: Scorecard
     runs-on: ubuntu-latest
+    # The OSSF scorecard scan makes many OSSF + GitHub API calls and can
+    # run for minutes; 20 gives it room while still reaping a hung API
+    # call rather than the 6-hour default.
+    timeout-minutes: 20
     permissions:
       security-events: write
       id-token: write

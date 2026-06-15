@@ -313,7 +313,14 @@ runs:
         # `--connect-timeout`/`--max-time` bound every call: curl has no
         # default deadline, so a silently black-holed connection would
         # otherwise stall the step until the runner's job timeout.
-        REG_TOKEN="$(curl -sSL --connect-timeout 5 --max-time 15 -u "x-access-token:${GHCR_TOKEN}" \
+        # --retry rides out a transient GHCR token-endpoint 5xx / reset:
+        # this single mint gates the entire post-sign verification step, so
+        # one blip here would otherwise fail an already-pushed-and-signed
+        # image's verification. --max-time 120 still bounds a black-holed
+        # connection across the whole retry budget.
+        REG_TOKEN="$(curl -sSL --connect-timeout 5 --max-time 120 \
+          --retry 5 --retry-all-errors --retry-connrefused --retry-max-time 100 \
+          -u "x-access-token:${GHCR_TOKEN}" \
           "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO_PATH}:pull" \
           | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
         if [ -z "${REG_TOKEN}" ]; then
