@@ -801,7 +801,7 @@ CREATE TABLE subworkflows (
     edges JSONB NOT NULL,
     created_by TEXT NOT NULL CHECK (LENGTH(created_by) > 0),
     created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT '1970-01-01T00:00:00+00:00'::TIMESTAMPTZ,
     PRIMARY KEY (subworkflow_id, semver)
 );
 
@@ -1849,6 +1849,18 @@ CREATE TABLE seen_claims (
     expires_at TIMESTAMPTZ NOT NULL CHECK (expires_at > seen_at)
 );
 CREATE INDEX idx_seen_claims_expires_at ON seen_claims (expires_at);
+
+-- Restart-safe project-cost-claim dedup (audit 133): durable backstop so a
+-- JetStream redelivery after a process restart cannot double-bill a project
+-- cost aggregate.  CostTracker consults this before a durable increment.
+CREATE TABLE project_cost_claim_seen (
+    claim_id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(claim_id)) > 0),
+    project_id TEXT NOT NULL CHECK (LENGTH(TRIM(project_id)) > 0),
+    seen_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL CHECK (expires_at > seen_at)
+);
+CREATE INDEX idx_project_cost_claim_seen_expires_at
+ON project_cost_claim_seen (expires_at);
 
 -- Principle-override table for the rollback executor's PromptMutator.
 -- Overlays the read-only YAML principle packs loaded by

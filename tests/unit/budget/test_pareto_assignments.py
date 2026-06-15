@@ -24,7 +24,9 @@ def _agent(role: str, model_id: str) -> SimpleNamespace:
 
 
 def _record(model: str, cost: float) -> SimpleNamespace:
-    return SimpleNamespace(model=model, cost=cost)
+    # ``currency`` mirrors the real ``CostRecord`` field the same-currency
+    # aggregation guard in ``_mean_cost_per_model`` reads.
+    return SimpleNamespace(model=model, cost=cost, currency="USD")
 
 
 def _lookup(

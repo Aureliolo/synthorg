@@ -105,6 +105,15 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     # poisoning startup.
     registry = app_state.slice(HrStateSlice).agent_registry
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    # Attach the durable project-cost write + restart-safe dedup repos now
+    # that persistence is connected (the tracker is built at the synchronous
+    # construction phase before a backend exists). The dedup guard makes the
+    # increment idempotent across a JetStream redelivery after a restart.
+    if cost_tracker is not None:
+        cost_tracker.attach_durable_repos(
+            project_cost_repo=persistence.project_cost_aggregates,
+            claim_seen_repo=persistence.project_cost_claim_seen,
+        )
     assignment_lookup = None
     history_lookup = None
     if registry is not None and cost_tracker is not None:

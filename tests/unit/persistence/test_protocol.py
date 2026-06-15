@@ -61,6 +61,9 @@ from synthorg.persistence.preset_protocol import (
 from synthorg.persistence.principle_override_protocol import (
     PrincipleOverrideRepository,
 )
+from synthorg.persistence.project_cost_claim_seen_protocol import (
+    ProjectCostClaimSeenRepository,
+)
 from synthorg.persistence.project_environment_protocol import (
     ProjectEnvironmentRepository,
 )
@@ -1065,6 +1068,33 @@ class _FakeSeenClaimsRepository:
         return 0
 
 
+class _FakeProjectCostClaimSeenRepository:
+    """Minimal ProjectCostClaimSeenRepository conforming to the protocol shape."""
+
+    async def has_seen(
+        self,
+        *,
+        claim_id: NotBlankStr,
+    ) -> bool:
+        del claim_id
+        return False
+
+    async def mark_seen(
+        self,
+        *,
+        claim_id: NotBlankStr,
+        project_id: NotBlankStr,
+        now: object,
+        ttl_seconds: float,
+    ) -> bool:
+        del claim_id, project_id, now, ttl_seconds
+        return True
+
+    async def prune_expired(self, now: object) -> int:
+        del now
+        return 0
+
+
 class _FakeIdempotencyRepository:
     """Minimal IdempotencyRepository conforming to the protocol shape."""
 
@@ -1452,6 +1482,10 @@ class _FakeBackend:
         return _FakeSeenClaimsRepository()
 
     @property
+    def project_cost_claim_seen(self) -> _FakeProjectCostClaimSeenRepository:
+        return _FakeProjectCostClaimSeenRepository()
+
+    @property
     def principle_overrides(self) -> _FakePrincipleOverrideRepository:
         return _FakePrincipleOverrideRepository()
 
@@ -1539,6 +1573,15 @@ class TestProtocolCompliance:
         backend = _FakeBackend()
         assert isinstance(backend.seen_claims, SeenClaimsRepository)
         assert isinstance(_FakeSeenClaimsRepository(), SeenClaimsRepository)
+
+    def test_fake_cost_claim_seen_repo_is_cost_claim_seen_repository(self) -> None:
+        backend = _FakeBackend()
+        assert isinstance(
+            backend.project_cost_claim_seen, ProjectCostClaimSeenRepository
+        )
+        assert isinstance(
+            _FakeProjectCostClaimSeenRepository(), ProjectCostClaimSeenRepository
+        )
 
     def test_fake_principle_overrides_repo_is_principle_override_repository(
         self,

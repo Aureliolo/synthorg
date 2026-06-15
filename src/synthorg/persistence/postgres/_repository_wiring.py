@@ -130,6 +130,9 @@ from synthorg.persistence.postgres.project_brain_repo import (
 from synthorg.persistence.postgres.project_cost_aggregate_repo import (
     PostgresProjectCostAggregateRepository,
 )
+from synthorg.persistence.postgres.project_cost_claim_seen_repo import (
+    PostgresProjectCostClaimSeenRepository,
+)
 from synthorg.persistence.postgres.project_environment_repo import (
     PostgresProjectEnvironmentRepository,
 )
@@ -261,6 +264,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._refresh_tokens = None
         self._idempotency_keys = None
         self._seen_claims = None
+        self._project_cost_claim_seen = None
         self._principle_overrides = None
         self._mcp_installations = None
         self._custom_rules = None
@@ -373,6 +377,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._refresh_tokens = PostgresRefreshTokenRepository(pool)
         self._idempotency_keys = PostgresIdempotencyRepository(pool)
         self._seen_claims = PostgresSeenClaimsRepository(pool)
+        self._project_cost_claim_seen = PostgresProjectCostClaimSeenRepository(pool)
         self._principle_overrides = PostgresPrincipleOverrideRepository(pool)
         self._mcp_installations = PostgresMcpInstallationRepository(pool)
         self._custom_rules = PostgresCustomRuleRepository(pool)
