@@ -52,6 +52,7 @@ from synthorg.observability.prometheus_labels import (
 )
 from synthorg.observability.prometheus_push_metrics import PushMetrics
 from synthorg.observability.prometheus_recording import RecordingMixin
+from synthorg.observability.prometheus_recording._base import _PUSH_ALIASED_METRICS
 from synthorg.observability.prometheus_recording_streams import (
     StreamRecordingMixin,
 )
@@ -61,26 +62,6 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
-
-# Push-updated metric families aliased from ``PushMetrics`` onto private
-# ``self._<name>`` attributes (declared on ``_RecordingMetricsBase``) so
-# the recording mixins reach them via their original access pattern.
-_PUSH_ALIASED_METRICS: tuple[str, ...] = (
-    "provider_tokens", "provider_cost", "provider_call_duration",
-    "api_request_duration", "task_runs",
-    "task_duration", "tool_invocations", "tool_duration", "audit_chain_appends",
-    "audit_chain_depth", "audit_chain_last_append_ts", "otlp_export_batches",
-    "otlp_export_dropped", "log_sink_events", "escalation_queue_depth",
-    "security_audit_log_fill_ratio", "agent_identity_changes",
-    "workflow_execution_duration", "provider_errors", "cache_operations",
-    "api_error_classification", "client_disconnects", "approval_decisions",
-    "autonomy_promotion_decisions",
-    "escalation_outcomes", "push_queue_events", "blueprint_instantiations",
-    "settings_mutations", "mcp_handler_outcomes", "mcp_handler_duration",
-    "budget_query_duration", "audit_chain_verifications", "ws_connection_lifetime",
-    "ws_revalidation_outcomes", "ws_active_connections", "pg_pool_size",
-    "pg_pool_active_connections", "pg_pool_acquire_duration", "pg_pool_exhausted",
-)  # fmt: skip
 
 
 class PrometheusCollector(RecordingMixin, StreamRecordingMixin):

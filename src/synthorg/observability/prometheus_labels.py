@@ -237,13 +237,11 @@ failures (caller should retry).  Mirrors
 # valid-class allowlist.  Without this guard, a renamed or removed label in
 # ``ProviderErrorLabel`` would silently leave a stale entry here that no
 # label-validation pipeline consults.
-_TRANSIENT_DIFF: Final[frozenset[str]] = (
-    TRANSIENT_PROVIDER_ERROR_CLASSES - VALID_PROVIDER_ERROR_CLASSES
-)
-if _TRANSIENT_DIFF:
+_transient_diff = TRANSIENT_PROVIDER_ERROR_CLASSES - VALID_PROVIDER_ERROR_CLASSES
+if _transient_diff:
     msg = (
         "TRANSIENT_PROVIDER_ERROR_CLASSES contains labels not in "
-        f"VALID_PROVIDER_ERROR_CLASSES: {sorted(_TRANSIENT_DIFF)}"
+        f"VALID_PROVIDER_ERROR_CLASSES: {sorted(_transient_diff)}"
     )
     raise ValueError(msg)
 # In-process cache names that emit ``synthorg_cache_operations_total``.

@@ -10,8 +10,8 @@
 -- the guard survives a restart. See ../schema.sql and
 -- project_cost_claim_seen_protocol.py for the full rationale.
 CREATE TABLE project_cost_claim_seen (
-    claim_id TEXT NOT NULL PRIMARY KEY CHECK (length(trim(claim_id)) > 0),
-    project_id TEXT NOT NULL CHECK (length(trim(project_id)) > 0),
+    claim_id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(claim_id)) > 0),
+    project_id TEXT NOT NULL CHECK (LENGTH(TRIM(project_id)) > 0),
     seen_at TIMESTAMPTZ NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL CHECK (expires_at > seen_at)
 );
