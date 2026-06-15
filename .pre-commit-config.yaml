@@ -402,6 +402,9 @@ repos:
         # as workflow-tag-lifecycle above): an edit limited to the checker
         # script or this config would otherwise scan zero workflows.
         pass_filenames: false
+        # commit+push only: the YAML scan is fast and gates content, but it
+        # has no place at commit-msg (which gates the message, not the tree).
+        stages: [pre-commit, pre-push]
 
       - id: retry-helper-selftest
         name: cosign/push retry helpers classify large 5xx output as transient (broken-pipe regression)

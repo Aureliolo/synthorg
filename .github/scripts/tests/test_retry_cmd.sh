@@ -27,12 +27,24 @@ WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 # --- 1. fails twice, then succeeds: retried to success (exit 0) ---------
+# A self-contained stub that fails on attempts 1-2 and succeeds on attempt 3
+# by incrementing a counter file. Written to a file (rather than a
+# `bash -c '...' $0`-positional trick) so the counter path is explicit and
+# robust to however retry_cmd.sh forwards "$@".
 counter="$WORK_DIR/count1"
 printf '0' >"$counter"
-flaky='c=$(cat "$0"); n=$((c + 1)); printf "%s" "$n" >"$0"; [ "$n" -ge 3 ]'
+flaky_script="$WORK_DIR/flaky.sh"
+cat >"$flaky_script" <<EOF
+#!/usr/bin/env bash
+c=\$(cat "$counter")
+n=\$((c + 1))
+printf '%s' "\$n" >"$counter"
+[ "\$n" -ge 3 ]
+EOF
+chmod +x "$flaky_script"
 rc=0
 out="$(RETRY_CMD_ATTEMPTS=5 RETRY_CMD_BASE_DELAY=0 \
-  bash "$HELPER" "selftest-flaky" bash -c "$flaky" "$counter" 2>&1)" || rc=$?
+  bash "$HELPER" "selftest-flaky" "$flaky_script" 2>&1)" || rc=$?
 if [ "$rc" -eq 0 ] && grep -q 'succeeded on attempt 3' <<<"$out"; then
   pass "retry_cmd retries a flaky command to success"
 else
@@ -59,6 +71,30 @@ if [ "$rc" -eq 0 ] && ! grep -q 'retrying' <<<"$out" && ! grep -q 'succeeded on 
   pass "retry_cmd does not retry a first-try success"
 else
   fail "retry_cmd added retry noise to a clean success (rc=${rc})"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- 4. no command after the label: usage error exit 2 ------------------
+rc=0
+out="$(bash "$HELPER" "selftest-nocmd" 2>&1)" || rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'no command supplied' <<<"$out"; then
+  pass "retry_cmd exits 2 with a usage error when no command is supplied"
+else
+  fail "retry_cmd did not reject a missing command with exit 2 (rc=${rc})"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- 5. delay is capped at RETRY_CMD_MAX_DELAY --------------------------
+# base=1, cap=1, 4 attempts on an always-failing command: each backoff
+# warning must say "retrying in 1s" and never "in 2s" (which is what an
+# uncapped doubling 1 -> 2 -> 4 would emit). ~3s of real sleep.
+rc=0
+out="$(RETRY_CMD_ATTEMPTS=4 RETRY_CMD_BASE_DELAY=1 RETRY_CMD_MAX_DELAY=1 \
+  bash "$HELPER" "selftest-cap" bash -c 'exit 1' 2>&1)" || rc=$?
+if grep -q 'retrying in 1s' <<<"$out" && ! grep -q 'retrying in 2s' <<<"$out"; then
+  pass "retry_cmd caps the backoff delay at RETRY_CMD_MAX_DELAY"
+else
+  fail "retry_cmd did not cap the backoff delay (rc=${rc})"
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 

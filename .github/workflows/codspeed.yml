@@ -138,13 +138,13 @@ jobs:
           # plugin instruments nothing (see SYNTHORG_BENCH_NO_TYPEGUARD above).
           run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
       - name: Backoff before CodSpeed Python attempt 2
-        if: steps.codspeed-py-1.outcome == 'failure'
+        if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' }}
         run: |
           echo "::warning::CodSpeed Python attempt 1 failed; waiting 20s before retry"
           sleep 20
       - name: Run CodSpeed Python benchmarks (attempt 2/3)
         id: codspeed-py-2
-        if: steps.codspeed-py-1.outcome == 'failure'
+        if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' }}
         continue-on-error: true
         uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
         env:
@@ -153,12 +153,12 @@ jobs:
           mode: simulation
           run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
       - name: Backoff before CodSpeed Python attempt 3
-        if: steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure'
+        if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure' }}
         run: |
           echo "::warning::CodSpeed Python attempt 2 failed; waiting 60s before final retry"
           sleep 60
       - name: Run CodSpeed Python benchmarks (attempt 3/3)
-        if: steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure'
+        if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure' }}
         uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
         env:
           SYNTHORG_BENCH_NO_TYPEGUARD: "1"
@@ -210,25 +210,25 @@ jobs:
           mode: simulation
           run: npm --prefix web run bench
       - name: Backoff before CodSpeed Web attempt 2
-        if: steps.codspeed-web-1.outcome == 'failure'
+        if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' }}
         run: |
           echo "::warning::CodSpeed Web attempt 1 failed; waiting 20s before retry"
           sleep 20
       - name: Run CodSpeed Web benchmarks (attempt 2/3)
         id: codspeed-web-2
-        if: steps.codspeed-web-1.outcome == 'failure'
+        if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' }}
         continue-on-error: true
         uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
         with:
           mode: simulation
           run: npm --prefix web run bench
       - name: Backoff before CodSpeed Web attempt 3
-        if: steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure'
+        if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
         run: |
           echo "::warning::CodSpeed Web attempt 2 failed; waiting 60s before final retry"
           sleep 60
       - name: Run CodSpeed Web benchmarks (attempt 3/3)
-        if: steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure'
+        if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
         uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
         with:
           mode: simulation

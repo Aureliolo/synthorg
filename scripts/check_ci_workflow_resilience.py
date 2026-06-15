@@ -140,9 +140,11 @@ def _job_steps(job: dict[str, object]) -> list[dict[str, object]]:
 
 def _check_job_timeout(job_name: str, job: dict[str, object]) -> list[str]:
     """Return a violation message if the job lacks ``timeout-minutes``."""
-    # A reusable-workflow-call job (top-level ``uses:``) cannot declare
-    # timeout-minutes; the called workflow owns its job timeouts.
-    if "uses" in job:
+    # A reusable-workflow-call job (a top-level ``uses:`` STRING) cannot
+    # declare timeout-minutes; the called workflow owns its job timeouts.
+    # Require a string so a malformed bare ``uses:`` (parses to None) is
+    # still timeout-checked rather than silently exempted.
+    if isinstance(job.get("uses"), str):
         return []
     if _TIMEOUT_KEY not in job:
         return [
@@ -153,27 +155,53 @@ def _check_job_timeout(job_name: str, job: dict[str, object]) -> list[str]:
 
 
 def _check_job_ladders(job_name: str, job: dict[str, object]) -> list[str]:
-    """Return violations for enforced actions not in a fail-closed ladder."""
-    by_action: dict[str, list[bool]] = {}
+    """Return violations for enforced actions not in a fail-closed ladder.
+
+    A correct ladder is a run of one-or-more ``continue-on-error`` attempts
+    followed by exactly one unguarded final attempt. Steps are walked in
+    order, per enforced action, via a small state machine so that:
+
+    * TWO independent ladders for the same action in one job (e.g. ci.yml's
+      coverage + test-results Codecov uploads) are EACH validated -- a naive
+      aggregate "any guarded AND any unguarded" check would let a malformed
+      ``[bare, bare]`` ladder hide behind a sibling ``[guarded, guarded,
+      bare]`` ladder; and
+    * the backoff ``run:`` steps that interleave a ladder's attempts do not
+      split it (only the enforced-action steps drive the state).
+
+    Per enforced action, ``open`` tracks whether a guarded attempt has been
+    seen since the last unguarded final attempt (a ladder is "open"). An
+    unguarded step with no open ladder is a bare single upload (violation);
+    guarded attempts left open at the end are a terminal soft-fail with no
+    fail-closed final attempt (violation).
+    """
+    open_ladder: dict[str, bool] = {}
+    violations: list[str] = []
     for step in _job_steps(job):
         uses = step.get("uses")
         if not isinstance(uses, str):
             continue
-        enforced = _enforced_action_for(uses)
-        if enforced is None:
+        action = _enforced_action_for(uses)
+        if action is None:
             continue
-        by_action.setdefault(enforced, []).append(_step_has_continue_on_error(step))
-    violations: list[str] = []
-    for action, guards in sorted(by_action.items()):
-        has_intermediate = any(guards)
-        has_final = any(not guard for guard in guards)
-        if not has_intermediate or not has_final:
+        if _step_has_continue_on_error(step):
+            open_ladder[action] = True
+            continue
+        if not open_ladder.get(action, False):
             violations.append(
-                f"job '{job_name}': '{action}' is not in a fail-closed retry"
-                " ladder (need >=1 attempt with continue-on-error AND >=1"
-                f" without; found {len(guards)} step(s),"
-                f" {sum(guards)} guarded)"
+                f"job '{job_name}': '{action}' has an unguarded step with no"
+                " preceding continue-on-error retry attempt: a single"
+                " external/OIDC upload that fails CI on one transient blip."
+                " Wrap it in a fail-closed retry ladder."
             )
+        open_ladder[action] = False
+    violations.extend(
+        f"job '{job_name}': '{action}' ladder has only continue-on-error"
+        " attempts and no fail-closed final attempt: a persistent outage"
+        " would be silently swallowed."
+        for action, still_open in sorted(open_ladder.items())
+        if still_open
+    )
     return violations
 
 
@@ -181,8 +209,11 @@ def _scan_file(path: Path) -> list[str]:
     """Return all violation messages for one workflow file."""
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        return [f"YAML parse error: {type(exc).__name__}"]
+    except (yaml.YAMLError, UnicodeDecodeError) as exc:
+        # str(exc) carries PyYAML's line/column (and is safe here -- this is
+        # a CLI gate printing to stderr, not a logger that could serialise a
+        # secret); without it a maintainer cannot locate the syntax error.
+        return [f"YAML parse error: {type(exc).__name__}: {exc}"]
     if not isinstance(data, dict):
         return []
     jobs = data.get("jobs")
@@ -245,13 +276,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    # Self-consistency: an action cannot be both enforced and excluded. A
-    # future edit that lists one in both sets is a logic error -- fail as a
-    # setup error (exit 2) rather than silently letting the exclusion win.
-    overlap = _ENFORCED_ACTIONS & set(_EXCLUDED)
+    # Self-consistency: no excluded action may also be MATCHED by an enforced
+    # prefix, else a step using it would be enforced despite being listed as
+    # excluded. This mirrors _enforced_action_for's prefix semantics (exact
+    # set intersection would miss e.g. enforced 'github/codeql-action' vs
+    # excluded 'github/codeql-action/upload-sarif'). Fail as a setup error
+    # (exit 2), not a silent exclusion win.
+    overlap = sorted(
+        excluded
+        for excluded in _EXCLUDED
+        for enforced in _ENFORCED_ACTIONS
+        if excluded == enforced or excluded.startswith(f"{enforced}/")
+    )
     if overlap:
         print(
-            f"setup error: actions both enforced and excluded: {sorted(overlap)}",
+            f"setup error: excluded actions also matched as enforced: {overlap}",
             file=sys.stderr,
         )
         return 2

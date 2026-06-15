@@ -35,9 +35,9 @@
 #      contamination concern.
 #
 # Posture: 5 attempts, 15s base doubling to a 120s cap
-# (15 + 30 + 60 + 120 = ~3m45s of wait before the final attempt). Tunable
-# via RETRY_CMD_ATTEMPTS / RETRY_CMD_BASE_DELAY / RETRY_CMD_MAX_DELAY (also
-# the seam the self-test drives with zero backoff).
+# (15 + 30 + 60 + 120 (capped) = ~3m45s of wait before the final attempt).
+# Tunable via RETRY_CMD_ATTEMPTS / RETRY_CMD_BASE_DELAY / RETRY_CMD_MAX_DELAY
+# (also the seam the self-test drives with zero backoff).
 #
 # Usage:
 #   retry_cmd.sh "label for log" <command> [args...]
@@ -47,6 +47,13 @@
 #   - exit <wrapped rc>: the command still failed after every attempt; the
 #                        LAST attempt's exit code is bubbled so the job
 #                        fails loud (fail-closed -- never a soft-skip).
+#
+# NOTE: deliberately ``set -uo pipefail`` WITHOUT ``-e``. The wrapped
+# command's failure is captured explicitly via ``|| rc=$?``, and the
+# ``DELAY=$((DELAY * 2))`` arithmetic returns exit status 1 whenever the
+# result is 0 -- which the zero-backoff test seam (RETRY_CMD_BASE_DELAY=0)
+# hits every iteration. Under ``-e`` that benign arithmetic would abort the
+# loop. The loop has no other unchecked commands, so ``-e`` buys nothing here.
 set -uo pipefail
 
 LABEL="${1:?missing label}"
