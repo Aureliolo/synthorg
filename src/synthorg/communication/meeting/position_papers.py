@@ -26,6 +26,7 @@ from synthorg.communication.meeting.enums import (
 )
 from synthorg.communication.meeting.errors import (
     MeetingBudgetExhaustedError,
+    MeetingPhaseSlotError,
 )
 from synthorg.communication.meeting.models import (
     MeetingAgenda,
@@ -235,8 +236,8 @@ class PositionPapersProtocol:
             Tuple of (papers, contributions) in deterministic order.
 
         Raises:
-            RuntimeError: If any parallel paper slot is left unfilled
-                (an internal invariant violation).
+            MeetingPhaseSlotError: If any parallel paper slot is left
+                unfilled (an internal invariant violation).
         """
         n = len(participant_ids)
         logger.info(
@@ -332,7 +333,7 @@ class PositionPapersProtocol:
                 error=msg,
                 meeting_id=meeting_id,
             )
-            raise RuntimeError(msg)
+            raise MeetingPhaseSlotError(msg)
         if not all(c is not None for c in contrib_results):
             msg = f"Expected {n} contributions but some slots are None"
             logger.error(
@@ -340,7 +341,7 @@ class PositionPapersProtocol:
                 error=msg,
                 meeting_id=meeting_id,
             )
-            raise RuntimeError(msg)
+            raise MeetingPhaseSlotError(msg)
         papers: list[tuple[str, str]] = list(results)  # type: ignore[arg-type]
         paper_contributions: list[MeetingContribution] = list(contrib_results)  # type: ignore[arg-type]
 

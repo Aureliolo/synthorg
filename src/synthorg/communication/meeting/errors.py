@@ -36,6 +36,19 @@ class MeetingAgentError(MeetingError):
     """An agent invocation failed during a meeting."""
 
 
+class MeetingPhaseSlotError(MeetingError):
+    """A meeting-phase TaskGroup slot was unexpectedly empty after success.
+
+    Programming-invariant violation: the per-participant fan-out
+    completed without raising (the ``TaskGroup`` would have propagated
+    an ``ExceptionGroup`` otherwise), yet a result slot is still
+    ``None``. Routes through ``handle_domain_error`` so the API surfaces
+    a structured ``COMMUNICATION_ERROR`` envelope (inheriting the
+    ancestor's code) rather than a bare 500 from the ``Exception``
+    catch-all.
+    """
+
+
 class MeetingSchedulerError(MeetingError):
     """Base exception for meeting scheduler errors."""
 

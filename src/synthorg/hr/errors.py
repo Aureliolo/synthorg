@@ -41,7 +41,7 @@ class HiringApprovalRequiredError(HiringError):
 
     default_message: ClassVar[str] = "Hiring request requires approval"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.HIRING_APPROVAL_REQUIRED
     status_code: ClassVar[int] = 409
 
 
@@ -50,7 +50,7 @@ class HiringRejectedError(HiringError):
 
     default_message: ClassVar[str] = "Hiring request was rejected"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.HIRING_REJECTED
     status_code: ClassVar[int] = 409
 
 
@@ -110,7 +110,7 @@ class AgentAlreadyRegisteredError(AgentRegistryError):
 
     default_message: ClassVar[str] = "Agent already registered"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.AGENT_ALREADY_REGISTERED
     status_code: ClassVar[int] = 409
 
 
@@ -137,7 +137,7 @@ class PromotionCooldownError(PromotionError):
 
     default_message: ClassVar[str] = "Promotion blocked by cooldown"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROMOTION_COOLDOWN_ACTIVE
     status_code: ClassVar[int] = 409
 
 
@@ -146,7 +146,7 @@ class PromotionApprovalRequiredError(PromotionError):
 
     default_message: ClassVar[str] = "Promotion requires approval"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROMOTION_APPROVAL_REQUIRED
     status_code: ClassVar[int] = 409
 
 
@@ -170,7 +170,7 @@ class PruningUnrestartableError(PruningError):
         "Pruning service is unrestartable after a timed-out stop"
     )
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.PRUNING_UNRESTARTABLE
     status_code: ClassVar[int] = 409
 
 

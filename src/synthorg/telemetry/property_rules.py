@@ -159,6 +159,17 @@ def validate_event_properties(
 ) -> None:
     """Validate a telemetry event's properties against the contract.
 
+    Contract: call this ONLY from inside a Pydantic ``model_validator``
+    (the ``TelemetryEvent`` construction guard) or the delivery-path
+    ``PrivacyGuard._check_properties`` wrapper. Both convert the raised
+    :class:`TelemetryPropertyError` into a structured error -- Pydantic
+    folds it into a ``ValidationError`` (the reason it deliberately
+    subclasses ``ValueError`` rather than ``DomainError``), and the
+    guard re-raises it as a ``PrivacyViolationError``. Raising it on a
+    raw path would surface as an unstructured 500 with no RFC 9457
+    metadata, since ``TelemetryPropertyError`` is intentionally absent
+    from ``EXCEPTION_HANDLERS``.
+
     Raises:
         TelemetryPropertyError: A property key is not in the
             per-event-type allowlist, matches a forbidden pattern, has

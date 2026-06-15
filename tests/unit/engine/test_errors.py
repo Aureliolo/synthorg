@@ -3,6 +3,7 @@
 import pytest
 
 from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.engine.errors import (
     EngineError,
     ExecutionStateError,
@@ -10,6 +11,8 @@ from synthorg.engine.errors import (
     MaxTurnsExceededError,
     NoEligibleAgentError,
     PromptBuildError,
+    SubworkflowCycleError,
+    SubworkflowDepthExceededError,
     TaskAssignmentError,
 )
 
@@ -59,3 +62,14 @@ class TestEngineErrorHierarchy:
         assert isinstance(err, TaskAssignmentError)
         assert isinstance(err, EngineError)
         assert str(err) == "no agents"
+
+    def test_subworkflow_cycle_error_carries_dedicated_code(self) -> None:
+        # Audit 34: distinguish "cycle in workflow graph" from a generic
+        # ENGINE_ERROR so clients can branch on error_code.
+        assert SubworkflowCycleError.error_code == ErrorCode.SUBWORKFLOW_CYCLE_ERROR
+
+    def test_subworkflow_depth_error_carries_dedicated_code(self) -> None:
+        assert (
+            SubworkflowDepthExceededError.error_code
+            == ErrorCode.SUBWORKFLOW_DEPTH_EXCEEDED_ERROR
+        )
