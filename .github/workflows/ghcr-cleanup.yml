@@ -1,0 +1,121 @@
+name: GHCR Cleanup
+
+# Prune dev and non-release container versions from GHCR. Official
+# release images (latest, X.Y, X.Y.Z) and every signature / attestation
+# / multi-arch child they reference are NEVER touched: each pass both
+# targets only the reapable tag classes AND carries a belt-and-braces
+# `exclude-tags` regex that protects the release tags regardless.
+#
+# Reapable classes (see publish-image-loaded metadata config):
+#   - dev builds            X.Y.Z-dev.N (+ floating `dev`)  -> keep newest 5
+#   - PR / scan short-sha   sha-<short>[-amd64|-arm64],
+#                           scan-<full>[-amd64|-arm64]      -> delete > 7 days
+#   - orphaned referrers    cosign sha256-<digest> + untagged whose parent
+#                           image was deleted above         -> reap
+#
+# Runs as a final isolated job of dev-release.yml (after the release tag
+# and downstream Docker/CLI workflows are safe) so it stays out of the
+# #1818-sensitive release-critical path, and is independently dispatchable
+# for the one-time backfill of the historical ~61k versions.
+
+on:
+  workflow_call:
+    inputs:
+      dry-run:
+        description: "Log what would be deleted without deleting."
+        type: boolean
+        default: true
+    secrets:
+      GHCR_CLEANUP_TOKEN:
+        description: >-
+          Classic PAT with write:packages + delete:packages for the
+          user-owned GHCR packages. Optional: the step falls back to the
+          automatic GITHUB_TOKEN when this is absent.
+        required: false
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Log what would be deleted without deleting (recommended first)."
+        type: boolean
+        default: true
+
+permissions: {}
+
+# Never let two cleanup runs delete against the same packages at once.
+concurrency:
+  group: ghcr-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Prune ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      packages: write
+    strategy:
+      # One failing package must not abort the other nine.
+      fail-fast: false
+      matrix:
+        package:
+          - synthorg-backend
+          - synthorg-web
+          - synthorg-sandbox
+          - synthorg-sidecar
+          - synthorg-fine-tune-cpu
+          - synthorg-fine-tune-gpu
+          - synthorg-backend-base
+          - synthorg-sandbox-base
+          - synthorg-sidecar-base
+          - synthorg-fine-tune-base
+    steps:
+      # Pass 1 -- dev builds: keep the newest 5 dev manifests, delete the
+      # rest. `keep-n-tagged` is scoped to the `delete-tags` dev subset,
+      # so releases are outside its reach; deleting an old multi-arch dev
+      # manifest also removes its platform children.
+      - name: Prune old dev builds (keep newest 5)
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          owner: ${{ github.repository_owner }}
+          package: ${{ matrix.package }}
+          token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+          use-regex: true
+          delete-tags: '^\d+\.\d+\.\d+-dev\.\d+$'
+          keep-n-tagged: 5
+          exclude-tags: '^\d+\.\d+\.\d+$,^\d+\.\d+$,^latest$,^dev$'
+          validate: true
+          dry-run: ${{ inputs.dry-run }}
+
+      # Pass 2 -- PR / scan short-sha images older than 7 days. The dev
+      # version regex and floating `dev` are excluded so a recent dev
+      # manifest (which also carries a sha-<short> tag) is never reaped
+      # through its sha tag; only genuine PR/scan images match.
+      - name: Prune PR/scan images older than 7 days
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          owner: ${{ github.repository_owner }}
+          package: ${{ matrix.package }}
+          token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+          use-regex: true
+          delete-tags: '^sha-[0-9a-f]{6,}(-amd64|-arm64)?$,^scan-[0-9a-f]{6,}(-amd64|-arm64)?$'
+          older-than: 7 days
+          exclude-tags: '^\d+\.\d+\.\d+$,^\d+\.\d+$,^latest$,^dev$,^\d+\.\d+\.\d+-dev\.\d+$'
+          validate: true
+          dry-run: ${{ inputs.dry-run }}
+
+      # Pass 3 -- reap cosign / attestation referrers and untagged
+      # manifests whose parent image was deleted by passes 1-2. Referrers
+      # of kept images (every release, the newest 5 dev builds) have a
+      # live parent and are left untouched. `validate` asserts no surviving
+      # multi-arch image lost a platform child.
+      - name: Prune orphaned signatures and untagged manifests
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          owner: ${{ github.repository_owner }}
+          package: ${{ matrix.package }}
+          token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+          use-regex: true
+          delete-orphaned-images: true
+          exclude-tags: '^\d+\.\d+\.\d+$,^\d+\.\d+$,^latest$,^dev$'
+          validate: true
+          dry-run: ${{ inputs.dry-run }}
