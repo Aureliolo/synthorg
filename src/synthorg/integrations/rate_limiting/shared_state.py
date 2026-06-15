@@ -99,35 +99,59 @@ class SharedRateLimitCoordinator:
     async def start(self) -> None:
         """Subscribe and start the polling task."""
         async with self._lifecycle_lock:
-            if self._started:
-                return
-            try:
-                await self._bus.subscribe(
-                    _RATELIMIT_CHANNEL.name,
-                    self._subscriber_id,
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    RATE_LIMIT_COORDINATOR_STARTED,
-                    connection_name=self._connection_name,
-                    error="subscribe failed, falling back to in-process",
-                )
-                self._distributed = False
-                self._started = True
-                return
-            self._subscribed = True
-            self._task = asyncio.create_task(
-                self._poll_loop(),
-                name=f"ratelimit-{self._connection_name}",
+            await self._start_locked()
+
+    async def _start_locked(self) -> None:
+        """Subscribe and start polling. Caller already holds ``_lifecycle_lock``.
+
+        Idempotent: returns immediately when already started, so both
+        ``start()`` and the ``acquire()`` fast-path can drive it through
+        the lock without double-subscribing.
+        """
+        if self._started:
+            return
+        try:
+            await self._bus.subscribe(
+                _RATELIMIT_CHANNEL.name,
+                self._subscriber_id,
             )
-            self._distributed = True
-            self._started = True
-            logger.debug(
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
                 RATE_LIMIT_COORDINATOR_STARTED,
                 connection_name=self._connection_name,
-                max_rpm=self._max_rpm,
+                error="subscribe failed, falling back to in-process",
             )
+            self._distributed = False
+            self._started = True
+            return
+        self._subscribed = True
+        self._task = asyncio.create_task(
+            self._poll_loop(),
+            name=f"ratelimit-{self._connection_name}",
+        )
+        self._distributed = True
+        self._started = True
+        logger.debug(
+            RATE_LIMIT_COORDINATOR_STARTED,
+            connection_name=self._connection_name,
+            max_rpm=self._max_rpm,
+        )
+
+    async def _ensure_started(self) -> None:
+        """Start the coordinator exactly once, re-checking under the lock.
+
+        The lock-free ``_started`` read keeps the hot ``acquire()`` path
+        cheap once started; the slow path re-checks ``_started`` INSIDE
+        ``_lifecycle_lock`` so two concurrent first-time callers cannot
+        both run the subscribe/spawn sequence (the previous lock-free
+        ``if not self._started: await self.start()`` left a TOCTOU gap
+        between the check and the call).
+        """
+        if self._started:
+            return
+        async with self._lifecycle_lock:
+            await self._start_locked()
 
     async def stop(self) -> None:
         """Cancel polling and unsubscribe.
@@ -184,8 +208,7 @@ class SharedRateLimitCoordinator:
         Raises:
             ConnectionRateLimitError: If the sliding window is full.
         """
-        if not self._started:
-            await self.start()
+        await self._ensure_started()
 
         async with self._window_lock:
             now = _wall_clock_seconds()
@@ -199,13 +222,18 @@ class SharedRateLimitCoordinator:
                 raise ConnectionRateLimitError(msg)
 
             self._window.append(now)
+            # Snapshot ``_distributed`` under ``_window_lock`` so the
+            # publish decision below cannot race a concurrent
+            # ``_poll_loop`` flipping the flag between the check and the
+            # publish.
+            distributed = self._distributed
         # Skip the publish path entirely once we have fallen back to
         # local-only mode. Retrying a broken bus publish on every
         # acquire would otherwise flood the logs with warnings and
         # never actually resubscribe (the coordinator has no retry
         # policy -- the fall-back is terminal until ``stop()`` +
         # ``start()`` recreates the subscription).
-        if self._distributed:
+        if distributed:
             await self._publish_acquire(now)
 
     def _evict_old(self, now: float) -> None:

@@ -98,9 +98,11 @@ class FineTuneOrchestrator:
         self._current_task: asyncio.Task[None] | None = None
         self._cancellation: CancellationToken | None = None
         self._current_run: FineTuneRun | None = None
-        # Eager init: start() and cancel() may interleave, so the
-        # lock must exist before the first call to either method.
-        self._op_lock = asyncio.Lock()  # lint-allow: loop-bound-init
+        # Eager init: start(), resume() and cancel() may interleave, so
+        # the lifecycle lock must exist before the first call to any of
+        # them. Named ``_lifecycle_lock`` (not a hot-path lock) because
+        # it serialises the start/resume/cancel lifecycle transitions.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init
 
     # -- Public API ---------------------------------------------------
 
@@ -133,7 +135,7 @@ class FineTuneOrchestrator:
         Raises:
             FineTuneRunActiveError: If a run is already active (409 Conflict).
         """
-        async with self._op_lock:
+        async with self._lifecycle_lock:
             if self.is_running:
                 msg = "A fine-tuning run is already active"
                 raise FineTuneRunActiveError(msg)
@@ -178,7 +180,7 @@ class FineTuneOrchestrator:
             FineTuneRunActiveError: If a run is already active.
             ValueError: If run not found or not resumable.
         """
-        async with self._op_lock:
+        async with self._lifecycle_lock:
             if self.is_running:
                 msg = "A fine-tuning run is already active"
                 raise FineTuneRunActiveError(msg)
@@ -223,24 +225,28 @@ class FineTuneOrchestrator:
         task for up to 30 seconds. If the task does not stop in
         time, the method returns anyway.
         """
-        async with self._op_lock:
+        async with self._lifecycle_lock:
             if self._cancellation is not None:
                 self._cancellation.cancel()
                 logger.info(MEMORY_FINE_TUNE_CANCELLED)
             task = self._current_task
-        # Await outside the lock so pipeline can complete.
-        if task is not None and not task.done():
-            try:
-                async with asyncio.timeout(_CANCEL_TIMEOUT_SEC):
-                    await asyncio.shield(task)
-            except TimeoutError:
-                logger.warning(
-                    MEMORY_FINE_TUNE_CANCELLED,
-                    note="cancel timed out waiting for task",
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                # Task failed/cancelled -- already logged by _on_task_done
+            # Hold the lifecycle lock across the drain so a racing
+            # start()/resume() cannot observe ``is_running`` flip to
+            # False and spawn a second overlapping generation before the
+            # cancellation resolves. The pipeline task never acquires
+            # this lock, so awaiting it here cannot deadlock.
+            if task is not None and not task.done():
+                try:
+                    async with asyncio.timeout(_CANCEL_TIMEOUT_SEC):
+                        await asyncio.shield(task)
+                except TimeoutError:
+                    logger.warning(
+                        MEMORY_FINE_TUNE_CANCELLED,
+                        note="cancel timed out waiting for task",
+                    )
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    # Task failed/cancelled -- already logged by _on_task_done
 
     async def recover_interrupted(self) -> int:
         """Mark interrupted runs as FAILED on startup.

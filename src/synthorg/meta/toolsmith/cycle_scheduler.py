@@ -9,10 +9,12 @@ driver proposes but never auto-applies).
 
 Mirrors the canonical periodic-lifecycle pattern of
 :class:`~synthorg.communication.conflict_resolution.escalation.sweeper.EscalationExpirationSweeper`:
-loop-bound asyncio primitives are deferred to ``start()`` so the scheduler
-survives pytest-asyncio's per-test loops, the lifecycle lock is held across
-the full body of ``start`` / ``stop``, a ``stop()`` drain that exceeds the
-hard deadline marks the scheduler unrestartable, and the loop body re-reads
+loop-bound asyncio primitives are rebound to the running loop atomically by
+``_lifecycle_primitives_for_current_loop`` (the EventStreamHub pattern) so the
+scheduler survives pytest-asyncio's per-test loops without two racing
+``start()`` calls minting different lock objects, the lifecycle lock is held
+across the full body of ``start`` / ``stop``, a ``stop()`` drain that exceeds
+the hard deadline marks the scheduler unrestartable, and the loop body re-reads
 the ``meta.toolsmith_cycle_paused`` kill-switch every tick (fail-safe to
 enabled) so an operator can halt self-extension without a restart.
 """
@@ -80,43 +82,51 @@ class ToolsmithCycleScheduler:
         self._interval = interval_seconds
         self._config_resolver = config_resolver
         self._task: asyncio.Task[None] | None = None
-        # Loop-bound primitives are deferred to ``start()`` so a single
+        # Loop-bound primitives are rebound to the running loop on first
+        # use via ``_lifecycle_primitives_for_current_loop`` so a single
         # scheduler instance can be re-started on a different event loop
         # (pytest-asyncio creates a fresh function-scoped loop per test
-        # while a session-scoped app may hold the instance).
+        # while a session-scoped app may hold the instance). The rebind
+        # check-and-set is synchronous (no await), so two coroutines
+        # racing into ``start()`` cannot end up holding different lock
+        # objects (the EventStreamHub pattern).
         self._stop_event: asyncio.Event | None = None
         self._lifecycle_lock: asyncio.Lock | None = None
+        self._lifecycle_lock_loop: asyncio.AbstractEventLoop | None = None
         self._stop_failed: bool = False
 
-    def _task_is_on_current_loop(self) -> bool:
-        """Return whether the existing task is alive on the running loop.
+    def _lifecycle_primitives_for_current_loop(
+        self,
+    ) -> tuple[asyncio.Lock, asyncio.Event]:
+        """Return the lifecycle lock + stop event bound to the running loop.
 
-        Returns ``True`` when the task or loop cannot be introspected so
-        mocked tasks in tests are not penalised by spurious drops.
+        Rebinds the lifecycle lock AND the stop event together whenever
+        the running loop differs from the one they were last bound to,
+        dropping any task that belonged to the stale loop. The whole
+        check-and-assign runs without an ``await``, so it is atomic under
+        asyncio's cooperative scheduling: a second concurrent ``start()``
+        observes the already-rebound primitives rather than minting its
+        own.
 
         Returns:
-            ``True`` when the task is alive on the current loop (or cannot
-            be introspected); ``False`` otherwise.
+            The ``(lifecycle_lock, stop_event)`` pair bound to the current
+            event loop.
         """
-        if self._task is None or self._task.done():
-            return False
         try:
-            task_loop: object = self._task.get_loop()
-        except RuntimeError, AttributeError:
-            return True
-        if not isinstance(task_loop, asyncio.AbstractEventLoop):
-            return True
-        try:
-            current = asyncio.get_running_loop()
+            current: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
         except RuntimeError:
-            return True
-        return task_loop is current
-
-    def _drop_stale_loop_state(self) -> None:
-        """Discard task/primitives bound to a closed-or-other event loop."""
-        self._task = None
-        self._stop_event = None
-        self._lifecycle_lock = None
+            current = None
+        if (
+            self._lifecycle_lock is None
+            or self._stop_event is None
+            or (current is not None and self._lifecycle_lock_loop is not current)
+        ):
+            self._lifecycle_lock = asyncio.Lock()
+            self._stop_event = asyncio.Event()
+            self._lifecycle_lock_loop = current
+            # The previous task (if any) was bound to a now-stale loop.
+            self._task = None
+        return self._lifecycle_lock, self._stop_event
 
     async def start(self) -> None:
         """Schedule the background cycle loop (idempotent, concurrent-safe).
@@ -125,13 +135,8 @@ class ToolsmithCycleScheduler:
             RuntimeError: If the scheduler is unrestartable after a
                 previously timed-out ``stop()``.
         """
-        if self._task is not None and not self._task_is_on_current_loop():
-            self._drop_stale_loop_state()
-        if self._lifecycle_lock is None:
-            self._lifecycle_lock = asyncio.Lock()
-        if self._stop_event is None:
-            self._stop_event = asyncio.Event()
-        async with self._lifecycle_lock:
+        lifecycle_lock, stop_event = self._lifecycle_primitives_for_current_loop()
+        async with lifecycle_lock:
             if self._stop_failed:
                 msg = (
                     "ToolsmithCycleScheduler is unrestartable after a "
@@ -145,7 +150,7 @@ class ToolsmithCycleScheduler:
                 raise RuntimeError(msg)
             if self._task is not None and not self._task.done():
                 return
-            self._stop_event.clear()
+            stop_event.clear()
             self._task = asyncio.create_task(
                 self._run(),
                 name="toolsmith-cycle-scheduler",

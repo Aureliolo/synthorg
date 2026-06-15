@@ -23,6 +23,38 @@ from tests._shared import mock_of
 
 
 @pytest.mark.unit
+class TestSharedRateLimitStartRace:
+    """Regression (audit 39): two concurrent first-time ``acquire()``
+    calls must start the coordinator exactly once. The previous lock-free
+    ``if not self._started: await self.start()`` left a TOCTOU window
+    where both callers could subscribe and spawn duplicate poll loops."""
+
+    async def test_concurrent_first_acquire_subscribes_once(self) -> None:
+        block = asyncio.Event()  # never set: parks the poll loop until stop()
+
+        async def _receive(*_a: object, **_k: object) -> None:
+            await block.wait()
+
+        bus = mock_of[MessageBus](
+            subscribe=AsyncMock(spec=MessageBus.subscribe),
+            unsubscribe=AsyncMock(spec=MessageBus.unsubscribe),
+            publish=AsyncMock(spec=MessageBus.publish),
+            receive=AsyncMock(spec=MessageBus.receive, side_effect=_receive),
+        )
+        coord = SharedRateLimitCoordinator(bus=bus, connection_name="race", max_rpm=100)
+        try:
+            await asyncio.gather(coord.acquire(), coord.acquire())
+
+            assert bus.subscribe.await_count == 1
+            assert coord._started is True
+            assert coord._task is not None
+            # Both acquires recorded their slot in the shared window.
+            assert len(coord._window) == 2
+        finally:
+            await coord.stop()
+
+
+@pytest.mark.unit
 class TestSharedRateLimitErrorPaths:
     async def test_start_subscribe_failure_falls_back_to_local(self) -> None:
         bus = mock_of[MessageBus](

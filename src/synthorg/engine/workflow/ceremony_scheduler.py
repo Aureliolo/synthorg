@@ -278,11 +278,13 @@ class CeremonyScheduler:
 
             try:
                 await strategy.on_sprint_activated(sprint, config)
-                await self._fire_sprint_start_ceremonies(sprint, config)
+                # Decide the sprint-start ceremonies while holding the
+                # lock (pure); fire them after releasing it.
+                start_ceremonies = self._select_sprint_start_ceremonies(config)
                 # Persist inside the protected block so a failed
                 # snapshot write rolls back like any other activation
                 # failure -- otherwise the scheduler stays running with
-                # ceremonies already fired and a retry double-triggers.
+                # state half-written and a retry double-triggers.
                 await self._save_state_unlocked(sprint.id)
             except Exception as exc:
                 reraise_critical(exc)
@@ -303,12 +305,29 @@ class CeremonyScheduler:
                 ceremony_count=len(config.ceremonies),
             )
 
-            return self._detect_migration(
+            migration = self._detect_migration(
                 previous_strategy_type,
                 strategy,
                 sprint,
                 previous_velocity_history_size,
             )
+
+        # Fire sprint-start ceremonies OUTSIDE the lock: the AI-backed
+        # meeting chain must not run under ``self._lock`` (deadlock /
+        # serialisation risk). Mark the fired one-shots and re-persist,
+        # but only if this sprint is still the active one (a concurrent
+        # deactivate/re-activate could have moved on).
+        fired = await self._fire_ceremonies(start_ceremonies, sprint)
+        if fired:
+            async with self._lock:
+                if (
+                    self._running
+                    and self._active_sprint is not None
+                    and self._active_sprint.id == sprint.id
+                ):
+                    self._fired_once_triggers.update(fired)
+                    await self._save_state_unlocked(sprint.id)
+        return migration
 
     async def _hydrate_state_from_repo(self, sprint_id: str) -> None:
         """Load persisted ceremony state for ``sprint_id`` if available.
@@ -572,19 +591,45 @@ class CeremonyScheduler:
                     sprint_id=sprint.id,
                 )
                 return sprint
-            await self._evaluate_ceremonies(sprint)
-            await self._check_one_shot_triggers(sprint, context)
+            # Decide which ceremonies fire WHILE the lock is held (pure,
+            # no I/O); fire them after releasing it.
+            per_task = self._select_per_task_ceremonies(sprint)
+            one_shot = self._select_one_shot_ceremonies(context)
             transitioned = self._check_auto_transition(sprint, context)
+
+        # Fire OUTSIDE the lock so the AI-backed meeting chain does not
+        # serialise unrelated callers and a meeting-driven re-entrant
+        # ``on_task_completed`` cannot deadlock on ``self._lock``.
+        fired_per_task = await self._fire_ceremonies(per_task, sprint)
+        fired_one_shot = await self._fire_ceremonies(one_shot, sprint)
+
+        async with self._lock:
+            for name in fired_per_task:
+                if name in self._completion_counters:
+                    self._completion_counters[name] = 0
+            self._fired_once_triggers.update(fired_one_shot)
             await self._save_state_unlocked(sprint.id)
-            return transitioned
+        return transitioned
 
     # -- Ceremony evaluation -------------------------------------------
 
-    async def _evaluate_ceremonies(self, sprint: Sprint) -> None:
-        """Evaluate and fire per-task ceremonies."""
+    def _select_per_task_ceremonies(self, sprint: Sprint) -> list[str]:
+        """Decide which per-task ceremonies should fire (no I/O).
+
+        Pure selection run under ``self._lock``: it increments the
+        per-ceremony completion counters and consults the strategy's
+        ``should_fire_ceremony`` decision, but does NOT call
+        ``trigger_event`` (which drives the AI-backed meeting chain).
+        Firing happens outside the lock; the caller resets the counters
+        for successfully-fired ceremonies afterwards.
+
+        Returns:
+            The names of the per-task ceremonies selected to fire.
+        """
         assert self._sprint_config is not None  # noqa: S101
         assert self._active_strategy is not None  # noqa: S101
 
+        selected: list[str] = []
         for ceremony in self._sprint_config.ceremonies:
             if self._is_one_shot_fired(ceremony.name):
                 continue
@@ -601,12 +646,8 @@ class CeremonyScheduler:
                 sprint,
                 ctx,
             ):
-                success = await self._trigger_ceremony(
-                    ceremony.name,
-                    sprint,
-                )
-                if success:
-                    self._completion_counters[ceremony.name] = 0
+                selected.append(ceremony.name)
+        return selected
 
     def _check_auto_transition(
         self,
@@ -660,30 +701,35 @@ class CeremonyScheduler:
 
     # -- One-shot ceremonies -------------------------------------------
 
-    async def _fire_sprint_start_ceremonies(
-        self,
-        sprint: Sprint,
-        config: SprintConfig,
-    ) -> None:
-        """Fire ceremonies configured with sprint_start trigger."""
-        tasks: list[tuple[str, Sprint]] = []
-        for ceremony in config.ceremonies:
-            trigger = _get_trigger(ceremony)
-            if trigger == TRIGGER_SPRINT_START:
-                tasks.append((ceremony.name, sprint))
+    @staticmethod
+    def _select_sprint_start_ceremonies(config: SprintConfig) -> list[str]:
+        """Names of ceremonies configured with the sprint_start trigger.
 
-        await self._fire_ceremonies_parallel(tasks)
+        Returns:
+            The sprint-start ceremony names (pure; no I/O).
+        """
+        return [
+            ceremony.name
+            for ceremony in config.ceremonies
+            if _get_trigger(ceremony) == TRIGGER_SPRINT_START
+        ]
 
-    async def _check_one_shot_triggers(
+    def _select_one_shot_ceremonies(
         self,
-        sprint: Sprint,
         context: CeremonyEvalContext,
-    ) -> None:
-        """Check and fire midpoint/end one-shot ceremonies."""
-        if self._sprint_config is None:
-            return
+    ) -> list[str]:
+        """Decide which midpoint/end one-shot ceremonies should fire.
 
-        tasks: list[tuple[str, Sprint]] = []
+        Pure selection run under ``self._lock``; firing and the
+        ``_fired_once_triggers`` marking happen outside the lock.
+
+        Returns:
+            The names of the one-shot ceremonies selected to fire.
+        """
+        if self._sprint_config is None:
+            return []
+
+        selected: list[str] = []
         for ceremony in self._sprint_config.ceremonies:
             trigger = _get_trigger(ceremony)
             if trigger is None:
@@ -696,32 +742,56 @@ class CeremonyScheduler:
             )
             is_end = trigger == TRIGGER_SPRINT_END and pct >= _COMPLETE_THRESHOLD
             if not_fired and (is_midpoint or is_end):
-                tasks.append((ceremony.name, sprint))
+                selected.append(ceremony.name)
+        return selected
 
-        await self._fire_ceremonies_parallel(tasks)
-
-    async def _fire_ceremonies_parallel(
+    async def _fire_ceremonies(
         self,
-        ceremonies: list[tuple[str, Sprint]],
-    ) -> None:
-        """Fire multiple ceremonies in parallel, marking one-shots."""
-        if not ceremonies:
-            return
+        names: list[str],
+        sprint: Sprint,
+    ) -> list[str]:
+        """Fire ceremonies in parallel, OUTSIDE any lock.
 
-        async def _fire(
-            name: str,
-            sprint: Sprint,
-        ) -> tuple[str, bool]:
+        ``_trigger_ceremony`` drives ``MeetingScheduler.trigger_event``
+        (the AI-backed meeting orchestration chain), so this must never
+        run while ``self._lock`` is held: a coarse lock across those
+        network-bound calls serialised unrelated callers and risked a
+        re-entrant deadlock if a meeting run called back into
+        ``on_task_completed``. State writes driven by the outcome
+        (counter resets, one-shot marking) are applied by the caller
+        under the lock after this returns.
+
+        Returns:
+            The names of ceremonies that fired successfully.
+        """
+        if not names:
+            return []
+
+        async def _fire(name: str) -> tuple[str, bool]:
             success = await self._trigger_ceremony(name, sprint)
             return (name, success)
 
-        async with asyncio.TaskGroup() as tg:
-            tasks = [tg.create_task(_fire(name, sprint)) for name, sprint in ceremonies]
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tasks = [tg.create_task(_fire(name)) for name in names]
+        except BaseExceptionGroup as group:
+            # ``_trigger_ceremony`` swallows every non-critical Exception
+            # (returns False), so the only thing that escapes a child task
+            # is an interpreter-critical (MemoryError/RecursionError)
+            # re-raised by ``reraise_critical``. Unwrap and propagate it
+            # directly so callers see the fatal condition rather than a
+            # TaskGroup wrapper.
+            criticals, _ = group.split((MemoryError, RecursionError))
+            if criticals is not None:
+                raise criticals.exceptions[0] from None
+            raise
 
+        fired: list[str] = []
         for task in tasks:
             name, success = task.result()
             if success:
-                self._fired_once_triggers.add(name)
+                fired.append(name)
+        return fired
 
     # -- Context building ----------------------------------------------
 

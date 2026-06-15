@@ -1,5 +1,6 @@
 """Tests for CeremonyScheduler service."""
 
+import asyncio
 from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
@@ -381,6 +382,83 @@ class TestCeremonySchedulerTaskCompletion:
 
         assert scheduler.running is False
         assert scheduler.active_sprint is None
+
+
+class TestCeremonySchedulerLockReleasedDuringFanout:
+    """Regression (audit 39): the AI-backed ceremony fan-out must run
+    with ``self._lock`` released so a meeting run that re-enters
+    ``on_task_completed`` cannot deadlock and unrelated callers are not
+    serialised across the network-bound ``trigger_event`` calls."""
+
+    @pytest.mark.unit
+    async def test_lock_not_held_while_firing_per_task_ceremony(self) -> None:
+        observed_locked: list[bool] = []
+        mock_ms = _make_mock_meeting_scheduler()
+        scheduler = CeremonyScheduler(meeting_scheduler=mock_ms)
+
+        async def _record_lock_state(*_a: object, **_k: object) -> tuple[()]:
+            observed_locked.append(scheduler._lock.locked())
+            return ()
+
+        mock_ms.trigger_event = AsyncMock(side_effect=_record_lock_state)
+        ceremony = _ceremony_with_trigger("standup", "every_n_completions", every_n=1)
+        config = _make_config(ceremonies=(ceremony,))
+        await scheduler.activate_sprint(
+            _make_sprint(task_count=10, completed_count=1),
+            config,
+            TaskDrivenStrategy(),
+        )
+        # Ignore any sprint-start firing during activation.
+        observed_locked.clear()
+
+        await scheduler.on_task_completed(
+            _make_sprint(task_count=10, completed_count=2),
+            "task-1",
+            3.0,
+        )
+
+        assert observed_locked, "expected the per-task ceremony to fire"
+        assert all(not held for held in observed_locked), (
+            "ceremony fan-out ran while self._lock was held"
+        )
+
+    @pytest.mark.unit
+    async def test_reentrant_on_task_completed_does_not_deadlock(self) -> None:
+        """A meeting run that calls back into on_task_completed must not
+        deadlock on self._lock (it is released during firing)."""
+        mock_ms = _make_mock_meeting_scheduler()
+        scheduler = CeremonyScheduler(meeting_scheduler=mock_ms)
+        reentered = False
+
+        async def _reenter(*_a: object, **_k: object) -> tuple[()]:
+            nonlocal reentered
+            if not reentered:
+                reentered = True
+                # Re-enter while the outer call is mid-fire. With the
+                # lock released this acquires cleanly instead of hanging.
+                await scheduler.on_task_completed(
+                    _make_sprint(task_count=10, completed_count=3),
+                    "task-2",
+                    3.0,
+                )
+            return ()
+
+        mock_ms.trigger_event = AsyncMock(side_effect=_reenter)
+        ceremony = _ceremony_with_trigger("standup", "every_n_completions", every_n=1)
+        config = _make_config(ceremonies=(ceremony,))
+        await scheduler.activate_sprint(
+            _make_sprint(task_count=10, completed_count=1),
+            config,
+            TaskDrivenStrategy(),
+        )
+        # Bounded so a regression deadlock fails fast instead of hanging.
+        async with asyncio.timeout(5.0):
+            await scheduler.on_task_completed(
+                _make_sprint(task_count=10, completed_count=2),
+                "task-1",
+                3.0,
+            )
+        assert reentered is True
 
 
 class TestCeremonySchedulerStrategyMigration:

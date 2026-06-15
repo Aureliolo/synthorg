@@ -65,6 +65,7 @@ class PushQueueCoordinator:
         "_closing",
         "_default_branch",
         "_git_backend",
+        "_lifecycle_lock",
         "_project_id",
         "_queue",
         "_repo_root",
@@ -93,6 +94,11 @@ class PushQueueCoordinator:
         # event loop (pytest-asyncio per-test loops, lifecycle restart).
         self._queue: asyncio.Queue[_QueuedMerge | None] | None = None
         self._worker: asyncio.Task[None] | None = None
+        # Serialises the check-and-set on ``_worker`` / ``_queue`` /
+        # ``_closing`` across the ``start()`` / ``stop()`` await
+        # boundaries so two racing callers cannot orphan a worker task
+        # or interleave a stop() into a start().
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- ctx
         # ``stop()`` sets this BEFORE enqueuing the sentinel so a late
         # ``enqueue_merge_push()`` racing the shutdown path refuses the
         # request instead of appending behind the sentinel (where it
@@ -101,28 +107,35 @@ class PushQueueCoordinator:
 
     async def start(self) -> None:
         """Start the background queue worker (idempotent)."""
-        if self._worker is None or self._worker.done():
-            self._queue = asyncio.Queue()
-            self._closing = False
-            self._worker = asyncio.create_task(self._worker_loop())
+        async with self._lifecycle_lock:
+            if self._worker is None or self._worker.done():
+                self._queue = asyncio.Queue()
+                self._closing = False
+                self._worker = asyncio.create_task(self._worker_loop())
 
     async def stop(self) -> None:
-        """Drain in-flight work then stop the worker (idempotent)."""
-        worker = self._worker
-        if worker is None:
-            return
-        # Refuse any further enqueues BEFORE the sentinel goes in: a
-        # request that wins the race after the sentinel is enqueued
-        # would sit forever behind it.
-        self._closing = True
-        queue = self._queue
-        if queue is not None:
-            await queue.put(None)
-        try:
-            await worker
-        finally:
-            self._worker = None
-            self._queue = None
+        """Drain in-flight work then stop the worker (idempotent).
+
+        The lifecycle lock is held across the drain so a concurrent
+        ``start()`` waits for the stop to finish rather than racing the
+        ``_worker`` / ``_queue`` reset and orphaning a fresh worker.
+        """
+        async with self._lifecycle_lock:
+            worker = self._worker
+            if worker is None:
+                return
+            # Refuse any further enqueues BEFORE the sentinel goes in: a
+            # request that wins the race after the sentinel is enqueued
+            # would sit forever behind it.
+            self._closing = True
+            queue = self._queue
+            if queue is not None:
+                await queue.put(None)
+            try:
+                await worker
+            finally:
+                self._worker = None
+                self._queue = None
 
     async def enqueue_merge_push(
         self,
