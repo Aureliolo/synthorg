@@ -224,15 +224,31 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
     async def health_check(self) -> bool:
         """Check database connectivity.
 
+        The ``SELECT 1`` probe is bounded by
+        ``config.health_timeout_seconds``: a wedged connection (a held
+        write lock, a stalled disk) is reported unhealthy rather than
+        hanging the readiness probe indefinitely. This mirrors the
+        Postgres backend's ``pool_timeout_seconds`` bound.
+
         Returns:
             ``True`` when the operation succeeded, ``False`` otherwise.
         """
         if self._db is None:
             return False
         try:
-            async with self._db.execute("SELECT 1") as cursor:
-                row = await cursor.fetchone()
+            async with asyncio.timeout(self._config.health_timeout_seconds):
+                async with self._db.execute("SELECT 1") as cursor:
+                    row = await cursor.fetchone()
             healthy = row is not None
+        except TimeoutError:
+            logger.warning(
+                PERSISTENCE_BACKEND_HEALTH_CHECK,
+                healthy=False,
+                error="health_check timed out",
+                error_type="TimeoutError",
+                timeout_seconds=self._config.health_timeout_seconds,
+            )
+            return False
         except (sqlite3.Error, aiosqlite.Error) as exc:
             logger.warning(
                 PERSISTENCE_BACKEND_HEALTH_CHECK,

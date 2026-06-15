@@ -82,6 +82,7 @@ class ConstructionDeps:
     interrupt_store: InterruptStore
     cursor_secret: CursorSecret
     persistence: PersistenceBackend | None = None
+    persistence_expected: bool = False
     settings_service: SettingsService | None = None
     auth_service: AuthService | None = None
     audit_log: AuditLog | None = None

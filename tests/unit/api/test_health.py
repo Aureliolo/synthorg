@@ -14,6 +14,7 @@ import pytest
 
 from synthorg.api.controllers.health import (
     TelemetryStatus,
+    _probe_persistence,
     _resolve_telemetry_status,
 )
 from synthorg.api.state import AppState
@@ -247,6 +248,36 @@ class TestHealthDetail:
         body = response.json()["data"]
         assert body["status"] == "unavailable"
         assert body["message_bus"] is False
+
+
+@pytest.mark.unit
+class TestProbePersistence:
+    """``_probe_persistence`` distinguishes absent-by-design from failure."""
+
+    def _app_state(self, *, backend: object, expected: bool) -> AppState:
+        app_state = MagicMock(spec=AppState)
+        app_state.slice.return_value = SimpleNamespace(
+            backend=backend, persistence_expected=expected
+        )
+        return app_state
+
+    async def test_expected_but_absent_is_unavailable(self) -> None:
+        # A configured-but-absent backend is a real failure, not a
+        # deliberately persistence-less dev run.
+        result = await _probe_persistence(self._app_state(backend=None, expected=True))
+        assert result is False
+
+    async def test_unconfigured_absent_is_none(self) -> None:
+        result = await _probe_persistence(self._app_state(backend=None, expected=False))
+        assert result is None
+
+    async def test_connected_backend_is_health_checked(self) -> None:
+        backend = FakePersistenceBackend()
+        await backend.connect()
+        result = await _probe_persistence(
+            self._app_state(backend=backend, expected=True)
+        )
+        assert result is True
 
 
 @pytest.mark.unit

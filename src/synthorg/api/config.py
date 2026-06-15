@@ -383,6 +383,16 @@ class ApiConfig(BaseModel):
         default="/api/v1",
         description="URL prefix for all API routes",
     )
+    readiness_probe_timeout_seconds: float = Field(
+        default=4.0,
+        gt=0.0,
+        description=(
+            "Ceiling for the /readyz dependency-probe fan-out. A hung"
+            " probe returns an unavailable (503) verdict within this"
+            " budget instead of stalling the probe; kept just under the"
+            " typical k8s 5s readinessProbe timeout."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod

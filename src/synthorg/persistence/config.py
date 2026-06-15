@@ -34,6 +34,12 @@ class SQLiteConfig(BaseModel):
             read performance.
         journal_size_limit: Maximum WAL journal size in bytes
             (default 64 MB).
+        health_timeout_seconds: Ceiling for the ``health_check`` probe
+            (``SELECT 1``); a wedged connection (locked DB, stalled
+            disk) is reported unhealthy rather than hanging the
+            readiness probe. Parity with the Postgres
+            ``pool_timeout_seconds`` bound, but smaller so the readiness
+            verdict stays inside a typical k8s 5 s probe window.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -50,6 +56,11 @@ class SQLiteConfig(BaseModel):
         default=67_108_864,
         ge=0,
         description="Maximum WAL journal size in bytes",
+    )
+    health_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0.0,
+        description="Ceiling for the health-check SELECT 1 probe in seconds",
     )
 
     @model_validator(mode="after")
