@@ -123,30 +123,68 @@ class PostgresOntologyDriftReportRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[DriftReport, ...]:
-        """Filtered drift-report query (not implemented).
+        """Return drift reports newest-first, paginated.
 
-        Drift consumers use :meth:`get_latest` / :meth:`get_all_latest`;
-        the generic filtered ``query`` surface is unimplemented and
-        raises rather than silently returning an empty tuple, which
-        would mask the missing functionality from a caller.
+        ``DriftReportFilterSpec`` is currently an empty placeholder, so
+        every report is in scope; ordering follows the append-only
+        contract (descending ``id``, monotonic with insertion).
 
-        Raises:
-            NotImplementedError: If the underlying call raises.
+        Args:
+            filter_spec: Filter specification (no fields yet).
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Drift reports in descending insertion order.
         """
-        msg = "OntologyDriftReportRepository.query is not implemented"
-        raise NotImplementedError(msg)
+        _ = filter_spec
+        dict_row = self._dict_row
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=dict_row) as cur,
+        ):
+            await cur.execute(
+                "SELECT entity_name, divergence_score, canonical_version, "
+                "recommendation, divergent_agents "
+                "FROM drift_reports "
+                "ORDER BY id DESC LIMIT %s OFFSET %s",
+                (limit, offset),
+            )
+            rows = await cur.fetchall()
+        return tuple(_row_to_report(row) for row in rows)
 
     async def purge_before(self, threshold: datetime) -> int:
-        """Retention purge of drift reports (not implemented).
+        """Delete drift reports created before ``threshold`` (retention).
 
-        Raises rather than silently reporting zero deletions, which
-        would let a retention caller believe a sweep ran.
+        ``threshold`` must be timezone-aware: a naive value compared
+        against the UTC-stored ``created_at`` TIMESTAMPTZ would silently
+        delete the wrong window.
+
+        Args:
+            threshold: Tz-aware cutoff; rows strictly older are removed.
+
+        Returns:
+            Number of rows removed.
 
         Raises:
-            NotImplementedError: If the underlying call raises.
+            ValueError: If ``threshold`` is naive.
         """
-        msg = "OntologyDriftReportRepository.purge_before is not implemented"
-        raise NotImplementedError(msg)
+        if threshold.tzinfo is None:
+            msg = f"threshold must be timezone-aware, got naive {threshold!r}"
+            raise ValueError(msg)
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM drift_reports WHERE created_at < %s",
+                    (threshold,),
+                )
+                return cur.rowcount
+        except Exception:
+            logger.error(
+                ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
+                entity_name="<purge_before>",
+            )
+            raise
 
     async def get_latest(
         self,
